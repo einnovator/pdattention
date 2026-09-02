@@ -12,23 +12,31 @@ datasets:
 license: apache-2.0
 ---
 
-# PRA bundle for Qwen/Qwen3-0.6B
+# PRA Runtime Bundle for Qwen/Qwen3-0.6B · HF
 
-## What this is
+## What this PRA Runtime Bundle is
 
-This repository contains a Progressive Retrieval Attention (PRA) structural adapter, learned adapters, runtime profiles, compatibility metadata, and qualification evidence. It does not contain or duplicate the base-model weights.
+This repository packages the model-specific Progressive Retrieval Attention (PRA) structural mapping, runtime profiles, optional learned components, compatibility metadata, and measured qualification evidence. It does not contain the base-model weights and is not an ordinary LoRA quality fine-tune.
 
-## Base model
-
-- ID: `Qwen/Qwen3-0.6B`
+- Base model: `Qwen/Qwen3-0.6B`
 - Immutable revision: `c1899de289a04d12100db370d81485cdf75e47ca`
 - Architecture: `Qwen3ForCausalLM`
 - Parameters: `596049920`
 - Tokenizer revision: `c1899de289a04d12100db370d81485cdf75e47ca`
 
-## What PRA provides
+## Recommended configuration
 
-PRA provides portable Selected Context, model-specific structural mapping, optional learned routing, and measured profiles. Native Memory and Native Serving are enabled only on engine/model combinations marked as qualified below.
+- Engine: **hf**
+- Recommended PRA mode: **Selected Context**
+- Recommended profile: **BALANCED**
+- Bundle evidence tier: **RESEARCH**
+- Native Memory status: **controlled validation**
+
+Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
+
+## Headline results
+
+No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
 ## Installation
 
@@ -46,19 +54,14 @@ pra recommend .pra/runs/latest
 pra serve Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -p balanced
 ```
 
-## Bundle contents
-
-| Component | Type | Status | Path |
-| --- | --- | --- | --- |
-| structural | structural | validated | `structural_adapter` |
-| qasper-router-d128 | routing | validated-artifact | `learned_adapters/qasper-router-d128` |
-
 ## Profiles
 
-| Profile | Purpose | Routing | Consumer layers | Status |
-| --- | --- | --- | --- | --- |
-| reference | Training-free structural reference and regression checks | None | all eligible | measured-smoke |
-| balanced | QASPER-oriented learned routing with conservative consumers | qasper-router-d128 | all eligible | controlled-research |
+| Profile | Purpose | Routing | Consumer layers | Status | Recommendation |
+| --- | --- | --- | --- | --- | --- |
+| QUALITY | Candidate maximum-quality profile; calibration is incomplete | generic cosine | all eligible | CALIBRATION_PENDING | Not promoted |
+| BALANCED | Conservative training-free reference configuration | generic cosine | all eligible | QUALIFIED | Default |
+| ECONOMY | Reduced-consumer candidate; calibration is incomplete | generic cosine | CALIBRATION_PENDING | CALIBRATION_PENDING | Not promoted |
+| QASPER-LEARNED | Research-only QASPER routing profile | qasper-router-d128 | all eligible | RESEARCH | Not promoted |
 
 ## Engine compatibility
 
@@ -68,34 +71,38 @@ pra serve Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -p balanced
 | mlx | validated | NOT_MEASURED for this exact base revision | NOT_MEASURED | Selected Context |
 | vllm | validated | NOT_MEASURED for this bundle | NOT_MEASURED for this bundle | Selected Context |
 
-## Expected metrics
+## End-to-end qualification
 
-| Engine | Hardware | Workload | Mode | Quality | Visible tokens | TTFT | Throughput | Status |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| huggingface_eager 4.55.4 | NVIDIA GeForce GTX 950M | allenai/qasper (n=16) | Learned routing | 0.4054 | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| huggingface_eager | NVIDIA GeForce GTX 950M | paper4_5_cross_model_diagnostic (n=3) | Native Memory (hot) | 0.4364 | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
+What remains to be measured: paired end-task quality for this exact bundle identity.
+
+## Native Memory qualification
+
+What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.
+
+## Research diagnostics
+
+| Dataset | Router/profile | Metric | Value | Cohort | Evidence |
+| --- | --- | --- | ---: | ---: | --- |
+| allenai/qasper | qasper-learned | None | 0.4054 | 16 | CONTROLLED |
 
 These are qualification measurements, not guaranteed production performance. Run `pra evaluate` on your hardware and workload. Engine version, profile, cohort, evidence tier, date, and artifact provenance remain recorded in `qualification/` and `bundle.yaml`.
 
-## How to evaluate on your system
+## How to evaluate locally
 
 ```bash
-pra evaluate Qwen/Qwen3-0.6B -a EInnovator/pra-qwen3-0.6b -D qasper -o .pra/runs/qasper
+pra evaluate Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -D qasper -o .pra/runs/qasper
 pra recommend .pra/runs/qasper
 pra report .pra/runs/qasper --format html
 ```
 
-## How to choose Selected Context vs Native Memory
-
-Selected Context is the portable baseline and should be the first deployment. Native Memory is incremental, model-specific, and engine/workload dependent; include it in local qualification before promotion.
-
 ## Known limitations
 
+- This is a research/reference bundle for mechanism reproduction, not the flagship production-economics demonstration.
 - The routing cohort is small and QASPER-specific; transfer routing is not a production claim.
 - Native Memory has controlled HF evidence only for this exact model revision and must be requalified per engine, quantization, and hardware.
 - Native Serving is not qualified by this bundle.
 
-## Training / creation
+## Training/creation
 
 - Datasets: `QASPER`
 - Seed: `11`
@@ -105,17 +112,17 @@ Selected Context is the portable baseline and should be the first deployment. Na
 
 ## Reproducibility
 
-- PRA commit: `d880a4583df828744f6006976bd78ff66a05f926`
-- Bundle build commit: `d880a4583df828744f6006976bd78ff66a05f926`
+- PRA commit: `69b03f8e01e9a330b2c5aeb03d4fb2373d98a146`
+- Bundle build commit: `69b03f8e01e9a330b2c5aeb03d4fb2373d98a146`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.
 
-## Community and support
+## Community/support
 
-- [Canonical PRA Bundles Collection](https://huggingface.co/collections/EInnovator/pra-bundles-6a971e52093232f858e660f6)
-- [EInnovator on Hugging Face](https://huggingface.co/EInnovator)
 - [PRA documentation](https://einnovator.github.io/pdattention/)
 - [Source repository](https://github.com/einnovator/pdattention)
 - [Issues](https://github.com/einnovator/pdattention/issues)
 - [Contribution guide](https://github.com/einnovator/pdattention/blob/main/CONTRIBUTING.md)
+- [Canonical PRA Bundles Collection](https://huggingface.co/collections/EInnovator/pra-bundles-6a971e52093232f858e660f6)
+- [EInnovator on Hugging Face](https://huggingface.co/EInnovator)

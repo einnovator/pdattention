@@ -37,20 +37,47 @@ learned_adapters:
       f90: 1.0
     fingerprint: 34a4b82e147b41c7bcecfd84e8a15fcf740d2d8763fc6db140a4dbf8e8d23985
 profiles:
-  reference:
-    purpose: Training-free structural reference and regression checks
+  quality:
+    purpose: Candidate maximum-quality profile; calibration is incomplete
     routing_adapter: null
     consumer_layers: all eligible
-    status: measured-smoke
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Selected Context
   balanced:
-    purpose: QASPER-oriented learned routing with conservative consumers
+    purpose: Conservative training-free reference configuration
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: QUALIFIED
+    recommended: true
+    engine: hf
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; calibration is incomplete
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Selected Context
+  qasper-learned:
+    purpose: Research-only QASPER routing profile
     routing_adapter: qasper-router-d128
     consumer_layers: all eligible
-    status: controlled-research
+    status: RESEARCH
+    recommended: false
+    engine: hf
+    mode: Selected Context
 qualification:
-  status: CONTROLLED
+  contract_version: 1
+  status: RESEARCH
+  headline: []
   metrics:
-  - engine: huggingface_eager 4.55.4
+  - metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen3-0.6B
+    model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    engine: huggingface_eager 4.55.4
     hardware: NVIDIA GeForce GTX 950M
     dataset: allenai/qasper
     workload: QASPER v0.3 validation routing
@@ -60,11 +87,14 @@ qualification:
     ttft_ms: null
     throughput: null
     sample_count: 16
-    profile: balanced
+    profile: qasper-learned
     evidence_tier: CONTROLLED
     date: '2026-08-11'
     provenance: learned_adapters/qasper-router-d128/config.json
-  - engine: huggingface_eager
+  - metric_class: SEMANTIC_EQUIVALENCE
+    model_id: Qwen/Qwen3-0.6B
+    model_revision: c1899de289a04d12100db370d81485cdf75e47ca
+    engine: huggingface_eager
     hardware: NVIDIA GeForce GTX 950M
     dataset: paper4_5_cross_model_diagnostic
     workload: three-case target-token diagnostic
@@ -74,7 +104,7 @@ qualification:
     ttft_ms: null
     throughput: null
     sample_count: 3
-    profile: reference
+    profile: balanced
     evidence_tier: SMOKE
     date: '2026-08-28'
     provenance: qualification/profile_evidence.json
@@ -85,6 +115,8 @@ qualification:
     parameter_count: 262144
     base_revision: c1899de289a04d12100db370d81485cdf75e47ca
   limitations:
+  - This is a research/reference bundle for mechanism reproduction, not the flagship
+    production-economics demonstration.
   - The routing cohort is small and QASPER-specific; transfer routing is not a production
     claim.
   - Native Memory has controlled HF evidence only for this exact model revision and
@@ -115,8 +147,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: d880a4583df828744f6006976bd78ff66a05f926
-  bundle_build_commit: d880a4583df828744f6006976bd78ff66a05f926
+  pra_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
+  bundle_build_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
   hf_repo: EInnovator/pra-qwen3-0.6b
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -127,8 +159,8 @@ checksums:
   learned_adapters/qasper-router-d128/adapter_model.pt: 81d3b2f875a12d3bc332679f553ea0169ba0fa4f2b64ac6ee4545ec95ee6eb28
   learned_adapters/qasper-router-d128/config.json: d5ec3dd5325051c59f14c2b10e8d62bcec4e195fcf69ee68f54e32114474b5c7
   learned_adapters/qasper-router-d128/feature_dataset_manifest.json: c4fc6f7287bfb461bd3116f149ee90bdc6e098658b2b25afc7980addbef1bd37
-  structural_adapter/pra_adapter.yaml: 8334291b1a9eff60157cbfd8f12de0aef4481ef5fde79589885aa6459d9d0b0f
   qualification/profile_evidence.json: 744b1682c0dc86cbb704a80e4122d951f861e201e978dec49a50a527300f045f
+  structural_adapter/pra_adapter.yaml: 8334291b1a9eff60157cbfd8f12de0aef4481ef5fde79589885aa6459d9d0b0f
 trust:
   status: eInnovator-qualified
   publisher: EInnovator

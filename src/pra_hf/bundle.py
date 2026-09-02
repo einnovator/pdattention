@@ -11,15 +11,18 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import yaml
 
+from .bundle_evidence import EvidenceValidationError, validate_bundle_evidence
+
 
 BUNDLE_SCHEMA_VERSION = 2
 MANIFEST_NAMES = ("bundle.yaml", "pra.yaml")
 PUBLIC_CARD_SECTIONS = (
-    "What this is", "Base model", "What PRA provides", "Installation",
-    "Quickstart", "Bundle contents", "Profiles", "Engine compatibility",
-    "Expected metrics", "How to evaluate on your system",
-    "How to choose Selected Context vs Native Memory", "Known limitations",
-    "Training / creation", "Reproducibility", "Community and support",
+    "What this PRA Runtime Bundle is", "Recommended configuration",
+    "Headline results", "Installation", "Quickstart", "Profiles",
+    "Engine compatibility", "End-to-end qualification",
+    "Native Memory qualification", "Research diagnostics",
+    "How to evaluate locally", "Known limitations", "Training/creation",
+    "Reproducibility", "Community/support",
 )
 
 
@@ -225,6 +228,10 @@ class PRAModelBundle:
                 errors.append("base_model.revision must be immutable")
             if not self.base_model.get("fingerprint"):
                 errors.append("base_model.fingerprint is required")
+        try:
+            validate_bundle_evidence(self)
+        except EvidenceValidationError as error:
+            errors.append(str(error))
         if self.local_path is not None:
             components: list[tuple[str, Mapping[str, Any]]] = []
             if self.structural_adapter:
@@ -418,66 +425,104 @@ class BundleBuilder:
             and str(model).lower().startswith("mlx-community/")
             else "hf"
         )
-        lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA bundle for {model}", ""]
+        qualification = bundle.qualification if isinstance(bundle.qualification, Mapping) else {}
+        headline = [row for row in qualification.get("headline", []) if isinstance(row, Mapping)]
+        recommended_name, recommended = next(
+            ((str(name), value) for name, value in bundle.profiles.items()
+             if isinstance(value, Mapping) and value.get("recommended") is True),
+            ("balanced", bundle.profiles.get("balanced", {})),
+        )
+        engine_name = str(recommended.get("engine", preferred_engine)) if isinstance(recommended, Mapping) else preferred_engine
+        mode = str(recommended.get("mode", "Selected Context")) if isinstance(recommended, Mapping) else "Selected Context"
+        native_status = "NOT_MEASURED"
+        engine_value = bundle.runtime_compatibility.get(engine_name, {})
+        if isinstance(engine_value, Mapping):
+            native_status = str(engine_value.get("native_memory", native_status))
+        title_suffix = bundle.base_model.get("quantization", {})
+        quantization = f"{title_suffix.get('bits')}bit" if isinstance(title_suffix, Mapping) and title_suffix.get("bits") else ""
+        title_engine = " / ".join(value for value in (engine_name.upper(), quantization) if value)
+        lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA Runtime Bundle for {model} · {title_engine}", ""]
         lines += [
-            "## What this is", "",
-            "This repository contains a Progressive Retrieval Attention (PRA) structural adapter, learned adapters, runtime profiles, compatibility metadata, and qualification evidence. It does not contain or duplicate the base-model weights.", "",
-            "## Base model", "", f"- ID: `{model}`", f"- Immutable revision: `{revision}`",
+            "## What this PRA Runtime Bundle is", "",
+            "This repository packages the model-specific Progressive Retrieval Attention (PRA) structural mapping, runtime profiles, optional learned components, compatibility metadata, and measured qualification evidence. It does not contain the base-model weights and is not an ordinary LoRA quality fine-tune.", "",
+            f"- Base model: `{model}`", f"- Immutable revision: `{revision}`",
             f"- Architecture: `{architecture}`", f"- Parameters: `{parameters}`",
             f"- Tokenizer revision: `{tokenizer_revision}`", "",
-            "## What PRA provides", "",
-            "PRA provides portable Selected Context, model-specific structural mapping, optional learned routing, and measured profiles. Native Memory and Native Serving are enabled only on engine/model combinations marked as qualified below.", "",
+            "## Recommended configuration", "",
+            f"- Engine: **{engine_name}**", f"- Recommended PRA mode: **{mode}**",
+            f"- Recommended profile: **{recommended_name.upper()}**",
+            f"- Bundle evidence tier: **{qualification.get('status', 'NOT_MEASURED')}**",
+            f"- Native Memory status: **{native_status}**", "",
+            "Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.", "",
+            "## Headline results", "",
+        ]
+        if headline:
+            lines += ["| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+            for row in headline:
+                baseline, pra = row.get("baseline", {}), row.get("pra", {})
+                delta = row.get("deltas", {})
+                parity = row.get("semantic_equivalence", {})
+                metric_name = baseline.get("quality_metric", "metric")
+                lines.append(
+                    f"| {row.get('dataset', row.get('workload', 'combined'))} (n={row.get('sample_count', 'NOT_MEASURED')}) "
+                    f"| {metric_name}={_metric(baseline.get('quality'))} | {metric_name}={_metric(pra.get('quality'))} "
+                    f"| {_signed(delta.get('quality'))} | {_signed_pct(delta.get('visible_tokens_pct'))} "
+                    f"| {_signed_pct(delta.get('ttft_pct'))} | {_signed_pct(delta.get('completion_latency_pct'))} "
+                    f"| {parity.get('exact_output_pairs', 'NOT_MEASURED')}/{parity.get('paired_examples', 'NOT_MEASURED')} "
+                    f"| {row.get('evidence_tier', 'NOT_MEASURED')} |"
+                )
+            lines += ["", "All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.", ""]
+        else:
+            lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
+        lines += [
             "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub,hf-runtime]'", "pra doctor", "```", "",
             "## Quickstart", "", "```bash", f"pra inspect {model} -e {preferred_engine} -a {repo}",
             f"pra evaluate {model} -e {preferred_engine} -D qasper -a {repo}", "pra recommend .pra/runs/latest",
-            f"pra serve {model} -e {preferred_engine} -a {repo} -p balanced", "```", "",
-            "## Bundle contents", "", "| Component | Type | Status | Path |", "| --- | --- | --- | --- |",
-            f"| structural | structural | {bundle.structural_adapter.get('status', 'NOT_MEASURED')} | `{bundle.structural_adapter.get('path', 'NOT_MEASURED')}` |",
+            f"pra serve {model} -e {preferred_engine} -a {repo} -p {recommended_name}", "```", "",
+            "## Profiles", "", "| Profile | Purpose | Routing | Consumer layers | Status | Recommendation |", "| --- | --- | --- | --- | --- | --- |",
         ]
-        for name, item in bundle.learned_adapters.items():
-            value = item if isinstance(item, Mapping) else {}
-            lines.append(f"| {name} | {value.get('type', 'learned')} | {value.get('status', 'NOT_MEASURED')} | `{value.get('path', 'NOT_MEASURED')}` |")
-        lines += ["", "## Profiles", "", "| Profile | Purpose | Routing | Consumer layers | Status |", "| --- | --- | --- | --- | --- |"]
         for name, item in bundle.profiles.items():
             value = item if isinstance(item, Mapping) else {}
             consumers = value.get("consumer_layers", "all eligible")
             if isinstance(consumers, Sequence) and not isinstance(consumers, str):
                 consumers = ", ".join(str(layer) for layer in consumers)
             routing = value.get("routing_adapter") or "generic cosine"
-            lines.append(f"| {name} | {value.get('purpose', 'General PRA use')} | {routing} | {consumers} | {value.get('status', 'NOT_MEASURED')} |")
+            recommendation = "Default" if value.get("recommended") else value.get("recommendation", "Not promoted")
+            lines.append(f"| {str(name).upper()} | {value.get('purpose', 'General PRA use')} | {routing} | {consumers} | {value.get('status', 'NOT_MEASURED')} | {recommendation} |")
         lines += ["", "## Engine compatibility", "", "| Engine | Selected Context | Native Memory | Native Serving | Recommended today |", "| --- | --- | --- | --- | --- |"]
         for engine, item in bundle.runtime_compatibility.items():
             value = item if isinstance(item, Mapping) else {}
             lines.append(f"| {engine} | {value.get('selected_context', 'NOT_MEASURED')} | {value.get('native_memory', 'NOT_MEASURED')} | {value.get('native_serving', 'NOT_MEASURED')} | {value.get('recommended', 'Selected Context')} |")
-        lines += ["", "## Expected metrics", "", "| Engine | Hardware | Workload | Mode | Quality metric | Visible tokens | TTFT | Throughput | Status |", "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |"]
-        rows = _qualification_rows(bundle)
-        for row in rows:
-            lines.append(
-                "| {engine} | {hardware} | {workload} (n={count}) | {mode} | {quality} | {visible} | {ttft} | {throughput} | {status} |".format(
-                    engine=row.get("engine", "NOT_MEASURED"), hardware=row.get("hardware", "NOT_MEASURED"),
-                    workload=row.get("dataset", row.get("workload", "NOT_MEASURED")), count=row.get("sample_count", "NOT_MEASURED"),
-                    mode=_public_mode(row.get("mode", row.get("representation", "NOT_MEASURED"))),
-                    quality=(
-                        f"{row.get('quality_metric')}={_metric(row.get('quality', row.get('quality_score')))}"
-                        if row.get("quality_metric")
-                        else _metric(row.get("quality", row.get("quality_score")))
-                    ), visible=_metric(row.get("visible_tokens")),
-                    ttft=_metric(row.get("ttft_ms")), throughput=_metric(row.get("throughput", row.get("requests_per_second"))),
-                    status=row.get("evidence_tier", row.get("status", "NOT_MEASURED")),
-                )
-            )
-        if not rows:
-            lines.append("| NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |")
+        lines += ["", "## End-to-end qualification", ""]
+        end_task = [row for row in _qualification_rows(bundle) if row.get("metric_class") == "END_TASK"]
+        if end_task:
+            lines += ["| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |", "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |"]
+            for row in end_task:
+                for label, values in (("Selected Context", row.get("baseline", {})), ("Native Memory", row.get("pra", {}))):
+                    lines.append(f"| {row.get('dataset')} (n={row.get('sample_count')}) | {label} | {values.get('quality_metric', 'metric')}={_metric(values.get('quality'))} | {_metric(values.get('visible_tokens'))} | {_metric(values.get('ttft_ms', {}).get('p50'))} ms | {_metric(values.get('completion_latency_ms', {}).get('mean'))} ms | {row.get('hardware')} | {row.get('evidence_tier')} |")
+        else:
+            lines.append("What remains to be measured: paired end-task quality for this exact bundle identity.")
+        lines += ["", "## Native Memory qualification", ""]
+        if headline:
+            lines.append("Native Memory uses the same selector output as Selected Context. Exact paired parity, visible-input reduction, active detail bytes, and latency deltas are reported above; it is recommended only where the profile and engine tables say so.")
+        else:
+            lines.append("What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.")
+        lines += ["", "## Research diagnostics", ""]
+        diagnostics = [row for row in _qualification_rows(bundle) if row.get("metric_class") == "ROUTING_DIAGNOSTIC"]
+        if diagnostics:
+            lines += ["| Dataset | Router/profile | Metric | Value | Cohort | Evidence |", "| --- | --- | --- | ---: | ---: | --- |"]
+            for row in diagnostics:
+                lines.append(f"| {row.get('dataset')} | {row.get('profile')} | {row.get('quality_metric')} | {_metric(row.get('quality'))} | {row.get('sample_count')} | {row.get('evidence_tier')} |")
+        else:
+            lines.append("No separate routing diagnostic is packaged for this bundle.")
         lines += [
             "", "These are qualification measurements, not guaranteed production performance. Run `pra evaluate` on your hardware and workload. Engine version, profile, cohort, evidence tier, date, and artifact provenance remain recorded in `qualification/` and `bundle.yaml`.", "",
-            "## How to evaluate on your system", "", "```bash", f"pra evaluate {model} -e {preferred_engine} -a {repo} -D qasper -o .pra/runs/qasper", "pra recommend .pra/runs/qasper", "pra report .pra/runs/qasper --format html", "```", "",
-            "## How to choose Selected Context vs Native Memory", "",
-            "Selected Context is the portable baseline and should be the first deployment. Native Memory is incremental, model-specific, and engine/workload dependent; include it in local qualification before promotion.", "",
+            "## How to evaluate locally", "", "```bash", f"pra evaluate {model} -e {preferred_engine} -a {repo} -D qasper -o .pra/runs/qasper", "pra recommend .pra/runs/qasper", "pra report .pra/runs/qasper --format html", "```", "",
             "## Known limitations", "",
         ]
         limitations = bundle.qualification.get("limitations", []) if isinstance(bundle.qualification, Mapping) else []
         lines.extend(f"- {item}" for item in limitations or ["Unlisted engine, quantization, tokenizer, and hardware combinations are not qualified.", "Smoke evidence does not establish production-scale quality or tail latency."])
-        lines += ["", "## Training / creation", ""]
+        lines += ["", "## Training/creation", ""]
         training = bundle.qualification.get("training", {}) if isinstance(bundle.qualification, Mapping) else {}
         if training:
             lines.extend(f"- {key.replace('_', ' ').title()}: `{value}`" for key, value in training.items())
@@ -487,7 +532,7 @@ class BundleBuilder:
             "", "## Reproducibility", "", f"- PRA commit: `{bundle.provenance.get('pra_commit', 'NOT_MEASURED')}`",
             f"- Bundle build commit: `{bundle.provenance.get('bundle_build_commit', 'NOT_MEASURED')}`", f"- Bundle schema: `{bundle.schema_version}`",
             f"- PRA package: `{bundle.provenance.get('pra_version', 'NOT_MEASURED')}`", "- Component fingerprints and file checksums are recorded in `bundle.yaml`.", "",
-            "## Community and support", "", "- [PRA documentation](https://einnovator.github.io/pdattention/)",
+            "## Community/support", "", "- [PRA documentation](https://einnovator.github.io/pdattention/)",
             "- [Source repository](https://github.com/einnovator/pdattention)", "- [Issues](https://github.com/einnovator/pdattention/issues)",
             "- [Contribution guide](https://github.com/einnovator/pdattention/blob/main/CONTRIBUTING.md)", "",
         ]
@@ -502,6 +547,14 @@ def _metric(value: Any) -> str:
     if value is None or value == "":
         return "NOT_MEASURED"
     return f"{value:.4g}" if isinstance(value, float) else str(value)
+
+
+def _signed(value: Any) -> str:
+    return "NOT_MEASURED" if value is None else f"{float(value):+.4f}"
+
+
+def _signed_pct(value: Any) -> str:
+    return "NOT_MEASURED" if value is None else f"{float(value):+.1f}%"
 
 
 def _public_mode(value: Any) -> str:

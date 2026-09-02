@@ -26,7 +26,7 @@ learned_adapters:
       - QASPER
       - HotpotQA
       seed: 23
-      seeds_evaluated: &id001
+      seeds_evaluated: &id008
       - 11
       - 23
       - 37
@@ -50,25 +50,312 @@ learned_adapters:
       f90: 1.0
     fingerprint: 0e756f8181ed267dd181bbd540ae60859d60074e5d90e3eae4291816ba794354
 profiles:
-  reference:
-    purpose: Training-free structural checks using generic cosine routing
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
     routing_adapter: null
     consumer_layers: all eligible
-    status: controlled
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
   balanced:
-    purpose: Portable default using generic cosine routing
+    purpose: Qualified default preserving the all-eligible consumer geometry
     routing_adapter: null
     consumer_layers: all eligible
-    status: controlled-default
+    status: QUALIFIED
+    recommended: true
+    engine: mlx
+    mode: Native Memory
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
   qasper-learned:
-    purpose: Opt-in learned routing qualified for QASPER; not a HotpotQA default
+    purpose: Research-only learned routing profile qualified only on matched QASPER
+      routing diagnostics
     routing_adapter: combined-router-d128
     consumer_layers: all eligible
-    status: controlled-dataset-specific
+    status: RESEARCH
+    recommended: false
+    engine: mlx
+    mode: Native Memory
 qualification:
-  status: CONTROLLED
+  contract_version: 1
+  status: ENGINE_QUALIFIED
+  headline:
+  - &id001
+    metric_class: END_TASK
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: combined
+    sample_count: 15
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.27746031746031746
+      exact_match: 0.0
+      gold_answer_logprob: -9.97838643391927
+      visible_tokens: 315.53333333333336
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 210.72420799464453
+        p95: 339.22949999396224
+        p99: 339.22949999396224
+      completion_latency_ms:
+        mean: 507.8287193318829
+        p50: 451.47266700223554
+        p95: 580.6770409981254
+        p99: 580.6770409981254
+      peak_memory_bytes: 8850340060.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.27746031746031746
+      exact_match: 0.0
+      gold_answer_logprob: -9.97838643391927
+      visible_tokens: 34.266666666666666
+      selected_native_kv_tokens: 11250.666666666666
+      active_detail_bytes: 46082730.666666664
+      retained_detail_bytes: 46082730.666666664
+      ttft_ms:
+        p50: 210.37279200390913
+        p95: 338.2852500071749
+        p99: 338.2852500071749
+      completion_latency_ms:
+        mean: 513.2481610004712
+        p50: 457.8021249908488
+        p95: 583.6616670130752
+        p99: 583.6616670130752
+      peak_memory_bytes: 8794683612.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -89.14008028734419
+      ttft_pct: -0.16676583771729506
+      completion_latency_pct: 1.0671790433038773
+    semantic_equivalence:
+      exact_output_pairs: 15
+      paired_examples: 15
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_14b_mlx_profiles.json
+    artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
   metrics:
-  - engine: mlx-lm 0.31.3
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: 2wikimultihopqa
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.2833333333333333
+      exact_match: 0.0
+      gold_answer_logprob: -2.7053882598876955
+      visible_tokens: 351.2
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 209.8581249883864
+        p95: 333.41912500327453
+        p99: 333.41912500327453
+      completion_latency_ms:
+        mean: 499.31481659878045
+        p50: 450.65929199336097
+        p95: 573.7084159918595
+        p99: 573.7084159918595
+      peak_memory_bytes: 8840476980.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.2833333333333333
+      exact_match: 0.0
+      gold_answer_logprob: -2.7053882598876955
+      visible_tokens: 31.6
+      selected_native_kv_tokens: 12784.0
+      active_detail_bytes: 52363264.0
+      retained_detail_bytes: 52363264.0
+      ttft_ms:
+        p50: 210.37279200390913
+        p95: 332.46525000140537
+        p99: 332.46525000140537
+      completion_latency_ms:
+        mean: 505.2794666000409
+        p50: 457.8021249908488
+        p95: 578.0354590096977
+        p99: 578.0354590096977
+      peak_memory_bytes: 8786719357.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.00227790432801
+      ttft_pct: 0.24524521771611188
+      completion_latency_pct: 1.1945669952056095
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_14b_mlx_profiles.json
+    artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: hotpotqa
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.4419047619047619
+      exact_match: 0.0
+      gold_answer_logprob: -2.722990798950195
+      visible_tokens: 262.0
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 333.7056250020396
+        p95: 339.22949999396224
+        p99: 339.22949999396224
+      completion_latency_ms:
+        mean: 574.8120663978625
+        p50: 574.0946250007255
+        p95: 580.6770409981254
+        p99: 580.6770409981254
+      peak_memory_bytes: 8807037080.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.4419047619047619
+      exact_match: 0.0
+      gold_answer_logprob: -2.722990798950195
+      visible_tokens: 43.4
+      selected_native_kv_tokens: 8744.0
+      active_detail_bytes: 35815424.0
+      retained_detail_bytes: 35815424.0
+      ttft_ms:
+        p50: 333.9459170092596
+        p95: 338.2852500071749
+        p99: 338.2852500071749
+      completion_latency_ms:
+        mean: 579.9797166051576
+        p50: 579.7111250140006
+        p95: 583.6616670130752
+        p99: 583.6616670130752
+      peak_memory_bytes: 8754951360.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -83.43511450381679
+      ttft_pct: 0.07200717914734252
+      completion_latency_pct: 0.899015610385297
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_14b_mlx_profiles.json
+    artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: qasper
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.10714285714285714
+      exact_match: 0.0
+      gold_answer_logprob: -24.506780242919923
+      visible_tokens: 333.4
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 209.07304200227372
+        p95: 210.72420799464453
+        p99: 210.72420799464453
+      completion_latency_ms:
+        mean: 449.3592749990057
+        p50: 450.1107079995563
+        p95: 451.47266700223554
+        p99: 451.47266700223554
+      peak_memory_bytes: 8850340060.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.10714285714285714
+      exact_match: 0.0
+      gold_answer_logprob: -24.506780242919923
+      visible_tokens: 27.8
+      selected_native_kv_tokens: 12224.0
+      active_detail_bytes: 50069504.0
+      retained_detail_bytes: 50069504.0
+      ttft_ms:
+        p50: 208.31050000560936
+        p95: 209.72354098921642
+        p99: 209.72354098921642
+      completion_latency_ms:
+        mean: 454.48529979621526
+        p50: 453.95070798986126
+        p95: 456.4977919944795
+        p99: 456.4977919944795
+      peak_memory_bytes: 8794683612.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.6616676664667
+      ttft_pct: -0.3647251646417785
+      completion_latency_pct: 1.1407408464465056
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_14b_mlx_profiles.json
+    artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
+  - *id001
+  - &id002
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: qasper
     workload: held-out frozen-feature routing comparison
@@ -86,7 +373,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id003
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: qasper
     workload: held-out frozen-feature routing comparison
@@ -104,7 +396,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id004
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: hotpotqa
     workload: held-out frozen-feature routing comparison
@@ -122,7 +419,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id005
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: hotpotqa
     workload: held-out frozen-feature routing comparison
@@ -140,7 +442,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id006
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: combined
     workload: held-out frozen-feature routing comparison
@@ -158,7 +465,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id007
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-14B-4bit
+    model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: combined
     workload: held-out frozen-feature routing comparison
@@ -176,12 +488,19 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
+  routing_diagnostics:
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  - *id007
   training:
     datasets: QASPER and HotpotQA
     train_examples: 48
     validation_examples: 16
     held_out_test_examples: 32
-    seeds: *id001
+    seeds: *id008
     selection: maximum combined validation AUC0-30
     method: multi-positive softmax
     parameter_count: 1310720
@@ -189,8 +508,10 @@ qualification:
   limitations:
   - The learned router improves QASPER but is not uniformly positive on HotpotQA;
     it is opt-in rather than the bundle default.
-  - Routing evidence uses 16 held-out examples per dataset and does not establish
-    generation quality or serving economics.
+  - Paired natural-QA evidence contains five examples per dataset and supports engine
+    qualification, not production qualification.
+  - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
+    therefore retains all eligible layers.
   - The qualification identity is the exact 4-bit MLX model and revision; it does
     not transfer automatically to full-precision Hugging Face weights or another quantization.
   - Base-model and dataset licenses apply separately to the router artifact.
@@ -198,12 +519,13 @@ qualification:
   - qualification/comparison.json
   - qualification/feature_dataset_manifest.json
   - qualification/catalog_summary.json
+  - qualification/qwen3_14b_mlx_profiles.json
 runtime_compatibility:
   mlx:
     selected_context: validated
-    native_memory: structural mapping controlled for this exact MLX identity
-    native_serving: engine-study evidence; not established by routing qualification
-    recommended: balanced generic; qasper-learned only for matched QASPER workloads
+    native_memory: QUALIFIED
+    native_serving: NOT_MEASURED
+    recommended: Native Memory with BALANCED
   hf:
     selected_context: portable
     native_memory: NOT_MEASURED for the full-precision HF counterpart
@@ -216,24 +538,26 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
-  bundle_build_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
+  pra_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
+  bundle_build_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
   hf_repo: EInnovator/pra-qwen3-14b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: artifacts/pra_hf/routers/qwen3-14b-combined-d128
-  selection_reason: Cross-family controlled comparison of generic and learned routing
-    on frozen held-out features.
+  source_artifact: qwen3_14b_mlx_profiles.json
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: 852edb720e84d3a8c142c8302b98aa202920e6064ba41bffd95ab12cb1f73a42
   learned_adapters/combined-router-d128/config.json: fec04b7654bc08237d89aa9a9e467a552044a9e96d36b98571311dc11ea87999
   qualification/catalog_summary.json: f74119da8464ecebb2d98c45ef234d5f3d4ea71092f0f2eec06361060cb8d0a0
   qualification/comparison.json: 179ff806087c8be7b2b9f6e4a32a0e4ebfef2b7831482738271724af0e2f9fdb
   qualification/feature_dataset_manifest.json: 3be491913530f60718e9b8480cb7d2d9da3c9030de340f805c47864989ae555e
+  qualification/qwen3_14b_mlx_profiles.json: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
   structural_adapter/pra_adapter.yaml: 0be3e7156af371da46adc428c0d778b0ab66b893d0b1fa0376ce0c082db3d4cd
 trust:
   status: eInnovator-qualified
   publisher: EInnovator
-  scope: controlled routing for the exact 4-bit MLX model identity
+  scope: exact 4-bit MLX model identity; evidence does not transfer across revisions
+    or quantizations

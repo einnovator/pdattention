@@ -152,6 +152,8 @@ def test_generated_card_is_complete_and_uses_public_terms(tmp_path: Path) -> Non
 
     metadata = validate_model_card(text, PRAModelBundle.from_pretrained(bundle_path))
     assert metadata["base_model"] == "org/model"
+    assert "# PRA Runtime Bundle for org/model" in text
+    assert "## Recommended configuration" in text
     assert "Native Memory" in text
     assert " E2 " not in text
     assert "collections/EInnovator/pra-bundles-test" in text

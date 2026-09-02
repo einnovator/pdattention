@@ -1,0 +1,360 @@
+schema_version: 2
+base_model:
+  id: mlx-community/Qwen3-32B-4bit
+  revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+  tokenizer_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+  architecture: Qwen3ForCausalLM
+  family: qwen
+  parameter_count_approx: 32B
+  quantization:
+    bits: 4
+    group_size: 64
+    runtime: MLX
+  fingerprint: b8f692350325ba50061f2203be4f8b961d15a0e3365572439741c3d065cb9e49
+structural_adapter:
+  path: structural_adapter
+  status: validated
+  fingerprint: 2bf521001cfe73e4547e6020ace5c2bd169723c0cf216489107cf26706986a68
+learned_adapters: {}
+profiles:
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
+  balanced:
+    purpose: Qualified default preserving the all-eligible consumer geometry
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: QUALIFIED
+    recommended: true
+    engine: mlx
+    mode: Native Memory
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
+qualification:
+  contract_version: 1
+  status: ENGINE_QUALIFIED
+  headline:
+  - &id001
+    metric_class: END_TASK
+    model_id: mlx-community/Qwen3-32B-4bit
+    model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: combined
+    sample_count: 15
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.23116402116402116
+      exact_match: 0.0
+      gold_answer_logprob: -9.579463958740234
+      visible_tokens: 315.53333333333336
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 524.9199579993729
+        p95: 799.7567919956055
+        p99: 799.7567919956055
+      completion_latency_ms:
+        mean: 1177.0423334654577
+        p50: 1071.9014579954091
+        p95: 1341.8933339999057
+        p99: 1341.8933339999057
+      peak_memory_bytes: 19153709240.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.23116402116402116
+      exact_match: 0.0
+      gold_answer_logprob: -9.579463958740234
+      visible_tokens: 34.266666666666666
+      selected_native_kv_tokens: 18001.066666666666
+      active_detail_bytes: 73732369.06666666
+      retained_detail_bytes: 73732369.06666666
+      ttft_ms:
+        p50: 490.2035419945605
+        p95: 797.2575000021607
+        p99: 797.2575000021607
+      completion_latency_ms:
+        mean: 1183.2300168006138
+        p50: 1050.0842920009745
+        p95: 1348.9650419942336
+        p99: 1348.9650419942336
+      peak_memory_bytes: 19058026680.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -89.14008028734419
+      ttft_pct: -6.613658992339899
+      completion_latency_pct: 0.5256976031557296
+    semantic_equivalence:
+      exact_output_pairs: 15
+      paired_examples: 15
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_32b_mlx_profiles.json
+    artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
+  metrics:
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-32B-4bit
+    model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: 2wikimultihopqa
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.17777777777777778
+      exact_match: 0.0
+      gold_answer_logprob: -3.979419708251953
+      visible_tokens: 351.2
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 493.9697500085458
+        p95: 795.5082499975106
+        p99: 795.5082499975106
+      completion_latency_ms:
+        mean: 1155.448350199731
+        p50: 1041.754417004995
+        p95: 1339.4812499900581
+        p99: 1339.4812499900581
+      peak_memory_bytes: 19141323090.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.17777777777777778
+      exact_match: 0.0
+      gold_answer_logprob: -3.979419708251953
+      visible_tokens: 31.6
+      selected_native_kv_tokens: 20454.4
+      active_detail_bytes: 83781222.4
+      retained_detail_bytes: 83781222.4
+      ttft_ms:
+        p50: 490.2035419945605
+        p95: 789.2545829963638
+        p99: 789.2545829963638
+      completion_latency_ms:
+        mean: 1164.007333398331
+        p50: 1047.1918749972247
+        p95: 1340.8656669926131
+        p99: 1340.8656669926131
+      peak_memory_bytes: 19049015590.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.00227790432801
+      ttft_pct: -0.7624369739078455
+      completion_latency_pct: 0.7407499605776737
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_32b_mlx_profiles.json
+    artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-32B-4bit
+    model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: hotpotqa
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.3657142857142857
+      exact_match: 0.0
+      gold_answer_logprob: -2.2717430114746096
+      visible_tokens: 262.0
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 791.5717500000028
+        p95: 799.7567919956055
+        p99: 799.7567919956055
+      completion_latency_ms:
+        mean: 1333.5392001987202
+        p50: 1336.4022500027204
+        p95: 1341.8933339999057
+        p99: 1341.8933339999057
+      peak_memory_bytes: 19105966204.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.3657142857142857
+      exact_match: 0.0
+      gold_answer_logprob: -2.2717430114746096
+      visible_tokens: 43.4
+      selected_native_kv_tokens: 13990.4
+      active_detail_bytes: 57304678.4
+      retained_detail_bytes: 57304678.4
+      ttft_ms:
+        p50: 791.6999580047559
+        p95: 797.2575000021607
+        p99: 797.2575000021607
+      completion_latency_ms:
+        mean: 1343.1802084029187
+        p50: 1343.3941249968484
+        p95: 1348.9650419942336
+        p99: 1348.9650419942336
+      peak_memory_bytes: 19018082424.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -83.43511450381679
+      ttft_pct: 0.016196637228792575
+      completion_latency_pct: 0.7229639895671434
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_32b_mlx_profiles.json
+    artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-32B-4bit
+    model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
+    quantization: 4bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: qasper
+    sample_count: 5
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.15
+      exact_match: 0.0
+      gold_answer_logprob: -22.48722915649414
+      visible_tokens: 333.4
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 489.091167008155
+        p95: 524.9199579993729
+        p99: 524.9199579993729
+      completion_latency_ms:
+        mean: 1042.1394499979215
+        p50: 1036.9351250119507
+        p95: 1071.9014579954091
+        p99: 1071.9014579954091
+      peak_memory_bytes: 19153709240.0
+    pra:
+      quality_metric: token_f1
+      quality: 0.15
+      exact_match: 0.0
+      gold_answer_logprob: -22.48722915649414
+      visible_tokens: 27.8
+      selected_native_kv_tokens: 19558.4
+      active_detail_bytes: 80111206.4
+      retained_detail_bytes: 80111206.4
+      ttft_ms:
+        p50: 487.6619999995455
+        p95: 488.7310000049183
+        p99: 488.7310000049183
+      completion_latency_ms:
+        mean: 1042.5025086005917
+        p50: 1043.608583000605
+        p95: 1050.0842920009745
+        p99: 1050.0842920009745
+      peak_memory_bytes: 19058026680.0
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.6616676664667
+      ttft_pct: -0.29220871383794206
+      completion_latency_pct: 0.034837813948117184
+    semantic_equivalence:
+      exact_output_pairs: 5
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA
+    date: '2026-09-01'
+    pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+    artifact: qualification/qwen3_32b_mlx_profiles.json
+    artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
+  - *id001
+  routing_diagnostics: []
+  training: {}
+  limitations:
+  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
+    it is opt-in rather than the bundle default.
+  - Paired natural-QA evidence contains five examples per dataset and supports engine
+    qualification, not production qualification.
+  - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
+    therefore retains all eligible layers.
+  - The qualification identity is the exact 4-bit MLX model and revision; it does
+    not transfer automatically to full-precision Hugging Face weights or another quantization.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/qwen3_32b_mlx_profiles.json
+runtime_compatibility:
+  mlx:
+    selected_context: validated
+    native_memory: QUALIFIED
+    native_serving: NOT_MEASURED
+    recommended: Native Memory with BALANCED
+  hf:
+    selected_context: portable
+    native_memory: NOT_MEASURED for the full-precision HF counterpart
+    native_serving: NOT_MEASURED
+    recommended: Selected Context; exact MLX artifact only
+engine_realizations:
+  mlx:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
+  bundle_build_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
+  hf_repo: EInnovator/pra-qwen3-32b-mlx-4bit
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: apache-2.0
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: qwen3_32b_mlx_profiles.json
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
+checksums:
+  qualification/qwen3_32b_mlx_profiles.json: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
+  structural_adapter/pra_adapter.yaml: 958453da926dd6d7ccca23f36c334a47f2728f912886a671d519a12d02c77769
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: exact 4-bit MLX model identity; evidence does not transfer across revisions
+    or quantizations

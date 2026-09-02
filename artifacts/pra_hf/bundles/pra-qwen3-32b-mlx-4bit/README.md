@@ -1,43 +1,48 @@
 ---
 library_name: pra
-base_model: mlx-community/Qwen3-4B-4bit
+base_model: mlx-community/Qwen3-32B-4bit
 tags:
 - pra
 - progressive-retrieval-attention
 - adapter
 - long-context
 datasets:
+- 2wikimultihopqa
 - combined
 - hotpotqa
 - qasper
 license: apache-2.0
 ---
 
-# PRA Runtime Bundle for mlx-community/Qwen3-4B-4bit · MLX / 4bit
+# PRA Runtime Bundle for mlx-community/Qwen3-32B-4bit · MLX / 4bit
 
 ## What this PRA Runtime Bundle is
 
 This repository packages the model-specific Progressive Retrieval Attention (PRA) structural mapping, runtime profiles, optional learned components, compatibility metadata, and measured qualification evidence. It does not contain the base-model weights and is not an ordinary LoRA quality fine-tune.
 
-- Base model: `mlx-community/Qwen3-4B-4bit`
-- Immutable revision: `4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25`
+- Base model: `mlx-community/Qwen3-32B-4bit`
+- Immutable revision: `bcaaf7f538adf166c1080a2befdb4f6019f66639`
 - Architecture: `Qwen3ForCausalLM`
-- Parameters: `4B`
-- Tokenizer revision: `4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25`
+- Parameters: `32B`
+- Tokenizer revision: `bcaaf7f538adf166c1080a2befdb4f6019f66639`
 
 ## Recommended configuration
 
 - Engine: **mlx**
-- Recommended PRA mode: **Selected Context**
+- Recommended PRA mode: **Native Memory**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **CONTROLLED**
-- Native Memory status: **AVAILABLE**
+- Bundle evidence tier: **ENGINE_QUALIFIED**
+- Native Memory status: **QUALIFIED**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
 
 ## Headline results
 
-No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| combined (n=15) | token_f1=0.2312 | token_f1=0.2312 | +0.0000 | -89.1% | -6.6% | +0.5% | 15/15 | ENGINE_QUALIFIED |
+
+All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
 
 ## Installation
 
@@ -49,10 +54,10 @@ pra doctor
 ## Quickstart
 
 ```bash
-pra inspect mlx-community/Qwen3-4B-4bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-4bit
-pra evaluate mlx-community/Qwen3-4B-4bit -e mlx -D qasper -a EInnovator/pra-qwen3-4b-mlx-4bit
+pra inspect mlx-community/Qwen3-32B-4bit -e mlx -a EInnovator/pra-qwen3-32b-mlx-4bit
+pra evaluate mlx-community/Qwen3-32B-4bit -e mlx -D qasper -a EInnovator/pra-qwen3-32b-mlx-4bit
 pra recommend .pra/runs/latest
-pra serve mlx-community/Qwen3-4B-4bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-4bit -p balanced
+pra serve mlx-community/Qwen3-32B-4bit -e mlx -a EInnovator/pra-qwen3-32b-mlx-4bit -p balanced
 ```
 
 ## Profiles
@@ -62,40 +67,41 @@ pra serve mlx-community/Qwen3-4B-4bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-4bit
 | QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | CALIBRATION_PENDING | Not promoted |
 | BALANCED | Qualified default preserving the all-eligible consumer geometry | generic cosine | all eligible | QUALIFIED | Default |
 | ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | CALIBRATION_PENDING | Not promoted |
-| QASPER-LEARNED | Research-only learned routing profile qualified only on matched QASPER routing diagnostics | combined-router-d128 | all eligible | RESEARCH | Not promoted |
 
 ## Engine compatibility
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
+| mlx | validated | QUALIFIED | NOT_MEASURED | Native Memory with BALANCED |
 | hf | portable | NOT_MEASURED for the full-precision HF counterpart | NOT_MEASURED | Selected Context; exact MLX artifact only |
 
 ## End-to-end qualification
 
-What remains to be measured: paired end-task quality for this exact bundle identity.
+| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 2wikimultihopqa (n=5) | Selected Context | token_f1=0.1778 | 351.2 | 494 ms | 1155 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| 2wikimultihopqa (n=5) | Native Memory | token_f1=0.1778 | 31.6 | 490.2 ms | 1164 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| hotpotqa (n=5) | Selected Context | token_f1=0.3657 | 262 | 791.6 ms | 1334 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| hotpotqa (n=5) | Native Memory | token_f1=0.3657 | 43.4 | 791.7 ms | 1343 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| qasper (n=5) | Selected Context | token_f1=0.15 | 333.4 | 489.1 ms | 1042 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| qasper (n=5) | Native Memory | token_f1=0.15 | 27.8 | 487.7 ms | 1043 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| combined (n=15) | Selected Context | token_f1=0.2312 | 315.5 | 524.9 ms | 1177 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| combined (n=15) | Native Memory | token_f1=0.2312 | 34.27 | 490.2 ms | 1183 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
 
 ## Native Memory qualification
 
-What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.
+Native Memory uses the same selector output as Selected Context. Exact paired parity, visible-input reduction, active detail bytes, and latency deltas are reported above; it is recommended only where the profile and engine tables say so.
 
 ## Research diagnostics
 
-| Dataset | Router/profile | Metric | Value | Cohort | Evidence |
-| --- | --- | --- | ---: | ---: | --- |
-| qasper | balanced | R@20% | 0.4129 | 16 | CONTROLLED |
-| qasper | qasper-learned | R@20% | 0.6399 | 16 | CONTROLLED |
-| hotpotqa | balanced | R@20% | 0.3863 | 16 | CONTROLLED |
-| hotpotqa | qasper-learned | R@20% | 0.3424 | 16 | CONTROLLED |
-| combined | balanced | R@20% | 0.3996 | 32 | CONTROLLED |
-| combined | qasper-learned | R@20% | 0.4912 | 32 | CONTROLLED |
+No separate routing diagnostic is packaged for this bundle.
 
 These are qualification measurements, not guaranteed production performance. Run `pra evaluate` on your hardware and workload. Engine version, profile, cohort, evidence tier, date, and artifact provenance remain recorded in `qualification/` and `bundle.yaml`.
 
 ## How to evaluate locally
 
 ```bash
-pra evaluate mlx-community/Qwen3-4B-4bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-4bit -D qasper -o .pra/runs/qasper
+pra evaluate mlx-community/Qwen3-32B-4bit -e mlx -a EInnovator/pra-qwen3-32b-mlx-4bit -D qasper -o .pra/runs/qasper
 pra recommend .pra/runs/qasper
 pra report .pra/runs/qasper --format html
 ```
@@ -110,15 +116,7 @@ pra report .pra/runs/qasper --format html
 
 ## Training/creation
 
-- Datasets: `QASPER and HotpotQA`
-- Train Examples: `48`
-- Validation Examples: `16`
-- Held Out Test Examples: `32`
-- Seeds: `[11, 23, 37, 53, 71]`
-- Selection: `maximum combined validation AUC0-30`
-- Method: `multi-positive softmax`
-- Parameter Count: `655360`
-- Base Revision: `4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25`
+The structural adapter is training-free. Learned-component training metadata is stored beside each component and summarized in `bundle.yaml`.
 
 ## Reproducibility
 

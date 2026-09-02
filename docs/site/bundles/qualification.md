@@ -1,30 +1,31 @@
 # Bundle Qualification Evidence
 
-A model card is a compact view of evidence stored in `bundle.yaml` and the
-bundle's `qualification/` payload. Metrics are generated from qualification
-manifests and the Paper 4.5 product matrix rather than maintained independently.
+The model card is generated from `bundle.yaml` and checksummed files under
+`qualification/`. Headline claims are accepted only when baseline and PRA use
+the same selected evidence and the exact model ID, immutable revision,
+quantization, engine/version, profile, and execution mode match.
 
-Each row should identify:
+Four metric classes remain separate:
 
-- engine and version;
-- exact model and tokenizer revision;
-- hardware and precision;
-- workload, dataset, cohort, and seed count;
-- selected profile and execution mode in public product terms;
-- quality, visible-input, native-memory, latency, throughput, and reuse fields;
-- evidence tier, date, source artifact, and PRA commit.
+1. **End-task quality:** QA F1, exact accuracy, or coding-task success.
+2. **Semantic equivalence:** exact output, logit, or first-token parity.
+3. **Routing diagnostics:** evidence recall, Recall@budget, MRR, and AUC.
+4. **Serving economics:** visible tokens, TTFT, ITL, throughput, memory, and transfers.
 
-`NOT_MEASURED` means unknown. It does not mean zero or parity.
+Routing recall is useful research evidence, but it is never presented as
+headline application quality. When paired evidence does not exist, the card
+says what remains to be measured rather than emitting a large table of empty
+`NOT_MEASURED` cells.
 
-## Promotion boundary
+## Release gate
 
-Structural compatibility, learned-router quality, Native Memory correctness,
-and Native Serving economics are separate claims. A router validated on QASPER
-does not imply HotpotQA transfer. A model-family mapping does not qualify every
-quantization or engine. A smoke profile remains calibration-pending until a
-held-out workload supports promotion.
+Publication validates one recommended `QUALIFIED` profile, profile consistency,
+recognized evidence tiers, baseline/PRA pairing, and exact evidence identity.
+Revision or quantization mismatches fail the build. QUALITY and ECONOMY remain
+`CALIBRATION_PENDING` where reduced consumer layers did not pass held-out
+quality; BALANCED keeps all eligible layers.
 
-Requalify locally:
+Requalify on your own workload:
 
 ```bash
 pra evaluate BASE_MODEL -e ENGINE -a OWNER/BUNDLE \
@@ -32,3 +33,6 @@ pra evaluate BASE_MODEL -e ENGINE -a OWNER/BUNDLE \
 pra recommend .pra/runs/qualification
 pra report .pra/runs/qualification --format html
 ```
+
+See the [qualification matrix](qualification-matrix.md) for current evidence
+tiers and exact artifacts.

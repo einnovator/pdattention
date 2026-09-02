@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from pra_hf.bundle import BundleBuilder, BundleValidationError, PRAModelBundle
+from pra_hf.bundle_catalog import (
+    load_bundle_catalog,
+    render_catalog,
+    render_qualification_matrix,
+    validate_collection_membership,
+)
+from pra_hf.bundle_evidence import (
+    EvidenceIdentity,
+    EvidenceValidationError,
+    import_mlx_paired_evidence,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MLX_32B = ROOT / "docs/papers/shared/results/mac_scaling/qwen3_32b_mlx_profiles.json"
+
+
+def _identity(**overrides: str) -> EvidenceIdentity:
+    values = {
+        "model_id": "mlx-community/Qwen3-32B-4bit",
+        "model_revision": "bcaaf7f538adf166c1080a2befdb4f6019f66639",
+        "quantization": "4bit",
+        "engine": "mlx-lm",
+        "engine_version": "0.31.3",
+        "profile": "balanced",
+        "execution_mode": "Native Memory",
+    }
+    values.update(overrides)
+    return EvidenceIdentity(**values)
+
+
+def test_mlx_importer_builds_paired_baseline_relative_evidence() -> None:
+    rows = import_mlx_paired_evidence(MLX_32B, _identity())
+    combined = next(row for row in rows if row["dataset"] == "combined")
+
+    assert combined["metric_class"] == "END_TASK"
+    assert combined["baseline"]["quality"] == combined["pra"]["quality"]
+    assert combined["deltas"]["quality"] == 0.0
+    assert combined["deltas"]["visible_tokens_pct"] == pytest.approx(-89.14008)
+    assert combined["semantic_equivalence"] == {
+        "exact_output_pairs": 15,
+        "paired_examples": 15,
+    }
+    assert combined["evidence_tier"] == "ENGINE_QUALIFIED"
+    assert len(combined["artifact_sha256"]) == 64
+
+
+def test_mlx_importer_rejects_revision_and_mode_mismatch() -> None:
+    with pytest.raises(EvidenceValidationError, match="model_revision"):
+        import_mlx_paired_evidence(MLX_32B, _identity(model_revision="wrong"))
+    with pytest.raises(EvidenceValidationError, match="BALANCED Native Memory"):
+        import_mlx_paired_evidence(MLX_32B, _identity(execution_mode="Selected Context"))
+
+
+def test_release_gate_rejects_profile_and_headline_conflicts() -> None:
+    row = import_mlx_paired_evidence(MLX_32B, _identity())[-1]
+    bundle = PRAModelBundle(
+        base_model={
+            "id": _identity().model_id,
+            "revision": _identity().model_revision,
+            "fingerprint": "f" * 64,
+            "quantization": {"bits": 4, "runtime": "MLX"},
+        },
+        structural_adapter={},
+        profiles={"balanced": {"status": "QUALIFIED", "recommended": True}},
+        qualification={"contract_version": 1, "status": "ENGINE_QUALIFIED", "headline": [row]},
+    )
+    assert bundle.validate(require_card=False)["status"] == "VALID"
+
+    with pytest.raises(BundleValidationError, match="exactly one recommended profile"):
+        replace(bundle, profiles={"balanced": {"status": "QUALIFIED"}}).validate(require_card=False)
+    with pytest.raises(BundleValidationError, match="routing diagnostics cannot be headline"):
+        replace(bundle, qualification={**bundle.qualification, "headline": [{**row, "metric_class": "ROUTING_DIAGNOSTIC"}]}).validate(require_card=False)
+
+
+def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
+    bundle = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles/pra-qwen3-32b-mlx-4bit"
+    )
+    text = BundleBuilder.model_card(bundle)
+
+    assert "# PRA Runtime Bundle for" in text
+    assert "Recommended profile: **BALANCED**" in text
+    assert "15/15" in text
+    assert "-89.1%" in text
+    assert "## Expected metrics" not in text
+    assert "R@20%" not in text.split("## Research diagnostics", 1)[0]
+
+
+def test_catalog_order_reference_role_and_collection_membership() -> None:
+    catalog = load_bundle_catalog()
+    rows = catalog["bundles"]
+
+    assert [row["order"] for row in rows] == list(range(1, len(rows) + 1))
+    assert rows[0]["repo"] == "EInnovator/pra-qwen3-14b-mlx-4bit"
+    assert rows[1]["repo"] == "EInnovator/pra-qwen3-32b-mlx-4bit"
+    reference = next(row for row in rows if row["repo"].endswith("pra-qwen3-0.6b"))
+    assert reference["evidence_tier"] == "RESEARCH"
+    assert "reference" in reference["role"].lower()
+    assert "Qualification Matrix" in render_qualification_matrix(catalog)
+    assert "PRA Runtime Bundle Catalog" in render_catalog(catalog)
+
+    published = {row["repo"] for row in rows if row["publication_status"] == "PUBLISHED"}
+    validate_collection_membership(catalog, published)
+    with pytest.raises(ValueError, match="Collection is missing"):
+        validate_collection_membership(catalog, published - {next(iter(published))})

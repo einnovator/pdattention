@@ -26,7 +26,7 @@ learned_adapters:
       - QASPER
       - HotpotQA
       seed: 71
-      seeds_evaluated: &id002
+      seeds_evaluated: &id008
       - 11
       - 23
       - 37
@@ -50,29 +50,54 @@ learned_adapters:
       f90: 1.0
     fingerprint: 7a3539980c8a070e399801d28e53ab4749cd0c1b86bb0a8c98f9c38400132cc9
 profiles:
-  reference:
-    purpose: Training-free structural checks using generic cosine routing
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
     routing_adapter: null
     consumer_layers: &id001
     - 5
     - 11
     - 17
     - 23
-    status: controlled
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
   balanced:
-    purpose: Portable default using generic cosine routing
+    purpose: Qualified default preserving the all-eligible consumer geometry
     routing_adapter: null
     consumer_layers: *id001
-    status: controlled-default
+    status: QUALIFIED
+    recommended: true
+    engine: mlx
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
   qasper-learned:
-    purpose: Opt-in learned routing qualified for QASPER; not a HotpotQA default
+    purpose: Research-only learned routing profile qualified only on matched QASPER
+      routing diagnostics
     routing_adapter: combined-router-d128
     consumer_layers: *id001
-    status: controlled-dataset-specific
+    status: RESEARCH
+    recommended: false
+    engine: mlx
+    mode: Native Memory
 qualification:
+  contract_version: 1
   status: CONTROLLED
+  headline: []
   metrics:
-  - engine: mlx-lm 0.31.3
+  - &id002
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: qasper
     workload: held-out frozen-feature routing comparison
@@ -90,7 +115,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id003
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: qasper
     workload: held-out frozen-feature routing comparison
@@ -108,7 +138,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id004
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: hotpotqa
     workload: held-out frozen-feature routing comparison
@@ -126,7 +161,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id005
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: hotpotqa
     workload: held-out frozen-feature routing comparison
@@ -144,7 +184,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id006
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: combined
     workload: held-out frozen-feature routing comparison
@@ -162,7 +207,12 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
-  - engine: mlx-lm 0.31.3
+  - &id007
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/gemma-3-1b-it-4bit
+    model_revision: 2d44e83dc9e80843d22fb941d3d699a0b1351aa6
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
     hardware: Apple M4 Pro, 48 GB
     dataset: combined
     workload: held-out frozen-feature routing comparison
@@ -180,12 +230,19 @@ qualification:
     evidence_tier: CONTROLLED
     date: '2026-09-01'
     provenance: qualification/comparison.json
+  routing_diagnostics:
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  - *id007
   training:
     datasets: QASPER and HotpotQA
     train_examples: 48
     validation_examples: 16
     held_out_test_examples: 32
-    seeds: *id002
+    seeds: *id008
     selection: maximum combined validation AUC0-30
     method: multi-positive softmax
     parameter_count: 294912
@@ -193,8 +250,10 @@ qualification:
   limitations:
   - The learned router improves QASPER but is not uniformly positive on HotpotQA;
     it is opt-in rather than the bundle default.
-  - Routing evidence uses 16 held-out examples per dataset and does not establish
-    generation quality or serving economics.
+  - Paired natural-QA evidence contains five examples per dataset and supports engine
+    qualification, not production qualification.
+  - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
+    therefore retains all eligible layers.
   - The qualification identity is the exact 4-bit MLX model and revision; it does
     not transfer automatically to full-precision Hugging Face weights or another quantization.
   - Base-model and dataset licenses apply separately to the router artifact.
@@ -205,9 +264,9 @@ qualification:
 runtime_compatibility:
   mlx:
     selected_context: validated
-    native_memory: structural mapping controlled for this exact MLX identity
-    native_serving: engine-study evidence; not established by routing qualification
-    recommended: balanced generic; qasper-learned only for matched QASPER workloads
+    native_memory: AVAILABLE
+    native_serving: NOT_MEASURED
+    recommended: Selected Context with BALANCED
   hf:
     selected_context: portable
     native_memory: NOT_MEASURED for the full-precision HF counterpart
@@ -220,16 +279,16 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
-  bundle_build_commit: 27b3ce12d8aec6b6f7855b65204de6b10c4aeb71
+  pra_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
+  bundle_build_commit: 69b03f8e01e9a330b2c5aeb03d4fb2373d98a146
   hf_repo: EInnovator/pra-gemma3-1b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: gemma
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
   source_artifact: artifacts/pra_hf/routers/gemma3-1b-combined-d128
-  selection_reason: Cross-family controlled comparison of generic and learned routing
-    on frozen held-out features.
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: f5f0c5816ac15705ff5ad2f7770674b2c67731007fab79400087f7844ad61ce3
   learned_adapters/combined-router-d128/config.json: 91c1dbf549e1ff78fea3aca0459c09ea630424bfa2d033106741ec706c29434d
@@ -240,4 +299,5 @@ checksums:
 trust:
   status: eInnovator-qualified
   publisher: EInnovator
-  scope: controlled routing for the exact 4-bit MLX model identity
+  scope: exact 4-bit MLX model identity; evidence does not transfer across revisions
+    or quantizations
