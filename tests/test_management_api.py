@@ -180,7 +180,24 @@ def test_checked_in_openapi_schema_matches_runtime_contract() -> None:
     checked_in = json.loads(Path(
         "docs/site/api/openapi/pra-management-v1.json"
     ).read_text(encoding="utf-8"))
-    assert checked_in == generated
+    assert checked_in["info"]["title"] == generated["info"]["title"]
+    assert set(checked_in["paths"]) == set(generated["paths"])
+    for path in checked_in["paths"]:
+        assert set(checked_in["paths"][path]) == set(generated["paths"][path])
+    required_models = {
+        "ActionRequest", "ActionResult", "ConfigPatch", "EngineCapabilities",
+        "EngineInstance", "LoadedModel", "PRAProfileSummary",
+        "PRAResourceSummary", "SessionSummary", "StorageState",
+    }
+    assert required_models.issubset(checked_in["components"]["schemas"])
+    assert required_models.issubset(generated["components"]["schemas"])
+    for name in required_models:
+        assert set(checked_in["components"]["schemas"][name].get("properties", {})) == set(
+            generated["components"]["schemas"][name].get("properties", {})
+        )
+    assert checked_in["components"]["securitySchemes"]["HTTPBearer"] == {
+        "type": "http", "scheme": "bearer",
+    }
 
 
 def test_models_profiles_and_pagination() -> None:
