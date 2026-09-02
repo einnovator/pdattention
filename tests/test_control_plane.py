@@ -298,7 +298,10 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     static = Path(__file__).parents[1] / "src" / "pra_control" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
     script = (static / "app.js").read_text(encoding="utf-8")
-    assert all(name in html for name in ("jquery", "bootstrap", "dockview", "lucide"))
+    help_script = (static / "help.js").read_text(encoding="utf-8")
+    styles = (static / "styles.css").read_text(encoding="utf-8")
+    help_styles = (static / "help.css").read_text(encoding="utf-8")
+    assert all(name in html for name in ("jquery", "bootstrap", "dockview", "lucide", "marked", "purify"))
     assert '/static/app.js?v=' in html
     assert "localStorage" in script
     assert "resume_token" in script
@@ -306,4 +309,26 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert "globalThis['dockview-core'].createDockview" in script
     assert "dockview.createDockview" not in script
     assert "return { element:host, init(){} };" in script
-    assert "backend-secret" not in html + script
+    assert 'data-default-layout="20-50-30"' in html
+    assert 'id="chat-pane"' in html
+    assert 'id="chat-resize"' in html
+    assert 'id="events-template"' not in html
+    assert 'id="agent-template"' not in html
+    assert script.count("dv.addPanel(") == 2
+    assert "const defaultNavWidth=Math.max(220,Math.round(window.innerWidth*0.20))" in script
+    assert "initialWidth:Math.max(440,Math.round(window.innerWidth*0.50))" in script
+    assert "pra-control-layout-v2" in script
+    assert "pra-control-chat-ratio-v2" in script
+    assert "loadActivity" in script
+    assert "--chat-width: 30%" in styles
+    assert "pra-control-theme" in html + script
+    assert 'id="user-menu-toggle"' in html
+    assert 'id="help-drawer"' in html
+    assert "DOMPurify" in help_script
+    assert "marked.parse" in help_script
+    assert "translateX(100%)" in help_styles
+    for slug in ("index", "fleet", "registry", "agent", "activity"):
+        packaged_help = static / "help" / f"{slug}.md"
+        docs_help = Path(__file__).parents[1] / "docs" / "help" / "control-plane" / f"{slug}.md"
+        assert packaged_help.read_text(encoding="utf-8") == docs_help.read_text(encoding="utf-8")
+    assert "backend-secret" not in html + script + help_script

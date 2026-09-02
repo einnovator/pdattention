@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const state = { me:null, csrf:'', fleet:{items:[],summary:{}}, registryRecords:[], socket:null, retry:500, activeEngine:null, activeView:'fleet', eventView:'audit', agentBuffer:null };
+  const state = { me:null, csrf:'', fleet:{items:[],summary:{}}, registryRecords:[], socket:null, retry:500, activeEngine:null, activeView:'fleet', agentBuffer:null };
   const esc = value => $('<div>').text(value == null ? '' : String(value)).html();
   const api = (url, options={}) => $.ajax({ url, contentType:'application/json', ...options, headers:{ ...(options.headers||{}), ...(state.csrf ? {'X-CSRF-Token':state.csrf} : {}) } });
   const component = name => {
@@ -10,17 +10,44 @@
     return { element:host, init(){} };
   };
   // dockview-core's UMD bundle exports under a hyphenated global name.
-  const dv = globalThis['dockview-core'].createDockview(document.getElementById('dockview'), { createComponent:event => component(event.name) });
-  const nav = dv.addPanel({ id:'navigation', component:'navigation', title:'Fleet & Registry' });
-  const workspace = dv.addPanel({ id:'workspace', component:'workspace', title:'Workspace', position:{referencePanel:nav,direction:'right'} });
-  dv.addPanel({ id:'events', component:'events', title:'Events & Audit', position:{referencePanel:workspace,direction:'below'} });
-  dv.addPanel({ id:'agent', component:'agent', title:'PRA Agent', position:{referencePanel:workspace,direction:'right'} });
-  const savedLayout = localStorage.getItem('pra-control-layout');
-  if (savedLayout) try { dv.fromJSON(JSON.parse(savedLayout)); } catch (_) { localStorage.removeItem('pra-control-layout'); }
-  dv.onDidLayoutChange(() => localStorage.setItem('pra-control-layout', JSON.stringify(dv.toJSON())));
+  const dockHost = document.getElementById('dockview');
+  const dv = globalThis['dockview-core'].createDockview(dockHost, { createComponent:event => component(event.name) });
+  const compactLayout = window.matchMedia('(max-width: 700px)').matches;
+  const layoutKey = compactLayout ? 'pra-control-layout-compact-v2' : 'pra-control-layout-v2';
+  const savedLayout = localStorage.getItem(layoutKey);
+  if (savedLayout) {
+    try { dv.fromJSON(JSON.parse(savedLayout)); }
+    catch (_) { localStorage.removeItem(layoutKey); }
+  }
+  if (!dv.panels.length) {
+    const defaultNavWidth=Math.max(220,Math.round(window.innerWidth*0.20));
+    const nav = dv.addPanel({ id:'navigation', component:'navigation', title:'Fleet & Registry', initialWidth:defaultNavWidth, minimumWidth:compactLayout?0:200, maximumWidth:compactLayout?undefined:defaultNavWidth });
+    dv.addPanel({ id:'workspace', component:'workspace', title:'Workspace', initialWidth:Math.max(440,Math.round(window.innerWidth*0.50)), minimumWidth:compactLayout?0:360, position:{referencePanel:nav,direction:compactLayout?'within':'right'} });
+    if(!compactLayout)window.setTimeout(()=>nav.api.setConstraints({minimumWidth:200,maximumWidth:Math.round(dockHost.clientWidth*0.45)}),120);
+  }
+  localStorage.removeItem('pra-control-layout');
+  dv.onDidLayoutChange(() => localStorage.setItem(layoutKey, JSON.stringify(dv.toJSON())));
+
+  const wireChatResize = () => {
+    const layout=document.getElementById('control-layout');
+    const handle=document.getElementById('chat-resize');
+    const storageKey='pra-control-chat-ratio-v2';
+    let ratio=Math.min(0.45,Math.max(0.22,Number(localStorage.getItem(storageKey))||0.30));
+    let dragging=false;
+    const apply=value=>{ratio=Math.min(0.45,Math.max(0.22,value));layout.style.setProperty('--chat-width',`${ratio*100}%`);localStorage.setItem(storageKey,String(ratio));dv.layout();};
+    apply(ratio);
+    handle.addEventListener('pointerdown',event=>{dragging=true;handle.classList.add('dragging');handle.setPointerCapture(event.pointerId);});
+    handle.addEventListener('pointermove',event=>{if(dragging)apply((layout.getBoundingClientRect().right-event.clientX)/layout.clientWidth);});
+    handle.addEventListener('pointerup',event=>{dragging=false;handle.classList.remove('dragging');handle.releasePointerCapture(event.pointerId);});
+    handle.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();apply(event.key==='Home'?0.30:ratio+(event.key==='ArrowLeft'?0.02:-0.02));});
+  };
+  wireChatResize();
 
   const notify = (text, level='success') => { const id=`toast-${Date.now()}`; $('#toast-stack').append(`<div id="${id}" class="toast text-bg-${level}" role="status"><div class="d-flex"><div class="toast-body">${esc(text)}</div><button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`); bootstrap.Toast.getOrCreateInstance(document.getElementById(id),{delay:4000}).show(); };
-  const loadIdentity = async () => { const value=await api('/api/auth/me'); state.me=value; state.csrf=value.csrf_token; $('#identity-label').text(`${value.display_name} · ${value.role}`); $('#login-screen').addClass('d-none'); };
+  const userInitials = name => String(name||'?').trim().split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
+  const syncThemeControl = () => { const dark=document.documentElement.getAttribute('data-bs-theme')==='dark'; $('#theme-toggle').html(`<i data-lucide="${dark?'sun':'moon'}"></i><span>${dark?'Light':'Dark'} theme</span>`); lucide.createIcons(); };
+  const toggleTheme = () => { const next=document.documentElement.getAttribute('data-bs-theme')==='dark'?'light':'dark'; document.documentElement.setAttribute('data-bs-theme',next); localStorage.setItem('pra-control-theme',next); syncThemeControl(); };
+  const loadIdentity = async () => { const value=await api('/api/auth/me'); state.me=value; state.csrf=value.csrf_token; const name=value.display_name||value.subject; $('.user-avatar-initials').text(userInitials(name)); $('#user-menu-toggle').attr('title',`${name} · ${value.role}`); $('#user-menu-name').text(name); $('#user-menu-role').text(value.role); $('#user-menu-subject').text(value.subject); $('#user-menu-provider').text(value.provider); syncThemeControl(); $('#login-screen').addClass('d-none'); };
   const showLogin = async () => { $('#login-screen').removeClass('d-none'); const result=await $.getJSON('/api/auth/providers'); const external=result.items.filter(item=>item.kind!=='local'); $('#local-login > .form-label,#login-user,#login-password,#local-login > button').toggle(result.items.some(item=>item.kind==='local')); $('#provider-logins').html(external.map(item=>`<a class="btn btn-outline-secondary" href="/api/auth/login/${encodeURIComponent(item.name)}">Continue with ${esc(item.name)}</a>`).join('')); };
   const loadFleet = async () => { try { state.fleet=await api('/api/fleet'); $('#connection-summary').addClass('live'); renderFleetTree(); if(state.activeView==='fleet') renderFleet(); } catch(error) { $('#connection-summary').removeClass('live'); renderError(error); } };
   const status = value => `<span class="status-pill status-${esc(value)}">${esc((value||'UNKNOWN').replace('_',' '))}</span>`;
@@ -37,19 +64,36 @@
   const setHeading = (title,subtitle,actions='') => { $('#view-title').text(title); $('#view-subtitle').text(subtitle); $('#view-actions').html(actions); lucide.createIcons(); };
   const markNav = (view,registry) => { $('.section-nav button').removeClass('active'); if(view) $(`.section-nav button[data-view="${view}"]`).addClass('active'); if(registry) $(`.section-nav button[data-registry="${registry}"]`).addClass('active'); };
   const renderError = (xhr,target='#workspace-content') => $(target).html(`<div class="alert alert-danger">${esc(xhr.responseJSON?.detail||xhr.statusText||xhr.message||xhr)}</div>`);
-  const loadEvents = async () => { if(state.eventView==='alerts'){ const rows=state.fleet.items.flatMap(row=>(row.alerts||[]).map(alert=>({timestamp:new Date().toISOString(),action:'alert',target:row.name,reason:alert,result:row.status}))); return renderEvents(rows); } try { const result=await api('/api/audit?limit=100'); renderEvents(result.items); } catch(error){renderError(error,'#event-list');} };
-  const renderEvents = rows => $('#event-list').html(rows.map(row=>`<div class="event-row"><time>${esc(new Date(row.timestamp).toLocaleString())}</time><strong>${esc(row.action)}</strong><span>${esc(row.target)} <span class="muted">${esc(row.reason||'')}</span></span><span>${esc(row.result)}</span></div>`).join('')||'<div class="empty-state">No events</div>');
+  const loadActivity = async kind => {
+    state.activeView=kind;
+    state.activeEngine=null;
+    renderFleetTree();
+    setHeading(kind==='alerts'?'Alerts':'Audit log',kind==='alerts'?'Current fleet alerts requiring operator attention.':'Governed engine actions and Registry mutations.',`<button id="refresh-activity" class="icon-button" title="Refresh ${kind}"><i data-lucide="refresh-cw"></i></button>`);
+    $('#summary-strip').hide();
+    markNav(kind);
+    $('#workspace-content').html('<div class="empty-state">Loading activity...</div>');
+    if(kind==='alerts'){
+      const rows=state.fleet.items.flatMap(row=>(row.alerts||[]).map(alert=>({timestamp:new Date().toISOString(),action:'alert',target:row.name,reason:alert,result:row.status})));
+      renderEvents(rows);
+      return;
+    }
+    try { const result=await api('/api/audit?limit=100'); renderEvents(result.items); }
+    catch(error){renderError(error);}
+  };
+  const refreshActivity = async () => { if(['audit','alerts'].includes(state.activeView)) await loadActivity(state.activeView); };
+  const renderEvents = rows => $('#workspace-content').html(`<div class="event-list central-event-list">${rows.map(row=>`<div class="event-row"><time>${esc(new Date(row.timestamp).toLocaleString())}</time><strong>${esc(row.action)}</strong><span>${esc(row.target)} <span class="muted">${esc(row.reason||'')}</span></span><span>${esc(row.result)}</span></div>`).join('')||'<div class="empty-state">No events</div>'}</div>`);
   const openAction = (engine,action) => { $('#action-form').data({engine,action}); $('#action-description').text(`${action} on ${engine}`); $('#action-reason').val(''); $('#action-confirmed').prop('checked',!['evict','demote'].includes(action)).closest('.form-check').toggle(['evict','demote'].includes(action)); bootstrap.Modal.getOrCreateInstance('#action-modal').show(); };
   const openRegistry = (resource,id=null,transition=null,values={}) => { $('#registry-form').data({resource,id,transition}); $('#registry-values').val(JSON.stringify(values,null,2)); $('#registry-reason').val(''); $('#registry-modal .modal-title').text(transition?`${transition} ${resource} record`:`Create ${resource} record`); bootstrap.Modal.getOrCreateInstance('#registry-modal').show(); };
   const connectAgent = () => { if(state.socket?.readyState===WebSocket.OPEN)return; const scheme=location.protocol==='https:'?'wss':'ws'; const token=localStorage.getItem('pra-control-agent-token')||''; const after=localStorage.getItem('pra-control-agent-sequence')||'0'; const socket=new WebSocket(`${scheme}://${location.host}/ws/agent?resume_token=${encodeURIComponent(token)}&after=${after}`); state.socket=socket; socket.onopen=()=>{state.retry=500;$('#agent-dot').addClass('live');$('#agent-status-label').text('Connected');}; socket.onclose=()=>{$('#agent-dot').removeClass('live');$('#agent-status-label').text('Reconnecting');setTimeout(connectAgent,state.retry);state.retry=Math.min(state.retry*2,30000);}; socket.onmessage=event=>handleAgent(JSON.parse(event.data)); };
   const handleAgent = event => { if(event.sequence){localStorage.setItem('pra-control-agent-sequence',event.sequence);} if(event.type==='session'){localStorage.setItem('pra-control-agent-token',event.resume_token);return;} if(event.type==='ping'){state.socket?.send(JSON.stringify({type:'pong'}));return;} if(event.type==='tool.started'||event.type==='tool.completed'){$('#agent-messages').append(`<div class="tool-event">${esc(event.type)} · ${esc(event.tool)}</div>`);return;} if(event.type==='message.delta'){if(!state.agentBuffer){state.agentBuffer=$('<div class="message assistant">').appendTo('#agent-messages');}state.agentBuffer.text(state.agentBuffer.text()+event.text);} if(event.type==='message.completed'){state.agentBuffer=null;} if(event.type==='error'){$('#agent-messages').append(`<div class="message assistant text-danger">${esc(event.detail)}</div>`);} $('#agent-messages').scrollTop($('#agent-messages')[0].scrollHeight); };
-  $(document).on('input','#fleet-filter',renderFleetTree).on('click','[data-engine]',function(event){ if($(event.target).closest('[data-action],[data-engine-tab],[data-observe]').length)return; openEngine($(this).data('engine')); }).on('click','[data-engine-tab]',function(event){event.stopPropagation();openEngine($(this).data('engine'),$(this).data('engine-tab'));}).on('click','[data-registry]',function(){loadRegistry($(this).data('registry'));}).on('click','[data-registry-create]',function(){openRegistry($(this).data('registry-create'));}).on('click','[data-registry-edit]',function(){const row=state.registryRecords[Number($(this).data('record-index'))];openRegistry($(this).data('registry-edit'),row.id,'patch',row);}).on('click','[data-registry-approve]',function(){openRegistry($(this).data('registry-approve'),$(this).data('record-id'),'approve');}).on('click','[data-view="fleet"]',renderFleet).on('click','[data-view="recommendations"]',loadRecommendations).on('click','[data-action]',function(event){event.stopPropagation();openAction($(this).data('engine'),$(this).data('action'));}).on('click','[data-observe]',async function(event){event.stopPropagation();const links=await api(`/api/observability/links?engine=${encodeURIComponent($(this).data('observe'))}`);if(links.grafana)window.open(links.grafana,'_blank','noopener');else notify('Grafana is not configured','warning');}).on('click','[data-event-view]',function(){state.eventView=$(this).data('event-view');$('[data-event-view]').removeClass('active');$(this).addClass('active');loadEvents();});
-  $(document).on('submit','#action-form',async event=>{event.preventDefault();const form=$(event.currentTarget);const {engine,action}=form.data();try{await api(`/api/engines/${encodeURIComponent(engine)}/actions/${action}`,{method:'POST',data:JSON.stringify({values:{},reason:$('#action-reason').val(),confirmed:$('#action-confirmed').prop('checked')})});bootstrap.Modal.getInstance('#action-modal').hide();notify(`${action} accepted for ${engine}`);await loadEvents();await loadFleet();}catch(error){notify(error.responseJSON?.detail||'Action failed','danger');}});
-  $(document).on('submit','#registry-form',async event=>{event.preventDefault();const {resource,id,transition}=$(event.currentTarget).data();let values;try{values=JSON.parse($('#registry-values').val());}catch(_){notify('Record JSON is invalid','danger');return;}const editing=transition==='patch';const path=editing?`/api/registry/${resource}/${encodeURIComponent(id)}`:transition?`/api/registry/${resource}/${encodeURIComponent(id)}/${transition}`:`/api/registry/${resource}`;try{await api(path,{method:editing?'PATCH':'POST',data:JSON.stringify({values,reason:$('#registry-reason').val()})});bootstrap.Modal.getInstance('#registry-modal').hide();notify('Registry mutation accepted');await loadRegistry(resource);await loadEvents();}catch(error){notify(error.responseJSON?.detail||'Registry mutation failed','danger');}});
+  $(document).on('input','#fleet-filter',renderFleetTree).on('click','[data-engine]',function(event){ if($(event.target).closest('[data-action],[data-engine-tab],[data-observe]').length)return; openEngine($(this).data('engine')); }).on('click','[data-engine-tab]',function(event){event.stopPropagation();openEngine($(this).data('engine'),$(this).data('engine-tab'));}).on('click','[data-registry]',function(){loadRegistry($(this).data('registry'));}).on('click','[data-registry-create]',function(){openRegistry($(this).data('registry-create'));}).on('click','[data-registry-edit]',function(){const row=state.registryRecords[Number($(this).data('record-index'))];openRegistry($(this).data('registry-edit'),row.id,'patch',row);}).on('click','[data-registry-approve]',function(){openRegistry($(this).data('registry-approve'),$(this).data('record-id'),'approve');}).on('click','[data-view="fleet"]',renderFleet).on('click','[data-view="recommendations"]',loadRecommendations).on('click','[data-view="audit"],[data-view="alerts"]',function(){loadActivity($(this).data('view'));}).on('click','#refresh-activity',refreshActivity).on('click','[data-action]',function(event){event.stopPropagation();openAction($(this).data('engine'),$(this).data('action'));}).on('click','[data-observe]',async function(event){event.stopPropagation();const links=await api(`/api/observability/links?engine=${encodeURIComponent($(this).data('observe'))}`);if(links.grafana)window.open(links.grafana,'_blank','noopener');else notify('Grafana is not configured','warning');});
+  $(document).on('submit','#action-form',async event=>{event.preventDefault();const form=$(event.currentTarget);const {engine,action}=form.data();try{await api(`/api/engines/${encodeURIComponent(engine)}/actions/${action}`,{method:'POST',data:JSON.stringify({values:{},reason:$('#action-reason').val(),confirmed:$('#action-confirmed').prop('checked')})});bootstrap.Modal.getInstance('#action-modal').hide();notify(`${action} accepted for ${engine}`);await loadFleet();await refreshActivity();}catch(error){notify(error.responseJSON?.detail||'Action failed','danger');}});
+  $(document).on('submit','#registry-form',async event=>{event.preventDefault();const {resource,id,transition}=$(event.currentTarget).data();let values;try{values=JSON.parse($('#registry-values').val());}catch(_){notify('Record JSON is invalid','danger');return;}const editing=transition==='patch';const path=editing?`/api/registry/${resource}/${encodeURIComponent(id)}`:transition?`/api/registry/${resource}/${encodeURIComponent(id)}/${transition}`:`/api/registry/${resource}`;try{await api(path,{method:editing?'PATCH':'POST',data:JSON.stringify({values,reason:$('#registry-reason').val()})});bootstrap.Modal.getInstance('#registry-modal').hide();notify('Registry mutation accepted');await loadRegistry(resource);}catch(error){notify(error.responseJSON?.detail||'Registry mutation failed','danger');}});
   $(document).on('submit','#local-login',async event=>{event.preventDefault();try{await $.ajax({url:'/api/auth/login/local',method:'POST',contentType:'application/json',data:JSON.stringify({username:$('#login-user').val(),password:$('#login-password').val()})});location.reload();}catch(error){$('#login-error').text(error.responseJSON?.detail||'Sign-in failed');}});
   $(document).on('submit','#agent-form',event=>{event.preventDefault();const text=$('#agent-input').val().trim();if(!text||state.socket?.readyState!==WebSocket.OPEN)return;$('.agent-empty').remove();$('<div class="message user">').text(text).appendTo('#agent-messages');state.socket.send(JSON.stringify({type:'message',message_id:crypto.randomUUID(),text}));$('#agent-input').val('');});
-  $('#refresh-all').on('click',async()=>{await loadFleet();await loadEvents();if(state.activeEngine)await openEngine(state.activeEngine);notify('Control Plane refreshed');});
-  $('#refresh-events').on('click',loadEvents); $('#logout').on('click',async()=>{await api('/api/auth/logout',{method:'POST',data:'{}'});location.reload();});
+  $('#refresh-all').on('click',async()=>{await loadFleet();if(state.activeEngine)await openEngine(state.activeEngine);else await refreshActivity();notify('Control Plane refreshed');});
+  $('#theme-toggle').on('click',toggleTheme);
+  $('#logout').on('click',async()=>{await api('/api/auth/logout',{method:'POST',data:'{}'});location.reload();});
   window.addEventListener('resize',()=>dv.layout());
-  (async()=>{try{await loadIdentity();await loadFleet();renderFleet();await loadEvents();connectAgent();lucide.createIcons();}catch(error){if(error.status===401)await showLogin();else renderError(error);}})();
+  (async()=>{try{await loadIdentity();await loadFleet();renderFleet();connectAgent();lucide.createIcons();}catch(error){if(error.status===401)await showLogin();else renderError(error);}})();
 })();

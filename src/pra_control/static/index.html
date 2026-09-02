@@ -4,9 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>eInnovator PRA Control Plane</title>
+  <script>(function(){var saved=localStorage.getItem('pra-control-theme');var system=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-bs-theme',saved||system);})();</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/dockview-core@4.7.0/dist/styles/dockview.css" rel="stylesheet">
-  <link href="/static/styles.css" rel="stylesheet">
+  <link href="/static/styles.css?v=0.2.0" rel="stylesheet">
+  <link href="/static/help.css?v=0.2.0" rel="stylesheet">
 </head>
 <body>
   <section id="login-screen" class="login-screen d-none" aria-labelledby="login-title">
@@ -24,12 +26,52 @@
     <div class="brand"><span class="brand-mark">PRA</span><strong>Control Plane</strong></div>
     <div class="topbar-actions">
       <span id="connection-summary" class="status-dot" title="Fleet connection status"></span>
-      <span id="identity-label">Connecting...</span>
       <button id="refresh-all" class="icon-button" title="Refresh all panels" aria-label="Refresh all panels"><i data-lucide="refresh-cw"></i></button>
-      <button id="logout" class="icon-button" title="Sign out" aria-label="Sign out"><i data-lucide="log-out"></i></button>
+      <button id="help-toggle" class="icon-button" title="Open help" aria-label="Open help"><i data-lucide="circle-help"></i></button>
+      <div class="dropdown">
+        <button id="user-menu-toggle" class="user-avatar" type="button" data-bs-toggle="dropdown" data-bs-offset="0,7" aria-expanded="false" aria-label="Open user menu"><span class="user-avatar-initials">?</span></button>
+        <div class="dropdown-menu dropdown-menu-end user-menu">
+          <div class="user-menu-header"><div class="user-avatar large"><span class="user-avatar-initials">?</span></div><strong id="user-menu-name">Connecting...</strong><span id="user-menu-role"></span></div>
+          <div class="user-menu-body">
+            <div class="user-detail"><i data-lucide="fingerprint"></i><div><span>Subject</span><strong id="user-menu-subject">-</strong></div></div>
+            <div class="user-detail"><i data-lucide="shield-check"></i><div><span>Provider</span><strong id="user-menu-provider">-</strong></div></div>
+          </div>
+          <div class="dropdown-divider"></div>
+          <button id="theme-toggle" class="dropdown-item icon-menu-item" type="button"><i data-lucide="moon"></i><span>Dark theme</span></button>
+          <button id="open-help-menu" class="dropdown-item icon-menu-item" type="button"><i data-lucide="book-open"></i><span>Help</span></button>
+          <button id="logout" class="dropdown-item icon-menu-item text-danger" type="button"><i data-lucide="log-out"></i><span>Sign out</span></button>
+        </div>
+      </div>
     </div>
   </header>
-  <main id="dockview" aria-label="PRA Control Plane workspace"></main>
+  <div id="control-layout" data-default-layout="20-50-30">
+    <main id="dockview" aria-label="PRA Control Plane navigation and workspace"></main>
+    <div id="chat-resize" class="chat-resize" role="separator" aria-label="Resize PRA Agent" aria-orientation="vertical" tabindex="0"></div>
+    <aside id="chat-pane" class="chat-pane" aria-label="PRA Agent chat">
+      <section class="panel-body agent-panel">
+        <div class="agent-header"><strong>PRA Agent</strong><span class="ms-auto badge text-bg-light">RBAC governed</span></div>
+        <div class="agent-status"><span id="agent-dot" class="status-dot"></span><span id="agent-status-label">Connecting</span></div>
+        <div id="agent-messages" class="agent-messages" aria-live="polite"><div class="agent-empty">Ask about fleet health, drift, bundles, or observability.</div></div>
+        <form id="agent-form" class="agent-composer"><textarea id="agent-input" rows="3" placeholder="Ask the PRA Agent..." required></textarea><button type="submit" class="icon-button primary" title="Send message" aria-label="Send message"><i data-lucide="send"></i></button></form>
+      </section>
+    </aside>
+  </div>
+
+  <div id="help-overlay" class="help-overlay"></div>
+  <aside id="help-drawer" class="help-drawer" aria-hidden="true" aria-label="PRA Control Plane help">
+    <div class="help-drawer-header">
+      <strong>Help</strong>
+      <div class="help-search-wrap"><i data-lucide="search"></i><input id="help-search" class="form-control form-control-sm" type="search" placeholder="Search help" aria-label="Search help" autocomplete="off"></div>
+      <button id="help-close" class="icon-button" type="button" title="Close help" aria-label="Close help"><i data-lucide="x"></i></button>
+    </div>
+    <div class="help-toolbar">
+      <button id="help-back" class="icon-button" type="button" title="Back" aria-label="Back" disabled><i data-lucide="arrow-left"></i></button>
+      <button id="help-home" class="icon-button" type="button" title="Help home" aria-label="Help home"><i data-lucide="house"></i></button>
+      <span id="help-title">Control Plane</span>
+    </div>
+    <div id="help-search-results" class="help-search-results d-none"></div>
+    <article id="help-content" class="help-content"><div class="empty-state">Loading help...</div></article>
+  </aside>
 
   <template id="navigation-template">
     <section class="panel-body navigation-panel">
@@ -40,6 +82,9 @@
       <nav class="section-nav" aria-label="Control Plane sections">
         <button data-view="fleet"><i data-lucide="server"></i>Fleet overview</button>
         <button data-view="recommendations"><i data-lucide="lightbulb"></i>Recommendations</button>
+        <div class="nav-caption">Activity</div>
+        <button data-view="audit"><i data-lucide="history"></i>Audit log</button>
+        <button data-view="alerts"><i data-lucide="triangle-alert"></i>Alerts</button>
         <div class="nav-caption">Registry</div>
         <button data-registry="models"><i data-lucide="box"></i>Models</button>
         <button data-registry="bundles"><i data-lucide="package"></i>PRA bundles</button>
@@ -65,21 +110,6 @@
     </section>
   </template>
 
-  <template id="events-template">
-    <section class="panel-body events-panel">
-      <div class="compact-toolbar"><div class="segmented" role="tablist"><button class="active" data-event-view="audit">Audit</button><button data-event-view="alerts">Alerts</button></div><button id="refresh-events" class="icon-button" title="Refresh events"><i data-lucide="refresh-cw"></i></button></div>
-      <div id="event-list" class="event-list"></div>
-    </section>
-  </template>
-
-  <template id="agent-template">
-    <section class="panel-body agent-panel">
-      <div class="agent-status"><span id="agent-dot" class="status-dot"></span><span id="agent-status-label">Connecting</span><span class="ms-auto badge text-bg-light">RBAC governed</span></div>
-      <div id="agent-messages" class="agent-messages" aria-live="polite"><div class="agent-empty">Ask about fleet health, drift, bundles, or observability.</div></div>
-      <form id="agent-form" class="agent-composer"><textarea id="agent-input" rows="3" placeholder="Ask the PRA Agent..." required></textarea><button type="submit" class="icon-button primary" title="Send message" aria-label="Send message"><i data-lucide="send"></i></button></form>
-    </section>
-  </template>
-
   <div class="modal fade" id="action-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog"><form class="modal-content" id="action-form">
       <div class="modal-header"><h2 class="modal-title fs-6">Confirm engine action</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
@@ -101,6 +131,9 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dockview-core@4.7.0/dist/dockview-core.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="/static/app.js?v=0.1.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
+  <script src="/static/help.js?v=0.2.0"></script>
+  <script src="/static/app.js?v=0.2.0"></script>
 </body>
 </html>
