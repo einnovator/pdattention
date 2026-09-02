@@ -116,6 +116,7 @@ def test_gateway_metrics_treat_absent_transport_sizes_as_zero() -> None:
             "message_bytes_sent": None,
             "resource_bytes_sent": None,
             "session_delta_bytes": None,
+            "prefix_cached_tokens": None,
         },
         0.01,
         status="success",

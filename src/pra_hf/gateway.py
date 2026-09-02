@@ -555,7 +555,7 @@ class PRAGateway:
         )
         self.observability.increment(
             "pra_prefix_cached_tokens_total",
-            float(trace.get("prefix_cached_tokens", 0)),
+            float(trace.get("prefix_cached_tokens") or 0),
             labels={"engine": engine},
         )
         context_labels = {
