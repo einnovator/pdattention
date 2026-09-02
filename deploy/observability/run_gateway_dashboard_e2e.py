@@ -99,8 +99,12 @@ def _post_json(url: str, value: dict[str, Any]) -> dict[str, Any]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"POST {url} returned {error.code}: {detail}") from error
 
 
 def _wait_json(url: str, *, timeout: float = 30.0) -> dict[str, Any]:
