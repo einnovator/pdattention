@@ -142,9 +142,17 @@ def connect(url: str, name: str, token_env: str | None, json_output: bool, yaml_
     _emit({"name": name, "url": client.url, "health": health, "stored_secret": False}, json_output, yaml_output)
 
 
-def _registered_token(target: str | None, explicit: str | None) -> str | None:
+def _registered_token(
+    target: str | None,
+    explicit: str | None,
+    management_url: str | None = None,
+) -> str | None:
     if explicit:
         return explicit
+    # Never send a saved connection's credential to a one-off URL. A token for
+    # that URL must be supplied explicitly through --token/the environment.
+    if management_url is not None or (target or "").startswith(("http://", "https://")):
+        return None
     registry = _connections()
     name = target if target in registry.get("connections", {}) else registry.get("default")
     row = registry.get("connections", {}).get(name or "", {})
@@ -158,7 +166,7 @@ def _get_command(name: str, path: str, help_text: str):
     def command(target, management_url, token, json_output, yaml_output):
         """Query one management API endpoint."""
 
-        resolved_token = _registered_token(target, token)
+        resolved_token = _registered_token(target, token, management_url)
         _emit(_client(target, management_url, resolved_token).get(path), json_output, yaml_output)
 
     command.help = help_text
@@ -182,7 +190,7 @@ _get_command("audit", "/v1/pra/audit", "Show recent local management audit event
 def inspect(target, management_url, token, json_output, yaml_output) -> None:
     """Inspect engine identity, capabilities, state, and observability links."""
 
-    client = _client(target, management_url, _registered_token(target, token))
+    client = _client(target, management_url, _registered_token(target, token, management_url))
     value = {
         "info": client.get("/v1/pra/info"),
         "capabilities": client.get("/v1/pra/capabilities"),
@@ -202,7 +210,7 @@ def patch_config(target, management_url, token, patch_path, json_output, yaml_ou
     value = yaml.safe_load(patch_path.read_text(encoding="utf-8")) or {}
     if not isinstance(value, Mapping):
         raise click.UsageError("Patch file must contain a mapping.")
-    client = _client(target, management_url, _registered_token(target, token))
+    client = _client(target, management_url, _registered_token(target, token, management_url))
     _emit(client.request("PATCH", "/v1/pra/config", value), json_output, yaml_output)
 
 
@@ -226,7 +234,7 @@ def action(action, target, management_url, token, resource_id, profile, bundle, 
             "tenant_id": tenant_id, "idempotency_key": idempotency_key,
         }.items() if value not in {None, ""}
     }
-    client = _client(target, management_url, _registered_token(target, token))
+    client = _client(target, management_url, _registered_token(target, token, management_url))
     _emit(client.request("POST", f"/v1/pra/actions/{action}", body), json_output, yaml_output)
 
 

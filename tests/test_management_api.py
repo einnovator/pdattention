@@ -262,6 +262,15 @@ def test_storage_actions_are_real_idempotent_and_audited() -> None:
     assert events[0]["event"] == "RESOURCE_PROMOTED"
 
 
+def test_action_body_cannot_self_assert_resource_authorization_scopes() -> None:
+    client = _client()
+    response = client.post(
+        "/v1/pra/actions/promote",
+        json={"resource_id": "unknown", "authorization_scopes": ["tenant:secret"]},
+    )
+    assert response.status_code == 422
+
+
 def test_unsupported_actions_are_not_noops() -> None:
     client = _client()
     response = client.post("/v1/pra/actions/reload-bundle", json={"bundle": "org/bundle"})

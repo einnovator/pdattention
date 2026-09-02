@@ -17,7 +17,7 @@ from pra_hf.management import (
     start_management_api,
     stop_management_api,
 )
-from pra_hf.management_cli import ManagementClient, engine_cli
+from pra_hf.management_cli import ManagementClient, _registered_token, engine_cli
 from pra_hf.runtime_providers import HFRuntimeProvider, RuntimeConfig
 from pra_hf.deployment import PRAEngineCapabilities
 
@@ -106,6 +106,26 @@ def test_hf_managed_runtime_forwards_management_listener_options() -> None:
     assert command[command.index("--management-port") + 1] == "9191"
     assert command[command.index("--management-auth-mode") + 1] == "static_bearer"
     assert command[command.index("--management-grafana-url") + 1] == "http://grafana"
+
+
+def test_one_off_management_url_never_inherits_saved_connection_token(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PRA_HOME", str(tmp_path / ".pra"))
+    monkeypatch.setenv("SAVED_ENGINE_TOKEN", "must-not-leak")
+    registry = tmp_path / ".pra" / "engines" / "connections.json"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(json.dumps({
+        "version": 1,
+        "default": "production",
+        "connections": {
+            "production": {
+                "url": "https://trusted.example",
+                "token_env": "SAVED_ENGINE_TOKEN",
+            }
+        },
+    }), encoding="utf-8")
+    assert _registered_token(None, None) == "must-not-leak"
+    assert _registered_token(None, None, "https://other.example") is None
+    assert _registered_token("https://other.example", None) is None
 
 
 def test_gateway_explicitly_attaches_live_management_provider(monkeypatch) -> None:

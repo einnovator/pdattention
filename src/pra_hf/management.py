@@ -297,6 +297,8 @@ class ConfigPatch(BaseModel):
 
 
 class ActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     resource_id: str | None = None
     profile: str | None = None
     bundle: str | None = None
