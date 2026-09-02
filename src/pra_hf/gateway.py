@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import replace
 from enum import Enum
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any, Iterator, Mapping
 from urllib.parse import parse_qs, urlparse
 
@@ -32,6 +32,7 @@ from .session_realization import (
 )
 from .session_service import SessionService
 from .observability import DISABLED_OBSERVABILITY, Observability
+from .http_server import PRAThreadingHTTPServer
 
 
 class PRACapabilityError(RuntimeError):
@@ -947,7 +948,7 @@ def create_gateway_server(
     *,
     host: str = "127.0.0.1",
     port: int = 8080,
-) -> ThreadingHTTPServer:
+) -> PRAThreadingHTTPServer:
     """Create a controllable server for embedding, tests, and process launchers."""
 
-    return ThreadingHTTPServer((host, int(port)), _handler(gateway))
+    return PRAThreadingHTTPServer((host, int(port)), _handler(gateway))
