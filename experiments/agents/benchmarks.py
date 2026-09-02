@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
+from .catalog import load_catalog
 from .schema import BenchmarkManifest
 
 
@@ -34,6 +35,11 @@ class TerminalBenchAdapter(BenchmarkAdapter):
             "harbor", "run", "-d", manifest.dataset, "--agent", agent,
             "--model", model, "-k", str(manifest.repeats),
         ]
+        catalog_entry = next(
+            (entry for entry in load_catalog().agents if entry.slug == agent), None
+        )
+        if catalog_entry is not None:
+            argv.extend(("--agent-kwarg", f"version={catalog_entry.version}"))
         for task_id in self._require_tasks(manifest):
             qualified = (
                 task_id

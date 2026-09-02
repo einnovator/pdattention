@@ -50,6 +50,12 @@ structured `tool_use` and per-step token events, which the PRA benchmark runner
 normalizes. The result proves endpoint and tool-loop compatibility, not coding
 quality or PRA context savings.
 
+The first official Terminal-Bench 2.1 smoke then completed 5/5 harness runs
+without exceptions but scored 0/5 task success (7/12 verifier tests passed).
+That result disqualifies the general Qwen3-14B pairing from profile sweeps; it
+does not disqualify OpenCode or measure a PRA effect. A code-specialized model
+is the next quality gate.
+
 ## Selected Context and Native Memory
 
 An ordinary OpenCode provider request does not include typed PRA records. It

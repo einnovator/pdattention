@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from experiments.agents.runner import (
     _read_fixture_text,
     _write_text_artifact,
     external_plan,
+    import_harbor_job,
     load_runs,
     run_manifest,
 )
@@ -121,6 +123,7 @@ def test_terminal_bench_plan_filters_every_frozen_task() -> None:
         if value == "--include-task-name"
     ]
     assert selected == [f"terminal-bench/{task_id}" for task_id in manifest.task_ids]
+    assert command[command.index("--agent-kwarg") + 1] == "version=1.18.26"
 
 
 def test_swebench_plan_filters_every_frozen_task_and_timeout() -> None:
@@ -158,6 +161,89 @@ def test_large_raw_transcript_is_compressed(tmp_path: Path) -> None:
     path = _write_text_artifact(tmp_path / "run.stdout", "abcd", compress_at=4)
     assert path.name == "run.stdout.gz"
     assert gzip.open(path, "rt", encoding="utf-8").read() == "abcd"
+
+
+def test_official_harbor_result_is_normalized_without_regrading(tmp_path: Path) -> None:
+    job = tmp_path / "harbor-job"
+    trial = job / "task__abc"
+    trajectory = trial / "agent" / "trajectory.json"
+    trajectory.parent.mkdir(parents=True)
+    trajectory.write_text(json.dumps({"steps": [
+        {"source": "agent", "llm_call_count": 1, "metrics": {"prompt_tokens": 12},
+         "tool_calls": [{"function_name": "write", "arguments": {}}]},
+    ]}), encoding="utf-8")
+    verifier_dir = trial / "verifier"
+    verifier_dir.mkdir()
+    (verifier_dir / "ctrf.json").write_text(json.dumps({
+        "results": {"summary": {"tests": 3, "passed": 3}}
+    }), encoding="utf-8")
+    (trial / "result.json").write_text(json.dumps({
+        "id": "run-1", "task_name": "terminal-bench/filter-js-from-html",
+        "task_checksum": "sha256", "started_at": "2026-09-02T00:00:00Z",
+        "finished_at": "2026-09-02T00:00:02Z", "agent_execution": {
+            "started_at": "2026-09-02T00:00:00Z", "finished_at": "2026-09-02T00:00:01Z",
+        }, "verifier": {"started_at": "2026-09-02T00:00:01", "finished_at": "2026-09-02T00:00:02"},
+        "agent_info": {"name": "opencode", "version": "1.18.26"},
+        "agent_result": {"n_input_tokens": 12, "n_output_tokens": 3, "n_cache_tokens": 2},
+        "verifier_result": {"rewards": {"reward": 1.0}}, "config": {"job_id": "job-1"},
+        "verifier_environment_mode": "shared", "exception_info": None,
+    }), encoding="utf-8")
+    manifest = BenchmarkManifest.load(ROOT / "manifests" / "terminal_bench_smoke.yaml")
+    rows = import_harbor_job(
+        job, manifest, output=job, engine="ollama", engine_version="0.32.7",
+        host="nvidia+mac", hardware={"engine_chip": "Apple M4 Pro"},
+        model="qwen3:14b", quantization="Q4_K_M",
+        pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+        connection="gateway", protocol="openai-chat-completions",
+    )
+    assert len(rows) == 1
+    assert rows[0].outcome.success
+    assert rows[0].outcome.tests_passed == rows[0].outcome.tests_total == 3
+    assert rows[0].behavior.file_writes == 1
+    assert rows[0].tokens.max_context_tokens == 12
+    assert rows[0].timings.task_wall_ms == 2000
+    assert rows[0].identity.engine_version == "0.32.7"
+    assert rows[0].identity.hardware["engine_chip"] == "Apple M4 Pro"
+    assert rows[0].identity.quantization == "Q4_K_M"
+    assert load_runs(job / "runs.jsonl") == rows
+
+
+def test_harbor_import_reads_pi_jsonl_behavior(tmp_path: Path) -> None:
+    job = tmp_path / "harbor-job"
+    trial = job / "query-optimize__abc"
+    agent = trial / "agent"
+    agent.mkdir(parents=True)
+    events = [
+        {"type": "message_end", "message": {
+            "role": "assistant", "usage": {"input": 120},
+        }},
+        {"type": "tool_execution_start", "toolName": "read"},
+        {"type": "tool_execution_start", "toolName": "write"},
+    ]
+    (agent / "pi.txt").write_text(
+        "\n".join(json.dumps(event) for event in events), encoding="utf-8"
+    )
+    (trial / "result.json").write_text(json.dumps({
+        "id": "run-pi", "task_name": "terminal-bench/query-optimize",
+        "started_at": "2026-09-02T00:00:00Z",
+        "finished_at": "2026-09-02T00:00:02Z",
+        "agent_info": {"name": "pi", "version": "0.73.1"},
+        "agent_result": {"n_input_tokens": 120, "n_output_tokens": 4},
+        "verifier_result": {"rewards": {"reward": 0.0}},
+        "exception_info": None,
+    }), encoding="utf-8")
+    manifest = BenchmarkManifest.load(ROOT / "manifests" / "terminal_bench_smoke.yaml")
+    rows = import_harbor_job(
+        job, manifest, output=job, engine="ollama", host="nvidia",
+        model="qwen3:14b", pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+        connection="gateway", protocol="openai-chat-completions",
+    )
+
+    assert rows[0].behavior.turns == rows[0].behavior.model_calls == 1
+    assert rows[0].behavior.tool_calls == 2
+    assert rows[0].behavior.file_reads == rows[0].behavior.file_writes == 1
+    assert rows[0].tokens.max_context_tokens == 120
+    assert Path(rows[0].artifacts["agent_log"]).parts[-2:] == ("agent", "pi.txt")
 
 
 def test_non_native_result_cannot_claim_native_memory(tmp_path: Path) -> None:

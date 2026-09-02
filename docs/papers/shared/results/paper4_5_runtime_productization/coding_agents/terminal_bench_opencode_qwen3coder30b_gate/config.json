@@ -1,0 +1,31 @@
+{
+    "job_name": "2026-09-02__22-22-55",
+    "jobs_dir": "/home/killu/harbor-jobs/pra-opencode-qwen3coder30b-gate",
+    "n_concurrent_trials": 1,
+    "quiet": true,
+    "agents": [
+        {
+            "name": "experiments.agents.harbor_agents:PinnedNodeOpenCode",
+            "model_name": "openai/qwen3-coder:30b",
+            "extra_allowed_hosts": [
+                "192.168.1.17"
+            ],
+            "kwargs": {
+                "version": "1.18.26"
+            },
+            "env": {
+                "OPENAI_API_KEY": "pra-****cal",
+                "OPENAI_BASE_URL": "http://192.168.1.17:18100/v1"
+            }
+        }
+    ],
+    "datasets": [
+        {
+            "name": "terminal-bench/terminal-bench-2-1",
+            "ref": "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a",
+            "task_names": [
+                "terminal-bench/query-optimize"
+            ]
+        }
+    ]
+}

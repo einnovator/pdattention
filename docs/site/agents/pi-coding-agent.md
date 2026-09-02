@@ -88,6 +88,13 @@ Pi 0.73.1 completed 4/4 Stage A exact-output tasks over this ordinary gateway
 path with Ollama/Qwen3-14B. The run qualifies streaming tool execution and
 agent-event accounting only; it is not a coding-quality or PRA-memory result.
 
+In the official Terminal-Bench `query-optimize` gate, the same pairing made
+three model calls, read the original SQL, wrote `sol.sql`, and passed 4/6
+verifier tests with 5,219 cumulative input tokens. It received task reward
+zero because the query changed one result and was slower than the benchmark
+threshold. This qualifies Pi's Harbor tool loop but does not clear the Stage-B
+quality gate.
+
 ## Direct PRA engine
 
 Change only `baseUrl` to the direct engine, for example

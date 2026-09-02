@@ -2321,6 +2321,64 @@ after reconnect. A dangerous tool call remains blocked until the backend
 receives a typed one-shot approval; the browser cannot bypass host policy. The
 UI binds to loopback by default and is experimental rather than a scientific
 contribution or production security claim.
+
+\subsection{PRA under agentic coding workloads}
+
+The coding-agent campaign uses end-task success as the admission gate and
+context economy only as a secondary objective. Terminal-Bench 2.1 is delegated
+to Harbor 0.22.0 with frozen task identifiers, fresh task containers, official
+verifiers, and preserved agent-native context policy. An oracle first passed
+the downloaded \texttt{filter-js-from-html} task, establishing that task setup
+and grading were functional. OpenCode 1.18.26 with Ollama/Qwen3-14B then
+completed all five No-PRA smoke trials without harness exceptions, but solved
+0/5 tasks while passing 7/12 individual verifier tests and consuming 100,883
+cumulative input tokens. We therefore did not promote that pairing into a PRA
+profile sweep.
+
+Increasing code-model capacity did not close this admission gate. OpenCode with
+Ollama/Qwen3-Coder-30B scored 0/1 on
+\texttt{query-optimize} and passed 4/6 verifier tests. It made five tool calls,
+read the source query, and wrote a candidate, but retained a correlated
+subquery. The official performance verifier consequently consumed almost its
+full 30-minute allowance (1,791.2 seconds total task wall time). The run used
+50,876 cumulative input tokens and had no harness exception. This distinguishes
+a model-level optimization failure from gateway or tool-transport failure, but
+still supplies no quality floor for comparing PRA profiles.
+
+Holding the model, gateway, engine, and \texttt{query-optimize} task fixed
+exposed substantial harness effects even before PRA was enabled.
+Table~\ref{tab:coding-agent-gate} reports the one-task diagnostic. OpenCode and
+Pi both read and wrote candidate SQL, but neither met exact-output and runtime
+requirements. OpenHands entered a repeated-continuation loop and did not create
+the requested file. The OpenHands row uses version 0.57.0 because Harbor's
+adapter expects a module path absent from 1.11.0. These sparse rows qualify
+execution paths; they are not an agent ranking.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Same-model No-PRA Terminal-Bench mechanism gate. Input tokens marked
+N/R were not exposed by the pinned harness integration.}
+\begin{tabular}{lrrrrl}
+\toprule
+Agent & Success & Tests & Input tokens & Wall time (s) & Tool path \\
+\midrule
+OpenCode 1.18.26 & 0/1 & 5/6 & 20,996 & 466.0 & read + write \\
+Pi 0.73.1 & 0/1 & 4/6 & 5,219 & 478.1 & read + write \\
+OpenHands 0.57.0 & 0/1 & 2/6 & N/R & 489.9 & no solution file \\
+\bottomrule
+\end{tabular}
+\label{tab:coding-agent-gate}
+\end{table}
+
+This negative gate matters to the product claim. Token reduction from a model
+that no longer completes coding tasks is not a PRA benefit. A code-capable
+agent/model pairing must first establish nonzero success, after which identical
+tasks and selector outputs can compare No-PRA, Selected Context, and genuinely
+supported Native Memory profiles. The normalized schema already retains
+official score, verifier counts, turns, tool calls, cumulative context, timing,
+resource use, and cost for that subsequent paired analysis.
+
 \subsection{Distributed observability and semantic context telemetry}
 
 The product runtime now carries one W3C trace context across the agent,
@@ -2333,7 +2391,7 @@ Prometheus but no native tracing are scraped directly; engines exposing only
 timing APIs receive wrapper spans and normalized metrics.  Thus common PRA
 telemetry does not pretend that every engine exports the same physical facts.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \fbox{\begin{minipage}{0.92\linewidth}
 \centering
@@ -2832,6 +2890,11 @@ session persistence\\
 task DAG, provenance, scope admission, and working-set lifecycle\\
 \path{src/pra_hf/toolsets.py}, \path{src/pra_hf/tui.py} & Reusable tools and the
 resumable coding-agent terminal\\
+\path{experiments/agents/} & Frozen Terminal-Bench/SWE-bench manifests,
+pinned agent adapters, official-Harbor normalization, and paired analysis\\
+\path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
+& Official task locks, canonical trajectories, verifier records, normalized
+rows, and qualification summaries\\
 \path{src/pra_hf/capability_sdk.py} & Callable and skill-folder ingestion,
 bounded palettes, and exact capability activation\\
 \path{src/pra_hf/typed_context.py} & Type-aware compact views and retrieval

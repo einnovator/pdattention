@@ -1,0 +1,33 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "ses_f9c2e264bffeihQHfa7lrcNvdt",
+  "agent": {
+    "name": "opencode",
+    "version": "1.18.26",
+    "model_name": "openai/qwen2.5-coder:7b"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "user",
+      "message": "I just made some changes to my personal site and checked out master, but now I can't find those changes. Please help me find them and merge them into master.\n"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-09-02T20:31:50.623000+00:00",
+      "source": "agent",
+      "model_name": "openai/qwen2.5-coder:7b",
+      "message": "git status\ngit diff master HEAD\ngit checkout master && git merge --no-ff <branch-name>",
+      "metrics": {
+        "prompt_tokens": 6446,
+        "completion_tokens": 23
+      },
+      "llm_call_count": 1
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 6446,
+    "total_completion_tokens": 23,
+    "total_steps": 2
+  }
+}

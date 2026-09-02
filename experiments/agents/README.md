@@ -10,7 +10,7 @@ python -m experiments.agents plan --manifest terminal_bench_pilot.yaml \
   --agent opencode --model Qwen/Qwen3-Coder --condition selected-balanced
 python -m experiments.agents run --manifest fixture_smoke.yaml \
   --output artifacts/fixture/no-pra
-python -m experiments.agents analyze artifacts/fixture/no-pra/runs.jsonl
+python -m experiments.agents analyze artifacts/run-a/runs.jsonl artifacts/run-b/runs.jsonl
 ```
 
 An external CLI can receive provider-specific argv without changing its audited
@@ -39,15 +39,25 @@ On benchmark hosts where Harbor's default OpenCode `nvm` bootstrap cannot
 clone public GitHub repositories, use the repository adapter below. It changes
 only installation: Node 22 archives are checksum-pinned, while OpenCode
 execution, trajectory capture, task isolation, and grading remain Harbor's.
+The same bootstrap is available for Pi as
+`experiments.agents.harbor_agents:PinnedNodePi`.
 
 ```bash
 harbor run -d terminal-bench/terminal-bench-2-1 \
   -a experiments.agents.harbor_agents:PinnedNodeOpenCode \
   -m openai/qwen3:14b \
+  --ak version=1.18.26 \
   -i terminal-bench/filter-js-from-html \
   --agent-env OPENAI_API_KEY=pra-local \
   --agent-env OPENAI_BASE_URL=http://GATEWAY_HOST:18100/v1 \
   --allow-agent-host GATEWAY_HOST -n 1 -y
+
+python -m experiments.agents import-harbor HARBOR_JOB_DIR \
+  --manifest terminal_bench_smoke.yaml --output HARBOR_JOB_DIR \
+  --engine ollama --engine-version 0.32.7 --host AGENT_AND_ENGINE_HOSTS \
+  --hardware engine_chip='"Apple M4 Pro"' --hardware engine_memory_gib=48 \
+  --model qwen3:14b --quantization Q4_K_M \
+  --connection gateway --protocol openai-chat-completions
 ```
 
 ## Conditions

@@ -50,3 +50,13 @@ Memory.
 
 Until that adapter is implemented and tested, the supported OpenHands status is
 **OpenAI-compatible endpoint only**.
+
+## Benchmark qualification
+
+Harbor 0.22.0's installed adapter was compatible with OpenHands 0.57.0, not
+the audited current 1.11.0 package layout. The pinned agent reached
+Ollama/Qwen3-14B through the PRA Gateway on Terminal-Bench's `query-optimize`
+task, but repeated the harness continuation response, produced no `sol.sql`,
+passed only the two pre-solution verifier checks, and received reward zero.
+This is a valid negative compatibility result for that pinned stack. It is not
+a PRA comparison or a claim about newer OpenHands releases.

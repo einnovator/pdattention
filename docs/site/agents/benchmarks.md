@@ -38,6 +38,47 @@ they are not a same-agent efficiency comparison. The fixture is intentionally
 too small for latency conclusions. Raw and normalized evidence lives under
 `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/`.
 
+## First official task cohort
+
+Harbor 0.22.0 first qualified the Terminal-Bench 2.1 execution path with a
+`1/1` oracle result on `filter-js-from-html`. OpenCode 1.18.26 and
+Ollama/Qwen3-14B then completed the five frozen smoke tasks through the gateway
+with no harness exceptions. Official task success was `0/5`, despite passing
+`7/12` verifier tests and using 100,883 cumulative input tokens.
+
+This result does not compare PRA modes. It rejects this general-model pairing
+at the Stage-B promotion gate: a code-specialized model must first establish a
+nonzero quality floor before context profiles are swept. Keeping quality ahead
+of token savings prevents an efficient but ineffective agent from looking
+competitive.
+
+Qwen2.5-Coder-7B was also checked on the two closest-to-success tasks. It
+scored `0/2` and exposed a different incompatibility: intended tool calls were
+returned as plain text, leaving the workspace unchanged. The campaign therefore
+moves to a same-model, different-agent-loop gate before selecting PRA profiles.
+
+Qwen3-Coder-30B was then tested with OpenCode on `query-optimize`. It used the
+tool path correctly but still scored `0/1` (`4/6` verifier tests). Its final SQL
+retained the expensive correlated subquery, so the official verifier consumed
+almost its full 30-minute allowance. The run used 50,876 cumulative input tokens
+and completed without a harness exception. This rules out gateway transport as
+the immediate problem, but it still does not provide the nonzero success floor
+required for a PRA profile comparison.
+
+That gate used the same `query-optimize` task, Qwen3-14B model, Ollama backend,
+gateway, and official verifier for three harnesses:
+
+| Agent | Official success | Verifier tests | Input tokens | Observed behavior |
+|---|---:|---:|---:|---|
+| OpenCode 1.18.26 | 0/1 | 5/6 | 20,996 | Read and wrote a candidate query |
+| Pi 0.73.1 | 0/1 | 4/6 | 5,219 | Three model calls; one read and one write |
+| OpenHands 0.57.0 | 0/1 | 2/6 | `NOT_REPORTED` | Repeated continuation without creating the solution |
+
+This is a one-task mechanism check, not a quality ranking. It demonstrates
+that harness policy can change token use and partial verifier progress even
+when model, endpoint, and task are held fixed. No row establishes a sufficient
+quality floor for the PRA profile comparison yet.
+
 ## Reproduce qualification
 
 Audit installed agents and validate the deterministic fixture first:
@@ -63,6 +104,17 @@ python -m experiments.agents plan \
 python -m experiments.agents plan \
   --manifest swebench_lite_smoke.yaml \
   --agent pi --model MODEL --condition no-pra
+```
+
+Normalize completed Harbor jobs while retaining Harbor's official score:
+
+```bash
+python -m experiments.agents import-harbor HARBOR_JOB_DIR \
+  --manifest terminal_bench_smoke.yaml --output HARBOR_JOB_DIR \
+  --engine ollama --engine-version VERSION --host AGENT_AND_ENGINE_HOSTS \
+  --hardware engine_chip='"CHIP"' --hardware engine_memory_gib=MEMORY \
+  --model MODEL --quantization QUANTIZATION \
+  --connection gateway --protocol openai-chat-completions
 ```
 
 ## Required controls

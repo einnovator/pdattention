@@ -181,6 +181,7 @@ def gateway_serve(
             incremental_messages=incremental_messages,
             resource_delta=resource_delta,
             cache_affinity=cache_affinity,
+            model_override=model,
             observability=telemetry,
         )
     management_requested = any((

@@ -148,6 +148,14 @@ def test_openai_adapter_does_not_invent_a_decode_limit() -> None:
     assert adapter._payload(_request(max_new_tokens=7))["max_tokens"] == 7
 
 
+def test_openai_adapter_can_pin_backend_model_for_provider_prefixed_clients() -> None:
+    adapter = OpenAICompatibleEngineAdapter(
+        "http://engine", model_override="qwen3:14b"
+    )
+
+    assert adapter._payload(_request(model="openai/qwen3:14b"))["model"] == "qwen3:14b"
+
+
 def test_hf_non_streaming_adapter_forwards_resolved_decode_limit():
     class RecordingModel:
         def __init__(self):

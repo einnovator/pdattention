@@ -1,0 +1,77 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 6,
+            "passed": 5,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1788379459.0856118,
+            "stop": 1788379765.7868688
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_compare_golden_vs_my_sql_query_correctness",
+                "status": "passed",
+                "duration": 298.9402044239996,
+                "start": 1788379459.1463275,
+                "stop": 1788379758.0869496,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_check_for_db_modifications",
+                "status": "passed",
+                "duration": 0.049694771001668414,
+                "start": 1788379758.0872922,
+                "stop": 1788379758.137293,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_compare_golden_vs_solution_runtime",
+                "status": "passed",
+                "duration": 6.55443720400217,
+                "start": 1788379758.1375513,
+                "stop": 1788379764.6921952,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_outputs_match_exactly",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 1.086461999999301,
+                "start": 1788379764.6923869,
+                "stop": 1788379765.7854364,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_outputs_match_exactly():\n        \"\"\"Asserts the optimized query output matches the golden query EXACTLY:\n        - same column names (case and order)\n        - same number of rows\n        - same row values in the same order\n        \"\"\"\n        assert DB_PATH.exists(), f\"DB not found at {DB_PATH}\"\n        assert GOLDEN_SQL_PATH.exists(), f\"Golden SQL not found at {GOLDEN_SQL_PATH}\"\n        assert SOL_SQL_PATH.exists(), f\"Solution SQL not found at {SOL_SQL_PATH}\"\n    \n        q_golden = _read_sql(GOLDEN_SQL_PATH)\n        q_sol = _read_sql(SOL_SQL_PATH)\n    \n        cols_g, rows_g = _execute_get_columns_and_rows(DB_PATH, q_golden)\n        cols_s, rows_s = _execute_get_columns_and_rows(DB_PATH, q_sol)\n    \n        # Column names must match exactly (including case) and order\n        assert cols_g == cols_s, (\n            f\"Column names/order differ.\\nGolden:  {cols_g}\\nSolution:{cols_s}\"\n        )\n    \n        # Row counts must match\n>       assert len(rows_g) == len(rows_s), (\n            f\"Row counts differ: golden={len(rows_g)} solution={len(rows_s)}\"\n        )\nE       AssertionError: Row counts differ: golden=500 solution=1\nE       assert 500 == 1\nE        +  where 500 = len([(17710, 'break', 75, 75, 16, 2, ...), (33833, 'cut', 70, 70, 17, 4, ...), (117295, 'run', 57, 57, 16, 2, ...), (104919, 'play', 52, 52, 15, 2, ...), (83700, 'make', 51, 51, 13, 2, ...), (80076, 'light', 48, 48, 16, 5, ...), ...])\nE        +  and   1 = len([(4563, 'am', 5, 7, 4, 2, ...)])\n\n/tests/test_outputs.py:170: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_solution_contains_single_sql_query",
+                "status": "passed",
+                "duration": 0.0007772220014885534,
+                "start": 1788379765.7855716,
+                "stop": 1788379765.7864332,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_solution_is_small",
+                "status": "passed",
+                "duration": 0.00016948699703789316,
+                "start": 1788379765.7865436,
+                "stop": 1788379765.786774,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

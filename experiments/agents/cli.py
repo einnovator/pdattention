@@ -9,7 +9,7 @@ from pathlib import Path
 from .adapters import FixtureAgentAdapter, command_adapter
 from .analysis import summarize
 from .catalog import audit_local_agents, load_catalog
-from .runner import external_plan, load_runs, run_manifest
+from .runner import external_plan, import_harbor_job, load_runs, run_manifest
 from .schema import BenchmarkManifest, PRAProfile, PRAMode
 
 
@@ -52,8 +52,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     smoke.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="Provider environment value; never copied to result artifacts.")
     analyze = commands.add_parser("analyze", help="Summarize normalized JSONL results.")
-    analyze.add_argument("results", type=Path)
+    analyze.add_argument("results", type=Path, nargs="+")
     analyze.add_argument("--output", type=Path)
+    harbor = commands.add_parser("import-harbor", help="Normalize an official Harbor job without re-grading it.")
+    harbor.add_argument("job", type=Path)
+    harbor.add_argument("--manifest", required=True)
+    harbor.add_argument("--output", type=Path, required=True)
+    harbor.add_argument("--engine", required=True)
+    harbor.add_argument("--engine-version")
+    harbor.add_argument("--host", required=True)
+    harbor.add_argument(
+        "--hardware", action="append", default=[], metavar="NAME=JSON_VALUE",
+        help="Hardware fact stored with each row; repeat for multiple facts.",
+    )
+    harbor.add_argument("--model", required=True)
+    harbor.add_argument("--model-revision")
+    harbor.add_argument("--quantization")
+    harbor.add_argument("--connection", choices=["gateway", "direct", "commercial-native", "fixture"], required=True)
+    harbor.add_argument("--protocol", required=True)
+    harbor.add_argument("--pra-mode", choices=[value.value for value in PRAMode], default="none")
+    harbor.add_argument("--profile", choices=[value.value for value in PRAProfile], default="none")
     return parser
 
 
@@ -99,8 +117,29 @@ def main(argv: list[str] | None = None) -> None:
             protocol="fixture" if args.command == "run" else args.protocol,
         )
         value = {"runs": len(rows), "output": str(args.output / "runs.jsonl"), "summary": summarize(rows)}
+    elif args.command == "import-harbor":
+        hardware = {}
+        for item in args.hardware:
+            if "=" not in item:
+                raise SystemExit(f"--hardware requires NAME=JSON_VALUE, got {item!r}")
+            name, raw = item.split("=", 1)
+            try:
+                hardware[name] = json.loads(raw)
+            except json.JSONDecodeError:
+                hardware[name] = raw
+        rows = import_harbor_job(
+            args.job, BenchmarkManifest.load(_manifest(args.manifest)), output=args.output,
+            engine=args.engine, engine_version=args.engine_version,
+            host=args.host, hardware=hardware, model=args.model,
+            model_revision=args.model_revision, quantization=args.quantization,
+            pra_mode=PRAMode(args.pra_mode), pra_profile=PRAProfile(args.profile),
+            connection=args.connection, protocol=args.protocol,
+        )
+        value = {"runs": len(rows), "output": str(args.output / "runs.jsonl"), "summary": summarize(rows)}
     else:
-        value = summarize(load_runs(args.results))
+        value = summarize(
+            row for path in args.results for row in load_runs(path)
+        )
     rendered = json.dumps(value, indent=2)
     if getattr(args, "output", None) and args.command in {"audit", "plan", "analyze"}:
         args.output.parent.mkdir(parents=True, exist_ok=True)

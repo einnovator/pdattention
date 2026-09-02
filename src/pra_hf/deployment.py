@@ -328,6 +328,7 @@ class OpenAICompatibleEngineAdapter:
         incremental_messages: bool | None = None,
         resource_delta: bool | None = None,
         cache_affinity: bool | None = None,
+        model_override: str | None = None,
         observability: Observability | None = None,
     ):
         self.base_url = base_url.rstrip("/")
@@ -345,6 +346,7 @@ class OpenAICompatibleEngineAdapter:
         self.incremental_messages = profile.incremental_messages if incremental_messages is None else bool(incremental_messages)
         self.resource_delta = profile.resource_delta if resource_delta is None else bool(resource_delta)
         self.cache_affinity = profile.cache_affinity if cache_affinity is None else bool(cache_affinity)
+        self.model_override = model_override.strip() if model_override else None
         self.observability = observability or DISABLED_OBSERVABILITY
 
     def capabilities(self) -> PRAEngineCapabilities:
@@ -403,7 +405,7 @@ class OpenAICompatibleEngineAdapter:
         """Build an ordinary OpenAI request plus a typed PRA envelope at E1+."""
 
         payload: dict[str, Any] = {
-            "model": request.model,
+            "model": self.model_override or request.model,
             "messages": list(request.messages),
             "stream": stream,
         }
