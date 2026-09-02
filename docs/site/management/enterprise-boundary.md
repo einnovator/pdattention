@@ -1,8 +1,9 @@
 # Open API and Fleet Control
 
-The PRA Engine Management API is open source and usable independently of
-eInnovator Enterprise. It provides local observed state, capability discovery,
-and bounded control for one engine instance.
+The PRA Engine and Gateway Management APIs are open source and usable
+independently of eInnovator Enterprise. The engine contract controls one model
+runtime; the gateway contract controls upstream health, capability negotiation,
+session transport, policy, and fallback state.
 
 An enterprise fleet service may use the same public contract to aggregate
 inventory, distribute desired revisions, detect drift, apply organization

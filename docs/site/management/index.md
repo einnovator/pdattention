@@ -37,12 +37,11 @@ pra engine serve --engine vllm --model Qwen/Qwen3-4B \
   --inference-url http://127.0.0.1:8000 --port 9101
 ```
 
-Or attach it to a gateway so session state is live:
-
-```bash
-pra gateway serve --backend vllm --backend-url http://127.0.0.1:8000/v1 \
-  --management-api --management-port 9101
-```
+The gateway has a separate management contract for upstream routing, transport,
+and logical session state. Enable that API on its own default port with
+`pra gateway serve --management-api --management-port 9150`; see
+[Gateway Management API](gateway-rest-api.md). An upstream engine can expose
+this engine API independently on `:9101`.
 
 Unauthenticated mode is accepted only on a loopback bind. Production
 deployments should use a private network, TLS, and bearer, OIDC, or mTLS

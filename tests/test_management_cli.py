@@ -148,8 +148,8 @@ def test_gateway_explicitly_attaches_live_management_provider(monkeypatch) -> No
 
     monkeypatch.setattr(module, "OpenAICompatibleEngineAdapter", Adapter)
     monkeypatch.setattr(module, "serve_gateway", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("pra_hf.management.start_management_api", start)
-    monkeypatch.setattr("pra_hf.management.stop_management_api", lambda server: captured.setdefault("stopped", server))
+    monkeypatch.setattr("pra_hf.gateway_management.start_gateway_management_api", start)
+    monkeypatch.setattr("pra_hf.gateway_management.stop_gateway_management_api", lambda server: captured.setdefault("stopped", server))
 
     result = CliRunner().invoke(module.gateway_cli, [
         "serve", "--backend-url", "http://127.0.0.1:9999",
@@ -158,6 +158,29 @@ def test_gateway_explicitly_attaches_live_management_provider(monkeypatch) -> No
     assert result.exit_code == 0, result.output
     assert captured["settings"].enabled is True
     assert captured["settings"].port == 9192
-    assert captured["provider"].session_source is not None
-    assert captured["provider"].storage_manager is Adapter.storage_manager
-    assert "Management API: http://127.0.0.1:9192/v1/pra/info" in result.output
+    assert captured["provider"].gateway.sessions is not None
+    assert captured["provider"].upstreams.row("default").base_url == "http://127.0.0.1:9999"
+    assert "Gateway Management API: http://127.0.0.1:9192/v1/pra/gateway/info" in result.output
+
+
+def test_gateway_does_not_initialize_management_when_disabled(monkeypatch) -> None:
+    module = importlib.import_module("pra_hf.gateway_cli")
+
+    class Adapter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def capabilities(self):
+            return PRAEngineCapabilities(adapter="openai", engine_type="openai_generic")
+
+    monkeypatch.setattr(module, "OpenAICompatibleEngineAdapter", Adapter)
+    monkeypatch.setattr(module, "serve_gateway", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "pra_hf.gateway_management.start_gateway_management_api",
+        lambda *_args, **_kwargs: pytest.fail("disabled management must not initialize"),
+    )
+    result = CliRunner().invoke(module.gateway_cli, [
+        "serve", "--backend-url", "http://127.0.0.1:9999",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "Gateway Management API:" not in result.output

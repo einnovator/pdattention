@@ -35,6 +35,7 @@ pra gateway serve [OPTIONS]
 
 | Option | Value | Default | Required | Description |
 | --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | YAML gateway configuration. |
 | `--host` | TEXT | `127.0.0.1` | no | Bind address for the local service. |
 | `--port` | INTEGER | `8080` | no | TCP port for the local service. |
 | `--mode` | TEXT | `passthrough` | no | Select the product execution or gateway mediation mode. |
@@ -55,14 +56,18 @@ pra gateway serve [OPTIONS]
 | `--otel-endpoint` | TEXT | `-` | no | Configure `otel-endpoint`. |
 | `--prometheus` | flag | `off` | no | Enable the Prometheus endpoint explicitly. |
 | `--prometheus-port` | INTEGER >= 1 <= 65535 | `-` | no | Configure `prometheus-port`. |
-| `--management-api` | flag | `off` | no | Enable the separate PRA management listener. |
-| `--management-host` | TEXT | `127.0.0.1` | no | Configure `management-host`. |
-| `--management-port` | INTEGER >= 1 <= 65535 | `9101` | no | Configure `management-port`. |
-| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `none` | no | Configure `management-auth-mode`. |
-| `--management-token-env` | TEXT | `PRA_MANAGEMENT_TOKEN` | no | Configure `management-token-env`. |
+| `--management-api`, `--no-management-api` | flag | `-` | no | Explicitly enable the separate gateway management listener. |
+| `--management-host` | TEXT | `-` | no | Management bind address; defaults to 127.0.0.1. |
+| `--management-port` | INTEGER >= 1 <= 65535 | `-` | no | Management port; defaults to 9150. |
+| `--management-auth-mode` | none / static_bearer / jwt_oidc / mtls | `-` | no | Management authentication; defaults to loopback-only no-auth. |
+| `--management-token-env` | TEXT | `-` | no | Environment variable containing the management bearer token. |
 | `--management-metrics-url` | TEXT | `-` | no | Configure `management-metrics-url`. |
 | `--management-trace-url` | TEXT | `-` | no | Configure `management-trace-url`. |
 | `--management-grafana-url` | TEXT | `-` | no | Configure `management-grafana-url`. |
+| `--registry-url` | TEXT | `-` | no | Explicitly register this gateway with PRA Registry. |
+| `--registry-token-env` | TEXT | `-` | no | Environment variable containing the Registry token. |
+| `--registry-deployment` | TEXT | `-` | no | Registry deployment identity for this gateway. |
+| `--registry-model` | TEXT | `-` | no | Registry model identity represented by the gateway. |
 | `-h`, `--help` | flag | `off` | no | Show command help and exit. |
 
 **Common use**
@@ -78,6 +83,294 @@ PRA gateway on http://127.0.0.1:8080 -> vllm
 Selected Context: enabled
 Typed resource transport: disabled
 Effective mode: Selected Context
+```
+
+### `pra gateway health`
+
+Check gateway protocol and health.
+
+**Usage**
+
+```text
+pra gateway health [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway health --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+Status: healthy
+Protocol: pra-gateway-management/1
+Gateway Id: a31f...
+```
+
+### `pra gateway upstreams`
+
+List configured upstream inference endpoints.
+
+**Usage**
+
+```text
+pra gateway upstreams [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway upstreams --management-url http://gateway:9150 --json
+```
+
+**Example output**
+
+```text
+{"items": [{"upstream_id": "primary", "health": "healthy"}], "total": 1}
+```
+
+### `pra gateway sessions`
+
+List privacy-safe gateway session summaries.
+
+**Usage**
+
+```text
+pra gateway sessions [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway sessions --management-url http://gateway:9150 --json
+```
+
+**Example output**
+
+```text
+{"items": [{"session_id": "8e0f...", "known_resource_count": 3}], "total": 1}
+```
+
+### `pra gateway transport`
+
+Show wire, delta, fallback, and reuse counters.
+
+**Usage**
+
+```text
+pra gateway transport [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway transport --management-url http://gateway:9150 --yaml
+```
+
+**Example output**
+
+```text
+requested_mode: typed-transport
+internal_transport: PRA-DELTA
+wire_bytes: 18432
+delta_bytes: 2048
+```
+
+### `pra gateway config`
+
+Show effective gateway and policy configuration.
+
+**Usage**
+
+```text
+pra gateway config [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway config --management-url http://gateway:9150 --yaml
+```
+
+**Example output**
+
+```text
+default_profile: BALANCED
+policy:
+  upstream_selection: failover
+  session_affinity: true
+```
+
+### `pra gateway inspect`
+
+Inspect gateway identity, capabilities, state, and observability.
+
+**Usage**
+
+```text
+pra gateway inspect [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway inspect --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+Info:
+  Gateway Id: a31f...
+Capabilities:
+  Protocol: pra-gateway-management/1
+State:
+  Upstream Count: 2
+```
+
+### `pra gateway renegotiate`
+
+Refresh one upstream capability handshake.
+
+**Usage**
+
+```text
+pra gateway renegotiate [OPTIONS] UPSTREAM
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `UPSTREAM` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--reason` | TEXT | `-` | yes | Configure `reason`. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway renegotiate primary --reason "refresh after engine restart" --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+Action: renegotiate
+Status: success
+Target: primary
+Native Memory: validated
+```
+
+### `pra gateway resync`
+
+Invalidate one gateway session so its next turn fully resynchronizes.
+
+**Usage**
+
+```text
+pra gateway resync [OPTIONS] SESSION
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `SESSION` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--reason` | TEXT | `-` | yes | Configure `reason`. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `--yaml` | flag | `off` | no | Emit machine-readable YAML. |
+| `--management-url` | TEXT | `http://127.0.0.1:9150` | no | Use a one-off PRA management API URL. |
+| `--token` | TEXT | `-` | no | Gateway management bearer token. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra gateway resync SESSION_HASH --reason "recover stale transport state" --management-url http://gateway:9150
+```
+
+**Example output**
+
+```text
+Action: resync-session
+Status: success
+Target: SESSION_HASH
 ```
 
 ## Engine management

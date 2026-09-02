@@ -75,8 +75,14 @@ def test_prometheus_endpoint_and_bounded_labels() -> None:
         "pra_gateway_requests_total",
         labels={"engine": "hf", "execution_mode": "G11", "status": "success"},
     )
+    telemetry.increment("pra_gateway_resyncs_total")
+    telemetry.increment("pra_gateway_visible_reuse_tokens_total", 12)
+    telemetry.increment("pra_gateway_new_materialized_tokens_total", 4)
+    telemetry.increment("pra_gateway_capability_negotiations_total")
     text = telemetry.render_metrics().decode("utf-8")
     assert "pra_gateway_requests_total" in text
+    assert "pra_gateway_capability_negotiations_total" in text
+    assert "pra_gateway_visible_reuse_tokens_total" in text
     assert 'engine="hf"' in text
     with pytest.raises(ValueError, match="High-cardinality"):
         telemetry.increment(

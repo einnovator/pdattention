@@ -138,6 +138,19 @@ pra gateway serve --mode typed-transport --backend sglang --backend-url URL
 research spellings remain accepted for reproduction but are not used in public
 deployment examples.
 
+Gateway management is a separate, default-off listener. Enable it explicitly
+and inspect it locally or remotely:
+
+```bash
+pra gateway serve --mode selected-context --backend vllm --backend-url URL \
+  --management-api --management-port 9150
+pra gateway inspect --management-url http://gateway:9150
+pra gateway upstreams --management-url http://gateway:9150 --json
+```
+
+See the [Gateway Management API](management/gateway-rest-api.md) for upstream,
+session, policy, authentication, audit, and Registry operations.
+
 ## Structural adapters
 
 A structural adapter maps a conventional decoder's layers, attention module,

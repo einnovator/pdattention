@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Mapping, Sequence
@@ -132,6 +133,7 @@ class GatewaySessionState:
     last_invalidation_reason: str | None = None
     visible_materializations: tuple[VisibleMaterialization, ...] = ()
     turns: int = 0
+    updated_at: float = field(default_factory=time.time)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "canonical_messages", tuple(dict(row) for row in self.canonical_messages))
@@ -170,7 +172,12 @@ class GatewaySessionState:
             "last_serialized_prefix_digest": self.last_serialized_prefix_digest,
             "prefix_message_count": self.prefix_message_count,
             "prefix_token_count": self.prefix_token_count,
+            "canonical_message_count": len(self.canonical_messages),
+            "serialized_message_count": len(self.serialized_messages),
             "known_resources": dict(self.known_resources),
+            "known_resource_metadata": {
+                key: dict(value) for key, value in self.known_resource_metadata.items()
+            },
             "cache_affinity_key": self.cache_affinity_key,
             "last_profile": self.last_profile,
             "model_revision": self.model_revision,
@@ -192,6 +199,7 @@ class GatewaySessionState:
                 for row in self.visible_materializations
             ],
             "turns": self.turns,
+            "updated_at": self.updated_at,
         }
 
     def durable_snapshot(self) -> dict[str, Any]:
@@ -222,6 +230,7 @@ class GatewaySessionState:
                 row.to_dict() for row in self.visible_materializations
             ],
             "turns": self.turns,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
@@ -241,7 +250,10 @@ class GatewaySessionState:
             prefix_message_count=int(value.get("prefix_message_count", 0)),
             prefix_token_count=value.get("prefix_token_count"),
             known_resources=dict(value.get("known_resources", {})),
-            known_resource_metadata=dict(value.get("known_resource_metadata", {})),
+            known_resource_metadata={
+                str(key): {**dict(metadata), "body_known": False}
+                for key, metadata in dict(value.get("known_resource_metadata", {})).items()
+            },
             last_profile=value.get("last_profile"),
             last_policy_digest=value.get("last_policy_digest"),
             model_revision=value.get("model_revision"),
@@ -254,6 +266,7 @@ class GatewaySessionState:
                 for row in value.get("visible_materializations", ())
             ),
             turns=int(value.get("turns", 0)),
+            updated_at=float(value.get("updated_at", time.time())),
         )
 
 
@@ -443,12 +456,18 @@ class GatewaySessionRegistry:
                 )
             else:
                 resources[delta.resource_id] = delta.version
+                body = delta.resource or active_by_id.get(delta.resource_id)
+                text = getattr(body, "text", None) if body is not None else None
                 metadata[delta.resource_id] = {
                     "uri": delta.uri,
                     "record_type": delta.record_type,
                     "authorization_scope": delta.authorization_scope,
+                    "size_bytes": len(text.encode("utf-8")) if isinstance(text, str) else None,
+                    "token_count": len(text.split()) if isinstance(text, str) else None,
+                    "body_known": body is not None,
+                    "last_transmitted": time.time(),
+                    "last_acknowledged": time.time(),
                 }
-                body = delta.resource or active_by_id.get(delta.resource_id)
                 if body is not None:
                     bodies[delta.resource_id] = body
                 if delta.operation == ResourceOperation.UPDATE:
@@ -522,6 +541,7 @@ class GatewaySessionRegistry:
             ),
             visible_materializations=ledger,
             turns=turn.state.turns + 1,
+            updated_at=time.time(),
         )
         with self._lock:
             self._states[updated.key] = updated

@@ -10,14 +10,14 @@ PRA Registry without hiding either interface behind a proprietary protocol.
                               |
                       PRA Registry (open)
                               |
-             +----------------+----------------+
-             |                |                |
+              Gateway API + Engine APIs (open)
+             /                |                \
          vLLM API          MLX API       OpenVINO API
-          (open)            (open)           (open)
 ```
 
 | Component | Boundary | Responsibility |
 | --- | --- | --- |
+| Gateway Management API | Open source | Upstream health, capability negotiation, session transport, policy, and fallback state |
 | Engine Management API | Open source | State and safe control for one engine instance |
 | PRA Registry | Open source | Models, bundles, qualifications, policy, and desired state |
 | eInnovator Control Plane | Commercial, early access | Fleet aggregation, SSO, RBAC, audit, approvals, drift UX, and governed agent assistance |
@@ -25,6 +25,10 @@ PRA Registry without hiding either interface behind a proprietary protocol.
 The first release is deliberately a coordinator, not an orchestrator. It can
 apply safe mutable engine configuration and explain restart-required drift. It
 does not replace Kubernetes, Nomad, systemd, Grafana, or Tempo.
+
+The Control Plane aggregates gateways and engines through their public APIs.
+The open Gateway API remains independently usable by the PRA CLI, Registry,
+community automation, and CI; commercial enrollment is not required.
 
 ## Current capability status
 

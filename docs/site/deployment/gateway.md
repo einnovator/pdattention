@@ -187,4 +187,6 @@ The gateway rejects cross-tenant resources and credential-like PRA metadata.
 Credentials remain in transport headers or provider configuration. Relevance,
 cache residency, and resource sharing never grant authorization.
 
-See [Protocol](../protocol.md) for the JSON contract.
+Operate upstreams, capability handshakes, hashed session state, and policy over
+the separate, default-off [Gateway Management API](../management/gateway-rest-api.md).
+See [Protocol](../protocol.md) for the inference JSON contract.

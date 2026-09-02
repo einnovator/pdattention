@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import click
+import yaml
 
 from .bundle import BundleResolver
 from .deployment import HuggingFaceEngineAdapter, OpenAICompatibleEngineAdapter
@@ -10,6 +14,7 @@ from .engine_profiles import EngineType
 from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
 from .session_service import LocalSessionService
 from .observability import Observability, load_observability_config
+from .management_cli import ManagementClient, _emit
 
 
 GATEWAY_MODE_ALIASES = {
@@ -22,24 +27,6 @@ GATEWAY_MODE_ALIASES = {
     "g01": "G01",
     "g11": "G11",
 }
-
-
-def _apply_gateway_config(gateway: PRAGateway, values):
-    """Apply only gateway settings that affect subsequent real requests."""
-
-    from .management import ManagementAPIError
-
-    unsupported = sorted(set(values) - {"profile"})
-    if unsupported:
-        raise ManagementAPIError(
-            501,
-            "CONFIG_FIELD_NOT_SUPPORTED",
-            "This gateway can update only the default profile while running.",
-            unsupported_fields=unsupported,
-        )
-    if "profile" in values:
-        gateway.default_profile = str(values["profile"])
-    return values
 
 
 def resolve_gateway_mode(value: str) -> str:
@@ -58,6 +45,7 @@ def gateway_cli() -> None:
 
 
 @gateway_cli.command("serve")
+@click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="YAML gateway configuration.")
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8080, type=int, show_default=True)
 @click.option(
@@ -103,27 +91,32 @@ def gateway_cli() -> None:
 @click.option("--otel-endpoint")
 @click.option("--prometheus", is_flag=True, help="Enable the Prometheus endpoint explicitly.")
 @click.option("--prometheus-port", type=click.IntRange(min=1, max=65535))
-@click.option("--management-api", is_flag=True, help="Enable the separate PRA management listener.")
-@click.option("--management-host", default="127.0.0.1", show_default=True)
-@click.option("--management-port", type=click.IntRange(min=1, max=65535), default=9101, show_default=True)
+@click.option("--management-api/--no-management-api", default=None, help="Explicitly enable the separate gateway management listener.")
+@click.option("--management-host", help="Management bind address; defaults to 127.0.0.1.")
+@click.option("--management-port", type=click.IntRange(min=1, max=65535), help="Management port; defaults to 9150.")
 @click.option(
     "--management-auth-mode",
     type=click.Choice(["none", "static_bearer", "jwt_oidc", "mtls"]),
-    default="none",
-    show_default=True,
+    default=None,
+    help="Management authentication; defaults to loopback-only no-auth.",
 )
-@click.option("--management-token-env", default="PRA_MANAGEMENT_TOKEN", show_default=True)
+@click.option("--management-token-env", help="Environment variable containing the management bearer token.")
 @click.option("--management-metrics-url")
 @click.option("--management-trace-url")
 @click.option("--management-grafana-url")
+@click.option("--registry-url", help="Explicitly register this gateway with PRA Registry.")
+@click.option("--registry-token-env", help="Environment variable containing the Registry token.")
+@click.option("--registry-deployment", help="Registry deployment identity for this gateway.")
+@click.option("--registry-model", help="Registry model identity represented by the gateway.")
 def gateway_serve(
-    host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
+    config_path, host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir, observability, otel, otel_endpoint,
     prometheus, prometheus_port,
     management_api, management_host, management_port, management_auth_mode,
     management_token_env, management_metrics_url, management_trace_url,
-    management_grafana_url,
+    management_grafana_url, registry_url, registry_token_env,
+    registry_deployment, registry_model,
 ) -> None:
     """Serve logical PRA and OpenAI-compatible HTTP endpoints."""
 
@@ -189,68 +182,86 @@ def gateway_serve(
             cache_affinity=cache_affinity,
             observability=telemetry,
         )
+    management_requested = any((
+        management_api is not None, config_path is not None,
+        os.environ.get("PRA_GATEWAY_MANAGEMENT_ENABLED") is not None,
+        registry_url, os.environ.get("PRA_GATEWAY_REGISTRY_URL"),
+    ))
+    management_settings = None
+    management_provider = None
+    gateway_adapter = adapter
+    gateway_observability = telemetry
+    if management_requested:
+        from .gateway_management import (
+            GatewayManagementAPIConfig,
+            GatewayManagementProvider,
+            GatewayMetricRecorder,
+            GatewayPolicy,
+            GatewayUpstreamRouter,
+            UpstreamCreate,
+        )
+
+        raw = _gateway_management_yaml(config_path)
+        management_settings = GatewayManagementAPIConfig.from_mapping(raw)
+        update = {}
+        if management_api is not None:
+            update["enabled"] = management_api
+        if management_host is not None:
+            update["host"] = management_host
+        if management_port is not None:
+            update["port"] = management_port
+        if management_auth_mode is not None or management_token_env is not None:
+            update["auth"] = management_settings.auth.model_copy(update={
+                **({"mode": management_auth_mode} if management_auth_mode is not None else {}),
+                **({"token_env": management_token_env} if management_token_env is not None else {}),
+            })
+        for field, value in (
+            ("metrics_url", management_metrics_url), ("trace_backend_url", management_trace_url),
+            ("grafana_url", management_grafana_url),
+        ):
+            if value is not None:
+                update[field] = value
+        if any((registry_url, registry_token_env, registry_deployment, registry_model)):
+            update["registry"] = management_settings.registry.model_copy(update={
+                "enabled": True,
+                **({"url": registry_url} if registry_url else {}),
+                **({"token_env": registry_token_env} if registry_token_env else {}),
+                **({"deployment_id": registry_deployment} if registry_deployment else {}),
+                **({"model_id": registry_model} if registry_model else {}),
+            })
+        management_settings = management_settings.model_copy(update=update)
+        if management_settings.enabled or management_settings.registry.enabled:
+            initial = UpstreamCreate(
+                upstream_id="default", name=backend, base_url=backend_url or "embedded://huggingface",
+                provider=backend, inference_api_type="embedded" if backend == "huggingface" else "openai-compatible",
+                models=tuple([model] if model else ()), priority=0,
+            )
+            router = GatewayUpstreamRouter(initial, adapter, GatewayPolicy(default_upstream_id="default"))
+            gateway_adapter = router
+            gateway_observability = GatewayMetricRecorder(telemetry)
+        else:
+            management_settings = None
+
     gateway = PRAGateway(
-        adapter,
+        gateway_adapter,
         mode=resolved_mode,
         session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
         fallback_injection=fallback_injection,
-        observability=telemetry,
+        observability=gateway_observability,
         bundle_source=bundle_source,
         default_profile=profile,
     )
     management_server = None
-    if management_api:
-        from .management import (
-            LoadedModel,
-            ManagementAPIConfig,
-            ManagementAuthConfig,
-            ManagementProvider,
-            PRAProfileSummary,
-            start_management_api,
-        )
-
-        management_settings = ManagementAPIConfig(
-            enabled=True,
-            host=management_host,
-            port=management_port,
-            auth=ManagementAuthConfig(
-                mode=management_auth_mode,
-                token_env=management_token_env,
+    if management_settings is not None:
+        from .gateway_management import start_gateway_management_api
+        management_provider = GatewayManagementProvider(
+            gateway, gateway_adapter, management_settings, gateway_observability,
+            policy_loader=(
+                (lambda: _gateway_management_yaml(config_path).get("policy", {}))
+                if config_path is not None else None
             ),
-            metrics_url=management_metrics_url,
-            trace_backend_url=management_trace_url,
-            grafana_url=management_grafana_url,
         )
-        management_provider = ManagementProvider(
-            engine=backend,
-            capabilities=adapter.capabilities().to_dict(),
-            models=[] if model is None else [
-                LoadedModel(
-                    model_id=model,
-                    pra_bundle_id=bundle_source,
-                    profile=profile,
-                    execution_mode=resolved_mode,
-                )
-            ],
-            profiles=[PRAProfileSummary(name=profile, source="gateway")],
-            effective_config={
-                "engine": backend,
-                "model": model,
-                "profile": profile,
-                "execution_mode": resolved_mode,
-                "inference_url": backend_url,
-            },
-            storage_manager=getattr(adapter, "storage_manager", None),
-            session_source=gateway.sessions,
-            observability={
-                "otel": {"enabled": bool(otel or otel_endpoint)},
-                "prometheus": {"enabled": bool(prometheus or prometheus_port)},
-            },
-            config_patch_handler=lambda values: _apply_gateway_config(gateway, values),
-        )
-        management_server = start_management_api(
-            management_provider, management_settings
-        )
+        management_server = start_gateway_management_api(management_provider, management_settings)
     capabilities = adapter.capabilities()
     selected_enabled = resolved_mode in {"G10", "G11"}
     typed_enabled = resolved_mode == "G11"
@@ -267,15 +278,84 @@ def gateway_serve(
             f"Internal protocol: {resolved_mode}, {capabilities.integration_level.value}, "
             f"{capabilities.prefix_cache_mode.value}"
         )
-    if management_server is not None:
+    if management_settings is not None and management_settings.enabled:
         click.echo(
-            f"Management API: http://{management_host}:{management_port}/v1/pra/info"
+            f"Gateway Management API: http://{management_settings.host}:{management_settings.port}/v1/pra/gateway/info"
         )
     try:
         serve_gateway(gateway, host=host, port=port)
     finally:
         if management_server is not None:
-            from .management import stop_management_api
+            from .gateway_management import stop_gateway_management_api
 
-            stop_management_api(management_server)
+            stop_gateway_management_api(management_server)
         telemetry.close()
+
+
+def _gateway_management_yaml(path: Path | None) -> dict:
+    if path is None:
+        return {}
+    value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    gateway = dict(value.get("gateway", value))
+    return dict(gateway.get("management_api", {}))
+
+
+def _gateway_remote_options(function):
+    function = click.option("--token", envvar="PRA_GATEWAY_MANAGEMENT_TOKEN", help="Gateway management bearer token.")(function)
+    function = click.option("--management-url", default="http://127.0.0.1:9150", show_default=True)(function)
+    function = click.option("--yaml", "yaml_output", is_flag=True)(function)
+    function = click.option("--json", "json_output", is_flag=True)(function)
+    return function
+
+
+def _gateway_client(management_url: str, token: str | None) -> ManagementClient:
+    return ManagementClient(management_url, token)
+
+
+def _get_gateway_command(name: str, endpoint: str, help_text: str) -> None:
+    @gateway_cli.command(name, help=help_text)
+    @_gateway_remote_options
+    def command(management_url, token, json_output, yaml_output):
+        _emit(_gateway_client(management_url, token).get(f"/v1/pra/gateway/{endpoint}"), json_output, yaml_output)
+
+
+_get_gateway_command("health", "health", "Check gateway protocol and health.")
+_get_gateway_command("upstreams", "upstreams", "List configured upstream inference endpoints.")
+_get_gateway_command("sessions", "sessions", "List privacy-safe gateway session summaries.")
+_get_gateway_command("transport", "transport", "Show wire, delta, fallback, and reuse counters.")
+_get_gateway_command("config", "config", "Show effective gateway and policy configuration.")
+
+
+@gateway_cli.command("inspect")
+@_gateway_remote_options
+def gateway_inspect(management_url, token, json_output, yaml_output) -> None:
+    """Inspect gateway identity, capabilities, state, and observability."""
+    client = _gateway_client(management_url, token)
+    prefix = "/v1/pra/gateway"
+    _emit({
+        "info": client.get(f"{prefix}/info"), "capabilities": client.get(f"{prefix}/capabilities"),
+        "state": client.get(f"{prefix}/state"), "observability": client.get(f"{prefix}/observability"),
+    }, json_output, yaml_output)
+
+
+def _gateway_action(name: str, path: str, argument: str) -> None:
+    help_text = (
+        "Refresh one upstream capability handshake."
+        if name == "renegotiate"
+        else "Invalidate one gateway session so its next turn fully resynchronizes."
+    )
+
+    @gateway_cli.command(name, help=help_text)
+    @click.argument(argument)
+    @click.option("--reason", required=True)
+    @_gateway_remote_options
+    def command(**values):
+        target = values.pop(argument)
+        reason = values.pop("reason")
+        client = _gateway_client(values.pop("management_url"), values.pop("token"))
+        result = client.request("POST", f"/v1/pra/gateway/actions/{path}/{target}", {"reason": reason})
+        _emit(result, values.pop("json_output"), values.pop("yaml_output"))
+
+
+_gateway_action("renegotiate", "renegotiate", "upstream")
+_gateway_action("resync", "resync-session", "session")
