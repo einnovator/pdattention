@@ -176,6 +176,27 @@ def _dashboard(base_url: str, uid: str) -> dict[str, Any]:
     return _get_json(f"{base_url.rstrip('/')}/api/dashboards/uid/{uid}")
 
 
+def _grafana_prometheus_rows(base_url: str, expression: str) -> list[dict[str, Any]]:
+    now = time.time()
+    query = urllib.parse.urlencode(
+        {"query": expression, "start": now - 900, "end": now, "step": 5}
+    )
+    value = _get_json(
+        f"{base_url.rstrip('/')}/api/datasources/proxy/uid/"
+        f"pra-prometheus/api/v1/query_range?{query}"
+    )
+    return list(value.get("data", {}).get("result", ()))
+
+
+def _grafana_tempo_traces(base_url: str, expression: str) -> list[dict[str, Any]]:
+    query = urllib.parse.urlencode({"q": expression, "limit": 100})
+    value = _get_json(
+        f"{base_url.rstrip('/')}/api/datasources/proxy/uid/"
+        f"pra-tempo/api/search?{query}"
+    )
+    return list(value.get("traces", ()))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--gateway-port", type=int, default=0)
@@ -299,6 +320,18 @@ def main() -> None:
             traces = _wait_tempo(args.tempo_url, TRACEQL)
             metrics_dashboard = _dashboard(args.grafana_url, "pra-gateway")
             trace_dashboard = _dashboard(args.grafana_url, "pra-gateway-otel")
+            grafana_series = _grafana_prometheus_rows(args.grafana_url, PROMQL_RATE)
+            positive_points = sum(
+                1
+                for row in grafana_series
+                for _, value in row.get("values", ())
+                if value not in (None, "NaN") and float(value) > 0
+            )
+            grafana_traces = _grafana_tempo_traces(args.grafana_url, TRACEQL)
+            if not positive_points or not grafana_traces:
+                raise RuntimeError(
+                    "Grafana datasource proxies did not return gateway metric and trace data."
+                )
             report = {
                 "status": "PASS",
                 "git_commit": subprocess.check_output(
@@ -324,6 +357,9 @@ def main() -> None:
                 "grafana": {
                     "metrics_dashboard": metrics_dashboard["meta"]["url"],
                     "trace_dashboard": trace_dashboard["meta"]["url"],
+                    "prometheus_series": len(grafana_series),
+                    "prometheus_positive_points": positive_points,
+                    "tempo_trace_count": len(grafana_traces),
                 },
             }
             args.output.parent.mkdir(parents=True, exist_ok=True)
