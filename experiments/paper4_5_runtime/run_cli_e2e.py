@@ -36,8 +36,8 @@ from experiments.paper4_5_runtime.build_cli_reference import public_commands
 
 
 CLI = (sys.executable, "-m", "pra_hf.cli")
-HUB_BUNDLE = "EInnovator/pra-qwen3-0.6b"
-HUB_REVISION = "25e69076c48a12b5943fe19b0351e68a86ba563e"
+HUB_BUNDLE = "EInnovator/pra-qwen3-4b-mlx-4bit"
+HUB_REVISION = "49c18674ce15c8e267d5d19230d6dc152bca778b"
 
 
 @dataclass

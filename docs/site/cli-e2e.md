@@ -34,8 +34,9 @@ python experiments/paper4_5_runtime/run_cli_e2e.py \
   --output .pra/evidence/cli_e2e_live.json
 ```
 
-Live mode searches the canonical `EInnovator` catalog and pulls the immutable
-`EInnovator/pra-qwen3-0.6b` bundle. It never downloads the base model.
+Live mode searches the canonical `EInnovator` catalog and pulls the immutable,
+validated `EInnovator/pra-qwen3-4b-mlx-4bit` bundle. It never downloads the
+base model.
 
 The equivalent pytest entry point is:
 
