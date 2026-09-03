@@ -291,16 +291,18 @@ def test_hf_list_filters_the_trusted_registry() -> None:
     assert result.exit_code == 0, result.output
     value = json.loads(result.output)
     assert value["source"] == "trusted-registry"
-    assert value["count"] == 7
+    assert value["count"] == len(value["bundles"])
     assert {
         "Qwen/Qwen2.5-1.5B-Instruct",
         "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+        "mlx-community/Qwen3-8B-6bit",
+        "mlx-community/Qwen3-8B-8bit",
     }.issubset({entry["base_model"] for entry in value["bundles"]})
     assert all("qwen" in row["base_model"].lower() for row in value["bundles"])
     assert all("mlx" in row["engine_compatibility"] for row in value["bundles"])
 
 
-def test_hub_catalog_search_marks_only_registry_entries_auto_resolvable() -> None:
+def test_hub_catalog_search_marks_only_qualified_registry_entries_auto_resolvable() -> None:
     calls = []
 
     class FakeApi:
@@ -314,6 +316,20 @@ def test_hub_catalog_search_marks_only_registry_entries_auto_resolvable() -> Non
                     sha="hub-head",
                     downloads=12,
                     likes=3,
+                    lastModified=None,
+                    private=False,
+                    gated=False,
+                ),
+                SimpleNamespace(
+                    id="EInnovator/pra-qwen3-8b-mlx-8bit",
+                    tags=["pra"],
+                    cardData={
+                        "library_name": "pra",
+                        "base_model": "mlx-community/Qwen3-8B-8bit",
+                    },
+                    sha="smoke-head",
+                    downloads=2,
+                    likes=0,
                     lastModified=None,
                     private=False,
                     gated=False,
@@ -342,12 +358,15 @@ def test_hub_catalog_search_marks_only_registry_entries_auto_resolvable() -> Non
     assert calls[0]["author"] == "EInnovator"
     assert [row["repo_id"] for row in rows] == [
         "EInnovator/pra-qwen3-0.6b",
+        "EInnovator/pra-qwen3-8b-mlx-8bit",
         "EInnovator/pra-experimental",
     ]
     assert rows[0]["auto_resolvable"] is True
     assert rows[0]["trust"] == "eInnovator-qualified"
     assert rows[1]["auto_resolvable"] is False
-    assert rows[1]["trust"] == "hub-discovered"
+    assert rows[1]["trust"] == "eInnovator-maintained"
+    assert rows[2]["auto_resolvable"] is False
+    assert rows[2]["trust"] == "hub-discovered"
 
 
 def test_hf_search_cli_emits_normalized_live_results(monkeypatch) -> None:
@@ -419,8 +438,17 @@ def test_default_registry_contains_published_cross_family_catalog() -> None:
         "pra-qwen3-32b-mlx-4bit": "37c196b2a425f3a02fce66cb5006748201f202bd",
         "pra-llama3-1-8b-mlx-4bit": "2ec1cf4464ea6db47134218c74553d7fa7beb7d2",
         "pra-gemma3-1b-mlx-4bit": "07447e8f9c5f40f8eb46aaea3749176c77f4bb0a",
+        "pra-qwen3-4b-mlx-8bit": "43c302fa5f3629e1a24fbd05c5c1fc0210a45d86",
+        "pra-qwen3-8b-mlx-8bit": "28729a7e91ea8b21c006105d19de39069903a117",
+        "pra-qwen3-14b-mlx-8bit": "66fb14472ed292c3bca5a103e354e7fd77f3de47",
+        "pra-qwen3-8b-mlx-6bit": "23ddea23e4c0010461bcdb26dfe08b7fbf1c06a2",
+        "pra-llama3-2-1b-mlx-8bit": "bb2604d9a12610e8068dbd481a96e44d853c8767",
+        "pra-gemma3-1b-mlx-8bit": "daf7795dc11dd68e4ff8df41ac132d56df7ff449",
+        "pra-qwen2-5-1-5b-instruct-bnb-8bit": "9ff060a1ee3fbb0d04859c27dabf2dda9c7c936d",
     }
 
     assert {name: entries[name].bundle_revision for name in expected} == expected
     assert all("balanced" in entries[name].profiles for name in expected)
     assert entries["pra-qwen3-32b-mlx-4bit"].qualification == "ENGINE_QUALIFIED"
+    assert entries["pra-qwen3-4b-mlx-8bit"].trust == "eInnovator-qualified"
+    assert entries["pra-qwen3-8b-mlx-8bit"].trust == "eInnovator-maintained"

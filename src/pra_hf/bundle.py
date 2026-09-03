@@ -1056,7 +1056,9 @@ class HubBundleCatalog:
                     "registry_revision": entry.bundle_revision if entry else None,
                     "qualification": entry.qualification if entry else "UNREGISTERED",
                     "trust": entry.trust if entry else "hub-discovered",
-                    "auto_resolvable": entry is not None,
+                    "auto_resolvable": (
+                        entry is not None and entry.trust == "eInnovator-qualified"
+                    ),
                     "profiles": list(entry.profiles) if entry else [],
                     "downloads": getattr(model, "downloads", None),
                     "likes": getattr(model, "likes", None),
