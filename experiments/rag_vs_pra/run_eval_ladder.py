@@ -61,15 +61,22 @@ def _normalize(text: str) -> str:
     return " ".join(value.split())
 
 
-def _answer_metrics(prediction: str, answers: Sequence[str]) -> tuple[float, float]:
+def _answer_metrics(
+    prediction: str, answers: Sequence[str]
+) -> tuple[float, float, float]:
     best_exact = 0.0
     best_f1 = 0.0
+    task_score = 0.0
     predicted = _normalize(prediction)
     predicted_tokens = predicted.split()
     for answer in answers:
         gold = _normalize(answer)
         gold_tokens = gold.split()
         best_exact = max(best_exact, float(predicted == gold))
+        task_score = max(
+            task_score,
+            float(bool(set(predicted_tokens).intersection(gold_tokens))),
+        )
         if not predicted_tokens or not gold_tokens:
             score = float(predicted_tokens == gold_tokens)
         else:
@@ -81,7 +88,7 @@ def _answer_metrics(prediction: str, answers: Sequence[str]) -> tuple[float, flo
             recall = common / len(gold_tokens)
             score = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
         best_f1 = max(best_f1, score)
-    return best_exact, best_f1
+    return best_exact, best_f1, task_score
 
 
 class EvidenceProbeBackend:
@@ -444,7 +451,7 @@ def _condition_row(
     token_budget: int,
 ) -> dict[str, object]:
     prediction, serving = backend.answer(question, context.text, context.condition)
-    exact, f1 = _answer_metrics(prediction, question.answers)
+    exact, f1, task_score = _answer_metrics(prediction, question.answers)
     metrics = context_metrics(question, receipt, context)
     failure = failure_classification(
         question=question,
@@ -479,6 +486,7 @@ def _condition_row(
         "gold_answers": list(question.answers),
         "exact_match": exact,
         "token_f1": f1,
+        "dataset_task_score": task_score,
         "answer_quality_publishable": backend.publishable_answer_quality,
         "failure_class": failure,
         "selector": context.selector_name,
@@ -508,6 +516,9 @@ def _summary(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
                 "examples": len(values),
                 "exact_match": statistics.fmean(float(value["exact_match"]) for value in values),
                 "token_f1": statistics.fmean(float(value["token_f1"]) for value in values),
+                "dataset_task_score": statistics.fmean(
+                    float(value["dataset_task_score"]) for value in values
+                ),
                 "supporting_document_coverage": statistics.fmean(
                     float(value["supporting_document_coverage"]) for value in context_rows
                 ),
