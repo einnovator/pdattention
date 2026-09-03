@@ -19,8 +19,14 @@ DEFAULT_OUTPUT = (
     / "docs/papers/shared/results/paper4_5_runtime_productization/precision_rag"
 )
 INPUTS = {
-    "MLX-4bit": RAG / "multihoprag_l1_qwen3_4b_mlx_10.json.gz",
+    "MLX-bfloat16": RAG / "multihoprag_l1_qwen3_4b_mlx_bf16_10.json.gz",
     "MLX-8bit": RAG / "multihoprag_l1_qwen3_4b_mlx_8bit_10.json.gz",
+    "MLX-4bit": RAG / "multihoprag_l1_qwen3_4b_mlx_10.json.gz",
+}
+PRECISION_FAMILIES = {
+    "MLX-bfloat16": "BF16",
+    "MLX-8bit": "INT8",
+    "MLX-4bit": "INT4",
 }
 
 
@@ -54,7 +60,7 @@ def build_comparison() -> dict[str, Any]:
 
     rows: list[dict[str, Any]] = []
     for encoding, document in documents.items():
-        family = "INT4" if encoding == "MLX-4bit" else "INT8"
+        family = PRECISION_FAMILIES[encoding]
         for candidate_count in document["candidate_counts"]:
             summary = {
                 (row["condition"], row["candidate_count"]): row
@@ -134,7 +140,7 @@ def build_comparison() -> dict[str, Any]:
             rows.append(row)
     return {
         "schema_version": 1,
-        "comparison": "Qwen3-4B matched INT4/INT8 MultiHop-RAG",
+        "comparison": "Qwen3-4B matched BF16/INT8/INT4 MultiHop-RAG",
         "comparison_scope": (
             "Matched deployed pipelines: standard selected-text retrieval versus "
             "PRA hybrid retrieval with detached native K/V. Selector and transport "
@@ -144,6 +150,16 @@ def build_comparison() -> dict[str, Any]:
             field: first[field] for field in invariant_fields
         },
         "hardware": first["hardware"],
+        "precision_provenance": {
+            "MLX-bfloat16": {
+                "immutable_revision": (
+                    "1cfa9a7208912126459214e8b04321603b3df60c"
+                ),
+                "loaded_parameter_arrays": 398,
+                "loaded_parameter_dtype": "mlx.core.bfloat16",
+                "quantized_layers": 0,
+            }
+        },
         "inputs": {key: str(value.relative_to(ROOT)).replace("\\", "/") for key, value in INPUTS.items()},
         "rows": rows,
         "limitations": [
@@ -151,7 +167,7 @@ def build_comparison() -> dict[str, Any]:
             "The baseline and PRA arms use different selectors as well as different context transport, so this is not a selector-frozen representation ablation.",
             "No document-RAG adaptor is qualified, so the third canonical arm is absent.",
             "Peak memory was not captured by this harness.",
-            "FP32 and BF16 matched rows remain unmeasured.",
+            "FP32 matched rows remain unmeasured; the source checkpoint itself is BF16.",
         ],
     }
 

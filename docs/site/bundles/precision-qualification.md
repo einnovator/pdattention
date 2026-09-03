@@ -80,24 +80,28 @@ it does not fabricate benchmark values.
 ## Current coverage
 
 The [bundle catalog](catalog.md) and [qualification matrix](qualification-matrix.md)
-show exact precision identities. The checked-in precision ladder currently
-contains matched MLX 4-bit and 8-bit evidence plus explicit pending FP32/BF16
-cells.
+show exact precision identities. The catalog-derived ladder contains inherited
+MLX 4-bit and 8-bit evidence and preserves every unmeasured cell. A companion
+matched study adds BF16 evidence for Qwen3-4B without treating it as a
+published adaptor bundle.
 
-A controlled M5 run also compares Qwen3-4B MLX 4-bit and 8-bit deployed
+A controlled M5 run also compares Qwen3-4B BF16, MLX 8-bit, and MLX 4-bit deployed
 pipelines on the same 10 MultiHop-RAG questions, seed, candidate counts, and
 2,048-token budget. Generic PRA changes token F1 by `-0.0176` and `-0.0091`
-at 4-bit, versus `-0.0035` and `+0.0036` at 8-bit for 20 and 50 candidates.
-The 8-bit task score is unchanged; the 4-bit arm loses one or two answers.
-PRA total latency is `1.100-1.107x` baseline at 8-bit and `1.148-1.161x` at
-4-bit.
+at 4-bit, `-0.0035` and `+0.0036` at 8-bit, and `-0.0019` and `+0.0072` at
+BF16 for 20 and 50 candidates. BF16 and 8-bit preserve task score; the 4-bit
+arm loses one or two answers. PRA total latency is `1.058-1.061x` baseline at
+BF16, `1.100-1.107x` at 8-bit, and `1.148-1.161x` at 4-bit.
+The pinned BF16 load contains 398 BF16 parameter arrays and no quantized
+layers.
 
 This is a matched *pipeline* comparison, not a selector-frozen transport
 ablation: the baseline uses standard selected-text retrieval, while PRA uses
 hybrid retrieval and detached native K/V. It is directional evidence that the
-8-bit pipeline is more robust in this cohort. The complete four-precision
-study, peak-memory capture, learned-adaptor arm, and cross-precision adaptor
-transfer remain open experiments.
+three-rung trend improves monotonically toward BF16 in this cohort. The source
+checkpoint is BF16, so casting it to float32 would not create an independent
+FP32 reference. A selector-frozen study, peak-memory capture, learned-adaptor
+arm, and cross-precision adaptor transfer remain open experiments.
 
 ## Encoding caveats
 

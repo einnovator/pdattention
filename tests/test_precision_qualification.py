@@ -171,9 +171,9 @@ def test_matched_precision_rag_keeps_conversion_and_missing_adaptor_explicit() -
     payload = build_comparison()
     rows = payload["rows"]
 
-    assert len(rows) == 4
+    assert len(rows) == 6
     assert {row["precision_encoding"] for row in rows} == {
-        "MLX-4bit", "MLX-8bit"
+        "MLX-bfloat16", "MLX-8bit", "MLX-4bit"
     }
     assert {row["examples"] for row in rows} == {10}
     assert {row["seed"] for row in rows} == {11}
