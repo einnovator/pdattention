@@ -263,7 +263,7 @@ def _plots(
     primary = [row for row in _primary_rows(summaries, candidate_count, token_budget) if row["regime"] == "COLD"]
     labels = [f"{row['selector_profile']}\n{str(row['condition']).replace('_NO_ADAPTOR', '')}" for row in primary]
     specs = (
-        ("generated_quality", "token_f1", "Token F1", (0.0, 1.0)),
+        ("generated_quality", "token_f1", "Token F1", "data"),
         ("visible_tokens", "visible_prompt_tokens", "Visible prompt tokens", None),
         ("ttft_p95", "ttft_p95_ms", "TTFT p95 (ms)", None),
         ("completion_latency", "completion_latency_ms", "Completion latency (ms)", None),
@@ -276,7 +276,10 @@ def _plots(
         axis.set_xticks(range(len(values)), labels, rotation=25, ha="right")
         axis.set_ylabel(ylabel)
         axis.grid(axis="y", alpha=0.25)
-        if limits:
+        if limits == "data":
+            upper = max(values, default=0.0)
+            axis.set_ylim(0.0, max(0.01, upper * 1.2))
+        elif limits:
             axis.set_ylim(*limits)
         fig.tight_layout()
         for suffix in ("png", "pdf"):
@@ -287,8 +290,16 @@ def _plots(
         fig, axis = plt.subplots(figsize=(9, 5.5))
         visible = [row for row in curve if row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value]
         native = [row for row in curve if row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value]
-        axis.plot(range(1, len(visible) + 1), [row["cumulative_visible_tokens"] for row in visible], label="Standard RAG repeated visible")
-        axis.plot(range(1, len(native) + 1), [row["cumulative_unique_native_tokens"] for row in native], label="PRA unique selected chunks")
+        axis.plot(
+            range(1, len(visible) + 1),
+            [row["cumulative_visible_tokens"] for row in visible],
+            label="PRA Selected Context repeated selected tokens",
+        )
+        axis.plot(
+            range(1, len(native) + 1),
+            [row["cumulative_unique_native_tokens"] for row in native],
+            label="PRA Native Memory newly materialized chunk tokens",
+        )
         axis.set_xlabel("Questions")
         axis.set_ylabel("Cumulative source tokens")
         axis.legend()
