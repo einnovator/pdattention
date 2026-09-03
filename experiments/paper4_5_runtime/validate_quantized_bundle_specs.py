@@ -18,8 +18,9 @@ from typing import Any
 from huggingface_hub import HfApi, hf_hub_download
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for path in (ROOT, ROOT / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from experiments.paper4_5_runtime.build_hf_catalog_bundles import (
     QUANTIZED_RESULTS,
