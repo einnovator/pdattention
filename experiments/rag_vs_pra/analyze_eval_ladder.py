@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Mapping
 
 
-NO_PRA = "NO_PRA"
+NO_PRA = "NO_PRA_STANDARD_RAG"
 SELECTED_CONTEXT = "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
 NATIVE_MEMORY = "PRA_NATIVE_MEMORY_NO_ADAPTOR"
 LEGACY_CONDITIONS = {
+    "NO_PRA": NO_PRA,
     "no_pra": NO_PRA,
     "pra_no_adaptor": NATIVE_MEMORY,
 }

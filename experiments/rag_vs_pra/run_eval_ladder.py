@@ -724,7 +724,7 @@ def main() -> None:
         "model_revision": args.revision if args.backend != "probe" else None,
         "hardware": platform.platform(),
         "conditions": {
-            "NO_PRA": "standard RAG: global BM25 chunk packing into visible context",
+            "NO_PRA_STANDARD_RAG": "standard RAG: global BM25 chunk packing into visible context",
             "PRA_SELECTED_CONTEXT_NO_ADAPTOR": "generic PRA selection rendered as visible context",
             "PRA_NATIVE_MEMORY_NO_ADAPTOR": "the same generic PRA selection realized as native K/V",
             "PRA_SELECTED_CONTEXT_BUNDLE": {

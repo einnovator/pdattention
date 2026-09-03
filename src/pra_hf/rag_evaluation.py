@@ -1096,9 +1096,10 @@ def failure_classification(
     if not materialization_ok:
         return RAGFailureClass.PRA_MATERIALIZATION_MISS.value
     selected_gold = question.gold_document_ids.intersection(context.selected_document_ids)
-    if not selected_gold:
-        if context.condition is ContextCondition.NO_PRA_STANDARD_RAG:
+    if context.condition is ContextCondition.NO_PRA_STANDARD_RAG:
+        if not question.gold_document_ids.issubset(context.selected_document_ids):
             return RAGFailureClass.STANDARD_RAG_PACKING_MISS.value
+    elif not selected_gold:
         return RAGFailureClass.PRA_SELECTOR_MISS.value
     if (
         context.condition is not ContextCondition.NO_PRA_STANDARD_RAG
