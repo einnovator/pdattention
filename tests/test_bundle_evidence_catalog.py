@@ -296,30 +296,27 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     assert 0 not in states
 
 
-@pytest.mark.parametrize(
-    ("bundle_name", "bits", "runtime"),
-    [
-        ("pra-qwen3-8b-mlx-6bit", 6, "MLX"),
-    ],
-)
-def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
-    bundle_name: str, bits: int, runtime: str
-) -> None:
+def test_qwen_6bit_native_result_is_exact_identity_qualified() -> None:
+    bundle_name = "pra-qwen3-8b-mlx-6bit"
     bundle = PRAModelBundle.from_pretrained(
         ROOT / "artifacts/pra_hf/bundles" / bundle_name
     )
 
-    assert bundle.base_model["quantization"]["bits"] == bits
-    assert bundle.base_model["quantization"]["runtime"] == runtime
-    assert bundle.qualification["status"] == "SMOKE"
-    assert bundle.qualification["headline"] == []
+    assert bundle.base_model["quantization"]["bits"] == 6
+    assert bundle.base_model["quantization"]["runtime"] == "MLX"
+    assert bundle.qualification["status"] == "ENGINE_QUALIFIED"
+    assert bundle.qualification["headline"][0]["semantic_equivalence"] == {
+        "exact_output_pairs": 60,
+        "paired_examples": 60,
+    }
+    assert bundle.runtime_compatibility["mlx"]["recommended"] == (
+        "Native Memory with BALANCED"
+    )
     assert bundle.learned_adapters == {}
     assert bundle.validate()["status"] == "VALID"
     card = BundleBuilder.model_card(bundle)
     assert "No learned router is bundled" in card
     assert "NO_QUALIFIED_ADAPTER" in card
-    assert "NEEDS_RUN" in card
-    assert "Exact-identity runtime smoke" in card
     assert "RUNTIME_SMOKE_VALIDATED" in card
     assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
 

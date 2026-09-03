@@ -441,7 +441,7 @@ def test_default_registry_contains_published_cross_family_catalog() -> None:
         "pra-qwen3-4b-mlx-8bit": "2c72b50830c072f0da831a71a2803273757a6838",
         "pra-qwen3-8b-mlx-8bit": "28729a7e91ea8b21c006105d19de39069903a117",
         "pra-qwen3-14b-mlx-8bit": "66fb14472ed292c3bca5a103e354e7fd77f3de47",
-        "pra-qwen3-8b-mlx-6bit": "23ddea23e4c0010461bcdb26dfe08b7fbf1c06a2",
+        "pra-qwen3-8b-mlx-6bit": "4049d8b46b2ae8d78f041a8eb18303d525c79d68",
         "pra-llama3-2-1b-mlx-8bit": "b98de7c1190699b418b46c61a53327876a938f67",
         "pra-gemma3-1b-mlx-8bit": "3872838bc8d63a7b0bb8e3a65c7e9341f8638e03",
         "pra-qwen2-5-1-5b-instruct-bnb-8bit": "05e27c6d339df3144134dc1b89b3e954b91b72a2",

@@ -33,7 +33,7 @@ profiles:
     status: QUALIFIED
     recommended: true
     engine: mlx
-    mode: Selected Context
+    mode: Native Memory
   economy:
     purpose: Reduced-consumer candidate; the held-out quality gate has not passed
     routing_adapter: null
@@ -44,10 +44,676 @@ profiles:
     mode: Native Memory
 qualification:
   contract_version: 1
-  status: SMOKE
-  headline: []
-  canonical_evidence: []
-  metrics: []
+  status: ENGINE_QUALIFIED
+  headline:
+  - &id001
+    metric_class: END_TASK
+    model_id: mlx-community/Qwen3-8B-6bit
+    model_revision: 35a99712f90d6c2c9a2407a3857e104a46edd9e6
+    quantization: 6bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: combined
+    sample_count: 60
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.1582324329545243
+      exact_match: 0.0
+      gold_answer_logprob: -18.85678284962972
+      evidence_recall: 0.6159722222222223
+      visible_tokens: 396.31666666666666
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 174.6120415336918
+        p95: 224.64625001884997
+        p99: 227.00741601875052
+      itl_ms:
+        p50: 27.132314305914484
+        p95: 28.941215565124445
+        p99: 29.470112303818535
+      output_tokens_per_second: 29.823901185928527
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 806.7466687178239
+        p50: 814.7646244906355
+        p95: 873.7064999877475
+        p99: 887.9827500204556
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.1582324329545243
+      exact_match: 0.0
+      gold_answer_logprob: -18.85678284962972
+      evidence_recall: 0.6159722222222223
+      visible_tokens: 33.516666666666666
+      selected_native_kv_tokens: 362.8
+      active_detail_bytes: 53497036.8
+      retained_detail_bytes: 53497036.8
+      ttft_ms:
+        p50: 175.75729149393737
+        p95: 203.59454199206084
+        p99: 219.18633300811052
+      itl_ms:
+        p50: 28.16370108706431
+        p95: 29.379034435133573
+        p99: 31.0572934787437
+      output_tokens_per_second: 29.39642590294064
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 818.3153007975003
+        p50: 833.5959170071874
+        p95: 871.3035419932567
+        p99: 894.9195420136675
+      peak_memory_bytes: null
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.54295807224862
+      ttft_pct: 0.6558825784214807
+      completion_latency_pct: 1.4339857266547624
+    semantic_equivalence:
+      exact_output_pairs: 60
+      paired_examples: 60
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: 301034d1049a1bf5817dffd0e8f61dc17e2b134e6cf1fa94eb420649b1a12d6d,fba567547ee2a4bdd99a9c38d92cd080f59de01a5a89dc45a0e15c52949ec715,ef1be51ef852b8c93f6751fe0e0be236d29bae8643651cb8b78f3e7c62a2c22f
+  canonical_evidence:
+  - schema_version: 1
+    key:
+      task: combined
+      hardware: Apple M4 Pro (Mac16,7), 48 GB
+      engine: mlx-lm
+      engine_version: 0.31.3
+      model_id: mlx-community/Qwen3-8B-6bit
+      model_revision: 35a99712f90d6c2c9a2407a3857e104a46edd9e6
+      model_fingerprint: null
+      mode: native-memory
+      profile: balanced
+    metric_definitions:
+      token_f1:
+        name: token_f1
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Token-overlap F1 against the reference answer.
+      exact_match:
+        name: exact_match
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Fraction of answers exactly matching the reference.
+      gold_answer_log_probability:
+        name: gold_answer_log_probability
+        group: quality
+        unit: log_probability
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean log-probability assigned to the gold answer.
+      evidence_recall:
+        name: evidence_recall
+        group: routing
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Fraction of annotated evidence recovered at the stated budget.
+      visible_tokens:
+        name: visible_tokens
+        group: context
+        unit: token
+        direction: lower_is_better
+        aggregation: mean
+        description: Tokens visible in the sequential prompt.
+      selected_native_kv_tokens:
+        name: selected_native_kv_tokens
+        group: context
+        unit: token
+        direction: neutral
+        aggregation: mean
+        description: Native K/V tokens selected outside the sequential prompt.
+      active_detail_bytes:
+        name: active_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes active for the request.
+      retained_detail_bytes:
+        name: retained_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes retained for reuse.
+      ttft_p50_ms:
+        name: ttft_p50_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p50
+        description: Median time to first generated token.
+      ttft_p95_ms:
+        name: ttft_p95_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p95
+        description: 95th-percentile time to first generated token.
+      ttft_p99_ms:
+        name: ttft_p99_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p99
+        description: 99th-percentile time to first generated token.
+      itl_p50_ms:
+        name: itl_p50_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p50
+        description: Median inter-token latency after the first generated token.
+      itl_p95_ms:
+        name: itl_p95_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p95
+        description: 95th-percentile inter-token latency after the first generated
+          token.
+      itl_p99_ms:
+        name: itl_p99_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p99
+        description: 99th-percentile inter-token latency after the first generated
+          token.
+      output_tokens_per_second:
+        name: output_tokens_per_second
+        group: serving
+        unit: output_token/s
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean decode-only output-token rate, excluding time to first token.
+      completion_latency_mean_ms:
+        name: completion_latency_mean_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: mean
+        description: Mean end-to-end completion latency.
+    conditions:
+      no_pra:
+        metrics:
+          token_f1:
+            value: 0.1582324329545243
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.0
+            state: MEASURED
+            note: null
+          gold_answer_log_probability:
+            value: -18.85678284962972
+            state: MEASURED
+            note: null
+          evidence_recall:
+            value: 0.6159722222222223
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 396.31666666666666
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 0.0
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          ttft_p50_ms:
+            value: 174.6120415336918
+            state: MEASURED
+            note: null
+          ttft_p95_ms:
+            value: 224.64625001884997
+            state: MEASURED
+            note: null
+          ttft_p99_ms:
+            value: 227.00741601875052
+            state: MEASURED
+            note: null
+          itl_p50_ms:
+            value: 27.132314305914484
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 28.941215565124445
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 29.470112303818535
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 29.823901185928527
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 806.7466687178239
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_no_adaptor:
+        metrics:
+          token_f1:
+            value: 0.1582324329545243
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.0
+            state: MEASURED
+            note: null
+          gold_answer_log_probability:
+            value: -18.85678284962972
+            state: MEASURED
+            note: null
+          evidence_recall:
+            value: 0.6159722222222223
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 33.516666666666666
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 362.8
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 53497036.8
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 53497036.8
+            state: MEASURED
+            note: null
+          ttft_p50_ms:
+            value: 175.75729149393737
+            state: MEASURED
+            note: null
+          ttft_p95_ms:
+            value: 203.59454199206084
+            state: MEASURED
+            note: null
+          ttft_p99_ms:
+            value: 219.18633300811052
+            state: MEASURED
+            note: null
+          itl_p50_ms:
+            value: 28.16370108706431
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 29.379034435133573
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 31.0572934787437
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 29.39642590294064
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 818.3153007975003
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_adaptor_bundle:
+        metrics:
+          token_f1:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          exact_match:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          gold_answer_log_probability:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          evidence_recall:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          visible_tokens:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          selected_native_kv_tokens:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          active_detail_bytes:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          retained_detail_bytes:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          ttft_p50_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          ttft_p95_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          ttft_p99_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          itl_p50_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          itl_p95_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          itl_p99_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          output_tokens_per_second:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          completion_latency_mean_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+        bundle_id: null
+        bundle_revision: null
+    provenance:
+      cohort: selector-frozen natural QA; cold direct query; seed_count=5
+      seeds: []
+      concurrency: null
+      prompt_length_distribution: {}
+      output_length_distribution: {}
+      run_ids: []
+      commit: null
+      date: '2026-09-03'
+      artifacts:
+      - qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+        qualification/matched_e0_e2_2wikimultihopqa.json
+    evidence_tier: ENGINE_QUALIFIED
+  metrics:
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-8B-6bit
+    model_revision: 35a99712f90d6c2c9a2407a3857e104a46edd9e6
+    quantization: 6bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: qasper
+    sample_count: 20
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.18355708460113493
+      exact_match: 0.0
+      gold_answer_logprob: -35.45235023498535
+      evidence_recall: 0.34791666666666665
+      visible_tokens: 398.65
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 133.55175001197495
+        p95: 199.0933750057593
+        p99: 199.79633297771215
+      itl_ms:
+        p50: 27.26575812962635
+        p95: 28.850938390899934
+        p99: 28.941215565124445
+      output_tokens_per_second: 31.12698404298149
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 771.7503166000824
+        p50: 764.1401250148192
+        p95: 822.9733749758452
+        p99: 826.32695796201
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.18355708460113493
+      exact_match: 0.0
+      gold_answer_logprob: -35.45235023498535
+      evidence_recall: 0.34791666666666665
+      visible_tokens: 28.05
+      selected_native_kv_tokens: 370.6
+      active_detail_bytes: 54647193.6
+      retained_detail_bytes: 54647193.6
+      ttft_ms:
+        p50: 128.4384794998914
+        p95: 193.7053749570623
+        p99: 194.0393340191804
+      itl_ms:
+        p50: 27.92612050088001
+        p95: 29.391949259898748
+        p99: 31.0572934787437
+      output_tokens_per_second: 30.490295924984807
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 788.3357083890587
+        p50: 775.128292007139
+        p95: 870.06237503374
+        p99: 872.9227909934707
+      peak_memory_bytes: null
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -92.96375266524521
+      ttft_pct: -3.828681025613714
+      completion_latency_pct: 2.149061870430141
+    semantic_equivalence:
+      exact_output_pairs: 20
+      paired_examples: 20
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: 301034d1049a1bf5817dffd0e8f61dc17e2b134e6cf1fa94eb420649b1a12d6d,fba567547ee2a4bdd99a9c38d92cd080f59de01a5a89dc45a0e15c52949ec715,ef1be51ef852b8c93f6751fe0e0be236d29bae8643651cb8b78f3e7c62a2c22f
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-8B-6bit
+    model_revision: 35a99712f90d6c2c9a2407a3857e104a46edd9e6
+    quantization: 6bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: hotpotqa
+    sample_count: 20
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.17909134208198685
+      exact_match: 0.0
+      gold_answer_logprob: -8.832960414886475
+      evidence_recall: 0.725
+      visible_tokens: 415.35
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 206.81195848737843
+        p95: 225.92866601189598
+        p99: 226.16400005063042
+      itl_ms:
+        p50: 27.044564304600023
+        p95: 27.553153998704385
+        p99: 28.167009042353246
+      output_tokens_per_second: 29.166173099637167
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 823.8133583625313
+        p50: 830.8977499837056
+        p95: 847.6628340431489
+        p99: 852.7047089883126
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.17909134208198685
+      exact_match: 0.0
+      gold_answer_logprob: -8.832960414886475
+      evidence_recall: 0.725
+      visible_tokens: 39.05
+      selected_native_kv_tokens: 376.3
+      active_detail_bytes: 55487692.8
+      retained_detail_bytes: 55487692.8
+      ttft_ms:
+        p50: 194.71216649981216
+        p95: 198.66570801241323
+        p99: 200.47758298460394
+      itl_ms:
+        p50: 28.04373913070025
+        p95: 29.194739130932998
+        p99: 29.37357973702171
+      output_tokens_per_second: 28.681040383190798
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 837.5367646571249
+        p50: 839.2046250228304
+        p95: 867.2014580224641
+        p99: 870.3704589861445
+      peak_memory_bytes: null
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -90.59829059829059
+      ttft_pct: -5.8506249232704395
+      completion_latency_pct: 1.6658392529433104
+    semantic_equivalence:
+      exact_output_pairs: 20
+      paired_examples: 20
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: 301034d1049a1bf5817dffd0e8f61dc17e2b134e6cf1fa94eb420649b1a12d6d,fba567547ee2a4bdd99a9c38d92cd080f59de01a5a89dc45a0e15c52949ec715,ef1be51ef852b8c93f6751fe0e0be236d29bae8643651cb8b78f3e7c62a2c22f
+  - metric_class: END_TASK
+    model_id: mlx-community/Qwen3-8B-6bit
+    model_revision: 35a99712f90d6c2c9a2407a3857e104a46edd9e6
+    quantization: 6bit
+    engine: mlx-lm
+    engine_version: 0.31.3
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: 2wikimultihopqa
+    sample_count: 20
+    seed_count: 5
+    baseline:
+      quality_metric: token_f1
+      quality: 0.11204887218045113
+      exact_match: 0.0
+      gold_answer_logprob: -12.285037899017334
+      evidence_recall: 0.775
+      visible_tokens: 374.95
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: 195.13381252181716
+        p95: 224.64625001884997
+        p99: 227.00741601875052
+      itl_ms:
+        p50: 28.047005454857793
+        p95: 29.226545305193767
+        p99: 29.470112303818535
+      output_tokens_per_second: 29.178546415166924
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 824.676331190858
+        p50: 814.7646244906355
+        p95: 887.1679999865592
+        p99: 887.9827500204556
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.11204887218045113
+      exact_match: 0.0
+      gold_answer_logprob: -12.285037899017334
+      evidence_recall: 0.775
+      visible_tokens: 33.45
+      selected_native_kv_tokens: 341.5
+      active_detail_bytes: 50356224.0
+      retained_detail_bytes: 50356224.0
+      ttft_ms:
+        p50: 192.99272901844233
+        p95: 205.2647920208983
+        p99: 219.18633300811052
+      itl_ms:
+        p50: 28.75914402133988
+        p95: 29.379034435133573
+        p99: 30.075434782623272
+      output_tokens_per_second: 29.01794140064631
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 829.0734293463174
+        p50: 842.6705629972275
+        p95: 888.8168329722248
+        p99: 894.9195420136675
+      peak_memory_bytes: null
+    deltas:
+      quality: 0.0
+      visible_tokens_pct: -91.07881050806775
+      ttft_pct: -1.0972385952513706
+      completion_latency_pct: 0.53319077911571
+    semantic_equivalence:
+      exact_output_pairs: 20
+      paired_examples: 20
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: RECOMMENDED
+    hardware: Apple M4 Pro (Mac16,7), 48 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: 301034d1049a1bf5817dffd0e8f61dc17e2b134e6cf1fa94eb420649b1a12d6d,fba567547ee2a4bdd99a9c38d92cd080f59de01a5a89dc45a0e15c52949ec715,ef1be51ef852b8c93f6751fe0e0be236d29bae8643651cb8b78f3e7c62a2c22f
+  - *id001
   routing_diagnostics: []
   runtime_smoke:
     schema_version: 1
@@ -88,24 +754,28 @@ qualification:
   limitations:
   - No learned router is bundled for this exact quantized identity; routing-adapter
     transfer from another quantization is intentionally disallowed.
-  - Only immutable-config structural validation is available for this exact quantized
-    identity.
-  - Native consumer-layer profiles and end-task generation remain uncalibrated for
-    this exact identity.
+  - Paired natural-QA evidence contains 20 examples per dataset and supports engine
+    qualification, not production qualification.
+  - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
+    therefore retains all eligible layers.
   - The qualification identity is the exact 6bit MLX model and revision; it does not
     transfer automatically to another checkpoint, engine, or quantization.
-  - The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt;
-    it is not an end-task quality or serving benchmark.
+  - The selector-frozen natural-QA run qualifies the generic Native Memory path; an
+    exact learned-adaptor arm still requires a separate run.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/structural_validation.json
   - qualification/runtime_smoke.json
+  - qualification/matched_e0_e2_qasper.json
+  - qualification/matched_e0_e2_hotpotqa.json
+  - qualification/matched_e0_e2_2wikimultihopqa.json
+  - qualification/canonical_evidence.json
 runtime_compatibility:
   mlx:
-    selected_context: SMOKE
-    native_memory: AVAILABLE
+    selected_context: validated
+    native_memory: QUALIFIED
     native_serving: NOT_APPLICABLE
-    recommended: Selected Context with BALANCED
+    recommended: Native Memory with BALANCED
 engine_realizations:
   mlx:
     bundle_consumed_by: pra_runtime
@@ -113,22 +783,29 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 904e04070ce0309f45a161650e9907c66be5822e
+  bundle_build_commit: 904e04070ce0309f45a161650e9907c66be5822e
   hf_repo: EInnovator/pra-qwen3-8b-mlx-6bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen3-8b-mlx-6bit
-  selection_reason: Fleet-compatible exact quantization with evidence isolated from
-    other weight representations.
+  source_artifact:
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen3-8b-mlx-6bit/matched_e0_e2_qasper.json
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen3-8b-mlx-6bit/matched_e0_e2_hotpotqa.json
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen3-8b-mlx-6bit/matched_e0_e2_2wikimultihopqa.json
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
 checksums:
+  qualification/canonical_evidence.json: 7b97eceef40d3c164c2517d37e50a849334ef81cf9b4c1e2f33c543ea28a3ff1
+  qualification/matched_e0_e2_2wikimultihopqa.json: ef1be51ef852b8c93f6751fe0e0be236d29bae8643651cb8b78f3e7c62a2c22f
+  qualification/matched_e0_e2_hotpotqa.json: fba567547ee2a4bdd99a9c38d92cd080f59de01a5a89dc45a0e15c52949ec715
+  qualification/matched_e0_e2_qasper.json: 301034d1049a1bf5817dffd0e8f61dc17e2b134e6cf1fa94eb420649b1a12d6d
   qualification/runtime_smoke.json: 600e833b8549c1e89c47f12d0bed6b9fe35176f6a31b198c93cc3c7fa24e4549
   qualification/structural_validation.json: aab12e972507ddd432fa57eff7ba9c2b4f305f321468cedd75375d97d8a23778
   structural_adapter/pra_adapter.yaml: 5f0f1e51000f2170631eb6322dd87412ae8b54a5993401cfdcdbe162dd29431f
 trust:
-  status: eInnovator-maintained
+  status: eInnovator-qualified
   publisher: EInnovator
   scope: exact 6bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations

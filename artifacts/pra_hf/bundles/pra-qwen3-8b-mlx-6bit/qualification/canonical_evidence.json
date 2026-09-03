@@ -1,0 +1,860 @@
+[
+  {
+    "schema_version": 1,
+    "key": {
+      "task": "combined",
+      "hardware": "Apple M4 Pro (Mac16,7), 48 GB",
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model_id": "mlx-community/Qwen3-8B-6bit",
+      "model_revision": "35a99712f90d6c2c9a2407a3857e104a46edd9e6",
+      "model_fingerprint": null,
+      "mode": "native-memory",
+      "profile": "balanced"
+    },
+    "metric_definitions": {
+      "token_f1": {
+        "name": "token_f1",
+        "group": "quality",
+        "unit": "fraction",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Token-overlap F1 against the reference answer."
+      },
+      "exact_match": {
+        "name": "exact_match",
+        "group": "quality",
+        "unit": "fraction",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Fraction of answers exactly matching the reference."
+      },
+      "gold_answer_log_probability": {
+        "name": "gold_answer_log_probability",
+        "group": "quality",
+        "unit": "log_probability",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Mean log-probability assigned to the gold answer."
+      },
+      "evidence_recall": {
+        "name": "evidence_recall",
+        "group": "routing",
+        "unit": "fraction",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Fraction of annotated evidence recovered at the stated budget."
+      },
+      "visible_tokens": {
+        "name": "visible_tokens",
+        "group": "context",
+        "unit": "token",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Tokens visible in the sequential prompt."
+      },
+      "selected_native_kv_tokens": {
+        "name": "selected_native_kv_tokens",
+        "group": "context",
+        "unit": "token",
+        "direction": "neutral",
+        "aggregation": "mean",
+        "description": "Native K/V tokens selected outside the sequential prompt."
+      },
+      "active_detail_bytes": {
+        "name": "active_detail_bytes",
+        "group": "resources",
+        "unit": "byte",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Native detail bytes active for the request."
+      },
+      "retained_detail_bytes": {
+        "name": "retained_detail_bytes",
+        "group": "resources",
+        "unit": "byte",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Native detail bytes retained for reuse."
+      },
+      "ttft_p50_ms": {
+        "name": "ttft_p50_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p50",
+        "description": "Median time to first generated token."
+      },
+      "ttft_p95_ms": {
+        "name": "ttft_p95_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p95",
+        "description": "95th-percentile time to first generated token."
+      },
+      "ttft_p99_ms": {
+        "name": "ttft_p99_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p99",
+        "description": "99th-percentile time to first generated token."
+      },
+      "itl_p50_ms": {
+        "name": "itl_p50_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p50",
+        "description": "Median inter-token latency after the first generated token."
+      },
+      "itl_p95_ms": {
+        "name": "itl_p95_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p95",
+        "description": "95th-percentile inter-token latency after the first generated token."
+      },
+      "itl_p99_ms": {
+        "name": "itl_p99_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p99",
+        "description": "99th-percentile inter-token latency after the first generated token."
+      },
+      "output_tokens_per_second": {
+        "name": "output_tokens_per_second",
+        "group": "serving",
+        "unit": "output_token/s",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Mean decode-only output-token rate, excluding time to first token."
+      },
+      "completion_latency_mean_ms": {
+        "name": "completion_latency_mean_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Mean end-to-end completion latency."
+      }
+    },
+    "conditions": {
+      "no_pra": {
+        "metrics": {
+          "token_f1": {
+            "value": 0.1582324329545243,
+            "state": "MEASURED",
+            "note": null
+          },
+          "exact_match": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "gold_answer_log_probability": {
+            "value": -18.85678284962972,
+            "state": "MEASURED",
+            "note": null
+          },
+          "evidence_recall": {
+            "value": 0.6159722222222223,
+            "state": "MEASURED",
+            "note": null
+          },
+          "visible_tokens": {
+            "value": 396.31666666666666,
+            "state": "MEASURED",
+            "note": null
+          },
+          "selected_native_kv_tokens": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "active_detail_bytes": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "retained_detail_bytes": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p50_ms": {
+            "value": 174.6120415336918,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p95_ms": {
+            "value": 224.64625001884997,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p99_ms": {
+            "value": 227.00741601875052,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p50_ms": {
+            "value": 27.132314305914484,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p95_ms": {
+            "value": 28.941215565124445,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p99_ms": {
+            "value": 29.470112303818535,
+            "state": "MEASURED",
+            "note": null
+          },
+          "output_tokens_per_second": {
+            "value": 29.823901185928527,
+            "state": "MEASURED",
+            "note": null
+          },
+          "completion_latency_mean_ms": {
+            "value": 806.7466687178239,
+            "state": "MEASURED",
+            "note": null
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      },
+      "pra_no_adaptor": {
+        "metrics": {
+          "token_f1": {
+            "value": 0.1582324329545243,
+            "state": "MEASURED",
+            "note": null
+          },
+          "exact_match": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "gold_answer_log_probability": {
+            "value": -18.85678284962972,
+            "state": "MEASURED",
+            "note": null
+          },
+          "evidence_recall": {
+            "value": 0.6159722222222223,
+            "state": "MEASURED",
+            "note": null
+          },
+          "visible_tokens": {
+            "value": 33.516666666666666,
+            "state": "MEASURED",
+            "note": null
+          },
+          "selected_native_kv_tokens": {
+            "value": 362.8,
+            "state": "MEASURED",
+            "note": null
+          },
+          "active_detail_bytes": {
+            "value": 53497036.8,
+            "state": "MEASURED",
+            "note": null
+          },
+          "retained_detail_bytes": {
+            "value": 53497036.8,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p50_ms": {
+            "value": 175.75729149393737,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p95_ms": {
+            "value": 203.59454199206084,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p99_ms": {
+            "value": 219.18633300811052,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p50_ms": {
+            "value": 28.16370108706431,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p95_ms": {
+            "value": 29.379034435133573,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p99_ms": {
+            "value": 31.0572934787437,
+            "state": "MEASURED",
+            "note": null
+          },
+          "output_tokens_per_second": {
+            "value": 29.39642590294064,
+            "state": "MEASURED",
+            "note": null
+          },
+          "completion_latency_mean_ms": {
+            "value": 818.3153007975003,
+            "state": "MEASURED",
+            "note": null
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      },
+      "pra_adaptor_bundle": {
+        "metrics": {
+          "token_f1": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "exact_match": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "gold_answer_log_probability": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "evidence_recall": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "visible_tokens": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "selected_native_kv_tokens": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "active_detail_bytes": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "retained_detail_bytes": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "ttft_p50_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "ttft_p95_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "ttft_p99_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "itl_p50_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "itl_p95_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "itl_p99_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "output_tokens_per_second": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          },
+          "completion_latency_mean_ms": {
+            "value": null,
+            "state": "NO_QUALIFIED_ADAPTER",
+            "note": "No learned adaptor qualified for this exact model revision and quantization."
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      }
+    },
+    "provenance": {
+      "cohort": "selector-frozen natural QA; cold direct query; seed_count=5",
+      "seeds": [],
+      "concurrency": null,
+      "prompt_length_distribution": {},
+      "output_length_distribution": {},
+      "run_ids": [],
+      "commit": null,
+      "date": "2026-09-03",
+      "artifacts": [
+        "qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json"
+      ]
+    },
+    "evidence_tier": "ENGINE_QUALIFIED",
+    "deltas": {
+      "pra_no_adaptor": {
+        "token_f1": {
+          "metric": "token_f1",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.1582324329545243,
+          "candidate": 0.1582324329545243,
+          "delta": 0.0,
+          "percent_delta": 0.0,
+          "state": "MEASURED"
+        },
+        "exact_match": {
+          "metric": "exact_match",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 0.0,
+          "delta": 0.0,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "gold_answer_log_probability": {
+          "metric": "gold_answer_log_probability",
+          "condition": "pra_no_adaptor",
+          "baseline": -18.85678284962972,
+          "candidate": -18.85678284962972,
+          "delta": 0.0,
+          "percent_delta": -0.0,
+          "state": "MEASURED"
+        },
+        "evidence_recall": {
+          "metric": "evidence_recall",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.6159722222222223,
+          "candidate": 0.6159722222222223,
+          "delta": 0.0,
+          "percent_delta": 0.0,
+          "state": "MEASURED"
+        },
+        "visible_tokens": {
+          "metric": "visible_tokens",
+          "condition": "pra_no_adaptor",
+          "baseline": 396.31666666666666,
+          "candidate": 33.516666666666666,
+          "delta": -362.8,
+          "percent_delta": -91.54295807224862,
+          "state": "MEASURED"
+        },
+        "selected_native_kv_tokens": {
+          "metric": "selected_native_kv_tokens",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 362.8,
+          "delta": 362.8,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "active_detail_bytes": {
+          "metric": "active_detail_bytes",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 53497036.8,
+          "delta": 53497036.8,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "retained_detail_bytes": {
+          "metric": "retained_detail_bytes",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 53497036.8,
+          "delta": 53497036.8,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "ttft_p50_ms": {
+          "metric": "ttft_p50_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 174.6120415336918,
+          "candidate": 175.75729149393737,
+          "delta": 1.1452499602455646,
+          "percent_delta": 0.6558825784214807,
+          "state": "MEASURED"
+        },
+        "ttft_p95_ms": {
+          "metric": "ttft_p95_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 224.64625001884997,
+          "candidate": 203.59454199206084,
+          "delta": -21.05170802678913,
+          "percent_delta": -9.371048047774085,
+          "state": "MEASURED"
+        },
+        "ttft_p99_ms": {
+          "metric": "ttft_p99_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 227.00741601875052,
+          "candidate": 219.18633300811052,
+          "delta": -7.821083010639995,
+          "percent_delta": -3.4452984610837487,
+          "state": "MEASURED"
+        },
+        "itl_p50_ms": {
+          "metric": "itl_p50_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 27.132314305914484,
+          "candidate": 28.16370108706431,
+          "delta": 1.031386781149827,
+          "percent_delta": 3.801322546691118,
+          "state": "MEASURED"
+        },
+        "itl_p95_ms": {
+          "metric": "itl_p95_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 28.941215565124445,
+          "candidate": 29.379034435133573,
+          "delta": 0.4378188700091279,
+          "percent_delta": 1.5127867349729451,
+          "state": "MEASURED"
+        },
+        "itl_p99_ms": {
+          "metric": "itl_p99_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 29.470112303818535,
+          "candidate": 31.0572934787437,
+          "delta": 1.5871811749251634,
+          "percent_delta": 5.385731681516217,
+          "state": "MEASURED"
+        },
+        "output_tokens_per_second": {
+          "metric": "output_tokens_per_second",
+          "condition": "pra_no_adaptor",
+          "baseline": 29.823901185928527,
+          "candidate": 29.39642590294064,
+          "delta": -0.4274752829878885,
+          "percent_delta": -1.4333312074866293,
+          "state": "MEASURED"
+        },
+        "completion_latency_mean_ms": {
+          "metric": "completion_latency_mean_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 806.7466687178239,
+          "candidate": 818.3153007975003,
+          "delta": 11.568632079676377,
+          "percent_delta": 1.4339857266547624,
+          "state": "MEASURED"
+        }
+      },
+      "pra_adaptor_bundle": {
+        "token_f1": {
+          "metric": "token_f1",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.1582324329545243,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "exact_match": {
+          "metric": "exact_match",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "gold_answer_log_probability": {
+          "metric": "gold_answer_log_probability",
+          "condition": "pra_adaptor_bundle",
+          "baseline": -18.85678284962972,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "evidence_recall": {
+          "metric": "evidence_recall",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.6159722222222223,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "visible_tokens": {
+          "metric": "visible_tokens",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 396.31666666666666,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "selected_native_kv_tokens": {
+          "metric": "selected_native_kv_tokens",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "active_detail_bytes": {
+          "metric": "active_detail_bytes",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "retained_detail_bytes": {
+          "metric": "retained_detail_bytes",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "ttft_p50_ms": {
+          "metric": "ttft_p50_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 174.6120415336918,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "ttft_p95_ms": {
+          "metric": "ttft_p95_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 224.64625001884997,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "ttft_p99_ms": {
+          "metric": "ttft_p99_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 227.00741601875052,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "itl_p50_ms": {
+          "metric": "itl_p50_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 27.132314305914484,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "itl_p95_ms": {
+          "metric": "itl_p95_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 28.941215565124445,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "itl_p99_ms": {
+          "metric": "itl_p99_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 29.470112303818535,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "output_tokens_per_second": {
+          "metric": "output_tokens_per_second",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 29.823901185928527,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        },
+        "completion_latency_mean_ms": {
+          "metric": "completion_latency_mean_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 806.7466687178239,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NO_QUALIFIED_ADAPTER"
+        }
+      }
+    },
+    "incremental_adaptor_deltas": {
+      "token_f1": {
+        "metric": "token_f1",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.1582324329545243,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "exact_match": {
+        "metric": "exact_match",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "gold_answer_log_probability": {
+        "metric": "gold_answer_log_probability",
+        "condition": "pra_adaptor_bundle",
+        "baseline": -18.85678284962972,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "evidence_recall": {
+        "metric": "evidence_recall",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.6159722222222223,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "visible_tokens": {
+        "metric": "visible_tokens",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 33.516666666666666,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "selected_native_kv_tokens": {
+        "metric": "selected_native_kv_tokens",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 362.8,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "active_detail_bytes": {
+        "metric": "active_detail_bytes",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 53497036.8,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "retained_detail_bytes": {
+        "metric": "retained_detail_bytes",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 53497036.8,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "ttft_p50_ms": {
+        "metric": "ttft_p50_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 175.75729149393737,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "ttft_p95_ms": {
+        "metric": "ttft_p95_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 203.59454199206084,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "ttft_p99_ms": {
+        "metric": "ttft_p99_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 219.18633300811052,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "itl_p50_ms": {
+        "metric": "itl_p50_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 28.16370108706431,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "itl_p95_ms": {
+        "metric": "itl_p95_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 29.379034435133573,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "itl_p99_ms": {
+        "metric": "itl_p99_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 31.0572934787437,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "output_tokens_per_second": {
+        "metric": "output_tokens_per_second",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 29.39642590294064,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      },
+      "completion_latency_mean_ms": {
+        "metric": "completion_latency_mean_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 818.3153007975003,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NO_QUALIFIED_ADAPTER"
+      }
+    }
+  }
+]
