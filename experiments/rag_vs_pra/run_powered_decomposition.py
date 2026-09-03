@@ -532,10 +532,16 @@ def main() -> None:
                         ),
                     )
                 )
+            ranking_cache: dict[int, tuple[object, float]] = {}
             for selector_profile, selector, conditions in selectors:
-                rank_started = time.perf_counter()
-                ranking = selector.rank(question.question, prepared.chunks)
-                selector_ms = (time.perf_counter() - rank_started) * 1000.0
+                cached_ranking = ranking_cache.get(id(selector))
+                if cached_ranking is None:
+                    rank_started = time.perf_counter()
+                    ranking = selector.rank(question.question, prepared.chunks)
+                    selector_ms = (time.perf_counter() - rank_started) * 1000.0
+                    ranking_cache[id(selector)] = (ranking, selector_ms)
+                else:
+                    ranking, selector_ms = cached_ranking
                 for token_budget in args.token_budgets:
                     base = packed_context_from_ranking(
                         condition=conditions[0],
