@@ -225,6 +225,13 @@ def qualification_gates(
 
     measured = [row for row in summaries if row.get("status") == "MEASURED"]
     powered = [row for row in measured if int(row.get("examples", 0)) >= minimum_examples]
+    baselines = [
+        row
+        for row in powered
+        if row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value
+        and row["selector_profile"] == "standard_bm25"
+        and row["regime"] == "COLD"
+    ]
     selected = [
         row
         for row in powered
@@ -237,6 +244,18 @@ def qualification_gates(
         if row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value
         and row["regime"] == "COLD"
     ]
+    warm_native = [
+        row
+        for row in powered
+        if row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value
+        and row["regime"] == "WARM"
+    ]
+    warm_selected = [
+        row
+        for row in powered
+        if row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value
+        and row["regime"] == "WARM"
+    ]
     bundle = [
         row
         for row in powered
@@ -245,20 +264,41 @@ def qualification_gates(
             ContextCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
         }
     ]
+    def by_config(values: Sequence[Mapping[str, object]]) -> dict[tuple[object, object], Mapping[str, object]]:
+        return {(row["candidate_count"], row["token_budget"]): row for row in values}
+    baseline_by_config = by_config(baselines)
+    selected_by_config = by_config(selected)
+    native_by_config = by_config(native)
+    warm_selected_by_config = by_config(warm_selected)
+    warm_native_by_config = by_config(warm_native)
     selection_pass = any(
-        float(row.get("token_f1") or 0.0) > 0.0
-        and float(row.get("materialization_avoidance") or 0.0) >= 0.25
-        for row in selected
+        (
+            float(selected_row.get("token_f1") or 0.0)
+            >= float(baseline_by_config[key].get("token_f1") or 0.0) - 0.02
+            and (
+                float(selected_row.get("physical_context_tokens") or math.inf)
+                <= 0.8 * float(baseline_by_config[key].get("physical_context_tokens") or 0.0)
+                or float(selected_row.get("token_f1") or 0.0)
+                > float(baseline_by_config[key].get("token_f1") or 0.0)
+            )
+        )
+        for key, selected_row in selected_by_config.items()
+        if key in baseline_by_config
     )
     native_pass = any(
-        float(row.get("token_f1") or 0.0) > 0.0
-        and float(row.get("total_latency_ms") or math.inf) < math.inf
-        for row in native
+        float(native_row.get("token_f1") or 0.0)
+        >= float(selected_by_config[key].get("token_f1") or 0.0) - 0.02
+        and float(native_row.get("official_multihop_rag_score") or 0.0)
+        >= float(selected_by_config[key].get("official_multihop_rag_score") or 0.0) - 0.02
+        for key, native_row in native_by_config.items()
+        if key in selected_by_config
     )
     economic_pass = any(
-        float(row.get("native_reuse") or 0.0) > 0.0
-        and float(row.get("total_latency_ms") or math.inf) < math.inf
-        for row in native
+        float(native_row.get("native_reuse") or 0.0) > 0.0
+        and float(native_row.get("total_latency_ms") or math.inf)
+        <= float(warm_selected_by_config[key].get("total_latency_ms") or 0.0)
+        for key, native_row in warm_native_by_config.items()
+        if key in warm_selected_by_config
     )
     bundle_pass = bool(bundle) and all(
         row.get("status") == "MEASURED" for row in bundle

@@ -278,12 +278,20 @@ class PersistentMLXBackend:
             native_bytes = 0
         ingestion_ms = (time.perf_counter() - ingestion_started) * 1000.0
         prediction, serving = self._generate(query_tokens, cache)
+        decode_total_ms = float(serving["total_latency_ms"])
+        decode_ttft_ms = float(serving["ttft_ms"])
+        generated_tokens = int(serving["generated_tokens"])
+        total_latency_ms = ingestion_ms + decode_total_ms
         peak = int(getattr(mx, "get_peak_memory", lambda: 0)()) or None
         active = int(getattr(mx, "get_active_memory", lambda: 0)()) or None
         source_count = len(source_tokens)
         return prediction, {
             **serving,
-            "prefill_ms": ingestion_ms + float(serving["ttft_ms"]),
+            "ttft_ms": ingestion_ms + decode_ttft_ms,
+            "prefill_ms": ingestion_ms + decode_ttft_ms,
+            "total_latency_ms": total_latency_ms,
+            "tokens_per_second": generated_tokens / max(total_latency_ms / 1000.0, 1e-9),
+            "output_tokens_per_second": generated_tokens / max(decode_total_ms / 1000.0, 1e-9),
             "ingestion_ms": ingestion_ms,
             "native_encode_ms": ingestion_ms if native and not cache_hit else 0.0,
             "visible_text_ingestion_ms": ingestion_ms if not native else 0.0,
