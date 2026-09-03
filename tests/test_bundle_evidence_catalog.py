@@ -17,6 +17,7 @@ from pra_hf.bundle_evidence import (
     EvidenceIdentity,
     EvidenceValidationError,
     canonicalize_paired_transport_evidence,
+    import_matched_e0_e2_evidence,
     import_mlx_paired_evidence,
     import_product_matrix_evidence,
     validate_selector_manifest,
@@ -73,6 +74,103 @@ def test_mlx_importer_rejects_revision_and_mode_mismatch() -> None:
         import_mlx_paired_evidence(MLX_32B, _identity(model_revision="wrong"))
     with pytest.raises(EvidenceValidationError, match="BALANCED Native Memory"):
         import_mlx_paired_evidence(MLX_32B, _identity(execution_mode="Selected Context"))
+
+
+def test_shared_matched_importer_uses_one_cold_row_per_selection(tmp_path: Path) -> None:
+    def row(condition: str, selection_id: str, token_f1: float) -> dict:
+        native = condition == "e2_native_kv"
+        return {
+            "condition": condition,
+            "regime": "cold_one_shot",
+            "request_ordinal": 0,
+            "query_sha256": "q" * 64,
+            "selection": {"selection_id": selection_id},
+            "output": "answer",
+            "metrics": {
+                "quality": {
+                    "exact_match": token_f1,
+                    "token_f1": token_f1,
+                    "gold_answer_logprob": -1.0,
+                    "evidence_recall": 1.0,
+                },
+                "input": {"visible_prompt_tokens": 40 if native else 140},
+                "pra": {
+                    "selected_native_kv_tokens": 100 if native else 0,
+                    "active_detail_bytes": 1024 if native else 0,
+                    "retained_detail_bytes": 1024 if native else 0,
+                },
+                "serving": {
+                    "ttft_ms": 10.0 if native else 20.0,
+                    "itl_ms": 2.0,
+                    "total_latency_ms": 30.0,
+                    "tokens_per_second": 50.0,
+                    "requests_per_second": None,
+                },
+            },
+            "extra": {"seed": 11},
+        }
+
+    payload = {
+        "schema_version": "2.0",
+        "engine": "mlx-lm",
+        "engine_version": "0.31.3",
+        "model_id": _identity().model_id,
+        "model_revision": _identity().model_revision,
+        "dataset": "qasper",
+        "rows": [
+            row("e0_selected_text", "selection-1", 0.5),
+            row("e2_native_kv", "selection-1", 0.5),
+            # Reuse rows must not be counted as extra quality examples.
+            {**row("e0_selected_text", "selection-1", 0.0), "regime": "warm_repeated"},
+            {**row("e2_native_kv", "selection-1", 0.0), "regime": "warm_repeated"},
+        ],
+    }
+    artifact = tmp_path / "matched.json"
+    artifact.write_text(__import__("json").dumps(payload), encoding="utf-8")
+
+    imported = import_matched_e0_e2_evidence(
+        [artifact],
+        _identity(),
+        hardware="Apple M4 Pro, 48 GB",
+        evidence_date="2026-09-03",
+    )
+    combined = next(item for item in imported if item["dataset"] == "combined")
+
+    assert combined["sample_count"] == 1
+    assert combined["baseline"]["quality"] == 0.5
+    assert combined["pra"]["quality"] == 0.5
+    assert combined["deltas"]["visible_tokens_pct"] == pytest.approx(-71.42857)
+    assert combined["semantic_equivalence"] == {
+        "exact_output_pairs": 1,
+        "paired_examples": 1,
+    }
+
+
+def test_shared_matched_importer_rejects_unpaired_or_wrong_identity(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "schema_version": "2.0",
+        "engine": "mlx-lm",
+        "engine_version": "0.31.3",
+        "model_id": _identity().model_id,
+        "model_revision": _identity().model_revision,
+        "dataset": "qasper",
+        "rows": [],
+    }
+    artifact = tmp_path / "matched.json"
+    artifact.write_text(__import__("json").dumps(payload), encoding="utf-8")
+    with pytest.raises(EvidenceValidationError, match="cohort mismatch"):
+        import_matched_e0_e2_evidence(
+            [artifact], _identity(), hardware="M4", evidence_date="2026-09-03"
+        )
+    with pytest.raises(EvidenceValidationError, match="model_revision"):
+        import_matched_e0_e2_evidence(
+            [artifact],
+            _identity(model_revision="wrong"),
+            hardware="M4",
+            evidence_date="2026-09-03",
+        )
 
 
 def test_shared_product_matrix_and_selector_manifest_importers() -> None:

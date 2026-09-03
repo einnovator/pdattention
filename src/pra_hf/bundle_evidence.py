@@ -127,6 +127,209 @@ def _pct_delta(pra: float | None, baseline: float | None) -> float | None:
     return 100.0 * (pra - baseline) / baseline
 
 
+def _matched_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Summarize rows emitted by the shared matched E0/E2 contract."""
+
+    def values(family: str, name: str) -> list[float]:
+        result = []
+        for row in rows:
+            metrics = row.get("metrics", {})
+            group = metrics.get(family, {}) if isinstance(metrics, Mapping) else {}
+            value = group.get(name) if isinstance(group, Mapping) else None
+            if value is not None:
+                result.append(float(value))
+        return result
+
+    def average(family: str, name: str) -> float | None:
+        observed = values(family, name)
+        return mean(observed) if observed else None
+
+    ttft = values("serving", "ttft_ms")
+    itl = values("serving", "itl_ms")
+    completion = values("serving", "total_latency_ms")
+    memory = values("pra", "active_detail_bytes")
+    return {
+        "quality_metric": "token_f1",
+        "quality": average("quality", "token_f1"),
+        "exact_match": average("quality", "exact_match"),
+        "gold_answer_logprob": average("quality", "gold_answer_logprob"),
+        "evidence_recall": average("quality", "evidence_recall"),
+        "visible_tokens": average("input", "visible_prompt_tokens"),
+        "selected_native_kv_tokens": average("pra", "selected_native_kv_tokens"),
+        "active_detail_bytes": average("pra", "active_detail_bytes"),
+        "retained_detail_bytes": average("pra", "retained_detail_bytes"),
+        "ttft_ms": {
+            "p50": median(ttft) if ttft else None,
+            "p95": _percentile(ttft, 0.95),
+            "p99": _percentile(ttft, 0.99),
+        },
+        "itl_ms": {
+            "p50": median(itl) if itl else None,
+            "p95": _percentile(itl, 0.95),
+            "p99": _percentile(itl, 0.99),
+        },
+        "output_tokens_per_second": average("serving", "tokens_per_second"),
+        "requests_per_second": average("serving", "requests_per_second"),
+        "completion_latency_ms": {
+            "mean": mean(completion) if completion else None,
+            "p50": median(completion) if completion else None,
+            "p95": _percentile(completion, 0.95),
+            "p99": _percentile(completion, 0.99),
+        },
+        # The common contract reports active native detail rather than allocator
+        # peak. Preserve that distinction while still filling the resource row.
+        "peak_memory_bytes": max(memory) if memory else None,
+    }
+
+
+def import_matched_e0_e2_evidence(
+    artifacts: Sequence[str | Path],
+    identity: EvidenceIdentity,
+    *,
+    hardware: str,
+    evidence_date: str,
+    artifact_prefix: str = "qualification",
+) -> list[dict[str, Any]]:
+    """Import exact-identity natural-QA evidence from the shared engine contract.
+
+    Only the direct cold request contributes to the public quality comparison,
+    so repeated and concurrent probes cannot overweight an example. The full
+    artifacts remain attached for reuse and tail-latency analyses.
+    """
+
+    if identity.profile.lower() != "balanced":
+        raise EvidenceValidationError("Matched E0/E2 evidence qualifies only BALANCED.")
+    if identity.execution_mode != "Native Memory":
+        raise EvidenceValidationError("Matched E0/E2 evidence qualifies only Native Memory.")
+    payloads: list[tuple[Path, Mapping[str, Any]]] = []
+    for artifact in artifacts:
+        path = Path(artifact)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        actual = {
+            "model_id": payload.get("model_id"),
+            "model_revision": payload.get("model_revision"),
+            "engine": payload.get("engine"),
+            "engine_version": str(payload.get("engine_version", "")),
+        }
+        expected = {
+            "model_id": identity.model_id,
+            "model_revision": identity.model_revision,
+            "engine": identity.engine,
+            "engine_version": identity.engine_version,
+        }
+        mismatches = [
+            f"{key}: expected {expected[key]!r}, got {actual[key]!r}"
+            for key in expected
+            if actual[key] != expected[key]
+        ]
+        if mismatches:
+            raise EvidenceValidationError(
+                "Evidence identity mismatch: " + "; ".join(mismatches)
+            )
+        if str(payload.get("schema_version")) != "2.0":
+            raise EvidenceValidationError("Matched E0/E2 evidence requires schema 2.0.")
+        payloads.append((path, payload))
+
+    imported: list[dict[str, Any]] = []
+    dataset_rows: list[tuple[str, list[Mapping[str, Any]], list[Mapping[str, Any]]]] = []
+    for path, payload in payloads:
+        rows = [row for row in payload.get("rows", []) if isinstance(row, Mapping)]
+        cold = [row for row in rows if row.get("regime") == "cold_one_shot"]
+        baseline_rows = [row for row in cold if row.get("condition") == "e0_selected_text"]
+        pra_rows = [row for row in cold if row.get("condition") == "e2_native_kv"]
+
+        def pair_key(row: Mapping[str, Any]) -> tuple[object, ...]:
+            selection = row.get("selection", {})
+            return (
+                selection.get("selection_id") if isinstance(selection, Mapping) else None,
+                row.get("request_ordinal"),
+                row.get("query_sha256"),
+            )
+
+        baseline_keys = {pair_key(row) for row in baseline_rows}
+        pra_keys = {pair_key(row) for row in pra_rows}
+        if not baseline_rows or baseline_keys != pra_keys:
+            raise EvidenceValidationError(
+                f"E0/E2 frozen-selection cohort mismatch in {path.name}."
+            )
+        dataset = str(payload.get("dataset"))
+        dataset_rows.append((dataset, baseline_rows, pra_rows))
+
+    cohorts = dataset_rows + [
+        (
+            "combined",
+            [row for _, baseline, _ in dataset_rows for row in baseline],
+            [row for _, _, pra in dataset_rows for row in pra],
+        )
+    ]
+    artifacts_out = [
+        f"{artifact_prefix.rstrip('/')}/{path.name}" for path, _ in payloads
+    ]
+    for dataset, baseline_rows, pra_rows in cohorts:
+        baseline = _matched_summary(baseline_rows)
+        pra = _matched_summary(pra_rows)
+        imported.append(
+            {
+                "metric_class": "END_TASK",
+                "model_id": identity.model_id,
+                "model_revision": identity.model_revision,
+                "quantization": identity.quantization,
+                "engine": identity.engine,
+                "engine_version": identity.engine_version,
+                "profile": identity.profile,
+                "execution_mode": identity.execution_mode,
+                "dataset": dataset,
+                "sample_count": len(baseline_rows),
+                "seed_count": len(
+                    {
+                        row.get("extra", {}).get("seed")
+                        for row in baseline_rows
+                        if isinstance(row.get("extra"), Mapping)
+                    }
+                ),
+                "baseline": baseline,
+                "pra": pra,
+                "deltas": {
+                    "quality": (
+                        pra["quality"] - baseline["quality"]
+                        if pra["quality"] is not None and baseline["quality"] is not None
+                        else None
+                    ),
+                    "visible_tokens_pct": _pct_delta(
+                        pra["visible_tokens"], baseline["visible_tokens"]
+                    ),
+                    "ttft_pct": _pct_delta(
+                        pra["ttft_ms"]["p50"], baseline["ttft_ms"]["p50"]
+                    ),
+                    "completion_latency_pct": _pct_delta(
+                        pra["completion_latency_ms"]["mean"],
+                        baseline["completion_latency_ms"]["mean"],
+                    ),
+                },
+                "semantic_equivalence": {
+                    "exact_output_pairs": sum(
+                        1
+                        for baseline_row, pra_row in zip(
+                            sorted(baseline_rows, key=pair_key),
+                            sorted(pra_rows, key=pair_key),
+                        )
+                        if baseline_row.get("output") == pra_row.get("output")
+                    ),
+                    "paired_examples": len(pra_rows),
+                },
+                "evidence_tier": "ENGINE_QUALIFIED",
+                "recommendation": "RECOMMENDED",
+                "hardware": hardware,
+                "cohort": "selector-frozen natural QA; cold direct query",
+                "date": evidence_date,
+                "pra_commit": None,
+                "artifact": ", ".join(artifacts_out),
+                "artifact_sha256": ",".join(file_sha256(path) for path, _ in payloads),
+            }
+        )
+    return imported
+
+
 def import_mlx_paired_evidence(
     artifact: str | Path,
     identity: EvidenceIdentity,
