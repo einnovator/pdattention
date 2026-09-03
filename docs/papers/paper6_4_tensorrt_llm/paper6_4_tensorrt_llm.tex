@@ -76,12 +76,15 @@ a selector-frozen E0/E2 parity experiment; E3 additionally requires
 scheduler-owned placement, sharing, eviction, and accounting.
 
 \paragraph{Primer.}
-E0 changes which source tokens enter an otherwise ordinary prompt. E1 carries
-PRA identities, records, and fallback policy through the runtime but does not
-attach selected K/V. E2 removes selected source text from the visible prompt
-and exposes its detached native K/V directly to attention. E3 gives the engine
-scheduler physical ownership of those selected K/V pages. This paper measures
-the first step and specifies the boundary to the latter two.
+The product evidence conditions are No PRA, Selected Context, Native Memory,
+and Native Serving; bundle or adaptor use is orthogonal. No PRA is ordinary
+inference without PRA selection. Selected Context (E0) changes which source
+tokens enter an otherwise ordinary prompt. E1 carries PRA identities, records,
+and fallback policy but does not attach selected K/V. Native Memory (E2)
+removes selected source text from the visible prompt and exposes detached K/V
+to attention. Native Serving (E3) gives the scheduler physical ownership of
+those pages. This paper measures Selected Context and session transport, not a
+No-PRA-to-PRA or native-memory effect, and specifies the boundary to E2 and E3.
 
 \section{Introduction}
 This paper asks what PRA improves in front of TensorRT-LLM before arbitrary
