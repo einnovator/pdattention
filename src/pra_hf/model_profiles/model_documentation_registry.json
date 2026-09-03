@@ -1,14 +1,32 @@
 {
   "schema_version": "1.0",
-  "evidence_as_of": "2026-09-01",
+  "evidence_as_of": "2026-09-03",
   "profile_registry": "src/pra_hf/model_profiles/pra_profile_benchmarks.json",
   "families": [
     {
       "slug": "qwen",
       "name": "Qwen",
       "model_types": ["qwen2", "qwen3"],
-      "examples": ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-8B-4bit", "mlx-community/Qwen3-14B-4bit", "mlx-community/Qwen3-32B-4bit"],
+      "examples": ["Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-Coder-1.5B-Instruct", "Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-8B-4bit", "mlx-community/Qwen3-14B-4bit", "mlx-community/Qwen3-32B-4bit"],
       "bundle_links": {
+        "Qwen/Qwen2.5-1.5B-Instruct": {
+          "repo": "EInnovator/pra-qwen2-5-1-5b-instruct",
+          "url": "https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct",
+          "revision": "c25da0a632f27a571f1d07151831c97045443640",
+          "status": "Controlled",
+          "engines": "HF routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-03"
+        },
+        "Qwen/Qwen2.5-Coder-1.5B-Instruct": {
+          "repo": "EInnovator/pra-qwen2-5-coder-1-5b-instruct",
+          "url": "https://huggingface.co/EInnovator/pra-qwen2-5-coder-1-5b-instruct",
+          "revision": "f50b9da2c695f832b2d3288451d6c59d6acb9f27",
+          "status": "Controlled",
+          "engines": "HF routing qualification; portable Selected Context",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-03"
+        },
         "Qwen/Qwen3-0.6B": {
           "repo": "EInnovator/pra-qwen3-0.6b",
           "url": "https://huggingface.co/EInnovator/pra-qwen3-0.6b",
@@ -59,13 +77,16 @@
       "native_memory": "Validated mapping",
       "adapter_requirement": "Optional",
       "adapter_detail": "The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.",
-      "evidence": "Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA.",
+      "evidence": "Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Matched 1.5B general-instruction and code-instruction HF checkpoints add five-seed controlled routing evidence: learned routing helps QASPER in both, but transfer to HotpotQA remains metric- and checkpoint-dependent.",
       "commands": [
-        "pra inspect Qwen/Qwen3-1.7B --engine hf",
-        "pra model validate Qwen/Qwen3-1.7B --suite smoke",
-        "pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended"
+        "pra inspect Qwen/Qwen2.5-1.5B-Instruct --engine hf --pra-bundle auto",
+        "pra model validate Qwen/Qwen2.5-1.5B-Instruct --suite smoke",
+        "pra serve Qwen/Qwen2.5-1.5B-Instruct --engine hf --mode auto --profile recommended --pra-bundle auto"
       ],
-      "limitations": ["Model revision, tokenizer, quantization, engine, and profile still require qualification together."]
+      "limitations": [
+        "Model revision, tokenizer, quantization, engine, and profile still require qualification together.",
+        "The code-tuned checkpoint was compared on matched QASPER/HotpotQA routing, not code retrieval or coding-agent task success."
+      ]
     },
     {
       "slug": "llama",

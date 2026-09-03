@@ -130,6 +130,8 @@ def test_catalog_order_reference_role_and_collection_membership() -> None:
     reference = next(row for row in rows if row["repo"].endswith("pra-qwen3-0.6b"))
     assert reference["evidence_tier"] == "RESEARCH"
     assert "reference" in reference["role"].lower()
+    assert any("coder" in row["model"].lower() for row in rows)
+    assert any("instruct" in row["model"].lower() for row in rows)
     assert "Qualification Matrix" in render_qualification_matrix(catalog)
     assert "PRA Runtime Bundle Catalog" in render_catalog(catalog)
 

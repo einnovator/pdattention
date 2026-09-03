@@ -87,6 +87,18 @@ def _features_for_example(handle, tokenizer, example: dict, device, query_specs)
             half_life=spec.half_life,
             token_spans=[question_span] if spec.strategy.startswith("question_") else None,
         )[0].float().cpu()
+    nonfinite = {
+        "memory_gists": int((~torch.isfinite(gists)).sum().item()),
+        **{
+            f"query:{name}": int((~torch.isfinite(value)).sum().item())
+            for name, value in queries.items()
+        },
+    }
+    if any(nonfinite.values()):
+        raise RuntimeError(
+            f"Non-finite routing features for {example['dataset']}:{example['id']}: "
+            f"{nonfinite}. Select a stable model dtype with --dtype."
+        )
     positions = torch.tensor(
         [((start + end) / 2) / max(source_tokens, 1) for start, end in spans],
         dtype=torch.float32,
@@ -111,7 +123,20 @@ def _features_for_example(handle, tokenizer, example: dict, device, query_specs)
 
 def run(args) -> dict:
     device = torch.device(args.device)
-    dtype = torch.float16 if device.type == "cuda" else torch.float32
+    if args.dtype == "auto":
+        dtype = (
+            torch.bfloat16
+            if device.type == "cuda" and torch.cuda.is_bf16_supported()
+            else torch.float16
+            if device.type == "cuda"
+            else torch.float32
+        )
+    else:
+        dtype = {
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "float32": torch.float32,
+        }[args.dtype]
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_id, revision=args.tokenizer_revision or args.model_revision
     )
@@ -209,6 +234,8 @@ def run(args) -> dict:
             )
         ),
         "native_kv_dtype_bytes": torch.tensor([], dtype=dtype).element_size(),
+        "model_dtype": str(dtype).removeprefix("torch."),
+        "encoding_block_tokens": 128,
         "routing_chunk_tokens": 32,
         "gist_mode": "mean",
         "query_strategies": args.query_strategies,
@@ -232,6 +259,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tokenizer-revision")
     parser.add_argument("--routing-layer", type=int, default=-1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--dtype",
+        choices=("auto", "float16", "bfloat16", "float32"),
+        default="auto",
+        help="Model dtype; auto prefers bfloat16 on CUDA hardware that supports it.",
+    )
     parser.add_argument("--seed", type=int, default=20260811)
     parser.add_argument("--train-examples", type=int)
     parser.add_argument("--validation-examples", type=int)

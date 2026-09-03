@@ -1,0 +1,303 @@
+schema_version: 2
+base_model:
+  id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+  revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+  tokenizer_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+  architecture: Qwen2ForCausalLM
+  family: qwen
+  parameter_count_approx: 1.5B
+  quantization:
+    name: bfloat16
+    runtime: PyTorch
+  post_training: code and instruction tuning
+  fingerprint: aad5aded5e496d8433fd334fcada8a0be20411cc96ca8ab71628efe483245820
+structural_adapter:
+  path: structural_adapter
+  status: validated
+  fingerprint: 8658e9b5ef190c6d13e3e643540263e689ce8d8faa66c2e6acff23d6981d94c8
+learned_adapters:
+  combined-router-d128:
+    path: learned_adapters/combined-router-d128
+    type: routing
+    status: controlled-artifact
+    default: false
+    training:
+      datasets:
+      - QASPER
+      - HotpotQA
+      seed: 53
+      seeds_evaluated: &id007
+      - 11
+      - 23
+      - 37
+      - 53
+      - 71
+      steps: 512
+      parameters: 393216
+      objective: multi-positive softmax
+    validation:
+      AUC0-30: 0.26153105921855924
+      MRR: 0.41235041000665995
+      R@10%: 0.23093120421245422
+      R@16: 0.39432406135531134
+      R@20%: 0.3045398351648352
+      R@3: 0.15491929945054944
+      R@30%: 0.4233653846153846
+      R@5%: 0.1604698946886447
+      R@8: 0.2184609661172161
+      f70: 1.0
+      f80: 1.0
+      f90: 1.0
+    fingerprint: efce831e04fa6b73cc12697c0dc898457d4a791013f3a6cdfbf3bd56b3c46873
+profiles:
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Native Memory
+  balanced:
+    purpose: Qualified default preserving the all-eligible consumer geometry
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: QUALIFIED
+    recommended: true
+    engine: hf
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Native Memory
+  qasper-learned:
+    purpose: Research-only learned routing profile qualified only on matched QASPER
+      routing diagnostics
+    routing_adapter: combined-router-d128
+    consumer_layers: all eligible
+    status: RESEARCH
+    recommended: false
+    engine: hf
+    mode: Native Memory
+qualification:
+  contract_version: 1
+  status: CONTROLLED
+  headline: []
+  metrics:
+  - &id001
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.17297847985347986
+    secondary_metrics:
+      MRR: 0.1822317144808243
+      AUC0-30: 0.15296495344932845
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  - &id002
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.3937522893772894
+    secondary_metrics:
+      MRR: 0.5662202380952381
+      AUC0-30: 0.3478810668498169
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  - &id003
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.3982142857142857
+    secondary_metrics:
+      MRR: 0.5089285714285714
+      AUC0-30: 0.32491319444444444
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  - &id004
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.21532738095238096
+    secondary_metrics:
+      MRR: 0.25848058191808193
+      AUC0-30: 0.17518105158730157
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  - &id005
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.2855963827838828
+    secondary_metrics:
+      MRR: 0.3455801429546978
+      AUC0-30: 0.23893907394688646
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  - &id006
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    model_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+    quantization: bfloat16
+    engine: transformers 5.16.1
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.3045398351648352
+    secondary_metrics:
+      MRR: 0.41235041000665995
+      AUC0-30: 0.26153105921855924
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-03'
+    provenance: qualification/comparison.json
+  routing_diagnostics:
+  - *id001
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  training:
+    datasets: QASPER and HotpotQA
+    train_examples: 48
+    validation_examples: 16
+    held_out_test_examples: 32
+    seeds: *id007
+    selection: maximum combined validation AUC0-30
+    method: multi-positive softmax
+    parameter_count: 393216
+    base_revision: 2e1fd397ee46e1388853d2af2c993145b0f1098a
+  limitations:
+  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
+    it is opt-in rather than the bundle default.
+  - The held-out routing diagnostic contains 16 examples per dataset and supports
+    controlled routing claims only.
+  - Native consumer-layer profiles and end-task generation remain uncalibrated for
+    this exact identity.
+  - The qualification identity is the exact bfloat16 HF model and revision; it does
+    not transfer automatically to another checkpoint, engine, or quantization.
+  - Routing evidence compares a frozen generic router with a small learned router;
+    it does not establish end-task generation quality.
+  - This qualification uses natural-document routing; code retrieval and coding-agent
+    task success remain separately unmeasured.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/comparison.json
+  - qualification/feature_dataset_manifest.json
+  - qualification/catalog_summary.json
+runtime_compatibility:
+  hf:
+    selected_context: validated
+    native_memory: AVAILABLE
+    native_serving: NOT_MEASURED
+    recommended: Selected Context with BALANCED
+  mlx:
+    selected_context: portable
+    native_memory: NOT_MEASURED for a quantized MLX derivative
+    native_serving: NOT_MEASURED
+    recommended: Selected Context; exact HF artifact only
+engine_realizations:
+  hf:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: de12658ff994e6215c07eb34cda32c566ee344d8
+  bundle_build_commit: de12658ff994e6215c07eb34cda32c566ee344d8
+  hf_repo: EInnovator/pra-qwen2-5-coder-1-5b-instruct
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: apache-2.0
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: artifacts/pra_hf/routers/qwen2.5-coder-1.5b-instruct-combined-d128
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
+checksums:
+  learned_adapters/combined-router-d128/adapter_model.pt: 37eb6cc127ad28af5bc41954f4e1ba9f63d3c1a4a10609acd4b4c9580c786d2a
+  learned_adapters/combined-router-d128/config.json: 26195aba87322c770e4c7eaaa8b1d62faac758c41d522f3c172f2dd180927e69
+  qualification/catalog_summary.json: bdf42af02e948b52953b33c61197b915e37e4e003a2addf00c3fa61b5a6bf0d9
+  qualification/comparison.json: a5e1b38d0ad0955c37a0ec74b3f312edc360cf2690fadf24f889aa8dd0d5ee03
+  qualification/feature_dataset_manifest.json: e40160df61420bdf2073fe9c6faeb132326f83c579074651b14596e90df7abda
+  structural_adapter/pra_adapter.yaml: 524b2dfb6a70b91c7ac842b087298885f80f2a58634ba5a06a0efdd92fe0b77d
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: exact bfloat16 HF model identity; evidence does not transfer across revisions,
+    engines, or quantizations

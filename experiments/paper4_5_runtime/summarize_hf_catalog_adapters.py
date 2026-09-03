@@ -13,6 +13,8 @@ RESULTS = (
     / "docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters"
 )
 MODELS = {
+    "qwen2.5-1.5b-instruct": "Qwen2.5-1.5B-Instruct",
+    "qwen2.5-coder-1.5b-instruct": "Qwen2.5-Coder-1.5B-Instruct",
     "qwen3-4b": "Qwen3-4B",
     "qwen3-14b": "Qwen3-14B",
     "llama3-8b": "Llama-3.1-8B",
@@ -68,6 +70,7 @@ def summarize() -> dict:
                 for metric in METRICS
             }
             model["datasets"][dataset] = metrics
+            sample_count = int(raw["selected_learned"][dataset]["examples"])
             for metric, values in metrics.items():
                 rows.append(
                     {
@@ -76,7 +79,7 @@ def summarize() -> dict:
                         "dataset": dataset,
                         "metric": metric,
                         **values,
-                        "test_examples": 32 if dataset == "combined" else 16,
+                        "test_examples": sample_count,
                         "selected_seed": raw["selected_seed"],
                         "adapter_parameters": raw["adapter_parameters"],
                     }
@@ -85,9 +88,9 @@ def summarize() -> dict:
 
     summary = {
         "schema_version": 1,
-        "protocol": "Frozen MLX attention-input features; generic cosine versus five-seed asymmetric linear router",
+        "protocol": "Frozen native attention-input features; generic cosine versus five-seed asymmetric linear router",
         "selection": "Best combined validation AUC0-30; test identities remain held out",
-        "hardware": "Apple M4 Pro, 48 GB unified memory",
+        "hardware": "NVIDIA RTX 5060 Laptop GPU and Apple M4 Pro; exact host is retained per model artifact",
         "datasets": ["QASPER", "HotpotQA"],
         "models": models,
         "conclusion": (
@@ -116,8 +119,8 @@ def _write_tex(models: list[dict]) -> None:
         "\\begin{table*}[t]",
         "\\centering",
         "\\small",
-        "\\caption{Held-out routing comparison for exact 4-bit MLX model identities. "
-        "Each dataset has 16 test examples. The learned router is selected from five "
+        "\\caption{Held-out routing comparison for exact post-trained HF and 4-bit MLX model identities. "
+        "Cohort sizes are retained in the source artifact. The learned router is selected from five "
         "seeds using validation data; $R_{20}$ is evidence recall at a 20\\% chunk budget.}",
         "\\label{tab:hf-catalog-adapters}",
         "\\begin{tabular}{lrrrrrr}",
@@ -150,7 +153,7 @@ def _write_plot(models: list[dict]) -> None:
     labels = [model["label"] for model in models]
     x = np.arange(len(labels))
     width = 0.36
-    fig, axes = plt.subplots(1, 2, figsize=(10.2, 3.8), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.2), sharey=True)
     for axis, dataset, title in zip(
         axes, ("qasper", "hotpotqa"), ("QASPER", "HotpotQA"), strict=True
     ):

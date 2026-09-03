@@ -23,6 +23,53 @@ BUNDLES = ROOT / "artifacts/pra_hf/bundles"
 MLX_RESULTS = ROOT / "docs/papers/shared/results/mac_scaling"
 
 SPECS = {
+    "qwen2.5-1.5b-instruct": {
+        "label": "Qwen2.5-1.5B-Instruct",
+        "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+        "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+        "architecture": "Qwen2ForCausalLM",
+        "family": "qwen",
+        "model_type": "qwen2",
+        "layers": 28,
+        "hidden_size": 1536,
+        "heads": {"query": 12, "kv": 2, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "1.5B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen2-5-1-5b-instruct",
+        "engine": "hf",
+        "engine_version": "transformers 5.16.1",
+        "hardware": "NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB",
+        "quantization": "bfloat16",
+        "post_training": "general instruction tuning",
+        "qualification_date": "2026-09-03",
+    },
+    "qwen2.5-coder-1.5b-instruct": {
+        "label": "Qwen2.5-Coder-1.5B-Instruct",
+        "base_model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+        "revision": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+        "architecture": "Qwen2ForCausalLM",
+        "family": "qwen",
+        "model_type": "qwen2",
+        "layers": 28,
+        "hidden_size": 1536,
+        "heads": {"query": 12, "kv": 2, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "1.5B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen2-5-coder-1-5b-instruct",
+        "engine": "hf",
+        "engine_version": "transformers 5.16.1",
+        "hardware": "NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB",
+        "quantization": "bfloat16",
+        "post_training": "code and instruction tuning",
+        "qualification_date": "2026-09-03",
+        "extra_limitations": [
+            "This qualification uses natural-document routing; code retrieval and coding-agent task success remain separately unmeasured."
+        ],
+    },
     "qwen3-4b": {
         "label": "Qwen3-4B",
         "base_model": "mlx-community/Qwen3-4B-4bit",
@@ -138,7 +185,7 @@ def _structural_adapter(spec: dict) -> dict:
         "schema_version": 1,
         "base_model": {"id": spec["base_model"], "revision": spec["revision"]},
         "architecture": {
-            "model_type": spec["family"],
+            "model_type": spec.get("model_type", spec["family"]),
             "architecture": spec["architecture"],
             "layers": spec["layers"],
             "hidden_size": spec["hidden_size"],
@@ -160,20 +207,20 @@ def _structural_adapter(spec: dict) -> dict:
 def _metric_rows(comparison: dict, spec: dict) -> list[dict]:
     rows = []
     for dataset in ("qasper", "hotpotqa", "combined"):
-        count = 32 if dataset == "combined" else 16
         for mode, key, profile in (
             ("Generic cosine routing", "generic_baseline", "balanced"),
             ("Learned asymmetric routing", "selected_learned", "qasper-learned"),
         ):
             summary = comparison[key][dataset]["summary"]
+            count = int(comparison[key][dataset]["examples"])
             rows.append(
                 {
                     "metric_class": "ROUTING_DIAGNOSTIC",
                     "model_id": spec["base_model"],
                     "model_revision": spec["revision"],
-                    "quantization": "4bit",
-                    "engine": "mlx-lm 0.31.3",
-                    "hardware": "Apple M4 Pro, 48 GB",
+                    "quantization": spec.get("quantization", "4bit"),
+                    "engine": spec.get("engine_version", "mlx-lm 0.31.3"),
+                    "hardware": spec.get("hardware", "Apple M4 Pro, 48 GB"),
                     "dataset": dataset,
                     "workload": "held-out frozen-feature routing comparison",
                     "mode": mode,
@@ -189,7 +236,7 @@ def _metric_rows(comparison: dict, spec: dict) -> list[dict]:
                     "sample_count": count,
                     "profile": profile,
                     "evidence_tier": "CONTROLLED",
-                    "date": "2026-09-01",
+                    "date": spec.get("qualification_date", "2026-09-01"),
                     "provenance": "qualification/comparison.json",
                 }
             )
@@ -221,6 +268,8 @@ def _manifest(
             },
             "validation": router_config["metrics"],
         }
+    engine = spec.get("engine", "mlx")
+    quantization = spec.get("quantization", "4bit")
     profiles = {
         "quality": {
             "purpose": "Candidate maximum-quality profile; held-out calibration is incomplete",
@@ -228,7 +277,7 @@ def _manifest(
             "consumer_layers": spec["consumer_layers"],
             "status": "CALIBRATION_PENDING",
             "recommended": False,
-            "engine": "mlx",
+            "engine": engine,
             "mode": "Native Memory",
         },
         "balanced": {
@@ -237,7 +286,7 @@ def _manifest(
             "consumer_layers": spec["consumer_layers"],
             "status": "QUALIFIED",
             "recommended": True,
-            "engine": "mlx",
+            "engine": engine,
             "mode": "Native Memory" if paired_evidence else "Selected Context",
         },
         "economy": {
@@ -246,7 +295,7 @@ def _manifest(
             "consumer_layers": "CALIBRATION_PENDING",
             "status": "CALIBRATION_PENDING",
             "recommended": False,
-            "engine": "mlx",
+            "engine": engine,
             "mode": "Native Memory",
         },
     }
@@ -257,7 +306,7 @@ def _manifest(
             "consumer_layers": spec["consumer_layers"],
             "status": "RESEARCH",
             "recommended": False,
-            "engine": "mlx",
+            "engine": engine,
             "mode": "Native Memory",
         }
     diagnostics = _metric_rows(comparison, spec) if comparison is not None else []
@@ -270,27 +319,49 @@ def _manifest(
             "architecture": spec["architecture"],
             "family": spec["family"],
             "parameter_count_approx": spec["parameters"],
-            "quantization": {"bits": 4, "group_size": 64, "runtime": "MLX"},
+            "quantization": (
+                {"bits": 4, "group_size": 64, "runtime": "MLX"}
+                if quantization == "4bit"
+                else {"name": quantization, "runtime": "PyTorch"}
+            ),
+            "post_training": spec.get("post_training", "pretrained and post-trained"),
         },
         "structural_adapter": {"path": "structural_adapter", "status": "validated"},
         "learned_adapters": learned_adapters,
         "profiles": profiles,
-        "runtime_compatibility": {
-            "mlx": {
-                "selected_context": "validated",
-                "native_memory": "QUALIFIED" if paired_evidence else "AVAILABLE",
-                "native_serving": "NOT_MEASURED",
-                "recommended": "Native Memory with BALANCED" if paired_evidence else "Selected Context with BALANCED",
-            },
-            "hf": {
-                "selected_context": "portable",
-                "native_memory": "NOT_MEASURED for the full-precision HF counterpart",
-                "native_serving": "NOT_MEASURED",
-                "recommended": "Selected Context; exact MLX artifact only",
-            },
-        },
+        "runtime_compatibility": (
+            {
+                "hf": {
+                    "selected_context": "validated",
+                    "native_memory": "AVAILABLE",
+                    "native_serving": "NOT_MEASURED",
+                    "recommended": "Selected Context with BALANCED",
+                },
+                "mlx": {
+                    "selected_context": "portable",
+                    "native_memory": "NOT_MEASURED for a quantized MLX derivative",
+                    "native_serving": "NOT_MEASURED",
+                    "recommended": "Selected Context; exact HF artifact only",
+                },
+            }
+            if engine == "hf"
+            else {
+                "mlx": {
+                    "selected_context": "validated",
+                    "native_memory": "QUALIFIED" if paired_evidence else "AVAILABLE",
+                    "native_serving": "NOT_MEASURED",
+                    "recommended": "Native Memory with BALANCED" if paired_evidence else "Selected Context with BALANCED",
+                },
+                "hf": {
+                    "selected_context": "portable",
+                    "native_memory": "NOT_MEASURED for the full-precision HF counterpart",
+                    "native_serving": "NOT_MEASURED",
+                    "recommended": "Selected Context; exact MLX artifact only",
+                },
+            }
+        ),
         "engine_realizations": {
-            "mlx": {"bundle_consumed_by": "pra_runtime"},
+            engine: {"bundle_consumed_by": "pra_runtime"},
             "remote_engines": {"bundle_consumed_by": "pra_gateway"},
         },
         "qualification": {
@@ -312,9 +383,19 @@ def _manifest(
             } if comparison is not None and router_config is not None else {}),
             "limitations": [
                 "The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.",
-                "Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification.",
-                "Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers.",
-                "The qualification identity is the exact 4-bit MLX model and revision; it does not transfer automatically to full-precision Hugging Face weights or another quantization.",
+                *(
+                    ["Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification."]
+                    if paired_evidence
+                    else [f"The held-out routing diagnostic contains {comparison['test_examples'] // 2} examples per dataset and supports controlled routing claims only."]
+                ),
+                *(
+                    ["Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers."]
+                    if paired_evidence
+                    else ["Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity."]
+                ),
+                f"The qualification identity is the exact {quantization} {engine.upper()} model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.",
+                "Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.",
+                *spec.get("extra_limitations", []),
                 "Base-model and dataset licenses apply separately to the router artifact.",
             ],
             "artifacts": [
@@ -336,7 +417,7 @@ def _manifest(
         "trust": {
             "status": "eInnovator-qualified",
             "publisher": "EInnovator",
-            "scope": "exact 4-bit MLX model identity; evidence does not transfer across revisions or quantizations",
+            "scope": f"exact {quantization} {engine.upper()} model identity; evidence does not transfer across revisions, engines, or quantizations",
         },
     }
 

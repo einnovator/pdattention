@@ -406,6 +406,7 @@ class BundleBuilder:
         revision = bundle.base_model.get("revision", "unresolved")
         architecture = bundle.base_model.get("architecture", "NOT_MEASURED")
         parameters = bundle.base_model.get("parameter_count", bundle.base_model.get("parameter_count_approx", "NOT_MEASURED"))
+        post_training = bundle.base_model.get("post_training")
         tokenizer_revision = bundle.base_model.get("tokenizer_revision", revision)
         datasets = sorted({str(row.get("dataset")) for row in _qualification_rows(bundle) if row.get("dataset") and row.get("dataset") != "NOT_MEASURED"})
         metadata: dict[str, Any] = {
@@ -439,7 +440,13 @@ class BundleBuilder:
         if isinstance(engine_value, Mapping):
             native_status = str(engine_value.get("native_memory", native_status))
         title_suffix = bundle.base_model.get("quantization", {})
-        quantization = f"{title_suffix.get('bits')}bit" if isinstance(title_suffix, Mapping) and title_suffix.get("bits") else ""
+        quantization = (
+            f"{title_suffix.get('bits')}bit"
+            if isinstance(title_suffix, Mapping) and title_suffix.get("bits")
+            else str(title_suffix.get("name", ""))
+            if isinstance(title_suffix, Mapping)
+            else str(title_suffix or "")
+        )
         title_engine = " / ".join(value for value in (engine_name.upper(), quantization) if value)
         lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA Runtime Bundle for {model} · {title_engine}", ""]
         lines += [
@@ -456,6 +463,8 @@ class BundleBuilder:
             "Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.", "",
             "## Headline results", "",
         ]
+        if post_training:
+            lines.insert(lines.index("## Recommended configuration") - 1, f"- Post-training: `{post_training}`")
         if headline:
             lines += ["| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
             for row in headline:

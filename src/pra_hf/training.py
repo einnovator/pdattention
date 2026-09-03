@@ -38,6 +38,19 @@ def train_router(
     """Train asymmetric query/memory projections with a multi-positive loss."""
     if not train_features or not validation_features:
         raise ValueError("Training and validation feature sets must be non-empty.")
+    for split_name, features in (
+        ("train", train_features),
+        ("validation", validation_features),
+    ):
+        for index, feature in enumerate(features):
+            query = feature["queries"][query_strategy]
+            memory = feature["memory_gists"]
+            if not torch.isfinite(query).all() or not torch.isfinite(memory).all():
+                identity = feature.get("example_id", index)
+                raise ValueError(
+                    f"Non-finite {split_name} routing features for {identity}; "
+                    "rerun extraction with a stable model dtype."
+                )
     random.seed(seed)
     torch.manual_seed(seed)
     input_width = int(train_features[0]["memory_gists"].shape[-1])

@@ -7,7 +7,7 @@ and therefore requires a known structural mapping plus model-specific validation
 
 | Family | Selected Context | Native Memory | Structural adapter | Evidence |
 | --- | --- | --- | --- | --- |
-| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA. |
+| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Matched 1.5B general-instruction and code-instruction HF checkpoints add five-seed controlled routing evidence: learned routing helps QASPER in both, but transfer to HotpotQA remains metric- and checkpoint-dependent. |
 | [Llama](#llama) | ✅ Available | ℹ️ Validated mapping | **Optional** | Llama-3.1-8B has a five-seed, held-out MLX routing comparison. Learned routing improves QASPER MRR but reduces HotpotQA recall, so generic routing remains the default. |
 | [Gemma 3 text](#gemma3) | ✅ Available | 🧪 Partial topology | **Required for native production** | Gemma-3-1B has a five-seed, held-out MLX comparison under its mixed sliding/global topology. Learned routing helps QASPER and combined MRR, while HotpotQA recall remains mixed. |
 | [Other Hugging Face causal decoders](#other-hf) | ✅ Available | ⏳ Qualification pending | **Required** | No family-wide native claim is made for unregistered architectures. |
@@ -41,6 +41,8 @@ The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter w
 
 | Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
 | --- | --- | --- | --- | --- | --- |
+| `Qwen/Qwen2.5-1.5B-Instruct` | [EInnovator/pra-qwen2-5-1-5b-instruct](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct) | Controlled | HF routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-03 |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | [EInnovator/pra-qwen2-5-coder-1-5b-instruct](https://huggingface.co/EInnovator/pra-qwen2-5-coder-1-5b-instruct) | Controlled | HF routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-03 |
 | `Qwen/Qwen3-0.6B` | [EInnovator/pra-qwen3-0.6b](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Research/reference | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
 | `Qwen/Qwen3-1.7B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/Qwen3-4B-4bit` | [EInnovator/pra-qwen3-4b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
@@ -51,18 +53,19 @@ The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter w
 **Inspect and launch**
 
 ```bash
-pra inspect Qwen/Qwen3-1.7B --engine hf
-pra model validate Qwen/Qwen3-1.7B --suite smoke
-pra serve Qwen/Qwen3-1.7B --engine hf --mode auto --profile recommended
+pra inspect Qwen/Qwen2.5-1.5B-Instruct --engine hf --pra-bundle auto
+pra model validate Qwen/Qwen2.5-1.5B-Instruct --suite smoke
+pra serve Qwen/Qwen2.5-1.5B-Instruct --engine hf --mode auto --profile recommended --pra-bundle auto
 ```
 
 **Evidence boundary**
 
-Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Separate learned-routing diagnostics improve QASPER but not HotpotQA.
+Qwen3-8B, 14B, and 32B have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Matched 1.5B general-instruction and code-instruction HF checkpoints add five-seed controlled routing evidence: learned routing helps QASPER in both, but transfer to HotpotQA remains metric- and checkpoint-dependent.
 
 **Limitations**
 
 - Model revision, tokenizer, quantization, engine, and profile still require qualification together.
+- The code-tuned checkpoint was compared on matched QASPER/HotpotQA routing, not code retrieval or coding-agent task success.
 
 ## Llama { #llama }
 
@@ -190,4 +193,4 @@ Selected Context is the portable cross-engine path.
 5. Promote Native Memory only after quality, geometry, lifecycle, and economics pass
    for the exact model revision, tokenizer, quantization, engine, and hardware.
 
-_Generated from the model registry; evidence current through 2026-09-01._
+_Generated from the model registry; evidence current through 2026-09-03._

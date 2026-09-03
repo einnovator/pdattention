@@ -98,16 +98,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "routing_representation": manifest["feature_source"],
             "routing_layer": manifest["routing_layer"],
             "chunk_tokens": manifest["routing_chunk_tokens"],
-            "encoding_block_tokens": manifest["encoding_block_tokens"],
+            "encoding_block_tokens": manifest.get("encoding_block_tokens", 128),
             "training_datasets": ["QASPER", "HOTPOTQA"],
             "dataset_version": "QASPER v0.3 and HotpotQA distractor validation",
             "feature_split_seed": manifest["seed"],
             "git_sha": _git_sha(),
-            "training_hardware": manifest["runtime"]["hardware"],
+            "training_hardware": manifest["runtime"].get(
+                "hardware", manifest["runtime"].get("device", "unknown")
+            ),
             "training_learning_rate": args.learning_rate,
             "training_objective": "multi-positive softmax",
             "training_torch": torch.__version__,
-            "feature_engine": f"mlx-lm {manifest['runtime']['mlx_lm']}",
+            "feature_engine": (
+                f"mlx-lm {manifest['runtime']['mlx_lm']}"
+                if manifest["runtime"].get("mlx_lm")
+                else f"transformers {manifest['runtime'].get('transformers', 'unknown')}"
+            ),
             "license_note": "Router weights only; base-model and dataset licenses apply separately.",
         }
         router, training = train_router(

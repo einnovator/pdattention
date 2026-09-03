@@ -288,7 +288,11 @@ def test_hf_list_filters_the_trusted_registry() -> None:
     assert result.exit_code == 0, result.output
     value = json.loads(result.output)
     assert value["source"] == "trusted-registry"
-    assert value["count"] == 5
+    assert value["count"] == 7
+    assert {
+        "Qwen/Qwen2.5-1.5B-Instruct",
+        "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+    }.issubset({entry["base_model"] for entry in value["bundles"]})
     assert all("qwen" in row["base_model"].lower() for row in value["bundles"])
     assert all("mlx" in row["engine_compatibility"] for row in value["bundles"])
 
@@ -404,6 +408,8 @@ def test_hub_update_checks_remote_manifest_without_full_snapshot(
 def test_default_registry_contains_published_cross_family_catalog() -> None:
     entries = {entry.name: entry for entry in TrustedBundleRegistry.default().entries}
     expected = {
+        "pra-qwen2-5-1-5b-instruct": "c25da0a632f27a571f1d07151831c97045443640",
+        "pra-qwen2-5-coder-1-5b-instruct": "f50b9da2c695f832b2d3288451d6c59d6acb9f27",
         "pra-qwen3-4b-mlx-4bit": "ccf18f5f496190fc18817a313c34d0271b1720dc",
         "pra-qwen3-8b-mlx-4bit": "0ab3644b40917e9d626dc08a36c2eb5391d576c2",
         "pra-qwen3-14b-mlx-4bit": "3ed6288553bf1e4bc3c2a87bdf2e969e49d3663d",

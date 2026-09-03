@@ -20,7 +20,7 @@
 \title{From Sparse Selection to Physical Savings:\\
 A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
 \author{PRA Research Program}
-\date{August 2026}
+\date{September 2026}
 
 \begin{document}
 \maketitle
@@ -71,10 +71,12 @@ A 48~GiB M4 Pro calibration then extends Qwen to 8B, 14B, 32B, and
 native replay preserves every selected-text sequence. Dense 32B is less
 likelihood-sensitive to reduced consumer suffixes, but no sparse profile
 preserves enough sequence identity to graduate beyond calibration-pending.
-On the same host, a separate five-seed routing qualification packages exact
-4-bit MLX identities for Qwen3-4B, Qwen3-14B, Llama-3.1-8B, and Gemma-3-1B.
+Separate five-seed routing qualifications package exact 4-bit MLX identities
+for Qwen3-4B, Qwen3-14B, Llama-3.1-8B, and Gemma-3-1B, plus matched-size
+bfloat16 HF identities for Qwen2.5-1.5B-Instruct and
+Qwen2.5-Coder-1.5B-Instruct.
 Learned routing improves held-out QASPER $R_{20}$ for every model, by
-0.150--0.360 absolute, but does not transfer uniformly to HotpotQA. The public
+0.085--0.360 absolute, but does not transfer uniformly to HotpotQA. The public
 bundles therefore keep parameter-free cosine routing as the default and expose
 the learned router only through an explicitly QASPER-qualified profile.
 DeepSeek Harness and Pi bridges preserve typed
@@ -837,13 +839,15 @@ the rest of PRA's typed-resource, chunk-index, selection, and consumer-layer
 machinery. Thus the comparison isolates the routing adapter rather than
 comparing PRA with and without memory.
 
-For each exact 4-bit MLX identity, independent 128-token encoding blocks are
+For each exact checkpoint identity, independent 128-token encoding blocks are
 divided into 32-token routing chunks. We extract the normalized attention input
 from the final decoder layer while retaining each architecture's native
 normalization, masks, RoPE, grouped-query attention, and, for Gemma, mixed
 sliding/global topology. Identity-disjoint splits contain 48 training, 16
 validation, and 32 held-out test examples, evenly divided between QASPER and
-HotpotQA. Five seeds (11, 23, 37, 53, and 71) are trained for 512 steps; the
+HotpotQA. The HF runs use bfloat16 after a finite-feature gate; the gate rejects
+non-finite extraction before optimization or publication. Five seeds (11, 23,
+37, 53, and 71) are trained for 512 steps; the
 seed with the highest combined validation AUC$_{0--30}$ is selected before the
 test split is evaluated.
 
@@ -859,23 +863,31 @@ dataset-qualified option, not the catalog default.}
 \label{fig:hf-catalog-adapters}
 \end{figure*}
 
-Table~\ref{tab:hf-catalog-adapters} separates three conclusions. First, the
+Table~\ref{tab:hf-catalog-adapters} separates four conclusions. First, the
 adapter is useful on QASPER across model scale and family: $R_{20}$ rises from
 0.413 to 0.640 for Qwen3-4B, 0.318 to 0.679 for Qwen3-14B, 0.318 to 0.468 for
-Llama-3.1-8B, and 0.226 to 0.454 for Gemma-3-1B. Second, this gain is not a
+Llama-3.1-8B, and 0.226 to 0.454 for Gemma-3-1B. The matched Qwen2.5-1.5B
+checkpoints extend the result to post-trained HF identities: general instruction
+tuning rises from 0.296 to 0.381, while code-and-instruction tuning rises from
+0.173 to 0.394. Second, this gain is not a
 universal property of additional parameters. HotpotQA $R_{20}$ declines by
-0.044, 0.180, 0.195, and 0.018 respectively. Gemma's HotpotQA MRR nevertheless
+0.044, 0.180, 0.195, and 0.018 for the four MLX checkpoints, and by 0.051 and
+0.183 for the two HF checkpoints. Gemma's HotpotQA MRR nevertheless
 rises from 0.385 to 0.538, showing that even the direction can depend on the
 metric. Third, model size alone does not remove domain dependence: the largest
 Qwen model has both the largest QASPER gain and the largest Qwen HotpotQA loss.
+Fourth, post-training changes routing geometry even when architecture and size
+are matched. The code-tuned checkpoint starts from lower generic QASPER recall
+but receives the larger learned gain; its qualification still concerns document
+evidence routing, not source-code retrieval or coding-task accuracy.
 
 The SDK policy follows the measurement. Every public bundle exposes canonical
 \texttt{quality}, \texttt{balanced}, and \texttt{economy} profiles, but only
 \texttt{balanced} is currently qualified and recommended. Bundles with a
 learned asymmetric router additionally expose \texttt{qasper-learned} as an
-opt-in research profile. These are exact MLX quantization identities; no result
-is transferred to a full-precision Hugging Face checkpoint or another
-tokenizer revision. Routing diagnostics remain separate from generation
+opt-in research profile. These are exact checkpoint identities; no result is
+transferred between MLX and HF, between base and post-trained checkpoints, or
+across tokenizer revisions. Routing diagnostics remain separate from generation
 quality, equivalence, and serving economics.
 
 \paragraph{Evidence-to-card publication.}
@@ -2247,9 +2259,10 @@ model identity, structural and learned adapters, profiles, evidence, runtime
 compatibility, engine realizations, and provenance without copying base-model
 weights. Hub pull and push are optional transport operations under
 \texttt{pra hf}; generic Transformers execution does not depend on Hub login.
-The public catalog currently contains seven canonical
-\texttt{EInnovator/pra-*} bundles for Qwen3-0.6B, Qwen3-4B, Qwen3-8B,
-Qwen3-14B, Qwen3-32B, Llama-3.1-8B, and Gemma-3-1B identities. A declarative
+The public catalog currently contains nine canonical
+\texttt{EInnovator/pra-*} bundles. In addition to Qwen3-0.6B, Qwen3-4B,
+Qwen3-8B, Qwen3-14B, Qwen3-32B, Llama-3.1-8B, and Gemma-3-1B, it includes
+matched general-instruction and code-instruction Qwen2.5-1.5B identities. A declarative
 manifest orders the Collection by measured usefulness rather than publication
 date: Qwen3-14B and Qwen3-32B lead, while the 0.6B artifact is explicitly a
 research/reference bundle. Bundle discovery checks the base model,
