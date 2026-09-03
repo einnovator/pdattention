@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
 from pra_hf.cli import cli
-from pra_hf.product_qualification import EngineProductRegistry, QualificationService, load_run
+from pra_hf.product_qualification import (
+    EngineProductRegistry,
+    QualificationService,
+    load_run,
+    render_report,
+)
 
 
 def _write_measurements(path, *, selected_success=True, native=False, native_speedup=True) -> None:
@@ -157,3 +163,18 @@ def test_assessment_wrapper_creates_and_runs_enterprise_layout(tmp_path) -> None
     assert executed.exit_code == 0, executed.output
     assert (assessment / "report.md").is_file()
     assert (assessment / "recommendation.json").is_file()
+
+
+def test_report_accepts_canonical_agent_evidence() -> None:
+    artifact = (
+        Path(__file__).parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_14b_canonical_evidence.json"
+    )
+    document = load_run(artifact)
+    markdown = render_report(document, "md")
+    html = render_report(document, "html")
+
+    assert "PRA - No Adaptor" in markdown
+    assert "BLOCKED" in markdown
+    assert "PRA - Adaptor Bundle" in html
+    assert "No-PRA official success is zero" in artifact.read_text(encoding="utf-8")

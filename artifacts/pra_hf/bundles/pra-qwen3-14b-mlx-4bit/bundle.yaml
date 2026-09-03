@@ -10,6 +10,7 @@ base_model:
     bits: 4
     group_size: 64
     runtime: MLX
+  post_training: pretrained and post-trained
   fingerprint: 9ddf4352d8769abe8551de23602c8a9d917e010d8b998869f9f562729c5763e1
 structural_adapter:
   path: structural_adapter
@@ -153,6 +154,284 @@ qualification:
     pra_commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
     artifact: qualification/qwen3_14b_mlx_profiles.json
     artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
+  canonical_evidence:
+  - schema_version: 1
+    key:
+      task: combined
+      hardware: Apple M4 Pro (Mac16,7), 48 GB
+      engine: mlx-lm
+      engine_version: 0.31.3
+      model_id: mlx-community/Qwen3-14B-4bit
+      model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
+      model_fingerprint: null
+      mode: native-memory
+      profile: balanced
+    metric_definitions:
+      token_f1:
+        name: token_f1
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Token-overlap F1 against the reference answer.
+      exact_match:
+        name: exact_match
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Fraction of answers exactly matching the reference.
+      gold_answer_log_probability:
+        name: gold_answer_log_probability
+        group: quality
+        unit: log_probability
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean log-probability assigned to the gold answer.
+      visible_tokens:
+        name: visible_tokens
+        group: context
+        unit: token
+        direction: lower_is_better
+        aggregation: mean
+        description: Tokens visible in the sequential prompt.
+      selected_native_kv_tokens:
+        name: selected_native_kv_tokens
+        group: context
+        unit: token
+        direction: neutral
+        aggregation: mean
+        description: Native K/V tokens selected outside the sequential prompt.
+      active_detail_bytes:
+        name: active_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes active for the request.
+      retained_detail_bytes:
+        name: retained_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes retained for reuse.
+      ttft_p50_ms:
+        name: ttft_p50_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p50
+        description: Median time to first generated token.
+      ttft_p95_ms:
+        name: ttft_p95_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p95
+        description: 95th-percentile time to first generated token.
+      ttft_p99_ms:
+        name: ttft_p99_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p99
+        description: 99th-percentile time to first generated token.
+      completion_latency_mean_ms:
+        name: completion_latency_mean_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: mean
+        description: Mean end-to-end completion latency.
+      peak_memory_bytes:
+        name: peak_memory_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: max
+        description: Peak memory reported by the engine-specific allocator.
+    conditions:
+      no_pra:
+        metrics:
+          token_f1:
+            value: 0.27746031746031746
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.0
+            state: MEASURED
+            note: null
+          gold_answer_log_probability:
+            value: -9.97838643391927
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 315.53333333333336
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 0.0
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          ttft_p50_ms:
+            value: 210.72420799464453
+            state: MEASURED
+            note: null
+          ttft_p95_ms:
+            value: 339.22949999396224
+            state: MEASURED
+            note: null
+          ttft_p99_ms:
+            value: 339.22949999396224
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 507.8287193318829
+            state: MEASURED
+            note: null
+          peak_memory_bytes:
+            value: 8850340060.0
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_no_adaptor:
+        metrics:
+          token_f1:
+            value: 0.27746031746031746
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.0
+            state: MEASURED
+            note: null
+          gold_answer_log_probability:
+            value: -9.97838643391927
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 34.266666666666666
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 11250.666666666666
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 46082730.666666664
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 46082730.666666664
+            state: MEASURED
+            note: null
+          ttft_p50_ms:
+            value: 210.37279200390913
+            state: MEASURED
+            note: null
+          ttft_p95_ms:
+            value: 338.2852500071749
+            state: MEASURED
+            note: null
+          ttft_p99_ms:
+            value: 338.2852500071749
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 513.2481610004712
+            state: MEASURED
+            note: null
+          peak_memory_bytes:
+            value: 8794683612.0
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_adaptor_bundle:
+        metrics:
+          token_f1:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          exact_match:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          gold_answer_log_probability:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          visible_tokens:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          selected_native_kv_tokens:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          active_detail_bytes:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          retained_detail_bytes:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          ttft_p50_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          ttft_p95_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          ttft_p99_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          completion_latency_mean_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          peak_memory_bytes:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+        bundle_id: null
+        bundle_revision: null
+    provenance:
+      cohort: selector-frozen natural QA; seed_count=5
+      seeds: []
+      concurrency: null
+      prompt_length_distribution: {}
+      output_length_distribution: {}
+      run_ids: []
+      commit: 4b4486a66c80d09aa7982be29812d4027c57a4e3
+      date: '2026-09-01'
+      artifacts:
+      - qualification/qwen3_14b_mlx_profiles.json
+    evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: mlx-community/Qwen3-14B-4bit
@@ -512,14 +791,17 @@ qualification:
     qualification, not production qualification.
   - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
     therefore retains all eligible layers.
-  - The qualification identity is the exact 4-bit MLX model and revision; it does
-    not transfer automatically to full-precision Hugging Face weights or another quantization.
+  - The qualification identity is the exact 4bit MLX model and revision; it does not
+    transfer automatically to another checkpoint, engine, or quantization.
+  - Routing evidence compares a frozen generic router with a small learned router;
+    it does not establish end-task generation quality.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/comparison.json
   - qualification/feature_dataset_manifest.json
   - qualification/catalog_summary.json
   - qualification/qwen3_14b_mlx_profiles.json
+  - qualification/canonical_evidence.json
 runtime_compatibility:
   mlx:
     selected_context: validated
@@ -538,8 +820,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 52ea386f56fc8d81346325619f3523e585abf78d
-  bundle_build_commit: 52ea386f56fc8d81346325619f3523e585abf78d
+  pra_commit: 678a463f68a5ef7ae32fe700d99e23274ac61854
+  bundle_build_commit: 678a463f68a5ef7ae32fe700d99e23274ac61854
   hf_repo: EInnovator/pra-qwen3-14b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -551,7 +833,8 @@ provenance:
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: 852edb720e84d3a8c142c8302b98aa202920e6064ba41bffd95ab12cb1f73a42
   learned_adapters/combined-router-d128/config.json: fec04b7654bc08237d89aa9a9e467a552044a9e96d36b98571311dc11ea87999
-  qualification/catalog_summary.json: f74119da8464ecebb2d98c45ef234d5f3d4ea71092f0f2eec06361060cb8d0a0
+  qualification/canonical_evidence.json: e9d81c08380349ef7239e37fe747d2dea391bea2145a7e751bb99ecbeccd73c2
+  qualification/catalog_summary.json: bdf42af02e948b52953b33c61197b915e37e4e003a2addf00c3fa61b5a6bf0d9
   qualification/comparison.json: 179ff806087c8be7b2b9f6e4a32a0e4ebfef2b7831482738271724af0e2f9fdb
   qualification/feature_dataset_manifest.json: 3be491913530f60718e9b8480cb7d2d9da3c9030de340f805c47864989ae555e
   qualification/qwen3_14b_mlx_profiles.json: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
@@ -559,5 +842,5 @@ checksums:
 trust:
   status: eInnovator-qualified
   publisher: EInnovator
-  scope: exact 4-bit MLX model identity; evidence does not transfer across revisions
-    or quantizations
+  scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
+    engines, or quantizations

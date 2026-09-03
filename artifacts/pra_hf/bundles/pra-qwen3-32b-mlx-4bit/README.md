@@ -25,6 +25,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Architecture: `Qwen3ForCausalLM`
 - Parameters: `32B`
 - Tokenizer revision: `bcaaf7f538adf166c1080a2befdb4f6019f66639`
+- Post-training: `pretrained and post-trained`
 
 ## Recommended configuration
 
@@ -45,6 +46,46 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
 
 Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA (n=15); 2026-09-01; PRA commit `4b4486a66c80d09aa7982be29812d4027c57a4e3`; artifact `qualification/qwen3_32b_mlx_profiles.json`; SHA-256 `79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04`.
+
+## Canonical three-condition evidence
+
+Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.
+
+### combined / mlx-lm / balanced
+
+Exact identity: `mlx-community/Qwen3-32B-4bit` at `bcaaf7f538adf166c1080a2befdb4f6019f66639` on `Apple M4 Pro (Mac16,7), 48 GB`.
+
+#### Quality
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| token_f1 | fraction | higher_is_better | 0.231164 | 0.231164 | NOT_MEASURED | +0 (+0.00%) | NOT_MEASURED |
+| exact_match | fraction | higher_is_better | 0 | 0 | NOT_MEASURED | +0 | NOT_MEASURED |
+| gold_answer_log_probability | log_probability | higher_is_better | -9.57946 | -9.57946 | NOT_MEASURED | +0 (-0.00%) | NOT_MEASURED |
+
+#### Context
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| visible_tokens | token | lower_is_better | 315.533 | 34.2667 | NOT_MEASURED | -281.267 (-89.14%) | NOT_MEASURED |
+| selected_native_kv_tokens | token | neutral | 0 | 18001.1 | NOT_MEASURED | +18001.1 | NOT_MEASURED |
+
+#### Serving
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| ttft_p50_ms | ms | lower_is_better | 524.92 | 490.204 | NOT_MEASURED | -34.7164 (-6.61%) | NOT_MEASURED |
+| ttft_p95_ms | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
+| ttft_p99_ms | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
+| completion_latency_mean_ms | ms | lower_is_better | 1177.04 | 1183.23 | NOT_MEASURED | +6.18768 (+0.53%) | NOT_MEASURED |
+
+#### Resources
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| active_detail_bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
+| retained_detail_bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
+| peak_memory_bytes | byte | lower_is_better | 1.91537e+10 | 1.9058e+10 | NOT_MEASURED | -9.56826e+07 (-0.50%) | NOT_MEASURED |
 
 ## Installation
 
@@ -120,7 +161,8 @@ pra report .pra/runs/qasper --format html
 - The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.
 - Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification.
 - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers.
-- The qualification identity is the exact 4-bit MLX model and revision; it does not transfer automatically to full-precision Hugging Face weights or another quantization.
+- The qualification identity is the exact 4bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
+- Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
@@ -129,8 +171,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `52ea386f56fc8d81346325619f3523e585abf78d`
-- Bundle build commit: `52ea386f56fc8d81346325619f3523e585abf78d`
+- PRA commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
+- Bundle build commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

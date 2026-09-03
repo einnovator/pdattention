@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from .adapters import FixtureAgentAdapter, command_adapter
-from .analysis import summarize
+from .analysis import baseline_promotion_gate, summarize
 from .catalog import audit_local_agents, load_catalog
 from .runner import external_plan, import_harbor_job, load_runs, run_manifest
 from .schema import BenchmarkManifest, PRAProfile, PRAMode
@@ -54,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze = commands.add_parser("analyze", help="Summarize normalized JSONL results.")
     analyze.add_argument("results", type=Path, nargs="+")
     analyze.add_argument("--output", type=Path)
+    screen = commands.add_parser("screen", help="Apply the no-PRA admission gate before a PRA comparison.")
+    screen.add_argument("results", type=Path, nargs="+")
+    screen.add_argument("--minimum-success-rate", type=float, default=0.30)
+    screen.add_argument("--maximum-success-rate", type=float, default=0.80)
+    screen.add_argument("--minimum-runs", type=int, default=3)
+    screen.add_argument("--output", type=Path)
     harbor = commands.add_parser("import-harbor", help="Normalize an official Harbor job without re-grading it.")
     harbor.add_argument("job", type=Path)
     harbor.add_argument("--manifest", required=True)
@@ -136,12 +142,23 @@ def main(argv: list[str] | None = None) -> None:
             connection=args.connection, protocol=args.protocol,
         )
         value = {"runs": len(rows), "output": str(args.output / "runs.jsonl"), "summary": summarize(rows)}
+    elif args.command == "screen":
+        rows = [row for path in args.results for row in load_runs(path)]
+        value = {
+            "summary": summarize(rows),
+            "admission_gate": baseline_promotion_gate(
+                rows,
+                minimum_success_rate=args.minimum_success_rate,
+                maximum_success_rate=args.maximum_success_rate,
+                minimum_runs=args.minimum_runs,
+            ),
+        }
     else:
         value = summarize(
             row for path in args.results for row in load_runs(path)
         )
     rendered = json.dumps(value, indent=2)
-    if getattr(args, "output", None) and args.command in {"audit", "plan", "analyze"}:
+    if getattr(args, "output", None) and args.command in {"audit", "plan", "analyze", "screen"}:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)

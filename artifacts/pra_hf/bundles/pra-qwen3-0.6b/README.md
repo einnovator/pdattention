@@ -38,6 +38,18 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
+## Canonical three-condition evidence
+
+A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
+
+| Condition | Evidence status |
+| --- | --- |
+| No PRA | `NEEDS_RUN` |
+| PRA - No Adaptor | `NEEDS_RUN` |
+| PRA - Adaptor Bundle | `NEEDS_RUN` |
+
+Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
+
 ## Installation
 
 ```bash

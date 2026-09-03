@@ -169,6 +169,22 @@ from .bundle import (
     TrustedBundleRegistry,
     validate_model_card,
 )
+from .canonical_evidence import (
+    AuditState,
+    CanonicalEvidenceRecord,
+    ConditionEvidence,
+    EvidenceCondition,
+    EvidenceKey,
+    EvidenceProvenance,
+    MeasurementState,
+    MetricDefinition,
+    MetricDirection,
+    MetricGroup,
+    MetricObservation,
+    STANDARD_METRICS,
+    render_latex_table as render_canonical_latex_table,
+    render_markdown_table as render_canonical_markdown_table,
+)
 from .onboarding import (
     DoctorService,
     ModelInspector,

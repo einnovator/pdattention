@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "key": {
+    "task": "terminal-bench/terminal-bench-2-1:configure-git-webserver,filter-js-from-html,fix-git,polyglot-c-py,query-optimize",
+    "hardware": "agent_host=nvidia-wsl, engine_chip=Apple_M4_Pro, engine_host=mac16.7, engine_memory_gib=48",
+    "engine": "ollama",
+    "engine_version": "0.32.7",
+    "model_id": "qwen3:14b",
+    "model_revision": "NOT_MEASURED",
+    "model_fingerprint": null,
+    "mode": "agent-gateway",
+    "profile": "balanced"
+  },
+  "metric_definitions": {
+    "official_task_success": {
+      "name": "official_task_success",
+      "group": "quality",
+      "unit": "fraction",
+      "direction": "higher_is_better",
+      "aggregation": "mean",
+      "description": "Fraction of tasks passing the official verifier."
+    },
+    "verifier_checks_passed": {
+      "name": "verifier_checks_passed",
+      "group": "quality",
+      "unit": "count",
+      "direction": "higher_is_better",
+      "aggregation": "sum",
+      "description": "Official verifier checks passed."
+    },
+    "input_tokens": {
+      "name": "input_tokens",
+      "group": "context",
+      "unit": "token",
+      "direction": "lower_is_better",
+      "aggregation": "sum",
+      "description": "Cumulative model input tokens."
+    },
+    "task_wall_ms": {
+      "name": "task_wall_ms",
+      "group": "serving",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "aggregation": "median",
+      "description": "End-to-end task wall time."
+    },
+    "cost_per_successful_task": {
+      "name": "cost_per_successful_task",
+      "group": "cost",
+      "unit": "USD/task",
+      "direction": "lower_is_better",
+      "aggregation": "mean",
+      "description": "Total cost divided by successful tasks."
+    }
+  },
+  "conditions": {
+    "no_pra": {
+      "metrics": {
+        "official_task_success": {
+          "value": 0.0,
+          "state": "MEASURED",
+          "note": null
+        },
+        "verifier_checks_passed": {
+          "value": 7.0,
+          "state": "MEASURED",
+          "note": null
+        },
+        "input_tokens": {
+          "value": 100883.0,
+          "state": "MEASURED",
+          "note": null
+        },
+        "task_wall_ms": {
+          "value": 238613.834,
+          "state": "MEASURED",
+          "note": null
+        },
+        "cost_per_successful_task": {
+          "value": null,
+          "state": "NOT_APPLICABLE",
+          "note": "No successful task provides a denominator."
+        }
+      },
+      "bundle_id": null,
+      "bundle_revision": null
+    },
+    "pra_no_adaptor": {
+      "metrics": {
+        "official_task_success": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "verifier_checks_passed": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "input_tokens": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "task_wall_ms": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "cost_per_successful_task": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        }
+      },
+      "bundle_id": null,
+      "bundle_revision": null
+    },
+    "pra_adaptor_bundle": {
+      "metrics": {
+        "official_task_success": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "verifier_checks_passed": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "input_tokens": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "task_wall_ms": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        },
+        "cost_per_successful_task": {
+          "value": null,
+          "state": "BLOCKED",
+          "note": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+        }
+      },
+      "bundle_id": null,
+      "bundle_revision": null
+    }
+  },
+  "provenance": {
+    "cohort": "opencode official agent benchmark; admission=BLOCKED",
+    "seeds": [],
+    "concurrency": null,
+    "prompt_length_distribution": {},
+    "output_length_distribution": {},
+    "run_ids": [
+      "1c56ba2c-dd73-4eb3-8564-762bcbba3038",
+      "3d61a36f-322b-4f0f-a80e-eb44508cbc64",
+      "16319e6e-148d-4e34-834f-ea3f9b8ebffa",
+      "c6f8e9c6-9f3f-4f73-859c-805ee789b67a",
+      "3465fbcc-95ee-4c97-9fe3-b88b62db58df"
+    ],
+    "commit": "678a463",
+    "date": "2026-09-02",
+    "artifacts": []
+  },
+  "evidence_tier": "BLOCKED",
+  "deltas": {
+    "pra_no_adaptor": {
+      "official_task_success": {
+        "metric": "official_task_success",
+        "condition": "pra_no_adaptor",
+        "baseline": 0.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "verifier_checks_passed": {
+        "metric": "verifier_checks_passed",
+        "condition": "pra_no_adaptor",
+        "baseline": 7.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "input_tokens": {
+        "metric": "input_tokens",
+        "condition": "pra_no_adaptor",
+        "baseline": 100883.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "task_wall_ms": {
+        "metric": "task_wall_ms",
+        "condition": "pra_no_adaptor",
+        "baseline": 238613.834,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "cost_per_successful_task": {
+        "metric": "cost_per_successful_task",
+        "condition": "pra_no_adaptor",
+        "baseline": null,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_APPLICABLE"
+      }
+    },
+    "pra_adaptor_bundle": {
+      "official_task_success": {
+        "metric": "official_task_success",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "verifier_checks_passed": {
+        "metric": "verifier_checks_passed",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 7.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "input_tokens": {
+        "metric": "input_tokens",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 100883.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "task_wall_ms": {
+        "metric": "task_wall_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 238613.834,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "BLOCKED"
+      },
+      "cost_per_successful_task": {
+        "metric": "cost_per_successful_task",
+        "condition": "pra_adaptor_bundle",
+        "baseline": null,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_APPLICABLE"
+      }
+    }
+  },
+  "incremental_adaptor_deltas": {
+    "official_task_success": {
+      "metric": "official_task_success",
+      "condition": "pra_adaptor_bundle",
+      "baseline": null,
+      "candidate": null,
+      "delta": null,
+      "percent_delta": null,
+      "state": "BLOCKED"
+    },
+    "verifier_checks_passed": {
+      "metric": "verifier_checks_passed",
+      "condition": "pra_adaptor_bundle",
+      "baseline": null,
+      "candidate": null,
+      "delta": null,
+      "percent_delta": null,
+      "state": "BLOCKED"
+    },
+    "input_tokens": {
+      "metric": "input_tokens",
+      "condition": "pra_adaptor_bundle",
+      "baseline": null,
+      "candidate": null,
+      "delta": null,
+      "percent_delta": null,
+      "state": "BLOCKED"
+    },
+    "task_wall_ms": {
+      "metric": "task_wall_ms",
+      "condition": "pra_adaptor_bundle",
+      "baseline": null,
+      "candidate": null,
+      "delta": null,
+      "percent_delta": null,
+      "state": "BLOCKED"
+    },
+    "cost_per_successful_task": {
+      "metric": "cost_per_successful_task",
+      "condition": "pra_adaptor_bundle",
+      "baseline": null,
+      "candidate": null,
+      "delta": null,
+      "percent_delta": null,
+      "state": "BLOCKED"
+    }
+  },
+  "agent_admission_gate": {
+    "status": "BLOCKED",
+    "eligible": false,
+    "runs": 5,
+    "successes": 0,
+    "official_success_rate": 0.0,
+    "target_range": [
+      0.3,
+      0.8
+    ],
+    "reason": "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+  }
+}

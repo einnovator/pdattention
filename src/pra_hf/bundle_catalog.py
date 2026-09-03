@@ -73,6 +73,24 @@ def render_qualification_matrix(catalog: Mapping[str, Any]) -> str:
             f"| [`{row['repo'].split('/', 1)[-1]}`](https://huggingface.co/{row['repo']}) | {row['engine']} | {row['recommendation'].split(' with ')[0]} | {row['profile']} | {row['quality_gate']} | {row['context_saving']} | {row['evidence_tier']} | {artifact_link} |"
         )
     lines += [
+        "", "## Canonical condition audit", "",
+        "This audit asks whether the same task, exact model, engine/hardware, mode, and profile have been measured under all three conditions. `AVAILABLE_EXISTING` here means that at least the quality, context, serving, and memory fields present in the linked selector-frozen artifact can be imported; it does not imply that every requested metric exists.", "",
+        "| Task/dataset | HW/engine | Model | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in catalog["bundles"]:
+        paired_transport = "mac_scaling/" in str(row.get("artifact", ""))
+        state = "AVAILABLE_EXISTING" if paired_transport else "NEEDS_RUN"
+        bundle_state = "NEEDS_RUN"
+        lines.append(
+            f"| {'Natural QA (QASPER / HotpotQA / 2Wiki)' if paired_transport else 'Exact-identity qualification workload'} "
+            f"| {row['engine']} / artifact-recorded hardware | `{row['model']}` "
+            f"| {row['recommendation'].split(' with ')[0]} | {row['profile']} "
+            f"| `{state}` | `{state}` | `{bundle_state}` "
+            f"| `{'AVAILABLE_EXISTING' if paired_transport else 'NEEDS_RUN'}` | `{bundle_state}` |"
+        )
+    lines += [
+        "", "The three MLX natural-QA rows predate immutable bundle resolution: their original-model and generic native-PRA conditions can be normalized, while the Runtime Bundle condition remains `NEEDS_RUN`. Routing-only artifacts remain research diagnostics and do not fill end-task cells.",
         "", "## Evidence tiers", "",
         "| Tier | Meaning |", "| --- | --- |",
         "| `PRODUCTION_QUALIFIED` | Production-scale workload, isolation, reliability, and economic gates passed. |",

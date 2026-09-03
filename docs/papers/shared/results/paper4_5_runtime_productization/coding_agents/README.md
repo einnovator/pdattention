@@ -38,6 +38,14 @@ be uninformative. A code-specialized model must first establish nonzero task
 success. The raw Harbor jobs, trajectories, verifier records, normalized
 JSONL, and combined summary are preserved beside this README.
 
+The canonical three-condition record is
+`qwen3_14b_canonical_evidence.json`. It retains the measured No-PRA values and
+marks PRA - No Adaptor and PRA - Adaptor Bundle as `BLOCKED`, not as numeric
+zeroes. `qwen3_coder_30b_canonical_evidence.json` applies the same contract to
+the one-task coder gate. Both records include the executable admission result
+and computed-delta slots for downstream CLI, documentation, and Control Plane
+renderers.
+
 A follow-up OpenCode gate used the newly downloaded
 Ollama/Qwen2.5-Coder-7B on `query-optimize` and `fix-git`. Both official tasks
 failed (`2/6` and `0/2` verifier tests); the model emitted intended tool calls

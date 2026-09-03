@@ -15,10 +15,13 @@ from pra_hf.bundle_catalog import (
 from pra_hf.bundle_evidence import (
     EvidenceIdentity,
     EvidenceValidationError,
+    canonicalize_paired_transport_evidence,
     import_mlx_paired_evidence,
     import_product_matrix_evidence,
     validate_selector_manifest,
 )
+from pra_hf.canonical_evidence import EvidenceCondition, MeasurementState
+from experiments.paper4_5_runtime.build_canonical_evidence_audit import build_audit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +56,11 @@ def test_mlx_importer_builds_paired_baseline_relative_evidence() -> None:
     }
     assert combined["evidence_tier"] == "ENGINE_QUALIFIED"
     assert len(combined["artifact_sha256"]) == 64
+
+    canonical = canonicalize_paired_transport_evidence(combined)
+    assert canonical.delta("visible_tokens", EvidenceCondition.PRA_NO_ADAPTOR).percent_delta == pytest.approx(-89.14008)
+    assert canonical.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics["token_f1"].state == MeasurementState.NOT_MEASURED
+    assert canonical.key.model_revision == _identity().model_revision
 
 
 def test_mlx_importer_rejects_revision_and_mode_mismatch() -> None:
@@ -103,6 +111,26 @@ def test_release_gate_rejects_profile_and_headline_conflicts() -> None:
     with pytest.raises(BundleValidationError, match="routing diagnostics cannot be headline"):
         replace(bundle, qualification={**bundle.qualification, "headline": [{**row, "metric_class": "ROUTING_DIAGNOSTIC"}]}).validate(require_card=False)
 
+    canonical = {
+        "schema_version": 1,
+        "key": {
+            "task": "qasper", "hardware": "m5", "engine": "mlx-lm",
+            "engine_version": "0.31.3", "model_id": "wrong/model",
+            "model_revision": _identity().model_revision, "mode": "native-memory",
+            "profile": "balanced",
+        },
+        "metric_definitions": {},
+        "conditions": {
+            "no_pra": {"metrics": {}},
+            "pra_no_adaptor": {"metrics": {}},
+            "pra_adaptor_bundle": {"metrics": {}},
+        },
+        "provenance": {"cohort": "test", "date": "2026-09-03"},
+        "evidence_tier": "CONTROLLED",
+    }
+    with pytest.raises(BundleValidationError, match="canonical evidence model_id"):
+        replace(bundle, qualification={**bundle.qualification, "canonical_evidence": [canonical]}).validate(require_card=False)
+
 
 def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
     bundle = PRAModelBundle.from_pretrained(
@@ -132,10 +160,28 @@ def test_catalog_order_reference_role_and_collection_membership() -> None:
     assert "reference" in reference["role"].lower()
     assert any("coder" in row["model"].lower() for row in rows)
     assert any("instruct" in row["model"].lower() for row in rows)
-    assert "Qualification Matrix" in render_qualification_matrix(catalog)
+    matrix = render_qualification_matrix(catalog)
+    assert "Qualification Matrix" in matrix
+    assert "Canonical condition audit" in matrix
+    assert "PRA - No Adaptor" in matrix
     assert "PRA Runtime Bundle Catalog" in render_catalog(catalog)
 
     published = {row["repo"] for row in rows if row["publication_status"] == "PUBLISHED"}
     validate_collection_membership(catalog, published)
     with pytest.raises(ValueError, match="Collection is missing"):
         validate_collection_membership(catalog, published - {next(iter(published))})
+
+
+def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
+    audit = build_audit(load_bundle_catalog())
+    assert len(audit["rows"]) == 9
+    assert audit["summary"]["AVAILABLE_EXISTING"] > 0
+    assert audit["summary"]["NEEDS_RUN"] > audit["summary"]["AVAILABLE_EXISTING"]
+    states = {
+        state
+        for row in audit["rows"]
+        for conditions in row["metrics"].values()
+        for state in conditions.values()
+    }
+    assert states <= {"AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_APPLICABLE", "BLOCKED"}
+    assert 0 not in states

@@ -12,7 +12,11 @@ from pathlib import Path
 import yaml
 
 from pra_hf.bundle import BundleBuilder
-from pra_hf.bundle_evidence import EvidenceIdentity, import_mlx_paired_evidence
+from pra_hf.bundle_evidence import (
+    EvidenceIdentity,
+    canonicalize_paired_transport_evidence,
+    import_mlx_paired_evidence,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -368,6 +372,11 @@ def _manifest(
             "contract_version": 1,
             "status": "ENGINE_QUALIFIED" if paired_evidence else "CONTROLLED",
             "headline": [row for row in paired_evidence if row["dataset"] == "combined"],
+            "canonical_evidence": [
+                canonicalize_paired_transport_evidence(row).model_dump(mode="json")
+                for row in paired_evidence
+                if row["dataset"] == "combined"
+            ],
             "metrics": paired_evidence + diagnostics,
             "routing_diagnostics": diagnostics,
             "training": ({
@@ -400,7 +409,10 @@ def _manifest(
             ],
             "artifacts": [
                 *(["qualification/comparison.json", "qualification/feature_dataset_manifest.json", "qualification/catalog_summary.json"] if comparison is not None else []),
-                *([f"qualification/{spec['paired_evidence']}"] if paired_evidence else []),
+                *(
+                    [f"qualification/{spec['paired_evidence']}", "qualification/canonical_evidence.json"]
+                    if paired_evidence else []
+                ),
             ],
         },
         "provenance": {
@@ -458,6 +470,14 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             shutil.copy2(RESULTS / "summary.json", qualification / "catalog_summary.json")
         if paired_evidence:
             shutil.copy2(evidence_path, qualification / spec["paired_evidence"])
+            canonical = [
+                canonicalize_paired_transport_evidence(row).serialize_for_control_plane()
+                for row in paired_evidence
+                if row["dataset"] == "combined"
+            ]
+            (qualification / "canonical_evidence.json").write_text(
+                json.dumps(canonical, indent=2) + "\n", encoding="utf-8"
+            )
         (run / "pra.yaml").write_text(
             yaml.safe_dump(
                 _manifest(slug, spec, comparison, router_config, paired_evidence), sort_keys=False

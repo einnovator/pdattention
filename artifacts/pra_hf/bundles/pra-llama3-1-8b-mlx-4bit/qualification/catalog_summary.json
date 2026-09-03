@@ -1,13 +1,157 @@
 {
   "schema_version": 1,
-  "protocol": "Frozen MLX attention-input features; generic cosine versus five-seed asymmetric linear router",
+  "protocol": "Frozen native attention-input features; generic cosine versus five-seed asymmetric linear router",
   "selection": "Best combined validation AUC0-30; test identities remain held out",
-  "hardware": "Apple M4 Pro, 48 GB unified memory",
+  "hardware": "NVIDIA RTX 5060 Laptop GPU and Apple M4 Pro; exact host is retained per model artifact",
   "datasets": [
     "QASPER",
     "HotpotQA"
   ],
   "models": [
+    {
+      "slug": "qwen2.5-1.5b-instruct",
+      "label": "Qwen2.5-1.5B-Instruct",
+      "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+      "base_model_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+      "selected_seed": 11,
+      "adapter_parameters": 393216,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for HotpotQA",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.295971,
+            "learned": 0.381164,
+            "delta": 0.085193
+          },
+          "MRR": {
+            "generic": 0.161826,
+            "learned": 0.575744,
+            "delta": 0.413918
+          },
+          "AUC0-30": {
+            "generic": 0.241659,
+            "learned": 0.348369,
+            "delta": 0.10671
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.384673,
+            "learned": 0.334077,
+            "delta": -0.050595
+          },
+          "MRR": {
+            "generic": 0.547049,
+            "learned": 0.270253,
+            "delta": -0.276796
+          },
+          "AUC0-30": {
+            "generic": 0.300938,
+            "learned": 0.2263,
+            "delta": -0.074638
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.340322,
+            "learned": 0.357621,
+            "delta": 0.017299
+          },
+          "MRR": {
+            "generic": 0.354438,
+            "learned": 0.422998,
+            "delta": 0.068561
+          },
+          "AUC0-30": {
+            "generic": 0.271298,
+            "learned": 0.287334,
+            "delta": 0.016036
+          }
+        }
+      }
+    },
+    {
+      "slug": "qwen2.5-coder-1.5b-instruct",
+      "label": "Qwen2.5-Coder-1.5B-Instruct",
+      "base_model": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "base_model_revision": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+      "selected_seed": 53,
+      "adapter_parameters": 393216,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for HotpotQA",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.172978,
+            "learned": 0.393752,
+            "delta": 0.220774
+          },
+          "MRR": {
+            "generic": 0.182232,
+            "learned": 0.56622,
+            "delta": 0.383989
+          },
+          "AUC0-30": {
+            "generic": 0.152965,
+            "learned": 0.347881,
+            "delta": 0.194916
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.398214,
+            "learned": 0.215327,
+            "delta": -0.182887
+          },
+          "MRR": {
+            "generic": 0.508929,
+            "learned": 0.258481,
+            "delta": -0.250448
+          },
+          "AUC0-30": {
+            "generic": 0.324913,
+            "learned": 0.175181,
+            "delta": -0.149732
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.285596,
+            "learned": 0.30454,
+            "delta": 0.018943
+          },
+          "MRR": {
+            "generic": 0.34558,
+            "learned": 0.41235,
+            "delta": 0.06677
+          },
+          "AUC0-30": {
+            "generic": 0.238939,
+            "learned": 0.261531,
+            "delta": 0.022592
+          }
+        }
+      }
+    },
     {
       "slug": "qwen3-4b",
       "label": "Qwen3-4B",

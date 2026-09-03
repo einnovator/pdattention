@@ -2184,6 +2184,43 @@ E0 themselves differ in 2/5. The SDK therefore treats all three pinned paths
 as semantic mechanism passes while keeping their economic status experimental.
 Engine labels alone never select these capabilities.
 
+For product evidence we additionally normalize these measurements into three
+conditions rather than exposing only paper-level E0/E2 labels.  The historical
+MLX rows directly support No PRA and PRA without learned adaptor behavior. They
+do not record resolution of the subsequently published immutable bundle, so
+that third condition remains \texttt{NOT\_MEASURED}; it is not duplicated from
+the generic PRA row. Table~\ref{tab:canonical-mlx-evidence} shows the compact
+flagship view. Deltas are candidate minus No PRA and preserve their sign.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Canonical exact-identity MLX evidence over the 15-example combined
+natural-QA cohort. Bundle means PRA with the immutable Runtime Bundle.}
+\begin{tabular}{llrrrr}
+\toprule
+Model & Metric & No PRA & PRA no adaptor & $\Delta$ no adaptor & PRA bundle \\
+\midrule
+Qwen3-8B  & token F1 & 0.2365 & 0.2365 & 0.0000 & NOT MEASURED \\
+           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
+           & TTFT p95 (ms) & 182.4 & 181.6 & -0.8 & NOT MEASURED \\
+Qwen3-14B & token F1 & 0.2775 & 0.2775 & 0.0000 & NOT MEASURED \\
+           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
+           & TTFT p95 (ms) & 339.2 & 338.3 & -0.9 & NOT MEASURED \\
+Qwen3-32B & token F1 & 0.2312 & 0.2312 & 0.0000 & NOT MEASURED \\
+           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
+           & TTFT p95 (ms) & 799.8 & 797.3 & -2.5 & NOT MEASURED \\
+\bottomrule
+\end{tabular}
+\label{tab:canonical-mlx-evidence}
+\end{table}
+
+This table should not be read as evidence that a learned adaptor is necessary.
+The qualified BALANCED profile is generic and all-layer; the missing condition
+asks a narrower reproducibility question: was that exact published bundle and
+revision resolved during the measured request? The machine-readable audit
+retains this distinction for cards, CLI reports, and Control Plane views.
+
 The expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs
 overall; the pooled Wilson 95\% lower bound is 0.9994. Visible-token reduction
@@ -2427,11 +2464,34 @@ OpenHands 0.57.0 & 0/1 & 2/6 & N/R & 489.9 & no solution file \\
 
 This negative gate matters to the product claim. Token reduction from a model
 that no longer completes coding tasks is not a PRA benefit. A code-capable
-agent/model pairing must first establish nonzero success, after which identical
-tasks and selector outputs can compare No-PRA, Selected Context, and genuinely
-supported Native Memory profiles. The normalized schema already retains
+agent/model pairing must first establish nonzero success and enter the
+preregistered 30--80\% admission band. Only then may identical tasks compare
+No PRA, PRA without an adaptor, and PRA with the immutable Runtime Bundle under
+BALANCED. Table~\ref{tab:agent-canonical-gate} makes the unrun conditions
+explicit: \texttt{BLOCKED} is missing evidence caused by the quality floor, not
+a synthetic zero or an observed PRA failure. The normalized schema retains
 official score, verifier counts, turns, tool calls, cumulative context, timing,
 resource use, and cost for that subsequent paired analysis.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Canonical coding-agent admission evidence. Both PRA conditions were
+withheld because No-PRA official success was zero. Deltas therefore remain
+blocked rather than being computed from invented values.}
+\begin{tabular}{llrrr}
+\toprule
+Cohort & Metric & No PRA & PRA no adaptor & PRA bundle \\
+\midrule
+Qwen3-14B, five tasks & Official success & 0/5 & BLOCKED & BLOCKED \\
+Qwen3-14B, five tasks & Verifier checks & 7/12 & BLOCKED & BLOCKED \\
+Qwen3-14B, five tasks & Input tokens & 100,883 & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, one task & Official success & 0/1 & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, one task & Verifier checks & 4/6 & BLOCKED & BLOCKED \\
+\bottomrule
+\end{tabular}
+\label{tab:agent-canonical-gate}
+\end{table}
 
 \subsection{Distributed observability and semantic context telemetry}
 

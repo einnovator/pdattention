@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import yaml
 
 from .bundle_evidence import EvidenceValidationError, validate_bundle_evidence
+from .canonical_evidence import CanonicalEvidenceRecord, MetricGroup, render_markdown_table
 
 
 BUNDLE_SCHEMA_VERSION = 2
@@ -491,6 +492,31 @@ class BundleBuilder:
             ]
         else:
             lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
+        lines += ["## Canonical three-condition evidence", ""]
+        canonical_records = _canonical_evidence_rows(bundle)
+        if canonical_records:
+            lines += [
+                "Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.", "",
+            ]
+            for record in canonical_records:
+                lines += [
+                    f"### {record.key.task} / {record.key.engine} / {record.key.profile}", "",
+                    f"Exact identity: `{record.key.model_id}` at `{record.key.model_revision}` on `{record.key.hardware}`.", "",
+                ]
+                for group in MetricGroup:
+                    if not any(metric.group == group for metric in record.metric_definitions.values()):
+                        continue
+                    lines += [f"#### {group.value.title()}", "", render_markdown_table(record, group).rstrip(), ""]
+        else:
+            lines += [
+                "A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.", "",
+                "| Condition | Evidence status |",
+                "| --- | --- |",
+                "| No PRA | `NEEDS_RUN` |",
+                "| PRA - No Adaptor | `NEEDS_RUN` |",
+                "| PRA - Adaptor Bundle | `NEEDS_RUN` |", "",
+                "Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.", "",
+            ]
         lines += [
             "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub,hf-runtime]'", "pra doctor", "```", "",
             "## Quickstart", "", "```bash", f"pra inspect {model} -e {preferred_engine} -a {repo}",
@@ -610,6 +636,19 @@ def _qualification_rows(bundle: PRAModelBundle) -> list[Mapping[str, Any]]:
         return []
     rows = bundle.qualification.get("metrics", bundle.qualification.get("rows", []))
     return [row for row in rows if isinstance(row, Mapping)] if isinstance(rows, Sequence) else []
+
+
+def _canonical_evidence_rows(bundle: PRAModelBundle) -> list[CanonicalEvidenceRecord]:
+    qualification = bundle.qualification if isinstance(bundle.qualification, Mapping) else {}
+    raw = qualification.get("canonical_evidence", [])
+    values = raw if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, Mapping)) else [raw]
+    records = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            continue
+        fields = CanonicalEvidenceRecord.model_fields
+        records.append(CanonicalEvidenceRecord.model_validate({name: value[name] for name in fields if name in value}))
+    return records
 
 
 def validate_model_card(text: str, bundle: PRAModelBundle | None = None) -> dict[str, Any]:

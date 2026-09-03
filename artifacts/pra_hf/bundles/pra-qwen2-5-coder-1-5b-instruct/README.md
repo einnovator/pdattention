@@ -40,6 +40,18 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
+## Canonical three-condition evidence
+
+A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
+
+| Condition | Evidence status |
+| --- | --- |
+| No PRA | `NEEDS_RUN` |
+| PRA - No Adaptor | `NEEDS_RUN` |
+| PRA - Adaptor Bundle | `NEEDS_RUN` |
+
+Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
+
 ## Installation
 
 ```bash
@@ -125,8 +137,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `de12658ff994e6215c07eb34cda32c566ee344d8`
-- Bundle build commit: `de12658ff994e6215c07eb34cda32c566ee344d8`
+- PRA commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
+- Bundle build commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

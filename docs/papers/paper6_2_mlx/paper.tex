@@ -220,6 +220,14 @@ dtype, position policy, consumer profile, and resource version. A mismatch is
 rejected before arrays enter attention.
 
 \section{Environment}
+
+For cards and cross-engine qualification, we project measurements into
+\emph{No PRA}, \emph{PRA--No Adaptor}, and \emph{PRA--Adaptor Bundle}.  E0 and
+E2 remain internal mechanism labels: selected-text E0 is the original-model
+execution and native E2 is PRA without learned adaptor behavior.  The bundle
+condition requires a recorded immutable bundle revision and is otherwise
+\texttt{NOT\_MEASURED}. Both PRA deltas use No PRA as baseline, preserve sign,
+and declare metric unit, aggregation, and direction explicitly.
 The host was an Apple M5 MacBook Pro with 10 CPU and 10 GPU cores, 16 GB unified
 memory, Metal 4, and macOS 26.4.1. The environment used Python 3.12.7, MLX
 0.32.0, and mlx-lm 0.31.3. The model was

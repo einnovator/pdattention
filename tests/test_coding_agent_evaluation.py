@@ -12,7 +12,13 @@ import yaml
 from experiments.agents.adapters import FixtureAgentAdapter, command_adapter, load_command_manifest
 from experiments.agents.adapters.command import _parse_json_lines
 from experiments.agents.cli import build_parser
-from experiments.agents.analysis import paired_comparison, summarize
+from experiments.agents.analysis import (
+    baseline_promotion_gate,
+    canonical_agent_evidence,
+    paired_comparison,
+    summarize,
+)
+from pra_hf.canonical_evidence import EvidenceCondition, MeasurementState
 from experiments.agents.catalog import load_catalog
 from experiments.agents.runner import (
     _read_fixture_text,
@@ -275,3 +281,37 @@ def test_paired_analysis_keeps_task_identity(tmp_path: Path) -> None:
     assert comparison["pairs"] == 4
     assert comparison["wins"] == comparison["losses"] == 0
     assert comparison["mcnemar_exact_p"] == 1.0
+
+
+def test_zero_success_agent_baseline_blocks_pra_conditions(tmp_path: Path) -> None:
+    manifest = BenchmarkManifest.load(ROOT / "manifests" / "fixture_smoke.yaml")
+    rows = run_manifest(
+        manifest, FixtureAgentAdapter(), output=tmp_path,
+        agent="fixture-agent", engine="fixture", model="fixture-model",
+        pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+    )
+    failed = [
+        row.model_copy(update={"outcome": row.outcome.model_copy(update={"success": False})})
+        for row in rows
+    ]
+    gate = baseline_promotion_gate(failed)
+    evidence = canonical_agent_evidence(failed, date="2026-09-03")
+    assert gate["eligible"] is False
+    assert gate["official_success_rate"] == 0
+    assert evidence.evidence_tier == "BLOCKED"
+    for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE):
+        assert evidence.conditions[condition].metrics["official_task_success"].state == MeasurementState.BLOCKED
+
+
+def test_agent_baseline_inside_target_band_is_eligible(tmp_path: Path) -> None:
+    manifest = BenchmarkManifest.load(ROOT / "manifests" / "fixture_smoke.yaml")
+    rows = run_manifest(
+        manifest, FixtureAgentAdapter(), output=tmp_path,
+        agent="fixture-agent", engine="fixture", model="fixture-model",
+        pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+    )
+    mixed = [
+        row if index < 2 else row.model_copy(update={"outcome": row.outcome.model_copy(update={"success": False})})
+        for index, row in enumerate(rows)
+    ]
+    assert baseline_promotion_gate(mixed)["eligible"] is True

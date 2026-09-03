@@ -1,0 +1,660 @@
+[
+  {
+    "schema_version": 1,
+    "key": {
+      "task": "combined",
+      "hardware": "Apple M4 Pro (Mac16,7), 48 GB",
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model_id": "mlx-community/Qwen3-14B-4bit",
+      "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+      "model_fingerprint": null,
+      "mode": "native-memory",
+      "profile": "balanced"
+    },
+    "metric_definitions": {
+      "token_f1": {
+        "name": "token_f1",
+        "group": "quality",
+        "unit": "fraction",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Token-overlap F1 against the reference answer."
+      },
+      "exact_match": {
+        "name": "exact_match",
+        "group": "quality",
+        "unit": "fraction",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Fraction of answers exactly matching the reference."
+      },
+      "gold_answer_log_probability": {
+        "name": "gold_answer_log_probability",
+        "group": "quality",
+        "unit": "log_probability",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Mean log-probability assigned to the gold answer."
+      },
+      "visible_tokens": {
+        "name": "visible_tokens",
+        "group": "context",
+        "unit": "token",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Tokens visible in the sequential prompt."
+      },
+      "selected_native_kv_tokens": {
+        "name": "selected_native_kv_tokens",
+        "group": "context",
+        "unit": "token",
+        "direction": "neutral",
+        "aggregation": "mean",
+        "description": "Native K/V tokens selected outside the sequential prompt."
+      },
+      "active_detail_bytes": {
+        "name": "active_detail_bytes",
+        "group": "resources",
+        "unit": "byte",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Native detail bytes active for the request."
+      },
+      "retained_detail_bytes": {
+        "name": "retained_detail_bytes",
+        "group": "resources",
+        "unit": "byte",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Native detail bytes retained for reuse."
+      },
+      "ttft_p50_ms": {
+        "name": "ttft_p50_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p50",
+        "description": "Median time to first generated token."
+      },
+      "ttft_p95_ms": {
+        "name": "ttft_p95_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p95",
+        "description": "95th-percentile time to first generated token."
+      },
+      "ttft_p99_ms": {
+        "name": "ttft_p99_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p99",
+        "description": "99th-percentile time to first generated token."
+      },
+      "completion_latency_mean_ms": {
+        "name": "completion_latency_mean_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "mean",
+        "description": "Mean end-to-end completion latency."
+      },
+      "peak_memory_bytes": {
+        "name": "peak_memory_bytes",
+        "group": "resources",
+        "unit": "byte",
+        "direction": "lower_is_better",
+        "aggregation": "max",
+        "description": "Peak memory reported by the engine-specific allocator."
+      }
+    },
+    "conditions": {
+      "no_pra": {
+        "metrics": {
+          "token_f1": {
+            "value": 0.27746031746031746,
+            "state": "MEASURED",
+            "note": null
+          },
+          "exact_match": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "gold_answer_log_probability": {
+            "value": -9.97838643391927,
+            "state": "MEASURED",
+            "note": null
+          },
+          "visible_tokens": {
+            "value": 315.53333333333336,
+            "state": "MEASURED",
+            "note": null
+          },
+          "selected_native_kv_tokens": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "active_detail_bytes": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "retained_detail_bytes": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p50_ms": {
+            "value": 210.72420799464453,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p95_ms": {
+            "value": 339.22949999396224,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p99_ms": {
+            "value": 339.22949999396224,
+            "state": "MEASURED",
+            "note": null
+          },
+          "completion_latency_mean_ms": {
+            "value": 507.8287193318829,
+            "state": "MEASURED",
+            "note": null
+          },
+          "peak_memory_bytes": {
+            "value": 8850340060.0,
+            "state": "MEASURED",
+            "note": null
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      },
+      "pra_no_adaptor": {
+        "metrics": {
+          "token_f1": {
+            "value": 0.27746031746031746,
+            "state": "MEASURED",
+            "note": null
+          },
+          "exact_match": {
+            "value": 0.0,
+            "state": "MEASURED",
+            "note": null
+          },
+          "gold_answer_log_probability": {
+            "value": -9.97838643391927,
+            "state": "MEASURED",
+            "note": null
+          },
+          "visible_tokens": {
+            "value": 34.266666666666666,
+            "state": "MEASURED",
+            "note": null
+          },
+          "selected_native_kv_tokens": {
+            "value": 11250.666666666666,
+            "state": "MEASURED",
+            "note": null
+          },
+          "active_detail_bytes": {
+            "value": 46082730.666666664,
+            "state": "MEASURED",
+            "note": null
+          },
+          "retained_detail_bytes": {
+            "value": 46082730.666666664,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p50_ms": {
+            "value": 210.37279200390913,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p95_ms": {
+            "value": 338.2852500071749,
+            "state": "MEASURED",
+            "note": null
+          },
+          "ttft_p99_ms": {
+            "value": 338.2852500071749,
+            "state": "MEASURED",
+            "note": null
+          },
+          "completion_latency_mean_ms": {
+            "value": 513.2481610004712,
+            "state": "MEASURED",
+            "note": null
+          },
+          "peak_memory_bytes": {
+            "value": 8794683612.0,
+            "state": "MEASURED",
+            "note": null
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      },
+      "pra_adaptor_bundle": {
+        "metrics": {
+          "token_f1": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "exact_match": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "gold_answer_log_probability": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "visible_tokens": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "selected_native_kv_tokens": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "active_detail_bytes": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "retained_detail_bytes": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "ttft_p50_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "ttft_p95_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "ttft_p99_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "completion_latency_mean_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "peak_memory_bytes": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          }
+        },
+        "bundle_id": null,
+        "bundle_revision": null
+      }
+    },
+    "provenance": {
+      "cohort": "selector-frozen natural QA; seed_count=5",
+      "seeds": [],
+      "concurrency": null,
+      "prompt_length_distribution": {},
+      "output_length_distribution": {},
+      "run_ids": [],
+      "commit": "4b4486a66c80d09aa7982be29812d4027c57a4e3",
+      "date": "2026-09-01",
+      "artifacts": [
+        "qualification/qwen3_14b_mlx_profiles.json"
+      ]
+    },
+    "evidence_tier": "ENGINE_QUALIFIED",
+    "deltas": {
+      "pra_no_adaptor": {
+        "token_f1": {
+          "metric": "token_f1",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.27746031746031746,
+          "candidate": 0.27746031746031746,
+          "delta": 0.0,
+          "percent_delta": 0.0,
+          "state": "MEASURED"
+        },
+        "exact_match": {
+          "metric": "exact_match",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 0.0,
+          "delta": 0.0,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "gold_answer_log_probability": {
+          "metric": "gold_answer_log_probability",
+          "condition": "pra_no_adaptor",
+          "baseline": -9.97838643391927,
+          "candidate": -9.97838643391927,
+          "delta": 0.0,
+          "percent_delta": -0.0,
+          "state": "MEASURED"
+        },
+        "visible_tokens": {
+          "metric": "visible_tokens",
+          "condition": "pra_no_adaptor",
+          "baseline": 315.53333333333336,
+          "candidate": 34.266666666666666,
+          "delta": -281.2666666666667,
+          "percent_delta": -89.14008028734419,
+          "state": "MEASURED"
+        },
+        "selected_native_kv_tokens": {
+          "metric": "selected_native_kv_tokens",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 11250.666666666666,
+          "delta": 11250.666666666666,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "active_detail_bytes": {
+          "metric": "active_detail_bytes",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 46082730.666666664,
+          "delta": 46082730.666666664,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "retained_detail_bytes": {
+          "metric": "retained_detail_bytes",
+          "condition": "pra_no_adaptor",
+          "baseline": 0.0,
+          "candidate": 46082730.666666664,
+          "delta": 46082730.666666664,
+          "percent_delta": null,
+          "state": "MEASURED"
+        },
+        "ttft_p50_ms": {
+          "metric": "ttft_p50_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 210.72420799464453,
+          "candidate": 210.37279200390913,
+          "delta": -0.3514159907354042,
+          "percent_delta": -0.16676583771729506,
+          "state": "MEASURED"
+        },
+        "ttft_p95_ms": {
+          "metric": "ttft_p95_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 339.22949999396224,
+          "candidate": 338.2852500071749,
+          "delta": -0.9442499867873266,
+          "percent_delta": -0.27835137769684914,
+          "state": "MEASURED"
+        },
+        "ttft_p99_ms": {
+          "metric": "ttft_p99_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 339.22949999396224,
+          "candidate": 338.2852500071749,
+          "delta": -0.9442499867873266,
+          "percent_delta": -0.27835137769684914,
+          "state": "MEASURED"
+        },
+        "completion_latency_mean_ms": {
+          "metric": "completion_latency_mean_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 507.8287193318829,
+          "candidate": 513.2481610004712,
+          "delta": 5.41944166858832,
+          "percent_delta": 1.0671790433038773,
+          "state": "MEASURED"
+        },
+        "peak_memory_bytes": {
+          "metric": "peak_memory_bytes",
+          "condition": "pra_no_adaptor",
+          "baseline": 8850340060.0,
+          "candidate": 8794683612.0,
+          "delta": -55656448.0,
+          "percent_delta": -0.6288622541358032,
+          "state": "MEASURED"
+        }
+      },
+      "pra_adaptor_bundle": {
+        "token_f1": {
+          "metric": "token_f1",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.27746031746031746,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "exact_match": {
+          "metric": "exact_match",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "gold_answer_log_probability": {
+          "metric": "gold_answer_log_probability",
+          "condition": "pra_adaptor_bundle",
+          "baseline": -9.97838643391927,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "visible_tokens": {
+          "metric": "visible_tokens",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 315.53333333333336,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "selected_native_kv_tokens": {
+          "metric": "selected_native_kv_tokens",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "active_detail_bytes": {
+          "metric": "active_detail_bytes",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "retained_detail_bytes": {
+          "metric": "retained_detail_bytes",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 0.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "ttft_p50_ms": {
+          "metric": "ttft_p50_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 210.72420799464453,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "ttft_p95_ms": {
+          "metric": "ttft_p95_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 339.22949999396224,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "ttft_p99_ms": {
+          "metric": "ttft_p99_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 339.22949999396224,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "completion_latency_mean_ms": {
+          "metric": "completion_latency_mean_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 507.8287193318829,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "peak_memory_bytes": {
+          "metric": "peak_memory_bytes",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 8850340060.0,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        }
+      }
+    },
+    "incremental_adaptor_deltas": {
+      "token_f1": {
+        "metric": "token_f1",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.27746031746031746,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "exact_match": {
+        "metric": "exact_match",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 0.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "gold_answer_log_probability": {
+        "metric": "gold_answer_log_probability",
+        "condition": "pra_adaptor_bundle",
+        "baseline": -9.97838643391927,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "visible_tokens": {
+        "metric": "visible_tokens",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 34.266666666666666,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "selected_native_kv_tokens": {
+        "metric": "selected_native_kv_tokens",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 11250.666666666666,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "active_detail_bytes": {
+        "metric": "active_detail_bytes",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 46082730.666666664,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "retained_detail_bytes": {
+        "metric": "retained_detail_bytes",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 46082730.666666664,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "ttft_p50_ms": {
+        "metric": "ttft_p50_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 210.37279200390913,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "ttft_p95_ms": {
+        "metric": "ttft_p95_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 338.2852500071749,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "ttft_p99_ms": {
+        "metric": "ttft_p99_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 338.2852500071749,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "completion_latency_mean_ms": {
+        "metric": "completion_latency_mean_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 513.2481610004712,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "peak_memory_bytes": {
+        "metric": "peak_memory_bytes",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 8794683612.0,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      }
+    }
+  }
+]

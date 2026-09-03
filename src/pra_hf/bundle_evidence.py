@@ -10,6 +10,17 @@ from pathlib import Path
 from statistics import mean, median
 from typing import Any, Mapping, Sequence
 
+from .canonical_evidence import (
+    CanonicalEvidenceRecord,
+    ConditionEvidence,
+    EvidenceCondition,
+    EvidenceKey,
+    EvidenceProvenance,
+    MeasurementState,
+    MetricObservation,
+    STANDARD_METRICS,
+)
+
 
 EVIDENCE_TIERS = frozenset(
     {
@@ -193,6 +204,80 @@ def import_mlx_paired_evidence(
     return imported
 
 
+def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalEvidenceRecord:
+    """Map a legacy selector-frozen E0/E2 row without inventing a bundle run.
+
+    The original engine path is No PRA and the native path is PRA without a
+    learned adaptor.  Because those runs predate immutable bundle resolution,
+    the bundle condition remains explicitly unmeasured.
+    """
+
+    baseline = row.get("baseline")
+    pra = row.get("pra")
+    if not isinstance(baseline, Mapping) or not isinstance(pra, Mapping):
+        raise EvidenceValidationError("paired transport evidence requires baseline and pra mappings")
+
+    def observations(source: Mapping[str, Any]) -> dict[str, MetricObservation]:
+        ttft = source.get("ttft_ms", {})
+        completion = source.get("completion_latency_ms", {})
+        values = {
+            "token_f1": source.get("quality"),
+            "exact_match": source.get("exact_match"),
+            "gold_answer_log_probability": source.get("gold_answer_logprob"),
+            "visible_tokens": source.get("visible_tokens"),
+            "selected_native_kv_tokens": source.get("selected_native_kv_tokens"),
+            "active_detail_bytes": source.get("active_detail_bytes"),
+            "retained_detail_bytes": source.get("retained_detail_bytes"),
+            "ttft_p50_ms": ttft.get("p50") if isinstance(ttft, Mapping) else None,
+            "ttft_p95_ms": ttft.get("p95") if isinstance(ttft, Mapping) else None,
+            "ttft_p99_ms": ttft.get("p99") if isinstance(ttft, Mapping) else None,
+            "completion_latency_mean_ms": completion.get("mean") if isinstance(completion, Mapping) else None,
+            "peak_memory_bytes": source.get("peak_memory_bytes"),
+        }
+        return {
+            name: MetricObservation.measured(float(value))
+            for name, value in values.items()
+            if value is not None
+        }
+
+    baseline_observations = observations(baseline)
+    pra_observations = observations(pra)
+    metric_names = tuple(dict.fromkeys((*baseline_observations, *pra_observations)))
+    missing_bundle = {
+        name: MetricObservation.missing(
+            MeasurementState.NOT_MEASURED,
+            "The paired engine run did not resolve and record the immutable Runtime Bundle.",
+        )
+        for name in metric_names
+    }
+    return CanonicalEvidenceRecord(
+        key=EvidenceKey(
+            task=str(row.get("dataset", "NOT_MEASURED")),
+            hardware=str(row.get("hardware", "NOT_MEASURED")),
+            engine=str(row.get("engine", "NOT_MEASURED")),
+            engine_version=str(row.get("engine_version", "NOT_MEASURED")),
+            model_id=str(row.get("model_id", "NOT_MEASURED")),
+            model_revision=str(row.get("model_revision", "NOT_MEASURED")),
+            mode=str(row.get("execution_mode", "native-memory")).lower().replace(" ", "-"),
+            profile=str(row.get("profile", "balanced")).lower(),
+        ),
+        metric_definitions={name: STANDARD_METRICS[name] for name in metric_names},
+        conditions={
+            EvidenceCondition.NO_PRA: ConditionEvidence(metrics=baseline_observations),
+            EvidenceCondition.PRA_NO_ADAPTOR: ConditionEvidence(metrics=pra_observations),
+            EvidenceCondition.PRA_ADAPTOR_BUNDLE: ConditionEvidence(metrics=missing_bundle),
+        },
+        provenance=EvidenceProvenance(
+            cohort=f"{row.get('cohort', 'selector-frozen paired transport')}; seed_count={row.get('seed_count', 'NOT_MEASURED')}",
+            run_ids=(),
+            commit=row.get("pra_commit"),
+            date=str(row.get("date", "NOT_MEASURED")),
+            artifacts=tuple(str(value) for value in (row.get("artifact"),) if value),
+        ),
+        evidence_tier=str(row.get("evidence_tier", "CONTROLLED")),
+    )
+
+
 def import_product_matrix_evidence(
     artifact: str | Path, identity: EvidenceIdentity
 ) -> list[dict[str, Any]]:
@@ -313,5 +398,29 @@ def validate_bundle_evidence(bundle: Any) -> None:
             errors.append(f"headline profile {row.get('profile')!r} is absent from bundle")
         if row.get("evidence_tier") not in EVIDENCE_TIERS:
             errors.append("headline evidence tier is invalid")
+    canonical = qualification.get("canonical_evidence", [])
+    canonical_rows = (
+        canonical
+        if isinstance(canonical, Sequence) and not isinstance(canonical, (str, bytes, Mapping))
+        else [canonical]
+        if canonical
+        else []
+    )
+    for raw in canonical_rows:
+        if not isinstance(raw, Mapping):
+            errors.append("canonical evidence rows must be mappings")
+            continue
+        try:
+            fields = CanonicalEvidenceRecord.model_fields
+            record = CanonicalEvidenceRecord.model_validate(
+                {name: raw[name] for name in fields if name in raw}
+            )
+        except ValueError as error:
+            errors.append(f"invalid canonical evidence: {error}")
+            continue
+        if record.key.model_id != bundle.base_model.get("id"):
+            errors.append("canonical evidence model_id disagrees with bundle")
+        if record.key.model_revision != bundle.base_model.get("revision"):
+            errors.append("canonical evidence model_revision disagrees with bundle")
     if errors:
         raise EvidenceValidationError("; ".join(errors))

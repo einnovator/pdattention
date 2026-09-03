@@ -9,11 +9,12 @@ External code or documentation RAG is outside this campaign.
 
 1. **Stage A, compatibility:** 2-5 trivial tasks verify unattended execution,
    tool use, protocol behavior, isolation, and accounting. No quality claims.
-2. **Stage B, pilot:** OpenCode, Pi, and OpenHands run 10-25 frozen tasks on
-   representative engines under No PRA, Selected BALANCED, and genuine Native
-   BALANCED where supported.
+2. **Stage B, baseline admission:** OpenCode, Pi, and OpenHands first run 10-25
+   frozen tasks under No PRA. Only agent/model/task cohorts with roughly
+   30%-80% official success proceed to the PRA conditions.
 3. **Stage C, profiles:** stable pairs expand to QUALITY, BALANCED, and ECONOMY
-   for Selected Context and Native Memory.
+   only after the initial No PRA, PRA - No Adaptor/BALANCED, and PRA - Adaptor
+   Bundle/BALANCED comparison is useful.
 4. **Stage D/E, breadth:** commercial-native controls and larger official
    benchmark cohorts are added only after the pilot is stable.
 
@@ -51,6 +52,24 @@ at the Stage-B promotion gate: a code-specialized model must first establish a
 nonzero quality floor before context profiles are swept. Keeping quality ahead
 of token savings prevents an efficient but ineffective agent from looking
 competitive.
+
+The canonical evidence record makes the gate machine-readable. Missing
+treatment cells are not zero-valued failures: they are `BLOCKED` because the
+baseline cannot support a causal PRA comparison.
+
+| Cohort | Metric | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| OpenCode / Qwen3-14B / five tasks | Official task success | 0/5 | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` |
+| OpenCode / Qwen3-14B / five tasks | Verifier checks | 7/12 | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` |
+| OpenCode / Qwen3-14B / five tasks | Cumulative input tokens | 100,883 | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` |
+| OpenCode / Qwen3-Coder-30B / one task | Official task success | 0/1 | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` |
+| OpenCode / Qwen3-Coder-30B / one task | Verifier checks | 4/6 | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` |
+
+The machine-readable records are
+`qwen3_14b_canonical_evidence.json` and
+`qwen3_coder_30b_canonical_evidence.json` in the campaign artifact directory.
+They preserve metric units and direction, exact run IDs, the admission reason,
+and explicit missing states.
 
 Qwen2.5-Coder-7B was also checked on the two closest-to-success tasks. It
 scored `0/2` and exposed a different incompatibility: intended tool calls were
@@ -116,6 +135,17 @@ python -m experiments.agents import-harbor HARBOR_JOB_DIR \
   --model MODEL --quantization QUANTIZATION \
   --connection gateway --protocol openai-chat-completions
 ```
+
+Apply the admission gate before scheduling either PRA treatment:
+
+```bash
+python -m experiments.agents screen HARBOR_JOB_DIR/runs.jsonl \
+  --minimum-success-rate 0.30 --maximum-success-rate 0.80 \
+  --minimum-runs 3 --output HARBOR_JOB_DIR/admission.json
+```
+
+`eligible: false` is a hard stop for an efficacy sweep. Partial verifier checks
+remain useful diagnostics, but do not override zero official task success.
 
 ## Required controls
 

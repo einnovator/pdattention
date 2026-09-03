@@ -426,7 +426,7 @@ def recommend(run, allow_unqualified_native, json_output, yaml_output) -> None:
 @click.option("--format", "format_name", type=click.Choice(["md", "html", "json"]), default="md", show_default=True)
 @click.option("-o", "--output", type=click.Path(path_type=Path))
 def report(run, format_name, output) -> None:
-    """Export a qualification run as Markdown, HTML, or JSON."""
+    """Export a qualification run or canonical evidence record."""
     try:
         document = load_run(run)
         rendered = render_report(document, format_name)

@@ -10,6 +10,7 @@ base_model:
     bits: 4
     group_size: 64
     runtime: MLX
+  post_training: pretrained and post-trained
   fingerprint: 0ce02649268b1b2c7196a6e07ebe848d9a416f76878c61deb1f2c9cb9b3b6e6b
 structural_adapter:
   path: structural_adapter
@@ -91,6 +92,7 @@ qualification:
   contract_version: 1
   status: CONTROLLED
   headline: []
+  canonical_evidence: []
   metrics:
   - &id002
     metric_class: ROUTING_DIAGNOSTIC
@@ -250,12 +252,14 @@ qualification:
   limitations:
   - The learned router improves QASPER but is not uniformly positive on HotpotQA;
     it is opt-in rather than the bundle default.
-  - Paired natural-QA evidence contains five examples per dataset and supports engine
-    qualification, not production qualification.
-  - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
-    therefore retains all eligible layers.
-  - The qualification identity is the exact 4-bit MLX model and revision; it does
-    not transfer automatically to full-precision Hugging Face weights or another quantization.
+  - The held-out routing diagnostic contains 16 examples per dataset and supports
+    controlled routing claims only.
+  - Native consumer-layer profiles and end-task generation remain uncalibrated for
+    this exact identity.
+  - The qualification identity is the exact 4bit MLX model and revision; it does not
+    transfer automatically to another checkpoint, engine, or quantization.
+  - Routing evidence compares a frozen generic router with a small learned router;
+    it does not establish end-task generation quality.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/comparison.json
@@ -279,8 +283,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 52ea386f56fc8d81346325619f3523e585abf78d
-  bundle_build_commit: 52ea386f56fc8d81346325619f3523e585abf78d
+  pra_commit: 678a463f68a5ef7ae32fe700d99e23274ac61854
+  bundle_build_commit: 678a463f68a5ef7ae32fe700d99e23274ac61854
   hf_repo: EInnovator/pra-gemma3-1b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: gemma
@@ -292,12 +296,12 @@ provenance:
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: f5f0c5816ac15705ff5ad2f7770674b2c67731007fab79400087f7844ad61ce3
   learned_adapters/combined-router-d128/config.json: 91c1dbf549e1ff78fea3aca0459c09ea630424bfa2d033106741ec706c29434d
-  qualification/catalog_summary.json: f74119da8464ecebb2d98c45ef234d5f3d4ea71092f0f2eec06361060cb8d0a0
+  qualification/catalog_summary.json: bdf42af02e948b52953b33c61197b915e37e4e003a2addf00c3fa61b5a6bf0d9
   qualification/comparison.json: 2bcb5c2479d07c417394439726f6e2f6b93f9f7c2a071319a4a7392835e51c85
   qualification/feature_dataset_manifest.json: 1f6eb88aa234c36c1f88e6105e9da61b7683a29116ff090f94530780beb91cc4
   structural_adapter/pra_adapter.yaml: 1bbc3d7db091d84c14271970c138007c2632d8fe629f2cf995c14bca5d76b957
 trust:
   status: eInnovator-qualified
   publisher: EInnovator
-  scope: exact 4-bit MLX model identity; evidence does not transfer across revisions
-    or quantizations
+  scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
+    engines, or quantizations

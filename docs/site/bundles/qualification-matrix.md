@@ -14,6 +14,24 @@ Every row is scoped to the exact model revision, quantization, engine, profile, 
 | [`pra-gemma3-1b-mlx-4bit`](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit) | mlx | Selected Context | BALANCED | End-task pairing pending | NOT_MEASURED | CONTROLLED | [source](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/gemma3-1b/comparison.json) |
 | [`pra-qwen3-0.6b`](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | hf | Selected Context | BALANCED | Paired end-task qualification pending | NOT_MEASURED | RESEARCH | [source](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/artifacts/pra_hf/bundles/pra-qwen3-0.6b/qualification/profile_evidence.json) |
 
+## Canonical condition audit
+
+This audit asks whether the same task, exact model, engine/hardware, mode, and profile have been measured under all three conditions. `AVAILABLE_EXISTING` here means that at least the quality, context, serving, and memory fields present in the linked selector-frozen artifact can be imported; it does not imply that every requested metric exists.
+
+| Task/dataset | HW/engine | Model | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Natural QA (QASPER / HotpotQA / 2Wiki) | mlx / artifact-recorded hardware | `mlx-community/Qwen3-14B-4bit` | Native Memory | BALANCED | `AVAILABLE_EXISTING` | `AVAILABLE_EXISTING` | `NEEDS_RUN` | `AVAILABLE_EXISTING` | `NEEDS_RUN` |
+| Natural QA (QASPER / HotpotQA / 2Wiki) | mlx / artifact-recorded hardware | `mlx-community/Qwen3-32B-4bit` | Native Memory | BALANCED | `AVAILABLE_EXISTING` | `AVAILABLE_EXISTING` | `NEEDS_RUN` | `AVAILABLE_EXISTING` | `NEEDS_RUN` |
+| Natural QA (QASPER / HotpotQA / 2Wiki) | mlx / artifact-recorded hardware | `mlx-community/Qwen3-8B-4bit` | Native Memory | BALANCED | `AVAILABLE_EXISTING` | `AVAILABLE_EXISTING` | `NEEDS_RUN` | `AVAILABLE_EXISTING` | `NEEDS_RUN` |
+| Exact-identity qualification workload | hf / artifact-recorded hardware | `Qwen/Qwen2.5-1.5B-Instruct` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+| Exact-identity qualification workload | hf / artifact-recorded hardware | `Qwen/Qwen2.5-Coder-1.5B-Instruct` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+| Exact-identity qualification workload | mlx / artifact-recorded hardware | `mlx-community/Llama-3.1-8B-Instruct-4bit` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+| Exact-identity qualification workload | mlx / artifact-recorded hardware | `mlx-community/Qwen3-4B-4bit` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+| Exact-identity qualification workload | mlx / artifact-recorded hardware | `mlx-community/gemma-3-1b-it-4bit` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+| Exact-identity qualification workload | hf / artifact-recorded hardware | `Qwen/Qwen3-0.6B` | Selected Context | BALANCED | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` | `NEEDS_RUN` |
+
+The three MLX natural-QA rows predate immutable bundle resolution: their original-model and generic native-PRA conditions can be normalized, while the Runtime Bundle condition remains `NEEDS_RUN`. Routing-only artifacts remain research diagnostics and do not fill end-task cells.
+
 ## Evidence tiers
 
 | Tier | Meaning |

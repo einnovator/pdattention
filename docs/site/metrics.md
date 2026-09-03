@@ -3,6 +3,31 @@
 PRA changes selection, representation, and serving. Measure each transition
 separately so a retrieval improvement is not mistaken for a transport gain.
 
+## Canonical product comparison
+
+Cards, qualification reports, agent benchmarks, and Control Plane evidence use
+one public condition grammar:
+
+| Condition | Meaning |
+| --- | --- |
+| **No PRA** | Original model and engine; no PRA routing, materialization, or bundle |
+| **PRA - No Adaptor** | PRA with generic routing and required structural compatibility, without learned model-specific behavior |
+| **PRA - Adaptor Bundle** | PRA using the exact immutable Runtime Bundle; a bundle may contain structural metadata without a learned adaptor |
+
+For each metric, both PRA deltas are computed against No PRA. A secondary
+incremental adaptor delta may compare the bundle with PRA - No Adaptor. Signs
+are never inverted: lower TTFT produces a negative delta, while higher F1
+produces a positive delta. Every metric declares `higher_is_better`,
+`lower_is_better`, or `neutral`, plus an explicit unit and aggregation.
+
+Missing values use `NOT_MEASURED`, `NOT_APPLICABLE`, or `BLOCKED`; none is
+rendered as numeric zero. Run `pra report CANONICAL_EVIDENCE.json --format html`
+to render the same normalized schema used by the bundle cards and Control Plane
+serialization.
+
+The execution-level comparisons below remain useful mechanism attribution.
+They do not replace the three-condition product comparison.
+
 ## Context gain
 
 Compare the complete available source with **the same task using Selected

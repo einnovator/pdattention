@@ -24,6 +24,12 @@ from typing import Any, Mapping, Sequence
 import torch
 import yaml
 
+from .canonical_evidence import (
+    CanonicalEvidenceRecord,
+    EvidenceCondition,
+    MeasurementState,
+    render_markdown_table as render_canonical_markdown_table,
+)
 from .execution_modes import (
     ExecutionMode,
     ExecutionModeResolver,
@@ -718,9 +724,92 @@ def load_run(path: str | Path) -> dict[str, Any]:
     root = Path(path)
     source = root / "metrics.json" if root.is_dir() else root
     value = _read_json(source)
+    if _is_canonical_evidence(value):
+        record = _canonical_record(value)
+        return record.serialize_for_control_plane()
     if value.get("schema_version") != SCHEMA_VERSION or "modes" not in value:
         raise ValueError(f"Not a PRA qualification run: {source}")
     return value
+
+
+def _is_canonical_evidence(document: Mapping[str, Any]) -> bool:
+    return all(name in document for name in ("key", "metric_definitions", "conditions", "provenance"))
+
+
+def _canonical_record(document: Mapping[str, Any]) -> CanonicalEvidenceRecord:
+    fields = CanonicalEvidenceRecord.model_fields
+    return CanonicalEvidenceRecord.model_validate({name: document[name] for name in fields if name in document})
+
+
+def _canonical_markdown_report(record: CanonicalEvidenceRecord) -> str:
+    key = record.key
+    lines = [
+        "# PRA Canonical Evidence Report", "",
+        f"- Task/dataset: `{key.task}`",
+        f"- Hardware: `{key.hardware}`",
+        f"- Engine: `{key.engine} {key.engine_version}`",
+        f"- Model: `{key.model_id}`",
+        f"- Model revision: `{key.model_revision}`",
+        f"- Mode/profile: `{key.mode}` / `{key.profile}`",
+        f"- Evidence tier: `{record.evidence_tier}`", "",
+        "Deltas preserve the mathematical sign and use No PRA as the baseline. Metric direction states how to interpret that sign.", "",
+        "## Matched conditions", "",
+        render_canonical_markdown_table(record).rstrip(), "",
+        "## Provenance", "",
+        f"- Cohort: `{record.provenance.cohort}`",
+        f"- Date: `{record.provenance.date}`",
+        f"- Commit: `{record.provenance.commit or NOT_MEASURED}`",
+        f"- Concurrency: `{record.provenance.concurrency or NOT_MEASURED}`",
+        f"- Runs: `{len(record.provenance.run_ids)}`", "",
+    ]
+    return "\n".join(lines)
+
+
+def _canonical_html_report(record: CanonicalEvidenceRecord) -> str:
+    key = record.key
+    rows = []
+    for name, definition in record.metric_definitions.items():
+        observations = [record.conditions[condition].metrics.get(name) for condition in EvidenceCondition]
+        deltas = [
+            record.delta(name, condition)
+            for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
+        ]
+        values = [
+            name, definition.unit, definition.direction.value,
+            *[
+                MeasurementState.NOT_MEASURED.value
+                if observation is None
+                else observation.state.value
+                if observation.state != MeasurementState.MEASURED
+                else f"{observation.value:.6g}"
+                for observation in observations
+            ],
+            *[
+                delta.state.value
+                if delta.state != MeasurementState.MEASURED or delta.delta is None
+                else f"{delta.delta:+.6g}" + (
+                    "" if delta.percent_delta is None else f" ({delta.percent_delta:+.2f}%)"
+                )
+                for delta in deltas
+            ],
+        ]
+        rows.append("<tr>" + "".join(f"<td>{html.escape(str(value))}</td>" for value in values) + "</tr>")
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PRA Canonical Evidence Report</title>
+<style>
+body{{font:16px/1.55 system-ui;max-width:1440px;margin:40px auto;padding:0 24px;color:#182124}}
+h1,h2{{line-height:1.2}} table{{width:100%;border-collapse:collapse;margin:20px 0}} th,td{{padding:9px;border:1px solid #d9dfdc;text-align:left}}
+th{{background:#eef3f0}} code{{font-size:.9em}} .meta{{color:#52605b}} .blocked{{color:#8a331d}}
+</style></head><body><main>
+<h1>PRA Canonical Evidence Report</h1>
+<p class="meta">Task <code>{html.escape(key.task)}</code> &middot; Engine <code>{html.escape(key.engine)} {html.escape(key.engine_version)}</code> &middot; Model <code>{html.escape(key.model_id)}</code> &middot; Profile <code>{html.escape(key.profile)}</code></p>
+<p>Deltas are candidate minus No PRA; signs are not inverted. Missing measurements retain their explicit state.</p>
+<h2>Matched conditions</h2>
+<table><thead><tr><th>Metric</th><th>Unit</th><th>Direction</th><th>No PRA</th><th>PRA - No Adaptor</th><th>PRA - Adaptor Bundle</th><th>Delta No Adaptor</th><th>Delta Bundle</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<h2>Provenance</h2><p>Cohort <code>{html.escape(record.provenance.cohort)}</code><br>Date <code>{html.escape(record.provenance.date)}</code><br>Commit <code>{html.escape(record.provenance.commit or NOT_MEASURED)}</code><br>Runs <code>{len(record.provenance.run_ids)}</code></p>
+</main></body></html>
+"""
 
 
 def render_markdown_report(document: Mapping[str, Any]) -> str:
@@ -776,6 +865,15 @@ def render_markdown_report(document: Mapping[str, Any]) -> str:
 
 
 def render_report(document: Mapping[str, Any], format_name: str) -> str:
+    if _is_canonical_evidence(document):
+        record = _canonical_record(document)
+        if format_name == "json":
+            return json.dumps(record.serialize_for_control_plane(), indent=2, sort_keys=True) + "\n"
+        if format_name == "md":
+            return _canonical_markdown_report(record)
+        if format_name == "html":
+            return _canonical_html_report(record)
+        raise ValueError(f"Unknown report format: {format_name}")
     if format_name == "json":
         return json.dumps(document, indent=2, sort_keys=True, default=str) + "\n"
     markdown = render_markdown_report(document)

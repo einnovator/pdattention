@@ -2240,7 +2240,7 @@ Reason: quality gate passed; native economics not qualified
 
 ### `pra report`
 
-Export a qualification run as Markdown, HTML, or JSON.
+Export a qualification run or canonical evidence record.
 
 **Usage**
 

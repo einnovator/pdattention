@@ -24,6 +24,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Architecture: `Gemma3ForCausalLM`
 - Parameters: `1B`
 - Tokenizer revision: `2d44e83dc9e80843d22fb941d3d699a0b1351aa6`
+- Post-training: `pretrained and post-trained`
 
 ## Recommended configuration
 
@@ -38,6 +39,18 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 ## Headline results
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+
+## Canonical three-condition evidence
+
+A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
+
+| Condition | Evidence status |
+| --- | --- |
+| No PRA | `NEEDS_RUN` |
+| PRA - No Adaptor | `NEEDS_RUN` |
+| PRA - Adaptor Bundle | `NEEDS_RUN` |
+
+Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
 
 ## Installation
 
@@ -103,9 +116,10 @@ pra report .pra/runs/qasper --format html
 ## Known limitations
 
 - The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.
-- Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification.
-- Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers.
-- The qualification identity is the exact 4-bit MLX model and revision; it does not transfer automatically to full-precision Hugging Face weights or another quantization.
+- The held-out routing diagnostic contains 16 examples per dataset and supports controlled routing claims only.
+- Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity.
+- The qualification identity is the exact 4bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
+- Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
@@ -122,8 +136,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `52ea386f56fc8d81346325619f3523e585abf78d`
-- Bundle build commit: `52ea386f56fc8d81346325619f3523e585abf78d`
+- PRA commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
+- Bundle build commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.
