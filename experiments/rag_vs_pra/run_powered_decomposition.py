@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import platform
 import re
@@ -89,6 +90,16 @@ def _hardware() -> dict[str, object]:
     return result
 
 
+def _runtime_versions() -> dict[str, str]:
+    versions = {"python": platform.python_version()}
+    for package in ("mlx", "mlx-lm", "torch", "transformers", "huggingface-hub"):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = "NOT_INSTALLED"
+    return versions
+
+
 def _resolve_hf_revision(model_id: str, revision: str) -> str:
     if re.fullmatch(r"[0-9a-f]{40}", revision):
         return revision
@@ -145,6 +156,7 @@ class ProbeBackend:
         *,
         selection_receipt_id: str,
         regime: str,
+        selected_texts: Sequence[str] = (),
     ) -> tuple[str, Mapping[str, object]]:
         started = time.perf_counter()
         prediction = next(
@@ -179,6 +191,7 @@ class ProbeBackend:
             "peak_memory_bytes": None,
             "temporary_allocation_bytes": None,
             "cache_key": selection_receipt_id,
+            "native_state_fingerprint": None,
         }
 
     def release(self, selection_receipt_id: str) -> None:
@@ -190,13 +203,23 @@ class PersistentMLXBackend:
 
     publishable_answer_quality = True
 
-    def __init__(self, model_id: str, revision: str, max_new_tokens: int) -> None:
+    def __init__(
+        self,
+        model_id: str,
+        revision: str,
+        max_new_tokens: int,
+        *,
+        native_cache_unit: str = "selection",
+    ) -> None:
         from mlx_lm import load
 
         self.name = f"mlx_native:{model_id}@{revision}"
         self.model_id = model_id
         self.revision = revision
         self.max_new_tokens = max_new_tokens
+        if native_cache_unit not in {"selection", "chunk"}:
+            raise ValueError("native_cache_unit must be selection or chunk")
+        self.native_cache_unit = native_cache_unit
         self.model, self.tokenizer = load(model_id, revision=revision)
         self._native_memories: dict[str, object] = {}
 
@@ -258,13 +281,18 @@ class PersistentMLXBackend:
         *,
         selection_receipt_id: str,
         regime: str,
+        selected_texts: Sequence[str] = (),
     ) -> tuple[str, Mapping[str, object]]:
         import mlx.core as mx
         from mlx_lm.models.cache import make_prompt_cache
-        from pra_mlx.native import encode_native_memory, make_native_prompt_cache
+        from pra_mlx.native import (
+            combine_native_memories,
+            encode_native_memory,
+            make_native_prompt_cache,
+        )
 
-        if regime not in {"COLD", "WARM"}:
-            raise ValueError("regime must be COLD or WARM")
+        if regime not in {"COLD", "WARM", "PERSISTENT_CORPUS"}:
+            raise ValueError("regime must be COLD, WARM, or PERSISTENT_CORPUS")
         source_tokens = list(
             self.tokenizer.encode(context.rstrip() + "\n\n", add_special_tokens=False)
         )
@@ -272,11 +300,22 @@ class PersistentMLXBackend:
             self.tokenizer.encode(self._query(question), add_special_tokens=False)
         )
         native = self._is_native(condition)
-        cache_hit = native and selection_receipt_id in self._native_memories
-        if regime == "COLD" and cache_hit:
-            del self._native_memories[selection_receipt_id]
-            cache_hit = False
-        if regime == "WARM" and native and not cache_hit:
+        cache_hit = False
+        cache_hits = 0
+        cache_lookups = 0
+        newly_materialized_tokens = len(source_tokens)
+        materialized_native_tokens = len(source_tokens)
+        if self.native_cache_unit == "selection":
+            cache_hit = native and selection_receipt_id in self._native_memories
+            if regime == "COLD" and cache_hit:
+                del self._native_memories[selection_receipt_id]
+                cache_hit = False
+        if (
+            regime == "WARM"
+            and native
+            and self.native_cache_unit == "selection"
+            and not cache_hit
+        ):
             raise RuntimeError("warm native execution has no retained cold memory")
 
         reset_peak = getattr(mx, "reset_peak_memory", None)
@@ -284,11 +323,44 @@ class PersistentMLXBackend:
             reset_peak()
         ingestion_started = time.perf_counter()
         if native:
-            if cache_hit:
-                memory = self._native_memories[selection_receipt_id]
+            if self.native_cache_unit == "chunk":
+                if not selected_texts:
+                    raise ValueError("chunk-resident native execution requires selected texts")
+                memories = []
+                newly_materialized_tokens = 0
+                materialized_native_tokens = 0
+                for text in selected_texts:
+                    tokens = list(
+                        self.tokenizer.encode(text, add_special_tokens=False)
+                    )
+                    chunk_key = _digest(
+                        {
+                            "model": self.model_id,
+                            "revision": self.revision,
+                            "tokens": tokens,
+                        }
+                    )
+                    cache_lookups += 1
+                    materialized_native_tokens += len(tokens)
+                    chunk_memory = self._native_memories.get(chunk_key)
+                    if chunk_memory is None:
+                        chunk_memory = encode_native_memory(self.model, tokens)
+                        self._native_memories[chunk_key] = chunk_memory
+                        newly_materialized_tokens += len(tokens)
+                    else:
+                        cache_hits += 1
+                    memories.append(chunk_memory)
+                memory = combine_native_memories(memories)
+                cache_hit = cache_hits == cache_lookups
             else:
-                memory = encode_native_memory(self.model, source_tokens)
-                self._native_memories[selection_receipt_id] = memory
+                cache_lookups = 1
+                if cache_hit:
+                    memory = self._native_memories[selection_receipt_id]
+                    cache_hits = 1
+                    newly_materialized_tokens = 0
+                else:
+                    memory = encode_native_memory(self.model, source_tokens)
+                    self._native_memories[selection_receipt_id] = memory
             cache = make_native_prompt_cache(self.model, memory)
             native_bytes = int(memory.nbytes)
         else:
@@ -317,25 +389,48 @@ class PersistentMLXBackend:
             "native_encode_ms": ingestion_ms if native and not cache_hit else 0.0,
             "visible_text_ingestion_ms": ingestion_ms if not native else 0.0,
             "active_detail_bytes": native_bytes,
-            "retained_detail_bytes": native_bytes if native else 0,
+            "retained_detail_bytes": (
+                sum(int(value.nbytes) for value in self._native_memories.values())
+                if native
+                else 0
+            ),
             "kv_bytes": native_bytes,
             "visible_prompt_tokens": (
                 len(query_tokens) if native else source_count + len(query_tokens)
             ),
-            "selected_native_kv_tokens": source_count if native else 0,
-            "newly_materialized_tokens": (
-                0 if native and cache_hit else source_count
-            ),
+            "selected_native_kv_tokens": materialized_native_tokens if native else 0,
+            "newly_materialized_tokens": newly_materialized_tokens,
             "visible_reuse": 0.0,
-            "native_reuse": float(native and cache_hit),
+            "native_reuse": (
+                cache_hits / cache_lookups if native and cache_lookups else 0.0
+            ),
+            "native_cache_hits": cache_hits,
+            "native_cache_lookups": cache_lookups,
+            "native_cache_unit": self.native_cache_unit,
             "peak_memory_bytes": peak,
             "active_memory_bytes": active,
             "temporary_allocation_bytes": None,
             "cache_key": selection_receipt_id,
+            "native_state_fingerprint": (
+                _digest(
+                    {
+                        "selection_receipt_id": selection_receipt_id,
+                        "model_id": self.model_id,
+                        "model_revision": self.revision,
+                        "source_tokens": materialized_native_tokens,
+                        "position_policy": "source_length_query_base_post_rope_kv",
+                        "consumer_profile": "all_layers",
+                        "cache_unit": self.native_cache_unit,
+                    }
+                )
+                if native
+                else None
+            ),
         }
 
     def release(self, selection_receipt_id: str) -> None:
-        self._native_memories.pop(selection_receipt_id, None)
+        if self.native_cache_unit == "selection":
+            self._native_memories.pop(selection_receipt_id, None)
 
 
 def _row(
@@ -357,6 +452,7 @@ def _row(
         context.condition,
         selection_receipt_id=selection.receipt_id,
         regime=regime,
+        selected_texts=tuple(row.chunk.text for row in context.chunks),
     )
     exact, token_f1 = _answer_metrics(prediction, question.answers)
     metrics = context_metrics(question, receipt, context)
@@ -452,6 +548,14 @@ def main() -> None:
     parser.add_argument("--model", default="mlx-community/Qwen3-4B-4bit")
     parser.add_argument("--revision", default="main")
     parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument(
+        "--regimes",
+        choices=("cold-warm", "persistent-corpus"),
+        default="cold-warm",
+    )
+    parser.add_argument(
+        "--native-cache-unit", choices=("selection", "chunk"), default="selection"
+    )
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
     parser.add_argument("--reranker-device", default="cpu")
@@ -459,6 +563,11 @@ def main() -> None:
     parser.add_argument("--skip-strong", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+
+    if args.native_cache_unit == "chunk" and args.regimes != "persistent-corpus":
+        parser.error("chunk-native caching requires --regimes persistent-corpus")
+    if args.native_cache_unit == "selection" and args.regimes == "persistent-corpus":
+        parser.error("persistent-corpus regime requires --native-cache-unit chunk")
 
     if args.dataset == "fixture":
         documents, questions, dataset_metadata = controlled_fixture(seed=args.seed)
@@ -478,7 +587,12 @@ def main() -> None:
     backend = (
         ProbeBackend()
         if args.backend == "probe"
-        else PersistentMLXBackend(args.model, model_revision, args.max_new_tokens)
+        else PersistentMLXBackend(
+            args.model,
+            model_revision,
+            args.max_new_tokens,
+            native_cache_unit=args.native_cache_unit,
+        )
     )
     strong_selector = (
         None
@@ -499,6 +613,11 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     candidate_receipts: dict[str, CandidateReceipt] = {}
     selection_receipts: dict[str, SelectionReceipt] = {}
+    regimes = (
+        ("COLD", "WARM")
+        if args.regimes == "cold-warm"
+        else ("PERSISTENT_CORPUS",)
+    )
     started_run = time.time()
     for question_index, question in enumerate(questions, 1):
         print(f"[{question_index}/{len(questions)}] {question.example_id}", flush=True)
@@ -579,7 +698,7 @@ def main() -> None:
                         selector_revision=selector.name,
                     )
                     selection_receipts[selection.receipt_id] = selection
-                    for regime in ("COLD", "WARM"):
+                    for regime in regimes:
                         for condition in conditions:
                             context = replace(base, condition=condition)
                             rows.append(
@@ -601,7 +720,7 @@ def main() -> None:
                             continue
                     backend.release(selection.receipt_id)
             for token_budget in args.token_budgets:
-                for regime in ("COLD", "WARM"):
+                for regime in regimes:
                     for condition in (
                         ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE,
                         ContextCondition.PRA_NATIVE_MEMORY_BUNDLE,
@@ -662,10 +781,17 @@ def main() -> None:
             "max_new_tokens": args.max_new_tokens,
             "temperature": 0,
             "prompt": "shortest_supported_answer_v2_no_think",
+            "prompt_template": (
+                "/no_think\nUse only the available evidence. Give only the shortest "
+                "supported answer.\nQuestion: {question}\nAnswer:"
+            ),
         },
         "seed": args.seed,
         "bundle_status": "NO_QUALIFIED_ADAPTER",
+        "regimes": list(regimes),
+        "native_cache_unit": args.native_cache_unit,
         "hardware": _hardware(),
+        "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),
         "candidate_receipt_count": len(candidate_receipts),
         "selection_receipt_count": len(selection_receipts),

@@ -131,17 +131,22 @@ def _deltas(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
 def _persistent_curve(
     rows: Sequence[Mapping[str, object]], candidate_count: int, token_budget: int
 ) -> list[dict[str, object]]:
+    regime = (
+        "PERSISTENT_CORPUS"
+        if any(row.get("regime") == "PERSISTENT_CORPUS" for row in rows)
+        else "COLD"
+    )
     selected = [
         row
         for row in rows
         if row.get("status") == "MEASURED"
         and row["candidate_count"] == candidate_count
         and row["token_budget"] == token_budget
-        and row["regime"] == "COLD"
+        and row["regime"] == regime
         and (
             (
-                row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value
-                and row["selector_profile"] == "standard_bm25"
+                row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value
+                and row["selector_profile"] == "pra_generic"
             )
             or (
                 row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value
@@ -150,27 +155,24 @@ def _persistent_curve(
         )
     ]
     selected.sort(key=lambda row: (str(row["example_id"]), str(row["condition"])))
-    seen_chunks: set[str] = set()
     cumulative_visible = 0
     cumulative_unique_native = 0
     cumulative_wall = {
-        ContextCondition.NO_PRA_STANDARD_RAG.value: 0.0,
+        ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value: 0.0,
         ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value: 0.0,
     }
     result = []
     for row in selected:
         condition = str(row["condition"])
-        intervals = row.get("selected_intervals", [])
-        if condition == ContextCondition.NO_PRA_STANDARD_RAG.value:
+        if condition == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value:
             cumulative_visible += int(
                 row.get("retrieval_context_metrics", {}).get("physical_context_tokens", 0)
             )
         else:
-            for interval in intervals:
-                chunk_id = str(interval["chunk_id"])
-                if chunk_id not in seen_chunks:
-                    seen_chunks.add(chunk_id)
-                    cumulative_unique_native += int(interval["token_count"])
+            serving = row.get("serving_metrics", {})
+            cumulative_unique_native += int(
+                serving.get("newly_materialized_tokens") or 0
+            )
         serving = row.get("serving_metrics", {})
         # total_latency_ms already includes ingestion in the powered schema.
         cumulative_wall[condition] += float(serving.get("total_latency_ms") or 0.0)
@@ -221,7 +223,7 @@ def _plots(
 
     if curve:
         fig, axis = plt.subplots(figsize=(9, 5.5))
-        visible = [row for row in curve if row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value]
+        visible = [row for row in curve if row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value]
         native = [row for row in curve if row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value]
         axis.plot(range(1, len(visible) + 1), [row["cumulative_visible_tokens"] for row in visible], label="Standard RAG repeated visible")
         axis.plot(range(1, len(native) + 1), [row["cumulative_unique_native_tokens"] for row in native], label="PRA unique selected chunks")
@@ -236,7 +238,7 @@ def _plots(
 
         fig, axis = plt.subplots(figsize=(9, 5.5))
         for condition, label in (
-            (ContextCondition.NO_PRA_STANDARD_RAG.value, "Standard RAG"),
+            (ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value, "PRA Selected Context"),
             (ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value, "PRA Native Memory"),
         ):
             values = [row for row in curve if row["condition"] == condition]

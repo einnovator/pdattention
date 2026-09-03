@@ -54,6 +54,22 @@ The runner resolves and stores an immutable reranker revision. The default is
 `cross-encoder/ms-marco-MiniLM-L-6-v2`. Use `--skip-strong` only for plumbing
 smokes; it is not a powered qualification configuration.
 
+For physical persistent-corpus reuse, run the same frozen generic-PRA selection
+as visible text and as chunk-resident native K/V. The native cache survives
+across questions and reports physical chunk hits and retained bytes:
+
+```bash
+PYTHONPATH=src python -m experiments.rag_vs_pra.run_powered_decomposition \
+  --dataset multihoprag --max-examples 50 --seed 11 \
+  --candidate-counts 20 --token-budgets 2048 \
+  --backend mlx-native \
+  --model mlx-community/Qwen3-4B-4bit \
+  --revision 4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25 \
+  --regimes persistent-corpus --native-cache-unit chunk \
+  --skip-strong \
+  --output out/rag-powered-qwen3-4b-persistent
+```
+
 ## Artifacts
 
 The runner writes the cohort manifest, candidate receipts, selection receipts,
