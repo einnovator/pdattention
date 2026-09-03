@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "status": "RUNTIME_SMOKE_VALIDATED",
+  "claim_scope": "exact checkpoint load, adapter projection discovery, and bounded generation",
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "model_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "quantization": "bnb-8bit",
+  "engine": "hf",
+  "checks": {
+    "layer_count": true,
+    "q_projection": true,
+    "k_projection": true,
+    "v_projection": true,
+    "o_projection": true,
+    "weights_are_8bit": true
+  },
+  "load_seconds": 15.762350399978459,
+  "generation_seconds": 4.841174099943601,
+  "generated_tokens": 8,
+  "max_new_tokens": 8,
+  "memory": {
+    "cuda_peak_allocated_bytes": 1833921536
+  },
+  "versions": {
+    "torch": "2.13.0+cu130",
+    "transformers": "5.16.1",
+    "bitsandbytes": "0.50.2"
+  },
+  "runtime": {
+    "host": "rapazinhopobre",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.10.11",
+    "hardware": "NVIDIA GeForce RTX 5060 Laptop GPU, 8151 MiB"
+  },
+  "date": "2026-09-03",
+  "limitations": [
+    "The fixed smoke prompt is not an end-task quality evaluation.",
+    "Native PRA K/V parity, learned routing, TTFT, ITL, and throughput remain NOT_MEASURED."
+  ]
+}

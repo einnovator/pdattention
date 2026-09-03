@@ -44,11 +44,46 @@ profiles:
     mode: Native Memory
 qualification:
   contract_version: 1
-  status: NOT_MEASURED
+  status: SMOKE
   headline: []
   canonical_evidence: []
   metrics: []
   routing_diagnostics: []
+  runtime_smoke:
+    schema_version: 1
+    status: RUNTIME_SMOKE_VALIDATED
+    claim_scope: exact checkpoint load, adapter projection discovery, and bounded
+      generation
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+    quantization: bnb-8bit
+    engine: hf
+    checks:
+      layer_count: true
+      q_projection: true
+      k_projection: true
+      v_projection: true
+      o_projection: true
+      weights_are_8bit: true
+    load_seconds: 15.762350399978459
+    generation_seconds: 4.841174099943601
+    generated_tokens: 8
+    max_new_tokens: 8
+    memory:
+      cuda_peak_allocated_bytes: 1833921536
+    versions:
+      torch: 2.13.0+cu130
+      transformers: 5.16.1
+      bitsandbytes: 0.50.2
+    runtime:
+      host: rapazinhopobre
+      platform: Windows-10-10.0.26200-SP0
+      python: 3.10.11
+      hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8151 MiB
+    date: '2026-09-03'
+    limitations:
+    - The fixed smoke prompt is not an end-task quality evaluation.
+    - Native PRA K/V parity, learned routing, TTFT, ITL, and throughput remain NOT_MEASURED.
   training: {}
   limitations:
   - No learned router is bundled for this exact quantized identity; routing-adapter
@@ -59,14 +94,15 @@ qualification:
     this exact identity.
   - The qualification identity is the exact bnb-8bit HF model and revision; it does
     not transfer automatically to another checkpoint, engine, or quantization.
-  - End-task quality, serving latency, and native-memory parity remain NOT_MEASURED
-    for this exact identity.
+  - The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt;
+    it is not an end-task quality or serving benchmark.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/structural_validation.json
+  - qualification/runtime_smoke.json
 runtime_compatibility:
   hf:
-    selected_context: validated
+    selected_context: SMOKE
     native_memory: AVAILABLE
     native_serving: NOT_MEASURED
     recommended: Selected Context with BALANCED
@@ -82,21 +118,22 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
-  bundle_build_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  pra_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
+  bundle_build_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
   hf_repo: EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: artifacts/pra_hf/routers/qwen2.5-1.5b-instruct-bnb-8bit-combined-d128
-  selection_reason: Exact-identity paired natural-QA qualification, with routing research
-    kept separate.
+  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen2.5-1.5b-instruct-bnb-8bit
+  selection_reason: Fleet-compatible exact quantization with evidence isolated from
+    other weight representations.
 checksums:
+  qualification/runtime_smoke.json: 01aa8304a176a83d24999b2caf8b4bf8bc219fe98d4b5db89c2fca4d3a5d075b
   qualification/structural_validation.json: 9a00e7bc8224f119e69efba1b4969071df77e0e9638edd2f9de4c90821442515
   structural_adapter/pra_adapter.yaml: ce9016a189e78eca368752a7601a92c4d2a0014556fc8126bbc5348afd6b185b
 trust:
-  status: eInnovator-qualified
+  status: eInnovator-maintained
   publisher: EInnovator
   scope: exact bnb-8bit HF model identity; evidence does not transfer across revisions,
     engines, or quantizations

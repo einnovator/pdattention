@@ -135,7 +135,6 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-4b-mlx-8bit",
         "quantization": "8bit",
-        "routing_artifact": False,
     },
     "qwen3-14b": {
         "label": "Qwen3-14B",
@@ -539,6 +538,11 @@ def _manifest(
             ],
             "metrics": paired_evidence + diagnostics,
             "routing_diagnostics": diagnostics,
+            "runtime_smoke": (
+                json.loads(runtime_smoke.read_text(encoding="utf-8"))
+                if runtime_smoke.is_file()
+                else None
+            ),
             "training": ({
                 "datasets": "QASPER and HotpotQA",
                 "train_examples": comparison["training_examples"],

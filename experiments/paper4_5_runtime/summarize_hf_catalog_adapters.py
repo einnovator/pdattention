@@ -16,6 +16,7 @@ MODELS = {
     "qwen2.5-1.5b-instruct": "Qwen2.5-1.5B-Instruct",
     "qwen2.5-coder-1.5b-instruct": "Qwen2.5-Coder-1.5B-Instruct",
     "qwen3-4b": "Qwen3-4B",
+    "qwen3-4b-mlx-8bit": "Qwen3-4B 8-bit",
     "qwen3-14b": "Qwen3-14B",
     "llama3-8b": "Llama-3.1-8B",
     "gemma3-1b": "Gemma-3-1B",
@@ -119,7 +120,7 @@ def _write_tex(models: list[dict]) -> None:
         "\\begin{table*}[t]",
         "\\centering",
         "\\small",
-        "\\caption{Held-out routing comparison for exact post-trained HF and 4-bit MLX model identities. "
+        "\\caption{Held-out routing comparison for exact post-trained HF and quantized MLX model identities. "
         "Cohort sizes are retained in the source artifact. The learned router is selected from five "
         "seeds using validation data; $R_{20}$ is evidence recall at a 20\\% chunk budget.}",
         "\\label{tab:hf-catalog-adapters}",

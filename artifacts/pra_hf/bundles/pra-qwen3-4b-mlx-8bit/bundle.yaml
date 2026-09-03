@@ -16,7 +16,40 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 8d563bb5f8631b118c92726a84d875842ed315e5c02118c48fc20619d1d26157
-learned_adapters: {}
+learned_adapters:
+  combined-router-d128:
+    path: learned_adapters/combined-router-d128
+    type: routing
+    status: controlled-artifact
+    default: false
+    training:
+      datasets:
+      - QASPER
+      - HotpotQA
+      seed: 37
+      seeds_evaluated: &id007
+      - 11
+      - 23
+      - 37
+      - 53
+      - 71
+      steps: 512
+      parameters: 655360
+      objective: multi-positive softmax
+    validation:
+      AUC0-30: 0.3459276652167277
+      MRR: 0.4993708242329566
+      R@10%: 0.3017874313186813
+      R@16: 0.4977695741758242
+      R@20%: 0.3733213141025641
+      R@3: 0.19154075091575093
+      R@30%: 0.5344671474358974
+      R@5%: 0.2698076923076923
+      R@8: 0.31704727564102564
+      f70: 1.0
+      f80: 1.0
+      f90: 1.0
+    fingerprint: 230587a6603ff81b4bb4130187d2055c2a599d09a7fc683908a4b733cc079086
 profiles:
   quality:
     purpose: Candidate maximum-quality profile; held-out calibration is incomplete
@@ -42,28 +75,229 @@ profiles:
     recommended: false
     engine: mlx
     mode: Native Memory
+  qasper-learned:
+    purpose: Research-only learned routing profile qualified only on matched QASPER
+      routing diagnostics
+    routing_adapter: combined-router-d128
+    consumer_layers: all eligible
+    status: RESEARCH
+    recommended: false
+    engine: mlx
+    mode: Native Memory
 qualification:
   contract_version: 1
-  status: NOT_MEASURED
+  status: CONTROLLED
   headline: []
   canonical_evidence: []
-  metrics: []
-  routing_diagnostics: []
-  training: {}
+  metrics:
+  - &id001
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.44643429487179487
+    secondary_metrics:
+      MRR: 0.2576049564940919
+      AUC0-30: 0.3398113743894994
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - &id002
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.5662854853479854
+    secondary_metrics:
+      MRR: 0.7660984848484849
+      AUC0-30: 0.5102010645604396
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - &id003
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.40714285714285714
+    secondary_metrics:
+      MRR: 0.5509424603174603
+      AUC0-30: 0.3511359126984127
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - &id004
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.18035714285714285
+    secondary_metrics:
+      MRR: 0.23264316361742832
+      AUC0-30: 0.18165426587301586
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - &id005
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.426788576007326
+    secondary_metrics:
+      MRR: 0.4042737084057761
+      AUC0-30: 0.34547364354395604
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  - &id006
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.3733213141025641
+    secondary_metrics:
+      MRR: 0.4993708242329566
+      AUC0-30: 0.3459276652167277
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-01'
+    provenance: qualification/comparison.json
+  routing_diagnostics:
+  - *id001
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  runtime_smoke:
+    schema_version: 1
+    status: RUNTIME_SMOKE_VALIDATED
+    claim_scope: exact checkpoint load, adapter projection discovery, and bounded
+      generation
+    model_id: mlx-community/Qwen3-4B-8bit
+    model_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+    quantization: 8bit
+    engine: mlx
+    checks:
+      layer_count: true
+      q_projection: true
+      k_projection: true
+      v_projection: true
+      o_projection: true
+    load_seconds: 151.14680941600818
+    generation_seconds: 1.0139941250090487
+    generated_characters: 29
+    max_new_tokens: 8
+    memory:
+      active_memory_bytes: 4275829768
+      cache_memory_bytes: 41350258
+      peak_memory_bytes: 4326861096
+    versions:
+      mlx: 0.32.2
+      mlx_lm: 0.31.3
+    runtime:
+      host: Mac
+      platform: macOS-26.6.2-arm64-arm-64bit
+      python: 3.12.14
+      hardware: 'Model Name: MacBook Pro; Chip: Apple M4 Pro; Memory: 48 GB'
+    date: '2026-09-03'
+    limitations:
+    - The fixed smoke prompt is not an end-task quality evaluation.
+    - Native PRA K/V parity, learned routing, TTFT, ITL, and throughput remain NOT_MEASURED.
+  training:
+    datasets: QASPER and HotpotQA
+    train_examples: 48
+    validation_examples: 16
+    held_out_test_examples: 32
+    seeds: *id007
+    selection: maximum combined validation AUC0-30
+    method: multi-positive softmax
+    parameter_count: 655360
+    base_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
   limitations:
-  - No learned router is bundled for this exact quantized identity; routing-adapter
-    transfer from another quantization is intentionally disallowed.
-  - Only immutable-config structural validation is available for this exact quantized
-    identity.
+  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
+    it is opt-in rather than the bundle default.
+  - The held-out routing diagnostic contains 16 examples per dataset and supports
+    controlled routing claims only.
   - Native consumer-layer profiles and end-task generation remain uncalibrated for
     this exact identity.
   - The qualification identity is the exact 8bit MLX model and revision; it does not
     transfer automatically to another checkpoint, engine, or quantization.
-  - End-task quality, serving latency, and native-memory parity remain NOT_MEASURED
-    for this exact identity.
+  - Routing evidence compares a frozen generic router with a small learned router;
+    it does not establish end-task generation quality.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/structural_validation.json
+  - qualification/runtime_smoke.json
+  - qualification/comparison.json
+  - qualification/feature_dataset_manifest.json
+  - qualification/catalog_summary.json
 runtime_compatibility:
   mlx:
     selected_context: validated
@@ -82,17 +316,23 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
-  bundle_build_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  pra_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
+  bundle_build_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
   hf_repo: EInnovator/pra-qwen3-4b-mlx-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: artifacts/pra_hf/routers/qwen3-4b-mlx-8bit-combined-d128
-  selection_reason: Exact-identity paired natural-QA qualification, with routing research
-    kept separate.
+  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen3-4b-mlx-8bit
+  selection_reason: Fleet-compatible exact quantization with evidence isolated from
+    other weight representations.
 checksums:
+  learned_adapters/combined-router-d128/adapter_model.pt: 87a56f2347dcdc0e216417e63b0c0fae2094f2e75cdfc19c1cbda58dea877788
+  learned_adapters/combined-router-d128/config.json: 3ca256fa28b223659da1508afbf9326040993b8965ffca14a3b502b648a6052a
+  qualification/catalog_summary.json: c20e46dbc58e32ce0a57208fe612732e399c7b428b361cad5c77a01015d60c99
+  qualification/comparison.json: 1558a809ff3339c8d98e7229dda1d2d9661435d6a6708eeb2b40f54fe38cee7c
+  qualification/feature_dataset_manifest.json: 776e60e79d284b7003a4c7071f03558a90d334fbc5f6b5cb23216900d4a8f7e0
+  qualification/runtime_smoke.json: 826c45caf32e10abe92ce171a473230319ed31a81c1ac588ebf4614f20c7f834
   qualification/structural_validation.json: ec666b5eb2f3318847548ff057f79d03758cbea03f610e62f191f34229e75a80
   structural_adapter/pra_adapter.yaml: 8413bd589f15d725260ac7a104d468a91cae997d901dd626284afc0ed23c3c12
 trust:

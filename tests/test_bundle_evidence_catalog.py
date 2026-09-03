@@ -200,7 +200,6 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
 @pytest.mark.parametrize(
     ("bundle_name", "bits", "runtime"),
     [
-        ("pra-qwen3-4b-mlx-8bit", 8, "MLX"),
         ("pra-qwen3-8b-mlx-6bit", 6, "MLX"),
         ("pra-gemma3-1b-mlx-8bit", 8, "MLX"),
         ("pra-qwen2-5-1-5b-instruct-bnb-8bit", 8, "bitsandbytes/PyTorch"),
@@ -215,13 +214,30 @@ def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
 
     assert bundle.base_model["quantization"]["bits"] == bits
     assert bundle.base_model["quantization"]["runtime"] == runtime
-    assert bundle.qualification["status"] == "NOT_MEASURED"
+    assert bundle.qualification["status"] == "SMOKE"
     assert bundle.qualification["headline"] == []
     assert bundle.learned_adapters == {}
     assert bundle.validate()["status"] == "VALID"
     card = BundleBuilder.model_card(bundle)
     assert "No learned router is bundled" in card
     assert "NOT_MEASURED" in card
+    assert "Exact-identity runtime smoke" in card
+    assert "RUNTIME_SMOKE_VALIDATED" in card
+    assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
+
+
+def test_exact_8bit_learned_router_is_opt_in_and_keeps_smoke_scope_separate() -> None:
+    bundle = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles/pra-qwen3-4b-mlx-8bit"
+    )
+
+    assert bundle.base_model["quantization"]["bits"] == 8
+    assert bundle.qualification["status"] == "CONTROLLED"
+    assert bundle.qualification["headline"] == []
+    assert "combined-router-d128" in bundle.learned_adapters
+    assert bundle.profiles["balanced"]["routing_adapter"] is None
+    assert bundle.profiles["qasper-learned"]["routing_adapter"] == "combined-router-d128"
+    assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
 
 
 def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric() -> None:

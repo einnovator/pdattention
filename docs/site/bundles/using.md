@@ -47,6 +47,10 @@ snapshot. Remote engines consume the bundle at the PRA gateway boundary unless
 their adapter explicitly implements a deeper engine-native contract. Direct
 engine launch rejects a bundle it cannot consume rather than ignoring it.
 
+Quantization is part of that identity. See [Quantized Bundles](quantization.md)
+for the MLX 6-bit/8-bit and CUDA bitsandbytes-int8 fleet matrix. A 4-bit learned
+router or end-task result is not evidence for an otherwise similar 8-bit model.
+
 ## Disable learned bundle components
 
 ```bash

@@ -27,7 +27,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Engine: **mlx**
 - Recommended PRA mode: **Selected Context**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **NOT_MEASURED**
+- Bundle evidence tier: **SMOKE**
 - Native Memory status: **AVAILABLE**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
@@ -35,6 +35,16 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 ## Headline results
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+
+## Exact-identity runtime smoke
+
+This bounded check loads the published quantized checkpoint, discovers the adapter projections, and performs one short generation. It is operational evidence, not an end-task benchmark.
+
+| Status | Host hardware | Load | Generation | Peak model/runtime memory | Scope |
+| --- | --- | ---: | ---: | ---: | --- |
+| RUNTIME_SMOKE_VALIDATED | Model Name: MacBook Pro; Chip: Apple M4 Pro; Memory: 48 GB | 202.8 s | 1.004 s | 6.24 GiB | exact checkpoint load, adapter projection discovery, and bounded generation |
+
+End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.
 
 ## Evidence by engine, mode, and profile
 
@@ -86,7 +96,7 @@ pra serve mlx-community/Qwen3-8B-6bit -e mlx -a EInnovator/pra-qwen3-8b-mlx-6bit
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
+| mlx | SMOKE | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
 | hf | portable | NOT_MEASURED for the full-precision HF counterpart | NOT_MEASURED | Selected Context; exact MLX artifact only |
 
 ## End-to-end qualification
@@ -117,7 +127,7 @@ pra report .pra/runs/qasper --format html
 - Only immutable-config structural validation is available for this exact quantized identity.
 - Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity.
 - The qualification identity is the exact 6bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
-- End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity.
+- The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt; it is not an end-task quality or serving benchmark.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
@@ -126,8 +136,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `33850e8e7d53694f771c6f388d3b8e73d21ee482`
-- Bundle build commit: `33850e8e7d53694f771c6f388d3b8e73d21ee482`
+- PRA commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
+- Bundle build commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

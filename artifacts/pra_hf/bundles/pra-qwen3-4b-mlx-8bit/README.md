@@ -6,6 +6,10 @@ tags:
 - progressive-retrieval-attention
 - adapter
 - long-context
+datasets:
+- combined
+- hotpotqa
+- qasper
 license: apache-2.0
 ---
 
@@ -27,7 +31,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Engine: **mlx**
 - Recommended PRA mode: **Selected Context**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **NOT_MEASURED**
+- Bundle evidence tier: **CONTROLLED**
 - Native Memory status: **AVAILABLE**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
@@ -35,6 +39,16 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 ## Headline results
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+
+## Exact-identity runtime smoke
+
+This bounded check loads the published quantized checkpoint, discovers the adapter projections, and performs one short generation. It is operational evidence, not an end-task benchmark.
+
+| Status | Host hardware | Load | Generation | Peak model/runtime memory | Scope |
+| --- | --- | ---: | ---: | ---: | --- |
+| RUNTIME_SMOKE_VALIDATED | Model Name: MacBook Pro; Chip: Apple M4 Pro; Memory: 48 GB | 151.1 s | 1.014 s | 4.03 GiB | exact checkpoint load, adapter projection discovery, and bounded generation |
+
+End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.
 
 ## Evidence by engine, mode, and profile
 
@@ -45,6 +59,7 @@ Each row identifies the exact runtime surface for which metrics are available. `
 | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
 | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
 | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
 
 ## Canonical three-condition evidence
 
@@ -81,6 +96,7 @@ pra serve mlx-community/Qwen3-4B-8bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-8bit
 | QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | CALIBRATION_PENDING | Not promoted |
 | BALANCED | Qualified default preserving the all-eligible consumer geometry | generic cosine | all eligible | QUALIFIED | Default |
 | ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | CALIBRATION_PENDING | Not promoted |
+| QASPER-LEARNED | Research-only learned routing profile qualified only on matched QASPER routing diagnostics | combined-router-d128 | all eligible | RESEARCH | Not promoted |
 
 ## Engine compatibility
 
@@ -99,7 +115,14 @@ What remains to be measured: paired Selected Context versus Native Memory qualit
 
 ## Research diagnostics
 
-No separate routing diagnostic is packaged for this bundle.
+| Dataset | Router/profile | Metric | Value | Cohort | Evidence |
+| --- | --- | --- | ---: | ---: | --- |
+| qasper | balanced | R@20% | 0.4464 | 16 | CONTROLLED |
+| qasper | qasper-learned | R@20% | 0.5663 | 16 | CONTROLLED |
+| hotpotqa | balanced | R@20% | 0.4071 | 16 | CONTROLLED |
+| hotpotqa | qasper-learned | R@20% | 0.1804 | 16 | CONTROLLED |
+| combined | balanced | R@20% | 0.4268 | 32 | CONTROLLED |
+| combined | qasper-learned | R@20% | 0.3733 | 32 | CONTROLLED |
 
 These are qualification measurements, not guaranteed production performance. Run `pra evaluate` on your hardware and workload. Engine version, profile, cohort, evidence tier, date, and artifact provenance remain recorded in `qualification/` and `bundle.yaml`.
 
@@ -113,21 +136,29 @@ pra report .pra/runs/qasper --format html
 
 ## Known limitations
 
-- No learned router is bundled for this exact quantized identity; routing-adapter transfer from another quantization is intentionally disallowed.
-- Only immutable-config structural validation is available for this exact quantized identity.
+- The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.
+- The held-out routing diagnostic contains 16 examples per dataset and supports controlled routing claims only.
 - Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity.
 - The qualification identity is the exact 8bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
-- End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity.
+- Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
 
-The structural adapter is training-free. Learned-component training metadata is stored beside each component and summarized in `bundle.yaml`.
+- Datasets: `QASPER and HotpotQA`
+- Train Examples: `48`
+- Validation Examples: `16`
+- Held Out Test Examples: `32`
+- Seeds: `[11, 23, 37, 53, 71]`
+- Selection: `maximum combined validation AUC0-30`
+- Method: `multi-positive softmax`
+- Parameter Count: `655360`
+- Base Revision: `0348ad770d2ae658ca47b0579b2d2c37b20bbcac`
 
 ## Reproducibility
 
-- PRA commit: `33850e8e7d53694f771c6f388d3b8e73d21ee482`
-- Bundle build commit: `33850e8e7d53694f771c6f388d3b8e73d21ee482`
+- PRA commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
+- Bundle build commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

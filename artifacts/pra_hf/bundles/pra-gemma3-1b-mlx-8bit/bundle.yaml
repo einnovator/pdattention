@@ -48,11 +48,46 @@ profiles:
     mode: Native Memory
 qualification:
   contract_version: 1
-  status: NOT_MEASURED
+  status: SMOKE
   headline: []
   canonical_evidence: []
   metrics: []
   routing_diagnostics: []
+  runtime_smoke:
+    schema_version: 1
+    status: RUNTIME_SMOKE_VALIDATED
+    claim_scope: exact checkpoint load, adapter projection discovery, and bounded
+      generation
+    model_id: mlx-community/gemma-3-1b-it-8bit
+    model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
+    quantization: 8bit
+    engine: mlx
+    checks:
+      layer_count: true
+      q_projection: true
+      k_projection: true
+      v_projection: true
+      o_projection: true
+    load_seconds: 41.344036041991785
+    generation_seconds: 1.1737765839789063
+    generated_characters: 27
+    max_new_tokens: 8
+    memory:
+      active_memory_bytes: 1386723610
+      cache_memory_bytes: 11010982
+      peak_memory_bytes: 1398362722
+    versions:
+      mlx: 0.32.2
+      mlx_lm: 0.31.3
+    runtime:
+      host: Mac
+      platform: macOS-26.6.2-arm64-arm-64bit
+      python: 3.12.14
+      hardware: 'Model Name: MacBook Pro; Chip: Apple M4 Pro; Memory: 48 GB'
+    date: '2026-09-03'
+    limitations:
+    - The fixed smoke prompt is not an end-task quality evaluation.
+    - Native PRA K/V parity, learned routing, TTFT, ITL, and throughput remain NOT_MEASURED.
   training: {}
   limitations:
   - No learned router is bundled for this exact quantized identity; routing-adapter
@@ -63,14 +98,15 @@ qualification:
     this exact identity.
   - The qualification identity is the exact 8bit MLX model and revision; it does not
     transfer automatically to another checkpoint, engine, or quantization.
-  - End-task quality, serving latency, and native-memory parity remain NOT_MEASURED
-    for this exact identity.
+  - The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt;
+    it is not an end-task quality or serving benchmark.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/structural_validation.json
+  - qualification/runtime_smoke.json
 runtime_compatibility:
   mlx:
-    selected_context: validated
+    selected_context: SMOKE
     native_memory: AVAILABLE
     native_serving: NOT_MEASURED
     recommended: Selected Context with BALANCED
@@ -86,21 +122,22 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
-  bundle_build_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  pra_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
+  bundle_build_commit: 5c1be10d5aca50c7ae93194b68e30c0d64fefd0c
   hf_repo: EInnovator/pra-gemma3-1b-mlx-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: gemma
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: artifacts/pra_hf/routers/gemma3-1b-mlx-8bit-combined-d128
-  selection_reason: Exact-identity paired natural-QA qualification, with routing research
-    kept separate.
+  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/gemma3-1b-mlx-8bit
+  selection_reason: Fleet-compatible exact quantization with evidence isolated from
+    other weight representations.
 checksums:
+  qualification/runtime_smoke.json: 4ca50105fd1051960c771a47dc0cbcab8b7cd30cdebc45b386c4b43689e2d04e
   qualification/structural_validation.json: e933486de407a09e363823efc76f04535422a6ca1237bb6bc920457e675630d4
   structural_adapter/pra_adapter.yaml: f45fc8be88209b9202c2b9f38bcdd1a882eca57841799da0520bf24d825d7703
 trust:
-  status: eInnovator-qualified
+  status: eInnovator-maintained
   publisher: EInnovator
   scope: exact 8bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations

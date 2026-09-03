@@ -498,6 +498,24 @@ class BundleBuilder:
             ]
         else:
             lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
+        runtime_smoke = qualification.get("runtime_smoke")
+        if isinstance(runtime_smoke, Mapping):
+            smoke_memory = runtime_smoke.get("memory", {})
+            peak_bytes = (
+                smoke_memory.get("peak_memory_bytes")
+                or smoke_memory.get("cuda_peak_allocated_bytes")
+            ) if isinstance(smoke_memory, Mapping) else None
+            runtime = runtime_smoke.get("runtime", {})
+            lines += [
+                "## Exact-identity runtime smoke", "",
+                "This bounded check loads the published quantized checkpoint, discovers the adapter projections, and performs one short generation. It is operational evidence, not an end-task benchmark.", "",
+                "| Status | Host hardware | Load | Generation | Peak model/runtime memory | Scope |",
+                "| --- | --- | ---: | ---: | ---: | --- |",
+                f"| {runtime_smoke.get('status', 'NOT_MEASURED')} | {runtime.get('hardware', 'NOT_MEASURED')} "
+                f"| {_metric(runtime_smoke.get('load_seconds'))} s | {_metric(runtime_smoke.get('generation_seconds'))} s "
+                f"| {_bytes(peak_bytes)} | {runtime_smoke.get('claim_scope', 'runtime smoke')} |", "",
+                "End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.", "",
+            ]
         canonical_records = _canonical_evidence_rows(bundle)
         lines += [
             "## Evidence by engine, mode, and profile", "",
