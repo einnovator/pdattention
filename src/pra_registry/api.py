@@ -38,6 +38,18 @@ from .contracts import (
     ProfilePatch,
     ProfileResolveRequest,
     QualificationCreate,
+    BackendEndpointCreate,
+    BackendEndpointPatch,
+    ModelPoolCreate,
+    ModelPoolPatch,
+    RouteBindingCreate,
+    RouteBindingPatch,
+    RouteCreate,
+    RoutePatch,
+    RouterInstanceCreate,
+    RouterInstancePatch,
+    RoutingPolicyCreate,
+    RoutingPolicyPatch,
 )
 from .database import RegistryDatabase
 from .service import RegistryError, RegistryService
@@ -331,6 +343,108 @@ def create_registry_app(config: RegistryConfig | None = None, database: Registry
     @app.get("/v1/instances/{instance_id}/desired", tags=["instances"])
     def desired_instance(instance_id: str, actor: str = Depends(read)):
         return run(actor, lambda service: service.desired_instance(instance_id))
+
+    # Routing control state. External routers consume these resources; the
+    # Registry is deliberately absent from their inference hot path.
+    @app.get("/v1/routers", tags=["routing"])
+    def list_routers(paging: tuple[int, int] = Depends(page), kind: str | None = None, region: str | None = None, health: str | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_routers(*paging, kind=kind, region=region, health=health))
+
+    @app.post("/v1/routers", status_code=201, tags=["routing"])
+    def create_router(value: RouterInstanceCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_router(value))
+
+    @app.get("/v1/routers/{resource_id}", tags=["routing"])
+    def get_router(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_router(resource_id))
+
+    @app.patch("/v1/routers/{resource_id}", tags=["routing"])
+    def patch_router(resource_id: str, value: RouterInstancePatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_router(resource_id, value))
+
+    @app.get("/v1/routers/{resource_id}/desired", tags=["routing"])
+    def router_desired(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.router_desired_state(resource_id))
+
+    @app.get("/v1/routes", tags=["routing"])
+    def list_routes(paging: tuple[int, int] = Depends(page), enabled: bool | None = None, route_kind: str | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_routes(*paging, enabled=enabled, route_kind=route_kind))
+
+    @app.post("/v1/routes", status_code=201, tags=["routing"])
+    def create_route(value: RouteCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_route(value))
+
+    @app.get("/v1/routes/{resource_id}", tags=["routing"])
+    def get_route(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_route(resource_id))
+
+    @app.patch("/v1/routes/{resource_id}", tags=["routing"])
+    def patch_route(resource_id: str, value: RoutePatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_route(resource_id, value))
+
+    @app.get("/v1/model-pools", tags=["routing"])
+    def list_model_pools(paging: tuple[int, int] = Depends(page), model_id: str | None = None, enabled: bool | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_model_pools(*paging, model_id=model_id, enabled=enabled))
+
+    @app.post("/v1/model-pools", status_code=201, tags=["routing"])
+    def create_model_pool(value: ModelPoolCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_model_pool(value))
+
+    @app.get("/v1/model-pools/{resource_id}", tags=["routing"])
+    def get_model_pool(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_model_pool(resource_id))
+
+    @app.patch("/v1/model-pools/{resource_id}", tags=["routing"])
+    def patch_model_pool(resource_id: str, value: ModelPoolPatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_model_pool(resource_id, value))
+
+    @app.get("/v1/backend-endpoints", tags=["routing"])
+    def list_backend_endpoints(paging: tuple[int, int] = Depends(page), engine: str | None = None, model_id: str | None = None, health: str | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_backend_endpoints(*paging, engine=engine, model_id=model_id, health=health))
+
+    @app.post("/v1/backend-endpoints", status_code=201, tags=["routing"])
+    def create_backend_endpoint(value: BackendEndpointCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_backend_endpoint(value))
+
+    @app.get("/v1/backend-endpoints/{resource_id}", tags=["routing"])
+    def get_backend_endpoint(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_backend_endpoint(resource_id))
+
+    @app.patch("/v1/backend-endpoints/{resource_id}", tags=["routing"])
+    def patch_backend_endpoint(resource_id: str, value: BackendEndpointPatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_backend_endpoint(resource_id, value))
+
+    @app.get("/v1/routing-policies", tags=["routing"])
+    def list_routing_policies(paging: tuple[int, int] = Depends(page), strategy: str | None = None, enabled: bool | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_routing_policies(*paging, strategy=strategy, enabled=enabled))
+
+    @app.post("/v1/routing-policies", status_code=201, tags=["routing"])
+    def create_routing_policy(value: RoutingPolicyCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_routing_policy(value))
+
+    @app.get("/v1/routing-policies/{resource_id}", tags=["routing"])
+    def get_routing_policy(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_routing_policy(resource_id))
+
+    @app.patch("/v1/routing-policies/{resource_id}", tags=["routing"])
+    def patch_routing_policy(resource_id: str, value: RoutingPolicyPatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_routing_policy(resource_id, value))
+
+    @app.get("/v1/route-bindings", tags=["routing"])
+    def list_route_bindings(paging: tuple[int, int] = Depends(page), router_id: str | None = None, route_id: str | None = None, enabled: bool | None = None, actor: str = Depends(read)):
+        return run(actor, lambda service: service.list_route_bindings(*paging, router_id=router_id, route_id=route_id, enabled=enabled))
+
+    @app.post("/v1/route-bindings", status_code=201, tags=["routing"])
+    def create_route_binding(value: RouteBindingCreate, actor: str = Depends(write)):
+        return run(actor, lambda service: service.create_route_binding(value))
+
+    @app.get("/v1/route-bindings/{resource_id}", tags=["routing"])
+    def get_route_binding(resource_id: str, actor: str = Depends(read)):
+        return run(actor, lambda service: service.get_route_binding(resource_id))
+
+    @app.patch("/v1/route-bindings/{resource_id}", tags=["routing"])
+    def patch_route_binding(resource_id: str, value: RouteBindingPatch, actor: str = Depends(write)):
+        return run(actor, lambda service: service.patch_route_binding(resource_id, value))
 
     # Model resources.
     @app.get("/v1/models", tags=["models"])

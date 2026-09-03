@@ -33,6 +33,18 @@ from .contracts import (
     ProfilePatch,
     ProfileResolveRequest,
     QualificationCreate,
+    BackendEndpointCreate,
+    BackendEndpointPatch,
+    ModelPoolCreate,
+    ModelPoolPatch,
+    RouteBindingCreate,
+    RouteBindingPatch,
+    RouteCreate,
+    RoutePatch,
+    RouterInstanceCreate,
+    RouterInstancePatch,
+    RoutingPolicyCreate,
+    RoutingPolicyPatch,
 )
 from .database import (
     ApprovalRecord,
@@ -46,6 +58,12 @@ from .database import (
     PolicyRecord,
     ProfileRecord,
     QualificationRecord,
+    BackendEndpointRecord,
+    ModelPoolRecord,
+    RouteBindingRecord,
+    RouteRecord,
+    RouterInstanceRecord,
+    RoutingPolicyRecord,
 )
 
 
@@ -75,6 +93,30 @@ RESOURCE_TABLES = {
     "deployment": DeploymentRecord,
     "policy": PolicyRecord,
 }
+
+
+QUALIFICATION_ORDER = {
+    "NOT_MEASURED": 0,
+    "SMOKE": 1,
+    "RESEARCH": 2,
+    "CONTROLLED": 3,
+    "ENGINE_QUALIFIED": 4,
+    "PRODUCTION_QUALIFIED": 5,
+}
+
+
+def _routing_payload(value: Any, *, patch: bool = False) -> dict[str, Any]:
+    payload = value.model_dump(mode="json", exclude_unset=patch)
+    if "metadata" in payload:
+        payload["metadata_payload"] = payload.pop("metadata")
+    return payload
+
+
+def _routing_record(record: Any) -> dict[str, Any]:
+    value = record_dict(record)
+    if "metadata_payload" in value:
+        value["metadata"] = value.pop("metadata_payload")
+    return value
 
 
 class RegistryService:
@@ -111,6 +153,19 @@ class RegistryService:
         self.session.commit()
         return record_dict(row)
 
+    def _patch_routing(self, table: type[Record], resource_id: str, value: Any, resource_type: str) -> dict[str, Any]:
+        row = self._get(table, resource_id)
+        before = _routing_record(row)
+        for key, item in _routing_payload(value, patch=True).items():
+            setattr(row, key, item)
+        if hasattr(row, "desired_revision") and "desired_revision" not in value.model_fields_set:
+            row.desired_revision += 1
+        self._touch_bound_routers(resource_type, row)
+        self.session.flush()
+        self._audit("patch", resource_type, resource_id, before, _routing_record(row))
+        self.session.commit()
+        return _routing_record(row)
+
     def _list(
         self, table: type[Record], *, limit: int, offset: int, filters: Mapping[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -127,6 +182,25 @@ class RegistryService:
         items = self.session.scalars(query.offset(offset).limit(limit)).all()
         return {
             "items": [record_dict(item) for item in items],
+            "total": self.session.scalar(count_query) or 0,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def _list_routing(
+        self, table: type[Record], *, limit: int, offset: int,
+        filters: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        filters = {key: value for key, value in (filters or {}).items() if value is not None}
+        query = select(table)
+        count_query = select(func.count()).select_from(table)
+        for key, value in filters.items():
+            query = query.where(getattr(table, key) == value)
+            count_query = count_query.where(getattr(table, key) == value)
+        query = query.order_by(table.id)
+        rows = self.session.scalars(query.offset(offset).limit(limit)).all()
+        return {
+            "items": [_routing_record(row) for row in rows],
             "total": self.session.scalar(count_query) or 0,
             "limit": limit,
             "offset": offset,
@@ -535,6 +609,268 @@ class RegistryService:
             raise RegistryConflict("approved policies are immutable; create a new version")
         return self._patch(PolicyRecord, resource_id, value.model_dump(exclude_unset=True), "policy")
 
+    # Router desired state. These records configure external data planes; they
+    # never participate directly in an inference request.
+    def create_router(self, value: RouterInstanceCreate) -> dict[str, Any]:
+        payload = _routing_payload(value)
+        credential_reference = payload.pop("credential_reference", None)
+        result = self._create(RouterInstanceRecord, {
+            **payload, "credential_reference": credential_reference,
+        }, "router")
+        result["metadata"] = result.pop("metadata_payload", {})
+        return result
+
+    def get_router(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(RouterInstanceRecord, resource_id))
+
+    def list_routers(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(RouterInstanceRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_router(self, resource_id: str, value: RouterInstancePatch) -> dict[str, Any]:
+        row = self._get(RouterInstanceRecord, resource_id)
+        before = _routing_record(row)
+        changes = _routing_payload(value, patch=True)
+        for key, item in changes.items():
+            setattr(row, key, item)
+        desired_fields = {"management_url", "inference_url", "region", "cluster", "labels", "metadata_payload"}
+        if desired_fields.intersection(changes) and "desired_revision" not in changes:
+            row.desired_revision += 1
+        self.session.flush()
+        self._audit("patch", "router", resource_id, before, _routing_record(row))
+        self.session.commit()
+        return _routing_record(row)
+
+    def create_route(self, value: RouteCreate) -> dict[str, Any]:
+        if self.session.get(RoutingPolicyRecord, value.policy_id) is None:
+            raise RegistryConflict("policy_id must reference a routing policy")
+        missing = [item for item in value.pool_ids + value.fallback_pool_ids if self.session.get(ModelPoolRecord, item) is None]
+        if missing:
+            raise RegistryConflict(f"route references unknown pools: {', '.join(sorted(set(missing)))}")
+        return self._create_routing(RouteRecord, value, "route")
+
+    def get_route(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(RouteRecord, resource_id))
+
+    def list_routes(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(RouteRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_route(self, resource_id: str, value: RoutePatch) -> dict[str, Any]:
+        if value.policy_id is not None and self.session.get(RoutingPolicyRecord, value.policy_id) is None:
+            raise RegistryConflict("policy_id must reference a routing policy")
+        pool_ids = list(value.pool_ids or []) + list(value.fallback_pool_ids or [])
+        missing = [item for item in pool_ids if self.session.get(ModelPoolRecord, item) is None]
+        if missing:
+            raise RegistryConflict(f"route references unknown pools: {', '.join(sorted(set(missing)))}")
+        return self._patch_routing(RouteRecord, resource_id, value, "route")
+
+    def create_model_pool(self, value: ModelPoolCreate) -> dict[str, Any]:
+        return self._create_routing(ModelPoolRecord, value, "model_pool")
+
+    def get_model_pool(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(ModelPoolRecord, resource_id))
+
+    def list_model_pools(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(ModelPoolRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_model_pool(self, resource_id: str, value: ModelPoolPatch) -> dict[str, Any]:
+        return self._patch_routing(ModelPoolRecord, resource_id, value, "model_pool")
+
+    def create_backend_endpoint(self, value: BackendEndpointCreate) -> dict[str, Any]:
+        missing = [item for item in value.pool_ids if self.session.get(ModelPoolRecord, item) is None]
+        if missing:
+            raise RegistryConflict(f"backend references unknown pools: {', '.join(sorted(missing))}")
+        return self._create_routing(BackendEndpointRecord, value, "backend_endpoint")
+
+    def get_backend_endpoint(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(BackendEndpointRecord, resource_id))
+
+    def list_backend_endpoints(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(BackendEndpointRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_backend_endpoint(self, resource_id: str, value: BackendEndpointPatch) -> dict[str, Any]:
+        missing = [item for item in (value.pool_ids or []) if self.session.get(ModelPoolRecord, item) is None]
+        if missing:
+            raise RegistryConflict(f"backend references unknown pools: {', '.join(sorted(missing))}")
+        return self._patch_routing(BackendEndpointRecord, resource_id, value, "backend_endpoint")
+
+    def create_routing_policy(self, value: RoutingPolicyCreate) -> dict[str, Any]:
+        return self._create_routing(RoutingPolicyRecord, value, "routing_policy")
+
+    def get_routing_policy(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(RoutingPolicyRecord, resource_id))
+
+    def list_routing_policies(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(RoutingPolicyRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_routing_policy(self, resource_id: str, value: RoutingPolicyPatch) -> dict[str, Any]:
+        return self._patch_routing(RoutingPolicyRecord, resource_id, value, "routing_policy")
+
+    def create_route_binding(self, value: RouteBindingCreate) -> dict[str, Any]:
+        if self.session.get(RouteRecord, value.route_id) is None:
+            raise RegistryConflict("route_id must reference a route")
+        if self.session.get(RouterInstanceRecord, value.router_id) is None:
+            raise RegistryConflict("router_id must reference a router")
+        return self._create_routing(RouteBindingRecord, value, "route_binding")
+
+    def get_route_binding(self, resource_id: str) -> dict[str, Any]:
+        return _routing_record(self._get(RouteBindingRecord, resource_id))
+
+    def list_route_bindings(self, limit: int, offset: int, **filters: Any) -> dict[str, Any]:
+        return self._list_routing(RouteBindingRecord, limit=limit, offset=offset, filters=filters)
+
+    def patch_route_binding(self, resource_id: str, value: RouteBindingPatch) -> dict[str, Any]:
+        return self._patch_routing(RouteBindingRecord, resource_id, value, "route_binding")
+
+    def _create_routing(self, table: type[Record], value: Any, resource_type: str) -> dict[str, Any]:
+        resource_id = value.id
+        if self.session.get(table, resource_id) is not None:
+            raise RegistryConflict(f"{resource_type} {resource_id!r} already exists")
+        row = table(**_routing_payload(value))
+        self.session.add(row)
+        self.session.flush()
+        self._touch_bound_routers(resource_type, row)
+        public = _routing_record(row)
+        self._audit("create", resource_type, resource_id, None, public)
+        self.session.commit()
+        return public
+
+    def _touch_bound_routers(self, resource_type: str, row: Any) -> None:
+        """Advance each affected router's monotonic desired revision."""
+
+        router_ids: set[str] = set()
+        route_ids: set[str] = set()
+        if resource_type == "route_binding":
+            router_ids.add(row.router_id)
+        elif resource_type == "route":
+            route_ids.add(row.id)
+        elif resource_type == "routing_policy":
+            route_ids.update(item.id for item in self.session.scalars(
+                select(RouteRecord).where(RouteRecord.policy_id == row.id)
+            ).all())
+        elif resource_type in {"model_pool", "backend_endpoint"}:
+            pool_ids = {row.id} if resource_type == "model_pool" else set(row.pool_ids or [])
+            route_ids.update(item.id for item in self.session.scalars(select(RouteRecord)).all() if (
+                pool_ids.intersection(set(item.pool_ids or []) | set(item.fallback_pool_ids or []))
+            ))
+        if route_ids:
+            router_ids.update(item.router_id for item in self.session.scalars(select(RouteBindingRecord)).all() if item.route_id in route_ids)
+        for router_id in router_ids:
+            router = self.session.get(RouterInstanceRecord, router_id)
+            if router is not None:
+                router.desired_revision += 1
+
+    def router_desired_state(self, router_id: str) -> dict[str, Any]:
+        """Compile one router's deterministic, qualification-aware desired state."""
+
+        router = self._get(RouterInstanceRecord, router_id)
+        bindings = self.session.scalars(select(RouteBindingRecord).where(
+            RouteBindingRecord.router_id == router_id,
+            RouteBindingRecord.enabled.is_(True),
+        )).all()
+        compiled_routes: list[dict[str, Any]] = []
+        for binding in sorted(bindings, key=lambda row: (row.priority, row.id)):
+            route = self.session.get(RouteRecord, binding.route_id)
+            if route is None or not route.enabled:
+                continue
+            policy = self.session.get(RoutingPolicyRecord, route.policy_id)
+            if policy is None or not policy.enabled:
+                continue
+            pools = []
+            for pool_id in route.pool_ids + route.fallback_pool_ids:
+                pool = self.session.get(ModelPoolRecord, pool_id)
+                if pool is None or not pool.enabled:
+                    continue
+                eligible, excluded = self._eligible_backends(pool, policy)
+                pools.append({
+                    **_routing_record(pool),
+                    "fallback": pool_id in route.fallback_pool_ids,
+                    "backends": eligible,
+                    "excluded": excluded,
+                })
+            compiled_routes.append({
+                **_routing_record(route),
+                "binding": _routing_record(binding),
+                "policy": _routing_record(policy),
+                "pools": pools,
+            })
+        desired_revision = router.desired_revision
+        return {
+            "router": _routing_record(router),
+            "desired_revision": desired_revision,
+            "routes": compiled_routes,
+            "in_sync": router.observed_revision == desired_revision and not router.last_error,
+        }
+
+    def _eligible_backends(
+        self, pool: ModelPoolRecord, policy: RoutingPolicyRecord,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+        rows = self.session.scalars(select(BackendEndpointRecord)).all()
+        constraints = {**dict(pool.selectors or {}), **dict(policy.constraints or {})}
+        eligible: list[dict[str, Any]] = []
+        excluded: list[dict[str, str]] = []
+        for row in sorted(rows, key=lambda item: item.id):
+            if pool.id not in (row.pool_ids or []):
+                continue
+            reason = self._backend_exclusion(row, pool, constraints)
+            if reason:
+                excluded.append({"id": row.id, "reason": reason})
+            else:
+                eligible.append(_routing_record(row))
+        preferences = dict(policy.preferences or {})
+        if preferences.get("qualified_first"):
+            eligible.sort(key=lambda row: (-QUALIFICATION_ORDER.get(row["qualification_tier"], -1), row["id"]))
+        elif preferences.get("region_local"):
+            eligible.sort(key=lambda row: (row["region"] != pool.selectors.get("region"), row["id"]))
+        elif policy.strategy in {"cost-preferred", "lowest-cost"}:
+            eligible.sort(key=lambda row: (row["cost"] is None, row["cost"] or 0, row["id"]))
+        return eligible, excluded
+
+    @staticmethod
+    def _backend_exclusion(
+        row: BackendEndpointRecord, pool: ModelPoolRecord, constraints: dict[str, Any],
+    ) -> str | None:
+        if row.model_id != pool.model_id:
+            return "model identity mismatch"
+        if pool.model_revision and row.model_revision != pool.model_revision:
+            return "model revision mismatch"
+        for field in ("model_revision", "model_fingerprint", "bundle_id", "bundle_revision", "profile", "region", "cluster"):
+            expected = constraints.get(field)
+            if expected and getattr(row, field) != expected:
+                return f"{field} constraint"
+        engine_versions = constraints.get("engine_version") or constraints.get("engine_versions")
+        if engine_versions and not _version_matches(row.engine_version, engine_versions):
+            return "engine version constraint"
+        hardware = constraints.get("hardware")
+        observed_hardware = (row.metadata_payload or {}).get("hardware")
+        if hardware and observed_hardware not in ([hardware] if isinstance(hardware, str) else hardware):
+            return "hardware constraint"
+        tenants = set(constraints.get("tenant_ids") or constraints.get("tenants") or [])
+        endpoint_tenants = set((row.metadata_payload or {}).get("tenant_ids") or [])
+        if tenants and not tenants.intersection(endpoint_tenants):
+            return "tenant constraint"
+        if row.maintenance:
+            return "maintenance"
+        allowed_health = constraints.get("health", ["READY", "healthy", "online"])
+        if isinstance(allowed_health, str):
+            allowed_health = [allowed_health]
+        if row.health.casefold() not in {str(value).casefold() for value in allowed_health}:
+            return "health constraint"
+        engines = constraints.get("engine")
+        if engines and row.engine not in ([engines] if isinstance(engines, str) else engines):
+            return "engine constraint"
+        required_modes = set(constraints.get("required_modes") or constraints.get("modes") or [])
+        if required_modes and not required_modes.issubset(set(row.modes or [])):
+            return "mode constraint"
+        minimum = str(constraints.get("minimum_evidence", "NOT_MEASURED"))
+        if QUALIFICATION_ORDER.get(row.qualification_tier, -1) < QUALIFICATION_ORDER.get(minimum, 0):
+            return "qualification constraint"
+        if constraints.get("approved_only") and row.approval_state != ApprovalState.APPROVED.value:
+            return "approval constraint"
+        labels = dict(constraints.get("labels") or {})
+        if any((row.labels or {}).get(key) != value for key, value in labels.items()):
+            return "label constraint"
+        return None
+
     # Approval state changes are append-only and always audited.
     def approve(self, value: ApprovalCreate) -> dict[str, Any]:
         table = RESOURCE_TABLES.get(value.resource_type)
@@ -623,7 +959,9 @@ class RegistryService:
         return {"desired": record_dict(selected), "reason": "highest desired revision then deployment identity"}
 
 
-def _version_matches(version: str | None, version_range: str | None) -> bool:
+def _version_matches(version: str | None, version_range: str | list[str] | None) -> bool:
+    if isinstance(version_range, list):
+        return any(_version_matches(version, item) for item in version_range)
     if not version or not version_range or version_range in {"*", "any"}:
         return True
     try:

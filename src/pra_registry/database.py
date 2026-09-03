@@ -208,6 +208,104 @@ class PolicyRecord(TimestampMixin, Base):
     provenance: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class RouterInstanceRecord(TimestampMixin, Base):
+    """Desired and observed state for an external routing data plane."""
+
+    __tablename__ = "registry_router_instances"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(64), index=True)
+    version: Mapped[str | None] = mapped_column(String(128))
+    management_url: Mapped[str] = mapped_column(String(1024))
+    inference_url: Mapped[str | None] = mapped_column(String(1024))
+    credential_reference: Mapped[str | None] = mapped_column(String(255))
+    region: Mapped[str] = mapped_column(String(128), index=True)
+    cluster: Mapped[str] = mapped_column(String(255), index=True)
+    health: Mapped[str] = mapped_column(String(64), index=True)
+    desired_revision: Mapped[int] = mapped_column(Integer, default=1)
+    observed_revision: Mapped[int] = mapped_column(Integer, default=0)
+    supported_features: Mapped[list[str]] = mapped_column(JSON, default=list)
+    labels: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class RouteRecord(TimestampMixin, Base):
+    __tablename__ = "registry_routes"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    public_model: Mapped[str] = mapped_column(String(512), index=True)
+    route_kind: Mapped[str] = mapped_column(String(32), index=True)
+    policy_id: Mapped[str] = mapped_column(String(255), index=True)
+    pool_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    fallback_pool_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    tenant_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    desired_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ModelPoolRecord(TimestampMixin, Base):
+    __tablename__ = "registry_model_pools"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    model_id: Mapped[str] = mapped_column(String(512), index=True)
+    model_revision: Mapped[str | None] = mapped_column(String(255))
+    selectors: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    desired_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class BackendEndpointRecord(TimestampMixin, Base):
+    __tablename__ = "registry_backend_endpoints"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    pool_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    engine_instance_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    runtime_model_id: Mapped[str] = mapped_column(String(255), default="default")
+    inference_url: Mapped[str] = mapped_column(String(1024))
+    engine: Mapped[str] = mapped_column(String(128), index=True)
+    engine_version: Mapped[str | None] = mapped_column(String(128))
+    model_id: Mapped[str] = mapped_column(String(512), index=True)
+    model_revision: Mapped[str | None] = mapped_column(String(255))
+    model_fingerprint: Mapped[str | None] = mapped_column(String(255))
+    bundle_id: Mapped[str | None] = mapped_column(String(512), index=True)
+    bundle_revision: Mapped[str | None] = mapped_column(String(255))
+    profile: Mapped[str | None] = mapped_column(String(128), index=True)
+    modes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    qualification_tier: Mapped[str] = mapped_column(String(64), index=True)
+    approval_state: Mapped[str] = mapped_column(String(32), index=True)
+    region: Mapped[str] = mapped_column(String(128), index=True)
+    cluster: Mapped[str] = mapped_column(String(255), index=True)
+    health: Mapped[str] = mapped_column(String(64), index=True)
+    maintenance: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    cost: Mapped[float | None] = mapped_column(Float)
+    labels: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class RoutingPolicyRecord(TimestampMixin, Base):
+    __tablename__ = "registry_routing_policies"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    strategy: Mapped[str] = mapped_column(String(64), index=True)
+    constraints: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    preferences: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    fallback: Mapped[list[str]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    desired_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class RouteBindingRecord(TimestampMixin, Base):
+    __tablename__ = "registry_route_bindings"
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    route_id: Mapped[str] = mapped_column(String(255), index=True)
+    router_id: Mapped[str] = mapped_column(String(255), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    desired_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class ApprovalRecord(Base):
     __tablename__ = "registry_approvals"
     sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pra-reference-router
+data:
+  reference-router.yaml: |
+    router:
+      revision: 1
+      max_attempts: 2
+      routes:
+        - id: cluster-chat
+          public_model: pra/cluster-chat
+          strategy: least-active
+          backends:
+            - id: pra-gateway
+              url: http://pra-gateway.default.svc.cluster.local:8080
+              model: Qwen/Qwen3-0.6B
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pra-reference-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: pra-reference-router}
+  template:
+    metadata:
+      labels: {app: pra-reference-router}
+    spec:
+      containers:
+        - name: router
+          image: einnovator/pra-router:latest
+          args: ["serve", "--config", "/etc/pra/reference-router.yaml", "--host", "0.0.0.0", "--port", "9400"]
+          ports:
+            - {name: http, containerPort: 9400}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          volumeMounts:
+            - {name: config, mountPath: /etc/pra, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: pra-reference-router}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pra-reference-router
+spec:
+  selector: {app: pra-reference-router}
+  ports:
+    - {name: http, port: 9400, targetPort: http}

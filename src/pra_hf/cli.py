@@ -30,6 +30,7 @@ from .gateway_cli import gateway_cli
 from .management_cli import engine_cli
 from pra_registry.cli import registry_cli
 from pra_control.cli import control_cli
+from pra_router.cli import router_cli
 from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .observability import Observability, load_observability_config
@@ -278,6 +279,7 @@ cli.add_command(gateway_cli)
 cli.add_command(engine_cli)
 cli.add_command(registry_cli)
 cli.add_command(control_cli)
+cli.add_command(router_cli)
 
 
 @cli.command("doctor")
@@ -1410,17 +1412,6 @@ def agent_stop() -> None:
     except ImportError as error:
         raise click.ClickException("Install the 'web' optional dependency.") from error
     click.echo(AgentWebLifecycle().stop())
-
-
-# Compatibility aliases retained for one release cycle.
-@cli.group("router", hidden=True)
-def router_cli() -> None:
-    """Deprecated alias for ``pra adapter``."""
-
-
-router_cli.add_command(adapter_inspect, "inspect")
-router_cli.add_command(adapter_train_routing, "train")
-router_cli.add_command(adapter_eval, "eval")
 
 
 @cli.command("ask", hidden=True)

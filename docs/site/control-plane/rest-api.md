@@ -36,3 +36,17 @@ Domain failures use a stable envelope:
 ```json
 {"error":{"code":"approval_required","message":"evict requires confirmation","details":{}}}
 ```
+
+## Router operations
+
+| Method | Endpoint | Operation |
+|---|---|---|
+| `GET` | `/api/routers` | `router.list` |
+| `GET` | `/api/routers/{router_id}` | `router.list` |
+| `GET` | `/api/routes` | `route.list` |
+| `POST` | `/api/routers/{router_id}/plan` | `route.plan` |
+| `POST` | `/api/routers/{router_id}/apply` | `route.apply` |
+
+Apply requires `deployment:apply`, an explicit confirmation, and an audit
+reason. The Control Plane calls the management interface of the selected
+router; application traffic does not traverse the Control Plane.

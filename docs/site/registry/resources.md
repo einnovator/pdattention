@@ -15,6 +15,12 @@
 | Approval | Never edited | Append-only decision and actor |
 | Audit event | Never edited | Append-only before/after summary and trace ID |
 | Managed instance | Observed state, heartbeat, URLs, labels | Stable instance ID and authenticated registration subject |
+| Router instance | Health, observed revision, features | Router kind, stable ID, management secret reference |
+| Route | Enablement and pool membership | Stable public model and explicit LLM/MCP/A2A kind |
+| Model pool | Selectors and policy metadata | Model identity and optional immutable revision |
+| Backend endpoint | Health, maintenance, weight, labels | Engine/model/bundle identity and inference URL |
+| Routing policy | Deterministic constraints and preferences | Stable policy identity |
+| Route binding | Enablement and priority | Router-to-route assignment |
 
 Approval states are `DRAFT`, `CANDIDATE`, `APPROVED`, `DEPRECATED`, and
 `REVOKED`. Deprecation preserves provenance and existing references.
@@ -44,3 +50,7 @@ desired deployments. Their status is computed as `ONLINE`, `DEGRADED`, or
 `OFFLINE`. Registration is idempotent for a stable ID; attempts to reuse that
 ID for an incompatible type, name, or engine kind return a conflict and are
 audited.
+
+Routing resources form control-plane desired state. `GET /v1/routers/{id}/desired`
+resolves qualification-aware eligible endpoints and records rejected endpoints
+with reasons. This endpoint does not choose a request-time replica.

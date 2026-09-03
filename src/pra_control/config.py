@@ -144,7 +144,8 @@ class MCPToolsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allow: list[str] = Field(default_factory=lambda: [
         "pra_fleet", "pra_engine", "pra_gateway", "pra_catalog",
-        "pra_qualification", "pra_deployment", "pra_metrics", "pra_context", "pra_plan",
+        "pra_qualification", "pra_deployment", "pra_router", "pra_route",
+        "pra_metrics", "pra_context", "pra_plan",
     ])
     deny: list[str] = Field(default_factory=lambda: ["pra_apply", "pra_experiment"])
 
@@ -154,7 +155,7 @@ class MCPResourcesConfig(BaseModel):
     enabled: bool = True
     allow: list[str] = Field(default_factory=lambda: [
         "pra://fleet", "pra://engines/*", "pra://models/*", "pra://bundles/*",
-        "pra://qualifications/*", "pra://deployments/*",
+        "pra://qualifications/*", "pra://deployments/*", "pra://routers/*", "pra://routes/*",
     ])
 
 

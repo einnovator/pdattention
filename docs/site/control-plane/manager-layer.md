@@ -12,6 +12,7 @@ manager.observability
 manager.audit
 manager.context
 manager.experiments
+manager.routers
 ```
 
 Managers return transport-neutral Pydantic domain models or JSON-compatible
@@ -48,3 +49,15 @@ The manager validates action support, capability policy, risk, permission,
 confirmation, expiry, and idempotency before dispatch. High-impact operations
 such as eviction, demotion, unload, and reconciliation require confirmation and
 their stronger permission.
+
+Router reconciliation uses a separate confirmed path:
+
+```python
+plan = await manager.routers.preview(caller, "litellm-eu")
+result = await manager.routers.apply(
+    caller, "litellm-eu", reason="apply qualification change", confirmed=True
+)
+```
+
+The manager compiles and verifies configuration through a router adapter. It
+never receives or proxies an inference request.

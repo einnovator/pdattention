@@ -19,6 +19,10 @@ This page is generated from `pra_control.operations`. The same catalog drives ma
 | `deployment.read` | `deployment:read` | none | read |
 | `deployment.write` | `deployment:write` | write | write |
 | `deployment.apply` | `deployment:apply` | write | high |
+| `router.list` | `registry:read` | none | read |
+| `route.list` | `registry:read` | none | read |
+| `route.plan` | `registry:read` | none | read |
+| `route.apply` | `deployment:apply` | write | high |
 | `action.plan` | `engine:read` | none | read |
 | `action.apply` | `engine:action` | write | write |
 | `observability.read` | `observability:read` | none | read |
@@ -37,6 +41,8 @@ This page is generated from `pra_control.operations`. The same catalog drives ma
 | `pra_catalog` | `registry.list` | read-only |
 | `pra_qualification` | `qualification.read` | read-only |
 | `pra_deployment` | `deployment.read` | read-only |
+| `pra_router` | `router.list`, `route.plan` | read-only |
+| `pra_route` | `route.list` | read-only |
 | `pra_metrics` | `observability.read` | read-only |
 | `pra_context` | `context.read` | read-only |
 | `pra_plan` | `action.plan` | read-only |

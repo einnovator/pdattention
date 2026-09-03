@@ -68,6 +68,24 @@ class RegistrationSource(str, Enum):
     DISCOVERY = "DISCOVERY"
 
 
+class RouterKind(str, Enum):
+    """Supported routing data planes managed through common desired state."""
+
+    LITELLM = "litellm"
+    AGENTGATEWAY = "agentgateway"
+    KUBERNETES_GAIE = "kubernetes-gaie"
+    PRA_REFERENCE = "pra-reference"
+    BIFROST = "bifrost"
+
+
+class RouteKind(str, Enum):
+    """Traffic protocol routed by a logical route."""
+
+    LLM = "llm"
+    MCP = "mcp"
+    A2A = "a2a"
+
+
 class ResourceBase(StrictModel):
     id: str = Field(min_length=1, max_length=255)
     approval_state: ApprovalState = ApprovalState.DRAFT
@@ -415,6 +433,235 @@ class HuggingFaceImportRequest(StrictModel):
 
 class HuggingFaceCollectionSyncRequest(StrictModel):
     collection: str
+
+
+class RouterInstanceCreate(StrictModel):
+    """One independently deployed request-routing data plane."""
+
+    id: str = Field(min_length=1, max_length=255)
+    kind: RouterKind
+    version: str | None = None
+    management_url: str
+    inference_url: str | None = None
+    credential_reference: str | None = None
+    region: str = "local"
+    cluster: str = "default"
+    health: str = "UNKNOWN"
+    desired_revision: int = Field(default=1, ge=0)
+    observed_revision: int = Field(default=0, ge=0)
+    supported_features: list[str] = Field(default_factory=list)
+    labels: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("management_url", "inference_url")
+    @classmethod
+    def validate_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://", "file://")):
+            raise ValueError("router URLs must use http://, https://, or file://")
+        return value.rstrip("/") if value else value
+
+    @field_validator("credential_reference")
+    @classmethod
+    def validate_credential_reference(cls, value: str | None) -> str | None:
+        if value and ("://" in value or value.lower().startswith(("token ", "bearer "))):
+            raise ValueError("credential_reference must name a secret, not contain one")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_router_secrets(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if _contains_secret_field(value):
+            raise ValueError("router metadata must not contain credentials")
+        return value
+
+
+class RouterInstancePatch(StrictModel):
+    version: str | None = None
+    management_url: str | None = None
+    inference_url: str | None = None
+    credential_reference: str | None = None
+    region: str | None = None
+    cluster: str | None = None
+    health: str | None = None
+    desired_revision: int | None = Field(default=None, ge=0)
+    observed_revision: int | None = Field(default=None, ge=0)
+    supported_features: list[str] | None = None
+    labels: dict[str, str] | None = None
+    metadata: dict[str, Any] | None = None
+    last_sync: datetime | None = None
+    last_error: str | None = None
+
+    @field_validator("management_url", "inference_url")
+    @classmethod
+    def validate_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://", "file://")):
+            raise ValueError("router URLs must use http://, https://, or file://")
+        return value.rstrip("/") if value else value
+
+    @field_validator("credential_reference")
+    @classmethod
+    def validate_credential_reference(cls, value: str | None) -> str | None:
+        if value and ("://" in value or value.lower().startswith(("token ", "bearer "))):
+            raise ValueError("credential_reference must name a secret, not contain one")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def reject_router_secrets(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and _contains_secret_field(value):
+            raise ValueError("router metadata must not contain credentials")
+        return value
+
+
+class RouteCreate(StrictModel):
+    """Stable public model/tool/agent alias bound to one or more pools."""
+
+    id: str = Field(min_length=1, max_length=255)
+    public_model: str = Field(min_length=1, max_length=512)
+    route_kind: RouteKind = RouteKind.LLM
+    policy_id: str
+    pool_ids: list[str] = Field(min_length=1)
+    enabled: bool = True
+    fallback_pool_ids: list[str] = Field(default_factory=list)
+    tenant_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    desired_revision: int = Field(default=1, ge=1)
+
+
+class RoutePatch(StrictModel):
+    public_model: str | None = None
+    route_kind: RouteKind | None = None
+    policy_id: str | None = None
+    pool_ids: list[str] | None = Field(default=None, min_length=1)
+    enabled: bool | None = None
+    fallback_pool_ids: list[str] | None = None
+    tenant_ids: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ModelPoolCreate(StrictModel):
+    """Qualification-aware deployment group; routers still choose replicas."""
+
+    id: str = Field(min_length=1, max_length=255)
+    model_id: str
+    model_revision: str | None = None
+    selectors: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    desired_revision: int = Field(default=1, ge=1)
+
+
+class ModelPoolPatch(StrictModel):
+    model_id: str | None = None
+    model_revision: str | None = None
+    selectors: dict[str, Any] | None = None
+    enabled: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class BackendEndpointCreate(StrictModel):
+    """Observed or declared deployment endpoint eligible for model pools."""
+
+    id: str = Field(min_length=1, max_length=255)
+    pool_ids: list[str] = Field(default_factory=list)
+    engine_instance_id: str | None = None
+    runtime_model_id: str = "default"
+    inference_url: str
+    engine: str
+    engine_version: str | None = None
+    model_id: str
+    model_revision: str | None = None
+    model_fingerprint: str | None = None
+    bundle_id: str | None = None
+    bundle_revision: str | None = None
+    profile: str | None = None
+    modes: list[str] = Field(default_factory=lambda: ["selected-context"])
+    qualification_tier: str = "NOT_MEASURED"
+    approval_state: ApprovalState = ApprovalState.DRAFT
+    region: str = "local"
+    cluster: str = "default"
+    health: str = "UNKNOWN"
+    maintenance: bool = False
+    weight: float = Field(default=1.0, gt=0)
+    cost: float | None = Field(default=None, ge=0)
+    labels: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("inference_url")
+    @classmethod
+    def validate_inference_url(cls, value: str) -> str:
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("inference_url must use http:// or https://")
+        return value.rstrip("/")
+
+
+class BackendEndpointPatch(StrictModel):
+    pool_ids: list[str] | None = None
+    engine_instance_id: str | None = None
+    runtime_model_id: str | None = None
+    inference_url: str | None = None
+    engine: str | None = None
+    engine_version: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    model_fingerprint: str | None = None
+    bundle_id: str | None = None
+    bundle_revision: str | None = None
+    profile: str | None = None
+    modes: list[str] | None = None
+    qualification_tier: str | None = None
+    approval_state: ApprovalState | None = None
+    region: str | None = None
+    cluster: str | None = None
+    health: str | None = None
+    maintenance: bool | None = None
+    weight: float | None = Field(default=None, gt=0)
+    cost: float | None = Field(default=None, ge=0)
+    labels: dict[str, str] | None = None
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("inference_url")
+    @classmethod
+    def validate_inference_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://")):
+            raise ValueError("inference_url must use http:// or https://")
+        return value.rstrip("/") if value else value
+
+
+class RoutingPolicyCreate(StrictModel):
+    id: str = Field(min_length=1, max_length=255)
+    strategy: str = "round-robin"
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    preferences: dict[str, Any] = Field(default_factory=dict)
+    fallback: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    desired_revision: int = Field(default=1, ge=1)
+
+
+class RoutingPolicyPatch(StrictModel):
+    strategy: str | None = None
+    constraints: dict[str, Any] | None = None
+    preferences: dict[str, Any] | None = None
+    fallback: list[str] | None = None
+    enabled: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class RouteBindingCreate(StrictModel):
+    id: str = Field(min_length=1, max_length=255)
+    route_id: str
+    router_id: str
+    enabled: bool = True
+    priority: int = 0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    desired_revision: int = Field(default=1, ge=1)
+
+
+class RouteBindingPatch(StrictModel):
+    enabled: bool | None = None
+    priority: int | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class Page(StrictModel):

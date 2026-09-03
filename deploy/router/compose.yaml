@@ -1,0 +1,14 @@
+services:
+  pra-router:
+    build:
+      context: ../..
+      dockerfile: deploy/router/Dockerfile
+    ports:
+      - "9400:9400"
+    environment:
+      PRA_ROUTER_RELOAD_TOKEN: ${PRA_ROUTER_RELOAD_TOKEN:?set PRA_ROUTER_RELOAD_TOKEN}
+    volumes:
+      - ./reference-router.yaml:/etc/pra/reference-router.yaml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped

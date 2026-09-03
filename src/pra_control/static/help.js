@@ -5,6 +5,7 @@
     { slug:'index', title:'Control Plane help', description:'Start here: workspace layout, navigation, themes, and access.' },
     { slug:'fleet', title:'Fleet and engines', description:'Inspect engine health, drift, capabilities, sessions, storage, and observability.' },
     { slug:'registry', title:'Registry and governance', description:'Models, bundles, profiles, qualifications, compatibility, policies, and approvals.' },
+    { slug:'routers', title:'Routers and routes', description:'Inspect external routing data planes, eligibility, drift, and reconciliation.' },
     { slug:'agent', title:'PRA Agent', description:'Use governed chat for fleet questions and operator assistance.' },
     { slug:'activity', title:'Audit and alerts', description:'Review alert state and the immutable operator action trail.' },
   ];

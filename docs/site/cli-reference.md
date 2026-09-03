@@ -1471,6 +1471,288 @@ items:
 total: 1
 ```
 
+### `pra registry routers`
+
+List registered routing data planes and sync state.
+
+**Usage**
+
+```text
+pra registry routers [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry routers --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: litellm-eu
+  kind: litellm
+  health: healthy
+  in_sync: true
+total: 1
+```
+
+### `pra registry routes`
+
+List stable logical routes.
+
+**Usage**
+
+```text
+pra registry routes [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry routes --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: chat
+  public_model: pra-chat
+  route_kind: llm
+total: 1
+```
+
+### `pra registry model-pools`
+
+List qualification-aware model pools.
+
+**Usage**
+
+```text
+pra registry model-pools [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry model-pools --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: qwen-production
+  model_id: Qwen/Qwen3-4B
+total: 1
+```
+
+### `pra registry backend-endpoints`
+
+List router-eligible backend endpoints.
+
+**Usage**
+
+```text
+pra registry backend-endpoints [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry backend-endpoints --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: vllm-eu-1
+  pool_id: qwen-production
+  health: healthy
+  qualified: true
+total: 1
+```
+
+### `pra registry routing-policies`
+
+List deterministic routing policies.
+
+**Usage**
+
+```text
+pra registry routing-policies [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry routing-policies --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: production-weighted
+  strategy: weighted
+  fallback: ordered
+total: 1
+```
+
+### `pra registry route-bindings`
+
+List route-to-router bindings.
+
+**Usage**
+
+```text
+pra registry route-bindings [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--limit` | INTEGER >= 1 <= 500 | `50` | no | Maximum number of matching Hub bundles to return. |
+| `--offset` | INTEGER >= 0 | `0` | no | Skip this many registry records before returning results. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry route-bindings --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: litellm-chat
+  router_id: litellm-eu
+  route_id: chat
+  enabled: true
+total: 1
+```
+
+### `pra registry router-desired`
+
+Show compiled qualification-aware desired state for one router.
+
+**Usage**
+
+```text
+pra registry router-desired [OPTIONS] ROUTER_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ROUTER_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `-` | no | Registry base URL. |
+| `--token` | TEXT | `-` | no | Bearer token; prefer the environment variable. |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra registry router-desired litellm-eu --registry-url http://127.0.0.1:9200 --yaml
+```
+
+**Example output**
+
+```text
+router:
+  id: litellm-eu
+routes:
+- id: chat
+backends:
+  eligible:
+  - id: vllm-eu-1
+  excluded: []
+```
+
 ### `pra registry instances`
 
 List self-registered engines and gateways with liveness filters.
@@ -2026,6 +2308,234 @@ pra control apply PLAN_ID --reason "prepare launch" --auth-profile operator --co
   "status": "applied",
   "idempotent_replay": false
 }
+```
+
+## Routers
+
+### `pra router serve`
+
+Run the standalone reference router from last-good YAML/JSON config.
+
+**Usage**
+
+```text
+pra router serve [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | yes | Configure `config-path`. |
+| `--host` | TEXT | `127.0.0.1` | no | Bind address for the local service. |
+| `--port` | INTEGER >= 1 <= 65535 | `9400` | no | TCP port for the local service. |
+| `--reload-token-env` | TEXT | `PRA_ROUTER_RELOAD_TOKEN` | no | Configure `reload-token-env`. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router serve --config pra-router.yaml --host 127.0.0.1 --port 9400
+```
+
+**Example output**
+
+```text
+INFO: Uvicorn running on http://127.0.0.1:9400
+OpenAI API: http://127.0.0.1:9400/v1/chat/completions
+Management API: http://127.0.0.1:9400/v1/router/info
+```
+
+### `pra router inspect`
+
+Inspect a live reference router or Registry-managed router drift.
+
+**Usage**
+
+```text
+pra router inspect [OPTIONS] [ROUTER_ID]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ROUTER_ID` | no | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--url` | TEXT | `http://127.0.0.1:9400` | no | Configure `url`. |
+| `--registry-url` | TEXT | `http://127.0.0.1:9200` | no | Use this PRA Registry base URL. |
+| `--token` | TEXT | `-` | no | Authenticate with a bearer token; prefer the service-specific environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router inspect litellm-eu --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+router:
+  id: litellm-eu
+  kind: litellm
+  desired_revision: 7
+  observed_revision: 7
+  in_sync: true
+```
+
+### `pra router routes`
+
+List logical routes and eligible backends from a live reference router.
+
+**Usage**
+
+```text
+pra router routes [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--url` | TEXT | `http://127.0.0.1:9400` | no | Configure `url`. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router routes --url http://127.0.0.1:9400 --json
+```
+
+**Example output**
+
+```text
+items:
+- id: chat
+  public_model: pra-chat
+  eligible_backends: 2
+total: 1
+```
+
+### `pra router preview`
+
+Compile and diff Registry intent without changing router state.
+
+**Usage**
+
+```text
+pra router preview [OPTIONS] ROUTER_ID
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ROUTER_ID` | yes | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `http://127.0.0.1:9200` | no | Use this PRA Registry base URL. |
+| `--token` | TEXT | `-` | no | Authenticate with a bearer token; prefer the service-specific environment variable. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router preview litellm-eu --registry-url http://127.0.0.1:9200 --json
+```
+
+**Example output**
+
+```text
+router_id: litellm-eu
+drifted: true
+operations:
+- action: replace-config
+  destructive: false
+```
+
+### `pra router reconcile`
+
+Apply desired routes and verify observed router state.
+
+**Usage**
+
+```text
+pra router reconcile [OPTIONS] [ROUTER_ID]
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `ROUTER_ID` | no | Command input value. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--all` | flag | `off` | no | Reconcile every registered router. |
+| `--registry-url` | TEXT | `http://127.0.0.1:9200` | no | Use this PRA Registry base URL. |
+| `--token` | TEXT | `-` | no | Authenticate with a bearer token; prefer the service-specific environment variable. |
+| `--confirm` | flag | `off` | no | Confirm applying the displayed desired state. |
+| `--json` | flag | `off` | no | Emit machine-readable JSON. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router reconcile litellm-eu --registry-url http://127.0.0.1:9200 --confirm --json
+```
+
+**Example output**
+
+```text
+router_id: litellm-eu
+status: applied
+observed_revision: 7
+verified: true
+```
+
+### `pra router controller`
+
+Continuously reconcile all Registry-managed router instances.
+
+**Usage**
+
+```text
+pra router controller [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--registry-url` | TEXT | `http://127.0.0.1:9200` | no | Use this PRA Registry base URL. |
+| `--token` | TEXT | `-` | no | Authenticate with a bearer token; prefer the service-specific environment variable. |
+| `--interval` | FLOAT >= 1 | `10.0` | no | Configure `interval`. |
+| `--once` | flag | `off` | no | Reconcile once and exit. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra router controller --registry-url http://127.0.0.1:9200 --interval 10
+```
+
+**Example output**
+
+```text
+router=litellm-eu status=in-sync desired_revision=7 observed_revision=7
 ```
 
 ## Environment and qualification

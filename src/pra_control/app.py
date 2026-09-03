@@ -320,6 +320,28 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
     async def deployment(deployment_id: str, request: Request, actor: Identity = Depends(identity)) -> Any:
         return await runtime.manager.deployments.get(caller(actor, request), deployment_id)
 
+    @rest("router.list", "get", "/api/routers")
+    async def routers(request: Request, actor: Identity = Depends(identity)) -> Any:
+        return {"items": await runtime.manager.routers.list(caller(actor, request))}
+
+    @rest("router.list", "get", "/api/routers/{router_id}")
+    async def router(router_id: str, request: Request, actor: Identity = Depends(identity)) -> Any:
+        return await runtime.manager.routers.inspect(caller(actor, request), router_id)
+
+    @rest("route.list", "get", "/api/routes")
+    async def routes(request: Request, route_id: str | None = None, actor: Identity = Depends(identity)) -> Any:
+        return {"items": await runtime.manager.routers.routes(caller(actor, request), route_id)}
+
+    @rest("route.plan", "post", "/api/routers/{router_id}/plan")
+    async def router_plan(router_id: str, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        return await runtime.manager.routers.preview(caller(actor, request), router_id)
+
+    @rest("route.apply", "post", "/api/routers/{router_id}/apply")
+    async def router_apply(router_id: str, body: MutationBody, request: Request, actor: Identity = Depends(csrf)) -> Any:
+        return await runtime.manager.routers.apply(
+            caller(actor, request), router_id, reason=body.reason, confirmed=body.confirmed,
+        )
+
     @rest("qualification.read", "get", "/api/qualifications")
     async def qualifications(request: Request, model: str | None = None, engine: str | None = None, actor: Identity = Depends(identity)) -> Any:
         return {"items": await runtime.manager.qualifications.list_evidence(caller(actor, request), model=model, engine=engine)}

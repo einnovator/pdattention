@@ -120,6 +120,23 @@ _list_command("bundles", "/v1/bundles", "List PRA bundles and artifact reference
 _list_command("profiles", "/v1/profiles", "List versioned PRA profiles.")
 _list_command("qualifications", "/v1/qualifications", "List immutable qualification evidence.")
 _list_command("deployments", "/v1/deployments", "List desired deployment state.")
+_list_command("routers", "/v1/routers", "List registered routing data planes and sync state.")
+_list_command("routes", "/v1/routes", "List stable logical routes.")
+_list_command("model-pools", "/v1/model-pools", "List qualification-aware model pools.")
+_list_command("backend-endpoints", "/v1/backend-endpoints", "List router-eligible backend endpoints.")
+_list_command("routing-policies", "/v1/routing-policies", "List deterministic routing policies.")
+_list_command("route-bindings", "/v1/route-bindings", "List route-to-router bindings.")
+
+
+@registry_cli.command("router-desired")
+@click.argument("router_id")
+@connection_options
+@output_options
+def router_desired(router_id, registry_url, token, config, json_output, yaml_output):
+    """Show compiled qualification-aware desired state for one router."""
+
+    quoted = urllib.parse.quote(router_id, safe="")
+    _emit(_client(config, registry_url, token).request("GET", f"/v1/routers/{quoted}/desired"), json_output, yaml_output)
 
 
 @registry_cli.command("instances")

@@ -1,0 +1,27 @@
+router:
+  revision: 1
+  max_attempts: 2
+  request_timeout_seconds: 120
+  forwarded_headers:
+    - traceparent
+    - tracestate
+    - baggage
+    - x-pra-tenant-id
+    - x-pra-session-id
+    - x-pra-mode
+    - x-pra-profile
+    - x-pra-route-id
+    - x-pra-experiment-id
+  routes:
+    - id: local-chat
+      public_model: pra/local-chat
+      strategy: round-robin
+      backends:
+        - id: local-vllm
+          url: http://host.docker.internal:8000
+          model: Qwen/Qwen3-0.6B
+          weight: 1
+          region: local
+          metadata:
+            pra_mode: selected-context
+            qualification_tier: CONTROLLED

@@ -29,11 +29,14 @@ from .domain import (
 from .fleet_policy import alerts, compare_desired_observed, light_metrics
 from .operations import OPERATIONS
 from .persistence import ControlStore
+from pra_router.adapters import adapter_for
+from pra_router.controller import RouterController
 
 
 REGISTRY_RESOURCES = frozenset({
     "models", "bundles", "profiles", "qualifications", "compatibility",
     "deployments", "policies", "approvals", "audit", "instances",
+    "routers", "routes", "model-pools", "backend-endpoints", "routing-policies", "route-bindings",
 })
 APPROVAL_TRANSITIONS = frozenset({"approve", "deprecate", "revoke", "promote"})
 ENGINE_SECTIONS = frozenset({
@@ -283,6 +286,80 @@ class RegistryManager:
         except Exception as error:
             self.audit.record(caller, operation, path, reason, "failure", permission=permission, before=before, after={"error": str(error)})
             raise Offline("Registry mutation failed", details={"cause": str(error)}) from error
+
+
+class _ControlRouterSource:
+    """Adapt the configured Control Plane Registry client to RouterController."""
+
+    def __init__(self, registry: RegistryManager) -> None:
+        self.registry = registry
+
+    async def list_router_ids(self) -> list[str]:
+        rows = await self.registry._available().list("routers", limit=500, offset=0)
+        return [str(row["id"]) for row in rows.get("items", [])]
+
+    async def desired_state(self, router_id: str) -> dict[str, Any]:
+        return await self.registry._available().request(
+            "GET", f"/v1/routers/{quote(router_id, safe='')}/desired",
+        )
+
+    async def report_observed(self, router_id: str, **values: Any) -> None:
+        await self.registry._available().request(
+            "PATCH", f"/v1/routers/{quote(router_id, safe='')}", values,
+        )
+
+
+class RouterManager:
+    """Govern router reconciliation while leaving inference traffic external."""
+
+    def __init__(self, registry: RegistryManager, audit: AuditManager) -> None:
+        self.registry = registry
+        self.audit = audit
+        self.controller = RouterController(
+            _ControlRouterSource(registry),
+            {kind: adapter_for(kind) for kind in (
+                "litellm", "agentgateway", "kubernetes-gaie", "pra-reference", "bifrost",
+            )},
+        )
+
+    async def list(self, caller: CallerContext) -> list[dict[str, Any]]:
+        authorize(caller, "router.list")
+        return list((await self.registry.list(caller, "routers", limit=500)).get("items", []))
+
+    async def inspect(self, caller: CallerContext, router_id: str) -> dict[str, Any]:
+        authorize(caller, "router.list")
+        try:
+            return await self.controller.inspect(router_id)
+        except Exception as error:
+            raise Offline("router inspection failed", details={"cause": str(error)}) from error
+
+    async def routes(self, caller: CallerContext, route_id: str | None = None) -> list[dict[str, Any]]:
+        authorize(caller, "route.list")
+        rows = list((await self.registry.list(caller, "routes", limit=500)).get("items", []))
+        return [row for row in rows if route_id is None or str(row.get("id")) == route_id]
+
+    async def preview(self, caller: CallerContext, router_id: str) -> dict[str, Any]:
+        authorize(caller, "route.plan")
+        try:
+            return (await self.controller.preview(router_id)).model_dump(mode="json")
+        except Exception as error:
+            raise Offline("router preview failed", details={"cause": str(error)}) from error
+
+    async def apply(self, caller: CallerContext, router_id: str, *, reason: str, confirmed: bool) -> dict[str, Any]:
+        permission = authorize(caller, "route.apply")
+        if not confirmed:
+            raise ApprovalRequired("router reconciliation requires confirmation")
+        before = await self.preview(caller, router_id)
+        result = await self.controller.reconcile(router_id)
+        payload = result.model_dump(mode="json")
+        self.audit.record(
+            caller, "router.reconcile", router_id, reason,
+            "success" if result.verified else "failure", permission=permission,
+            before=before, after=payload,
+        )
+        if not result.verified:
+            raise Offline("router reconciliation failed", details={"result": payload})
+        return payload
 
 
 class DeploymentManager:
@@ -598,7 +675,7 @@ class ControlManager:
         self, *, fleet: FleetManager, registry: RegistryManager, deployments: DeploymentManager,
         actions: ActionManager, qualifications: QualificationManager,
         observability: ObservabilityManager, audit: AuditManager, context: ContextManager,
-        experiments: ExperimentManager | None = None,
+        experiments: ExperimentManager | None = None, routers: RouterManager | None = None,
     ) -> None:
         self.fleet = fleet
         self.registry = registry
@@ -609,6 +686,7 @@ class ControlManager:
         self.audit = audit
         self.context = context
         self.experiments = experiments
+        self.routers = routers or RouterManager(registry, audit)
 
     @classmethod
     def build(
@@ -627,8 +705,9 @@ class ControlManager:
         observability = ObservabilityManager(config, fleet)
         context = ContextManager(fleet, registry, qualifications)
         experiments = ExperimentManager(audit, config.manager.experiments_enabled)
+        routers = RouterManager(registry, audit)
         return cls(
             fleet=fleet, registry=registry, deployments=deployments, actions=actions,
             qualifications=qualifications, observability=observability, audit=audit,
-            context=context, experiments=experiments,
+            context=context, experiments=experiments, routers=routers,
         )

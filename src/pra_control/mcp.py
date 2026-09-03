@@ -24,6 +24,8 @@ RESOURCE_TEMPLATES: tuple[str, ...] = (
     "pra://bundles/{bundle_id}",
     "pra://qualifications/{qualification_id}",
     "pra://deployments/{deployment_id}",
+    "pra://routers/{router_id}",
+    "pra://routes/{route_id}",
 )
 
 _ACTIVE_CALLER: contextvars.ContextVar[CallerContext | None] = contextvars.ContextVar(
@@ -117,6 +119,16 @@ class MCPPresentation:
                     await self.manager.deployments.get(caller, str(deployment_id))
                     if deployment_id else {"items": await self.manager.deployments.list(caller)}
                 )
+            elif name == "pra_router":
+                router_id = args.get("router_id")
+                result = (
+                    await self.manager.routers.inspect(caller, str(router_id))
+                    if router_id else {"items": await self.manager.routers.list(caller)}
+                )
+                if router_id and args.get("preview"):
+                    result = await self.manager.routers.preview(caller, str(router_id))
+            elif name == "pra_route":
+                result = {"items": await self.manager.routers.routes(caller, args.get("route_id"))}
             elif name == "pra_metrics":
                 result = await self.manager.observability.summary(
                     caller, engine=args.get("engine"), period=str(args.get("period", "15m")),
@@ -165,11 +177,13 @@ class MCPPresentation:
                 result = next((row for row in models if str(row.get("runtime_model_id")) == parts[3]), None)
                 if result is None:
                     raise NotFound(f"runtime model not found: {parts[3]}")
-            elif parts and parts[0] in {"models", "bundles", "qualifications", "deployments"} and len(parts) == 2:
+            elif parts and parts[0] in {"models", "bundles", "qualifications", "deployments", "routes"} and len(parts) == 2:
                 page = await self.manager.registry.list(caller, parts[0], limit=500)
                 result = next((row for row in page.get("items", []) if str(row.get("id")) == parts[1]), None)
                 if result is None:
                     raise NotFound(f"resource not found: {uri}")
+            elif parts and parts[0] == "routers" and len(parts) == 2:
+                result = await self.manager.routers.inspect(caller, parts[1])
             else:
                 raise NotFound(f"unknown MCP resource: {uri}")
             return {"ok": True, "result": domain_payload(result)}
@@ -223,6 +237,16 @@ def build_fastmcp(
         @server.tool(name="pra_deployment", description="Read desired deployment state", structured_output=True)
         async def pra_deployment(deployment_id: str | None = None) -> dict[str, Any]:
             return await presentation.call("pra_deployment", {"deployment_id": deployment_id})
+
+    if "pra_router" in enabled:
+        @server.tool(name="pra_router", description="Inspect a PRA router and optionally preview drift", structured_output=True)
+        async def pra_router(router_id: str | None = None, preview: bool = False) -> dict[str, Any]:
+            return await presentation.call("pra_router", {"router_id": router_id, "preview": preview})
+
+    if "pra_route" in enabled:
+        @server.tool(name="pra_route", description="Inspect PRA logical routes and eligible pools", structured_output=True)
+        async def pra_route(route_id: str | None = None) -> dict[str, Any]:
+            return await presentation.call("pra_route", {"route_id": route_id})
 
     if "pra_metrics" in enabled:
         @server.tool(name="pra_metrics", description="Read semantic metrics and observability links", structured_output=True)
@@ -342,6 +366,14 @@ def _register_resource(server: Any, presentation: MCPPresentation, template: str
         @server.resource(template, name="PRA deployment", mime_type="application/json")
         async def deployment_resource(deployment_id: str) -> str:
             return json.dumps(await presentation.read(f"pra://deployments/{deployment_id}"), sort_keys=True)
+    elif template == "pra://routers/{router_id}":
+        @server.resource(template, name="PRA router", mime_type="application/json")
+        async def router_resource(router_id: str) -> str:
+            return json.dumps(await presentation.read(f"pra://routers/{router_id}"), sort_keys=True)
+    elif template == "pra://routes/{route_id}":
+        @server.resource(template, name="PRA route", mime_type="application/json")
+        async def route_resource(route_id: str) -> str:
+            return json.dumps(await presentation.read(f"pra://routes/{route_id}"), sort_keys=True)
 
 
 def _error(error: ControlError) -> dict[str, Any]:
