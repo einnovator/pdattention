@@ -44,9 +44,9 @@ This page compares the same task, hardware, engine, model, mode, and profile und
 | `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
 | `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
 | `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
+| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
 | `mlx-community/Qwen3-14B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
 | `mlx-community/Qwen3-14B-8bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
 | `mlx-community/Qwen3-14B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
@@ -231,6 +231,51 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | NEEDS_RUN | +0 (+0.00%) | NEEDS_RUN |
+
+### mlx-community/Qwen3-8B-8bit / mlx-lm / native-memory / balanced
+
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+
+#### Quality
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.144011 | 0.144011 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
+| Exact Match | fraction | higher_is_better | 0 | 0 | NO_QUALIFIED_ADAPTER | +0 | NO_QUALIFIED_ADAPTER |
+| Gold Answer Log Probability | log_probability | higher_is_better | -19.1076 | -19.1076 | NO_QUALIFIED_ADAPTER | +0 (-0.00%) | NO_QUALIFIED_ADAPTER |
+
+#### Context
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 396.317 | 33.5167 | NO_QUALIFIED_ADAPTER | -362.8 (-91.54%) | NO_QUALIFIED_ADAPTER |
+| Selected Native K/V Tokens | token | neutral | 0 | 362.8 | NO_QUALIFIED_ADAPTER | +362.8 | NO_QUALIFIED_ADAPTER |
+
+#### Serving
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| TTFT p50 (ms) | ms | lower_is_better | 186.881 | 176.211 | NO_QUALIFIED_ADAPTER | -10.6696 (-5.71%) | NO_QUALIFIED_ADAPTER |
+| TTFT p95 (ms) | ms | lower_is_better | 232.033 | 208.936 | NO_QUALIFIED_ADAPTER | -23.0971 (-9.95%) | NO_QUALIFIED_ADAPTER |
+| TTFT p99 (ms) | ms | lower_is_better | 249.496 | 212.698 | NO_QUALIFIED_ADAPTER | -36.7977 (-14.75%) | NO_QUALIFIED_ADAPTER |
+| ITL p50 (ms) | ms | lower_is_better | 34.8123 | 35.6742 | NO_QUALIFIED_ADAPTER | +0.861843 (+2.48%) | NO_QUALIFIED_ADAPTER |
+| ITL p95 (ms) | ms | lower_is_better | 36.4766 | 36.8092 | NO_QUALIFIED_ADAPTER | +0.332536 (+0.91%) | NO_QUALIFIED_ADAPTER |
+| ITL p99 (ms) | ms | lower_is_better | 36.8347 | 37.1582 | NO_QUALIFIED_ADAPTER | +0.323467 (+0.88%) | NO_QUALIFIED_ADAPTER |
+| Output Tokens Per Second | output_token/s | higher_is_better | 24.4728 | 24.3286 | NO_QUALIFIED_ADAPTER | -0.144183 (-0.59%) | NO_QUALIFIED_ADAPTER |
+| Completion Latency Mean (ms) | ms | lower_is_better | 981.993 | 987.449 | NO_QUALIFIED_ADAPTER | +5.4559 (+0.56%) | NO_QUALIFIED_ADAPTER |
+
+#### Resources
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
+
+#### Routing
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
 
 ### mlx-community/Qwen3-8B-6bit / mlx-lm / native-memory / balanced
 

@@ -296,13 +296,21 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     assert 0 not in states
 
 
-def test_qwen_6bit_native_result_is_exact_identity_qualified() -> None:
-    bundle_name = "pra-qwen3-8b-mlx-6bit"
+@pytest.mark.parametrize(
+    ("bundle_name", "bits"),
+    [
+        ("pra-qwen3-8b-mlx-6bit", 6),
+        ("pra-qwen3-8b-mlx-8bit", 8),
+    ],
+)
+def test_qwen_8b_quantized_native_results_are_exact_identity_qualified(
+    bundle_name: str, bits: int
+) -> None:
     bundle = PRAModelBundle.from_pretrained(
         ROOT / "artifacts/pra_hf/bundles" / bundle_name
     )
 
-    assert bundle.base_model["quantization"]["bits"] == 6
+    assert bundle.base_model["quantization"]["bits"] == bits
     assert bundle.base_model["quantization"]["runtime"] == "MLX"
     assert bundle.qualification["status"] == "ENGINE_QUALIFIED"
     assert bundle.qualification["headline"][0]["semantic_equivalence"] == {
