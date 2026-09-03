@@ -110,6 +110,21 @@ def test_bundle_and_card_gate_stays_closed_without_qualified_adapter() -> None:
     assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
 
 
+def test_evidence_probe_cannot_open_model_backed_gates() -> None:
+    rows = [
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "same"),
+    ]
+    for row in rows:
+        row["answer_quality_publishable"] = False
+    gates = qualification_gates(summarize_rows(rows), minimum_examples=1)
+    assert gates["selection_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["selection_comparator"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["native_memory_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["economic_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
+
+
 def test_condition_results_jsonl_is_compressed_and_roundtrips(tmp_path: Path) -> None:
     rows = [_row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same")]
     path = tmp_path / "condition_results.jsonl.gz"

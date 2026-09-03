@@ -210,6 +210,10 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
             "regime": regime,
             "status": status,
             "examples": len(values),
+            "answer_quality_publishable": all(
+                row.get("answer_quality_publishable", True) is not False
+                for row in values
+            ),
         }
         for metric in SUMMARY_METRICS:
             samples = [value for row in values if (value := _metric(row, metric)) is not None]
@@ -284,7 +288,12 @@ def qualification_gates(
     """Apply conservative selection, native, economic, and card gates."""
 
     measured = [row for row in summaries if row.get("status") == "MEASURED"]
-    powered = [row for row in measured if int(row.get("examples", 0)) >= minimum_examples]
+    powered = [
+        row
+        for row in measured
+        if int(row.get("examples", 0)) >= minimum_examples
+        and row.get("answer_quality_publishable", True) is not False
+    ]
     standard_baselines = [
         row
         for row in powered
@@ -395,14 +404,27 @@ def qualification_gates(
     bundle_pass = bool(bundle) and all(
         row.get("status") == "MEASURED" for row in bundle
     )
+    model_backed = bool(powered)
     return {
         "minimum_examples": minimum_examples,
-        "selection_gate": "PASS" if selection_pass else "FAIL",
+        "selection_gate": (
+            "PASS" if selection_pass else "FAIL"
+        ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
         "selection_comparator": (
-            "strong_conventional_reranker" if strong_by_config else "standard_bm25"
+            (
+                "strong_conventional_reranker"
+                if strong_by_config
+                else "standard_bm25"
+            )
+            if model_backed
+            else "NOT_APPLICABLE_NON_MODEL"
         ),
-        "native_memory_gate": "PASS" if native_pass else "FAIL",
-        "economic_gate": "PASS" if economic_pass else "FAIL",
+        "native_memory_gate": (
+            "PASS" if native_pass else "FAIL"
+        ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
+        "economic_gate": (
+            "PASS" if economic_pass else "FAIL"
+        ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
         "bundle_gate": "PASS" if bundle_pass else "NO_QUALIFIED_ADAPTER",
         "card_gate": (
             "PASS"
