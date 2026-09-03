@@ -1,0 +1,4419 @@
+{
+  "schema_version": "2.0",
+  "experiment": "paper4_5_exact_identity_hf_e0_e2_v1",
+  "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+  "engine": "huggingface_eager",
+  "engine_version": "5.16.1",
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "model_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "quantization": "bnb-8bit",
+  "dataset": "2wikimultihopqa",
+  "cohort": "paper6_cross_engine_matched_e0_e2_v2",
+  "selection_policy": "frozen Paper 6.2 SDK hybrid top-4 document routing",
+  "max_source_tokens": 384,
+  "warm_repeats": 1,
+  "multi_query_count": 1,
+  "concurrency": 1,
+  "rows": [
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cadolzburg",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 9.3620999250561
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 2017.0691999373958,
+          "generated_tokens": 4,
+          "tokens_per_second": 1.9830752460669911,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cadolnurember of Conrad I was a member of 1297086) was a",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 34
+        },
+        "pra": {
+          "selected_native_kv_tokens": 381,
+          "active_detail_bytes": 10924032,
+          "retained_detail_bytes": 10924032
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 2344.1056000301614,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2353.4676999552175
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11603.386600036174,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.06836166261367,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 10924032,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 9.3620999250561
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 477.64560009818524,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0936024529367363,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 34
+        },
+        "pra": {
+          "selected_native_kv_tokens": 381,
+          "active_detail_bytes": 10924032,
+          "retained_detail_bytes": 10924032
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 2344.1056000301614,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2353.4676999552175
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 574.5569000719115,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7404716571584817,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10924032,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10924032,
+          "duplicate_physical_kv_avoided_bytes": 10924032
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 9.3620999250561
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 483.8156000478193,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.066903175303074,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 34
+        },
+        "pra": {
+          "selected_native_kv_tokens": 381,
+          "active_detail_bytes": 10924032,
+          "retained_detail_bytes": 10924032
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 2344.1056000301614,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2353.4676999552175
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 562.9137000069022,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.776471242372922,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10924032,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10924032,
+          "duplicate_physical_kv_avoided_bytes": 10924032
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": "ee674cb27a652a77",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 9.3620999250561
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 468.050199910067,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.136522963118366,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "e0b5ffa7b68c345e4fd23797cbb6acf9145d21c88f9b3c763c65b5682c343a0e",
+      "concurrency_group": "ee674cb27a652a77",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "322178260bde11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "4",
+          "9",
+          "1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 441
+          },
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 167
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 163
+          },
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 194
+          }
+        ],
+        "selected_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "selection_id": "5cb11da1a97af3d19f4b728706aa45254f13672c9b22309447c7725ab8ff0a4e"
+      },
+      "output": "Cad",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 809,
+          "selected_source_tokens": 381,
+          "visible_prompt_tokens": 34
+        },
+        "pra": {
+          "selected_native_kv_tokens": 381,
+          "active_detail_bytes": 10924032,
+          "retained_detail_bytes": 10924032
+        },
+        "ingestion": {
+          "text_preparation_ms": 9.3620999250561,
+          "kv_encode_ms": 2344.1056000301614,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2353.4676999552175
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 524.5793000794947,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9062894777747807,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10924032,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10924032,
+          "duplicate_physical_kv_avoided_bytes": 10924032
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Cadolzburg",
+        "execution_source_sha256": "db12d41e89aaaf30c87dcea22a35004b6e3fb5824f4f691a1429453b3fd43a5b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Father's Doing Fine",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 381
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 7.723400020040572
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 2080.124399974011,
+          "generated_tokens": 5,
+          "tokens_per_second": 2.403702393983009,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Undercover is a cameo appearances by Richard Harris as well-knowns\n\nDocument: 1202\nWhat Is",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 35
+        },
+        "pra": {
+          "selected_native_kv_tokens": 346,
+          "active_detail_bytes": 9920512,
+          "retained_detail_bytes": 9920512
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 1439.9223000509664,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1447.645700071007
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11412.462300038897,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.102964230595373,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 9920512,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Father",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 381
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 7.723400020040572
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 510.30289998743683,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.95962045292045,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Under",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 35
+        },
+        "pra": {
+          "selected_native_kv_tokens": 346,
+          "active_detail_bytes": 9920512,
+          "retained_detail_bytes": 9920512
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 1439.9223000509664,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1447.645700071007
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 540.1162999914959,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8514531037403332,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 9920512,
+          "bytes_promoted": 0,
+          "bytes_avoided": 9920512,
+          "duplicate_physical_kv_avoided_bytes": 9920512
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Father",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 381
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 7.723400020040572
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 519.2444999702275,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9258749973419809,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Under",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 35
+        },
+        "pra": {
+          "selected_native_kv_tokens": 346,
+          "active_detail_bytes": 9920512,
+          "retained_detail_bytes": 9920512
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 1439.9223000509664,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1447.645700071007
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 527.3489999817684,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.896277417866673,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 9920512,
+          "bytes_promoted": 0,
+          "bytes_avoided": 9920512,
+          "duplicate_physical_kv_avoided_bytes": 9920512
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": "ac5fb9c98da03a59",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Father",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 381
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 7.723400020040572
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 533.2929000724107,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.875142158960338,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "37359f72726f0ed684fdd68abdbad66c4f606b457318db12a354cb26e4c4f134",
+      "concurrency_group": "ac5fb9c98da03a59",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "65628236088a11ebbd6fac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "6",
+          "2",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 223
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 172
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 257
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 601
+          }
+        ],
+        "selected_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "selection_id": "411662412f0bc0f4f3a0b3fefa0790c5ef76520044ac4ab9aa5fbe54da2d6244"
+      },
+      "output": "Under",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 753,
+          "selected_source_tokens": 346,
+          "visible_prompt_tokens": 35
+        },
+        "pra": {
+          "selected_native_kv_tokens": 346,
+          "active_detail_bytes": 9920512,
+          "retained_detail_bytes": 9920512
+        },
+        "ingestion": {
+          "text_preparation_ms": 7.723400020040572,
+          "kv_encode_ms": 1439.9223000509664,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1447.645700071007
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 530.4824999766424,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8850763221105895,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 9920512,
+          "bytes_promoted": 0,
+          "bytes_avoided": 9920512,
+          "duplicate_physical_kv_avoided_bytes": 9920512
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Father'S Doing Fine",
+        "execution_source_sha256": "5de21609dc06cc3fa32364dd6bbd5196d1c0cdb3456627f9dd61be82667a2208",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clovis II",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.79540003836155
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 1781.1920000240207,
+          "generated_tokens": 4,
+          "tokens_per_second": 2.2456871577831348,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clovis, and his own king of 620s decided to beheaded by Ebrother was a Frank",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 30
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 1494.624299928546,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1508.4196999669075
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11561.128600034863,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.075921895715928,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.79540003836155
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 484.45380001794547,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.064180320110932,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 30
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 1494.624299928546,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1508.4196999669075
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 565.8059000270441,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.767390548511782,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.79540003836155
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 470.95059999264777,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.123364955932982,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 30
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 1494.624299928546,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1508.4196999669075
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 559.4299999065697,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7875337399978724,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": "cdf3314eb15563c7",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 415
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.79540003836155
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 478.20810007397085,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.091139819349184,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "344fbf81734529676cc6cfcae7b56099f9cfb892fd8523986460785bcc81dde8",
+      "concurrency_group": "cdf3314eb15563c7",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "656b25bc0baf11ebab90acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "9",
+          "8",
+          "0",
+          "2"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 2202
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1402
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 184
+          },
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          }
+        ],
+        "selected_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "selection_id": "ab2b62e178d5d177448624e014dc8731dc56059e49aa5b39c7b604a57e52fcba"
+      },
+      "output": "Clo",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1381,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 30
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.79540003836155,
+          "kv_encode_ms": 1494.624299928546,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1508.4196999669075
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 564.5735999569297,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7712482483706078,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "Dagobert I",
+        "execution_source_sha256": "54656c5d5588f2bcc4833921e6a4d5d85bcf3fdd1b9f1d6c9449527ad6ed7bb2",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "Yes",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 421
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.56439993530512
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 857.8141999896616,
+          "generated_tokens": 2,
+          "tokens_per_second": 2.3315072191904775,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "No 196 Carry On Jack is a British comedy film was released in 208\nTheat",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 37
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 11010048,
+          "retained_detail_bytes": 11010048
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 1439.5862000528723,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1456.1505999881774
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11831.846999935806,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.028423795551972,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11010048,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "Yes",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 421
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.56439993530512
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 481.6123000346124,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0763589300525176,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "No",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 37
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 11010048,
+          "retained_detail_bytes": 11010048
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 1439.5862000528723,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1456.1505999881774
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 565.2202001074329,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7692219772222,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11010048,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11010048,
+          "duplicate_physical_kv_avoided_bytes": 11010048
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "Yes",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 421
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.56439993530512
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 505.0483000231907,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9800086446268252,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "No",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 37
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 11010048,
+          "retained_detail_bytes": 11010048
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 1439.5862000528723,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1456.1505999881774
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 542.4491000594571,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8434909374730115,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11010048,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11010048,
+          "duplicate_physical_kv_avoided_bytes": 11010048
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": "f256cb814cbac497",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "Yes",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 421
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.56439993530512
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 543.5915999114513,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8396163593456845,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c69f331d9fc1f9875dcbdef11a12522d8d142d3a33b48b6486273929969a62a3",
+      "concurrency_group": "f256cb814cbac497",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "e3267290085311ebbd59ac1f6bf848b6",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "7",
+          "0",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 521
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 908
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 768
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 870
+          }
+        ],
+        "selected_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "selection_id": "0297398535ae63e83e5abb5a6d181934a27fb3aa96b2c10881f32e776513adea"
+      },
+      "output": "No",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 2263,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 37
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 11010048,
+          "retained_detail_bytes": 11010048
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.56439993530512,
+          "kv_encode_ms": 1439.5862000528723,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1456.1505999881774
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 523.6140000633895,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9098037865277444,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11010048,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11010048,
+          "duplicate_physical_kv_avoided_bytes": 11010048
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 11,
+        "gold_answer": "yes",
+        "execution_source_sha256": "652d2032fd5ed906e35c6f8703f84f0b656c09f06b79ec6d7273014db277c9b8",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "11 March 1983",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 416
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.298099950887263
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 4090.0459999684244,
+          "generated_tokens": 10,
+          "tokens_per_second": 2.444960276749259,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "19) was a Russian Jewish boy born in 207 \u2013 ) (born 198 -",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 31
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 1836.200000019744,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1846.4980999706313
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11499.603500007652,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.087028478850078,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 416
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.298099950887263
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 478.58219989575446,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.089505209800577,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 31
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 1836.200000019744,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1846.4980999706313
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 552.3876999504864,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8103227137201563,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 416
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.298099950887263
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 471.0559999803081,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.122889847580338,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 31
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 1836.200000019744,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1846.4980999706313
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 570.1699000783265,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7538631903624273,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": "316ffd20aaaad06a",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 416
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.298099950887263
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 474.4472000747919,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.107716095368167,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a746d4656b5474dbda263011134ac6f314a600ae972b0d608497ad0ed11b0c4",
+      "concurrency_group": "316ffd20aaaad06a",
+      "selection": {
+        "dataset": "2wikimultihopqa",
+        "example_id": "08fe2b440bdc11eba7f7acde48001122",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "1",
+          "0",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 859
+          },
+          {
+            "document_id": "0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 449
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 1576
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 69
+          }
+        ],
+        "selected_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "selection_id": "d9ce3592a5b9f6a9bf810dde0405ba2829857cdba56083538b3d9983202b760d"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 962,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 31
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.298099950887263,
+          "kv_encode_ms": 1836.200000019744,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1846.4980999706313
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 565.9155000466853,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7670482605928002,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "2wikimultihopqa",
+        "seed": 23,
+        "gold_answer": "11 March 1983",
+        "execution_source_sha256": "d74366a4702158770ffbdebb391fa676d16b205b61a9b7c8c1ea7e1b702ea5e6",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    }
+  ]
+}

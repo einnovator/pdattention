@@ -19,6 +19,6 @@ PRA Runtime Bundles package structural mappings, profiles, optional learned comp
 | 13 | [`EInnovator/pra-qwen3-8b-mlx-6bit`](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-6bit) | `mlx-community/Qwen3-8B-6bit` | Balanced-capacity MLX 6-bit structural bundle | SMOKE | Selected Context with BALANCED | PUBLISHED |
 | 14 | [`EInnovator/pra-llama3-2-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | `mlx-community/Llama-3.2-1B-Instruct-8bit` | Compact cross-family MLX 8-bit Native Memory qualification | ENGINE_QUALIFIED | Native Memory with BALANCED | PUBLISHED |
 | 15 | [`EInnovator/pra-gemma3-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | `mlx-community/gemma-3-1b-it-8bit` | Mixed-attention MLX 8-bit measured Native Memory candidate | CONTROLLED | Selected Context with BALANCED | PUBLISHED |
-| 16 | [`EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit`](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit) | `Qwen/Qwen2.5-1.5B-Instruct` | NVIDIA runtime-int8 structural bundle | SMOKE | Selected Context with BALANCED | PUBLISHED |
+| 16 | [`EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit`](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit) | `Qwen/Qwen2.5-1.5B-Instruct` | NVIDIA runtime-int8 measured Native Memory candidate | CONTROLLED | Selected Context with BALANCED | PUBLISHED |
 
 The order reflects useful measured evidence, not publication date. `AVAILABLE`, `QUALIFIED`, and `RECOMMENDED` are independent states.

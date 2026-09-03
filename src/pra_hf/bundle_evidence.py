@@ -65,7 +65,11 @@ def file_sha256(path: str | Path) -> str:
 
 def _quantization(value: object) -> str:
     if isinstance(value, Mapping):
+        runtime = str(value.get("runtime", "")).replace("-", "").lower()
+        scheme = str(value.get("scheme", "")).replace("-", "").lower()
         bits = value.get("bits")
+        if bits == 8 and ("bitsandbytes" in runtime or "llm.int8" in scheme):
+            return "bnb8bit"
         return f"{bits}bit" if bits is not None else str(value.get("name", "")).lower()
     return str(value or "").replace("-", "").lower()
 

@@ -59,9 +59,9 @@ This page compares the same task, hardware, engine, model, mode, and profile und
 | `mlx-community/gemma-3-1b-it-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
 | `mlx-community/gemma-3-1b-it-8bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
 | `mlx-community/gemma-3-1b-it-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | SMOKE |
+| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
 
 A `MEASURED (n)` cell reports the number of scalar metrics available for that exact condition. Detailed values follow only for measured records; profile rows without matched evidence remain explicit.
 
@@ -321,6 +321,44 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
+
+### Qwen/Qwen2.5-1.5B-Instruct / huggingface_eager / native-memory / balanced
+
+Task: `combined`. Hardware: `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`. Evidence: `ENGINE_QUALIFIED`.
+
+#### Quality
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.399111 | 0.0178571 | NO_QUALIFIED_ADAPTER | -0.381254 (-95.53%) | NO_QUALIFIED_ADAPTER |
+| Exact Match | fraction | higher_is_better | 0.333333 | 0 | NO_QUALIFIED_ADAPTER | -0.333333 (-100.00%) | NO_QUALIFIED_ADAPTER |
+
+#### Context
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 404.6 | 33.6 | NO_QUALIFIED_ADAPTER | -371 (-91.70%) | NO_QUALIFIED_ADAPTER |
+| Selected Native K/V Tokens | token | neutral | 0 | 371 | NO_QUALIFIED_ADAPTER | +371 | NO_QUALIFIED_ADAPTER |
+
+#### Serving
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Output Tokens Per Second | output_token/s | higher_is_better | 2.30576 | 2.09692 | NO_QUALIFIED_ADAPTER | -0.208833 (-9.06%) | NO_QUALIFIED_ADAPTER |
+| Completion Latency Mean (ms) | ms | lower_is_better | 3772.26 | 11448.4 | NO_QUALIFIED_ADAPTER | +7676.19 (+203.49%) | NO_QUALIFIED_ADAPTER |
+
+#### Resources
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
+
+#### Routing
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Evidence Recall | fraction | higher_is_better | 0.75 | 0.75 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
 
 
 ## Interpretation

@@ -199,13 +199,13 @@ bundles:
   - order: 16
     repo: EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit
     model: Qwen/Qwen2.5-1.5B-Instruct
-    role: NVIDIA runtime-int8 structural bundle
-    evidence_tier: SMOKE
+    role: NVIDIA runtime-int8 measured Native Memory candidate
+    evidence_tier: CONTROLLED
     recommendation: Selected Context with BALANCED
     qualification_date: 2026-09-03
     publication_status: PUBLISHED
     engine: hf
     profile: BALANCED
-    quality_gate: Exact bitsandbytes int8 checkpoint load, projection discovery, and bounded CUDA generation passed; end-task pairing pending
-    context_saving: NOT_MEASURED
-    artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen2.5-1.5b-instruct-bnb-8bit/runtime_smoke.json
+    quality_gate: 0/15 exact paired outputs; mean token-F1 delta -0.3813, so Native Memory remains candidate-only
+    context_saving: 91.7% fewer visible tokens
+    artifact: docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/qualification_summary.json

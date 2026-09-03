@@ -300,7 +300,6 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     ("bundle_name", "bits", "runtime"),
     [
         ("pra-qwen3-8b-mlx-6bit", 6, "MLX"),
-        ("pra-qwen2-5-1-5b-instruct-bnb-8bit", 8, "bitsandbytes/PyTorch"),
     ],
 )
 def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
@@ -323,6 +322,29 @@ def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
     assert "Exact-identity runtime smoke" in card
     assert "RUNTIME_SMOKE_VALIDATED" in card
     assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
+
+
+def test_bnb_8bit_native_result_is_measured_but_remains_a_candidate() -> None:
+    bundle = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles/pra-qwen2-5-1-5b-instruct-bnb-8bit"
+    )
+
+    assert bundle.base_model["quantization"] == {
+        "bits": 8,
+        "scheme": "LLM.int8",
+        "runtime": "bitsandbytes/PyTorch",
+    }
+    assert bundle.qualification["status"] == "CONTROLLED"
+    assert bundle.qualification["headline"][0]["semantic_equivalence"] == {
+        "exact_output_pairs": 0,
+        "paired_examples": 15,
+    }
+    assert bundle.runtime_compatibility["hf"]["recommended"] == (
+        "Selected Context with BALANCED"
+    )
+    assert bundle.profiles["balanced"]["mode"] == "Selected Context"
+    assert bundle.learned_adapters == {}
+    assert bundle.validate()["status"] == "VALID"
 
 
 def test_exact_identity_8bit_native_gates_distinguish_llama_and_gemma() -> None:

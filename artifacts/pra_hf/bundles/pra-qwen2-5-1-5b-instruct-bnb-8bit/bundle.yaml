@@ -44,10 +44,541 @@ profiles:
     mode: Native Memory
 qualification:
   contract_version: 1
-  status: SMOKE
-  headline: []
-  canonical_evidence: []
-  metrics: []
+  status: CONTROLLED
+  headline:
+  - &id001
+    metric_class: END_TASK
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+    quantization: bnb-8bit
+    engine: huggingface_eager
+    engine_version: 5.16.1
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: combined
+    sample_count: 15
+    seed_count: 2
+    baseline:
+      quality_metric: token_f1
+      quality: 0.3991111111111111
+      exact_match: 0.3333333333333333
+      gold_answer_logprob: null
+      evidence_recall: 0.75
+      visible_tokens: 404.6
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.305755682537492
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 3772.259506660824
+        p50: 3216.702700010501
+        p95: 9940.024300012738
+        p99: 9940.024300012738
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.017857142857142856
+      exact_match: 0.0
+      gold_answer_logprob: null
+      evidence_recall: 0.75
+      visible_tokens: 33.6
+      selected_native_kv_tokens: 371.0
+      active_detail_bytes: 10637312.0
+      retained_detail_bytes: 10637312.0
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.0969225101194477
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 11448.445160004
+        p50: 11492.186399991624
+        p95: 11831.846999935806
+        p99: 11831.846999935806
+      peak_memory_bytes: null
+    deltas:
+      quality: -0.38125396825396823
+      visible_tokens_pct: -91.6955017301038
+      ttft_pct: null
+      completion_latency_pct: 203.49039189348022
+    semantic_equivalence:
+      exact_output_pairs: 0
+      paired_examples: 15
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: CANDIDATE
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
+  canonical_evidence:
+  - schema_version: 1
+    key:
+      task: combined
+      hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+      engine: huggingface_eager
+      engine_version: 5.16.1
+      model_id: Qwen/Qwen2.5-1.5B-Instruct
+      model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+      model_fingerprint: null
+      mode: native-memory
+      profile: balanced
+    metric_definitions:
+      token_f1:
+        name: token_f1
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Token-overlap F1 against the reference answer.
+      exact_match:
+        name: exact_match
+        group: quality
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Fraction of answers exactly matching the reference.
+      evidence_recall:
+        name: evidence_recall
+        group: routing
+        unit: fraction
+        direction: higher_is_better
+        aggregation: mean
+        description: Fraction of annotated evidence recovered at the stated budget.
+      visible_tokens:
+        name: visible_tokens
+        group: context
+        unit: token
+        direction: lower_is_better
+        aggregation: mean
+        description: Tokens visible in the sequential prompt.
+      selected_native_kv_tokens:
+        name: selected_native_kv_tokens
+        group: context
+        unit: token
+        direction: neutral
+        aggregation: mean
+        description: Native K/V tokens selected outside the sequential prompt.
+      active_detail_bytes:
+        name: active_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes active for the request.
+      retained_detail_bytes:
+        name: retained_detail_bytes
+        group: resources
+        unit: byte
+        direction: lower_is_better
+        aggregation: mean
+        description: Native detail bytes retained for reuse.
+      output_tokens_per_second:
+        name: output_tokens_per_second
+        group: serving
+        unit: output_token/s
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean decode-only output-token rate, excluding time to first token.
+      completion_latency_mean_ms:
+        name: completion_latency_mean_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: mean
+        description: Mean end-to-end completion latency.
+    conditions:
+      no_pra:
+        metrics:
+          token_f1:
+            value: 0.3991111111111111
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.3333333333333333
+            state: MEASURED
+            note: null
+          evidence_recall:
+            value: 0.75
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 404.6
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 0.0
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 0.0
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 2.305755682537492
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 3772.259506660824
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_no_adaptor:
+        metrics:
+          token_f1:
+            value: 0.017857142857142856
+            state: MEASURED
+            note: null
+          exact_match:
+            value: 0.0
+            state: MEASURED
+            note: null
+          evidence_recall:
+            value: 0.75
+            state: MEASURED
+            note: null
+          visible_tokens:
+            value: 33.6
+            state: MEASURED
+            note: null
+          selected_native_kv_tokens:
+            value: 371.0
+            state: MEASURED
+            note: null
+          active_detail_bytes:
+            value: 10637312.0
+            state: MEASURED
+            note: null
+          retained_detail_bytes:
+            value: 10637312.0
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 2.0969225101194477
+            state: MEASURED
+            note: null
+          completion_latency_mean_ms:
+            value: 11448.445160004
+            state: MEASURED
+            note: null
+        bundle_id: null
+        bundle_revision: null
+      pra_adaptor_bundle:
+        metrics:
+          token_f1:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          exact_match:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          evidence_recall:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          visible_tokens:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          selected_native_kv_tokens:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          active_detail_bytes:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          retained_detail_bytes:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          output_tokens_per_second:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+          completion_latency_mean_ms:
+            value: null
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
+        bundle_id: null
+        bundle_revision: null
+    provenance:
+      cohort: selector-frozen natural QA; cold direct query; seed_count=2
+      seeds: []
+      concurrency: null
+      prompt_length_distribution: {}
+      output_length_distribution: {}
+      run_ids: []
+      commit: null
+      date: '2026-09-03'
+      artifacts:
+      - qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+        qualification/matched_e0_e2_2wikimultihopqa.json
+    evidence_tier: ENGINE_QUALIFIED
+  metrics:
+  - metric_class: END_TASK
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+    quantization: bnb-8bit
+    engine: huggingface_eager
+    engine_version: 5.16.1
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: qasper
+    sample_count: 5
+    seed_count: 2
+    baseline:
+      quality_metric: token_f1
+      quality: 0.06399999999999999
+      exact_match: 0.0
+      gold_answer_logprob: null
+      evidence_recall: 0.55
+      visible_tokens: 380.6
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.3604778055031654
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 6854.292619996704
+        p50: 6949.305199901573
+        p95: 9940.024300012738
+        p99: 9940.024300012738
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.0
+      exact_match: 0.0
+      gold_answer_logprob: null
+      evidence_recall: 0.55
+      visible_tokens: 27.4
+      selected_native_kv_tokens: 353.2
+      active_detail_bytes: 10126950.4
+      retained_detail_bytes: 10126950.4
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.1237932300786957
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 11303.90108001884
+        p50: 11323.111500008963
+        p95: 11539.258200093172
+        p99: 11539.258200093172
+      peak_memory_bytes: null
+    deltas:
+      quality: -0.06399999999999999
+      visible_tokens_pct: -92.8008407777194
+      ttft_pct: null
+      completion_latency_pct: 64.91710679291478
+    semantic_equivalence:
+      exact_output_pairs: 0
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: CANDIDATE
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
+  - metric_class: END_TASK
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+    quantization: bnb-8bit
+    engine: huggingface_eager
+    engine_version: 5.16.1
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: hotpotqa
+    sample_count: 5
+    seed_count: 2
+    baseline:
+      quality_metric: token_f1
+      quality: 0.3333333333333333
+      exact_match: 0.2
+      gold_answer_logprob: null
+      evidence_recall: 0.8
+      visible_tokens: 423.6
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.2750027833547355
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 2297.2367400070652
+        p50: 1583.5658999858424
+        p95: 4024.243799969554
+        p99: 4024.243799969554
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.05357142857142857
+      exact_match: 0.0
+      gold_answer_logprob: null
+      evidence_recall: 0.8
+      visible_tokens: 40.0
+      selected_native_kv_tokens: 383.6
+      active_detail_bytes: 10998579.2
+      retained_detail_bytes: 10998579.2
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.0944342876142437
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 11459.74879998248
+        p50: 11443.972499924712
+        p95: 11622.094199992716
+        p99: 11622.094199992716
+      peak_memory_bytes: null
+    deltas:
+      quality: -0.27976190476190477
+      visible_tokens_pct: -90.55712936732766
+      ttft_pct: null
+      completion_latency_pct: 398.8492740172367
+    semantic_equivalence:
+      exact_output_pairs: 0
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: CANDIDATE
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
+  - metric_class: END_TASK
+    model_id: Qwen/Qwen2.5-1.5B-Instruct
+    model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+    quantization: bnb-8bit
+    engine: huggingface_eager
+    engine_version: 5.16.1
+    profile: balanced
+    execution_mode: Native Memory
+    dataset: 2wikimultihopqa
+    sample_count: 5
+    seed_count: 2
+    baseline:
+      quality_metric: token_f1
+      quality: 0.8
+      exact_match: 0.8
+      gold_answer_logprob: null
+      evidence_recall: 0.9
+      visible_tokens: 409.6
+      selected_native_kv_tokens: 0.0
+      active_detail_bytes: 0.0
+      retained_detail_bytes: 0.0
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.281786458754574
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 2165.2491599787027
+        p50: 2017.0691999373958
+        p95: 4090.0459999684244
+        p99: 4090.0459999684244
+      peak_memory_bytes: null
+    pra:
+      quality_metric: token_f1
+      quality: 0.0
+      exact_match: 0.0
+      gold_answer_logprob: null
+      evidence_recall: 0.9
+      visible_tokens: 33.4
+      selected_native_kv_tokens: 376.2
+      active_detail_bytes: 10786406.4
+      retained_detail_bytes: 10786406.4
+      ttft_ms:
+        p50: null
+        p95: null
+        p99: null
+      itl_ms:
+        p50: null
+        p95: null
+        p99: null
+      output_tokens_per_second: 2.0725400126654043
+      requests_per_second: null
+      completion_latency_ms:
+        mean: 11581.685600010678
+        p50: 11561.128600034863
+        p95: 11831.846999935806
+        p99: 11831.846999935806
+      peak_memory_bytes: null
+    deltas:
+      quality: -0.8
+      visible_tokens_pct: -91.84570312500001
+      ttft_pct: null
+      completion_latency_pct: 434.8892780600176
+    semantic_equivalence:
+      exact_output_pairs: 0
+      paired_examples: 5
+    evidence_tier: ENGINE_QUALIFIED
+    recommendation: CANDIDATE
+    hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
+    cohort: selector-frozen natural QA; cold direct query
+    date: '2026-09-03'
+    pra_commit: null
+    artifact: qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
+      qualification/matched_e0_e2_2wikimultihopqa.json
+    artifact_sha256: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
+  - *id001
   routing_diagnostics: []
   runtime_smoke:
     schema_version: 1
@@ -88,22 +619,26 @@ qualification:
   limitations:
   - No learned router is bundled for this exact quantized identity; routing-adapter
     transfer from another quantization is intentionally disallowed.
-  - Only immutable-config structural validation is available for this exact quantized
-    identity.
-  - Native consumer-layer profiles and end-task generation remain uncalibrated for
-    this exact identity.
+  - Paired natural-QA evidence contains 5 examples per dataset and supports engine
+    qualification, not production qualification.
+  - Native Memory is measured but remains a candidate because the exact-output equivalence
+    gate did not pass.
   - The qualification identity is the exact bnb-8bit HF model and revision; it does
     not transfer automatically to another checkpoint, engine, or quantization.
-  - The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt;
-    it is not an end-task quality or serving benchmark.
+  - The selector-frozen natural-QA run qualifies the generic Native Memory path; an
+    exact learned-adaptor arm still requires a separate run.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/structural_validation.json
   - qualification/runtime_smoke.json
+  - qualification/matched_e0_e2_qasper.json
+  - qualification/matched_e0_e2_hotpotqa.json
+  - qualification/matched_e0_e2_2wikimultihopqa.json
+  - qualification/canonical_evidence.json
 runtime_compatibility:
   hf:
-    selected_context: SMOKE
-    native_memory: AVAILABLE
+    selected_context: validated
+    native_memory: CONTROLLED
     native_serving: NOT_APPLICABLE
     recommended: Selected Context with BALANCED
 engine_realizations:
@@ -113,17 +648,24 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 15b73e96201951fdd47e6925dda9415236ddc7b7
+  bundle_build_commit: 15b73e96201951fdd47e6925dda9415236ddc7b7
   hf_repo: EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen2.5-1.5b-instruct-bnb-8bit
-  selection_reason: Fleet-compatible exact quantization with evidence isolated from
-    other weight representations.
+  source_artifact:
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/matched_e0_e2_qasper.json
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/matched_e0_e2_hotpotqa.json
+  - docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/matched_e0_e2_2wikimultihopqa.json
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
 checksums:
+  qualification/canonical_evidence.json: deef74bce50c58d7618660d6d253ba407ac809fdf09dbb6e1e941033982f9784
+  qualification/matched_e0_e2_2wikimultihopqa.json: fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
+  qualification/matched_e0_e2_hotpotqa.json: 2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc
+  qualification/matched_e0_e2_qasper.json: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd
   qualification/runtime_smoke.json: 01aa8304a176a83d24999b2caf8b4bf8bc219fe98d4b5db89c2fca4d3a5d075b
   qualification/structural_validation.json: 9a00e7bc8224f119e69efba1b4969071df77e0e9638edd2f9de4c90821442515
   structural_adapter/pra_adapter.yaml: ce9016a189e78eca368752a7601a92c4d2a0014556fc8126bbc5348afd6b185b

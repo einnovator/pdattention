@@ -438,13 +438,13 @@ def test_default_registry_contains_published_cross_family_catalog() -> None:
         "pra-qwen3-32b-mlx-4bit": "37c196b2a425f3a02fce66cb5006748201f202bd",
         "pra-llama3-1-8b-mlx-4bit": "2ec1cf4464ea6db47134218c74553d7fa7beb7d2",
         "pra-gemma3-1b-mlx-4bit": "07447e8f9c5f40f8eb46aaea3749176c77f4bb0a",
-        "pra-qwen3-4b-mlx-8bit": "43c302fa5f3629e1a24fbd05c5c1fc0210a45d86",
+        "pra-qwen3-4b-mlx-8bit": "2c72b50830c072f0da831a71a2803273757a6838",
         "pra-qwen3-8b-mlx-8bit": "28729a7e91ea8b21c006105d19de39069903a117",
         "pra-qwen3-14b-mlx-8bit": "66fb14472ed292c3bca5a103e354e7fd77f3de47",
         "pra-qwen3-8b-mlx-6bit": "23ddea23e4c0010461bcdb26dfe08b7fbf1c06a2",
-        "pra-llama3-2-1b-mlx-8bit": "bb2604d9a12610e8068dbd481a96e44d853c8767",
-        "pra-gemma3-1b-mlx-8bit": "daf7795dc11dd68e4ff8df41ac132d56df7ff449",
-        "pra-qwen2-5-1-5b-instruct-bnb-8bit": "9ff060a1ee3fbb0d04859c27dabf2dda9c7c936d",
+        "pra-llama3-2-1b-mlx-8bit": "b98de7c1190699b418b46c61a53327876a938f67",
+        "pra-gemma3-1b-mlx-8bit": "3872838bc8d63a7b0bb8e3a65c7e9341f8638e03",
+        "pra-qwen2-5-1-5b-instruct-bnb-8bit": "05e27c6d339df3144134dc1b89b3e954b91b72a2",
     }
 
     assert {name: entries[name].bundle_revision for name in expected} == expected

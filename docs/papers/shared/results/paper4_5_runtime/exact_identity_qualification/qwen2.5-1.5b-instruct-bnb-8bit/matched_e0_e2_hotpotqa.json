@@ -1,0 +1,4419 @@
+{
+  "schema_version": "2.0",
+  "experiment": "paper4_5_exact_identity_hf_e0_e2_v1",
+  "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+  "engine": "huggingface_eager",
+  "engine_version": "5.16.1",
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "model_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "quantization": "bnb-8bit",
+  "dataset": "hotpotqa",
+  "cohort": "paper6_cross_engine_matched_e0_e2_v2",
+  "selection_policy": "frozen Paper 6.2 SDK hybrid top-4 document routing",
+  "max_source_tokens": 384,
+  "warm_repeats": 1,
+  "multi_query_count": 1,
+  "concurrency": 1,
+  "rows": [
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "FC Porto",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.43670001067221
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 1583.5658999858424,
+          "generated_tokens": 3,
+          "tokens_per_second": 1.894458576069882,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "Everton and the 195 European Cup Winners's\n\nBased on 1964085 European",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 2344.6668999968097,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2361.103600007482
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11356.177199981175,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.1133872409141152,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "FC",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.43670001067221
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 479.9831999698654,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0834062526829746,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "Everton",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 2344.6668999968097,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2361.103600007482
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 580.2671000128612,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.723344301232718,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "FC",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.43670001067221
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 463.3420000318438,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.158233011320523,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "Everton",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 2344.6668999968097,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2361.103600007482
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 590.724500012584,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.6928365083532124,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": "0f0abac136145871",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "FC",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 16.43670001067221
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 493.3958000037819,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0267703940575394,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "c503e93693aaf6528b8ae24feddc1161f201a9364157aa3f711d7da77abfb96e",
+      "concurrency_group": "0f0abac136145871",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a8367c1554299334474600e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "7",
+          "9",
+          "8",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 762
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 742
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 655
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 571
+          }
+        ],
+        "selected_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "selection_id": "5481d09a9d9ad20f51003220d71be57cc1be0e0b9ec792444c31a3d1e51f31ad"
+      },
+      "output": "Everton",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1611,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 16.43670001067221,
+          "kv_encode_ms": 2344.6668999968097,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 2361.103600007482
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 570.5320000415668,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7527500647240537,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Bayern Munich of West Germany",
+        "execution_source_sha256": "c54be6e01172a2f2fb61110e051d365b0b25b693b386f44ee12aeab43387fa62",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "1820 km\u00b2",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 423
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.532400014810264
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 3216.702700010501,
+          "generated_tokens": 8,
+          "tokens_per_second": 2.48701877235154,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "1970 MW, and was completed in 200 MW capacity of 3\nThe Bui",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.14285714285714285,
+          "task_score": 0.14285714285714285,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 38
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 1441.8667000718415,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.3991000866517
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11502.37899995409,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.086524883252047,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 423
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.532400014810264
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 491.1494000116363,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.036040357529314,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 38
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 1441.8667000718415,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.3991000866517
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 562.2943999478593,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7784278130686137,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 423
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.532400014810264
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 500.2838000655174,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.998865443712228,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 38
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 1441.8667000718415,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.3991000866517
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 555.3579999832436,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.800640307747745,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": "7bc408f28d9d897c",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 423
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.532400014810264
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 512.4671999365091,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.951344398478366,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "3eb72a696cfa0cdfe30aa0e81ee26fefec94cb3061c9b4ee413bee8b86274fcd",
+      "concurrency_group": "7bc408f28d9d897c",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2a54b554299295394678e",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "3",
+          "9",
+          "8",
+          "5"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 446
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 430
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 358
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 514
+          }
+        ],
+        "selected_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "selection_id": "e7cffadca4d35f40dec2c4649cfe28581538deafc7525d1fab12352a7c6462cd"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1568,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 38
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.532400014810264,
+          "kv_encode_ms": 1441.8667000718415,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.3991000866517
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 529.226899961941,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8895486984352354,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "400 MW",
+        "execution_source_sha256": "4f0a3f05f5da825150b714c7bf4ea6d2cb3ae805690e35cdd1ccdb9c0a8d189f",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot Fletcher",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.588399975560606
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 1338.5668999981135,
+          "generated_tokens": 3,
+          "tokens_per_second": 2.2412028864632974,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot Fletcher, 1405\n\nWhat? The Faking it was announced a Teen Choice Awards and won a",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 1450.4063000204042,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1463.9946999959648
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11374.12110005971,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.110053145106219,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.588399975560606
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 519.8560000862926,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9236096146509931,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 1450.4063000204042,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1463.9946999959648
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 551.1109000071883,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8145168240856,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.588399975560606
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 528.3256999682635,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8927718262807771,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 1450.4063000204042,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1463.9946999959648
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 622.6917000021785,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.6059311534046485,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": "d3a77f930b48018e",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 424
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 13.588399975560606
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 547.1499999985099,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8276523805222031,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "2a4790cf30924187ebc41872d7facc8f13283a60ab6324e762f6fcf32a143dec",
+      "concurrency_group": "d3a77f930b48018e",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ab2da13554299194fa93542",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "2",
+          "7",
+          "3",
+          "9"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "2",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 155
+          },
+          {
+            "document_id": "7",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 797
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 818
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 746
+          }
+        ],
+        "selected_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "selection_id": "5bfe472d47afd447249f0bf4d8b3c9161ef13770e7e741f737ac4e3b9dc5e7df"
+      },
+      "output": "Elliot",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 0.5
+        },
+        "input": {
+          "candidate_tokens": 1397,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 13.588399975560606,
+          "kv_encode_ms": 1450.4063000204042,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1463.9946999959648
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 544.0502000274137,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8380656784054337,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "Connor",
+        "execution_source_sha256": "22eab569991f756fd6a278f3f58ebac6b84ba317c59d6ffccdffcce47c75532d",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "20 July 1981",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 430
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 14.363799942657351
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 4024.243799969554,
+          "generated_tokens": 10,
+          "tokens_per_second": 2.484938909535167,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "197\n\nWhat is a) The Beatles bandmate Ring Ring Ring Ring Ring Ringoohohohoh",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 45
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 1444.2726999986917,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1458.636499941349
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11443.972499924712,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.097173861625226,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 430
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 14.363799942657351
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 489.0568999107927,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0447518482663405,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 45
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 1444.2726999986917,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1458.636499941349
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 534.127099905163,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8722135614866855,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 430
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 14.363799942657351
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 480.07519997190684,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0830069956925876,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 45
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 1444.2726999986917,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1458.636499941349
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 562.8873000387102,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7765545606220448,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": "cd99fd439072c4b1",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 430
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 14.363799942657351
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 499.28720004390925,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0028552702974483,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "ef72d3a8d75c50533732282c415fed88893e3a2d6c46e86dc848df3dce6e825b",
+      "concurrency_group": "cd99fd439072c4b1",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5ae48aff5542996836b02cce",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "4",
+          "6",
+          "9",
+          "8"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "4",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 349
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 481
+          },
+          {
+            "document_id": "9",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 936
+          },
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 886
+          }
+        ],
+        "selected_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "selection_id": "b0073c87c5acdf999b55ed2892aebf02a921b0cfcf8b2b1ce43b3f2f46947c4e"
+      },
+      "output": "",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1637,
+          "selected_source_tokens": 385,
+          "visible_prompt_tokens": 45
+        },
+        "pra": {
+          "selected_native_kv_tokens": 385,
+          "active_detail_bytes": 11038720,
+          "retained_detail_bytes": 11038720
+        },
+        "ingestion": {
+          "text_preparation_ms": 14.363799942657351,
+          "kv_encode_ms": 1444.2726999986917,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1458.636499941349
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 547.2116000019014,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8274466403791976,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 11038720,
+          "bytes_promoted": 0,
+          "bytes_avoided": 11038720,
+          "duplicate_physical_kv_avoided_bytes": 11038720
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 11,
+        "gold_answer": "20 July 1981",
+        "execution_source_sha256": "38d19ad6b34f279f121d0ed5e4610b68d95b635069ac34de77facdca0e491f0b",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public house",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.6666666666666666,
+          "task_score": 0.6666666666666666,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 417
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.152800008654594
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 1323.1044000713155,
+          "generated_tokens": 3,
+          "tokens_per_second": 2.2673947723537915,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public houses inns\n\nWhat? 18 Lower Bridge Street, but not beque century period.\n\nThe White Hart",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.125,
+          "task_score": 0.125,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 378,
+          "active_detail_bytes": 10838016,
+          "retained_detail_bytes": 10838016
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 1445.2534000156447,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.4062000242993
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 11622.094199992716,
+          "generated_tokens": 24,
+          "tokens_per_second": 2.065032307173611,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 10838016,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 417
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.152800008654594
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 522.0582999754697,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.9154948787271224,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 378,
+          "active_detail_bytes": 10838016,
+          "retained_detail_bytes": 10838016
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 1445.2534000156447,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.4062000242993
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 576.5819000080228,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.7343589869645328,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10838016,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10838016,
+          "duplicate_physical_kv_avoided_bytes": 10838016
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 417
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.152800008654594
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 506.0419999063015,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.976120559528971,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 378,
+          "active_detail_bytes": 10838016,
+          "retained_detail_bytes": 10838016
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 1445.2534000156447,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.4062000242993
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 521.929300040938,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.915968312032998,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10838016,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10838016,
+          "duplicate_physical_kv_avoided_bytes": 10838016
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": "3192a37d8214a158",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 417
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 0.0,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 10.152800008654594
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 484.5575999934226,
+          "generated_tokens": 1,
+          "tokens_per_second": 2.0637381397249244,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "5d70961bac81d7886a64e69954e5a1aa0cdade12a25451be84f3a0a29148b6d1",
+      "concurrency_group": "3192a37d8214a158",
+      "selection": {
+        "dataset": "hotpotqa",
+        "example_id": "5a81549055429938b6142338",
+        "candidate_document_ids": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "candidate_set_sha256": "47538d1023947674faffb92a905429bc9deaa0890f0549d4c1bed1d1a33f9026",
+        "selected_document_ids": [
+          "8",
+          "6",
+          "5",
+          "3"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "8",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 116
+          },
+          {
+            "document_id": "6",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 319
+          },
+          {
+            "document_id": "5",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 213
+          },
+          {
+            "document_id": "3",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 704
+          }
+        ],
+        "selected_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "selection_id": "ea9bb7994152d4cec22fcc8720ef317609e273badafde8ba88d6931263b468b6"
+      },
+      "output": "public",
+      "metrics": {
+        "quality": {
+          "exact_match": 1.0,
+          "token_f1": 1.0,
+          "task_score": 1.0,
+          "gold_answer_logprob": null,
+          "evidence_recall": 1.0
+        },
+        "input": {
+          "candidate_tokens": 1103,
+          "selected_source_tokens": 378,
+          "visible_prompt_tokens": 39
+        },
+        "pra": {
+          "selected_native_kv_tokens": 378,
+          "active_detail_bytes": 10838016,
+          "retained_detail_bytes": 10838016
+        },
+        "ingestion": {
+          "text_preparation_ms": 10.152800008654594,
+          "kv_encode_ms": 1445.2534000156447,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1455.4062000242993
+        },
+        "serving": {
+          "ttft_ms": null,
+          "itl_ms": null,
+          "tpot_ms": null,
+          "total_latency_ms": 545.1634000055492,
+          "generated_tokens": 1,
+          "tokens_per_second": 1.8343124281450682,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": null,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 10838016,
+          "bytes_promoted": 0,
+          "bytes_avoided": 10838016,
+          "duplicate_physical_kv_avoided_bytes": 10838016
+        }
+      },
+      "extra": {
+        "dataset": "hotpotqa",
+        "seed": 23,
+        "gold_answer": "public",
+        "execution_source_sha256": "6c08de86668578804110e5468dea9341b850e04bc3da1f31ca61527c31eed684",
+        "concurrency_execution": "serialized_hf_reference"
+      }
+    }
+  ]
+}
