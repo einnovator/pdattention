@@ -163,6 +163,16 @@ class HFTextBackend:
             "tokens_per_second": int(generated.shape[0]) / max(elapsed_ms / 1000.0, 1e-9),
         }
 
+    def warmup(self, question: RAGQuestion, contexts: Mapping[ContextCondition, str]) -> None:
+        """Compile/load the visible decode path before timing benchmark rows."""
+
+        original = self.max_new_tokens
+        self.max_new_tokens = 1
+        try:
+            self.answer(question, contexts[ContextCondition.NO_PRA], ContextCondition.NO_PRA)
+        finally:
+            self.max_new_tokens = original
+
 
 class HFNativeBackend:
     """Execute selected text visibly for RAG and as detached native K/V for PRA."""
@@ -237,9 +247,8 @@ class HFNativeBackend:
             self.pra.enable()
             self.pra.clear_references()
             started = time.perf_counter()
-            handle = self.pra.add_reference(
-                f"memory://rag/{hash(context)}", text=context
-            )
+            context_id = hashlib.sha256(context.encode("utf-8")).hexdigest()[:20]
+            handle = self.pra.add_reference(f"memory://rag/{context_id}", text=context)
             if self.device == "cuda":
                 torch.cuda.synchronize()
             encode_ms = (time.perf_counter() - started) * 1000.0
@@ -305,6 +314,21 @@ class HFNativeBackend:
             "visible_prompt_tokens": self.token_count(prompt),
             "selected_native_kv_tokens": self.token_count(context) if native else 0,
         }
+
+    def warmup(self, question: RAGQuestion, contexts: Mapping[ContextCondition, str]) -> None:
+        """Warm visible and detached-K/V paths symmetrically before measurement."""
+
+        original = self.max_new_tokens
+        self.max_new_tokens = 1
+        try:
+            self.answer(question, contexts[ContextCondition.NO_PRA], ContextCondition.NO_PRA)
+            self.answer(
+                question,
+                contexts[ContextCondition.PRA_NO_ADAPTOR],
+                ContextCondition.PRA_NO_ADAPTOR,
+            )
+        finally:
+            self.max_new_tokens = original
 
 
 def _condition_row(
@@ -454,6 +478,7 @@ def main() -> None:
     rows = []
     receipts: dict[str, dict[str, object]] = {}
     selection_receipts: dict[str, dict[str, object]] = {}
+    warmed = False
     for question in questions:
         for candidate_count in args.candidate_counts:
             receipt = make_candidate_receipt(
@@ -515,6 +540,15 @@ def main() -> None:
                     token_budget=token_budget,
                     selector_latency_ms=0.0,
                 )
+                if not warmed and hasattr(backend, "warmup"):
+                    backend.warmup(
+                        question,
+                        {
+                            ContextCondition.NO_PRA: baseline.text,
+                            ContextCondition.PRA_NO_ADAPTOR: pra.text,
+                        },
+                    )
+                    warmed = True
                 for context in (baseline, pra, oracle):
                     row = _condition_row(
                             question=question,
