@@ -12,6 +12,7 @@ from experiments.rag_vs_pra.analyze_powered_decomposition import (
 )
 from pra_hf.rag_evaluation import ContextCondition
 from pra_hf.rag_powered import (
+    bootstrap_mean_ci,
     official_multihop_rag_score,
     paired_delta,
     percentile,
@@ -54,6 +55,9 @@ def test_official_score_matches_upstream_token_intersection() -> None:
     assert official_multihop_rag_score("The answer is Lisbon", ("Lisbon",)) == 1.0
     assert official_multihop_rag_score("Oslo", ("Lisbon",)) == 0.0
     assert percentile([1, 2, 3, 4], 0.5) == 2.5
+    low, high = bootstrap_mean_ci([0.0, 1.0], seed=7, samples=200)
+    assert low == 0.0
+    assert high == 1.0
 
 
 def test_selector_freeze_validation_and_paired_delta() -> None:

@@ -11,7 +11,10 @@ The baseline is global BM25 chunk selection over the frozen candidate documents:
 5. Pack whole chunks in rank order when they fit the physical-token budget.
 6. Report both packed and discarded candidate tokens.
 
-This is not intentionally weakened. A stronger dense/reranked RAG baseline remains a required follow-up.
+This continuity baseline is not the only conventional control. The powered
+study also uses pinned `cross-encoder/ms-marco-MiniLM-L-6-v2` scores to rerank
+the same candidate chunks under the same physical-token budget. The first-stage
+receipt, answer model, and prompt do not change.
 
 ## Parameter-Free PRA
 
@@ -21,6 +24,11 @@ Generic PRA uses two independently ranked views of the same chunks:
 - a deterministic 128-dimensional hashed-semantic view.
 
 Reciprocal-rank fusion with constant 60 combines the two rankings without mixing incomparable raw scores. The resulting exact character intervals point back into typed, versioned document records.
+
+The powered study additionally gives PRA the same cross-encoder ordering as the
+strong conventional baseline. Its visible Selected Context output must match
+the conventional path exactly. The paired Native Memory row then isolates
+representation and transport from retrieval and selection.
 
 ## Adaptor bundle
 

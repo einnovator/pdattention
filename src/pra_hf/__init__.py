@@ -641,6 +641,7 @@ __all__ += [
 
 from .rag_powered import (
     POWERED_CONDITIONS,
+    bootstrap_mean_ci,
     official_multihop_rag_score,
     paired_delta,
     qualification_gates,
@@ -651,6 +652,7 @@ from .rag_powered import (
 
 __all__ += [
     "POWERED_CONDITIONS",
+    "bootstrap_mean_ci",
     "official_multihop_rag_score",
     "paired_delta",
     "qualification_gates",

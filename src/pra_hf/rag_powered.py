@@ -12,6 +12,7 @@ import gzip
 import io
 import json
 import math
+import random
 import statistics
 from collections import Counter
 from pathlib import Path
@@ -55,6 +56,23 @@ def percentile(values: Sequence[float], probability: float) -> float | None:
     if lower == upper:
         return ordered[lower]
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
+
+def bootstrap_mean_ci(
+    values: Sequence[float], *, seed: int = 11, samples: int = 2000
+) -> tuple[float | None, float | None]:
+    """Return a deterministic percentile-bootstrap 95% interval for a mean."""
+
+    if not values:
+        return None, None
+    if samples <= 0:
+        raise ValueError("bootstrap samples must be positive")
+    values = tuple(float(value) for value in values)
+    rng = random.Random(seed)
+    means = [
+        statistics.fmean(rng.choice(values) for _ in values) for _ in range(samples)
+    ]
+    return percentile(means, 0.025), percentile(means, 0.975)
 
 
 def validate_selector_frozen_rows(rows: Sequence[Mapping[str, object]]) -> None:
@@ -196,6 +214,15 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
         for metric in SUMMARY_METRICS:
             samples = [value for row in values if (value := _metric(row, metric)) is not None]
             summary[metric] = statistics.fmean(samples) if samples else None
+            if metric in {
+                "token_f1",
+                "official_multihop_rag_score",
+                "ttft_ms",
+                "total_latency_ms",
+            }:
+                low, high = bootstrap_mean_ci(samples)
+                summary[f"{metric}_ci95_low"] = low
+                summary[f"{metric}_ci95_high"] = high
             if metric == "ttft_ms":
                 summary["ttft_p50_ms"] = percentile(samples, 0.50)
                 summary["ttft_p95_ms"] = percentile(samples, 0.95)

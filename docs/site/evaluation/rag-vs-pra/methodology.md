@@ -17,12 +17,14 @@ Loading a receipt rejects missing documents, changed document content, rank gaps
 
 | Condition | Context behavior |
 | --- | --- |
-| No PRA | Global BM25 ranks fixed-token chunks from the frozen candidate documents; whole chunks are packed into visible context up to the budget. |
-| PRA, no adaptor | BM25 and a parameter-free hashed-semantic view are rank-fused; selected typed-document chunks are materialized up to the same budget. |
-| PRA adaptor bundle | Uses an exact immutable bundle only when its document-routing adaptor is qualified for this cohort. Otherwise the state is `NO_QUALIFIED_ADAPTER`. |
+| `NO_PRA_STANDARD_RAG` | Global BM25, or the declared strong conventional reranker, packs frozen candidate chunks as visible context. |
+| `PRA_SELECTED_CONTEXT_NO_ADAPTOR` | The generic or strong PRA selector's exact intervals are serialized as visible selected text. |
+| `PRA_NATIVE_MEMORY_NO_ADAPTOR` | The same frozen selection receipt is encoded as detached native K/V. |
+| `PRA_SELECTED_CONTEXT_BUNDLE` | Exact bundle-selected intervals are serialized as visible text. It is `NO_QUALIFIED_ADAPTER` when no exact qualified bundle exists. |
+| `PRA_NATIVE_MEMORY_BUNDLE` | The same bundle selection is consumed as native K/V, or remains `NO_QUALIFIED_ADAPTER`. |
 | Oracle gold documents | Packs available gold-document chunks. This is a research diagnostic and is excluded from headline deltas. |
 
-The model, prompt, generation settings, engine, and hardware must match within a model-backed comparison. Oracle rows never count as PRA improvements.
+The model, prompt, generation settings, engine, and hardware must match within a model-backed comparison. Selected Context and Native Memory must carry the same condition-independent selection-receipt digest. Oracle rows never count as PRA improvements.
 
 ## Metrics remain separate
 
@@ -38,4 +40,4 @@ The model, prompt, generation settings, engine, and hardware must match within a
 
 ## Failure labels
 
-Per-example results distinguish first-stage retrieval, Standard-RAG packing, PRA selection, materialization, generation, distractor confusion, and insufficient budget. This prevents an answer miss from being attributed automatically to routing.
+Per-example results use the stable failure classes `FIRST_STAGE_RETRIEVAL_MISS`, `STANDARD_RAG_PACKING_MISS`, `PRA_SELECTOR_MISS`, `PRA_DISTRACTOR_SELECTION`, `PRA_MATERIALIZATION_MISS`, `GENERATION_FAILURE`, `ANSWER_FORMAT_FAILURE`, `NATIVE_REALIZATION_MISMATCH`, and `BUNDLE_SELECTOR_REGRESSION`. This prevents an answer miss from being attributed automatically to routing.

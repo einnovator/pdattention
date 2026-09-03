@@ -62,6 +62,36 @@ python -m experiments.rag_vs_pra.run_eval_ladder \
 
 The native backend warms visible and detached-K/V paths before recording rows. Use all eligible consumer layers for correctness qualification; reduced profiles require separate calibration.
 
+## Powered decomposition
+
+The powered runner keeps real BM25 candidates, emits separate Selected Context
+and Native Memory rows, and pins the strong cross-encoder revision. Cold and
+warm rows are not averaged.
+
+```bash
+python -m experiments.rag_vs_pra.run_powered_decomposition \
+  --dataset multihoprag \
+  --max-examples 50 --seed 11 \
+  --candidate-counts 20 --token-budgets 2048 \
+  --backend mlx-native \
+  --model mlx-community/Qwen3-4B-4bit \
+  --revision 4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25 \
+  --max-new-tokens 32 \
+  --output results/rag-powered-qwen3-4b
+
+python -m experiments.rag_vs_pra.analyze_powered_decomposition \
+  --input-dir results/rag-powered-qwen3-4b \
+  --primary-candidate-count 20 \
+  --primary-token-budget 2048 \
+  --minimum-examples 50
+```
+
+The output directory contains `cohort_manifest.json`, candidate and selection
+receipts, `condition_results.jsonl.gz`, summaries, matched deltas, failure
+counts, qualification gates, paper/card fragments, and plots. Bundle conditions
+are emitted as `NO_QUALIFIED_ADAPTER` rather than borrowed from another task or
+precision.
+
 ## Analyze
 
 ```bash

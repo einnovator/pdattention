@@ -70,6 +70,25 @@ def _git_commit() -> str:
     return result.stdout.strip() if result.returncode == 0 else "UNKNOWN"
 
 
+def _hardware() -> dict[str, object]:
+    result: dict[str, object] = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+    }
+    if platform.system() == "Darwin":
+        for key, command in {
+            "chip": ["sysctl", "-n", "machdep.cpu.brand_string"],
+            "memory_bytes": ["sysctl", "-n", "hw.memsize"],
+            "model_identifier": ["sysctl", "-n", "hw.model"],
+        }.items():
+            value = subprocess.run(command, capture_output=True, text=True, check=False)
+            if value.returncode == 0:
+                text = value.stdout.strip()
+                result[key] = int(text) if key == "memory_bytes" else text
+    return result
+
+
 def _resolve_hf_revision(model_id: str, revision: str) -> str:
     if re.fullmatch(r"[0-9a-f]{40}", revision):
         return revision
@@ -646,11 +665,7 @@ def main() -> None:
         },
         "seed": args.seed,
         "bundle_status": "NO_QUALIFIED_ADAPTER",
-        "hardware": {
-            "platform": platform.platform(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-        },
+        "hardware": _hardware(),
         "git_commit": _git_commit(),
         "candidate_receipt_count": len(candidate_receipts),
         "selection_receipt_count": len(selection_receipts),
