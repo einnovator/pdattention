@@ -57,6 +57,8 @@ def build_command(
         spec["revision"],
         "--max-examples",
         str(max_examples),
+        "--reuse-max-new-tokens",
+        "2",
         "--warm-repeats",
         "2",
         "--multi-query-count",

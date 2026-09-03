@@ -102,6 +102,12 @@ def main() -> None:
     parser.add_argument("--revision", default="main")
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=24)
+    parser.add_argument(
+        "--reuse-max-new-tokens",
+        type=int,
+        default=0,
+        help="Optional shorter decode for non-cold reuse probes.",
+    )
     parser.add_argument("--max-examples", type=int, default=0)
     parser.add_argument("--warm-repeats", type=int, default=2)
     parser.add_argument("--multi-query-count", type=int, default=3)
@@ -167,8 +173,14 @@ def main() -> None:
                 else (lambda: make_native_prompt_cache(model, native_memory))
             )
             logprob = _answer_logprob(model, query, answer, cache_factory())
+            generation_tokens = (
+                args.max_new_tokens
+                if request.regime == "cold_one_shot"
+                or args.reuse_max_new_tokens <= 0
+                else args.reuse_max_new_tokens
+            )
             generated = _generate_timed(
-                model, tokenizer, query, cache_factory(), args.max_new_tokens
+                model, tokenizer, query, cache_factory(), generation_tokens
             )
             exact, f1 = _metrics(generated["output"], example.answer)
             return request, condition, query, generated, logprob, exact, f1
