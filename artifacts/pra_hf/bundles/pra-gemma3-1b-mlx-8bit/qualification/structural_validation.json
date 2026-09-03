@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "STRUCTURAL_VALIDATED",
+  "claim_scope": "model config and structural adapter geometry only",
+  "model_id": "mlx-community/gemma-3-1b-it-8bit",
+  "requested_revision": "7b963136f21d05ca8b367c93a9c47a7944ad281a",
+  "resolved_revision": "7b963136f21d05ca8b367c93a9c47a7944ad281a",
+  "engine": "mlx",
+  "expected": {
+    "architecture": "Gemma3ForCausalLM",
+    "layers": 26,
+    "hidden_size": 1152,
+    "query_heads": 4,
+    "kv_heads": 1,
+    "head_dim": 256,
+    "quantization": {
+      "bits": 8,
+      "group_size": 64,
+      "runtime": "MLX"
+    }
+  },
+  "observed": {
+    "architecture": "Gemma3ForCausalLM",
+    "layers": 26,
+    "hidden_size": 1152,
+    "query_heads": 4,
+    "kv_heads": 1,
+    "head_dim": 256,
+    "checkpoint_quantization": {
+      "group_size": 64,
+      "bits": 8
+    },
+    "runtime_quantization": {
+      "bits": 8,
+      "group_size": 64,
+      "runtime": "MLX"
+    }
+  },
+  "checks": {
+    "architecture": true,
+    "layers": true,
+    "hidden_size": true,
+    "query_heads": true,
+    "kv_heads": true,
+    "head_dim": true,
+    "quantization_bits": true,
+    "quantization_group_size": true
+  },
+  "runtime": {
+    "host": "DESKTOP-9IOCN3C",
+    "platform": "Windows-10-10.0.19045-SP0"
+  },
+  "date": "2026-09-03",
+  "limitations": [
+    "Model weights were not loaded by this structural check.",
+    "End-task quality, native-memory parity, latency, and learned routing remain NOT_MEASURED.",
+    "Evidence from another quantization is not transferred to this identity."
+  ]
+}

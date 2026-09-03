@@ -1,0 +1,26 @@
+schema_version: 1
+base_model:
+  id: mlx-community/Qwen3-14B-8bit
+  revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
+architecture:
+  model_type: qwen
+  architecture: Qwen3ForCausalLM
+  layers: 40
+  hidden_size: 5120
+mapping:
+  layers: model.layers
+  attention: self_attn
+  q_proj: q_proj
+  k_proj: k_proj
+  v_proj: v_proj
+  o_proj: o_proj
+heads:
+  query: 40
+  kv: 8
+  head_dim: 128
+position:
+  type: rope
+  implementation: native
+topology:
+  type: homogeneous_global
+  gqa: true

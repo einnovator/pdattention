@@ -1,0 +1,102 @@
+schema_version: 2
+base_model:
+  id: mlx-community/Qwen3-4B-8bit
+  revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+  tokenizer_revision: 0348ad770d2ae658ca47b0579b2d2c37b20bbcac
+  architecture: Qwen3ForCausalLM
+  family: qwen
+  parameter_count_approx: 4B
+  quantization:
+    bits: 8
+    group_size: 64
+    runtime: MLX
+  post_training: pretrained and post-trained
+  fingerprint: f076363adc9e212f42264527622680791715e7492db37629acecf16a67191d6b
+structural_adapter:
+  path: structural_adapter
+  status: validated
+  fingerprint: 8d563bb5f8631b118c92726a84d875842ed315e5c02118c48fc20619d1d26157
+learned_adapters: {}
+profiles:
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
+  balanced:
+    purpose: Qualified default preserving the all-eligible consumer geometry
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: QUALIFIED
+    recommended: true
+    engine: mlx
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Native Memory
+qualification:
+  contract_version: 1
+  status: NOT_MEASURED
+  headline: []
+  canonical_evidence: []
+  metrics: []
+  routing_diagnostics: []
+  training: {}
+  limitations:
+  - No learned router is bundled for this exact quantized identity; routing-adapter
+    transfer from another quantization is intentionally disallowed.
+  - Only immutable-config structural validation is available for this exact quantized
+    identity.
+  - Native consumer-layer profiles and end-task generation remain uncalibrated for
+    this exact identity.
+  - The qualification identity is the exact 8bit MLX model and revision; it does not
+    transfer automatically to another checkpoint, engine, or quantization.
+  - End-task quality, serving latency, and native-memory parity remain NOT_MEASURED
+    for this exact identity.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/structural_validation.json
+runtime_compatibility:
+  mlx:
+    selected_context: validated
+    native_memory: AVAILABLE
+    native_serving: NOT_MEASURED
+    recommended: Selected Context with BALANCED
+  hf:
+    selected_context: portable
+    native_memory: NOT_MEASURED for the full-precision HF counterpart
+    native_serving: NOT_MEASURED
+    recommended: Selected Context; exact MLX artifact only
+engine_realizations:
+  mlx:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  bundle_build_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  hf_repo: EInnovator/pra-qwen3-4b-mlx-8bit
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: apache-2.0
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: artifacts/pra_hf/routers/qwen3-4b-mlx-8bit-combined-d128
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
+checksums:
+  qualification/structural_validation.json: ec666b5eb2f3318847548ff057f79d03758cbea03f610e62f191f34229e75a80
+  structural_adapter/pra_adapter.yaml: 8413bd589f15d725260ac7a104d468a91cae997d901dd626284afc0ed23c3c12
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: exact 8bit MLX model identity; evidence does not transfer across revisions,
+    engines, or quantizations

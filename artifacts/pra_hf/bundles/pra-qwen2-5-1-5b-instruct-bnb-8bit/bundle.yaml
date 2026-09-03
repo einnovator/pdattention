@@ -1,0 +1,102 @@
+schema_version: 2
+base_model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  tokenizer_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  architecture: Qwen2ForCausalLM
+  family: qwen
+  parameter_count_approx: 1.5B
+  quantization:
+    bits: 8
+    scheme: LLM.int8
+    runtime: bitsandbytes/PyTorch
+  post_training: general instruction tuning
+  fingerprint: d8bd1595411db3a725224535c750c88fd0bf4681a9c8fed3f081948e6cd83c62
+structural_adapter:
+  path: structural_adapter
+  status: validated
+  fingerprint: 44264ae701f5175481b7b306fbdb47e5b88631bb75114443de7ec4209ea74165
+learned_adapters: {}
+profiles:
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Native Memory
+  balanced:
+    purpose: Qualified default preserving the all-eligible consumer geometry
+    routing_adapter: null
+    consumer_layers: all eligible
+    status: QUALIFIED
+    recommended: true
+    engine: hf
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: hf
+    mode: Native Memory
+qualification:
+  contract_version: 1
+  status: NOT_MEASURED
+  headline: []
+  canonical_evidence: []
+  metrics: []
+  routing_diagnostics: []
+  training: {}
+  limitations:
+  - No learned router is bundled for this exact quantized identity; routing-adapter
+    transfer from another quantization is intentionally disallowed.
+  - Only immutable-config structural validation is available for this exact quantized
+    identity.
+  - Native consumer-layer profiles and end-task generation remain uncalibrated for
+    this exact identity.
+  - The qualification identity is the exact bnb-8bit HF model and revision; it does
+    not transfer automatically to another checkpoint, engine, or quantization.
+  - End-task quality, serving latency, and native-memory parity remain NOT_MEASURED
+    for this exact identity.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/structural_validation.json
+runtime_compatibility:
+  hf:
+    selected_context: validated
+    native_memory: AVAILABLE
+    native_serving: NOT_MEASURED
+    recommended: Selected Context with BALANCED
+  mlx:
+    selected_context: portable
+    native_memory: NOT_MEASURED for a quantized MLX derivative
+    native_serving: NOT_MEASURED
+    recommended: Selected Context; exact HF artifact only
+engine_realizations:
+  hf:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  bundle_build_commit: 33850e8e7d53694f771c6f388d3b8e73d21ee482
+  hf_repo: EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: apache-2.0
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: artifacts/pra_hf/routers/qwen2.5-1.5b-instruct-bnb-8bit-combined-d128
+  selection_reason: Exact-identity paired natural-QA qualification, with routing research
+    kept separate.
+checksums:
+  qualification/structural_validation.json: 9a00e7bc8224f119e69efba1b4969071df77e0e9638edd2f9de4c90821442515
+  structural_adapter/pra_adapter.yaml: ce9016a189e78eca368752a7601a92c4d2a0014556fc8126bbc5348afd6b185b
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: exact bnb-8bit HF model identity; evidence does not transfer across revisions,
+    engines, or quantizations

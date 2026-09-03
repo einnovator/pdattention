@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "STRUCTURAL_VALIDATED",
+  "claim_scope": "model config and structural adapter geometry only",
+  "model_id": "mlx-community/Qwen3-8B-6bit",
+  "requested_revision": "35a99712f90d6c2c9a2407a3857e104a46edd9e6",
+  "resolved_revision": "35a99712f90d6c2c9a2407a3857e104a46edd9e6",
+  "engine": "mlx",
+  "expected": {
+    "architecture": "Qwen3ForCausalLM",
+    "layers": 36,
+    "hidden_size": 4096,
+    "query_heads": 32,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "quantization": {
+      "bits": 6,
+      "group_size": 64,
+      "runtime": "MLX"
+    }
+  },
+  "observed": {
+    "architecture": "Qwen3ForCausalLM",
+    "layers": 36,
+    "hidden_size": 4096,
+    "query_heads": 32,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "checkpoint_quantization": {
+      "group_size": 64,
+      "bits": 6
+    },
+    "runtime_quantization": {
+      "bits": 6,
+      "group_size": 64,
+      "runtime": "MLX"
+    }
+  },
+  "checks": {
+    "architecture": true,
+    "layers": true,
+    "hidden_size": true,
+    "query_heads": true,
+    "kv_heads": true,
+    "head_dim": true,
+    "quantization_bits": true,
+    "quantization_group_size": true
+  },
+  "runtime": {
+    "host": "DESKTOP-9IOCN3C",
+    "platform": "Windows-10-10.0.19045-SP0"
+  },
+  "date": "2026-09-03",
+  "limitations": [
+    "Model weights were not loaded by this structural check.",
+    "End-task quality, native-memory parity, latency, and learned routing remain NOT_MEASURED.",
+    "Evidence from another quantization is not transferred to this identity."
+  ]
+}

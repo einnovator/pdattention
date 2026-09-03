@@ -182,8 +182,9 @@ def test_catalog_order_reference_role_and_collection_membership() -> None:
 
 
 def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
-    audit = build_audit(load_bundle_catalog())
-    assert len(audit["rows"]) == 9
+    catalog = load_bundle_catalog()
+    audit = build_audit(catalog)
+    assert len(audit["rows"]) == len(catalog["bundles"])
     assert audit["summary"]["AVAILABLE_EXISTING"] > 0
     assert audit["summary"]["NEEDS_RUN"] > audit["summary"]["AVAILABLE_EXISTING"]
     states = {
@@ -194,6 +195,33 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     }
     assert states <= {"AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_APPLICABLE", "BLOCKED"}
     assert 0 not in states
+
+
+@pytest.mark.parametrize(
+    ("bundle_name", "bits", "runtime"),
+    [
+        ("pra-qwen3-4b-mlx-8bit", 8, "MLX"),
+        ("pra-qwen3-8b-mlx-6bit", 6, "MLX"),
+        ("pra-gemma3-1b-mlx-8bit", 8, "MLX"),
+        ("pra-qwen2-5-1-5b-instruct-bnb-8bit", 8, "bitsandbytes/PyTorch"),
+    ],
+)
+def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
+    bundle_name: str, bits: int, runtime: str
+) -> None:
+    bundle = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles" / bundle_name
+    )
+
+    assert bundle.base_model["quantization"]["bits"] == bits
+    assert bundle.base_model["quantization"]["runtime"] == runtime
+    assert bundle.qualification["status"] == "NOT_MEASURED"
+    assert bundle.qualification["headline"] == []
+    assert bundle.learned_adapters == {}
+    assert bundle.validate()["status"] == "VALID"
+    card = BundleBuilder.model_card(bundle)
+    assert "No learned router is bundled" in card
+    assert "NOT_MEASURED" in card
 
 
 def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric() -> None:

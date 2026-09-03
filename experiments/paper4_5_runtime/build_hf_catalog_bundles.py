@@ -25,6 +25,9 @@ RESULTS = ROOT / "docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapter
 ROUTERS = ROOT / "artifacts/pra_hf/routers"
 BUNDLES = ROOT / "artifacts/pra_hf/bundles"
 MLX_RESULTS = ROOT / "docs/papers/shared/results/mac_scaling"
+QUANTIZED_RESULTS = (
+    ROOT / "docs/papers/shared/results/paper4_5_runtime/quantized_bundles"
+)
 
 SPECS = {
     "qwen2.5-1.5b-instruct": {
@@ -74,6 +77,34 @@ SPECS = {
             "This qualification uses natural-document routing; code retrieval and coding-agent task success remain separately unmeasured."
         ],
     },
+    "qwen2.5-1.5b-instruct-bnb-8bit": {
+        "label": "Qwen2.5-1.5B-Instruct (bitsandbytes 8-bit)",
+        "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+        "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+        "architecture": "Qwen2ForCausalLM",
+        "family": "qwen",
+        "model_type": "qwen2",
+        "layers": 28,
+        "hidden_size": 1536,
+        "heads": {"query": 12, "kv": 2, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "1.5B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit",
+        "engine": "hf",
+        "engine_version": "transformers 5.16.1 / bitsandbytes",
+        "hardware": "NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB",
+        "quantization": "bnb-8bit",
+        "quantization_config": {
+            "bits": 8,
+            "scheme": "LLM.int8",
+            "runtime": "bitsandbytes/PyTorch",
+        },
+        "post_training": "general instruction tuning",
+        "qualification_date": "2026-09-03",
+        "routing_artifact": False,
+    },
     "qwen3-4b": {
         "label": "Qwen3-4B",
         "base_model": "mlx-community/Qwen3-4B-4bit",
@@ -88,6 +119,23 @@ SPECS = {
         "parameters": "4B",
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-4b-mlx-4bit",
+    },
+    "qwen3-4b-mlx-8bit": {
+        "label": "Qwen3-4B (MLX 8-bit)",
+        "base_model": "mlx-community/Qwen3-4B-8bit",
+        "revision": "0348ad770d2ae658ca47b0579b2d2c37b20bbcac",
+        "architecture": "Qwen3ForCausalLM",
+        "family": "qwen",
+        "layers": 36,
+        "hidden_size": 2560,
+        "heads": {"query": 32, "kv": 8, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "4B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen3-4b-mlx-8bit",
+        "quantization": "8bit",
+        "routing_artifact": False,
     },
     "qwen3-14b": {
         "label": "Qwen3-14B",
@@ -105,6 +153,23 @@ SPECS = {
         "repo": "EInnovator/pra-qwen3-14b-mlx-4bit",
         "paired_evidence": "qwen3_14b_mlx_profiles.json",
     },
+    "qwen3-14b-mlx-8bit": {
+        "label": "Qwen3-14B (MLX 8-bit)",
+        "base_model": "mlx-community/Qwen3-14B-8bit",
+        "revision": "da33cf28f06636847fd9e93e0a03d819b84cb55e",
+        "architecture": "Qwen3ForCausalLM",
+        "family": "qwen",
+        "layers": 40,
+        "hidden_size": 5120,
+        "heads": {"query": 40, "kv": 8, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "14B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen3-14b-mlx-8bit",
+        "quantization": "8bit",
+        "routing_artifact": False,
+    },
     "qwen3-8b": {
         "label": "Qwen3-8B",
         "base_model": "mlx-community/Qwen3-8B-4bit",
@@ -120,6 +185,40 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-8b-mlx-4bit",
         "paired_evidence": "qwen3_8b_mlx_profiles.json",
+        "routing_artifact": False,
+    },
+    "qwen3-8b-mlx-8bit": {
+        "label": "Qwen3-8B (MLX 8-bit)",
+        "base_model": "mlx-community/Qwen3-8B-8bit",
+        "revision": "48a0b75b1ae72503e21e1558d040bc227510ff06",
+        "architecture": "Qwen3ForCausalLM",
+        "family": "qwen",
+        "layers": 36,
+        "hidden_size": 4096,
+        "heads": {"query": 32, "kv": 8, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "8B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen3-8b-mlx-8bit",
+        "quantization": "8bit",
+        "routing_artifact": False,
+    },
+    "qwen3-8b-mlx-6bit": {
+        "label": "Qwen3-8B (MLX 6-bit)",
+        "base_model": "mlx-community/Qwen3-8B-6bit",
+        "revision": "35a99712f90d6c2c9a2407a3857e104a46edd9e6",
+        "architecture": "Qwen3ForCausalLM",
+        "family": "qwen",
+        "layers": 36,
+        "hidden_size": 4096,
+        "heads": {"query": 32, "kv": 8, "head_dim": 128},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "8B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen3-8b-mlx-6bit",
+        "quantization": "6bit",
         "routing_artifact": False,
     },
     "qwen3-32b": {
@@ -154,6 +253,24 @@ SPECS = {
         "license": "llama3.1",
         "repo": "EInnovator/pra-llama3-1-8b-mlx-4bit",
     },
+    "llama3.2-1b-mlx-8bit": {
+        "label": "Llama-3.2-1B-Instruct (MLX 8-bit)",
+        "base_model": "mlx-community/Llama-3.2-1B-Instruct-8bit",
+        "revision": "d48cdf0a4ea22d893b7c63a99d6a693e24822795",
+        "architecture": "LlamaForCausalLM",
+        "family": "llama",
+        "layers": 16,
+        "hidden_size": 2048,
+        "heads": {"query": 32, "kv": 8, "head_dim": 64},
+        "topology": {"type": "homogeneous_global", "gqa": True},
+        "consumer_layers": "all eligible",
+        "parameters": "1B",
+        "license": "llama3.2",
+        "repo": "EInnovator/pra-llama3-2-1b-mlx-8bit",
+        "quantization": "8bit",
+        "post_training": "instruction tuning",
+        "routing_artifact": False,
+    },
     "gemma3-1b": {
         "label": "Gemma-3-1B",
         "base_model": "mlx-community/gemma-3-1b-it-4bit",
@@ -174,6 +291,29 @@ SPECS = {
         "parameters": "1B",
         "license": "gemma",
         "repo": "EInnovator/pra-gemma3-1b-mlx-4bit",
+    },
+    "gemma3-1b-mlx-8bit": {
+        "label": "Gemma-3-1B (MLX 8-bit)",
+        "base_model": "mlx-community/gemma-3-1b-it-8bit",
+        "revision": "7b963136f21d05ca8b367c93a9c47a7944ad281a",
+        "architecture": "Gemma3ForCausalLM",
+        "family": "gemma3",
+        "layers": 26,
+        "hidden_size": 1152,
+        "heads": {"query": 4, "kv": 1, "head_dim": 256},
+        "topology": {
+            "type": "mixed_sliding_global",
+            "sliding_window": 512,
+            "sliding_window_pattern": 6,
+            "native_memory_eligible_layers": [5, 11, 17, 23],
+            "gqa": True,
+        },
+        "consumer_layers": [5, 11, 17, 23],
+        "parameters": "1B",
+        "license": "gemma",
+        "repo": "EInnovator/pra-gemma3-1b-mlx-8bit",
+        "quantization": "8bit",
+        "routing_artifact": False,
     },
 }
 
@@ -206,6 +346,21 @@ def _structural_adapter(spec: dict) -> dict:
         "position": {"type": "rope", "implementation": "native"},
         "topology": spec["topology"],
     }
+
+
+def _quantization_manifest(spec: dict) -> dict:
+    """Describe the exact weight representation consumed by the runtime."""
+
+    if "quantization_config" in spec:
+        return dict(spec["quantization_config"])
+    quantization = str(spec.get("quantization", "4bit")).lower()
+    if quantization in {"4bit", "6bit", "8bit"}:
+        return {
+            "bits": int(quantization.removesuffix("bit")),
+            "group_size": 64,
+            "runtime": "MLX",
+        }
+    return {"name": quantization, "runtime": "PyTorch"}
 
 
 def _metric_rows(comparison: dict, spec: dict) -> list[dict]:
@@ -323,11 +478,7 @@ def _manifest(
             "architecture": spec["architecture"],
             "family": spec["family"],
             "parameter_count_approx": spec["parameters"],
-            "quantization": (
-                {"bits": 4, "group_size": 64, "runtime": "MLX"}
-                if quantization == "4bit"
-                else {"name": quantization, "runtime": "PyTorch"}
-            ),
+            "quantization": _quantization_manifest(spec),
             "post_training": spec.get("post_training", "pretrained and post-trained"),
         },
         "structural_adapter": {"path": "structural_adapter", "status": "validated"},
@@ -370,7 +521,13 @@ def _manifest(
         },
         "qualification": {
             "contract_version": 1,
-            "status": "ENGINE_QUALIFIED" if paired_evidence else "CONTROLLED",
+            "status": (
+                "ENGINE_QUALIFIED"
+                if paired_evidence
+                else "CONTROLLED"
+                if comparison is not None
+                else "NOT_MEASURED"
+            ),
             "headline": [row for row in paired_evidence if row["dataset"] == "combined"],
             "canonical_evidence": [
                 canonicalize_paired_transport_evidence(row).model_dump(mode="json")
@@ -391,11 +548,19 @@ def _manifest(
                 "base_revision": spec["revision"],
             } if comparison is not None and router_config is not None else {}),
             "limitations": [
-                "The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.",
+                *(
+                    ["The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default."]
+                    if comparison is not None
+                    else ["No learned router is bundled for this exact quantized identity; routing-adapter transfer from another quantization is intentionally disallowed."]
+                ),
                 *(
                     ["Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification."]
                     if paired_evidence
-                    else [f"The held-out routing diagnostic contains {comparison['test_examples'] // 2} examples per dataset and supports controlled routing claims only."]
+                    else (
+                        [f"The held-out routing diagnostic contains {comparison['test_examples'] // 2} examples per dataset and supports controlled routing claims only."]
+                        if comparison is not None
+                        else ["Only immutable-config structural validation is available for this exact quantized identity."]
+                    )
                 ),
                 *(
                     ["Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers."]
@@ -403,11 +568,16 @@ def _manifest(
                     else ["Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity."]
                 ),
                 f"The qualification identity is the exact {quantization} {engine.upper()} model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.",
-                "Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.",
+                *(
+                    ["Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality."]
+                    if comparison is not None
+                    else ["End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity."]
+                ),
                 *spec.get("extra_limitations", []),
                 "Base-model and dataset licenses apply separately to the router artifact.",
             ],
             "artifacts": [
+                *(["qualification/structural_validation.json"] if (QUANTIZED_RESULTS / slug / "structural_validation.json").is_file() else []),
                 *(["qualification/comparison.json", "qualification/feature_dataset_manifest.json", "qualification/catalog_summary.json"] if comparison is not None else []),
                 *(
                     [f"qualification/{spec['paired_evidence']}", "qualification/canonical_evidence.json"]
@@ -446,12 +616,13 @@ def build_one(slug: str, *, force: bool = False) -> Path:
         evidence_path,
         EvidenceIdentity(
             model_id=spec["base_model"], model_revision=spec["revision"],
-            quantization="4bit", engine="mlx-lm", engine_version="0.31.3",
+            quantization=spec.get("quantization", "4bit"), engine="mlx-lm", engine_version="0.31.3",
             profile="balanced", execution_mode="Native Memory",
         ),
         hardware="Apple M4 Pro (Mac16,7), 48 GB",
         artifact_reference=f"qualification/{spec['paired_evidence']}",
     ) if evidence_path and evidence_path.is_file() else []
+    structural_validation = QUANTIZED_RESULTS / slug / "structural_validation.json"
     output = BUNDLES / spec["repo"].split("/", 1)[1]
     with tempfile.TemporaryDirectory(prefix=f"pra-{slug}-bundle-") as temporary:
         run = Path(temporary)
@@ -478,6 +649,8 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             (qualification / "canonical_evidence.json").write_text(
                 json.dumps(canonical, indent=2) + "\n", encoding="utf-8"
             )
+        if structural_validation.is_file():
+            shutil.copy2(structural_validation, qualification / "structural_validation.json")
         (run / "pra.yaml").write_text(
             yaml.safe_dump(
                 _manifest(slug, spec, comparison, router_config, paired_evidence), sort_keys=False

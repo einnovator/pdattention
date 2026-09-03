@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "STRUCTURAL_VALIDATED",
+  "claim_scope": "model config and structural adapter geometry only",
+  "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "requested_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "resolved_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "engine": "hf",
+  "expected": {
+    "architecture": "Qwen2ForCausalLM",
+    "layers": 28,
+    "hidden_size": 1536,
+    "query_heads": 12,
+    "kv_heads": 2,
+    "head_dim": 128,
+    "quantization": {
+      "bits": 8,
+      "scheme": "LLM.int8",
+      "runtime": "bitsandbytes/PyTorch"
+    }
+  },
+  "observed": {
+    "architecture": "Qwen2ForCausalLM",
+    "layers": 28,
+    "hidden_size": 1536,
+    "query_heads": 12,
+    "kv_heads": 2,
+    "head_dim": 128,
+    "checkpoint_quantization": null,
+    "runtime_quantization": {
+      "bits": 8,
+      "scheme": "LLM.int8",
+      "runtime": "bitsandbytes/PyTorch"
+    }
+  },
+  "checks": {
+    "architecture": true,
+    "layers": true,
+    "hidden_size": true,
+    "query_heads": true,
+    "kv_heads": true,
+    "head_dim": true,
+    "runtime_quantization_declared": true
+  },
+  "runtime": {
+    "host": "DESKTOP-9IOCN3C",
+    "platform": "Windows-10-10.0.19045-SP0"
+  },
+  "date": "2026-09-03",
+  "limitations": [
+    "Model weights were not loaded by this structural check.",
+    "End-task quality, native-memory parity, latency, and learned routing remain NOT_MEASURED.",
+    "Evidence from another quantization is not transferred to this identity."
+  ]
+}
