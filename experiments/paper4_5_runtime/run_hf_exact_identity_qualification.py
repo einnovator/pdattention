@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import time
+from types import SimpleNamespace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,11 +40,24 @@ def _generate(pra: PRAForCausalLM, prompt: str, *, plan, max_new_tokens: int):
     started = time.perf_counter()
     if plan is None:
         pra.disable()
-        result = pra.generate(
-            prompt,
+        encoded = pra.tokenizer(
+            prompt, return_tensors="pt", add_special_tokens=False
+        )
+        input_ids = encoded.input_ids.to(pra.device)
+        attention_mask = encoded.attention_mask.to(pra.device)
+        output = pra.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=torch.arange(
+                input_ids.shape[1], device=pra.device
+            ).unsqueeze(0),
             max_new_tokens=max_new_tokens,
-            return_details=True,
             do_sample=False,
+        )
+        generated = output[:, input_ids.shape[1] :]
+        result = SimpleNamespace(
+            text=pra.tokenizer.decode(generated[0], skip_special_tokens=True),
+            generated_tokens=int(generated.shape[1]),
         )
     else:
         pra.enable()
@@ -123,6 +137,12 @@ def main() -> None:
         source_text, source_tokens = _bounded_text(
             pra.tokenizer, example.selected_source, args.max_source_tokens
         )
+        # Keep the text/token boundary stable so E0 and E2 consume precisely
+        # the same source token sequence rather than a tokenizer merge artifact.
+        source_text = source_text.rstrip() + "\n\n"
+        source_tokens = list(
+            pra.tokenizer.encode(source_text, add_special_tokens=False)
+        )
         candidate_tokens = list(
             pra.tokenizer.encode(example.candidate_source, add_special_tokens=False)
         )
@@ -165,6 +185,11 @@ def main() -> None:
         ):
             query = request.query.text
             query_tokens = list(pra.tokenizer.encode(query, add_special_tokens=False))
+            combined_tokens = list(
+                pra.tokenizer.encode(source_text + query, add_special_tokens=False)
+            )
+            if combined_tokens != source_tokens + query_tokens:
+                raise RuntimeError("Tokenizer boundary changed the frozen E0/E2 source identity.")
             for condition in ("e0_selected_text", "e2_native_kv"):
                 native = condition == "e2_native_kv"
                 prompt = query if native else source_text + query

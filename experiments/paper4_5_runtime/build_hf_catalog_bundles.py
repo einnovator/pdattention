@@ -421,6 +421,19 @@ def _manifest(
     paired_artifacts: list[Path],
 ) -> dict:
     commit = _git_commit()
+    combined_evidence = next(
+        (row for row in paired_evidence if row["dataset"] == "combined"), None
+    )
+    native_recommended = bool(
+        combined_evidence
+        and combined_evidence.get("recommendation") == "RECOMMENDED"
+    )
+    dataset_sample_counts = [
+        int(row["sample_count"])
+        for row in paired_evidence
+        if row.get("dataset") != "combined" and row.get("sample_count") is not None
+    ]
+    samples_per_dataset = min(dataset_sample_counts) if dataset_sample_counts else 0
     runtime_smoke = QUANTIZED_RESULTS / slug / "runtime_smoke.json"
     learned_adapters = {}
     if comparison is not None and router_config is not None:
@@ -458,7 +471,7 @@ def _manifest(
             "status": "QUALIFIED",
             "recommended": True,
             "engine": engine,
-            "mode": "Native Memory" if paired_evidence else "Selected Context",
+            "mode": "Native Memory" if native_recommended else "Selected Context",
         },
         "economy": {
             "purpose": "Reduced-consumer candidate; the held-out quality gate has not passed",
@@ -509,9 +522,15 @@ def _manifest(
             else {
                 "mlx": {
                     "selected_context": "validated" if (paired_evidence or comparison is not None) else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
-                    "native_memory": "QUALIFIED" if paired_evidence else "AVAILABLE",
+                    "native_memory": (
+                        "QUALIFIED"
+                        if native_recommended
+                        else "CONTROLLED"
+                        if paired_evidence
+                        else "AVAILABLE"
+                    ),
                     "native_serving": "NOT_APPLICABLE",
-                    "recommended": "Native Memory with BALANCED" if paired_evidence else "Selected Context with BALANCED",
+                    "recommended": "Native Memory with BALANCED" if native_recommended else "Selected Context with BALANCED",
                 },
             }
         ),
@@ -523,6 +542,8 @@ def _manifest(
             "contract_version": 1,
             "status": (
                 "ENGINE_QUALIFIED"
+                if native_recommended
+                else "CONTROLLED"
                 if paired_evidence
                 else "CONTROLLED"
                 if comparison is not None
@@ -573,7 +594,7 @@ def _manifest(
                     else ["No learned router is bundled for this exact quantized identity; routing-adapter transfer from another quantization is intentionally disallowed."]
                 ),
                 *(
-                    ["Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification."]
+                    [f"Paired natural-QA evidence contains {samples_per_dataset} examples per dataset and supports engine qualification, not production qualification."]
                     if paired_evidence
                     else (
                         [f"The held-out routing diagnostic contains {comparison['test_examples'] // 2} examples per dataset and supports controlled routing claims only."]
@@ -583,6 +604,8 @@ def _manifest(
                 ),
                 *(
                     ["Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers."]
+                    if native_recommended
+                    else ["Native Memory is measured but remains a candidate because the exact-output equivalence gate did not pass."]
                     if paired_evidence
                     else ["Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity."]
                 ),
@@ -636,7 +659,7 @@ def _manifest(
             ),
         },
         "trust": {
-            "status": "eInnovator-qualified" if (paired_evidence or comparison is not None) else "eInnovator-maintained",
+            "status": "eInnovator-qualified" if (native_recommended or comparison is not None) else "eInnovator-maintained",
             "publisher": "EInnovator",
             "scope": f"exact {quantization} {engine.upper()} model identity; evidence does not transfer across revisions, engines, or quantizations",
         },

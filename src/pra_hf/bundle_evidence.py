@@ -267,6 +267,26 @@ def import_matched_e0_e2_evidence(
     for dataset, baseline_rows, pra_rows in cohorts:
         baseline = _matched_summary(baseline_rows)
         pra = _matched_summary(pra_rows)
+        exact_pairs = sum(
+            1
+            for baseline_row, pra_row in zip(
+                sorted(baseline_rows, key=pair_key),
+                sorted(pra_rows, key=pair_key),
+            )
+            if baseline_row.get("output") == pra_row.get("output")
+        )
+        quality_delta = (
+            pra["quality"] - baseline["quality"]
+            if pra["quality"] is not None and baseline["quality"] is not None
+            else None
+        )
+        recommendation = (
+            "RECOMMENDED"
+            if quality_delta is not None
+            and quality_delta >= -0.01
+            and exact_pairs / max(len(pra_rows), 1) >= 0.95
+            else "CANDIDATE"
+        )
         imported.append(
             {
                 "metric_class": "END_TASK",
@@ -289,11 +309,7 @@ def import_matched_e0_e2_evidence(
                 "baseline": baseline,
                 "pra": pra,
                 "deltas": {
-                    "quality": (
-                        pra["quality"] - baseline["quality"]
-                        if pra["quality"] is not None and baseline["quality"] is not None
-                        else None
-                    ),
+                    "quality": quality_delta,
                     "visible_tokens_pct": _pct_delta(
                         pra["visible_tokens"], baseline["visible_tokens"]
                     ),
@@ -306,18 +322,11 @@ def import_matched_e0_e2_evidence(
                     ),
                 },
                 "semantic_equivalence": {
-                    "exact_output_pairs": sum(
-                        1
-                        for baseline_row, pra_row in zip(
-                            sorted(baseline_rows, key=pair_key),
-                            sorted(pra_rows, key=pair_key),
-                        )
-                        if baseline_row.get("output") == pra_row.get("output")
-                    ),
+                    "exact_output_pairs": exact_pairs,
                     "paired_examples": len(pra_rows),
                 },
                 "evidence_tier": "ENGINE_QUALIFIED",
-                "recommendation": "RECOMMENDED",
+                "recommendation": recommendation,
                 "hardware": hardware,
                 "cohort": "selector-frozen natural QA; cold direct query",
                 "date": evidence_date,
