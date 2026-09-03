@@ -142,7 +142,7 @@
 
   const component = () => {
     const host = document.createElement('div');
-    host.className = 'h-100';
+    host.className = 'workspace-host';
     host.append(document.querySelector('#workspace-template').content.cloneNode(true));
     return {
       element: host,
