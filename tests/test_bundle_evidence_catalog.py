@@ -351,14 +351,17 @@ def test_exact_identity_8bit_native_gates_distinguish_llama_and_gemma() -> None:
     )
 
 
-def test_exact_8bit_learned_router_is_opt_in_and_keeps_smoke_scope_separate() -> None:
+def test_exact_8bit_native_path_qualifies_while_learned_router_remains_opt_in() -> None:
     bundle = PRAModelBundle.from_pretrained(
         ROOT / "artifacts/pra_hf/bundles/pra-qwen3-4b-mlx-8bit"
     )
 
     assert bundle.base_model["quantization"]["bits"] == 8
-    assert bundle.qualification["status"] == "CONTROLLED"
-    assert bundle.qualification["headline"] == []
+    assert bundle.qualification["status"] == "ENGINE_QUALIFIED"
+    assert bundle.qualification["headline"][0]["semantic_equivalence"] == {
+        "exact_output_pairs": 60,
+        "paired_examples": 60,
+    }
     assert "combined-router-d128" in bundle.learned_adapters
     assert bundle.profiles["balanced"]["routing_adapter"] is None
     assert bundle.profiles["qasper-learned"]["routing_adapter"] == "combined-router-d128"
