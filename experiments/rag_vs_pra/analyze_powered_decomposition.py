@@ -286,6 +286,31 @@ def _plots(
             fig.savefig(output / f"{filename}.{suffix}", dpi=180)
         plt.close(fig)
 
+    realization_order = (
+        (ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value, "COLD"),
+        (ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value, "COLD"),
+        (ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value, "WARM"),
+        (ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value, "WARM"),
+    )
+    generic_rows = {
+        (str(row["condition"]), str(row["regime"])): row
+        for row in _primary_rows(summaries, candidate_count, token_budget)
+        if row.get("selector_profile") == "pra_generic"
+    }
+    if all(key in generic_rows for key in realization_order):
+        values = [float(generic_rows[key].get("ttft_p95_ms") or 0.0) for key in realization_order]
+        labels = ("Selected\nCOLD", "Native\nCOLD", "Selected\nWARM", "Native\nWARM")
+        colors = ("#2a788e", "#d17a22", "#2a788e", "#d17a22")
+        fig, axis = plt.subplots(figsize=(8.5, 5.5))
+        axis.bar(range(len(values)), values, color=colors)
+        axis.set_xticks(range(len(values)), labels)
+        axis.set_ylabel("TTFT p95 (ms)")
+        axis.grid(axis="y", alpha=0.25)
+        fig.tight_layout()
+        for suffix in ("png", "pdf"):
+            fig.savefig(output / f"realization_ttft.{suffix}", dpi=180)
+        plt.close(fig)
+
     if curve:
         fig, axis = plt.subplots(figsize=(9, 5.5))
         visible = [row for row in curve if row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value]

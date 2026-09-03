@@ -74,7 +74,7 @@ The native realization gate passes. Selected Context and Native Memory produce i
 
 Cold Native Memory is 96 ms slower end to end than Selected Context. With retained immutable K/V, however, it avoids repeated source prefill: TTFT falls by 2.47 seconds and total latency by 2.39 seconds while generated quality remains exact. Active detail is about 299 MB. The economic gate therefore passes for repeated identical selections, not for every RAG workload.
 
-![Powered Qwen3-4B cold TTFT p95](../../assets/results/rag/powered_qwen3_4b_ttft_p95.png)
+![Powered Qwen3-4B selector-frozen cold and warm TTFT p95](../../assets/results/rag/powered_qwen3_4b_realization_ttft.png)
 
 ## Claim boundary
 
