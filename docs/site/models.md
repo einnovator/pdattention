@@ -85,7 +85,7 @@ The SDK includes the conventional Llama decoder mapping. A declarative adapter i
 | --- | --- | --- | --- | --- | --- |
 | `unsloth/Llama-3.2-1B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `meta-llama/Llama-3.2-1B-Instruct` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
-| `mlx-community/Llama-3.2-1B-Instruct-8bit` | [EInnovator/pra-llama3-2-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | Smoke | MLX 8-bit load/generation smoke; end-task qualification pending | Selected Context with BALANCED | 2026-09-03 |
+| `mlx-community/Llama-3.2-1B-Instruct-8bit` | [EInnovator/pra-llama3-2-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | Engine qualified | MLX Native Memory: 60/60 exact Selected Context/Native Memory outputs; 91.5% fewer visible tokens | Native Memory with BALANCED | 2026-09-03 |
 | `mlx-community/Llama-3.1-8B-Instruct-4bit` | [EInnovator/pra-llama3-1-8b-mlx-4bit](https://huggingface.co/EInnovator/pra-llama3-1-8b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
 
 **Inspect and launch**
@@ -117,7 +117,7 @@ A built-in mapping discovers Gemma 3 text attention, but its heterogeneous topol
 | --- | --- | --- | --- | --- | --- |
 | `google/gemma-3-1b-it` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/gemma-3-1b-it-4bit` | [EInnovator/pra-gemma3-1b-mlx-4bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit) | Controlled | MLX mixed/sliding routing qualification; portable Selected Context | Generic balanced; learned router for matched QASPER or validated mixed workloads | 2026-09-01 |
-| `mlx-community/gemma-3-1b-it-8bit` | [EInnovator/pra-gemma3-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | Smoke | MLX 8-bit mixed/sliding topology load/generation smoke; end-task qualification pending | Selected Context with BALANCED | 2026-09-03 |
+| `mlx-community/gemma-3-1b-it-8bit` | [EInnovator/pra-gemma3-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | Controlled | MLX Native Memory: 60 measured cases; 3/60 exact outputs and token-F1 delta -0.0036 | Selected Context with BALANCED | 2026-09-03 |
 
 **Inspect and launch**
 

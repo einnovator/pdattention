@@ -91,6 +91,12 @@ def main() -> None:
     parser.add_argument("--layers", type=int, required=True)
     parser.add_argument("--max-source-tokens", type=int, default=384)
     parser.add_argument("--max-new-tokens", type=int, default=24)
+    parser.add_argument(
+        "--reuse-max-new-tokens",
+        type=int,
+        default=0,
+        help="Optional shorter decode for non-cold contract probes; cold quality is unchanged.",
+    )
     parser.add_argument("--max-examples", type=int, default=20)
     parser.add_argument("--warm-repeats", type=int, default=2)
     parser.add_argument("--multi-query-count", type=int, default=3)
@@ -193,11 +199,17 @@ def main() -> None:
             for condition in ("e0_selected_text", "e2_native_kv"):
                 native = condition == "e2_native_kv"
                 prompt = query if native else source_text + query
+                generation_tokens = (
+                    args.max_new_tokens
+                    if request.regime == "cold_one_shot"
+                    or args.reuse_max_new_tokens <= 0
+                    else args.reuse_max_new_tokens
+                )
                 result, elapsed_ms = _generate(
                     pra,
                     prompt,
                     plan=plan if native else None,
-                    max_new_tokens=args.max_new_tokens,
+                    max_new_tokens=generation_tokens,
                 )
                 exact, f1 = _metrics(result.text, example.answer)
                 reused = request.regime != "cold_one_shot"

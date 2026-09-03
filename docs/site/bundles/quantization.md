@@ -8,8 +8,8 @@ its 6-bit, 8-bit, full-precision, or runtime-quantized counterpart.
 
 | Host class | Exact model | Weight format | PRA bundle | Runtime smoke peak | Current evidence |
 | --- | --- | --- | --- | ---: | --- |
-| Apple Silicon, 16 GB+ | `mlx-community/gemma-3-1b-it-8bit` | MLX 8-bit, group 64 | [`pra-gemma3-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | 1.30 GiB | SMOKE |
-| Apple Silicon, 16 GB+ | `mlx-community/Llama-3.2-1B-Instruct-8bit` | MLX 8-bit, group 64 | [`pra-llama3-2-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | 1.24 GiB | SMOKE |
+| Apple Silicon, 16 GB+ | `mlx-community/gemma-3-1b-it-8bit` | MLX 8-bit, group 64 | [`pra-gemma3-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | 1.30 GiB | CONTROLLED; native candidate |
+| Apple Silicon, 16 GB+ | `mlx-community/Llama-3.2-1B-Instruct-8bit` | MLX 8-bit, group 64 | [`pra-llama3-2-1b-mlx-8bit`](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | 1.24 GiB | ENGINE_QUALIFIED |
 | Apple Silicon, 16 GB+ | `mlx-community/Qwen3-4B-8bit` | MLX 8-bit, group 64 | [`pra-qwen3-4b-mlx-8bit`](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-8bit) | 4.03 GiB | CONTROLLED routing |
 | Apple Silicon, 16 GB+ | `mlx-community/Qwen3-8B-6bit` | MLX 6-bit, group 64 | [`pra-qwen3-8b-mlx-6bit`](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-6bit) | 6.24 GiB | SMOKE |
 | Apple Silicon, 24 GB+ | `mlx-community/Qwen3-8B-8bit` | MLX 8-bit, group 64 | [`pra-qwen3-8b-mlx-8bit`](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-8bit) | 8.15 GiB | SMOKE |
