@@ -46,6 +46,36 @@ The model often generated explanatory sentences, so strict short-answer EM is ze
 
 The product comparison changes both context selection and representation, by design. It does not by itself attribute the quality loss to routing versus native transport. Prior frozen-selection MLX parity checks cover transport; a larger RAG cohort should repeat that control within this exact benchmark.
 
+## Powered 50-question decomposition
+
+The powered follow-up uses the same 50 held-out questions at `N=20` and a 2K physical-token budget. It separates selection from realization: each PRA selector writes one signed selection receipt, then Selected Context and Native Memory consume that exact receipt. The model is the pinned `mlx-community/Qwen3-4B-4bit` revision; no exact MultiHop-RAG adaptor is qualified, so bundle arms are explicitly `NO_QUALIFIED_ADAPTER`.
+
+| Selector and condition | Official score | Token F1 | Answer present | Support docs | False selected docs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Standard BM25, No PRA | **0.500** | **0.082** | 0.56 | 0.400 | 0.752 |
+| Strong reranker, No PRA | 0.440 | 0.081 | **0.70** | 0.455 | **0.691** |
+| Generic PRA, Selected Context | 0.440 | 0.071 | 0.64 | **0.468** | 0.751 |
+| Generic PRA, Native Memory | 0.440 | 0.071 | 0.64 | **0.468** | 0.751 |
+| Strong reranker PRA, Selected Context | 0.440 | 0.081 | **0.70** | 0.455 | **0.691** |
+| Strong reranker PRA, Native Memory | 0.440 | 0.081 | **0.70** | 0.455 | **0.691** |
+
+The selection gate remains closed. Generic PRA exposes slightly more supporting-document evidence than BM25 but reduces generated score; the strong reranker exposes the answer more often without improving generated score. This is precisely why evidence availability and model output are reported separately.
+
+![Powered Qwen3-4B generated quality](../../assets/results/rag/powered_qwen3_4b_generated_quality.png)
+
+The native realization gate passes. Selected Context and Native Memory produce identical outputs for every frozen generic and strong-reranker selection. The strong conventional arm and strong PRA Selected Context arm are also exact receipt/output controls, ruling out a label-specific execution advantage.
+
+| Generic PRA realization | Mean TTFT | TTFT p95 | Total latency | Visible tokens | Native tokens | Native reuse |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Selected Context, cold | 2,633 ms | 2,716 ms | 3,024 ms | 2,105 | 0 | 0.00 |
+| Native Memory, cold | 2,648 ms | 2,701 ms | 3,121 ms | **79** | 2,026 | 0.00 |
+| Selected Context, warm | 2,640 ms | 2,728 ms | 3,031 ms | 2,105 | 0 | 0.00 |
+| Native Memory, warm | **166 ms** | **211 ms** | **638 ms** | **79** | 2,026 | **1.00** |
+
+Cold Native Memory is 96 ms slower end to end than Selected Context. With retained immutable K/V, however, it avoids repeated source prefill: TTFT falls by 2.47 seconds and total latency by 2.39 seconds while generated quality remains exact. Active detail is about 299 MB. The economic gate therefore passes for repeated identical selections, not for every RAG workload.
+
+![Powered Qwen3-4B cold TTFT p95](../../assets/results/rag/powered_qwen3_4b_ttft_p95.png)
+
 ## Claim boundary
 
-The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The 10-question model smoke establishes a negative end-to-end gate, not superiority. A learned-adaptor gain and engine-level economic win remain unestablished. Those claims require a larger model-backed cohort, frozen selected-text/native-K/V transport inside this workload, and repeated-query engine measurements.
+The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The original 10-question smoke remains a negative end-to-end gate. The powered cohort localizes that failure to selection and establishes selector-frozen native parity plus a warm repeated-selection runtime win. It does **not** qualify generic PRA selection, a learned adaptor, or a broad persistent-corpus advantage. Those claims require stronger generated quality and physical reuse across changing, overlapping selections.

@@ -1361,14 +1361,14 @@ report it separately from strict EM, token F1, and the official MultiHop-RAG
 token-intersection score. Detailed gzip artifacts retain every question,
 candidate receipt, selected character interval, metric, and failure class.
 
-The powered extension does not treat PRA as one arm.  It names five execution
-conditions: 	exttt{NO_PRA_STANDARD_RAG}, selected context and native memory
+The powered extension does not treat PRA as one arm. It names five execution
+conditions: \texttt{NO\_PRA\_STANDARD\_RAG}, selected context and native memory
 without an adaptor, and the corresponding two bundle conditions.  The latter
-remain 	exttt{NO_QUALIFIED_ADAPTER} unless the exact model, precision, and
+remain \texttt{NO\_QUALIFIED\_ADAPTER} unless the exact model, precision, and
 MultiHop-RAG profile are qualified.  The unmodified BM25 candidate receipt is
 shared throughout.  Standard RAG uses global BM25 chunk packing; a stronger
 conventional control reranks the same chunks with the pinned
-path{cross-encoder/ms-marco-MiniLM-L-6-v2}.  Generic PRA uses its deterministic
+\path{cross-encoder/ms-marco-MiniLM-L-6-v2}. Generic PRA uses its deterministic
 BM25/hashed-semantic fusion, while a stronger PRA control consumes the same
 cross-encoder ordering.  This is a selector comparison, not a retriever race.
 
@@ -1524,6 +1524,77 @@ rises from 557--563~ms to 647~ms. This is a negative quality and economic gate,
 not a native-E2 win. Because the product conditions also use different context
 selectors, this run does not attribute the loss between selection and native
 transport; selector-frozen engine parity remains a separate control.
+
+\subsection{Powered decomposition separates selection from realization}
+
+The powered qualification repeats the experiment on 50 fixed held-out
+questions at $N=20$ and a 2K physical-token budget. It pins the Qwen3-4B
+4-bit model, cross-encoder revision, candidate receipts, chunker, prompt,
+generation parameters, and seed. Each Selected Context/Native Memory pair uses
+one tamper-evident selection receipt; the run aborts if its document, chunk,
+interval, score, order, or budget fields differ. The exact model/precision
+combination has no qualified MultiHop-RAG adaptor, so both bundle conditions
+are recorded as \texttt{NO\_QUALIFIED\_ADAPTER}, not approximated with an
+adaptor trained for another workload.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Powered MultiHop-RAG decomposition ($n=50$, seed 11, $N=20$, 2K).
+Quality and selection columns are invariant across cold/warm realization, so
+the table reports each condition once. ``Official'' is the upstream
+lowercased token-intersection score; answer availability is not generation.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_quality_table.tex}}
+\label{tab:powered-rag-quality}
+\end{table}
+
+Standard BM25 obtains 0.500 official score and 0.082 token F1. The generic PRA
+selector raises supporting-document coverage from 0.400 to 0.468 and gold
+chunk recall from 0.0448 to 0.0484, but generated score falls to 0.440 and F1
+to 0.071. The stronger reranker raises answer availability from 0.56 to 0.70
+and lowers false selected-document fraction from 0.752 to 0.691, yet its
+generated score remains 0.440. Better evidence exposure therefore does not by
+itself imply better answer generation. Against both the standard and stronger
+conventional controls, the selection gate is closed.
+
+The realization result is different. The strong conventional control and the
+strong PRA Selected Context arm have identical receipts and outputs. Within
+both generic and strong PRA pairs, Selected Context and Native Memory also
+match every generated output and every quality metric. This establishes that
+the observed quality deficit is selected before native K/V realization; it is
+not caused by detached MLX K/V in this cohort.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Generic-PRA realization economics for the same 50 frozen selections.
+Cold includes native encoding; warm reuses retained immutable K/V. Visible
+Selected Context is deliberately re-prefilled on each question.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_runtime_table.tex}}
+\label{tab:powered-rag-runtime}
+\end{table}
+
+Native Memory reduces mean visible prompt width from 2,105 to 79 tokens while
+carrying 2,026 selected native tokens. Cold native execution pays 96~ms more
+end-to-end than Selected Context (3.121 versus 3.024~s), a bounded 3.2\%
+regression. Once the same selection is retained, mean TTFT falls from 2.640~s
+to 0.166~s and total latency from 3.031~s to 0.638~s; throughput rises from
+10.56 to 50.21 tokens/s. Warm native active detail is 299~MB, while measured
+peak unified memory is 0.63~GB lower than the repeatedly prefilled Selected
+Context path. The native-memory and economic gates pass for this repeated-
+selection regime, even though the end-to-end RAG qualification remains closed
+by selection quality.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/plots/ttft_p95.pdf}
+\caption{Powered cold TTFT p95 by condition. The selector-frozen warm delta is
+reported in Table~\ref{tab:powered-rag-runtime}; cold and warm measurements are
+not averaged.}
+\label{fig:powered-rag-ttft}
+\end{figure}
 
 \subsection{Stable prefix and session-delta contract}
 
