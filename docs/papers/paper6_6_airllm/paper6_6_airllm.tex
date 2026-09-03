@@ -15,40 +15,32 @@ Independent Weight and Semantic-Context Streaming}
 \maketitle
 
 \begin{abstract}
-AirLLM makes models larger than accelerator memory executable by loading one
-decoder layer, or selected experts, immediately before use and releasing its
-weights afterward. Progressive Retrieval Attention (PRA) addresses a different
-state variable: it routes over persistent context and materializes only selected
-native key/value (K/V) detail. We ask whether these two forms of virtualization
-compose without conflating model-weight and semantic-memory policy. We audit
-AirLLM 3.3.0 at commit \texttt{3099999}, implement a capability-gated runtime
-provider, reuse the existing Hugging Face PRA attention path, and introduce a
-layer-local lifecycle adapter with HOT, layer-streamed, and hybrid PRA residency.
-On Apple M5, AirLLM's separate MLX path executes TinyLlama-1.1B from 2.20-GB
-layer shards. Reducing a 653-token prompt to 38 selected tokens preserved the
-12-token answer prefix, but throughput remained about 0.13 token/s because
-weight streaming dominated. In a 119-condition controlled lifecycle study,
-layer-streaming reduced balanced-profile PRA peak residency from 0.50 to
-0.125 MiB; independent prefetch was faster than sharing AirLLM's one-worker
-weight executor. On a 4-GiB GTX 950M, injected-but-disabled PRA preserved the
-exact AirLLM output, and native PRA encoded and consumed a 15-token reference
-through four layers. Native decode was 10.6\% slower than selected-text E0, so
-this establishes mechanism correctness rather than a speed advantage. A
-selector-frozen 60-example natural-QA follow-up on an RTX 5060 materialized up
-to 384 native tokens while removing 92.4--95.1\% of E0's visible selected-text
-prompt. Native/selected F1 is 0.112/0.099 on 2Wiki, 0.101/0.215 on HotpotQA,
-and 0.082/0.136 on QASPER; exact output parity is 0--10\%. Completion is 10.3\%
-faster on 2Wiki, statistically indistinguishable in this descriptive cohort on
-HotpotQA, and 26.1\% slower on QASPER. The run is therefore transport and memory
-evidence, not semantic parity. A separate 15-example, four-token diagnostic
-measures native/selected TTFT ratios of 2.186--2.351 and ITL ratios of
-1.109--1.173; warm reuse does not remove this request-path penalty. Pooled
-forensics attribute the result to a poor composition of execution paths:
-routed E2 performs an extra model pass while AirLLM streams weights, switches
-attention from SDPA to eager dispatch, and adds four late direct-plus-memory
-consumers. The evidence supports independent policy and exposes
-the central systems tradeoff: eliminating context residency is valuable only
-when its transfers do not deepen the weight-I/O bottleneck.
+We ask whether Progressive Retrieval Attention (PRA) Native Memory helps when
+AirLLM's model-weight streaming already dominates inference economics. The two
+systems virtualize different state: AirLLM moves decoder weights through
+accelerator memory, whereas PRA selects persistent semantic K/V. We implement
+a capability-gated provider, reuse the Hugging Face PRA attention path, and
+test HOT, layer-streamed, and hybrid selected-memory lifecycles.
+
+The answer under the measured regime is negative. On an Apple M5, reducing a
+653-token prompt to 38 selected tokens preserves the answer prefix, but
+TinyLlama remains near 0.13 token/s because layer-weight I/O dominates. On an
+RTX 5060, a selector-frozen 60-example natural-QA cohort moves up to 384
+selected tokens outside the visible prompt, removing 92.4--95.1\%. Native E2
+slightly improves 2Wiki F1 (0.112 versus 0.099) but degrades HotpotQA
+(0.101 versus 0.215) and QASPER (0.082 versus 0.136). A separate timing
+diagnostic finds E2/E0 TTFT ratios of 2.186--2.351 and ITL ratios of
+1.109--1.173; warm reuse does not remove the penalty.
+
+Forensics identify a poor composition of execution paths: E2 adds a reference
+model pass while AirLLM streams weights, changes attention from SDPA to eager
+dispatch, and invokes four late direct-plus-memory consumers. Layer-local
+streaming can reduce PRA peak residency by four times, but it does not repair
+that request path. Native E2 is semantically feasible and useful as a
+falsification result; it is not the recommended AirLLM deployment. Selected
+Context E0 remains preferable unless a beyond-VRAM workload with a capable
+model shows that persistent context, rather than weight I/O, is the limiting
+resource.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -98,6 +90,10 @@ orthogonal to this ladder: it can coexist with E0 or E2 without changing their
 meaning.
 
 \section{Introduction}
+The companion runtime paper defines the E0/E2/E3 deployment and evidence
+contract~\cite{praruntime}. This paper asks whether Native Memory E2 remains
+economically useful when model-weight streaming, rather than context residency,
+dominates the request.
 
 Inference memory is not one pool. Model parameters, sequential K/V, selected
 external K/V, temporary activations, and runtime allocations have different
@@ -585,7 +581,7 @@ The runtime exposes \texttt{airllm} only as an embedded provider. Native flags
 must be explicit. No \texttt{QUALITY\_MAX} product claim follows from this
 small calibration; profiles remain candidates until natural-task validation.
 
-\section{Limitations and Next Experiments}
+\section{Negative Results and Next Experiments}
 
 The M5 cohort is one synthetic retrieval example and one Llama-family model.
 Its MLX path differs architecturally from AirLLM's HF path. The controlled model
@@ -656,6 +652,10 @@ and its evidence tier.
 
 \begin{thebibliography}{9}
 \small
+\bibitem{praruntime}
+J. Simao. \emph{Productizing Progressive Retrieval Attention: A Runtime,
+Gateway, and Deployment Architecture}. 2026.
+
 \bibitem{airllm}
 G. Lyongavin et al. \emph{AirLLM: Run large language models on low-end GPUs}.
 Pinned source repository, 2026. \url{https://github.com/lyogavin/airllm}.
