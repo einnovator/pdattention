@@ -15,8 +15,10 @@ from pra_hf.bundle import BundleBuilder
 from pra_hf.bundle_evidence import (
     EvidenceIdentity,
     canonicalize_paired_transport_evidence,
+    import_matched_e0_e2_evidence,
     import_mlx_paired_evidence,
 )
+from pra_hf.canonical_evidence import MeasurementState
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +29,9 @@ BUNDLES = ROOT / "artifacts/pra_hf/bundles"
 MLX_RESULTS = ROOT / "docs/papers/shared/results/mac_scaling"
 QUANTIZED_RESULTS = (
     ROOT / "docs/papers/shared/results/paper4_5_runtime/quantized_bundles"
+)
+EXACT_QUALIFICATION_RESULTS = (
+    ROOT / "docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification"
 )
 
 SPECS = {
@@ -135,6 +140,7 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-4b-mlx-8bit",
         "quantization": "8bit",
+        "matched_evidence": True,
     },
     "qwen3-14b": {
         "label": "Qwen3-14B",
@@ -167,6 +173,7 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-14b-mlx-8bit",
         "quantization": "8bit",
+        "matched_evidence": True,
         "routing_artifact": False,
     },
     "qwen3-8b": {
@@ -201,6 +208,7 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-8b-mlx-8bit",
         "quantization": "8bit",
+        "matched_evidence": True,
         "routing_artifact": False,
     },
     "qwen3-8b-mlx-6bit": {
@@ -218,6 +226,7 @@ SPECS = {
         "license": "apache-2.0",
         "repo": "EInnovator/pra-qwen3-8b-mlx-6bit",
         "quantization": "6bit",
+        "matched_evidence": True,
         "routing_artifact": False,
     },
     "qwen3-32b": {
@@ -267,6 +276,7 @@ SPECS = {
         "license": "llama3.2",
         "repo": "EInnovator/pra-llama3-2-1b-mlx-8bit",
         "quantization": "8bit",
+        "matched_evidence": True,
         "post_training": "instruction tuning",
         "routing_artifact": False,
     },
@@ -312,6 +322,7 @@ SPECS = {
         "license": "gemma",
         "repo": "EInnovator/pra-gemma3-1b-mlx-8bit",
         "quantization": "8bit",
+        "matched_evidence": True,
         "routing_artifact": False,
     },
 }
@@ -407,6 +418,7 @@ def _manifest(
     comparison: dict | None,
     router_config: dict | None,
     paired_evidence: list[dict],
+    paired_artifacts: list[Path],
 ) -> dict:
     commit = _git_commit()
     runtime_smoke = QUANTIZED_RESULTS / slug / "runtime_smoke.json"
@@ -520,7 +532,19 @@ def _manifest(
             ),
             "headline": [row for row in paired_evidence if row["dataset"] == "combined"],
             "canonical_evidence": [
-                canonicalize_paired_transport_evidence(row).model_dump(mode="json")
+                canonicalize_paired_transport_evidence(
+                    row,
+                    adaptor_state=(
+                        MeasurementState.NEEDS_RUN
+                        if learned_adapters
+                        else MeasurementState.NO_QUALIFIED_ADAPTER
+                    ),
+                    adaptor_note=(
+                        "The exact learned router is bundled but has not completed the matched end-task arm."
+                        if learned_adapters
+                        else "No learned adaptor qualified for this exact model revision and quantization."
+                    ),
+                ).model_dump(mode="json")
                 for row in paired_evidence
                 if row["dataset"] == "combined"
             ],
@@ -584,7 +608,10 @@ def _manifest(
                 *(["qualification/runtime_smoke.json"] if runtime_smoke.is_file() else []),
                 *(["qualification/comparison.json", "qualification/feature_dataset_manifest.json", "qualification/catalog_summary.json"] if comparison is not None else []),
                 *(
-                    [f"qualification/{spec['paired_evidence']}", "qualification/canonical_evidence.json"]
+                    [
+                        *(f"qualification/{path.name}" for path in paired_artifacts),
+                        "qualification/canonical_evidence.json",
+                    ]
                     if paired_evidence else []
                 ),
             ],
@@ -597,9 +624,10 @@ def _manifest(
             "hf_collection": COLLECTION,
             "license": spec["license"],
             "license_note": "Router and project terms do not replace the base-model or dataset licenses.",
-            "source_artifact": spec.get(
-                "paired_evidence",
-                f"docs/papers/shared/results/paper4_5_runtime/quantized_bundles/{slug}",
+            "source_artifact": (
+                [str(path.relative_to(ROOT)).replace("\\", "/") for path in paired_artifacts]
+                if paired_artifacts
+                else f"docs/papers/shared/results/paper4_5_runtime/quantized_bundles/{slug}"
             ),
             "selection_reason": (
                 "Exact-identity paired natural-QA qualification, with routing research kept separate."
@@ -612,7 +640,57 @@ def _manifest(
             "publisher": "EInnovator",
             "scope": f"exact {quantization} {engine.upper()} model identity; evidence does not transfer across revisions, engines, or quantizations",
         },
-    }
+}
+
+
+def _load_paired_evidence(slug: str, spec: dict) -> tuple[list[dict], list[Path]]:
+    """Load only complete, exact-identity paired evidence for one bundle."""
+
+    identity = EvidenceIdentity(
+        model_id=spec["base_model"],
+        model_revision=spec["revision"],
+        quantization=spec.get("quantization", "4bit"),
+        engine="mlx-lm",
+        engine_version="0.31.3",
+        profile="balanced",
+        execution_mode="Native Memory",
+    )
+    if spec.get("matched_evidence"):
+        directory = EXACT_QUALIFICATION_RESULTS / slug
+        paths = [
+            directory / f"matched_e0_e2_{dataset}.json"
+            for dataset in ("qasper", "hotpotqa", "2wikimultihopqa")
+        ]
+        existing = [path for path in paths if path.is_file()]
+        if existing and len(existing) != len(paths):
+            missing = ", ".join(path.name for path in paths if not path.is_file())
+            raise RuntimeError(
+                f"Refusing partial qualification for {slug}; missing {missing}."
+            )
+        if existing:
+            return (
+                import_matched_e0_e2_evidence(
+                    paths,
+                    identity,
+                    hardware=spec.get("hardware", "Apple M4 Pro (Mac16,7), 48 GB"),
+                    evidence_date=spec.get("qualification_date", "2026-09-03"),
+                ),
+                paths,
+            )
+    evidence_path = (
+        MLX_RESULTS / spec["paired_evidence"] if spec.get("paired_evidence") else None
+    )
+    if evidence_path and evidence_path.is_file():
+        return (
+            import_mlx_paired_evidence(
+                evidence_path,
+                identity,
+                hardware="Apple M4 Pro (Mac16,7), 48 GB",
+                artifact_reference=f"qualification/{evidence_path.name}",
+            ),
+            [evidence_path],
+        )
+    return [], []
 
 
 def build_one(slug: str, *, force: bool = False) -> Path:
@@ -622,17 +700,7 @@ def build_one(slug: str, *, force: bool = False) -> Path:
     comparison = json.loads((result_dir / "comparison.json").read_text(encoding="utf-8")) if has_router else None
     router_dir = ROUTERS / f"{slug}-combined-d128"
     router_config = json.loads((router_dir / "config.json").read_text(encoding="utf-8")) if has_router else None
-    evidence_path = MLX_RESULTS / spec["paired_evidence"] if spec.get("paired_evidence") else None
-    paired_evidence = import_mlx_paired_evidence(
-        evidence_path,
-        EvidenceIdentity(
-            model_id=spec["base_model"], model_revision=spec["revision"],
-            quantization=spec.get("quantization", "4bit"), engine="mlx-lm", engine_version="0.31.3",
-            profile="balanced", execution_mode="Native Memory",
-        ),
-        hardware="Apple M4 Pro (Mac16,7), 48 GB",
-        artifact_reference=f"qualification/{spec['paired_evidence']}",
-    ) if evidence_path and evidence_path.is_file() else []
+    paired_evidence, paired_artifacts = _load_paired_evidence(slug, spec)
     structural_validation = QUANTIZED_RESULTS / slug / "structural_validation.json"
     runtime_smoke = QUANTIZED_RESULTS / slug / "runtime_smoke.json"
     output = BUNDLES / spec["repo"].split("/", 1)[1]
@@ -652,9 +720,23 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             shutil.copy2(result_dir / "feature_dataset_manifest.json", qualification / "feature_dataset_manifest.json")
             shutil.copy2(RESULTS / "summary.json", qualification / "catalog_summary.json")
         if paired_evidence:
-            shutil.copy2(evidence_path, qualification / spec["paired_evidence"])
+            for evidence_path in paired_artifacts:
+                shutil.copy2(evidence_path, qualification / evidence_path.name)
+            adaptor_state = (
+                MeasurementState.NEEDS_RUN
+                if has_router
+                else MeasurementState.NO_QUALIFIED_ADAPTER
+            )
             canonical = [
-                canonicalize_paired_transport_evidence(row).serialize_for_control_plane()
+                canonicalize_paired_transport_evidence(
+                    row,
+                    adaptor_state=adaptor_state,
+                    adaptor_note=(
+                        "The exact learned router is bundled but has not completed the matched end-task arm."
+                        if has_router
+                        else "No learned adaptor qualified for this exact model revision and quantization."
+                    ),
+                ).serialize_for_control_plane()
                 for row in paired_evidence
                 if row["dataset"] == "combined"
             ]
@@ -667,7 +749,15 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             shutil.copy2(runtime_smoke, qualification / "runtime_smoke.json")
         (run / "pra.yaml").write_text(
             yaml.safe_dump(
-                _manifest(slug, spec, comparison, router_config, paired_evidence), sort_keys=False
+                _manifest(
+                    slug,
+                    spec,
+                    comparison,
+                    router_config,
+                    paired_evidence,
+                    paired_artifacts,
+                ),
+                sort_keys=False,
             ),
             encoding="utf-8",
         )

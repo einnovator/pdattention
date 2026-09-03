@@ -147,7 +147,6 @@ def _matched_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     ttft = values("serving", "ttft_ms")
     itl = values("serving", "itl_ms")
     completion = values("serving", "total_latency_ms")
-    memory = values("pra", "active_detail_bytes")
     return {
         "quality_metric": "token_f1",
         "quality": average("quality", "token_f1"),
@@ -176,9 +175,9 @@ def _matched_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "p95": _percentile(completion, 0.95),
             "p99": _percentile(completion, 0.99),
         },
-        # The common contract reports active native detail rather than allocator
-        # peak. Preserve that distinction while still filling the resource row.
-        "peak_memory_bytes": max(memory) if memory else None,
+        # Allocator peak is deliberately absent: active native detail is not a
+        # substitute for total process or accelerator peak memory.
+        "peak_memory_bytes": None,
     }
 
 
@@ -423,7 +422,12 @@ def import_mlx_paired_evidence(
     return imported
 
 
-def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalEvidenceRecord:
+def canonicalize_paired_transport_evidence(
+    row: Mapping[str, Any],
+    *,
+    adaptor_state: MeasurementState = MeasurementState.NOT_MEASURED,
+    adaptor_note: str | None = None,
+) -> CanonicalEvidenceRecord:
     """Map a legacy selector-frozen E0/E2 row without inventing a bundle run.
 
     The original engine path is No PRA and the native path is PRA without a
@@ -443,6 +447,7 @@ def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalE
             "token_f1": source.get("quality"),
             "exact_match": source.get("exact_match"),
             "gold_answer_log_probability": source.get("gold_answer_logprob"),
+            "evidence_recall": source.get("evidence_recall"),
             "visible_tokens": source.get("visible_tokens"),
             "selected_native_kv_tokens": source.get("selected_native_kv_tokens"),
             "active_detail_bytes": source.get("active_detail_bytes"),
@@ -454,6 +459,7 @@ def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalE
             "itl_p95_ms": source.get("itl_ms", {}).get("p95") if isinstance(source.get("itl_ms"), Mapping) else None,
             "itl_p99_ms": source.get("itl_ms", {}).get("p99") if isinstance(source.get("itl_ms"), Mapping) else None,
             "output_tokens_per_second": source.get("output_tokens_per_second"),
+            "requests_per_second": source.get("requests_per_second"),
             "completion_latency_mean_ms": completion.get("mean") if isinstance(completion, Mapping) else None,
             "peak_memory_bytes": source.get("peak_memory_bytes"),
         }
@@ -468,8 +474,9 @@ def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalE
     metric_names = tuple(dict.fromkeys((*baseline_observations, *pra_observations)))
     missing_bundle = {
         name: MetricObservation.missing(
-            MeasurementState.NOT_MEASURED,
-            "The paired engine run did not resolve and record the immutable Runtime Bundle.",
+            adaptor_state,
+            adaptor_note
+            or "The paired engine run did not resolve and record the immutable Runtime Bundle.",
         )
         for name in metric_names
     }

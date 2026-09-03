@@ -321,9 +321,21 @@ def render_markdown_table(
             "| " + " | ".join(cells) + " |"
         )
     if compact_missing and not include_adaptor:
+        adaptor_states = {
+            observation.state
+            for name, observation in record.conditions[
+                EvidenceCondition.PRA_ADAPTOR_BUNDLE
+            ].metrics.items()
+            if name in metric_names
+        }
+        state = (
+            next(iter(adaptor_states)).value
+            if len(adaptor_states) == 1
+            else MeasurementState.NEEDS_RUN.value
+        )
         lines += [
             "",
-            "PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.",
+            f"PRA - Adaptor Bundle: `{state}` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.",
         ]
     return "\n".join(lines) + "\n"
 

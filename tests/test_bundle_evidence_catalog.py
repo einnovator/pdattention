@@ -24,6 +24,7 @@ from pra_hf.bundle_evidence import (
 )
 from pra_hf.canonical_evidence import EvidenceCondition, MeasurementState
 from experiments.paper4_5_runtime.build_canonical_evidence_audit import build_audit
+from experiments.paper4_5_runtime.run_exact_identity_qualification import build_command
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -366,3 +367,21 @@ def test_published_cards_use_actionable_coverage_states() -> None:
                 "NO_QUALIFIED_ADAPTER",
             )
         ), card
+
+
+def test_exact_identity_runner_pins_bundle_model_and_revision() -> None:
+    command, output = build_command(
+        "llama3.2-1b-mlx-8bit",
+        "qasper",
+        max_examples=20,
+        concurrency=4,
+    )
+
+    assert command[command.index("--model") + 1] == (
+        "mlx-community/Llama-3.2-1B-Instruct-8bit"
+    )
+    assert command[command.index("--revision") + 1] == (
+        "d48cdf0a4ea22d893b7c63a99d6a693e24822795"
+    )
+    assert command[command.index("--max-examples") + 1] == "20"
+    assert output.name == "matched_e0_e2_qasper.json"
