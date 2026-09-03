@@ -10,58 +10,33 @@ Semantic Resource Identity, Continuous-Batching Evidence, and the Native K/V Bou
 \maketitle
 
 \begin{abstract}
-OpenVINO GenAI provides continuous batching, bounded K/V scheduling, prefix
-caching, eviction controls, and execution across Intel CPU, GPU, and NPU
-devices. Progressive Retrieval Attention (PRA) adds semantic, query-addressed
-resources that must remain distinct from sequential prefixes. We implement an
-OpenVINO provider, an E0 selected-text adapter, and tested contracts for
-topology-bound native K/V handles, authorization, request pinning,
-exactly-once attachment, cleanup, and prefix-pool exclusion. A live audit of
-OpenVINO 2026.3.1 and OpenVINO GenAI 2026.3.1.0 confirms all required
-continuous-batching controls, but finds no public operation for attaching
-arbitrary selected non-prefix K/V. We therefore report native E2 as blocked,
-not as an implicit consequence of prefix caching. On Qwen2-0.5B-Instruct INT4,
-selected-text and full-context E0 recover the controlled answer in every
-evidence-bearing request on an Intel i7-1355U CPU and Iris Xe GPU. Selected
-text uses 63 input tokens instead of 1,573. On GPU it reduces cold TTFT from
-1,129.6 to 102.9 ms. Under explicitly warmed continuous batching at eight
-shared requests, it reaches 8.48 requests/s rather than 7.39 and reduces TTFT
-p99 from 297.7 to 148.9 ms. An expanded ten-wave sweep reaches concurrency 16:
-selected context retains 100\% controlled recovery and 188.9 output tokens/s,
-whereas shared full context follows a decoy in every request and reaches 141.1
-output tokens/s. A separate 360-request natural cohort covers QASPER, HotpotQA,
-and 2WikiMultiHopQA; on Hotpot, selected context raises token F1 from 0.080 to
-0.310 while cutting TTFT p99 from 2.50 s for full context to 387 ms. A matched
-Qwen2.5-1.5B INT4 replication adds another 360 requests. Selected/full F1 is
-0.260/0.282 on QASPER and 0.332/0.346 on HotpotQA, while median full/selected
-TTFT ratios are 3.29 and 1.91. On 2Wiki the quality gap remains larger
-(0.157/0.259), localizing a context-coverage limitation rather than an engine
-transport failure. A cross-family TinyLlama-1.1B replication adds 360 more
-requests. Its selected/full F1 is 0.080/0.049 on QASPER, 0.090/0.110 on
-HotpotQA, and 0.083/0.080 on 2Wiki, while full context costs 1.71--4.18 times
-the selected median TTFT. The low absolute scores preclude a capability claim,
-but show that the transport advantage is not Qwen-tokenizer-specific. A second
-149-example, 1,341-request natural-QA ablation holds the evidence fixed while
-adding one to eight answer-aware or low-overlap documents. QASPER F1 peaks at
-0.265 with four answer-aware additions, versus 0.166 with evidence alone, but
-low-overlap additions reduce it to 0.140 at eight. A paired forensic audit shows
-that the QASPER gain is concentrated when added text contains answer terms;
-HotpotQA and 2Wiki do not show the same benefit. This is a diagnostic of lexical
-reinforcement and recency, not a deployable query-only selector. A counterbalanced
-60-request physical-telemetry run on Iris Xe finds that selected E0 reduces
-median TTFT from 219.5 to 118.3 ms and OpenVINO-reported GPU allocation from
-1,643 to 1,563 MiB. A 16-cell process-isolated lifecycle matrix compares
-OpenVINO GenAI 2026.2.1.0 with the latest 2026.3.1.0. Both releases pass
-short, one-shot long, long-to-short, and all cache-disabled cells, but the
-second cached long request violates cross-layer block release in both. Each
-teardown leaks one sequence block table and 59 of 128 blocks. The latest
-release therefore does not close this repeated-long prefix-cache/eviction
-defect. A
-three-point pressure curve keeps selection at 63 tokens while full context
-grows from 417 to 831 tokens; selected recovery remains exact throughout. The
-result establishes a reproducible transport
-baseline and a precise extension boundary; it does not establish native
-OpenVINO PRA parity or memory savings.
+We ask whether Progressive Retrieval Attention (PRA) selected and native
+context can translate to OpenVINO, and which engine-ownership defect blocks
+production qualification. OpenVINO GenAI exposes prefix caching, continuous
+batching, and physical scheduling controls, but no public operation for
+attaching arbitrary non-prefix K/V. We therefore implement a capability-honest
+Selected Context path (E0), preserve Native Memory (E2) as an explicit blocked
+gate, and test transport, quality, physical telemetry, and cache lifecycle.
+
+Three model configurations contribute 1,080 natural QASPER, HotpotQA, and
+2Wiki requests. Selected context is faster in all nine model--dataset
+comparisons. For Qwen2.5-1.5B INT4, selected/full F1 is 0.260/0.282 on QASPER
+and 0.332/0.346 on HotpotQA, with full/selected median TTFT ratios of 3.29 and
+1.91; 2Wiki retains a larger 0.157/0.259 coverage gap. A separate
+1,341-request distractor study shows that QASPER gains depend on answer-aware
+lexical additions rather than generic context breadth. Counterbalanced Iris Xe
+telemetry reduces median TTFT from 219.5 to 118.3 ms and plugin-reported
+allocation from 1,643 to 1,563 MiB under selected E0.
+
+The blocking result is a reproducible cache-lifecycle failure. After one
+successful cached 1,573-token request, the next repeated-long request violates
+\texttt{m\_ref\_count > 0}; teardown reports a leaked sequence block table and
+58 unreleased blocks. The failure persists in both OpenVINO GenAI 2026.2.1.0
+and 2026.3.1.0 and with a larger block pool, while one-shot long,
+long-to-short, and cache-disabled controls remain healthy. Logical selection
+and E0 serving are therefore useful and measured. Safe native lifecycle
+ownership is not established, so OpenVINO remains an E0 deployment until a
+legitimate detached-K/V attachment and cleanup contract exists.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -109,6 +84,11 @@ sharing, promotion, and eviction scheduler-owned. This paper validates E0 and
 specifies, but does not measure, the native levels.
 
 \section{Introduction}
+This paper asks a narrow engine question: can PRA-selected context retain its
+semantic and economic value in OpenVINO, and what prevents safe native
+attachment? The companion runtime paper defines the common E0/E2/E3 and
+evidence contracts~\cite{praruntime}; here we test only the OpenVINO mapping.
+
 An inference engine's prefix cache identifies previously computed sequential
 token histories. PRA identifies immutable logical resources selected by a
 query. These identities have different lifetimes and authorization rules:
@@ -622,7 +602,7 @@ memory scores jointly. A geometry ladder should then compare ordinary prefix,
 geometry-matched cached source, full native source, sparse multi-record source,
 and cached decode before any economics claim.
 
-\section{Limitations}
+\section{Negative Results and Limitations}
 The controlled task verifies evidence transport; each paired natural cohort
 has only 20 unique examples per dataset and the distractor ablation has 49--50
 per dataset with one generation per condition. Three small INT4 models from
@@ -670,6 +650,9 @@ The version matrix is produced one process per cell by
 into Table~\ref{tab:openvino-cache-lifecycle-versions}.
 
 \begin{thebibliography}{9}
+\bibitem{praruntime}
+J. Simao. \emph{Productizing Progressive Retrieval Attention: A Runtime,
+Gateway, and Deployment Architecture}. 2026.
 \bibitem{ovgenai}
 Intel. \emph{OpenVINO GenAI LLMPipeline and SchedulerConfig API Reference}.
 \url{https://docs.openvino.ai/2026/api/genai_api/}
