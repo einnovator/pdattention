@@ -6,6 +6,11 @@ tags:
 - progressive-retrieval-attention
 - adapter
 - long-context
+datasets:
+- 2wikimultihopqa
+- combined
+- hotpotqa
+- qasper
 license: gemma
 ---
 
@@ -27,14 +32,20 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Engine: **mlx**
 - Recommended PRA mode: **Selected Context**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **SMOKE**
-- Native Memory status: **AVAILABLE**
+- Bundle evidence tier: **CONTROLLED**
+- Native Memory status: **CONTROLLED**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
 
 ## Headline results
 
-No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| combined (n=60) | token_f1=0.07352 | token_f1=0.06991 | -0.0036 | -91.1% | -5.1% | +5.9% | 3/60 | ENGINE_QUALIFIED |
+
+All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
+
+Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA; cold direct query (n=60); 2026-09-03; PRA commit `None`; artifact `qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json`; SHA-256 `ca7c9a7929b5376b269b0b312d01dff3f5ab7f3263a5fba7c3ce084da6546fad,80cc399baab9fc1a500bb9375ef0d82ce47e8cb1bd552373970309cebcc1ea0d,0177e860677d0f12513bbf155bac3ab849710f5e6456ed1ab15528661ffa2384`.
 
 ## Exact-identity runtime smoke
 
@@ -58,15 +69,62 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 ## Canonical three-condition evidence
 
-A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
+Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.
 
-| Condition | Evidence status |
-| --- | --- |
-| No PRA | `NEEDS_RUN` |
-| PRA - No Adaptor | `NEEDS_RUN` |
-| PRA - Adaptor Bundle | `NO_QUALIFIED_ADAPTER` |
+### combined / mlx-lm / balanced
 
-Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
+Exact identity: `mlx-community/gemma-3-1b-it-8bit` at `7b963136f21d05ca8b367c93a9c47a7944ad281a` on `Apple M4 Pro (Mac16,7), 48 GB`.
+
+#### Quality
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.0735174 | 0.0699096 | -0.0036078 (-4.91%) |
+| Exact Match | fraction | higher_is_better | 0 | 0 | +0 |
+| Gold Answer Log Probability | log_probability | higher_is_better | -23.0353 | -20.6684 | +2.36697 (-10.28%) |
+
+PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+
+#### Context
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 395.317 | 35.1667 | -360.15 (-91.10%) |
+| Selected Native K/V Tokens | token | neutral | 0 | 360.15 | +360.15 |
+
+PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+
+#### Serving
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| TTFT p50 (ms) | ms | lower_is_better | 32.6564 | 31.0044 | -1.65196 (-5.06%) |
+| TTFT p95 (ms) | ms | lower_is_better | 39.1253 | 46.6731 | +7.54779 (+19.29%) |
+| TTFT p99 (ms) | ms | lower_is_better | 46.3028 | 58.7391 | +12.4364 (+26.86%) |
+| ITL p50 (ms) | ms | lower_is_better | 5.91003 | 6.36293 | +0.452904 (+7.66%) |
+| ITL p95 (ms) | ms | lower_is_better | 6.44007 | 7.00265 | +0.562576 (+8.74%) |
+| ITL p99 (ms) | ms | lower_is_better | 7.41584 | 7.40068 | -0.0151522 (-0.20%) |
+| Output Tokens Per Second | output_token/s | higher_is_better | 141.269 | 133.394 | -7.87498 (-5.57%) |
+| Completion Latency Mean (ms) | ms | lower_is_better | 170.376 | 180.421 | +10.0445 (+5.90%) |
+
+PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+
+#### Resources
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 9.58863e+06 | +9.58863e+06 |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 9.58863e+06 | +9.58863e+06 |
+
+PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+
+#### Routing
+
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | +0 (+0.00%) |
+
+PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
 
 ## Installation
 
@@ -96,15 +154,31 @@ pra serve mlx-community/gemma-3-1b-it-8bit -e mlx -a EInnovator/pra-gemma3-1b-ml
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | SMOKE | AVAILABLE | NOT_APPLICABLE | Selected Context with BALANCED |
+| mlx | validated | CONTROLLED | NOT_APPLICABLE | Selected Context with BALANCED |
 
 ## End-to-end qualification
 
-What remains to be measured: paired end-task quality for this exact bundle identity.
+| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| qasper (n=20) | Selected Context | token_f1=0.06609 | 400.2 | 27.46 ms | 166 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| qasper (n=20) | Native Memory | token_f1=0.0443 | 30.05 | 24.88 ms | 175.7 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| hotpotqa (n=20) | Selected Context | token_f1=0.08701 | 415.6 | 32.89 ms | 171 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| hotpotqa (n=20) | Native Memory | token_f1=0.1083 | 40.5 | 31.13 ms | 180.7 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| 2wikimultihopqa (n=20) | Selected Context | token_f1=0.06745 | 370.1 | 35.99 ms | 174.1 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| 2wikimultihopqa (n=20) | Native Memory | token_f1=0.0571 | 34.95 | 34.54 ms | 184.8 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| combined (n=60) | Selected Context | token_f1=0.07352 | 395.3 | 32.66 ms | 170.4 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+| combined (n=60) | Native Memory | token_f1=0.06991 | 35.17 | 31 ms | 180.4 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
 
 ## Native Memory qualification
 
-What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.
+Native Memory uses the same selector output as Selected Context. It is recommended only where the profile and engine tables say so.
+
+| Workload | Selected native K/V tokens | Active detail | Peak memory | Completion cost vs Selected Context |
+| --- | ---: | ---: | ---: | ---: |
+| qasper | 370.2 | 9.40 MiB | NEEDS_RUN | 1.059x |
+| hotpotqa | 375.1 | 9.52 MiB | NEEDS_RUN | 1.057x |
+| 2wikimultihopqa | 335.2 | 8.51 MiB | NEEDS_RUN | 1.062x |
+| combined | 360.1 | 9.14 MiB | NEEDS_RUN | 1.059x |
 
 ## Research diagnostics
 
@@ -123,10 +197,10 @@ pra report .pra/runs/qasper --format html
 ## Known limitations
 
 - No learned router is bundled for this exact quantized identity; routing-adapter transfer from another quantization is intentionally disallowed.
-- Only immutable-config structural validation is available for this exact quantized identity.
-- Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity.
+- Paired natural-QA evidence contains 20 examples per dataset and supports engine qualification, not production qualification.
+- Native Memory is measured but remains a candidate because the exact-output equivalence gate did not pass.
 - The qualification identity is the exact 8bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
-- The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt; it is not an end-task quality or serving benchmark.
+- The selector-frozen natural-QA run qualifies the generic Native Memory path; an exact learned-adaptor arm still requires a separate run.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
@@ -135,8 +209,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
-- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- PRA commit: `03a72c91472c33ab5b73715cd78eed1032934df2`
+- Bundle build commit: `03a72c91472c33ab5b73715cd78eed1032934df2`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

@@ -109,6 +109,8 @@ SPECS = {
         "post_training": "general instruction tuning",
         "qualification_date": "2026-09-03",
         "routing_artifact": False,
+        "matched_evidence": True,
+        "evidence_engine_version": "5.16.1",
     },
     "qwen3-4b": {
         "label": "Qwen3-4B",
@@ -512,10 +514,16 @@ def _manifest(
         "runtime_compatibility": (
             {
                 "hf": {
-                    "selected_context": "validated" if comparison is not None else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
-                    "native_memory": "AVAILABLE",
+                    "selected_context": "validated" if (paired_evidence or comparison is not None) else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
+                    "native_memory": (
+                        "QUALIFIED"
+                        if native_recommended
+                        else "CONTROLLED"
+                        if paired_evidence
+                        else "AVAILABLE"
+                    ),
                     "native_serving": "NOT_APPLICABLE",
-                    "recommended": "Selected Context with BALANCED",
+                    "recommended": "Native Memory with BALANCED" if native_recommended else "Selected Context with BALANCED",
                 },
             }
             if engine == "hf"
@@ -669,12 +677,15 @@ def _manifest(
 def _load_paired_evidence(slug: str, spec: dict) -> tuple[list[dict], list[Path]]:
     """Load only complete, exact-identity paired evidence for one bundle."""
 
+    engine = spec.get("engine", "mlx")
     identity = EvidenceIdentity(
         model_id=spec["base_model"],
         model_revision=spec["revision"],
         quantization=spec.get("quantization", "4bit"),
-        engine="mlx-lm",
-        engine_version="0.31.3",
+        engine="huggingface_eager" if engine == "hf" else "mlx-lm",
+        engine_version=spec.get(
+            "evidence_engine_version", "0.31.3" if engine == "mlx" else ""
+        ),
         profile="balanced",
         execution_mode="Native Memory",
     )

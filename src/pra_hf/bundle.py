@@ -681,21 +681,21 @@ class BundleBuilder:
 
 def _metric(value: Any) -> str:
     if value is None or value == "":
-        return "NOT_MEASURED"
+        return "NEEDS_RUN"
     return f"{value:.4g}" if isinstance(value, float) else str(value)
 
 
 def _signed(value: Any) -> str:
-    return "NOT_MEASURED" if value is None else f"{float(value):+.4f}"
+    return "NEEDS_RUN" if value is None else f"{float(value):+.4f}"
 
 
 def _signed_pct(value: Any) -> str:
-    return "NOT_MEASURED" if value is None else f"{float(value):+.1f}%"
+    return "NEEDS_RUN" if value is None else f"{float(value):+.1f}%"
 
 
 def _bytes(value: Any) -> str:
     if value is None:
-        return "NOT_MEASURED"
+        return "NEEDS_RUN"
     amount = float(value)
     unit = "B"
     for candidate in ("KiB", "MiB", "GiB", "TiB"):

@@ -300,7 +300,6 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     ("bundle_name", "bits", "runtime"),
     [
         ("pra-qwen3-8b-mlx-6bit", 6, "MLX"),
-        ("pra-gemma3-1b-mlx-8bit", 8, "MLX"),
         ("pra-qwen2-5-1-5b-instruct-bnb-8bit", 8, "bitsandbytes/PyTorch"),
     ],
 )
@@ -324,6 +323,32 @@ def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
     assert "Exact-identity runtime smoke" in card
     assert "RUNTIME_SMOKE_VALIDATED" in card
     assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
+
+
+def test_exact_identity_8bit_native_gates_distinguish_llama_and_gemma() -> None:
+    llama = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles/pra-llama3-2-1b-mlx-8bit"
+    )
+    gemma = PRAModelBundle.from_pretrained(
+        ROOT / "artifacts/pra_hf/bundles/pra-gemma3-1b-mlx-8bit"
+    )
+
+    assert llama.qualification["status"] == "ENGINE_QUALIFIED"
+    assert llama.qualification["headline"][0]["semantic_equivalence"] == {
+        "exact_output_pairs": 60,
+        "paired_examples": 60,
+    }
+    assert llama.runtime_compatibility["mlx"]["recommended"] == (
+        "Native Memory with BALANCED"
+    )
+    assert gemma.qualification["status"] == "CONTROLLED"
+    assert gemma.qualification["headline"][0]["semantic_equivalence"] == {
+        "exact_output_pairs": 3,
+        "paired_examples": 60,
+    }
+    assert gemma.runtime_compatibility["mlx"]["recommended"] == (
+        "Selected Context with BALANCED"
+    )
 
 
 def test_exact_8bit_learned_router_is_opt_in_and_keeps_smoke_scope_separate() -> None:

@@ -114,7 +114,11 @@ def main() -> None:
     parser.add_argument(
         "--model",
         required=True,
-        choices=tuple(slug for slug, spec in SPECS.items() if spec.get("matched_evidence")),
+        choices=tuple(
+            slug
+            for slug, spec in SPECS.items()
+            if spec.get("matched_evidence") and spec.get("engine", "mlx") == "mlx"
+        ),
     )
     parser.add_argument("--dataset", choices=(*DATASETS, "all"), default="all")
     parser.add_argument("--max-examples", type=int, default=20)

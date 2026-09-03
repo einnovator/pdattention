@@ -216,6 +216,9 @@ def import_matched_e0_e2_evidence(
             "engine": identity.engine,
             "engine_version": identity.engine_version,
         }
+        if payload.get("quantization") is not None:
+            actual["quantization"] = _quantization(payload.get("quantization"))
+            expected["quantization"] = _quantization(identity.quantization)
         mismatches = [
             f"{key}: expected {expected[key]!r}, got {actual[key]!r}"
             for key in expected
