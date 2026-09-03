@@ -1361,6 +1361,32 @@ report it separately from strict EM, token F1, and the official MultiHop-RAG
 token-intersection score. Detailed gzip artifacts retain every question,
 candidate receipt, selected character interval, metric, and failure class.
 
+The powered extension does not treat PRA as one arm.  It names five execution
+conditions: 	exttt{NO_PRA_STANDARD_RAG}, selected context and native memory
+without an adaptor, and the corresponding two bundle conditions.  The latter
+remain 	exttt{NO_QUALIFIED_ADAPTER} unless the exact model, precision, and
+MultiHop-RAG profile are qualified.  The unmodified BM25 candidate receipt is
+shared throughout.  Standard RAG uses global BM25 chunk packing; a stronger
+conventional control reranks the same chunks with the pinned
+path{cross-encoder/ms-marco-MiniLM-L-6-v2}.  Generic PRA uses its deterministic
+BM25/hashed-semantic fusion, while a stronger PRA control consumes the same
+cross-encoder ordering.  This is a selector comparison, not a retriever race.
+
+For each PRA ordering, one condition-independent selection receipt freezes
+document IDs, chunk IDs, character intervals, scores, order, and physical-token
+budget.  Selected Context serializes exactly that receipt as visible text;
+Native Memory encodes exactly the same text as detached MLX K/V.  A digest
+mismatch aborts the pair.  Cold rows include source ingestion.  Warm native
+rows reuse the retained immutable K/V, whereas the visible-text control
+re-prefills its selected text; the regimes are never averaged.  The primary
+powered cell is the fixed 50-question, seed-11 cohort at $N=20$ and 2K tokens;
+the boundary cell uses $N=50$ and 4K.  All generated rows retain normalized EM,
+token F1, the upstream lowercased token-intersection score, answer availability,
+evidence coverage, TTFT/ITL, completion and end-to-end latency, selected native
+tokens, K/V bytes, and peak unified memory.  Failure labels identify first-stage
+misses, RAG packing, PRA selection or distractors, materialization, generation,
+formatting, native realization, and bundle regression separately.
+
 \section{Results}
 
 \subsection{Five product questions}

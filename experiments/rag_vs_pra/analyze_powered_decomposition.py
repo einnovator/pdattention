@@ -25,6 +25,26 @@ def _load_rows(path: Path) -> list[dict[str, object]]:
         return [json.loads(line) for line in stream if line.strip()]
 
 
+def _normalize_failure_classes(rows: Sequence[dict[str, object]]) -> None:
+    """Apply the current stage taxonomy to rows from resumable older runners."""
+
+    for row in rows:
+        if row.get("status") != "MEASURED":
+            continue
+        gold = set(map(str, row.get("gold_document_ids", [])))
+        candidates = set(map(str, row.get("candidate_document_ids", [])))
+        selected = set(map(str, row.get("selected_document_ids", [])))
+        condition = str(row["condition"])
+        if not gold.issubset(candidates):
+            row["failure_class"] = "FIRST_STAGE_RETRIEVAL_MISS"
+        elif condition == ContextCondition.NO_PRA_STANDARD_RAG.value and not gold.issubset(selected):
+            row["failure_class"] = "STANDARD_RAG_PACKING_MISS"
+        elif condition != ContextCondition.NO_PRA_STANDARD_RAG.value and not gold.intersection(selected):
+            row["failure_class"] = "PRA_SELECTOR_MISS"
+        elif condition != ContextCondition.NO_PRA_STANDARD_RAG.value and not gold.issubset(selected):
+            row["failure_class"] = "PRA_DISTRACTOR_SELECTION"
+
+
 def _primary_rows(
     summaries: Sequence[Mapping[str, object]], candidate_count: int, token_budget: int
 ) -> list[Mapping[str, object]]:
@@ -133,7 +153,10 @@ def _persistent_curve(
     seen_chunks: set[str] = set()
     cumulative_visible = 0
     cumulative_unique_native = 0
-    cumulative_wall = 0.0
+    cumulative_wall = {
+        ContextCondition.NO_PRA_STANDARD_RAG.value: 0.0,
+        ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value: 0.0,
+    }
     result = []
     for row in selected:
         condition = str(row["condition"])
@@ -149,16 +172,15 @@ def _persistent_curve(
                     seen_chunks.add(chunk_id)
                     cumulative_unique_native += int(interval["token_count"])
         serving = row.get("serving_metrics", {})
-        cumulative_wall += float(serving.get("total_latency_ms") or 0.0) + float(
-            serving.get("ingestion_ms") or 0.0
-        )
+        # total_latency_ms already includes ingestion in the powered schema.
+        cumulative_wall[condition] += float(serving.get("total_latency_ms") or 0.0)
         result.append(
             {
                 "example_id": row["example_id"],
                 "condition": condition,
                 "cumulative_visible_tokens": cumulative_visible,
                 "cumulative_unique_native_tokens": cumulative_unique_native,
-                "cumulative_wall_ms": cumulative_wall,
+                "cumulative_wall_ms": cumulative_wall[condition],
             }
         )
     return result
@@ -262,6 +284,7 @@ def main() -> None:
 
     root = args.input_dir
     rows = _load_rows(root / "condition_results.jsonl.gz")
+    _normalize_failure_classes(rows)
     summaries = summarize_rows(rows)
     failures = _failure_rows(rows)
     deltas = _deltas(rows)

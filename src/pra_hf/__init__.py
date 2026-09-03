@@ -639,6 +639,26 @@ __all__ += [
     "select_context",
 ]
 
+from .rag_powered import (
+    POWERED_CONDITIONS,
+    official_multihop_rag_score,
+    paired_delta,
+    qualification_gates,
+    summarize_rows,
+    validate_selector_frozen_rows,
+    validate_strong_reranker_parity,
+)
+
+__all__ += [
+    "POWERED_CONDITIONS",
+    "official_multihop_rag_score",
+    "paired_delta",
+    "qualification_gates",
+    "summarize_rows",
+    "validate_selector_frozen_rows",
+    "validate_strong_reranker_parity",
+]
+
 __all__ += [
     "AgentTransportCapabilities",
     "AgentTransportError",

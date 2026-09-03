@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from experiments.rag_vs_pra.analyze_powered_decomposition import (
+    _normalize_failure_classes,
+    _paper_table,
+)
 from pra_hf.rag_evaluation import ContextCondition
 from pra_hf.rag_powered import (
     official_multihop_rag_score,
@@ -14,6 +18,7 @@ from pra_hf.rag_powered import (
     qualification_gates,
     summarize_rows,
     validate_selector_frozen_rows,
+    validate_strong_reranker_parity,
     write_results,
 )
 
@@ -75,6 +80,18 @@ def test_selector_freeze_validation_and_paired_delta() -> None:
         validate_selector_frozen_rows(rows)
 
 
+def test_cold_and_warm_are_never_aggregated_together() -> None:
+    rows = [
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "cold", regime="COLD"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "cold", regime="COLD"),
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "warm", regime="WARM"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "warm", regime="WARM"),
+    ]
+    summaries = summarize_rows(rows)
+    assert {row["regime"] for row in summaries} == {"COLD", "WARM"}
+    assert all(row["examples"] == 1 for row in summaries)
+
+
 def test_bundle_and_card_gate_stays_closed_without_qualified_adapter() -> None:
     summaries = summarize_rows(
         [
@@ -93,3 +110,38 @@ def test_condition_results_jsonl_is_compressed_and_roundtrips(tmp_path: Path) ->
     write_results(path, rows)
     with gzip.open(path, "rt", encoding="utf-8") as stream:
         assert json.loads(stream.readline())["example_id"] == "q1"
+
+
+def test_failure_normalization_and_paper_table_generation() -> None:
+    selected = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    selected.update(
+        {
+            "selector_profile": "standard_bm25",
+            "gold_document_ids": ["gold-a", "gold-b"],
+            "candidate_document_ids": ["gold-a", "gold-b", "noise"],
+            "selected_document_ids": ["gold-a", "noise"],
+            "failure_class": "GENERATION_FAILURE",
+        }
+    )
+    _normalize_failure_classes([selected])
+    assert selected["failure_class"] == "STANDARD_RAG_PACKING_MISS"
+    table = _paper_table(summarize_rows([selected]))
+    assert "standard\\_bm25" in table
+    assert "Token F1" not in table
+
+
+def test_strong_reranker_visible_path_requires_exact_output_parity() -> None:
+    standard = _row(ContextCondition.NO_PRA_STANDARD_RAG, "shared")
+    standard.update(
+        {
+            "selector_profile": "strong_conventional_reranker",
+            "prediction": "Lisbon",
+        }
+    )
+    selected = _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "shared")
+    selected.update({"selector_profile": "pra_strong_reranker", "prediction": "Lisbon"})
+    validate_strong_reranker_parity([standard, selected])
+
+    selected["prediction"] = "Oslo"
+    with pytest.raises(ValueError, match="output mismatch"):
+        validate_strong_reranker_parity([standard, selected])

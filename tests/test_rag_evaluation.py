@@ -198,6 +198,33 @@ def test_powered_rag_condition_ids_are_exact() -> None:
     }
 
 
+def test_bundle_selection_receipt_requires_exact_id_and_revision() -> None:
+    documents, question, candidate = _fixture()
+    context = select_context(
+        condition=ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+        selector=PRAHybridSelector(),
+        query=question.question,
+        receipt=candidate,
+        documents=documents,
+        token_budget=8,
+        bundle_id="EInnovator/pra-fixture",
+        bundle_revision="a" * 40,
+    )
+    receipt = SelectionReceipt.from_context(
+        candidate_receipt_id=candidate.receipt_id,
+        example_id=question.example_id,
+        context=context,
+    )
+    assert receipt.bundle_revision == "a" * 40
+
+    with pytest.raises(ValueError, match="supplied together"):
+        SelectionReceipt.from_context(
+            candidate_receipt_id=candidate.receipt_id,
+            example_id=question.example_id,
+            context=replace(context, bundle_revision=None),
+        )
+
+
 def test_document_record_preserves_hierarchy_and_receipt_provenance() -> None:
     documents, _, receipt = _fixture()
     document = documents["bridge"]

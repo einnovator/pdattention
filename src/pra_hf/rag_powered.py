@@ -88,6 +88,38 @@ def validate_selector_frozen_rows(rows: Sequence[Mapping[str, object]]) -> None:
             raise ValueError(f"selector receipt mismatch for {key!r}")
 
 
+def validate_strong_reranker_parity(rows: Sequence[Mapping[str, object]]) -> None:
+    """Verify the shared strong-reranker visible-text plumbing control."""
+
+    pairs: dict[tuple[object, ...], dict[str, Mapping[str, object]]] = {}
+    profiles = {
+        "strong_conventional_reranker": "standard",
+        "pra_strong_reranker": "pra_selected",
+    }
+    for row in rows:
+        side = profiles.get(str(row.get("selector_profile")))
+        if side is None or row.get("status") != "MEASURED":
+            continue
+        if side == "pra_selected" and row.get("condition") != ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value:
+            continue
+        key = (
+            row["example_id"],
+            row["candidate_count"],
+            row["token_budget"],
+            row["regime"],
+        )
+        pairs.setdefault(key, {})[side] = row
+    for key, pair in pairs.items():
+        if set(pair) != {"standard", "pra_selected"}:
+            raise ValueError(f"strong reranker plumbing pair is incomplete for {key!r}")
+        standard = pair["standard"]
+        selected = pair["pra_selected"]
+        if standard.get("selection_receipt_id") != selected.get("selection_receipt_id"):
+            raise ValueError(f"strong reranker receipt mismatch for {key!r}")
+        if standard.get("prediction") != selected.get("prediction"):
+            raise ValueError(f"strong reranker visible-text output mismatch for {key!r}")
+
+
 def _metric(row: Mapping[str, object], name: str) -> float | None:
     if name in row and row[name] is not None:
         return float(row[name])
@@ -137,6 +169,7 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
     """Aggregate powered rows while preserving condition, selector, and regime."""
 
     validate_selector_frozen_rows(rows)
+    validate_strong_reranker_parity(rows)
     groups: dict[tuple[object, ...], list[Mapping[str, object]]] = {}
     for row in rows:
         key = (
