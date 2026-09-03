@@ -2426,12 +2426,47 @@ LaTeX table from one record.  Every current local bundle now declares
 engine, mode, profile, datasets, and evidence tier.  No learned-adaptor arm is
 inferred from the presence of a structural bundle.
 
-The primary Qwen3-4B FP32/BF16/INT8/INT4 MultiHop-RAG experiment, a matched
-non-Qwen replication, Qwen3-14B BF16, and cross-precision adaptor transfer are
-not complete.  Their ledger cells remain \texttt{NEEDS\_RUN} or
-\texttt{NO\_QUALIFIED\_ADAPTER}.  In particular, the existing Qwen3-4B 4-bit
-Selected Context and 8-bit Native Memory artifacts use different execution
-conditions and cannot be interpreted as a controlled precision effect.
+A new matched M5 run covers the two deployable middle rungs for Qwen3-4B.
+The INT4 and INT8 runs use the same 10 MultiHop-RAG questions, seed, candidate
+counts, 2,048-token budget, generation settings, and physical host.
+Table~\ref{tab:precision-rag} and Figure~\ref{fig:precision-rag} compare each
+precision's ordinary selected-text pipeline with its generic-PRA native-K/V
+pipeline.  At 20 candidates, the PRA token-F1 change narrows from $-0.0176$
+for INT4 to $-0.0035$ for INT8; at 50 candidates it narrows from $-0.0091$ to
+$+0.0036$.  INT8 preserves the dataset task score in both settings, whereas
+INT4 loses one or two of the ten answers.  Native execution costs 10.0--10.7\%
+more total latency for INT8 and 14.8--16.1\% for INT4 in this one-shot path.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched Qwen3-4B precision study on one M5 host ($n=10$, seed 11).
+``Base'' is standard selected text and ``PRA'' is generic PRA with detached
+native K/V; no learned document-RAG adaptor is qualified.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper4_5_runtime_productization/precision_rag/generated_precision_rag.tex}}
+\label{tab:precision-rag}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper4_5_runtime_productization/precision_rag/precision_rag_comparison.pdf}
+\caption{Quality and latency changes for the matched INT4 and INT8 deployed
+pipelines.  The small one-seed cohort is directional evidence, not a precision
+invariance claim.}
+\label{fig:precision-rag}
+\end{figure}
+
+This comparison deliberately reports deployed pipelines: the baseline uses
+the standard selector and visible text, while PRA uses the hybrid selector and
+detached native K/V.  Candidate generation is matched, but selector output and
+transport are not independently frozen.  The result therefore shows that the
+measured INT8 PRA pipeline is more robust than its INT4 counterpart; it does
+not isolate whether that difference comes from selection, representation, or
+their interaction.  A four-rung FP32/BF16/INT8/INT4 selector-frozen study, a
+matched non-Qwen replication, Qwen3-14B BF16, peak-memory measurement, and
+cross-precision adaptor transfer remain \texttt{NEEDS\_RUN}.  The absent
+learned-adaptor arms remain \texttt{NO\_QUALIFIED\_ADAPTER}.
 
 The expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs

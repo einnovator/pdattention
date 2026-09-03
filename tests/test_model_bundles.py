@@ -430,21 +430,21 @@ def test_hub_update_checks_remote_manifest_without_full_snapshot(
 def test_default_registry_contains_published_cross_family_catalog() -> None:
     entries = {entry.name: entry for entry in TrustedBundleRegistry.default().entries}
     expected = {
-        "pra-qwen2-5-1-5b-instruct": "f0ef6ba1135be1695cc5a343893ab5a8820b514e",
-        "pra-qwen2-5-coder-1-5b-instruct": "38a2ba7b09bd91c6df4db3c74de213ee382dbd58",
-        "pra-qwen3-4b-mlx-4bit": "1902507ae7ee1ec5b76b80535f371e0fbc846e7a",
-        "pra-qwen3-8b-mlx-4bit": "ae86fb861da4e35c62dc19e8a29a51a4b37d38c9",
-        "pra-qwen3-14b-mlx-4bit": "63d142cc9b96de59814da6a3efaa585f0fdec137",
-        "pra-qwen3-32b-mlx-4bit": "37c196b2a425f3a02fce66cb5006748201f202bd",
-        "pra-llama3-1-8b-mlx-4bit": "2ec1cf4464ea6db47134218c74553d7fa7beb7d2",
-        "pra-gemma3-1b-mlx-4bit": "07447e8f9c5f40f8eb46aaea3749176c77f4bb0a",
-        "pra-qwen3-4b-mlx-8bit": "2c72b50830c072f0da831a71a2803273757a6838",
-        "pra-qwen3-8b-mlx-8bit": "2e4f9d93b789e2eafe371e31cae1fc83df9703fb",
-        "pra-qwen3-14b-mlx-8bit": "63f30e4c891e1ceda435b5e905c4fa652af2ae35",
-        "pra-qwen3-8b-mlx-6bit": "4049d8b46b2ae8d78f041a8eb18303d525c79d68",
-        "pra-llama3-2-1b-mlx-8bit": "b98de7c1190699b418b46c61a53327876a938f67",
-        "pra-gemma3-1b-mlx-8bit": "3872838bc8d63a7b0bb8e3a65c7e9341f8638e03",
-        "pra-qwen2-5-1-5b-instruct-bnb-8bit": "05e27c6d339df3144134dc1b89b3e954b91b72a2",
+        "pra-qwen2-5-1-5b-instruct": "45710250fb61b37454ec4ae39306462f1a319a58",
+        "pra-qwen2-5-coder-1-5b-instruct": "d2899335c73c55330f7f62b53d4a5f0c8ebd3eed",
+        "pra-qwen3-4b-mlx-4bit": "3aa502e52151c727fb1e626eb1de452ea1d2203d",
+        "pra-qwen3-8b-mlx-4bit": "35d56163345a19aa1bbc5d0d7dcee92bc5ba44ff",
+        "pra-qwen3-14b-mlx-4bit": "367f08bdc636c753d707c77596e31836c10da9ec",
+        "pra-qwen3-32b-mlx-4bit": "b62b005ee741a13937ac935e2f9af22f2d51943a",
+        "pra-llama3-1-8b-mlx-4bit": "ea5a507d8eccbd94e7165f1cf10823ed09de72b7",
+        "pra-gemma3-1b-mlx-4bit": "14c6ba0146be6db185f1c246c9a5045348742363",
+        "pra-qwen3-4b-mlx-8bit": "d14a50549d1afbe05e2387a5ae566c8778251b59",
+        "pra-qwen3-8b-mlx-8bit": "cfd724f5fe1710ab43107b3a1c814521fa9b3120",
+        "pra-qwen3-14b-mlx-8bit": "f822731a05e20ed385572e70de9ef945f3ce2e0b",
+        "pra-qwen3-8b-mlx-6bit": "c330c72bbd406d8edf42b58f9ca357c081b40771",
+        "pra-llama3-2-1b-mlx-8bit": "f308f45b2bea6bc398b1fb6a18399667a9e760bf",
+        "pra-gemma3-1b-mlx-8bit": "adc924543c9a1646a7aacb28787566e2198741ee",
+        "pra-qwen2-5-1-5b-instruct-bnb-8bit": "b5e7f142adb815477344175eca495f9fcdee2cc5",
     }
 
     assert {name: entries[name].bundle_revision for name in expected} == expected

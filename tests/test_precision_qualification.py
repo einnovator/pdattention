@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from experiments.paper4_5_runtime.build_precision_ladder import build_ladder, write_ladder
+from experiments.paper4_5_runtime.analyze_precision_rag import build_comparison
 from pra_hf.precision import (
     MemoryGateObservation,
     MemoryGateStatus,
@@ -164,3 +165,17 @@ def test_precision_ladder_keeps_missing_cells_explicit(tmp_path) -> None:
     assert "MLX-8bit" in (tmp_path / "generated_precision_ladder.tex").read_text(
         encoding="utf-8"
     )
+
+
+def test_matched_precision_rag_keeps_conversion_and_missing_adaptor_explicit() -> None:
+    payload = build_comparison()
+    rows = payload["rows"]
+
+    assert len(rows) == 4
+    assert {row["precision_encoding"] for row in rows} == {
+        "MLX-4bit", "MLX-8bit"
+    }
+    assert {row["examples"] for row in rows} == {10}
+    assert {row["seed"] for row in rows} == {11}
+    assert all(row["adaptor_condition"] == "NO_QUALIFIED_ADAPTER" for row in rows)
+    assert all(row["peak_memory_bytes"] is None for row in rows)

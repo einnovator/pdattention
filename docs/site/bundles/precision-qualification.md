@@ -82,8 +82,22 @@ it does not fabricate benchmark values.
 The [bundle catalog](catalog.md) and [qualification matrix](qualification-matrix.md)
 show exact precision identities. The checked-in precision ladder currently
 contains matched MLX 4-bit and 8-bit evidence plus explicit pending FP32/BF16
-cells. The complete Qwen3-4B four-precision MultiHop-RAG study and
-cross-precision adaptor transfer remain open experiments.
+cells.
+
+A controlled M5 run also compares Qwen3-4B MLX 4-bit and 8-bit deployed
+pipelines on the same 10 MultiHop-RAG questions, seed, candidate counts, and
+2,048-token budget. Generic PRA changes token F1 by `-0.0176` and `-0.0091`
+at 4-bit, versus `-0.0035` and `+0.0036` at 8-bit for 20 and 50 candidates.
+The 8-bit task score is unchanged; the 4-bit arm loses one or two answers.
+PRA total latency is `1.100-1.107x` baseline at 8-bit and `1.148-1.161x` at
+4-bit.
+
+This is a matched *pipeline* comparison, not a selector-frozen transport
+ablation: the baseline uses standard selected-text retrieval, while PRA uses
+hybrid retrieval and detached native K/V. It is directional evidence that the
+8-bit pipeline is more robust in this cohort. The complete four-precision
+study, peak-memory capture, learned-adaptor arm, and cross-precision adaptor
+transfer remain open experiments.
 
 ## Encoding caveats
 
