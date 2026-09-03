@@ -451,7 +451,7 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     help_script = (static / "help.js").read_text(encoding="utf-8")
     styles = (static / "styles.css").read_text(encoding="utf-8")
     help_styles = (static / "help.css").read_text(encoding="utf-8")
-    assert all(name in html for name in ("jquery", "bootstrap", "dockview", "lucide", "marked", "purify"))
+    assert all(name in html for name in ("jquery", "bootstrap", "dockview", "lucide", "tippy", "marked", "purify"))
     assert '/static/app.js?v=' in html
     assert "localStorage" in script
     assert "resume_token" in script
@@ -476,6 +476,11 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert "data-sort" in script
     assert "data-open-engine" in script
     assert "field-info" in script
+    assert "tippy.delegate" in script
+    assert "placement: 'right-start'" in script
+    assert 'id="info-modal"' not in html
+    assert "loading-state" in script and "loading-spinner" in styles
+    assert "Loading remote fleet state" in script
     assert "Engine state" in script and "Desired state" in script
     assert "runtime_model_id" in script
     assert "dynamic_model_unload" in script
@@ -483,6 +488,7 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert ".left-collapsed .left-pane" in styles
     assert ".sort-button:hover .sort-icon" in styles
     assert ".table-link" in styles and "cursor: pointer" in styles
+    assert ".detail-field" in styles and "border: 0" in styles
     assert "pra-control-theme" in html + script
     assert 'id="user-menu-toggle"' in html
     assert 'id="help-drawer"' in html

@@ -32,7 +32,7 @@
     if (remember && current && current !== selected.slug) history.push(current);
     current = selected.slug;
     $('#help-title').text(selected.title);
-    $('#help-content').html('<div class="empty-state">Loading help...</div>');
+    $('#help-content').html('<div class="loading-state" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>Loading help</span></div>');
     $('#help-search-results').addClass('d-none').empty();
     $('#help-search').val('');
     updateBack();

@@ -5,6 +5,7 @@
     me: null,
     csrf: '',
     fleet: { items: [], summary: {} },
+    fleetLoaded: false,
     panels: new Map(),
     registryRecords: {},
     fleetFilters: { text: '', engine: '', model: '', status: '' },
@@ -56,7 +57,7 @@
   const slug = value => String(value).replace(/[^a-zA-Z0-9_.:-]+/g, '-');
   const titleCase = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
   const helpKey = value => String(value || 'default').toLowerCase().replaceAll(' ', '_').replace(/[^a-z0-9_]/g, '');
-  const infoButton = (key, label = titleCase(key)) => `<button class="field-info" data-info-key="${esc(helpKey(key))}" data-info-label="${esc(label)}" title="Explain ${esc(label)}" aria-label="Explain ${esc(label)}"><i data-lucide="info"></i></button>`;
+  const infoButton = (key, label = titleCase(key)) => `<button class="field-info" data-info-key="${esc(helpKey(key))}" data-info-label="${esc(label)}" aria-label="Explain ${esc(label)}" aria-haspopup="dialog"><i data-lucide="info"></i></button>`;
   const infoLabel = (key, label = titleCase(key)) => `${esc(label)}${infoButton(key, label)}`;
   const status = value => {
     const normalized = String(value || 'UNKNOWN').toUpperCase().replaceAll(' ', '_');
@@ -74,12 +75,48 @@
   };
   const renderError = (error, root) => {
     const message = error.responseJSON?.error?.message || error.responseJSON?.detail || error.statusText || error.message || error;
+    $(root).attr('aria-busy', 'false');
     panelQuery(root, '.workspace-content').html(`<div class="alert alert-danger">${esc(message)}</div>`);
   };
-  const closeInfo = () => {
-    const modal = bootstrap.Modal.getInstance(document.getElementById('info-modal'));
-    if (modal) modal.hide();
+  const loadingMarkup = label => `<div class="loading-state" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>${esc(label)}</span></div>`;
+  const setPanelLoading = (root, label) => {
+    $(root).attr('aria-busy', 'true');
+    panelQuery(root, '.summary-strip').addClass('d-none');
+    panelQuery(root, '.workspace-content').html(loadingMarkup(label));
   };
+  const closeInfo = () => globalThis.tippy?.hideAll();
+
+  const fieldHelpContent = reference => {
+    const key = reference.dataset.infoKey;
+    const label = reference.dataset.infoLabel || titleCase(key);
+    const content = document.createElement('div');
+    content.className = 'field-help';
+    const eyebrow = document.createElement('div');
+    eyebrow.className = 'field-help-eyebrow';
+    eyebrow.textContent = 'Field guide';
+    const title = document.createElement('strong');
+    title.className = 'field-help-title';
+    title.textContent = label;
+    const description = document.createElement('p');
+    description.textContent = FIELD_HELP[key] || `This field reports the ${label.toLowerCase()} value supplied by the active PRA service.`;
+    content.append(eyebrow, title, description);
+    return content;
+  };
+
+  if (globalThis.tippy) {
+    globalThis.tippy.delegate(document.body, {
+      target: '.field-info',
+      trigger: 'click',
+      placement: 'right-start',
+      interactive: true,
+      hideOnClick: true,
+      maxWidth: 320,
+      theme: 'pra',
+      appendTo: () => document.body,
+      content: fieldHelpContent,
+      onShow(instance) { globalThis.tippy.hideAll({ exclude: instance }); },
+    });
+  }
 
   const renderValue = (value, depth = 0) => {
     if (value == null || value === '') return '<span class="empty-value">not reported</span>';
@@ -183,16 +220,30 @@
     const renderers = { fleet: renderFleet, recommendations: renderRecommendations, audit: renderActivity, alerts: renderActivity, routers: renderRouters, routes: renderRoutes, registry: renderRegistry, engine: renderEngine, router: renderRouter };
     const renderer = renderers[spec.type];
     if (!renderer) throw new Error(`Unknown panel type: ${spec.type}`);
-    await renderer(root, spec);
-    lucide.createIcons();
+    closeInfo();
+    setPanelLoading(root, `Loading ${titleCase(spec.type)}`);
+    try {
+      await renderer(root, spec);
+      $(root).attr('aria-busy', 'false');
+      lucide.createIcons();
+    } catch (error) {
+      renderError(error, root);
+      throw error;
+    }
   }
 
   const loadFleet = async () => {
-    state.fleet = await api('/api/fleet');
-    $('#connection-summary').addClass('live').attr('title', 'Control Plane connected');
-    for (const panel of state.panels.values()) {
-      if (['fleet', 'engine', 'alerts', 'recommendations'].includes(panel.spec.type)) renderPanel(panel.root, panel.spec).catch(error => renderError(error, panel.root));
+    const affected = [...state.panels.values()].filter(panel => ['fleet', 'engine', 'alerts', 'recommendations'].includes(panel.spec.type));
+    affected.forEach(panel => setPanelLoading(panel.root, 'Loading remote fleet state'));
+    try {
+      state.fleet = await api('/api/fleet');
+      state.fleetLoaded = true;
+    } catch (error) {
+      affected.forEach(panel => renderError(error, panel.root));
+      throw error;
     }
+    $('#connection-summary').addClass('live').attr('title', 'Control Plane connected');
+    for (const panel of affected) renderPanel(panel.root, panel.spec).catch(error => renderError(error, panel.root));
     await loadAgentModels();
   };
 
@@ -232,6 +283,10 @@
   };
   async function renderFleet(root) {
     panelHeading(root, 'Fleet', 'Reachable engine state and Registry desired-state comparison.');
+    if (!state.fleetLoaded) {
+      setPanelLoading(root, 'Loading remote fleet state');
+      return;
+    }
     renderSummary(root, state.fleet.summary);
     const engines = [...new Set(state.fleet.items.map(row => row.engine).filter(Boolean))].sort();
     const models = [...new Set(state.fleet.items.flatMap(row => (row.models || []).map(model => model.model_id || model.runtime_model_id)).filter(Boolean))].sort();
@@ -267,7 +322,7 @@
     const row = state.fleet.items.find(item => item.name === spec.name) || {};
     panelHeading(root, spec.name, `${row.engine || 'Engine'} / ${row.cluster || 'unknown cluster'} / ${row.environment || 'unknown environment'}`, engineActions(spec.name));
     panelQuery(root, '.summary-strip').addClass('d-none');
-    panelQuery(root, '.workspace-content').html(`${engineTabs(spec.name, spec.section)}<div class="engine-section"><div class="empty-state">Loading ${esc(spec.section)}...</div></div>`);
+    panelQuery(root, '.workspace-content').html(`${engineTabs(spec.name, spec.section)}<div class="engine-section">${loadingMarkup(`Loading ${spec.section}`)}</div>`);
     try {
       const value = await api(`/api/engines/${encodeURIComponent(spec.name)}/${spec.section}`);
       const host = panelQuery(root, '.engine-section');
@@ -286,7 +341,7 @@
     const canWrite = ['Approver', 'Administrator'].includes(state.me?.role) && !['audit', 'instances'].includes(spec.resource);
     panelHeading(root, titleCase(spec.resource), 'Authoritative Registry records and qualification provenance.', canWrite ? `<button class="icon-button primary" data-registry-create="${esc(spec.resource)}" title="Create record"><i data-lucide="plus"></i></button>` : '');
     panelQuery(root, '.summary-strip').addClass('d-none');
-    panelQuery(root, '.workspace-content').html('<div class="empty-state">Loading Registry...</div>');
+    panelQuery(root, '.workspace-content').html(loadingMarkup('Loading Registry'));
     try {
       const result = await api(`/api/registry/${spec.resource}`);
       const records = result.items || result || [];
@@ -390,11 +445,16 @@
   };
 
   const loadAgentModels = async () => {
+    const current = state.activeAgentTarget || $('#agent-model').val() || '';
+    $('#agent-model').prop('disabled', true).html('<option>Loading models...</option>');
     try {
       state.agentModels = (await api('/api/agent/models')).items || [];
-      const current = state.activeAgentTarget || $('#agent-model').val() || '';
       $('#agent-model').html('<option value="">Manager-only fallback</option>' + state.agentModels.map(row => `<option value="${esc(row.target_id)}" ${row.target_id === current ? 'selected' : ''} ${row.reachable ? '' : 'disabled'}>${row.reachable ? '[online]' : '[offline]'} ${esc(row.target_id)} / ${esc(row.model_id)}</option>`).join(''));
-    } catch (_) { /* Fleet remains usable when agent discovery is unavailable. */ }
+    } catch (_) {
+      $('#agent-model').html('<option value="">Manager-only fallback</option>');
+    } finally {
+      $('#agent-model').prop('disabled', false);
+    }
   };
   const disconnectAgent = () => {
     clearTimeout(state.reconnectTimer); state.reconnectTimer = null;
@@ -438,6 +498,7 @@
     $('#agent-messages').html('<div class="agent-empty">New session ready.</div>'); connectAgent(value.resume_token, '0');
   };
   const showSessions = async () => {
+    $('#sessions-list').html(loadingMarkup('Loading sessions'));
     bootstrap.Modal.getOrCreateInstance(document.getElementById('sessions-modal')).show(); const rows = (await api('/api/agent/sessions')).items || [];
     $('#sessions-list').html(rows.length ? `<div class="session-list">${rows.map(row => `<button class="session-item" data-resume-session="${esc(row.resume_token)}"><span><strong>${esc(row.settings?.target_id || 'Manager-only fallback')}</strong><small>${esc(new Date(row.updated_at).toLocaleString())} / ${row.event_count} events</small></span><i data-lucide="arrow-right"></i></button>`).join('')}</div>` : '<div class="empty-state">No previous sessions</div>'); lucide.createIcons();
   };
@@ -461,7 +522,6 @@
     .on('click', '[data-engine-section]', function () { openEngine($(this).data('engine'), $(this).data('engine-section')); })
     .on('input change', '[data-fleet-filter]', function () { state.fleetFilters[$(this).data('fleet-filter')] = $(this).val(); const panel = [...state.panels.values()].find(item => item.root.contains(this)); if (panel) renderFleet(panel.root); })
     .on('click', '[data-sort]', function () { const key = $(this).data('sort'); state.fleetSort.direction = state.fleetSort.key === key && state.fleetSort.direction === 'asc' ? 'desc' : 'asc'; state.fleetSort.key = key; const panel = [...state.panels.values()].find(item => item.root.contains(this)); if (panel) renderFleet(panel.root); })
-    .on('click', '.field-info', function (event) { event.stopPropagation(); const key = $(this).data('info-key'); const label = $(this).data('info-label') || titleCase(key); $('#info-title').text(label); $('#info-description').text(FIELD_HELP[key] || `This field reports the ${label.toLowerCase()} value supplied by the active PRA service.`); bootstrap.Modal.getOrCreateInstance(document.getElementById('info-modal')).show(); })
     .on('click', '[data-action]', function (event) { event.stopPropagation(); openAction($(this).data('engine'), $(this).data('action'), $(this).data('runtime-model-id') ? { runtime_model_id: $(this).data('runtime-model-id') } : {}); })
     .on('click', '[data-observe]', async function (event) { event.stopPropagation(); const links = await api(`/api/observability/links?engine=${encodeURIComponent($(this).data('observe'))}`); if (links.grafana) window.open(links.grafana, '_blank', 'noopener'); else notify('Grafana is not configured', 'warning'); })
     .on('click', '[data-registry-create]', function () { openRegistryEditor($(this).data('registry-create')); })
@@ -471,7 +531,6 @@
     .on('click', '[data-refresh-panel]', function () { const panel = [...state.panels.values()].find(item => item.root.contains(this)); if (panel) renderPanel(panel.root, panel.spec); })
     .on('click', '[data-resume-session]', function () { disconnectAgent(); const token = $(this).data('resume-session'); localStorage.setItem('pra-control-agent-token', token); localStorage.setItem('pra-control-agent-sequence', '0'); $('#agent-messages').empty(); bootstrap.Modal.getInstance(document.getElementById('sessions-modal'))?.hide(); connectAgent(token, '0'); });
 
-  $(document).on('click', event => { if (!$(event.target).closest('.field-info,#info-modal').length) closeInfo(); });
   $(document).on('submit', '#action-form', async event => {
     event.preventDefault(); const form = $(event.currentTarget); const { engine, action } = form.data(); let values = form.data('values') || {};
     if (action === 'load-model') { try { values = JSON.parse($('#action-values').val()); } catch (_) { return notify('Model load JSON is invalid', 'danger'); } }
