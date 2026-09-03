@@ -8,6 +8,8 @@ import pytest
 
 from experiments.rag_vs_pra.analyze_powered_decomposition import (
     _normalize_failure_classes,
+    _paper_quality_table,
+    _paper_runtime_table,
     _paper_table,
 )
 from pra_hf.rag_evaluation import ContextCondition
@@ -132,6 +134,8 @@ def test_failure_normalization_and_paper_table_generation() -> None:
     table = _paper_table(summarize_rows([selected]))
     assert "standard\\_bm25" in table
     assert "Token F1" not in table
+    assert "Answer avail." in _paper_quality_table(summarize_rows([selected]))
+    assert "TTFT p95" in _paper_runtime_table([])
 
 
 def test_strong_reranker_visible_path_requires_exact_output_parity() -> None:

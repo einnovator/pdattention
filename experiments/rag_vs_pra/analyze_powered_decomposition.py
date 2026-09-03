@@ -276,6 +276,65 @@ def _paper_table(rows: Sequence[Mapping[str, object]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _paper_quality_table(rows: Sequence[Mapping[str, object]]) -> str:
+    measured = [
+        row for row in rows if row.get("status") == "MEASURED" and row["regime"] == "COLD"
+    ]
+    lines = [
+        r"\begin{tabular}{llrrrrrr}",
+        r"\toprule",
+        r"Condition & Selector & Official & F1 & Answer avail. & Support & False docs & Tokens \\",
+        r"\midrule",
+    ]
+    for row in measured:
+        condition = str(row["condition"]).replace("_", r"\_")
+        selector = str(row["selector_profile"]).replace("_", r"\_")
+
+        def fmt(name: str, digits: int = 3) -> str:
+            value = row.get(name)
+            return "--" if value is None else f"{float(value):.{digits}f}"
+
+        lines.append(
+            f"{condition} & {selector} & {fmt('official_multihop_rag_score')} & "
+            f"{fmt('token_f1')} & {fmt('answer_string_availability')} & "
+            f"{fmt('supporting_document_coverage')} & "
+            f"{fmt('false_selected_document_fraction')} & "
+            f"{fmt('physical_context_tokens', 0)} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    return "\n".join(lines) + "\n"
+
+
+def _paper_runtime_table(rows: Sequence[Mapping[str, object]]) -> str:
+    measured = [
+        row
+        for row in rows
+        if row.get("status") == "MEASURED"
+        and row["selector_profile"] == "pra_generic"
+    ]
+    lines = [
+        r"\begin{tabular}{llrrrrrr}",
+        r"\toprule",
+        r"Condition & Regime & TTFT p95 & Total & Ingest & Visible & Native & Reuse \\",
+        r"\midrule",
+    ]
+    for row in measured:
+        condition = str(row["condition"]).replace("_", r"\_")
+
+        def fmt(name: str, digits: int = 1) -> str:
+            value = row.get(name)
+            return "--" if value is None else f"{float(value):.{digits}f}"
+
+        lines.append(
+            f"{condition} & {row['regime']} & {fmt('ttft_p95_ms')} & "
+            f"{fmt('total_latency_ms')} & {fmt('ingestion_ms')} & "
+            f"{fmt('visible_prompt_tokens', 0)} & "
+            f"{fmt('selected_native_kv_tokens', 0)} & {fmt('native_reuse', 3)} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", type=Path, required=True)
@@ -300,6 +359,12 @@ def main() -> None:
     write_csv(root / "persistent_corpus_curve.csv", curve)
     primary = _primary_rows(summaries, args.primary_candidate_count, args.primary_token_budget)
     (root / "paper_table.tex").write_text(_paper_table(primary), encoding="utf-8")
+    (root / "paper_quality_table.tex").write_text(
+        _paper_quality_table(primary), encoding="utf-8"
+    )
+    (root / "paper_runtime_table.tex").write_text(
+        _paper_runtime_table(primary), encoding="utf-8"
+    )
     canonical = {
         "schema_version": "pra-rag-powered-evidence-v1",
         "key": {
