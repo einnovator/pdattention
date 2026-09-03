@@ -309,7 +309,10 @@ def test_zero_success_agent_baseline_blocks_pra_conditions(tmp_path: Path) -> No
     assert baseline_metrics["inference_time_mean_ms"].state == MeasurementState.NOT_MEASURED
     assert baseline_metrics["ttft_p95_ms"].state == MeasurementState.NOT_MEASURED
     assert baseline_metrics["peak_accelerator_bytes"].state == MeasurementState.NOT_MEASURED
-    for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE):
+    for condition in (
+        EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+        EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+    ):
         assert evidence.conditions[condition].metrics["official_task_success"].state == MeasurementState.BLOCKED
 
 

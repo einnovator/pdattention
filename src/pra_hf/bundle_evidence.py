@@ -464,11 +464,12 @@ def canonicalize_paired_transport_evidence(
     adaptor_state: MeasurementState = MeasurementState.NOT_MEASURED,
     adaptor_note: str | None = None,
 ) -> CanonicalEvidenceRecord:
-    """Map a legacy selector-frozen E0/E2 row without inventing a bundle run.
+    """Map selector-frozen E0/E2 evidence without inventing No-PRA data.
 
-    The original engine path is No PRA and the native path is PRA without a
-    learned adaptor.  Because those runs predate immutable bundle resolution,
-    the bundle condition remains explicitly unmeasured.
+    Both arms use PRA selection.  The visible E0 arm is Selected Context and
+    the detached-K/V E2 arm is Native Memory.  Because these runs predate
+    immutable bundle resolution, the Native Memory bundle condition remains
+    explicitly unmeasured.  A true ordinary-inference ``NO_PRA`` arm is absent.
     """
 
     baseline = row.get("baseline")
@@ -523,7 +524,7 @@ def canonicalize_paired_transport_evidence(
         precision_encoding=row.get("precision_encoding"),
     )
     return CanonicalEvidenceRecord(
-        schema_version=2,
+        schema_version=3,
         key=EvidenceKey(
             task=str(row.get("dataset", "NOT_MEASURED")),
             hardware=str(row.get("hardware", "NOT_MEASURED")),
@@ -538,9 +539,15 @@ def canonicalize_paired_transport_evidence(
         ),
         metric_definitions={name: STANDARD_METRICS[name] for name in metric_names},
         conditions={
-            EvidenceCondition.NO_PRA: ConditionEvidence(metrics=baseline_observations),
-            EvidenceCondition.PRA_NO_ADAPTOR: ConditionEvidence(metrics=pra_observations),
-            EvidenceCondition.PRA_ADAPTOR_BUNDLE: ConditionEvidence(metrics=missing_bundle),
+            EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR: ConditionEvidence(
+                metrics=baseline_observations
+            ),
+            EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR: ConditionEvidence(
+                metrics=pra_observations
+            ),
+            EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE: ConditionEvidence(
+                metrics=missing_bundle
+            ),
         },
         provenance=EvidenceProvenance(
             cohort=f"{row.get('cohort', 'selector-frozen paired transport')}; seed_count={row.get('seed_count', 'NOT_MEASURED')}",
@@ -674,20 +681,33 @@ def validate_bundle_evidence(bundle: Any) -> None:
         if _quantization(row.get("quantization")) != _quantization(bundle.base_model.get("quantization")):
             errors.append("headline quantization disagrees with bundle")
         if row.get("precision_family") or row.get("precision_encoding"):
-            expected_precision = infer_precision(
-                bundle.base_model.get("quantization"),
-                engine=str(row.get("engine", "")),
-            )
             row_precision = infer_precision(
                 row.get("quantization"),
                 engine=str(row.get("engine", "")),
                 precision_family=row.get("precision_family"),
                 precision_encoding=row.get("precision_encoding"),
             )
-            if (
-                row_precision.precision_family != expected_precision.precision_family
-                or row_precision.precision_encoding != expected_precision.precision_encoding
-            ):
+            supported = bundle.supported_precisions if hasattr(bundle, "supported_precisions") else ()
+            if supported:
+                precision_matches = any(
+                    str(item.get("precision_family", "")).upper()
+                    == row_precision.precision_family
+                    and str(item.get("encoding", item.get("precision_encoding", "")))
+                    == row_precision.precision_encoding
+                    for item in supported
+                    if isinstance(item, Mapping)
+                )
+            else:
+                expected_precision = infer_precision(
+                    bundle.base_model.get("quantization"),
+                    engine=str(row.get("engine", "")),
+                )
+                precision_matches = (
+                    row_precision.precision_family == expected_precision.precision_family
+                    and row_precision.precision_encoding
+                    == expected_precision.precision_encoding
+                )
+            if not precision_matches:
                 errors.append("headline precision identity disagrees with bundle")
         if row.get("profile") not in bundle.profiles:
             errors.append(f"headline profile {row.get('profile')!r} is absent from bundle")

@@ -20,6 +20,10 @@ jobs:
           cache: pip
       - run: pip install -e ".[hf-hub]" pytest
       - run: pytest -q tests/test_model_bundles.py
+      - name: Reject ambiguous generated evidence conditions
+        run: >-
+          python -m experiments.paper4_5_runtime.audit_evidence_conditions
+          artifacts/pra_hf/bundles docs/site/bundles --strict
       - run: pra hf publish-manifest releases/pra_bundles.yaml --dry-run --json
 
   # Publishing is intentionally absent. A maintainer performs an authenticated,

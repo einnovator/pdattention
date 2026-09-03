@@ -104,8 +104,8 @@ def test_qualification_service_emits_all_publication_artifacts(tmp_path) -> None
 
     assert result["memory_gate"]["status"] == "QUALIFIABLE"
     assert result["canonical_evidence"]["key"]["precision_family"] == "BF16"
-    assert result["canonical_evidence"]["conditions"]["no_pra"]["metrics"]["token_f1"]["state"] == "NEEDS_RUN"
-    assert result["canonical_evidence"]["conditions"]["pra_adaptor_bundle"]["metrics"]["token_f1"]["state"] == "NO_QUALIFIED_ADAPTER"
+    assert result["canonical_evidence"]["conditions"]["NO_PRA"]["metrics"]["token_f1"]["state"] == "NEEDS_RUN"
+    assert result["canonical_evidence"]["conditions"]["PRA_NATIVE_MEMORY_BUNDLE"]["metrics"]["token_f1"]["state"] == "NO_QUALIFIED_ADAPTER"
     for name in (
         "evidence.json", "manifest.yaml", "precision_matrix.csv",
         "card_fragment.md", "table.tex",

@@ -15,9 +15,11 @@ from .canonical_evidence import (
     CanonicalEvidenceRecord,
     ConditionEvidence,
     EvidenceCondition,
+    condition_for_mode,
     EvidenceKey,
     EvidenceProvenance,
     MeasurementState,
+    PRA_ONLY_METRICS,
     MetricObservation,
     STANDARD_METRICS,
     render_latex_table,
@@ -227,8 +229,10 @@ class PrecisionQualificationService:
             )
             for name in QUALIFICATION_METRICS
         }
+        mode_condition = condition_for_mode(request.mode)
+        bundle_condition = condition_for_mode(request.mode, bundle=True)
         return CanonicalEvidenceRecord(
-            schema_version=2,
+            schema_version=3,
             key=EvidenceKey(
                 task=request.dataset,
                 hardware="NOT_MEASURED",
@@ -243,9 +247,11 @@ class PrecisionQualificationService:
             ),
             metric_definitions={name: STANDARD_METRICS[name] for name in QUALIFICATION_METRICS},
             conditions={
-                EvidenceCondition.NO_PRA: ConditionEvidence(metrics=missing),
-                EvidenceCondition.PRA_NO_ADAPTOR: ConditionEvidence(metrics=missing),
-                EvidenceCondition.PRA_ADAPTOR_BUNDLE: ConditionEvidence(
+                EvidenceCondition.NO_PRA: ConditionEvidence(
+                    metrics={name: value for name, value in missing.items() if name not in PRA_ONLY_METRICS}
+                ),
+                mode_condition: ConditionEvidence(metrics=missing),
+                bundle_condition: ConditionEvidence(
                     metrics=adaptor,
                     bundle_id=request.bundle_id,
                     bundle_revision=request.bundle_revision,

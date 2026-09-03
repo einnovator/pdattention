@@ -13,10 +13,13 @@ import yaml
 
 from .bundle_evidence import EVIDENCE_TIERS, EvidenceValidationError, validate_bundle_evidence
 from .canonical_evidence import (
+    BUNDLE_CONDITIONS,
+    CONDITION_LABELS,
     CanonicalEvidenceRecord,
     EvidenceCondition,
     MeasurementState,
     MetricGroup,
+    condition_for_mode,
     render_markdown_table,
 )
 from .precision import PRECISION_FAMILIES, infer_precision
@@ -545,7 +548,7 @@ class BundleBuilder:
         if post_training:
             lines.insert(lines.index("## Recommended configuration") - 1, f"- Post-training: `{post_training}`")
         if headline:
-            lines += ["| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+            lines += ["| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
             for row in headline:
                 baseline, pra = row.get("baseline", {}), row.get("pra", {})
                 delta = row.get("deltas", {})
@@ -561,7 +564,7 @@ class BundleBuilder:
                 )
             receipt = headline[0]
             lines += [
-                "", "All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.", "",
+                "", "All headline rows freeze the PRA-selected evidence. Deltas are Native Memory minus Selected Context; negative latency and visible-context deltas are reductions. These rows contain no ordinary No-PRA arm.", "",
                 "Evidence receipt: "
                 f"`{receipt.get('engine')} {receipt.get('engine_version')}`; "
                 f"{receipt.get('hardware')}; {receipt.get('cohort')} (n={receipt.get('sample_count')}); "
@@ -592,7 +595,7 @@ class BundleBuilder:
         lines += [
             "## Evidence by engine, mode, and profile", "",
             "Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.", "",
-            "| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |",
+            "| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
         for name, item in bundle.profiles.items():
@@ -620,10 +623,12 @@ class BundleBuilder:
             })
             profile_status = str(value.get("status", "NEEDS_RUN")).upper()
             routing_adapter = value.get("routing_adapter")
+            mode_condition = condition_for_mode(profile_mode)
+            bundle_condition = condition_for_mode(profile_mode, bundle=True)
             def fallback(condition: EvidenceCondition) -> str:
                 if profile_status == "CALIBRATION_PENDING":
                     return "CALIBRATION_PENDING"
-                if condition == EvidenceCondition.PRA_ADAPTOR_BUNDLE:
+                if condition in BUNDLE_CONDITIONS:
                     if routing_adapter:
                         return "NEEDS_RUN"
                     return (
@@ -636,14 +641,14 @@ class BundleBuilder:
             lines.append(
                 f"| {profile_engine} | {profile_mode} | {str(name).upper()} "
                 f"| {_condition_coverage(matches, EvidenceCondition.NO_PRA, fallback(EvidenceCondition.NO_PRA))} "
-                f"| {_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR, fallback(EvidenceCondition.PRA_NO_ADAPTOR))} "
-                f"| {_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE, fallback(EvidenceCondition.PRA_ADAPTOR_BUNDLE))} "
-                f"| {', '.join(groups) if groups else fallback(EvidenceCondition.PRA_NO_ADAPTOR)} |"
+                f"| {CONDITION_LABELS[mode_condition]}: {_condition_coverage(matches, mode_condition, fallback(mode_condition))} "
+                f"| {CONDITION_LABELS[bundle_condition]}: {_condition_coverage(matches, bundle_condition, fallback(bundle_condition))} "
+                f"| {', '.join(groups) if groups else fallback(mode_condition)} |"
             )
-        lines += ["", "## Canonical three-condition evidence", ""]
+        lines += ["", "## Canonical staged evidence", ""]
         if canonical_records:
             lines += [
-                "Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.", "",
+                "Each table holds task, hardware, engine, model, precision, and profile fixed. Every delta names its source and target; bundle use is held orthogonal to execution depth.", "",
             ]
             for record in canonical_records:
                 lines += [
@@ -659,12 +664,12 @@ class BundleBuilder:
                     ]
         else:
             lines += [
-                "A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.", "",
+                "A complete staged cohort is not packaged for this exact identity.", "",
                 "| Condition | Evidence status |",
                 "| --- | --- |",
                 "| No PRA | `NEEDS_RUN` |",
-                "| PRA - No Adaptor | `NEEDS_RUN` |",
-                f"| PRA - Adaptor Bundle | `{'NEEDS_RUN' if bundle.learned_adapters else 'NO_QUALIFIED_ADAPTER'}` |", "",
+                f"| {CONDITION_LABELS[condition_for_mode(mode)]} | `NEEDS_RUN` |",
+                f"| {CONDITION_LABELS[condition_for_mode(mode, bundle=True)]} | `{'NEEDS_RUN' if bundle.learned_adapters else 'NO_QUALIFIED_ADAPTER'}` |", "",
                 "Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.", "",
             ]
         lines += [
@@ -819,7 +824,9 @@ def _condition_coverage(
     observations = [
         observation
         for record in records
-        for observation in record.conditions[condition].metrics.values()
+        for evidence in (record.conditions.get(condition),)
+        if evidence is not None
+        for observation in evidence.metrics.values()
     ]
     measured = sum(observation.state == MeasurementState.MEASURED for observation in observations)
     if measured:

@@ -198,6 +198,7 @@ class QualificationCreate(StrictModel):
     workload: str
     profile_id: str | None = None
     mode: str
+    condition: str
     cohort_size: int = Field(ge=0)
     metrics: dict[str, Any] = Field(default_factory=dict)
     quality_gate: str = "NOT_MEASURED"
@@ -206,6 +207,29 @@ class QualificationCreate(StrictModel):
     pra_commit: str | None = None
     artifact_links: list[str] = Field(default_factory=list)
     annotations: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_evidence_condition(self) -> "QualificationCreate":
+        """Require explicit staged attribution and exact bundle identity."""
+
+        conditions = {
+            "NO_PRA",
+            "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+            "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+            "PRA_NATIVE_SERVING_NO_ADAPTOR",
+            "PRA_SELECTED_CONTEXT_BUNDLE",
+            "PRA_NATIVE_MEMORY_BUNDLE",
+            "PRA_NATIVE_SERVING_BUNDLE",
+        }
+        if self.condition not in conditions:
+            raise ValueError("qualification condition must be a canonical EvidenceCondition ID")
+        is_bundle = self.condition.endswith("_BUNDLE")
+        if is_bundle != bool(self.bundle_id and self.bundle_revision):
+            raise ValueError(
+                "bundle conditions require bundle_id and bundle_revision; "
+                "no-adaptor and NO_PRA conditions must not provide them"
+            )
+        return self
 
 
 class DesiredModel(StrictModel):

@@ -25,6 +25,9 @@ import torch
 import yaml
 
 from .canonical_evidence import (
+    CONDITION_LABELS,
+    CONDITION_ORDER,
+    DELTA_PAIRS,
     CanonicalEvidenceRecord,
     EvidenceCondition,
     MeasurementState,
@@ -54,11 +57,18 @@ PUBLIC_MODES = (
     "native_serving",
 )
 MODE_LABELS = {
-    "full_context": "Full Context",
+    "full_context": "No PRA / Ordinary Context",
     "selected_context": "Selected Context",
     "native_memory_hot": "Native Memory HOT",
     "native_memory_warm": "Native Memory WARM",
     "native_serving": "Native Serving",
+}
+MODE_CONDITIONS = {
+    "full_context": EvidenceCondition.NO_PRA,
+    "selected_context": EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+    "native_memory_hot": EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+    "native_memory_warm": EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+    "native_serving": EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
 }
 ENGINE_ALIASES = {
     "hf": "hugging-face",
@@ -336,7 +346,7 @@ def derive_attribution(modes: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]
     native = modes.get("native_memory_hot")
     serving = modes.get("native_serving")
     context_gain = {
-        "comparison": "Full Context -> Selected Context",
+        "comparison": "No PRA -> Selected Context",
         "visible_token_reduction": _fraction_reduction(
             full["context"]["visible_input_tokens"], selected["context"]["visible_input_tokens"]
         ),
@@ -409,10 +419,11 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
     gate = document.get("quality_gate") or _quality_gate(modes, 0.95)
     engine = document["identity"]["engine"]
     capabilities = document["engine_capabilities"]
-    fallback = "Full Context"
+    fallback = "No PRA / ordinary context"
     if gate["passed"] is not True:
         return {
             "recommended_mode": None,
+            "condition": None,
             "profile": None,
             "status": "Qualification pending" if gate["passed"] is None else "Blocked",
             "confidence": "None",
@@ -423,6 +434,7 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
     if not document["selection"]["frozen"]:
         return {
             "recommended_mode": None,
+            "condition": None,
             "profile": None,
             "status": "Qualification pending",
             "confidence": "None",
@@ -433,6 +445,7 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
 
     recommendation = {
         "recommended_mode": "Selected Context",
+        "condition": EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
         "profile": "recommended",
         "status": "Recommended",
         "confidence": document.get("evidence", {}).get("tier", "Candidate"),
@@ -469,6 +482,7 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
     elif native_quality and native_complete and native_economics and (native_qualified or allow_unqualified_native):
         recommendation.update({
             "recommended_mode": "Native Memory",
+            "condition": EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
             "reason": "Quality passed and Native Memory has a measured incremental economic gain over Selected Context.",
         })
     elif native is not None:
@@ -491,6 +505,7 @@ def recommend_run(document: Mapping[str, Any], *, allow_unqualified_native: bool
     ):
         recommendation.update({
             "recommended_mode": "Native Serving",
+            "condition": EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR.value,
             "reason": "Quality passed and scheduler-owned serving adds a measured gain over Native Memory.",
         })
     return recommendation
@@ -647,6 +662,8 @@ class QualificationService:
             if name in supplied_modes else empty_measurement(MODE_LABELS[name])
             for name in requested_modes
         }
+        for name, row in modes.items():
+            row["condition"] = MODE_CONDITIONS[name].value
         selection = supplied.get("selection", {})
         selector_digest = selection.get("digest") or supplied.get("selector_digest")
         document: dict[str, Any] = {
@@ -729,6 +746,16 @@ def load_run(path: str | Path) -> dict[str, Any]:
         return record.serialize_for_control_plane()
     if value.get("schema_version") != SCHEMA_VERSION or "modes" not in value:
         raise ValueError(f"Not a PRA qualification run: {source}")
+    for name, row in value["modes"].items():
+        if name in MODE_CONDITIONS and isinstance(row, dict):
+            row.setdefault("condition", MODE_CONDITIONS[name].value)
+    recommendation = value.get("recommendation")
+    if isinstance(recommendation, dict) and recommendation.get("recommended_mode"):
+        mode_name = str(recommendation["recommended_mode"]).lower().replace(" ", "_")
+        lookup_name = "native_memory_hot" if mode_name == "native_memory" else mode_name
+        condition = MODE_CONDITIONS.get(lookup_name)
+        if condition is not None:
+            recommendation.setdefault("condition", condition.value)
     return value
 
 
@@ -737,8 +764,37 @@ def _is_canonical_evidence(document: Mapping[str, Any]) -> bool:
 
 
 def _canonical_record(document: Mapping[str, Any]) -> CanonicalEvidenceRecord:
+    document = _migrate_legacy_agent_evidence(document)
     fields = CanonicalEvidenceRecord.model_fields
     return CanonicalEvidenceRecord.model_validate({name: document[name] for name in fields if name in document})
+
+
+def _migrate_legacy_agent_evidence(document: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Repair schema-1 agent evidence whose baseline was true ordinary inference.
+
+    Unlike legacy E0/E2 transport artifacts, the coding-agent experiment used
+    ``no_pra`` literally: no PRA selection, native memory, or bundle.  Keep this
+    provenance-specific migration at the loader boundary so the canonical model
+    never has to guess which historical meaning an old label carried.
+    """
+
+    key = document.get("key")
+    conditions = document.get("conditions")
+    if not isinstance(key, Mapping) or not isinstance(conditions, Mapping):
+        return document
+    mode = str(key.get("mode", "")).lower().replace("_", "-")
+    if mode != "agent-gateway" or "no_pra" not in conditions:
+        return document
+    mapping = {
+        "no_pra": EvidenceCondition.NO_PRA.value,
+        "pra_no_adaptor": EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+        "pra_adaptor_bundle": EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE.value,
+    }
+    migrated = dict(document)
+    migrated["conditions"] = {
+        mapping.get(str(name), str(name)): value for name, value in conditions.items()
+    }
+    return migrated
 
 
 def _canonical_markdown_report(record: CanonicalEvidenceRecord) -> str:
@@ -752,7 +808,7 @@ def _canonical_markdown_report(record: CanonicalEvidenceRecord) -> str:
         f"- Model revision: `{key.model_revision}`",
         f"- Mode/profile: `{key.mode}` / `{key.profile}`",
         f"- Evidence tier: `{record.evidence_tier}`", "",
-        "Deltas preserve the mathematical sign and use No PRA as the baseline. Metric direction states how to interpret that sign.", "",
+        "Deltas preserve the mathematical sign and explicitly name their source and target conditions. Metric direction states how to interpret that sign.", "",
         "## Matched conditions", "",
         render_canonical_markdown_table(record).rstrip(), "",
         "## Provenance", "",
@@ -767,13 +823,15 @@ def _canonical_markdown_report(record: CanonicalEvidenceRecord) -> str:
 
 def _canonical_html_report(record: CanonicalEvidenceRecord) -> str:
     key = record.key
+    conditions = [condition for condition in CONDITION_ORDER if condition in record.conditions]
+    delta_names = [
+        name for name, pair in DELTA_PAIRS.items()
+        if pair[0] in conditions and pair[1] in conditions
+    ]
     rows = []
     for name, definition in record.metric_definitions.items():
-        observations = [record.conditions[condition].metrics.get(name) for condition in EvidenceCondition]
-        deltas = [
-            record.delta(name, condition)
-            for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
-        ]
+        observations = [record.conditions[condition].metrics.get(name) for condition in conditions]
+        deltas = [record.named_delta(name, delta_name) for delta_name in delta_names]
         values = [
             name, definition.unit, definition.direction.value,
             *[
@@ -804,9 +862,9 @@ th{{background:#eef3f0}} code{{font-size:.9em}} .meta{{color:#52605b}} .blocked{
 </style></head><body><main>
 <h1>PRA Canonical Evidence Report</h1>
 <p class="meta">Task <code>{html.escape(key.task)}</code> &middot; Engine <code>{html.escape(key.engine)} {html.escape(key.engine_version)}</code> &middot; Model <code>{html.escape(key.model_id)}</code> &middot; Profile <code>{html.escape(key.profile)}</code></p>
-<p>Deltas are candidate minus No PRA; signs are not inverted. Missing measurements retain their explicit state.</p>
+<p>Every delta is target minus its named source; signs are not inverted. Missing measurements retain their explicit state.</p>
 <h2>Matched conditions</h2>
-<table><thead><tr><th>Metric</th><th>Unit</th><th>Direction</th><th>No PRA</th><th>PRA - No Adaptor</th><th>PRA - Adaptor Bundle</th><th>Delta No Adaptor</th><th>Delta Bundle</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<table><thead><tr><th>Metric</th><th>Unit</th><th>Direction</th>{''.join(f'<th>{html.escape(CONDITION_LABELS[condition])}</th>' for condition in conditions)}{''.join(f'<th>{html.escape(delta_name)}</th>' for delta_name in delta_names)}</tr></thead><tbody>{''.join(rows)}</tbody></table>
 <h2>Provenance</h2><p>Cohort <code>{html.escape(record.provenance.cohort)}</code><br>Date <code>{html.escape(record.provenance.date)}</code><br>Commit <code>{html.escape(record.provenance.commit or NOT_MEASURED)}</code><br>Runs <code>{len(record.provenance.run_ids)}</code></p>
 </main></body></html>
 """
@@ -829,12 +887,12 @@ def render_markdown_report(document: Mapping[str, Any]) -> str:
         "",
         "## Matched comparisons",
         "",
-        "| Mode | Status | F1 | EM | Visible tokens | TTFT p95 (ms) | Successful req/s | Peak bytes |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Condition | Mode | Status | F1 | EM | Visible tokens | TTFT p95 (ms) | Successful req/s | Peak bytes |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for name, row in document["modes"].items():
         values = [
-            row["label"], row["status"], row["quality"]["f1"], row["quality"]["em"],
+            row["condition"], row["label"], row["status"], row["quality"]["f1"], row["quality"]["em"],
             row["context"]["visible_input_tokens"], row["performance"]["ttft_p95_ms"],
             row["performance"]["successful_requests_per_second"], row["memory"]["peak_bytes"],
         ]
@@ -884,7 +942,7 @@ def render_report(document: Mapping[str, Any], format_name: str) -> str:
         rows = []
         for row in document["modes"].values():
             values = (
-                row["label"], row["status"], row["quality"]["f1"], row["quality"]["em"],
+                row["condition"], row["label"], row["status"], row["quality"]["f1"], row["quality"]["em"],
                 row["context"]["visible_input_tokens"], row["performance"]["ttft_p95_ms"],
                 row["performance"]["successful_requests_per_second"], row["memory"]["peak_bytes"],
             )
@@ -905,7 +963,7 @@ th{{background:#eef3f0}} .recommendation{{border-left:5px solid #17745b;backgrou
 <h1>PRA Optimization Assessment</h1>
 <p class="meta">Model <code>{html.escape(str(identity['model']))}</code> · Engine <code>{html.escape(str(identity['engine']))}</code> · Dataset <code>{html.escape(str(identity['dataset']))}</code></p>
 <h2>Quality gate</h2><p><strong>{html.escape(str(document['quality_gate']['passed']))}</strong> — {html.escape(str(document['quality_gate']['reason']))}</p>
-<h2>Matched comparisons</h2><table><thead><tr><th>Mode</th><th>Status</th><th>F1</th><th>EM</th><th>Visible tokens</th><th>TTFT p95 ms</th><th>Successful req/s</th><th>Peak bytes</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<h2>Matched comparisons</h2><table><thead><tr><th>Condition</th><th>Mode</th><th>Status</th><th>F1</th><th>EM</th><th>Visible tokens</th><th>TTFT p95 ms</th><th>Successful req/s</th><th>Peak bytes</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 <h2>Recommendation</h2><div class="recommendation"><strong>{html.escape(str(recommendation['recommended_mode'] or 'No production recommendation'))}</strong><p>{html.escape(str(recommendation['reason']))}</p><p>Fallback: {html.escape(str(recommendation['fallback']))}</p></div>
 <h2>Provenance</h2><p>Commit <code>{html.escape(str(identity.get('commit') or NOT_MEASURED))}</code><br>Selector <code>{html.escape(str(document['selection'].get('digest') or NOT_MEASURED))}</code></p>
 <h2>Missing measurements</h2><ul>{missing}</ul>

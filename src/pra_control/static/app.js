@@ -27,6 +27,11 @@
     loaded_models: 'Number of runtime model aliases currently loaded on this engine.',
     profile: 'Named PRA quality and resource policy applied to the model.',
     mode: 'Selected-context transport mode currently used by the runtime.',
+    condition: 'Canonical evidence condition. It distinguishes ordinary No-PRA inference, Selected Context, Native Memory, Native Serving, and bundle use.',
+    evidence_level: 'Strength and scope of the evidence, such as smoke, controlled, natural workload, or serving.',
+    metric_group: 'Metric family, such as quality, input, routing, serving, resources, or reuse.',
+    source_condition: 'Canonical source condition from which a reported delta is computed.',
+    target_condition: 'Canonical target condition whose value is compared with the source.',
     ttft_p95: 'The 95th percentile time to first generated token for the measured interval.',
     alerts: 'Current conditions that may need operator attention.',
     total: 'Number of engine instances visible to this Control Plane.',
@@ -347,7 +352,14 @@
       const records = result.items || result || [];
       state.registryRecords[spec.resource] = records;
       if (!records.length) return panelQuery(root, '.workspace-content').html('<div class="empty-state">No records found</div>');
-      const keys = [...new Set(records.flatMap(row => Object.keys(row)))].slice(0, 8);
+      const available = [...new Set(records.flatMap(row => Object.keys(row)))];
+      const qualificationKeys = [
+        'id', 'model_id', 'engine', 'workload', 'profile_id', 'mode',
+        'condition', 'evidence_level', 'quality_gate',
+      ];
+      const keys = spec.resource === 'qualifications'
+        ? qualificationKeys.filter(key => available.includes(key))
+        : available.slice(0, 8);
       const canApprove = canWrite && ['bundles', 'profiles', 'policies', 'qualifications', 'deployments'].includes(spec.resource);
       panelQuery(root, '.workspace-content').html(`<div class="table-responsive"><table class="table data-grid"><thead><tr>${keys.map(key => `<th>${infoLabel(key)}</th>`).join('')}${canWrite ? `<th>${infoLabel('actions')}</th>` : ''}</tr></thead><tbody>${records.map((row, index) => `<tr>${keys.map(key => `<td>${compactValue(row[key])}</td>`).join('')}${canWrite ? `<td class="text-nowrap"><button class="icon-button d-inline-grid" data-registry-edit="${esc(spec.resource)}" data-record-index="${index}" title="Edit record"><i data-lucide="pencil"></i></button>${canApprove ? `<button class="btn btn-sm btn-outline-success" data-registry-approve="${esc(spec.resource)}" data-record-id="${esc(row.id)}">Approve</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`);
     } catch (error) { renderError(error, root); }

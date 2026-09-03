@@ -63,10 +63,11 @@ def test_mlx_importer_builds_paired_baseline_relative_evidence() -> None:
     assert len(combined["artifact_sha256"]) == 64
 
     canonical = canonicalize_paired_transport_evidence(combined)
-    assert canonical.delta("visible_tokens", EvidenceCondition.PRA_NO_ADAPTOR).percent_delta == pytest.approx(-89.14008)
-    assert canonical.conditions[EvidenceCondition.NO_PRA].metrics["itl_p95_ms"].value > 0
-    assert canonical.conditions[EvidenceCondition.PRA_NO_ADAPTOR].metrics["output_tokens_per_second"].value > 0
-    assert canonical.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics["token_f1"].state == MeasurementState.NOT_MEASURED
+    assert canonical.named_delta("visible_tokens", "delta_nm_vs_sc").percent_delta == pytest.approx(-89.14008)
+    assert EvidenceCondition.NO_PRA not in canonical.conditions
+    assert canonical.conditions[EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR].metrics["itl_p95_ms"].value > 0
+    assert canonical.conditions[EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR].metrics["output_tokens_per_second"].value > 0
+    assert canonical.conditions[EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE].metrics["token_f1"].state == MeasurementState.NOT_MEASURED
     assert canonical.key.model_revision == _identity().model_revision
 
 
@@ -250,7 +251,8 @@ def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
     assert "## Precision qualification" in text
     assert "INT4" in text
     assert "MLX-4bit" in text
-    assert "| mlx | Native Memory | BALANCED | MEASURED" in text
+    assert "| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: MEASURED" in text
+    assert "Delta NM vs SC" in text
     assert "Output Tokens Per Second" in text
     assert "ITL p95 (ms)" in text
     assert "SHA-256" in text
@@ -276,7 +278,9 @@ def test_catalog_order_reference_role_and_collection_membership() -> None:
     matrix = render_qualification_matrix(catalog)
     assert "Qualification Matrix" in matrix
     assert "Canonical condition audit" in matrix
-    assert "PRA - No Adaptor" in matrix
+    assert "Selected Context" in matrix
+    assert "Native Memory" in matrix
+    assert "Delta NM vs SC" in matrix
     assert "PRA Runtime Bundle Catalog" in render_catalog(catalog)
 
     published = {row["repo"] for row in rows if row["publication_status"] == "PUBLISHED"}
@@ -297,7 +301,7 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
         for conditions in row["metrics"].values()
         for state in conditions.values()
     }
-    assert states <= {"AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_APPLICABLE", "BLOCKED"}
+    assert states <= {"AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_MEASURED", "NOT_APPLICABLE", "BLOCKED"}
     assert 0 not in states
 
 
@@ -405,20 +409,33 @@ def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric
     text = render_canonical_evidence_catalog(load_bundle_catalog())
     for row in load_bundle_catalog()["bundles"]:
         assert row["model"] in text
-    assert "PRA - No Adaptor" in text
-    assert "PRA - Adaptor Bundle" in text
+    assert "Selected Context" in text
+    assert "Native Memory" in text
+    assert "Same mode / bundle" in text
     assert "Output Tokens Per Second" in text
     assert "TTFT p95 (ms)" in text
     assert "ITL p95 (ms)" in text
     assert "Delta Bundle" in text
 
 
-def test_published_cards_use_actionable_coverage_states() -> None:
+def test_published_cards_preserve_explicit_missing_coverage_states() -> None:
     cards = sorted((ROOT / "artifacts/pra_hf/bundles").glob("*/README.md"))
     assert cards
     for card in cards:
         text = card.read_text(encoding="utf-8")
-        assert "NOT_MEASURED" not in text, card
+        assert "## Evidence by engine, mode, and profile" in text, card
+        assert "## Canonical staged evidence" in text, card
+        assert any(
+            state in text
+            for state in (
+                "NEEDS_RUN",
+                "NO_QUALIFIED_ADAPTER",
+                "CALIBRATION_PENDING",
+                "NOT_MEASURED",
+                "NOT_APPLICABLE",
+                "BLOCKED",
+            )
+        ), card
         assert any(
             state in text
             for state in (

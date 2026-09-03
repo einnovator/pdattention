@@ -92,7 +92,7 @@ def test_conditions_share_candidates_but_can_select_different_chunks() -> None:
         token_budget=8,
     )
     pra = select_context(
-        condition=ContextCondition.PRA_NO_ADAPTOR,
+        condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
         selector=PRAHybridSelector(),
         query=question.question,
         receipt=receipt,

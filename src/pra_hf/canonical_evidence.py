@@ -1,8 +1,9 @@
-"""Canonical three-condition evidence shared by PRA product surfaces.
+"""Canonical staged PRA evidence shared by product surfaces.
 
-The schema keeps measurements separate from rendering.  A metric is always
-identified by its direction, unit, and aggregation, while absent measurements
-carry an explicit state instead of a numeric placeholder.
+Execution depth and bundle use are independent dimensions.  In particular,
+Selected Context is PRA: it must never be serialized as the ordinary No-PRA
+baseline.  A metric is identified by its direction, unit, aggregation, source
+condition, and target condition; absent measurements retain an explicit state.
 """
 
 from __future__ import annotations
@@ -20,9 +21,103 @@ class StrictModel(BaseModel):
 
 
 class EvidenceCondition(str, Enum):
-    NO_PRA = "no_pra"
-    PRA_NO_ADAPTOR = "pra_no_adaptor"
-    PRA_ADAPTOR_BUNDLE = "pra_adaptor_bundle"
+    NO_PRA = "NO_PRA"
+    PRA_SELECTED_CONTEXT_NO_ADAPTOR = "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
+    PRA_NATIVE_MEMORY_NO_ADAPTOR = "PRA_NATIVE_MEMORY_NO_ADAPTOR"
+    PRA_NATIVE_SERVING_NO_ADAPTOR = "PRA_NATIVE_SERVING_NO_ADAPTOR"
+    PRA_SELECTED_CONTEXT_BUNDLE = "PRA_SELECTED_CONTEXT_BUNDLE"
+    PRA_NATIVE_MEMORY_BUNDLE = "PRA_NATIVE_MEMORY_BUNDLE"
+    PRA_NATIVE_SERVING_BUNDLE = "PRA_NATIVE_SERVING_BUNDLE"
+
+
+CONDITION_LABELS: dict[EvidenceCondition, str] = {
+    EvidenceCondition.NO_PRA: "No PRA",
+    EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR: "Selected Context",
+    EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR: "Native Memory",
+    EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR: "Native Serving",
+    EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE: "Selected Context + Bundle",
+    EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE: "Native Memory + Bundle",
+    EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE: "Native Serving + Bundle",
+}
+
+CONDITION_ORDER = tuple(EvidenceCondition)
+BUNDLE_CONDITIONS = frozenset(
+    {
+        EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+        EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE,
+        EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE,
+    }
+)
+PRA_ONLY_METRICS = frozenset(
+    {
+        "selected_native_kv_tokens",
+        "active_detail_bytes",
+        "retained_detail_bytes",
+        "pra_cache_hit_rate",
+    }
+)
+
+DELTA_PAIRS: dict[str, tuple[EvidenceCondition, EvidenceCondition]] = {
+    "delta_sc_vs_no_pra": (
+        EvidenceCondition.NO_PRA,
+        EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+    ),
+    "delta_nm_vs_no_pra": (
+        EvidenceCondition.NO_PRA,
+        EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+    ),
+    "delta_ns_vs_no_pra": (
+        EvidenceCondition.NO_PRA,
+        EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
+    ),
+    "delta_nm_vs_sc": (
+        EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+    ),
+    "delta_ns_vs_nm": (
+        EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
+    ),
+    "delta_sc_bundle_vs_sc": (
+        EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+        EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+    ),
+    "delta_nm_bundle_vs_nm": (
+        EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE,
+    ),
+    "delta_ns_bundle_vs_ns": (
+        EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE,
+    ),
+}
+
+
+def condition_for_mode(mode: str, *, bundle: bool = False) -> EvidenceCondition:
+    """Resolve one public execution mode to its canonical evidence condition."""
+
+    normalized = mode.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "e0": "selected_context",
+        "selected": "selected_context",
+        "agent_gateway": "selected_context",
+        "e2": "native_memory",
+        "native": "native_memory",
+        "e3": "native_serving",
+    }
+    normalized = aliases.get(normalized, normalized)
+    lookup = {
+        ("selected_context", False): EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+        ("native_memory", False): EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+        ("native_serving", False): EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
+        ("selected_context", True): EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+        ("native_memory", True): EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE,
+        ("native_serving", True): EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE,
+    }
+    try:
+        return lookup[(normalized, bundle)]
+    except KeyError as exc:
+        raise ValueError(f"unknown PRA evidence mode: {mode!r}") from exc
 
 
 class MetricDirection(str, Enum):
@@ -58,6 +153,35 @@ class AuditState(str, Enum):
     NO_QUALIFIED_ADAPTER = "NO_QUALIFIED_ADAPTER"
     NOT_APPLICABLE = "NOT_APPLICABLE"
     BLOCKED = "BLOCKED"
+
+
+class LegacyConditionClass(str, Enum):
+    TRUE_NO_PRA = "TRUE_NO_PRA"
+    PRA_SELECTED_CONTEXT = "PRA_SELECTED_CONTEXT"
+    PRA_NATIVE_MEMORY = "PRA_NATIVE_MEMORY"
+    PRA_NATIVE_SERVING = "PRA_NATIVE_SERVING"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
+def classify_legacy_condition(
+    label: str,
+    *,
+    provenance: str = "",
+) -> LegacyConditionClass:
+    """Classify a legacy label without treating ``baseline`` as No PRA."""
+
+    normalized = label.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"e0", "selected", "selected_context", "e0_selected_text"}:
+        return LegacyConditionClass.PRA_SELECTED_CONTEXT
+    if normalized in {"e2", "native", "native_memory", "e2_native_kv"}:
+        return LegacyConditionClass.PRA_NATIVE_MEMORY
+    if normalized in {"e3", "native_serving"}:
+        return LegacyConditionClass.PRA_NATIVE_SERVING
+    if normalized == "no_pra":
+        source = provenance.lower()
+        if any(term in source for term in ("ordinary inference", "standard rag", "pra disabled")):
+            return LegacyConditionClass.TRUE_NO_PRA
+    return LegacyConditionClass.AMBIGUOUS
 
 
 class MetricDefinition(StrictModel):
@@ -183,7 +307,9 @@ class EvidenceProvenance(StrictModel):
 
 class MetricDelta(StrictModel):
     metric: str
-    condition: EvidenceCondition
+    name: str | None = None
+    source_condition: EvidenceCondition
+    target_condition: EvidenceCondition
     baseline: float | None
     candidate: float | None
     delta: float | None
@@ -192,113 +318,175 @@ class MetricDelta(StrictModel):
 
 
 class CanonicalEvidenceRecord(StrictModel):
-    """A matched No-PRA / PRA / PRA-bundle comparison for one exact key."""
+    """A matched staged comparison for one exact evidence identity."""
 
-    schema_version: int = 2
+    schema_version: int = 3
     key: EvidenceKey
     metric_definitions: dict[str, MetricDefinition]
     conditions: dict[EvidenceCondition, ConditionEvidence]
     provenance: EvidenceProvenance
     evidence_tier: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_schema_two_conditions(cls, value: Any) -> Any:
+        """Relabel the known E0/E2 schema-2 layout without inventing No PRA.
+
+        The old serializer called the E0 arm ``no_pra`` and the E2 arm
+        ``pra_no_adaptor``.  We can repair that layout only when the record's
+        mode identifies a Native Memory comparison.  Other legacy baselines
+        are rejected as ambiguous and must be audited from provenance.
+        """
+
+        if not isinstance(value, Mapping) or int(value.get("schema_version", 2)) >= 3:
+            return value
+        raw_conditions = value.get("conditions")
+        if not isinstance(raw_conditions, Mapping):
+            return value
+        normalized = {
+            key.value if isinstance(key, EvidenceCondition) else str(key): item
+            for key, item in raw_conditions.items()
+        }
+        legacy = {"no_pra", "pra_no_adaptor", "pra_adaptor_bundle"}
+        if not legacy.intersection(normalized):
+            return value
+        mode = str(dict(value.get("key", {})).get("mode", "")).lower().replace("_", "-")
+        if "native-memory" not in mode:
+            raise ValueError(
+                "AMBIGUOUS_LEGACY_CONDITION: schema-2 baseline cannot be mapped "
+                "to NO_PRA without provenance; run the evidence-condition audit"
+            )
+        mapping = {
+            "no_pra": EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            "pra_no_adaptor": EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            "pra_adaptor_bundle": EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
+        }
+        migrated = dict(value)
+        migrated["schema_version"] = 3 if int(value.get("schema_version", 2)) >= 2 else 1
+        migrated["conditions"] = {
+            mapping.get(name, name): item for name, item in normalized.items()
+        }
+        return migrated
+
     @model_validator(mode="after")
     def validate_condition_and_metric_contract(self) -> "CanonicalEvidenceRecord":
         if self.schema_version >= 2 and self.key.precision_family == "UNSPECIFIED":
             raise ValueError("canonical evidence schema 2 requires explicit precision identity")
-        required = set(EvidenceCondition)
-        if set(self.conditions) != required:
-            missing = sorted(value.value for value in required - set(self.conditions))
-            extra = sorted(str(value) for value in set(self.conditions) - required)
-            raise ValueError(f"canonical evidence requires exactly three conditions; missing={missing}, extra={extra}")
-        bundle = self.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE]
-        if bool(bundle.bundle_id) != bool(bundle.bundle_revision):
-            raise ValueError("bundle ID and immutable revision must be supplied together")
+        if not self.conditions:
+            raise ValueError("canonical evidence requires at least one explicit condition")
         for condition, evidence in self.conditions.items():
-            if condition != EvidenceCondition.PRA_ADAPTOR_BUNDLE and (
+            is_bundle = condition in BUNDLE_CONDITIONS
+            if bool(evidence.bundle_id) != bool(evidence.bundle_revision):
+                raise ValueError("bundle ID and immutable revision must be supplied together")
+            if not is_bundle and (
                 evidence.bundle_id or evidence.bundle_revision
             ):
-                raise ValueError("bundle identity belongs only to PRA Adaptor Bundle")
+                raise ValueError("bundle identity belongs only to a bundle condition")
+            if is_bundle and any(
+                observation.state == MeasurementState.MEASURED
+                for observation in evidence.metrics.values()
+            ) and not evidence.bundle_id:
+                raise ValueError("measured bundle evidence requires an exact bundle ID and revision")
             unknown = set(evidence.metrics) - set(self.metric_definitions)
             if unknown:
                 raise ValueError(f"condition {condition.value} uses undefined metrics: {sorted(unknown)}")
+        no_pra = self.conditions.get(EvidenceCondition.NO_PRA)
+        if no_pra is not None:
+            invalid = sorted(PRA_ONLY_METRICS.intersection(no_pra.metrics))
+            if invalid:
+                raise ValueError(f"NO_PRA cannot contain PRA-only metrics: {invalid}")
         return self
 
-    def delta(self, metric: str, condition: EvidenceCondition) -> MetricDelta:
-        if condition == EvidenceCondition.NO_PRA:
-            raise ValueError("No PRA is the baseline, not a delta condition")
-        baseline = self.conditions[EvidenceCondition.NO_PRA].metrics.get(metric)
-        candidate = self.conditions[condition].metrics.get(metric)
+    def compare(
+        self,
+        metric: str,
+        source: EvidenceCondition,
+        target: EvidenceCondition,
+        *,
+        name: str | None = None,
+    ) -> MetricDelta:
+        """Compute target minus source for an explicit condition pair."""
+
+        baseline = self.conditions.get(source, ConditionEvidence()).metrics.get(metric)
+        candidate = self.conditions.get(target, ConditionEvidence()).metrics.get(metric)
         if baseline is None or candidate is None:
             return MetricDelta(
-                metric=metric, condition=condition, baseline=None, candidate=None,
+                metric=metric, name=name, source_condition=source, target_condition=target,
+                baseline=None, candidate=None,
                 delta=None, percent_delta=None, state=MeasurementState.NOT_MEASURED,
             )
         if baseline.state != MeasurementState.MEASURED:
             return MetricDelta(
-                metric=metric, condition=condition, baseline=None, candidate=candidate.value,
+                metric=metric, name=name, source_condition=source, target_condition=target,
+                baseline=None, candidate=candidate.value,
                 delta=None, percent_delta=None, state=baseline.state,
             )
         if candidate.state != MeasurementState.MEASURED:
             return MetricDelta(
-                metric=metric, condition=condition, baseline=baseline.value, candidate=None,
+                metric=metric, name=name, source_condition=source, target_condition=target,
+                baseline=baseline.value, candidate=None,
                 delta=None, percent_delta=None, state=candidate.state,
             )
         assert baseline.value is not None and candidate.value is not None
         delta = candidate.value - baseline.value
         percent = None if baseline.value == 0 else 100.0 * delta / baseline.value
         return MetricDelta(
-            metric=metric, condition=condition, baseline=baseline.value,
+            metric=metric, name=name, source_condition=source, target_condition=target,
+            baseline=baseline.value,
             candidate=candidate.value, delta=delta, percent_delta=percent,
             state=MeasurementState.MEASURED,
         )
 
-    def incremental_adaptor_delta(self, metric: str) -> MetricDelta:
-        baseline = self.conditions[EvidenceCondition.PRA_NO_ADAPTOR].metrics.get(metric)
-        candidate = self.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics.get(metric)
-        if baseline is None or candidate is None:
-            return MetricDelta(
-                metric=metric, condition=EvidenceCondition.PRA_ADAPTOR_BUNDLE,
-                baseline=None, candidate=None, delta=None, percent_delta=None,
-                state=MeasurementState.NOT_MEASURED,
+    def named_delta(self, metric: str, name: str) -> MetricDelta:
+        """Compute one canonical attribution delta by stable public name."""
+
+        try:
+            source, target = DELTA_PAIRS[name]
+        except KeyError as exc:
+            raise ValueError(f"unknown canonical delta: {name}") from exc
+        return self.compare(metric, source, target, name=name)
+
+    def delta(
+        self,
+        metric: str,
+        condition: EvidenceCondition,
+        source_condition: EvidenceCondition | None = None,
+    ) -> MetricDelta:
+        """Compatibility wrapper requiring an unambiguous target condition."""
+
+        if source_condition is None:
+            pairs = [pair for pair in DELTA_PAIRS.items() if pair[1][1] == condition]
+            if len(pairs) != 1:
+                raise ValueError("delta source is ambiguous; use compare() or named_delta()")
+            name, (source_condition, _) = pairs[0]
+        else:
+            name = next(
+                (key for key, pair in DELTA_PAIRS.items() if pair == (source_condition, condition)),
+                None,
             )
-        if baseline.state != MeasurementState.MEASURED:
-            return MetricDelta(
-                metric=metric, condition=EvidenceCondition.PRA_ADAPTOR_BUNDLE,
-                baseline=None, candidate=candidate.value, delta=None, percent_delta=None,
-                state=baseline.state,
-            )
-        if candidate.state != MeasurementState.MEASURED:
-            return MetricDelta(
-                metric=metric, condition=EvidenceCondition.PRA_ADAPTOR_BUNDLE,
-                baseline=baseline.value, candidate=None, delta=None, percent_delta=None,
-                state=candidate.state,
-            )
-        assert baseline.value is not None and candidate.value is not None
-        delta = candidate.value - baseline.value
-        percent = None if baseline.value == 0 else 100.0 * delta / baseline.value
-        return MetricDelta(
-            metric=metric, condition=EvidenceCondition.PRA_ADAPTOR_BUNDLE,
-            baseline=baseline.value, candidate=candidate.value, delta=delta,
-            percent_delta=percent, state=MeasurementState.MEASURED,
-        )
+        return self.compare(metric, source_condition, condition, name=name)
+
+    def incremental_adaptor_delta(
+        self, metric: str, mode: str = "native_memory"
+    ) -> MetricDelta:
+        names = {
+            "selected_context": "delta_sc_bundle_vs_sc",
+            "native_memory": "delta_nm_bundle_vs_nm",
+            "native_serving": "delta_ns_bundle_vs_ns",
+        }
+        return self.named_delta(metric, names[mode.lower().replace(" ", "_").replace("-", "_")])
 
     def serialize_for_control_plane(self) -> dict[str, Any]:
         """Return the same normalized document consumed by CLI and web views."""
 
         payload = self.model_dump(mode="json")
         payload["deltas"] = {
-            condition.value: {
-                metric: self.delta(metric, condition).model_dump(mode="json")
+            name: {
+                metric: self.named_delta(metric, name).model_dump(mode="json")
                 for metric in self.metric_definitions
             }
-            for condition in (
-                EvidenceCondition.PRA_NO_ADAPTOR,
-                EvidenceCondition.PRA_ADAPTOR_BUNDLE,
-            )
-        }
-        payload["incremental_adaptor_deltas"] = {
-            metric: self.incremental_adaptor_delta(metric).model_dump(mode="json")
-            for metric in self.metric_definitions
+            for name, pair in DELTA_PAIRS.items()
+            if pair[0] in self.conditions and pair[1] in self.conditions
         }
         return payload
 
@@ -309,79 +497,64 @@ def render_markdown_table(
     *,
     compact_missing: bool = False,
 ) -> str:
-    """Render grouped canonical values, optionally collapsing an unrun adaptor arm."""
+    """Render only conditions and pairwise deltas present in this record."""
 
     metric_names = [
         name
         for name, definition in record.metric_definitions.items()
         if group is None or definition.group == group
     ]
-    adaptor_measured = any(
-        record.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE]
-        .metrics.get(name, MetricObservation.missing(MeasurementState.NEEDS_RUN))
-        .state
-        == MeasurementState.MEASURED
-        for name in metric_names
-    )
-    include_adaptor = not compact_missing or adaptor_measured
-    if include_adaptor:
-        lines = [
-            "| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    conditions = [condition for condition in CONDITION_ORDER if condition in record.conditions]
+    if compact_missing:
+        conditions = [
+            condition for condition in conditions
+            if any(
+                record.conditions[condition].metrics.get(name) is not None
+                for name in metric_names
+            )
         ]
-    else:
-        lines = [
-            "| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |",
-            "| --- | --- | --- | ---: | ---: | ---: |",
-        ]
+    deltas = [
+        (name, pair) for name, pair in DELTA_PAIRS.items()
+        if pair[0] in conditions and pair[1] in conditions
+    ]
+    headers = ["Metric", "Unit", "Direction"] + [
+        CONDITION_LABELS[condition] for condition in conditions
+    ] + [_delta_label(name) for name, _ in deltas]
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" if index < 3 else "---:" for index in range(len(headers))) + " |",
+    ]
     for name in metric_names:
         definition = record.metric_definitions[name]
-        no_pra = record.conditions[EvidenceCondition.NO_PRA].metrics.get(name)
-        no_adapter = record.conditions[EvidenceCondition.PRA_NO_ADAPTOR].metrics.get(name)
-        bundle = record.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics.get(name)
-        delta_no_adapter = record.delta(name, EvidenceCondition.PRA_NO_ADAPTOR)
-        delta_bundle = record.delta(name, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
         cells = [
             _metric_label(name), definition.unit, definition.direction.value,
-            _format_observation(no_pra), _format_observation(no_adapter),
+            *[
+                _format_observation(record.conditions[condition].metrics.get(name))
+                for condition in conditions
+            ],
+            *[_format_delta(record.named_delta(name, delta_name)) for delta_name, _ in deltas],
         ]
-        if include_adaptor:
-            cells.append(_format_observation(bundle))
-        cells.append(_format_delta(delta_no_adapter))
-        if include_adaptor:
-            cells.append(_format_delta(delta_bundle))
-        lines.append(
-            "| " + " | ".join(cells) + " |"
-        )
-    if compact_missing and not include_adaptor:
-        adaptor_states = {
-            observation.state
-            for name, observation in record.conditions[
-                EvidenceCondition.PRA_ADAPTOR_BUNDLE
-            ].metrics.items()
-            if name in metric_names
-        }
-        state = (
-            next(iter(adaptor_states)).value
-            if len(adaptor_states) == 1
-            else MeasurementState.NEEDS_RUN.value
-        )
-        if state == MeasurementState.NOT_MEASURED.value:
-            state = MeasurementState.NEEDS_RUN.value
-        lines += [
-            "",
-            f"PRA - Adaptor Bundle: `{state}` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.",
-        ]
+        lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
 
 
 def render_latex_table(record: CanonicalEvidenceRecord, group: MetricGroup | None = None) -> str:
-    """Render a compact LaTeX table with canonical grouped headers."""
+    """Render a compact condition-aware LaTeX table."""
 
+    conditions = [condition for condition in CONDITION_ORDER if condition in record.conditions]
+    deltas = [
+        (name, pair) for name, pair in DELTA_PAIRS.items()
+        if pair[0] in conditions and pair[1] in conditions
+    ]
+    column_count = 3 + len(conditions) + len(deltas)
     rows = [
-        r"\begin{tabular}{lllrrrrr}",
+        rf"\begin{{tabular}}{{lll{'r' * (column_count - 3)}}}",
         r"\toprule",
-        r"Metric & Unit & Direction & No PRA & PRA no adaptor & PRA bundle & $\Delta$ no adaptor & $\Delta$ bundle \\",
+        " & ".join(
+            ["Metric", "Unit", "Direction"]
+            + [CONDITION_LABELS[condition] for condition in conditions]
+            + [_delta_label(name) for name, _ in deltas]
+        ) + r" \\",
         r"\midrule",
     ]
     for name, definition in record.metric_definitions.items():
@@ -389,13 +562,13 @@ def render_latex_table(record: CanonicalEvidenceRecord, group: MetricGroup | Non
             continue
         values = [
             _format_observation(record.conditions[condition].metrics.get(name))
-            for condition in EvidenceCondition
+            for condition in conditions
         ]
-        deltas = [
-            _format_delta(record.delta(name, condition))
-            for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
+        delta_values = [
+            _format_delta(record.named_delta(name, delta_name))
+            for delta_name, _ in deltas
         ]
-        cells = [_metric_label(name).replace("_", r"\_"), definition.unit, definition.direction.value.replace("_", r"\_"), *values, *deltas]
+        cells = [_metric_label(name).replace("_", r"\_"), definition.unit, definition.direction.value.replace("_", r"\_"), *values, *delta_values]
         rows.append(" & ".join(cells) + r" \\")
     rows.extend((r"\bottomrule", r"\end{tabular}"))
     return "\n".join(rows) + "\n"
@@ -415,6 +588,20 @@ def _format_delta(value: MetricDelta) -> str:
         return value.state.value
     percent = "" if value.percent_delta is None else f" ({value.percent_delta:+.2f}%)"
     return f"{value.delta:+.6g}{percent}"
+
+
+def _delta_label(name: str) -> str:
+    labels = {
+        "delta_sc_vs_no_pra": "Delta SC vs No PRA",
+        "delta_nm_vs_no_pra": "Delta NM vs No PRA",
+        "delta_ns_vs_no_pra": "Delta NS vs No PRA",
+        "delta_nm_vs_sc": "Delta NM vs SC",
+        "delta_ns_vs_nm": "Delta NS vs NM",
+        "delta_sc_bundle_vs_sc": "Delta Bundle vs SC",
+        "delta_nm_bundle_vs_nm": "Delta Bundle vs NM",
+        "delta_ns_bundle_vs_ns": "Delta Bundle vs NS",
+    }
+    return labels[name]
 
 
 def _metric_label(name: str) -> str:

@@ -305,14 +305,15 @@ capability.
 
 \section{Environment and Method}
 
-Public qualification uses the cross-paper conditions \emph{No PRA},
-\emph{PRA--No Adaptor}, and \emph{PRA--Adaptor Bundle}.  The mechanism notation
-remains useful inside this paper: E0 supplies the No-PRA selected-text execution
-and E2/E3 supply native PRA without learned adaptor behavior.  We report a
-bundle condition only when the request resolves an immutable bundle revision;
-otherwise it is \texttt{NOT\_MEASURED}. Both PRA deltas are computed against No
-PRA, retain their mathematical sign, and keep quality, context, serving,
-resource, cost, and routing metrics separate.
+Public qualification uses the staged conditions \emph{No PRA}, \emph{Selected
+Context}, \emph{Native Memory}, and \emph{Native Serving}, with bundle use as
+an orthogonal condition.  The mechanism notation remains useful inside this
+paper: E0 is PRA Selected Context, E2 is Native Memory, and E3 is Native
+Serving.  Our selector-frozen engine deltas are E2 minus E0 and therefore
+isolate native realization; they are not No-PRA deltas.  We report a bundle
+condition only when the request resolves an immutable bundle revision;
+otherwise it retains an explicit missing state. Quality, context, serving,
+resource, cost, and routing metrics remain separate.
 The remote host was an Apple M5 MacBook Pro with 16 GB unified memory, macOS
 26.4.1, and Metal 4. The environment used Python 3.12.7, vLLM
 0.28.0+cpu, and vLLM-Metal

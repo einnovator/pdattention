@@ -11,7 +11,15 @@ from pra_hf.bundle_catalog import load_bundle_catalog
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = ROOT / "docs/papers/shared/results/paper4_5_runtime_productization/canonical_evidence_audit.json"
-CONDITIONS = ("no_pra", "pra_no_adaptor", "pra_adaptor_bundle")
+CONDITIONS = (
+    "NO_PRA",
+    "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+    "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+    "PRA_NATIVE_SERVING_NO_ADAPTOR",
+    "PRA_SELECTED_CONTEXT_BUNDLE",
+    "PRA_NATIVE_MEMORY_BUNDLE",
+    "PRA_NATIVE_SERVING_BUNDLE",
+)
 FLAGSHIP_METRICS = (
     "token_f1", "exact_match", "visible_tokens", "ttft_p50_ms", "ttft_p95_ms",
     "ttft_p99_ms", "itl_p50_ms", "itl_p95_ms", "itl_p99_ms",
@@ -33,14 +41,22 @@ def build_audit(catalog: dict) -> dict:
                 "completion_latency_mean_ms", "peak_memory_bytes",
             }
             metrics[metric] = {
-                "no_pra": "AVAILABLE_EXISTING" if available else "NEEDS_RUN",
-                "pra_no_adaptor": "AVAILABLE_EXISTING" if available else "NEEDS_RUN",
-                "pra_adaptor_bundle": "NEEDS_RUN",
+                "NO_PRA": "NEEDS_RUN" if paired_transport else "NOT_MEASURED",
+                "PRA_SELECTED_CONTEXT_NO_ADAPTOR": "AVAILABLE_EXISTING" if available else "NEEDS_RUN",
+                "PRA_NATIVE_MEMORY_NO_ADAPTOR": "AVAILABLE_EXISTING" if available else "NEEDS_RUN",
+                "PRA_NATIVE_SERVING_NO_ADAPTOR": "NOT_APPLICABLE",
+                "PRA_SELECTED_CONTEXT_BUNDLE": "NEEDS_RUN",
+                "PRA_NATIVE_MEMORY_BUNDLE": "NEEDS_RUN",
+                "PRA_NATIVE_SERVING_BUNDLE": "NOT_APPLICABLE",
             }
         metrics["evidence_recall"] = {
-            "no_pra": "NOT_APPLICABLE",
-            "pra_no_adaptor": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
-            "pra_adaptor_bundle": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
+            "NO_PRA": "NOT_APPLICABLE",
+            "PRA_SELECTED_CONTEXT_NO_ADAPTOR": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
+            "PRA_NATIVE_MEMORY_NO_ADAPTOR": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
+            "PRA_NATIVE_SERVING_NO_ADAPTOR": "NOT_APPLICABLE",
+            "PRA_SELECTED_CONTEXT_BUNDLE": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
+            "PRA_NATIVE_MEMORY_BUNDLE": "AVAILABLE_EXISTING" if "hf_catalog_adapters/" in str(bundle.get("artifact", "")) else "NEEDS_RUN",
+            "PRA_NATIVE_SERVING_BUNDLE": "NOT_APPLICABLE",
         }
         rows.append({
             "bundle": bundle["repo"],
@@ -51,16 +67,16 @@ def build_audit(catalog: dict) -> dict:
             "artifact": bundle.get("artifact"),
             "metrics": metrics,
         })
-    counts = {state: 0 for state in ("AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_APPLICABLE", "BLOCKED")}
+    counts = {state: 0 for state in ("AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_MEASURED", "NOT_APPLICABLE", "BLOCKED")}
     for row in rows:
         for states in row["metrics"].values():
             for condition in CONDITIONS:
                 counts[states[condition]] += 1
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "catalog": catalog.get("collection"),
         "conditions": list(CONDITIONS),
-        "policy": "Exact identity only; missing values are never encoded as zero.",
+        "policy": "Exact identity and explicit staged condition only; E0 is Selected Context, never No PRA.",
         "summary": counts,
         "rows": rows,
     }

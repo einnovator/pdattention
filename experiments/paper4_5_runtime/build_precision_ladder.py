@@ -55,7 +55,10 @@ def _value(
 ) -> float | None:
     if record is None:
         return None
-    observation = record.conditions[condition].metrics.get(metric)
+    evidence = record.conditions.get(condition)
+    if evidence is None:
+        return None
+    observation = evidence.metrics.get(metric)
     if observation is None or observation.state != MeasurementState.MEASURED:
         return None
     return observation.value
@@ -67,10 +70,17 @@ def _condition_state(
     if record is None:
         return (
             "NO_QUALIFIED_ADAPTER"
-            if condition == EvidenceCondition.PRA_ADAPTOR_BUNDLE
+            if condition in {
+                EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE,
+                EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE,
+                EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE,
+            }
             else "NEEDS_RUN"
         )
-    observations = tuple(record.conditions[condition].metrics.values())
+    evidence = record.conditions.get(condition)
+    if evidence is None:
+        return "NEEDS_RUN"
+    observations = tuple(evidence.metrics.values())
     if any(value.state == MeasurementState.MEASURED for value in observations):
         return "MEASURED"
     states = {value.state.value for value in observations}
@@ -102,13 +112,18 @@ def _measured_row(target: Mapping[str, Any], catalog: Mapping[str, Any]) -> dict
     precision = str(target["precisions"][0])
     base_model = str(target.get("base_model", target["model"]))
     no_pra_quality = _value(record, EvidenceCondition.NO_PRA, "token_f1")
-    pra_quality = _value(record, EvidenceCondition.PRA_NO_ADAPTOR, "token_f1")
-    adaptor_quality = _value(
-        record, EvidenceCondition.PRA_ADAPTOR_BUNDLE, "token_f1"
+    selected_quality = _value(
+        record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "token_f1"
     )
-    quality_delta = (
-        pra_quality - no_pra_quality
-        if pra_quality is not None and no_pra_quality is not None
+    native_quality = _value(
+        record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "token_f1"
+    )
+    adaptor_quality = _value(
+        record, EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE, "token_f1"
+    )
+    native_delta = (
+        native_quality - selected_quality
+        if native_quality is not None and selected_quality is not None
         else None
     )
     return {
@@ -129,44 +144,60 @@ def _measured_row(target: Mapping[str, Any], catalog: Mapping[str, Any]) -> dict
         "bundle": target["catalog_repo"],
         "artifact": catalog.get("artifact"),
         "condition_no_pra": _condition_state(record, EvidenceCondition.NO_PRA),
-        "condition_pra_no_adaptor": _condition_state(
-            record, EvidenceCondition.PRA_NO_ADAPTOR
+        "condition_selected_context_no_adaptor": _condition_state(
+            record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR
         ),
-        "condition_pra_adaptor_bundle": _condition_state(
-            record, EvidenceCondition.PRA_ADAPTOR_BUNDLE
+        "condition_native_memory_no_adaptor": _condition_state(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR
+        ),
+        "condition_native_memory_bundle": _condition_state(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE
         ),
         "token_f1_no_pra": no_pra_quality,
-        "token_f1_pra_no_adaptor": pra_quality,
-        "token_f1_pra_adaptor_bundle": adaptor_quality,
-        "token_f1_delta_pra_no_adaptor": quality_delta,
+        "token_f1_selected_context_no_adaptor": selected_quality,
+        "token_f1_native_memory_no_adaptor": native_quality,
+        "token_f1_native_memory_bundle": adaptor_quality,
+        "delta_nm_vs_sc_token_f1": native_delta,
         "token_f1_incremental_adaptor_gain": (
-            adaptor_quality - pra_quality
-            if adaptor_quality is not None and pra_quality is not None
+            adaptor_quality - native_quality
+            if adaptor_quality is not None and native_quality is not None
             else None
         ),
         "visible_tokens_no_pra": _value(
             record, EvidenceCondition.NO_PRA, "visible_tokens"
         ),
-        "visible_tokens_pra_no_adaptor": _value(
-            record, EvidenceCondition.PRA_NO_ADAPTOR, "visible_tokens"
+        "visible_tokens_selected_context": _value(
+            record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "visible_tokens"
+        ),
+        "visible_tokens_native_memory": _value(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "visible_tokens"
         ),
         "ttft_p95_ms_no_pra": _value(
             record, EvidenceCondition.NO_PRA, "ttft_p95_ms"
         ),
-        "ttft_p95_ms_pra_no_adaptor": _value(
-            record, EvidenceCondition.PRA_NO_ADAPTOR, "ttft_p95_ms"
+        "ttft_p95_ms_selected_context": _value(
+            record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "ttft_p95_ms"
+        ),
+        "ttft_p95_ms_native_memory": _value(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "ttft_p95_ms"
         ),
         "output_tokens_per_second_no_pra": _value(
             record, EvidenceCondition.NO_PRA, "output_tokens_per_second"
         ),
-        "output_tokens_per_second_pra_no_adaptor": _value(
-            record, EvidenceCondition.PRA_NO_ADAPTOR, "output_tokens_per_second"
+        "output_tokens_per_second_selected_context": _value(
+            record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "output_tokens_per_second"
+        ),
+        "output_tokens_per_second_native_memory": _value(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "output_tokens_per_second"
         ),
         "peak_memory_bytes_no_pra": _value(
             record, EvidenceCondition.NO_PRA, "peak_memory_bytes"
         ),
-        "peak_memory_bytes_pra_no_adaptor": _value(
-            record, EvidenceCondition.PRA_NO_ADAPTOR, "peak_memory_bytes"
+        "peak_memory_bytes_selected_context": _value(
+            record, EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "peak_memory_bytes"
+        ),
+        "peak_memory_bytes_native_memory": _value(
+            record, EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "peak_memory_bytes"
         ),
         "exact_pairs": (combined or {}).get("semantic_equivalence", {}).get(
             "exact_output_pairs"
@@ -199,21 +230,27 @@ def _planned_row(target: Mapping[str, Any], precision: str) -> dict[str, Any]:
         "bundle": None,
         "artifact": None,
         "condition_no_pra": "NEEDS_RUN",
-        "condition_pra_no_adaptor": "NEEDS_RUN",
-        "condition_pra_adaptor_bundle": "NO_QUALIFIED_ADAPTER",
+        "condition_selected_context_no_adaptor": "NEEDS_RUN",
+        "condition_native_memory_no_adaptor": "NEEDS_RUN",
+        "condition_native_memory_bundle": "NO_QUALIFIED_ADAPTER",
         "token_f1_no_pra": None,
-        "token_f1_pra_no_adaptor": None,
-        "token_f1_pra_adaptor_bundle": None,
-        "token_f1_delta_pra_no_adaptor": None,
+        "token_f1_selected_context_no_adaptor": None,
+        "token_f1_native_memory_no_adaptor": None,
+        "token_f1_native_memory_bundle": None,
+        "delta_nm_vs_sc_token_f1": None,
         "token_f1_incremental_adaptor_gain": None,
         "visible_tokens_no_pra": None,
-        "visible_tokens_pra_no_adaptor": None,
+        "visible_tokens_selected_context": None,
+        "visible_tokens_native_memory": None,
         "ttft_p95_ms_no_pra": None,
-        "ttft_p95_ms_pra_no_adaptor": None,
+        "ttft_p95_ms_selected_context": None,
+        "ttft_p95_ms_native_memory": None,
         "output_tokens_per_second_no_pra": None,
-        "output_tokens_per_second_pra_no_adaptor": None,
+        "output_tokens_per_second_selected_context": None,
+        "output_tokens_per_second_native_memory": None,
         "peak_memory_bytes_no_pra": None,
-        "peak_memory_bytes_pra_no_adaptor": None,
+        "peak_memory_bytes_selected_context": None,
+        "peak_memory_bytes_native_memory": None,
         "exact_pairs": None,
         "paired_examples": None,
         "memory_gate": "NOT_MEASURED",
@@ -249,15 +286,15 @@ def build_ladder() -> dict[str, Any]:
     )
     deltas: dict[str, list[float]] = defaultdict(list)
     for row in rows:
-        if row["token_f1_delta_pra_no_adaptor"] is not None:
+        if row["delta_nm_vs_sc_token_f1"] is not None:
             deltas[str(row["base_model"])].append(
-                float(row["token_f1_delta_pra_no_adaptor"])
+                float(row["delta_nm_vs_sc_token_f1"])
             )
     stability = {
         model: {
             "measured_precisions": len(values),
-            "mean_pra_token_f1_delta": mean(values),
-            "pra_gain_variance": pvariance(values) if len(values) > 1 else None,
+            "mean_nm_vs_sc_token_f1_delta": mean(values),
+            "native_realization_delta_variance": pvariance(values) if len(values) > 1 else None,
         }
         for model, values in sorted(deltas.items())
     }
@@ -275,12 +312,12 @@ def build_ladder() -> dict[str, Any]:
         "summary": {
             "rows": len(rows),
             "measured_variants": sum(
-                row["condition_no_pra"] == "MEASURED"
-                and row["condition_pra_no_adaptor"] == "MEASURED"
+                row["condition_selected_context_no_adaptor"] == "MEASURED"
+                and row["condition_native_memory_no_adaptor"] == "MEASURED"
                 for row in rows
             ),
             "adaptor_bundle_variants": sum(
-                row["condition_pra_adaptor_bundle"] == "MEASURED" for row in rows
+                row["condition_native_memory_bundle"] == "MEASURED" for row in rows
             ),
             "needs_run": sum(row["qualification"] == "NOT_MEASURED" for row in rows),
         },
@@ -301,23 +338,23 @@ def write_ladder(payload: Mapping[str, Any], output: Path) -> None:
     _write_card(rows, output / "precision_card_fragment.md")
     _plot(rows, output / "precision_observed_metrics")
     _plot_metric(
-        rows, "token_f1_delta_pra_no_adaptor", "PRA quality delta",
+        rows, "delta_nm_vs_sc_token_f1", "Native Memory - Selected Context F1",
         output / "pra_quality_delta_vs_precision", include_zero=True,
     )
     _plot_metric(
-        rows, "ttft_p95_ms_pra_no_adaptor", "PRA TTFT p95 (ms)",
+        rows, "ttft_p95_ms_native_memory", "Native Memory TTFT p95 (ms)",
         output / "ttft_vs_precision",
     )
     _plot_metric(
-        rows, "output_tokens_per_second_pra_no_adaptor", "PRA output tokens/s",
+        rows, "output_tokens_per_second_native_memory", "Native Memory output tokens/s",
         output / "tokens_per_second_vs_precision",
     )
     _plot_metric(
-        rows, "peak_memory_bytes_pra_no_adaptor", "PRA peak memory (bytes)",
+        rows, "peak_memory_bytes_native_memory", "Native Memory peak memory (bytes)",
         output / "peak_memory_vs_precision",
     )
     _plot_metric(
-        rows, "visible_tokens_pra_no_adaptor", "PRA visible tokens",
+        rows, "visible_tokens_native_memory", "Native Memory visible tokens",
         output / "visible_tokens_vs_precision",
     )
     _plot_metric(
@@ -327,15 +364,19 @@ def write_ladder(payload: Mapping[str, Any], output: Path) -> None:
 
 
 def _write_tex(rows: list[Mapping[str, Any]], path: Path) -> None:
-    measured = [row for row in rows if row["condition_no_pra"] == "MEASURED"]
+    measured = [
+        row for row in rows
+        if row["condition_selected_context_no_adaptor"] == "MEASURED"
+        and row["condition_native_memory_no_adaptor"] == "MEASURED"
+    ]
     lines = [
         r"\begin{tabular}{llllrrr}",
         r"\toprule",
-        r"Model & Encoding & Evidence & Pairs & $\Delta$F1 & Vis. base & Vis. PRA \\",
+        r"Model & Encoding & Evidence & Pairs & $\Delta$F1 & Vis. SC & Vis. NM \\",
         r"\midrule",
     ]
     for row in measured:
-        delta = row["token_f1_delta_pra_no_adaptor"]
+        delta = row["delta_nm_vs_sc_token_f1"]
         lines.append(
             " & ".join(
                 (
@@ -344,8 +385,8 @@ def _write_tex(rows: list[Mapping[str, Any]], path: Path) -> None:
                     str(row["qualification"]).replace("_", r"\_"),
                     f"{row['exact_pairs']}/{row['paired_examples']}",
                     "--" if delta is None else f"{float(delta):+.4f}",
-                    "--" if row["visible_tokens_no_pra"] is None else f"{float(row['visible_tokens_no_pra']):.1f}",
-                    "--" if row["visible_tokens_pra_no_adaptor"] is None else f"{float(row['visible_tokens_pra_no_adaptor']):.1f}",
+                    "--" if row["visible_tokens_selected_context"] is None else f"{float(row['visible_tokens_selected_context']):.1f}",
+                    "--" if row["visible_tokens_native_memory"] is None else f"{float(row['visible_tokens_native_memory']):.1f}",
                 )
             )
             + r" \\"
@@ -379,8 +420,8 @@ def _plot(rows: list[Mapping[str, Any]], prefix: Path) -> None:
     measured = [
         row
         for row in rows
-        if row["visible_tokens_no_pra"] is not None
-        and row["visible_tokens_pra_no_adaptor"] is not None
+        if row["visible_tokens_selected_context"] is not None
+        and row["visible_tokens_native_memory"] is not None
     ]
     if not measured:
         return
@@ -392,28 +433,28 @@ def _plot(rows: list[Mapping[str, Any]], prefix: Path) -> None:
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.2))
     axes[0].bar(
         [value - 0.2 for value in x],
-        [float(row["visible_tokens_no_pra"]) for row in measured],
+        [float(row["visible_tokens_selected_context"]) for row in measured],
         width=0.4,
-        label="No PRA",
+        label="Selected Context",
     )
     axes[0].bar(
         [value + 0.2 for value in x],
-        [float(row["visible_tokens_pra_no_adaptor"]) for row in measured],
+        [float(row["visible_tokens_native_memory"]) for row in measured],
         width=0.4,
-        label="PRA, no adaptor",
+        label="Native Memory",
     )
     axes[0].set_ylabel("Mean visible tokens")
     axes[0].legend()
     axes[1].bar(
         x,
         [
-            float(row["token_f1_delta_pra_no_adaptor"] or 0.0)
+            float(row["delta_nm_vs_sc_token_f1"] or 0.0)
             for row in measured
         ],
         color="#c54f31",
     )
     axes[1].axhline(0.0, color="black", linewidth=0.8)
-    axes[1].set_ylabel("PRA token-F1 delta")
+    axes[1].set_ylabel("Native Memory - Selected Context F1")
     for axis in axes:
         axis.set_xticks(x, labels, rotation=25, ha="right")
         axis.grid(axis="y", alpha=0.25)

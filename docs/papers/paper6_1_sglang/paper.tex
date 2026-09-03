@@ -207,13 +207,14 @@ comparison.
 
 \section{Method}
 
-The product-facing projection uses three fixed labels: \emph{No PRA},
-\emph{PRA--No Adaptor}, and \emph{PRA--Adaptor Bundle}.  Within the mechanism
-study, selected-text E0 supplies the original-model condition and native E2/E3
-supply PRA without learned adaptor behavior.  An immutable bundle result is
-reported only when bundle resolution is present in the run receipt; absent
-bundle measurements remain \texttt{NOT\_MEASURED}. Deltas are candidate minus
-No PRA and are not sign-inverted to make improvements appear positive.
+The product-facing projection distinguishes \emph{No PRA}, \emph{Selected
+Context}, \emph{Native Memory}, and \emph{Native Serving}; bundle use is a
+separate axis.  Within the mechanism study, selected-text E0 is PRA Selected
+Context and native E2/E3 provide Native Memory and Native Serving without
+learned adaptor behavior.  The principal engine delta is E2 minus E0 at frozen
+selection, not PRA minus No PRA.  An immutable bundle result is reported only
+when bundle resolution is present in the run receipt; absent measurements keep
+their explicit state. Delta signs are never inverted.
 We used the same synthetic codeword task and serialized prompts as the vLLM and
 MLX-LM calibration. Twelve distractor records surround one authoritative
 record. Conditions are no prefix/no PRA, prefix only, selected evidence only,

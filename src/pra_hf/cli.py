@@ -215,10 +215,10 @@ def _emit_bundle_catalog(
 
 
 def _emit_qualification(value: Mapping[str, Any], run_directory: Path | None = None) -> None:
-    click.echo("MODE                STATUS              F1            VISIBLE TOKENS  TTFT P95 MS   SUCCESS REQ/S")
+    click.echo("CONDITION                             MODE                STATUS              F1            VISIBLE TOKENS  TTFT P95 MS   SUCCESS REQ/S")
     for row in value["modes"].values():
         click.echo(
-            f"{row['label']:<19} {row['status']:<19} {_metric(row['quality']['f1']):<13} "
+            f"{row['condition']:<37} {row['label']:<19} {row['status']:<19} {_metric(row['quality']['f1']):<13} "
             f"{_metric(row['context']['visible_input_tokens']):<15} "
             f"{_metric(row['performance']['ttft_p95_ms']):<13} "
             f"{_metric(row['performance']['successful_requests_per_second'])}"

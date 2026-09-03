@@ -67,7 +67,7 @@ def build_comparison() -> dict[str, Any]:
                 for row in document["summary"]
             }
             baseline = summary[("no_pra", candidate_count)]
-            pra = summary[("pra_no_adaptor", candidate_count)]
+            native = summary[("pra_no_adaptor", candidate_count)]
             condition_rows = {
                 condition: [
                     row for row in document["rows"]
@@ -94,43 +94,45 @@ def build_comparison() -> dict[str, Any]:
                 "examples": baseline["examples"],
                 "candidate_count": candidate_count,
                 "token_budget": document["token_budgets"][0],
+                "source_condition": "NO_PRA",
+                "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
                 "no_pra_token_f1": baseline["token_f1"],
-                "pra_no_adaptor_token_f1": pra["token_f1"],
-                "pra_token_f1_delta": pra["token_f1"] - baseline["token_f1"],
+                "native_memory_no_adaptor_token_f1": native["token_f1"],
+                "delta_nm_vs_no_pra_token_f1": native["token_f1"] - baseline["token_f1"],
                 "no_pra_task_score": baseline["dataset_task_score"],
-                "pra_no_adaptor_task_score": pra["dataset_task_score"],
-                "pra_task_score_delta": (
-                    pra["dataset_task_score"] - baseline["dataset_task_score"]
+                "native_memory_no_adaptor_task_score": native["dataset_task_score"],
+                "delta_nm_vs_no_pra_task_score": (
+                    native["dataset_task_score"] - baseline["dataset_task_score"]
                 ),
                 "no_pra_supporting_document_coverage": baseline[
                     "supporting_document_coverage"
                 ],
-                "pra_supporting_document_coverage": pra[
+                "native_memory_supporting_document_coverage": native[
                     "supporting_document_coverage"
                 ],
                 "no_pra_visible_tokens": baseline["physical_context_tokens"],
-                "pra_visible_tokens": pra["physical_context_tokens"],
+                "native_memory_visible_tokens": native["physical_context_tokens"],
                 "no_pra_total_latency_ms": baseline["total_latency_ms"],
-                "pra_total_latency_ms": pra["total_latency_ms"],
-                "pra_total_latency_ratio": (
-                    pra["total_latency_ms"] / baseline["total_latency_ms"]
+                "native_memory_total_latency_ms": native["total_latency_ms"],
+                "native_memory_vs_no_pra_total_latency_ratio": (
+                    native["total_latency_ms"] / baseline["total_latency_ms"]
                 ),
                 "no_pra_ttft_p50_ms": statistics.median(
                     value["ttft_ms"] for value in serving["no_pra"]
                 ),
-                "pra_ttft_p50_ms": statistics.median(
+                "native_memory_ttft_p50_ms": statistics.median(
                     value["ttft_ms"] for value in serving["pra_no_adaptor"]
                 ),
                 "no_pra_ttft_p95_ms": _percentile(
                     [value["ttft_ms"] for value in serving["no_pra"]], 0.95
                 ),
-                "pra_ttft_p95_ms": _percentile(
+                "native_memory_ttft_p95_ms": _percentile(
                     [value["ttft_ms"] for value in serving["pra_no_adaptor"]], 0.95
                 ),
                 "no_pra_output_tokens_per_second": statistics.fmean(
                     value["tokens_per_second"] for value in serving["no_pra"]
                 ),
-                "pra_output_tokens_per_second": statistics.fmean(
+                "native_memory_output_tokens_per_second": statistics.fmean(
                     value["tokens_per_second"]
                     for value in serving["pra_no_adaptor"]
                 ),
@@ -139,12 +141,12 @@ def build_comparison() -> dict[str, Any]:
             }
             rows.append(row)
     return {
-        "schema_version": 1,
+        "schema_version": 3,
         "comparison": "Qwen3-4B matched BF16/INT8/INT4 MultiHop-RAG",
         "comparison_scope": (
-            "Matched deployed pipelines: standard selected-text retrieval versus "
-            "PRA hybrid retrieval with detached native K/V. Selector and transport "
-            "are not held independently constant."
+            "Matched deployed pipelines: ordinary non-PRA RAG versus PRA selection "
+            "with detached native K/V. The reported NM-vs-No-PRA delta combines "
+            "selection and transport because no Selected Context arm was captured."
         ),
         "invariants": {
             field: first[field] for field in invariant_fields
@@ -185,15 +187,15 @@ def write_comparison(payload: Mapping[str, Any], output: Path = DEFAULT_OUTPUT) 
     lines = [
         r"\begin{tabular}{llrrrrr}",
         r"\toprule",
-        r"Encoding & Candidates & Base F1 & PRA F1 & $\Delta$F1 & Task $\Delta$ & Latency ratio \\",
+        r"Encoding & Candidates & No-PRA F1 & Native F1 & $\Delta_{NM-NP}$ F1 & Task $\Delta_{NM-NP}$ & NM/No-PRA latency \\",
         r"\midrule",
     ]
     for row in rows:
         lines.append(
             f"{row['precision_encoding']} & {row['candidate_count']} & "
-            f"{row['no_pra_token_f1']:.4f} & {row['pra_no_adaptor_token_f1']:.4f} & "
-            f"{row['pra_token_f1_delta']:+.4f} & {row['pra_task_score_delta']:+.2f} & "
-            f"{row['pra_total_latency_ratio']:.3f} \\\\"
+            f"{row['no_pra_token_f1']:.4f} & {row['native_memory_no_adaptor_token_f1']:.4f} & "
+            f"{row['delta_nm_vs_no_pra_token_f1']:+.4f} & {row['delta_nm_vs_no_pra_task_score']:+.2f} & "
+            f"{row['native_memory_vs_no_pra_total_latency_ratio']:.3f} \\\\"
         )
     lines += [r"\bottomrule", r"\end{tabular}", ""]
     (output / "generated_precision_rag.tex").write_text(
@@ -203,12 +205,12 @@ def write_comparison(payload: Mapping[str, Any], output: Path = DEFAULT_OUTPUT) 
     figure, axes = plt.subplots(1, 2, figsize=(9.5, 3.8))
     labels = [f"{row['precision_family']}\nK={row['candidate_count']}" for row in rows]
     x = list(range(len(rows)))
-    axes[0].bar(x, [row["pra_token_f1_delta"] for row in rows], color="#26766f")
+    axes[0].bar(x, [row["delta_nm_vs_no_pra_token_f1"] for row in rows], color="#26766f")
     axes[0].axhline(0, color="black", linewidth=0.8)
-    axes[0].set_ylabel("PRA - baseline token F1")
-    axes[1].bar(x, [row["pra_total_latency_ratio"] for row in rows], color="#c54f31")
+    axes[0].set_ylabel("Native Memory - No PRA token F1")
+    axes[1].bar(x, [row["native_memory_vs_no_pra_total_latency_ratio"] for row in rows], color="#c54f31")
     axes[1].axhline(1, color="black", linewidth=0.8)
-    axes[1].set_ylabel("PRA / baseline total latency")
+    axes[1].set_ylabel("Native Memory / No PRA total latency")
     for axis in axes:
         axis.set_xticks(x, labels)
         axis.grid(axis="y", alpha=0.25)

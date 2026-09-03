@@ -20,6 +20,10 @@ Lists use bounded `limit`/`offset` pagination and indexed filters. Resolver
 ordering is total and deterministic: approval, exact revision, qualified engine
 recommendation, stable resource ID, then immutable revision.
 
+Qualification creation requires a canonical `condition` ID in addition to its
+display `mode`. Bundle conditions also require an exact `bundle_id` and
+`bundle_revision`. See [PRA Execution Conditions](../execution-conditions.md).
+
 ```bash
 curl -s http://127.0.0.1:9200/v1/models?limit=50
 curl -s -X POST http://127.0.0.1:9200/v1/resolve/bundle \

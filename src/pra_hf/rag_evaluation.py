@@ -426,9 +426,11 @@ def make_candidate_receipt(
 
 
 class ContextCondition(str, Enum):
-    NO_PRA = "no_pra"
-    PRA_NO_ADAPTOR = "pra_no_adaptor"
-    PRA_ADAPTOR_BUNDLE = "pra_adaptor_bundle"
+    NO_PRA = "NO_PRA"
+    PRA_SELECTED_CONTEXT_NO_ADAPTOR = "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
+    PRA_NATIVE_MEMORY_NO_ADAPTOR = "PRA_NATIVE_MEMORY_NO_ADAPTOR"
+    PRA_SELECTED_CONTEXT_BUNDLE = "PRA_SELECTED_CONTEXT_BUNDLE"
+    PRA_NATIVE_MEMORY_BUNDLE = "PRA_NATIVE_MEMORY_BUNDLE"
     ORACLE_GOLD_DOCUMENTS = "oracle_gold_documents"
     ORACLE_GOLD_SPANS = "oracle_gold_spans"
 

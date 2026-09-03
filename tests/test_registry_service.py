@@ -69,12 +69,31 @@ def test_bundle_revision_and_qualification_are_immutable(client: TestClient) -> 
     qualification = {
         "id": "qual-1", "model_id": "model-qwen", "model_revision": "base-sha",
         "bundle_id": "bundle-qwen", "bundle_revision": "bundle-sha",
-        "engine": "hf", "workload": "qasper", "mode": "E2", "cohort_size": 50,
+        "engine": "hf", "workload": "qasper", "mode": "E2",
+        "condition": "PRA_NATIVE_MEMORY_BUNDLE", "cohort_size": 50,
         "metrics": {"f1": 0.72},
     }
     assert client.post("/v1/qualifications", json=qualification).status_code == 201
     assert client.get("/v1/qualifications/qual-1").json()["metrics"]["f1"] == 0.72
+    assert client.get("/v1/qualifications/qual-1").json()["condition"] == "PRA_NATIVE_MEMORY_BUNDLE"
     assert client.patch("/v1/qualifications/qual-1", json={"metrics": {}}).status_code == 405
+
+
+def test_qualification_requires_explicit_consistent_condition(client: TestClient) -> None:
+    seed(client)
+    base = {
+        "id": "qual-condition", "model_id": "model-qwen",
+        "model_revision": "base-sha", "engine": "hf", "workload": "qasper",
+        "mode": "E2", "cohort_size": 5, "metrics": {"f1": 0.7},
+    }
+    assert client.post("/v1/qualifications", json=base).status_code == 422
+    invalid = {
+        **base,
+        "condition": "NO_PRA",
+        "bundle_id": "bundle-qwen",
+        "bundle_revision": "bundle-sha",
+    }
+    assert client.post("/v1/qualifications", json=invalid).status_code == 422
 
 
 def test_approval_workflow_is_append_only_and_audited(client: TestClient) -> None:

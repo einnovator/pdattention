@@ -122,6 +122,7 @@ class QualificationRecord(TimestampMixin, Base):
     workload: Mapped[str] = mapped_column(String(255), index=True)
     profile_id: Mapped[str | None] = mapped_column(String(255), index=True)
     mode: Mapped[str] = mapped_column(String(64), index=True)
+    condition: Mapped[str] = mapped_column(String(64), index=True)
     cohort_size: Mapped[int] = mapped_column(Integer)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     quality_gate: Mapped[str] = mapped_column(String(64))

@@ -154,9 +154,10 @@ def test_generated_card_is_complete_and_uses_public_terms(tmp_path: Path) -> Non
     assert metadata["base_model"] == "org/model"
     assert "# PRA Runtime Bundle for org/model" in text
     assert "## Recommended configuration" in text
-    assert "## Canonical three-condition evidence" in text
-    assert "PRA - No Adaptor" in text
-    assert "PRA - Adaptor Bundle" in text
+    assert "## Canonical staged evidence" in text
+    assert "Selected Context" in text
+    assert "Selected Context + Bundle" in text
+    assert "No PRA" in text
     assert "Native Memory" in text
     assert " E2 " not in text
     assert "collections/EInnovator/pra-bundles-test" in text

@@ -10,6 +10,22 @@ from pathlib import Path
 from typing import Mapping
 
 
+NO_PRA = "NO_PRA"
+SELECTED_CONTEXT = "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
+NATIVE_MEMORY = "PRA_NATIVE_MEMORY_NO_ADAPTOR"
+LEGACY_CONDITIONS = {
+    "no_pra": NO_PRA,
+    "pra_no_adaptor": NATIVE_MEMORY,
+}
+
+
+def _condition(value: object) -> str:
+    """Normalize known RAG-ladder legacy labels without calling E0 No PRA."""
+
+    text = str(value)
+    return LEGACY_CONDITIONS.get(text, text)
+
+
 def _load(path: Path) -> Mapping[str, object]:
     if path.suffix == ".gz":
         with gzip.open(path, "rt", encoding="utf-8") as stream:
@@ -26,17 +42,17 @@ def _reuse_curve(payload: Mapping[str, object], candidate_count: int, token_budg
         for row in payload["rows"]
         if row["candidate_count"] == candidate_count
         and row["token_budget"] == token_budget
-        and row["condition"] in {"no_pra", "pra_no_adaptor"}
+        and _condition(row["condition"]) in {NO_PRA, NATIVE_MEMORY}
     ]
     examples = [row["example_id"] for row in payload["examples"]]
-    by_key = {(row["example_id"], row["condition"]): row for row in rows}
+    by_key = {(row["example_id"], _condition(row["condition"])): row for row in rows}
     cumulative_visible = 0
     cumulative_native = 0
     seen_native_chunks: set[str] = set()
     curve = []
     for ordinal, example_id in enumerate(examples, 1):
-        baseline = by_key[(example_id, "no_pra")]
-        pra = by_key[(example_id, "pra_no_adaptor")]
+        baseline = by_key[(example_id, NO_PRA)]
+        pra = by_key[(example_id, NATIVE_MEMORY)]
         cumulative_visible += int(
             baseline["retrieval_context_metrics"]["physical_context_tokens"]
         )
@@ -83,7 +99,7 @@ def main() -> None:
             "reuse_curve": reuse,
         }
         for row in payload["summary"]:
-            csv_rows.append({"experiment": key, **row})
+            csv_rows.append({"experiment": key, **row, "condition": _condition(row["condition"])})
 
     summary_path = args.output_dir / "rag_eval_summary.json"
     summary_path.write_text(json.dumps(combined, indent=2) + "\n", encoding="utf-8")
@@ -97,8 +113,16 @@ def main() -> None:
 
     import matplotlib.pyplot as plt
 
-    colors = {"no_pra": "#1f5a94", "pra_no_adaptor": "#c4512d"}
-    labels = {"no_pra": "Standard RAG", "pra_no_adaptor": "RAG + PRA"}
+    colors = {
+        NO_PRA: "#1f5a94",
+        SELECTED_CONTEXT: "#26766f",
+        NATIVE_MEMORY: "#c4512d",
+    }
+    labels = {
+        NO_PRA: "Standard RAG (No PRA)",
+        SELECTED_CONTEXT: "PRA Selected Context",
+        NATIVE_MEMORY: "PRA Native Memory",
+    }
     natural_key = next((key for key in combined if key.startswith("multihoprag_fixed")), None)
     retrieval_key = next((key for key in combined if key.startswith("multihoprag_retrieval")), None)
     if natural_key:
@@ -109,7 +133,7 @@ def main() -> None:
                 (
                     row
                     for row in rows
-                    if row["condition"] == condition and row["token_budget"] == 2048
+                    if _condition(row["condition"]) == condition and row["token_budget"] == 2048
                 ),
                 key=lambda row: row["candidate_count"],
             )
@@ -130,7 +154,7 @@ def main() -> None:
                 (
                     row
                     for row in rows
-                    if row["condition"] == condition and row["candidate_count"] == 50
+                    if _condition(row["condition"]) == condition and row["candidate_count"] == 50
                 ),
                 key=lambda row: row["token_budget"],
             )
@@ -164,13 +188,13 @@ def main() -> None:
         axis.plot(
             [row["query_count"] for row in curve],
             [row["standard_rag_cumulative_visible_tokens"] for row in curve],
-            color=colors["no_pra"],
+            color=colors[NO_PRA],
             label="Standard RAG visible text",
         )
         axis.plot(
             [row["query_count"] for row in curve],
             [row["pra_cumulative_new_native_tokens"] for row in curve],
-            color=colors["pra_no_adaptor"],
+            color=colors[NATIVE_MEMORY],
             label="PRA newly materialized chunks",
         )
         axis.set_xlabel("Queries over persistent corpus")

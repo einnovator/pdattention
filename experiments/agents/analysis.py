@@ -149,10 +149,10 @@ def canonical_agent_evidence(
     blocked_note = gate["reason"] if not gate["eligible"] else None
     conditions = {
         EvidenceCondition.NO_PRA: ConditionEvidence(metrics=_agent_metrics(baseline)),
-        EvidenceCondition.PRA_NO_ADAPTOR: ConditionEvidence(
+        EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR: ConditionEvidence(
             metrics=_agent_metrics(pra_no_adaptor) if pra_no_adaptor else _missing_agent_metrics(blocked_note)
         ),
-        EvidenceCondition.PRA_ADAPTOR_BUNDLE: ConditionEvidence(
+        EvidenceCondition.PRA_SELECTED_CONTEXT_BUNDLE: ConditionEvidence(
             metrics=_agent_metrics(pra_adaptor_bundle) if pra_adaptor_bundle else _missing_agent_metrics(blocked_note),
             bundle_id=bundle_id,
             bundle_revision=bundle_revision,
@@ -163,7 +163,7 @@ def canonical_agent_evidence(
     run_ids = tuple(row.identity.run_id for row in [*baseline, *pra_no_adaptor, *pra_adaptor_bundle])
     precision = infer_precision(identity.quantization, engine=identity.engine)
     return CanonicalEvidenceRecord(
-        schema_version=2 if precision.is_explicit else 1,
+        schema_version=3 if precision.is_explicit else 1,
         key=EvidenceKey(
             task=f"{identity.benchmark}:{','.join(task_ids)}",
             hardware=hardware,

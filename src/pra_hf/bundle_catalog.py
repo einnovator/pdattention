@@ -82,8 +82,8 @@ def render_qualification_matrix(catalog: Mapping[str, Any]) -> str:
         )
     lines += [
         "", "## Canonical condition audit", "",
-        "This audit asks whether the same task, exact model, engine/hardware, mode, and profile have been measured under all three conditions. `AVAILABLE_EXISTING` here means that at least the quality, context, serving, and memory fields present in the linked selector-frozen artifact can be imported; it does not imply that every requested metric exists.", "",
-        "| Task/dataset | HW/engine | Model | Precision | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
+        "This audit keeps execution depth separate from bundle use. Existing selector-frozen transport artifacts measure Selected Context and Native Memory, not ordinary No-PRA inference. `AVAILABLE_EXISTING` does not imply that every requested metric exists.", "",
+        "| Task/dataset | HW/engine | Model | Precision | Mode | Profile | No PRA | Selected Context | Native Memory | Native Memory Bundle | Delta NM vs SC |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in catalog["bundles"]:
@@ -95,11 +95,12 @@ def render_qualification_matrix(catalog: Mapping[str, Any]) -> str:
             f"| {row['engine']} / artifact-recorded hardware | `{row['model']}` "
             f"| {row['precision_family']} / {row['precision_encoding']} "
             f"| {row['recommendation'].split(' with ')[0]} | {row['profile']} "
+            f"| `{'NEEDS_RUN' if paired_transport else 'NOT_MEASURED'}` "
             f"| `{state}` | `{state}` | `{bundle_state}` "
-            f"| `{'AVAILABLE_EXISTING' if paired_transport else 'NEEDS_RUN'}` | `{bundle_state}` |"
+            f"| `{'AVAILABLE_EXISTING' if paired_transport else 'NEEDS_RUN'}` |"
         )
     lines += [
-        "", "The three MLX natural-QA rows predate immutable bundle resolution: their original-model and generic native-PRA conditions can be normalized, while the Runtime Bundle condition remains `NEEDS_RUN`. Routing-only artifacts remain research diagnostics and do not fill end-task cells.",
+        "", "The MLX natural-QA rows predate immutable bundle resolution: their Selected Context and Native Memory conditions can be normalized, while true No-PRA and Runtime Bundle conditions remain unmeasured. Routing-only artifacts remain research diagnostics and do not fill end-task cells.",
         "", "## Evidence tiers", "",
         "| Tier | Meaning |", "| --- | --- |",
         "| `PRODUCTION_QUALIFIED` | Production-scale workload, isolation, reliability, and economic gates passed. |",
@@ -121,15 +122,21 @@ def render_canonical_evidence_catalog(
     """Render exact-identity condition metrics for every local public bundle."""
 
     from .bundle import PRAModelBundle
-    from .canonical_evidence import EvidenceCondition, MetricGroup, render_markdown_table
+    from .canonical_evidence import (
+        CONDITION_LABELS,
+        EvidenceCondition,
+        MetricGroup,
+        condition_for_mode,
+        render_markdown_table,
+    )
 
     root = Path(bundles)
     loaded = []
     lines = [
         "# Canonical Evidence Matrix", "",
-        "This page compares the same task, hardware, engine, model, mode, and profile under **No PRA**, **PRA - No Adaptor**, and **PRA - Adaptor Bundle**. Values are absolute measurements; each delta is candidate minus No PRA. Missing data is never rendered as zero.", "",
+        "This page preserves the staged attribution chain: ordinary **No PRA**, PRA **Selected Context**, **Native Memory**, and **Native Serving**, with bundle/adaptor use as an orthogonal condition. Values are absolute measurements and pairwise deltas name both source and target. Missing data is never rendered as zero.", "",
         "## Coverage by model, engine, mode, and profile", "",
-        "| Model | Precision | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Evidence tier |",
+        "| Model | Precision | Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Evidence tier |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for catalog_row in catalog["bundles"]:
@@ -149,11 +156,27 @@ def render_canonical_evidence_catalog(
                 and record.key.mode.replace("_", "-").lower() == mode.replace(" ", "-").replace("_", "-").lower()
                 and (record.key.engine.lower() == engine.lower() or record.key.engine.lower().startswith(engine.lower() + "-"))
             ]
+            mode_condition = condition_for_mode(mode)
+            bundle_condition = condition_for_mode(mode, bundle=True)
+            profile_status = str(profile.get("status", "NOT_MEASURED")).upper()
+            no_pra_fallback = "NEEDS_RUN" if records else "NOT_MEASURED"
+            mode_fallback = (
+                "CALIBRATION_PENDING"
+                if profile_status == "CALIBRATION_PENDING"
+                else "NEEDS_RUN"
+            )
+            bundle_fallback = (
+                "CALIBRATION_PENDING"
+                if profile_status == "CALIBRATION_PENDING"
+                else "NEEDS_RUN"
+                if bundle.learned_adapters
+                else "NO_QUALIFIED_ADAPTER"
+            )
             lines.append(
                 f"| `{catalog_row['model']}` | {catalog_row['precision_family']} / {catalog_row['precision_encoding']} | {engine} | {mode} | {str(profile_name).upper()} "
-                f"| {_catalog_condition_coverage(matches, EvidenceCondition.NO_PRA)} "
-                f"| {_catalog_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR)} "
-                f"| {_catalog_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE)} "
+                f"| {_catalog_condition_coverage(matches, EvidenceCondition.NO_PRA, no_pra_fallback)} "
+                f"| {CONDITION_LABELS[mode_condition]}: {_catalog_condition_coverage(matches, mode_condition, mode_fallback)} "
+                f"| {CONDITION_LABELS[bundle_condition]}: {_catalog_condition_coverage(matches, bundle_condition, bundle_fallback)} "
                 f"| {catalog_row['evidence_tier']} |"
             )
 
@@ -177,7 +200,7 @@ def render_canonical_evidence_catalog(
         lines.append("No exact-identity canonical records are currently packaged.")
     lines += [
         "", "## Interpretation", "",
-        "The adaptor-bundle column is intentionally distinct from generic PRA. A published bundle may contain only structural mapping and profile metadata, or may include an opt-in learned router. A bundle cell becomes measured only when the immutable bundle revision was resolved during the run.", "",
+        "Bundle/adaptor use is intentionally distinct from execution depth. A published bundle may contain only structural mapping and profile metadata, or may include an opt-in learned router. A bundle cell becomes measured only when the immutable bundle revision was resolved during the run.", "",
         "Routing-only recall is reported in each model card's research diagnostics and does not substitute for answer quality, TTFT, ITL, throughput, or memory measurements.", "",
     ]
     return "\n".join(lines)
@@ -195,13 +218,31 @@ def _catalog_canonical_records(bundle: Any) -> list[Any]:
     ]
 
 
-def _catalog_condition_coverage(records: list[Any], condition: Any) -> str:
+def _catalog_condition_coverage(
+    records: list[Any], condition: Any, fallback: str = "NOT_MEASURED"
+) -> str:
     observations = [
         observation for record in records
-        for observation in record.conditions[condition].metrics.values()
+        for evidence in (record.conditions.get(condition),)
+        if evidence is not None
+        for observation in evidence.metrics.values()
     ]
     measured = sum(observation.state.value == "MEASURED" for observation in observations)
     if measured:
         return f"MEASURED ({measured})"
     states = {observation.state.value for observation in observations}
-    return next((state for state in ("BLOCKED", "NOT_MEASURED", "NOT_APPLICABLE") if state in states), "NOT_MEASURED")
+    return next(
+        (
+            state
+            for state in (
+                "BLOCKED",
+                "NEEDS_RUN",
+                "NO_QUALIFIED_ADAPTER",
+                "CALIBRATION_PENDING",
+                "NOT_MEASURED",
+                "NOT_APPLICABLE",
+            )
+            if state in states
+        ),
+        fallback,
+    )

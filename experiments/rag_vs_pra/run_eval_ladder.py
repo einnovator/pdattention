@@ -244,7 +244,7 @@ class HFNativeBackend:
         import torch
 
         query = self._query(question)
-        native = condition is ContextCondition.PRA_NO_ADAPTOR
+        native = condition is ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR
         context = context.rstrip() + "\n\n"
         encode_ms = 0.0
         native_bytes = 0
@@ -331,8 +331,8 @@ class HFNativeBackend:
             self.answer(question, contexts[ContextCondition.NO_PRA], ContextCondition.NO_PRA)
             self.answer(
                 question,
-                contexts[ContextCondition.PRA_NO_ADAPTOR],
-                ContextCondition.PRA_NO_ADAPTOR,
+                contexts[ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR],
+                ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
             )
         finally:
             self.max_new_tokens = original
@@ -405,7 +405,7 @@ class MLXNativeBackend:
         query_tokens = list(
             self.tokenizer.encode(self._query(question), add_special_tokens=False)
         )
-        native = condition is ContextCondition.PRA_NO_ADAPTOR
+        native = condition is ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR
         started = time.perf_counter()
         if native:
             memory = encode_native_memory(self.model, source_tokens)
@@ -434,8 +434,8 @@ class MLXNativeBackend:
             self.answer(question, contexts[ContextCondition.NO_PRA], ContextCondition.NO_PRA)
             self.answer(
                 question,
-                contexts[ContextCondition.PRA_NO_ADAPTOR],
-                ContextCondition.PRA_NO_ADAPTOR,
+                contexts[ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR],
+                ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
             )
         finally:
             self.max_new_tokens = original
@@ -642,8 +642,16 @@ def main() -> None:
                     token_budget=token_budget,
                     selector_latency_ms=baseline_latency_ms,
                 )
-                pra = packed_context_from_ranking(
-                    condition=ContextCondition.PRA_NO_ADAPTOR,
+                selected_context = packed_context_from_ranking(
+                    condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+                    selector_name=pra_selector.name,
+                    ranked=pra_ranking,
+                    prepared=prepared,
+                    token_budget=token_budget,
+                    selector_latency_ms=pra_latency_ms,
+                )
+                native_memory = packed_context_from_ranking(
+                    condition=ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
                     selector_name=pra_selector.name,
                     ranked=pra_ranking,
                     prepared=prepared,
@@ -663,11 +671,11 @@ def main() -> None:
                         question,
                         {
                             ContextCondition.NO_PRA: baseline.text,
-                            ContextCondition.PRA_NO_ADAPTOR: pra.text,
+                            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR: native_memory.text,
                         },
                     )
                     warmed = True
-                for context in (baseline, pra, oracle):
+                for context in (baseline, selected_context, native_memory, oracle):
                     row = _condition_row(
                             question=question,
                             receipt=receipt,
@@ -716,11 +724,16 @@ def main() -> None:
         "model_revision": args.revision if args.backend != "probe" else None,
         "hardware": platform.platform(),
         "conditions": {
-            "no_pra": "global BM25 chunk packing into visible context",
-            "pra_no_adaptor": "BM25 plus hashed-semantic RRF over typed document chunks",
-            "pra_adaptor_bundle": {
+            "NO_PRA": "standard RAG: global BM25 chunk packing into visible context",
+            "PRA_SELECTED_CONTEXT_NO_ADAPTOR": "generic PRA selection rendered as visible context",
+            "PRA_NATIVE_MEMORY_NO_ADAPTOR": "the same generic PRA selection realized as native K/V",
+            "PRA_SELECTED_CONTEXT_BUNDLE": {
                 "state": "NO_QUALIFIED_ADAPTER",
                 "note": "No immutable document-RAG routing adaptor is qualified for this cohort.",
+            },
+            "PRA_NATIVE_MEMORY_BUNDLE": {
+                "state": "NO_QUALIFIED_ADAPTER",
+                "note": "No immutable document-RAG native-memory adaptor is qualified for this cohort.",
             },
             "oracle_gold_documents": "research-only diagnostic; excluded from headline deltas",
         },

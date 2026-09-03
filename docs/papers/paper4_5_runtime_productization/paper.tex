@@ -2039,6 +2039,24 @@ the economic gate remains engine- and workload-dependent.
 
 \subsection{Common Qualification Contract}
 
+The qualification contract asks four separate attribution questions.  First,
+No PRA versus Selected Context measures PRA routing and visible-context
+construction.  Second, Selected Context versus Native Memory holds selected
+record IDs and intervals fixed and isolates native-K/V realization.  Third,
+Native Memory versus Native Serving holds selection and representation fixed
+and measures scheduler-owned placement, reuse, and lifecycle.  Fourth,
+no-adaptor versus bundle comparisons hold execution mode fixed and isolate the
+exact model-specific bundle.  We use stable condition identifiers for all
+seven mode/adaptor combinations.  In particular, E0 is Selected Context and is
+already a PRA condition.
+
+The available flagship engine cohorts primarily answer the second question.
+True matched No-PRA arms for Qwen3-4B, Qwen3-8B, Qwen3-14B, and
+Llama-3.2-1B remain \texttt{NEEDS\_RUN}; exact bundle-versus-no-adaptor
+end-task arms are also absent.  We therefore do not attribute the large E0/E2
+visible-token difference to PRA versus ordinary inference.  It is only the
+effect of realizing the same PRA-selected evidence as native memory.
+
 All engine rows now answer one question: at fixed or acceptably changed
 quality, when does PRA reduce total serving cost? The benchmark computes each
 query, candidate set, selected IDs, and selected intervals once. A cryptographic
@@ -2244,10 +2262,12 @@ E0 themselves differ in 2/5. The SDK therefore treats all three pinned paths
 as semantic mechanism passes while keeping their economic status experimental.
 Engine labels alone never select these capabilities.
 
-For product evidence we normalize each run into three conditions rather than
-exposing only paper-level E0/E2 labels: No PRA (the frozen selection rendered
-as visible text), PRA without a learned adaptor (the same selected source
-materialized as native K/V), and PRA with an exact learned-adaptor bundle.  The
+For product evidence we normalize each run into explicit staged conditions
+rather than exposing only paper-level E0/E2 labels: Selected Context (the
+frozen PRA selection rendered as visible text), Native Memory without a learned
+adaptor (the same selected source materialized as native K/V), and a
+mode-matched condition for an exact learned-adaptor bundle.  No PRA is a
+separate ordinary-inference condition and appears only when actually run.  The
 qualification runner pins model revision, tokenizer, quantization, engine, and
 selector output. It executes QASPER, HotpotQA, and 2Wiki separately and records
 the source artifacts and checksums in the card. Thus a result for MLX 8-bit is
@@ -2304,8 +2324,8 @@ Neither failure is converted into an unspecified missing value.
 The public catalog applies the same schema to 16 current bundles. Each card
 enumerates every declared engine, mode, and profile and labels absent work by
 cause: \texttt{NEEDS\_RUN}, \texttt{NO\_QUALIFIED\_ADAPTER}, or
-\texttt{CALIBRATION\_PENDING}. No public card prints the ambiguous literal
-\texttt{NOT\_MEASURED}. Five Qwen/Llama quantized identities now carry promoted
+\texttt{CALIBRATION\_PENDING}. It preserves \texttt{NOT\_MEASURED} when no
+stronger cause is established. Five Qwen/Llama quantized identities now carry promoted
 Native Memory evidence; Gemma MLX 8-bit and Qwen2.5 bitsandbytes 8-bit carry
 measured candidate failures. The generated site evidence matrix remains the
 exhaustive view.
@@ -2331,19 +2351,19 @@ revisions, quantization configuration hashes, conversion recipes, and artifact
 checksums.
 
 The current normalized ledger contains 53 planned or observed exact-precision
-rows.  Five have matched No-PRA and generic-PRA end-task measurements;
+rows.  Five have matched Selected-Context and Native-Memory end-task measurements;
 46 planned rows still require execution.  Table~\ref{tab:precision-ladder}
 shows only measured rows, while the machine-readable supplement retains all
 missing and blocked states.  Qwen3-14B is the sole present within-model
-cross-precision comparison: both MLX 4-bit and MLX 8-bit preserve the measured
-generic-PRA token-F1 exactly, although the 4-bit cohort has only 15 pairs and
+cross-precision comparison: both MLX 4-bit and MLX 8-bit preserve token-F1
+between Selected Context and Native Memory, although the 4-bit cohort has only 15 pairs and
 the 8-bit cohort has 60.  These observations support exact-encoding
 qualification, not a general claim that PRA is precision invariant.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Observed exact-precision generic-PRA rows.  Missing FP32/BF16 and
+\caption{Observed exact-precision Selected-Context versus Native-Memory rows.  Missing FP32/BF16 and
 learned-adaptor cells are omitted here but retained as explicit states in the
 53-row generated ledger.}
 \resizebox{\linewidth}{!}{%
@@ -2354,7 +2374,7 @@ learned-adaptor cells are omitted here but retained as explicit states in the
 \begin{figure}[H]
 \centering
 \includegraphics[width=.94\linewidth]{../shared/results/paper4_5_runtime_productization/precision_ladder/precision_observed_metrics.pdf}
-\caption{Observed visible-context accounting and generic-PRA token-F1 change
+\caption{Observed visible-context accounting and Native-Memory-minus-Selected-Context token-F1 change
 by exact precision encoding.  The plot deliberately excludes planned rows;
 absence is not rendered as zero.}
 \label{fig:precision-ladder}
@@ -2375,8 +2395,10 @@ counts, 2,048-token budget, generation settings, and physical host.  A direct
 load audit finds 398 BF16 parameter arrays and no quantized layers in the
 pinned source revision.
 Table~\ref{tab:precision-rag} and Figure~\ref{fig:precision-rag} compare each
-precision's ordinary selected-text pipeline with its generic-PRA native-K/V
-pipeline.  At 20 candidates, the PRA token-F1 change improves from $-0.0176$
+precision's ordinary non-PRA RAG pipeline with its generic-PRA native-K/V
+pipeline.  This Native-Memory-versus-No-PRA delta combines selection and
+transport because the historical cohort did not capture an intervening PRA
+Selected Context arm.  At 20 candidates, the total token-F1 change improves from $-0.0176$
 for INT4 to $-0.0035$ for INT8 and $-0.0019$ for BF16; at 50 candidates it
 improves from $-0.0091$ to $+0.0036$ and $+0.0072$.  BF16 and INT8 preserve
 the dataset task score in both settings, whereas INT4 loses one or two of the
@@ -2388,8 +2410,9 @@ ten answers.  Native execution costs 5.8--6.1\% more total latency for BF16,
 \scriptsize
 \caption{Matched Qwen3-4B three-rung precision study on one M5 host ($n=10$,
 seed 11).
-``Base'' is standard selected text and ``PRA'' is generic PRA with detached
-native K/V; no learned document-RAG adaptor is qualified.}
+``No PRA'' is standard RAG context packing and ``Native'' is generic PRA with
+detached native K/V; no learned document-RAG adaptor or intervening Selected
+Context arm is qualified.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/paper4_5_runtime_productization/precision_rag/generated_precision_rag.tex}}
 \label{tab:precision-rag}
@@ -2662,7 +2685,8 @@ This negative gate matters to the product claim. Token reduction from a model
 that no longer completes coding tasks is not a PRA benefit. A code-capable
 agent/model pairing must first establish nonzero success and enter the
 preregistered 30--80\% admission band. Only then may identical tasks compare
-No PRA, PRA without an adaptor, and PRA with the immutable Runtime Bundle under
+No PRA, PRA Selected Context without an adaptor, and Selected Context with the
+immutable Runtime Bundle under
 BALANCED. Table~\ref{tab:agent-canonical-gate} makes the unrun conditions
 explicit: \texttt{BLOCKED} is missing evidence caused by the quality floor, not
 a synthetic zero or an observed PRA failure. The normalized schema retains
@@ -2673,12 +2697,12 @@ inference time, resource use, and cost for that subsequent paired analysis.
 \begin{table}[H]
 \centering
 \small
-\caption{Canonical coding-agent admission evidence. Both PRA conditions were
+\caption{Canonical coding-agent admission evidence. Both Selected Context conditions were
 withheld because No-PRA official success was zero. Deltas therefore remain
 blocked rather than being computed from invented values.}
 \begin{tabular}{llrrr}
 \toprule
-Cohort & Metric & No PRA & PRA no adaptor & PRA bundle \\
+Cohort & Metric & No PRA & Selected Context & Selected + bundle \\
 \midrule
 Qwen3-14B, five tasks & Official success & 0/5 & BLOCKED & BLOCKED \\
 Qwen3-14B, five tasks & Verifier checks & 7/12 & BLOCKED & BLOCKED \\

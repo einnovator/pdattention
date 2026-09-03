@@ -80,6 +80,9 @@ def test_evaluate_writes_stable_assessment_and_adjacent_gains(tmp_path) -> None:
     assert result.exit_code == 0, result.output
     value = json.loads(result.output)
     assert value["recommendation"]["recommended_mode"] == "Selected Context"
+    assert value["recommendation"]["condition"] == "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
+    assert value["modes"]["full_context"]["condition"] == "NO_PRA"
+    assert value["modes"]["selected_context"]["condition"] == "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
     assert value["attribution"]["context_gain"]["visible_token_reduction"] == 0.75
     assert value["attribution"]["context_gain"]["ttft_speedup"] == 2.0
     assert value["attribution"]["native_gain"]["ttft_speedup"] is None
@@ -117,6 +120,7 @@ def test_native_requires_complete_positive_incremental_economics(tmp_path) -> No
     )
 
     assert promoted["recommendation"]["recommended_mode"] == "Native Memory"
+    assert promoted["recommendation"]["condition"] == "PRA_NATIVE_MEMORY_NO_ADAPTOR"
     assert retained["recommendation"]["recommended_mode"] == "Selected Context"
 
 
@@ -174,7 +178,7 @@ def test_report_accepts_canonical_agent_evidence() -> None:
     markdown = render_report(document, "md")
     html = render_report(document, "html")
 
-    assert "PRA - No Adaptor" in markdown
+    assert "Selected Context" in markdown
     assert "BLOCKED" in markdown
-    assert "PRA - Adaptor Bundle" in html
+    assert "Selected Context + Bundle" in html
     assert "No-PRA official success is zero" in artifact.read_text(encoding="utf-8")

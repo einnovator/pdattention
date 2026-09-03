@@ -9,7 +9,7 @@
 | Artifact source | Mirrors and metadata | Locator revision/digest |
 | Profile | Draft policy before approval | Version and immutable revision |
 | Engine compatibility | New evidence records may be added | Engine/model/bundle/mode evidence |
-| Qualification | Annotations only in future schema versions | Measurements and provenance are append-only |
+| Qualification | Annotations only in future schema versions | Measurements, provenance, and canonical `condition` are append-only |
 | Deployment | Desired configuration | Every change increments `desired_revision` |
 | Policy | Draft payload before approval | Approved versions are immutable |
 | Approval | Never edited | Append-only decision and actor |

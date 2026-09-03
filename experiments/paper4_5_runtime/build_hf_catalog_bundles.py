@@ -498,6 +498,17 @@ def _manifest(
     diagnostics = _metric_rows(comparison, spec) if comparison is not None else []
     return {
         "schema_version": 2,
+        "supported_precisions": (
+            [
+                {
+                    "precision_family": combined_evidence["precision_family"],
+                    "encoding": combined_evidence["precision_encoding"],
+                    "evidence_tier": combined_evidence["evidence_tier"],
+                }
+            ]
+            if combined_evidence is not None
+            else []
+        ),
         "base_model": {
             "id": spec["base_model"],
             "revision": spec["revision"],

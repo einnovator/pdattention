@@ -3,27 +3,35 @@
 PRA changes selection, representation, and serving. Measure each transition
 separately so a retrieval improvement is not mistaken for a transport gain.
 
-## Canonical product comparison
+## Canonical staged comparison
 
 Cards, qualification reports, agent benchmarks, and Control Plane evidence use
 one public condition grammar:
 
 | Condition | Meaning |
 | --- | --- |
-| **No PRA** | Original model and engine; no PRA routing, materialization, or bundle |
-| **PRA - No Adaptor** | PRA with generic routing and required structural compatibility, without learned model-specific behavior |
-| **PRA - Adaptor Bundle** | PRA using the exact immutable Runtime Bundle; a bundle may contain structural metadata without a learned adaptor |
+| **No PRA** | Original model and engine; no PRA routing, references, materialization, native memory, or bundle |
+| **Selected Context** | PRA routing and selection rendered as visible context, without a learned adaptor |
+| **Native Memory** | The same PRA selection realized as native K/V, without a learned adaptor |
+| **Native Serving** | Native PRA placement, reuse, and lifecycle owned by the serving system |
+| **Mode + Bundle** | The same execution mode with an exact immutable bundle/adaptor identity |
 
-For each metric, both PRA deltas are computed against No PRA. A secondary
-incremental adaptor delta may compare the bundle with PRA - No Adaptor. Signs
-are never inverted: lower TTFT produces a negative delta, while higher F1
-produces a positive delta. Every metric declares `higher_is_better`,
-`lower_is_better`, or `neutral`, plus an explicit unit and aggregation.
+Reports preserve both baseline-relative and incremental deltas. In particular,
+`delta_nm_vs_sc` isolates native realization, while `delta_sc_vs_no_pra`
+isolates the selection/context stage. Bundle deltas hold the execution mode
+fixed. Signs are never inverted: lower TTFT produces a negative delta, while
+higher F1 produces a positive delta. Every metric declares
+`higher_is_better`, `lower_is_better`, or `neutral`, plus an explicit unit and
+aggregation.
 
 Missing values use `NOT_MEASURED`, `NOT_APPLICABLE`, or `BLOCKED`; none is
 rendered as numeric zero. Run `pra report CANONICAL_EVIDENCE.json --format html`
 to render the same normalized schema used by the bundle cards and Control Plane
 serialization.
+
+See [PRA Execution Conditions](execution-conditions.md) for the complete enum,
+attribution chain, and stable delta names. Selected Context is already PRA; it
+must never be labeled No PRA.
 
 The execution-level comparisons below remain useful mechanism attribution.
 They do not replace the three-condition product comparison.
