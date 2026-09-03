@@ -12,79 +12,37 @@
 \maketitle
 
 \begin{abstract}
-Apple Silicon changes the physical cost model of long-context inference:
-weights, cache arrays, and host code share unified memory. It does not remove
-the logical question of which retained evidence should be active. We implement
-an MLX adapter boundary for Progressive Retrieval Attention (PRA), measure
-selected-text coexistence with the MLX-LM nearest-prefix cache, and test whether
-a rotating sequential cache can serve as a simpler archive. On an Apple M5
-with the 4-bit Qwen3-0.6B checkpoint, selected and full context recover a fixed
-answer in 5/5 server requests; selected context uses 365 rather than 1,577
-prompt tokens. Warm requests reuse 364 and 1,576 cached tokens, respectively,
-while the server prompt cache grows to 0.28 GB across five distinct sequences.
-In a separate five-seed Python-API experiment, full sequential KV recovers the
-answer in 5/5 cases with 112 MB of cache. Rotating KV at 64--512 tokens recovers
-0/5. Reintroducing the selected archive record reaches 2/5 only at 64 tokens
-and 0/5 at larger capacities. We then implement native selected K/V at every
-layer. Across five seeds it is bit-exact to ordinary split-cache execution,
-recovers 5/5 answers, and remains 5/5 when local sequential K/V rotates at 64
-tokens. Thus native PRA restores archived evidence without making it visible
-prompt text. A follow-up profile sweep finds that the last 14 of 28 layers
-retain 5/5 recovery with 7.71 rather than 15.42 MiB active K/V. Persisted K/V
-reloads in 7.2 ms with zero logit error, and shared-memory throughput rises
-from 6.04 to 16.01 requests/s between concurrency one and eight. On 40 QASPER
-and 40 HotpotQA natural-text transport controls per condition, ordinary and
-native memory rank the answer correctly in every case; disabled and shuffled
-memory remain near chance. A larger Qwen3-1.7B natural-QA study then uses the
-datasets' original questions and answers. Full-precision native K/V exactly
-matches ordinary split-cache token F1 and answer log-probability on QASPER,
-HotpotQA, and 2WikiMultiHopQA. Shuffled and absent memory degrade both metrics
-on QASPER and HotpotQA; on 2Wiki the gold-answer log-probability degrades while
-free-generation F1 is noisy. Per-head int8
-residency halves selected-K/V bytes and preserves this small cohort's quality,
-with request-local dequantization before attention. An independent M4 Pro
-replication adds Qwen3-4B and preserves ordinary/native aggregate F1 exactly in
-all six model--dataset cohorts; shuffled-memory F1 falls to 0.011--0.028. A
-subsequent timing audit retires that runner's apparent 44.5--54.5\% native cost:
-MLX lazily completed ordinary source encoding inside the timed request while
-native encoding had already been synchronized. Finally,
-an SDK hybrid
-router selects four documents or paper paragraphs before native
-materialization. Native and ordinary consumption agree exactly on all 60
-paired generations. Gold evidence recall at four is 0.348 on QASPER, 0.725 on
-HotpotQA, and 0.775 on 2Wiki. Routed memory outperforms shuffled memory on
-answer likelihood in all three datasets, but remains below oracle evidence;
-discovery, rather than MLX transport, is now the measured bottleneck. On the
-same frozen routed selections, a matched E0/E2 economic benchmark preserves all
-840 output pairs across cold, warm, multi-query, and concurrency-eight
-schedules and removes 90.6--93.0\% of visible prompt tokens. Native ingestion
-is cheaper than ordinary source-cache construction, but the unfused
-selected-cache path yields macro E2/E0 cost ratios of 1.130, 1.155, 1.148, and
-1.132 across those schedules. An expanded 149-question confirmation preserves
-2,086/2,086 pairs with ratios of 1.043, 1.139, 1.133, and 1.072. A 1,020-request pressure sweep then holds QA quality constant while
-varying an eight-resource session's compact-K/V budget. Budgets below eight
-reload every repeated access; fitting all eight resources eliminates reloads
-and halves mean resolution time at a 151--168 MiB residency cost. An expanded
-live lifecycle study adds layer-segmented mmap WARM storage: WARM is 80/80
-exact and restart recovery succeeds, while int8 COLD is exact in only 13/80
-sequences and remains an explicit, unpromoted option. Five-example Llama and
-Gemma replications also preserve every lossless WARM output, while their small
-int8 results remain calibration observations rather than defaults. Event-loop
-promotion hides the WARM stall with sufficient lead, and the native streaming
-gateway measures queueing through concurrency sixteen with cancellation-safe
-cleanup. A 1,125-request long-session extension confirms an eight-resource
-working-set threshold, while selective int8 remains below the lossless gate.
-An additional 1,500-request Qwen3-4B M4 Pro sweep reproduces that threshold:
-quality is budget-invariant, fitting all eight resources eliminates reloads,
-and mean resolution time falls by about 68\%.
-On a separate 48~GiB M4 Pro, a synchronized Qwen3 Q4 ladder at 4B, 8B, 14B,
-and 32B evaluates 120 natural-QA model--example pairs. Concatenated native K/V
-preserves all 120 selected-text sequences. Its warm E2/E0 request ratio approaches
-parity with scale (1.054, 1.031, 1.018, and 1.011), while its cold/cold ratio
-rises from 0.932 to 0.976: the cold advantage shrinks rather than grows. Full
-segmented overhead falls from 1.165 to 1.047. No tested 7/8, 3/4, 2/3, or 1/2
-consumer suffix passes the preregistered quality gate at any size, so model scale
-does not yet justify a reduced-layer \textsc{Balanced} profile.
+We ask whether Progressive Retrieval Attention (PRA) Native Memory can remain
+exact and economically useful as dense model size grows on Apple Silicon.
+Unified memory reduces host--accelerator transfer boundaries but does not make
+all retained context free to index, store, or attend to. We implement
+Selected Context (E0) and detached native K/V (E2) beside MLX-LM prompt and
+rotating caches, with request isolation, persistent HOT/WARM/COLD lifecycle,
+segmented attention, and explicit consumer-layer profiles.
+
+On frozen QASPER, HotpotQA, and 2Wiki selections, E2 removes 90.6--93.0\% of
+visible prompt tokens and preserves all 840 paired outputs; an expanded
+149-question cohort preserves 2,086/2,086. Its cold, warm, multi-query, and
+concurrent cost ratios are 1.043, 1.139, 1.133, and 1.072, so unfused native
+consumption remains slower on reused paths. A synchronized Qwen3 ladder from
+4B to 32B preserves all 120 selected-text sequences. Warm E2/E0 converges from
+1.054 at 4B to 1.011 at 32B, while full segmented overhead falls from 1.165 to
+1.047. No tested reduced consumer suffix passes the preregistered natural-QA
+quality gate; model scale improves cost convergence but does not justify a
+smaller correctness profile.
+
+Storage pressure exposes an eight-resource working-set threshold: fitting all
+eight resources removes reloads and roughly halves resolution time, while
+smaller budgets preserve quality but reload every revisit. Lossless WARM
+storage and restart recovery are exact; full int8 COLD K/V is exact in only
+13/80 expanded sequences and remains opt-in. A matched ten-question Qwen3-4B
+study adds BF16, MLX 8-bit, and MLX 4-bit deployed pipelines. PRA task score is
+preserved in BF16 and 8-bit but loses one or two answers at 4-bit; the cohort
+is too small and its selectors are not frozen independently, so it is not a
+precision-invariance result. MLX provides a working native PRA mechanism and a
+clear model-scale trend. A fused segmented kernel, broader natural cohorts,
+and learned consumer gates remain the decisive steps for an economic and
+profile-sparsity claim.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -153,15 +111,14 @@ visibility and native PRA memory.
 Unified memory may reduce copy overhead, but it does not make every retained
 token free to index, keep, or attend to.
 
-This paper studies six questions. First, can selected context coexist with
-MLX's exact prompt cache? Second, can a bounded rotating cache plus a selected
-archive record recover old evidence? Third, what software boundary is needed
-before an MLX adapter may claim native PRA K/V rather than selected visible
-text? Fourth, how much native K/V can consumer-layer profiles remove without
-losing the controlled answer? Fifth, do persistence, request sharing, and
-natural-text causal controls, original benchmark questions, and quantized
-residency preserve the mechanism? Sixth, when the runtime itself selects
-evidence, can we separate routing error from native-K/V consumption error?
+The companion runtime paper defines the shared deployment, evidence, and
+fallback contract~\cite{praruntime}. This paper asks the narrower MLX question:
+does native selected K/V stay exact and become more economical as model size
+and unified-memory pressure increase?
+
+Secondary experiments test rotating archives, persistence and sharing,
+consumer-layer sparsity, quantized residency, and the boundary between routing
+error and native-K/V consumption error.
 
 \section{Cache Taxonomy}
 We keep three mechanisms distinct:
@@ -359,7 +316,7 @@ parity, not answer recovery. Together the runs cover three attention
 topologies and tokenizers; they are not yet natural-workload results.
 
 \section{Profiles, Persistence, and Concurrency}
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering
 \small
 \caption{Five-seed consumer-layer sweep. Active MB counts selected native K/V,
@@ -392,7 +349,7 @@ selected K/V. Aggregate throughput increases through concurrency four and then
 plateaus, while mean per-request latency rises from 164.9 to 383.9 ms. These are
 in-process controlled measurements, not queued server tail latency.
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.98\linewidth]{../shared/results/paper6_2_mlx/native_profile_concurrency.png}
 \caption{Left: the controlled consumer-layer quality--memory boundary. Right:
@@ -1315,7 +1272,7 @@ active selected K/V bytes; last-quarter and last-four do not. The larger natural
 ladder also rejects last-half consumption, so none is a \textsc{Balanced} or
 \textsc{Economy} recommendation.
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \centering
 \scriptsize
 \caption{Crossed physical-tier and local-window pressure. Start percentages
@@ -1325,7 +1282,7 @@ name the representation available before each request. Times are ms.}
 \label{tab:mlx-tier-window-pressure}
 \end{table}
 
-\begin{figure}[H]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=.76\linewidth]{../shared/results/mac_engine_extension/tier_window_pressure.pdf}
 \caption{Local-window size has no quality effect in this bounded decode; HOT
@@ -1335,6 +1292,49 @@ improve the tail on this host.}
 \end{figure}
 
 \FloatBarrier
+\section{Results Synthesis and Precision Scaling}
+
+Across the matched and scaling studies, the stable result is semantic rather
+than uniformly economic. Native K/V preserves selected-text behavior across
+the tested Qwen, Llama, and Gemma mechanisms, and its relative cost approaches
+parity as Qwen model size grows. Reused execution is still slower in the
+expanded cohort, reduced consumer suffixes fail the held-out quality gate, and
+lossy COLD storage fails exactness. The next optimization target is therefore
+fused selected-cache consumption under a full correctness profile.
+
+A companion M5 experiment compares Qwen3-4B BF16, MLX 8-bit, and MLX 4-bit
+deployed pipelines on the same ten MultiHop-RAG questions, seed, candidate
+counts, and 2,048-token budget. The pinned BF16 load contains 398 BF16
+parameter arrays and no quantized layers. Table~\ref{tab:mlx-precision-rag}
+shows that BF16 and 8-bit preserve task score, while 4-bit loses one or two of
+ten answers. The native pipeline's latency premium also increases from
+5.8--6.1\% at BF16 to 10.0--10.7\% at 8-bit and 14.8--16.1\% at 4-bit.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched Qwen3-4B three-rung deployed-pipeline comparison ($n=10$,
+seed 11). Base uses standard selected text; PRA uses hybrid selection and
+detached native K/V. No learned document-RAG adaptor is qualified.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper4_5_runtime_productization/precision_rag/generated_precision_rag.tex}}
+\label{tab:mlx-precision-rag}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper4_5_runtime_productization/precision_rag/precision_rag_comparison.pdf}
+\caption{Quality and latency changes across BF16, INT8, and INT4. Because the
+selector and transport differ together, this is directional pipeline evidence
+rather than a selector-frozen precision-invariance result.}
+\label{fig:mlx-precision-rag}
+\end{figure}
+
+An independent FP32 checkpoint, cross-precision adaptor transfer, peak-memory
+capture, and a non-Qwen matched replication remain unmeasured. Casting the
+published BF16 source to float32 would not create an independent FP32 weight
+reference.
+
 \section{Promotion Gates}
 \begin{center}
 \begin{tabularx}{0.96\linewidth}{l l Y}
@@ -1372,7 +1372,7 @@ Grafana may run in containers.  The dashboard distinguishes selected tokens,
 native K/V bytes, HOT/WARM promotion, rotating-cache behavior, TTFT, and ITL.
 All reported performance qualification keeps detailed tracing disabled.
 
-\section{Falsification and Limitations}
+\section{Negative Results, Falsification, and Limitations}
 Native PRA-MLX is unnecessary if selected visible text plus ordinary MLX
 caching matches its quality, memory, and latency on realistic long-memory
 workloads. The server smoke makes that baseline competitive. Conversely, the
@@ -1471,6 +1471,11 @@ is composed from unfused MLX operations; it is not a fused-kernel speed claim.
 A. Hannun et al.
 \newblock MLX: Efficient and Flexible Machine Learning on Apple Silicon.
 \newblock 2023.
+\bibitem{praruntime}
+PRA Research Program.
+\newblock From Sparse Selection to Physical Savings: A Unified Runtime and
+Measurement Contract for Progressive Retrieval Attention.
+\newblock Companion manuscript, 2026.
 \end{thebibliography}
 
 \end{document}
