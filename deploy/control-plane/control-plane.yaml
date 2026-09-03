@@ -13,6 +13,15 @@ control_plane:
   manager:
     backend_mode: direct
     audit: true
+  agent:
+    # The Web UI can use any reachable OpenAI-compatible inference endpoint.
+    engine: mlx-lab
+    model: qwen-4b
+    model_enabled: true
+    api_key_env: PRA_CONTROL_AGENT_API_KEY
+    request_timeout_seconds: 60
+    max_tokens: 512
+    temperature: 0.1
   rest:
     enabled: true
     allow: ["*"]
@@ -47,7 +56,12 @@ registry:
   token_env: PRA_REGISTRY_TOKEN
 fleet:
   discovery_mode: combined
-  engines: []
+  engines:
+    - name: mlx-lab
+      management_url: http://host.docker.internal:9101
+      inference_url: http://host.docker.internal:8000
+      environment: development
+      cluster: mac-lab
 grafana:
   url: http://127.0.0.1:3000
 tempo:

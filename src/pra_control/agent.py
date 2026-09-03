@@ -19,8 +19,9 @@ from .persistence import ControlStore
 class ControlPlaneAgent:
     """Render manager-owned domain facts for the built-in conversational UI."""
 
-    def __init__(self, manager: ControlManager) -> None:
+    def __init__(self, manager: ControlManager, config: Any | None = None) -> None:
         self.manager = manager
+        self.config = config
         # PRA Toolset produces the same typed capability records used by PRAAgent.
         self.toolset = Toolset.from_callables(
             [self.list_fleet_tool, self.show_drift_tool, self.open_grafana_tool],
@@ -39,12 +40,27 @@ class ControlPlaneAgent:
         """Return the configured Grafana dashboard for an engine."""
         return {"engine": engine, "execution": "async-control-manager"}
 
-    async def answer(self, identity: Identity, prompt: str, emit: Callable[[str, dict[str, Any]], Awaitable[None]]) -> str:
+    async def answer(
+        self, identity: Identity, prompt: str,
+        emit: Callable[[str, dict[str, Any]], Awaitable[None]],
+        *, target: dict[str, Any] | None = None,
+    ) -> str:
         caller = identity.caller(transport="agent")
         lower = prompt.casefold()
         await emit("tool.started", {"tool": "fleet_overview", "side_effect": "none"})
         fleet = (await self.manager.fleet.list(caller)).model_dump(mode="json")
         await emit("tool.completed", {"tool": "fleet_overview", "result_count": len(fleet["items"])})
+        if (
+            target and target.get("inference_url")
+            and bool(getattr(getattr(self.config, "agent", None), "model_enabled", True))
+        ):
+            try:
+                return await self._model_answer(prompt, fleet, target)
+            except Exception as error:
+                await emit("tool.completed", {
+                    "tool": "agent_model", "status": "fallback",
+                    "detail": f"{type(error).__name__}: {error}",
+                })
         if "grafana" in lower:
             engine = next((row["name"] for row in fleet["items"] if row["name"].casefold() in lower), None)
             url = self.manager.observability.links(caller, engine=engine).get("grafana")
@@ -69,6 +85,46 @@ class ControlPlaneAgent:
         summary = fleet["summary"]
         return f"Fleet has {summary['total']} engines: {summary['healthy']} in sync, {summary['drift']} drifted, {summary['offline']} offline, and {summary['unknown']} without desired state."
 
+    async def _model_answer(
+        self, prompt: str, fleet: dict[str, Any], target: dict[str, Any],
+    ) -> str:
+        """Use a configured OpenAI-compatible model without granting mutation access."""
+
+        import httpx
+
+        agent_config = getattr(self.config, "agent", None)
+        timeout = float(getattr(agent_config, "request_timeout_seconds", 60.0))
+        headers = {"Content-Type": "application/json"}
+        api_key = agent_config.api_key() if agent_config else None
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        body = {
+            "model": target["model"],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the read-only PRA Control Plane assistant. Answer from the "
+                        "provided fleet snapshot. Never claim that an operational change was applied."
+                    ),
+                },
+                {"role": "system", "content": "Fleet snapshot:\n" + json.dumps(fleet, default=str)},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": float(getattr(agent_config, "temperature", 0.1)),
+            "max_tokens": int(getattr(agent_config, "max_tokens", 512)),
+            "stream": False,
+        }
+        await asyncio.sleep(0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{str(target['inference_url']).rstrip('/')}/v1/chat/completions",
+                headers=headers, json=body,
+            )
+            response.raise_for_status()
+            value = response.json()
+        return str(value["choices"][0]["message"]["content"])
+
 
 class AgentReplayService:
     """Persist message IDs and bounded events for reconnect and replay."""
@@ -78,13 +134,19 @@ class AgentReplayService:
         self.limit = limit
         self.locks: dict[str, asyncio.Lock] = {}
 
-    def open(self, identity: Identity, token: str | None = None) -> dict[str, Any]:
+    def open(
+        self, identity: Identity, token: str | None = None,
+        *, settings: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if token:
             existing = self.store.get_agent_session(token)
             if existing and existing["actor"] == identity.subject:
                 return existing
         token = secrets.token_urlsafe(32)
-        value = {"resume_token": token, "actor": identity.subject, "role": identity.role.value, "events": [], "seen_message_ids": []}
+        value = {
+            "resume_token": token, "actor": identity.subject, "role": identity.role.value,
+            "events": [], "seen_message_ids": [], "settings": dict(settings or {}),
+        }
         self.store.put_agent_session(value)
         return value
 
@@ -109,6 +171,26 @@ class AgentReplayService:
         session["seen_message_ids"] = list(seen)
         self.store.put_agent_session(session)
         return False
+
+    def update_settings(self, session: dict[str, Any], **changes: Any) -> dict[str, Any]:
+        settings = dict(session.get("settings") or {})
+        for key, value in changes.items():
+            if value is None:
+                settings.pop(key, None)
+            else:
+                settings[key] = value
+        session["settings"] = settings
+        self.store.put_agent_session(session)
+        return settings
+
+    def list(self, identity: Identity) -> list[dict[str, Any]]:
+        rows = self.store.list_agent_sessions(identity.subject)
+        return [{
+            "resume_token": row["resume_token"],
+            "updated_at": row["updated_at"],
+            "event_count": len(row.get("events") or []),
+            "settings": dict(row.get("settings") or {}),
+        } for row in rows]
 
     @staticmethod
     def replay(session: dict[str, Any], after: int) -> list[dict[str, Any]]:

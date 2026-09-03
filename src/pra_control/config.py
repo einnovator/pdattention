@@ -64,6 +64,7 @@ class EngineTargetConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
     management_url: str
+    inference_url: str | None = None
     token_env: str | None = None
     environment: str = "development"
     region: str = "local"
@@ -90,6 +91,22 @@ class ServiceLinkConfig(BaseModel):
 
     def token(self) -> str | None:
         return os.environ.get(self.token_env or "") or None
+
+
+class ControlAgentConfig(BaseModel):
+    """Default model target and generation policy for Control Plane chat."""
+
+    model_config = ConfigDict(extra="forbid")
+    engine: str | None = None
+    model: str | None = None
+    api_key_env: str | None = None
+    model_enabled: bool = True
+    request_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    max_tokens: int = Field(default=512, ge=32, le=4096)
+    temperature: float = Field(default=0.1, ge=0, le=2)
+
+    def api_key(self) -> str | None:
+        return os.environ.get(self.api_key_env or "") or None
 
 
 class ManagerConfig(BaseModel):
@@ -216,6 +233,7 @@ class ControlPlaneConfig(BaseModel):
     mcp: MCPPresentationConfig = Field(default_factory=MCPPresentationConfig)
     auth_profiles: dict[str, ControlAuthProfile] = Field(default_factory=dict)
     agent_enabled: bool = True
+    agent: ControlAgentConfig = Field(default_factory=ControlAgentConfig)
     replay_limit: int = Field(default=250, ge=10, le=5000)
 
     @field_validator("public_url")

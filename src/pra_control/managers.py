@@ -106,6 +106,7 @@ class FleetManager:
         if snapshot is None:
             return {
                 "name": target["name"], "status": "OFFLINE", "health": "offline",
+                "inference_url": target.get("inference_url"),
                 "environment": target.get("environment"), "region": target.get("region"),
                 "cluster": target.get("cluster"), "namespace": target.get("namespace"),
                 "host": target.get("host"), "error": observation.get("error"),
@@ -119,6 +120,7 @@ class FleetManager:
         model = next((row for row in models if row.get("runtime_model_id") == "default"), next(iter(models), {}))
         return {
             "name": target["name"], "status": drift["status"],
+            "inference_url": target.get("inference_url"),
             "environment": target.get("environment"), "region": target.get("region"),
             "cluster": target.get("cluster"), "namespace": target.get("namespace"),
             "host": target.get("host") or info.get("host"), "engine": info.get("engine"),

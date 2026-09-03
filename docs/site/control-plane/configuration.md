@@ -27,6 +27,14 @@ control_plane:
     backend_mode: direct
     audit: true
     action_plan_ttl_seconds: 900
+  agent:
+    engine: vllm-01
+    model: qwen-4b
+    model_enabled: true
+    api_key_env: PRA_CONTROL_AGENT_API_KEY
+    request_timeout_seconds: 60
+    max_tokens: 512
+    temperature: 0.1
   rest:
     enabled: true
     allow:
@@ -70,6 +78,7 @@ fleet:
   engines:
     - name: vllm-01
       management_url: http://host1:9101
+      inference_url: http://host1:8000
       token_env: VLLM_01_MANAGEMENT_TOKEN
       environment: production
       region: eu-west
@@ -90,6 +99,18 @@ that exception only behind a trusted reverse proxy or a host-only published port
 
 Discovery modes are `static`, `manual`, `registry`, and `combined`. Manual
 records belong to the Control Plane; deployment intent remains in the Registry.
+
+`fleet.engines[].management_url` is the engine management API used for health,
+models, storage, and governed actions. `inference_url` is the engine's
+OpenAI-compatible generation endpoint. The latter is optional unless that
+engine is selected for Control Plane chat.
+
+The `control_plane.agent` block selects the initial PRA Agent engine and runtime
+model alias. The Web UI lists all discovered models, marks unreachable targets,
+and lets the user switch the active session. If the selected model fails, or
+`model_enabled` is false, chat falls back to the deterministic read-only fleet
+assistant. `api_key_env` names an environment variable; its value is never
+returned by configuration APIs or rendered in the browser.
 
 REST exposure uses semantic operation IDs rather than URL strings. Denied
 operations are not registered and therefore do not appear in OpenAPI. MCP uses

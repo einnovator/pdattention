@@ -87,7 +87,9 @@ class AgentShell:
             ("history", "Inspect or clear input history.", self._history, (), ("search", "clear")),
             ("clear", "Clear the terminal.", self._clear, (), ()),
             ("session", "Inspect or export the transcript.", self._session, (), ("export",)),
+            ("sessions", "List retained sessions for the current user.", self._sessions, (), ()),
             ("new", "Start a new durable session.", self._new, (), ()),
+            ("tips", "Show common interactive workflows.", self._tips, (), ()),
             ("model", "Inspect or switch inference target.", self._model, (), ("use",)),
             ("models", "List static and discovered models.", self._models, (), ("all", "engine")),
             ("engine", "Inspect or select an engine.", self._engine, ("runtime",), ("use",)),
@@ -175,6 +177,19 @@ class AgentShell:
     def _new(self, _: list[str]) -> None:
         if self.agent.session is not None: self.agent.runtime.close_session(self.agent.session)
         self.emit(f"New session: {self.agent.start_session().session_id}")
+
+    def _sessions(self, _: list[str]) -> None:
+        rows = self.agent.sessions.list_sessions(self.agent.config.user_id)
+        self.emit("\n".join(
+            f"{row.session_id}\t{row.updated_at}\trecords={len(row.records)}"
+            for row in rows
+        ) or "No retained sessions.")
+
+    def _tips(self, _: list[str]) -> None:
+        self.emit(
+            "Use /models before /model use <target>; /sessions and /new manage durable "
+            "work; /status shows the active target; /help lists every command."
+        )
 
     def _models(self, args: list[str]) -> None:
         rows = asyncio.run(self.agent.targets.list(refresh=True))

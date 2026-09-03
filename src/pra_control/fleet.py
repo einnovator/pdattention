@@ -55,6 +55,7 @@ class FleetService:
                         name = str(instance.get("name") or instance["instance_id"])
                         values.setdefault(name, EngineTargetConfig(
                             name=name, management_url=instance["management_url"],
+                            inference_url=instance.get("inference_url"),
                             environment=instance.get("environment", "unknown"),
                             region=instance.get("region", "unknown"),
                             cluster=instance.get("cluster", "unknown"),
@@ -133,6 +134,7 @@ class FleetService:
             )
             return {
                 "name": target.name, "status": drift["status"],
+                "inference_url": target.inference_url,
                 "environment": target.environment, "region": target.region,
                 "cluster": target.cluster, "namespace": target.namespace,
                 "host": target.host or info.get("host"), "engine": info.get("engine"),
@@ -147,6 +149,7 @@ class FleetService:
         except Exception as error:
             return {
                 "name": target.name, "status": "OFFLINE", "health": "offline",
+                "inference_url": target.inference_url,
                 "environment": target.environment, "region": target.region,
                 "cluster": target.cluster, "namespace": target.namespace,
                 "host": target.host, "error": f"{type(error).__name__}: {error}",

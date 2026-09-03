@@ -1,10 +1,12 @@
 # Fleet and engines
 
-Fleet overview joins live engine observations with desired Registry state. Status distinguishes engines that are in sync, drifting, offline, or not yet classified.
+Fleet joins live engine observations with desired Registry state. **Engine state** reports current reachability, while **Desired state** reports whether observed deployment matches Registry intent. A reachable engine can therefore have an unknown desired state without being unhealthy.
 
 ## Find an engine
 
-Use the Fleet filter in the left pane, then select an engine. The central workspace exposes these views:
+Open Fleet from the fixed navigation rail. Search by text or filter by engine type, model, and desired state. Select a column heading to sort; the active order remains visible. Selecting an engine opens one reusable detail tab and focuses it if it is already open.
+
+The central workspace exposes these engine views:
 
 | View | Purpose |
 | --- | --- |
@@ -24,3 +26,4 @@ The action menu can prefetch, promote, demote, evict, or run maintenance. High-i
 
 Open the chart button on an engine to follow its configured Grafana observability link.
 
+Small information icons beside labels explain metrics and settings in context. The explanation closes when you change tabs, dismiss it, or click outside it.

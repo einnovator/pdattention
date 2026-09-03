@@ -271,7 +271,7 @@ def test_router_control_is_exposed_semantically_and_visible_in_ui() -> None:
     })
     assert {item.name for item in TOOL_CATALOG}.issuperset({"pra_router", "pra_route"})
     static = Path(__file__).parents[1] / "src/pra_control/static"
-    assert 'data-view="routers"' in (static / "index.html").read_text(encoding="utf-8")
+    assert 'data-open-view="routers"' in (static / "index.html").read_text(encoding="utf-8")
     assert "Reconciliation plan" in (static / "app.js").read_text(encoding="utf-8")
 
 

@@ -31,6 +31,20 @@ Applying the returned plan uses
 `POST /api/actions/plans/{plan_id}/apply`. Browser mutations require CSRF;
 manager permissions and audit apply regardless of transport.
 
+## PRA Agent sessions
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/agent/models` | List discovered runtime models and reachability |
+| `GET` | `/api/agent/sessions` | List retained sessions owned by the caller |
+| `POST` | `/api/agent/sessions` | Create a session with an optional `target_id` |
+| `WS` | `/ws/agent` | Resume chat, select a model, run commands, and stream events |
+
+The WebSocket accepts `model.select` and `message` frames. Model targets are
+validated against current fleet reachability, and session settings persist
+with the replay cursor. These endpoints do not bypass the caller's fleet-read
+permission or the normal CSRF requirement for session creation.
+
 Domain failures use a stable envelope:
 
 ```json

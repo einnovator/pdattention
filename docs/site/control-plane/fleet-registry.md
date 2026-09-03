@@ -4,15 +4,21 @@ The fleet overview combines configured, manually added, and Registry-
 discovered engines. Registry discovery reads live `ManagedInstance` records,
 not management URLs embedded in desired deployment selectors. For each engine it reads the open Management API and shows
 health, runtime versions, loaded model, bundle, profile, execution mode, key
-reuse metrics, and alerts.
+reuse metrics, and alerts. Fleet search and engine, model, and desired-state
+filters live in the central Fleet tab; every column is sortable.
 
-Selecting an engine opens Summary, Capabilities, Config, Models, Sessions,
-Resources, Storage, Observability, and Audit views. The backend proxies the
+Selecting an engine opens one reusable detail tab, or focuses that tab when it
+already exists. It provides Summary, Capabilities, Config, Models, Sessions,
+Resources, Storage, Observability, and Audit views. Structured service values
+are rendered as labeled fields instead of raw JSON, and contextual information
+icons explain settings and metrics. The backend proxies the
 Management API with a server-side bearer token. It never sends engine
 credentials to JavaScript.
 
-Desired state comes only from Registry deployment records. The comparison has
-four outcomes:
+Engine reachability and Registry comparison are separate columns. A reachable
+engine can have `UNKNOWN` desired state when no deployment applies; that does
+not imply an unhealthy runtime. Desired state comes only from Registry
+deployment records and has four outcomes:
 
 | State | Meaning |
 | --- | --- |

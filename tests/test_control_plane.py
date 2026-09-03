@@ -13,6 +13,7 @@ from pra_control.clients import AsyncServiceClient
 from pra_control.config import (
     ControlAuthConfig,
     ControlAuthProfile,
+    ControlAgentConfig,
     ControlPlaneConfig,
     EngineTargetConfig,
     FleetConfig,
@@ -48,7 +49,13 @@ class FakeFleet:
         return {
             "items": [{
                 "name": "mlx-01", "status": "DRIFT", "engine": "mlx", "model": "Qwen/Qwen3-4B",
+                "health": "healthy", "inference_url": "http://mlx.test:8000",
                 "cluster": "mac-lab", "environment": "test", "alerts": ["desired state drift"],
+                "models": [{
+                    "runtime_model_id": "qwen-4b", "model_id": "Qwen/Qwen3-4B",
+                    "profile": "BALANCED", "execution_mode": "native-memory",
+                }],
+                "model_count": 1,
                 "metrics": {"storage_reloads": 12},
                 "drift": {"status": "DRIFT", "differences": [{"field": "profile", "desired": "BALANCED", "observed": "ECONOMY"}]},
             }],
@@ -119,6 +126,29 @@ def test_config_precedence_and_non_loopback_guard(monkeypatch, tmp_path):
         config.validate_security()
     config.auth.allow_local_auth_non_loopback = True
     config.validate_security()
+
+
+def test_control_agent_and_inference_target_configuration(monkeypatch, tmp_path):
+    path = tmp_path / "control.yaml"
+    path.write_text(
+        "control_plane:\n"
+        "  agent:\n"
+        "    engine: mlx-01\n"
+        "    model: qwen-4b\n"
+        "    api_key_env: PRA_CHAT_KEY\n"
+        "  fleet:\n"
+        "    engines:\n"
+        "      - name: mlx-01\n"
+        "        management_url: http://mlx.test:9101\n"
+        "        inference_url: http://mlx.test:8000\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PRA_CHAT_KEY", "private-chat-key")
+    config = ControlPlaneConfig.load(path)
+    assert config.agent == ControlAgentConfig(engine="mlx-01", model="qwen-4b", api_key_env="PRA_CHAT_KEY")
+    assert config.agent.api_key() == "private-chat-key"
+    assert config.fleet.engines[0].inference_url == "http://mlx.test:8000"
+    assert "private-chat-key" not in config.model_dump_json()
 
 
 def test_rbac_and_drift_comparison():
@@ -243,6 +273,7 @@ def test_oauth_transaction_rejects_changed_state(monkeypatch):
 
 def test_fleet_read_observability_and_recommendations(control):
     client, runtime = control
+    assert client.get("/index.html").status_code == 200
     response = client.get("/api/fleet")
     assert response.status_code == 200
     assert response.json()["items"][0]["name"] == "mlx-01"
@@ -330,6 +361,89 @@ def test_agent_websocket_resume_replay_and_duplicate_suppression(control):
         assert replayed["type"] == "message.completed"
 
 
+def test_agent_model_discovery_selection_commands_and_session_listing(control):
+    client, runtime = control
+    models = client.get("/api/agent/models").json()["items"]
+    assert models == [{
+        "target_id": "mlx-01:qwen-4b", "engine": "mlx-01", "engine_type": "mlx",
+        "model": "qwen-4b", "model_id": "Qwen/Qwen3-4B", "reachable": True,
+        "health": "healthy", "status": "DRIFT", "inference_url": "http://mlx.test:8000",
+    }]
+    identity = runtime.auth.development_identity()
+    created = client.post(
+        "/api/agent/sessions", headers={"X-CSRF-Token": identity.csrf_token},
+        json={"target_id": "mlx-01:qwen-4b"},
+    )
+    assert created.status_code == 201
+    assert created.json()["settings"]["target_id"] == "mlx-01:qwen-4b"
+    assert created.json()["settings"]["inference_url"] == "http://mlx.test:8000"
+    assert client.get("/api/agent/sessions").json()["items"][0]["event_count"] == 0
+
+    with client.websocket_connect(f"/ws/agent?resume_token={created.json()['resume_token']}") as socket:
+        assert socket.receive_json()["settings"]["target_id"] == "mlx-01:qwen-4b"
+        socket.send_json({"type": "model.select", "target_id": "mlx-01:qwen-4b"})
+        updated = socket.receive_json()
+        assert updated["type"] == "session.updated"
+        socket.send_json({"type": "model.select", "target_id": None})
+        cleared = socket.receive_json()
+        assert cleared["type"] == "session.updated"
+        assert "target_id" not in cleared["settings"]
+        socket.send_json({"type": "message", "message_id": "command-1", "text": "/models"})
+        assert socket.receive_json()["type"] == "ack"
+        event = socket.receive_json()
+        while event["type"] != "message.completed":
+            event = socket.receive_json()
+        assert "mlx-01:qwen-4b: reachable" in event["text"]
+
+
+def test_control_plane_agent_uses_selected_model_with_read_only_fallback_context(control, monkeypatch):
+    _, runtime = control
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "Model-backed fleet answer."}}]}
+
+    class Client:
+        def __init__(self, **kwargs):
+            captured["timeout"] = kwargs["timeout"]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def post(self, url, *, headers, json):
+            captured.update({"url": url, "headers": headers, "body": json})
+            return Response()
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    emitted = []
+
+    async def exercise():
+        async def emit(kind, payload):
+            emitted.append((kind, payload))
+
+        return await runtime.agent.answer(
+            runtime.auth.development_identity(), "Summarize the fleet", emit,
+            target={
+                "engine": "mlx-01", "model": "qwen-4b",
+                "target_id": "mlx-01:qwen-4b", "inference_url": "http://mlx.test:8000",
+            },
+        )
+
+    import asyncio
+    assert asyncio.run(exercise()) == "Model-backed fleet answer."
+    assert captured["url"] == "http://mlx.test:8000/v1/chat/completions"
+    assert captured["body"]["model"] == "qwen-4b"
+    assert "read-only PRA Control Plane assistant" in captured["body"]["messages"][0]["content"]
+    assert emitted[-1][0] == "tool.completed"
+
+
 def test_frontend_contains_required_stack_and_reconnect_protocol():
     static = Path(__file__).parents[1] / "src" / "pra_control" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
@@ -341,28 +455,40 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert '/static/app.js?v=' in html
     assert "localStorage" in script
     assert "resume_token" in script
-    assert "Math.min(state.retry*2,30000)" in script
+    assert "Math.min(state.retry * 2, 30000)" in script
     assert "globalThis['dockview-core'].createDockview" in script
     assert "dockview.createDockview" not in script
-    assert "return { element:host, init(){} };" in script
+    assert "init(params)" in script
     assert 'data-default-layout="20-50-30"' in html
+    assert 'id="left-pane"' in html
     assert 'id="chat-pane"' in html
     assert 'id="chat-resize"' in html
     assert 'id="events-template"' not in html
     assert 'id="agent-template"' not in html
-    assert script.count("dv.addPanel(") == 2
-    assert "const defaultNavWidth=Math.max(220,Math.round(window.innerWidth*0.20))" in script
-    assert "initialWidth:Math.max(440,Math.round(window.innerWidth*0.50))" in script
-    assert "pra-control-layout-v2" in script
-    assert "pra-control-chat-ratio-v2" in script
-    assert "loadActivity" in script
-    assert "model-tree-node" in script
+    assert script.count("dv.addPanel(") == 1
+    assert "dv.getPanel(id)" in script
+    assert "direction: 'within'" in script
+    assert "pra-control-central-tabs-v3" in script
+    assert "pra-control-chat-ratio-v3" in script
+    assert "renderActivity" in script
+    assert "fleet-filters" in script
+    assert "data-fleet-filter" in script
+    assert "data-sort" in script
+    assert "data-open-engine" in script
+    assert "field-info" in script
+    assert "Engine state" in script and "Desired state" in script
     assert "runtime_model_id" in script
     assert "dynamic_model_unload" in script
     assert "--chat-width: 30%" in styles
+    assert ".left-collapsed .left-pane" in styles
+    assert ".sort-button:hover .sort-icon" in styles
+    assert ".table-link" in styles and "cursor: pointer" in styles
     assert "pra-control-theme" in html + script
     assert 'id="user-menu-toggle"' in html
     assert 'id="help-drawer"' in html
+    assert 'id="agent-sessions"' in html
+    assert 'id="agent-model"' in html
+    assert 'id="about-modal"' in html
     assert "DOMPurify" in help_script
     assert "marked.parse" in help_script
     assert "translateX(100%)" in help_styles

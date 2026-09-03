@@ -61,8 +61,8 @@ business implementation. Start with the [architecture](architecture.md) and
 | Registry catalog and approval proxy | Early access |
 | Desired/observed drift | Early access |
 | Audited safe engine actions | Early access |
-| Dockable browser workspace | Early access |
-| Resumable PRA Agent chat | Early access, read-only assistant tools |
+| Fixed navigation and multi-tab Fleet workspace | Early access |
+| Resumable, model-selectable PRA Agent chat | Early access, read-only assistant tools |
 | Manager-backed REST and MCP | Early access; MCP is disabled and read-only by default |
 | Autonomous optimization | Not shipped; recommendations require a person |
 

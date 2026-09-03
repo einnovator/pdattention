@@ -56,6 +56,10 @@ class RegistryMutationBody(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class AgentSessionCreate(BaseModel):
+    target_id: str | None = None
+
+
 class ControlRuntime:
     def __init__(self, config: ControlPlaneConfig) -> None:
         self.config = config
@@ -64,13 +68,13 @@ class ControlRuntime:
         self.fleet = FleetService(config, self.store)
         self.manager = ControlManager.build(config, self.store, self.fleet)
         self.replay = AgentReplayService(self.store, config.replay_limit)
-        self.agent = ControlPlaneAgent(self.manager)
+        self.agent = ControlPlaneAgent(self.manager, config)
 
     def bind_manager(self) -> None:
         """Rebind after tests or embedders replace a physical fleet backend."""
         if self.manager.fleet.backend is not self.fleet:
             self.manager = ControlManager.build(self.config, self.store, self.fleet)
-            self.agent = ControlPlaneAgent(self.manager)
+            self.agent = ControlPlaneAgent(self.manager, self.config)
 
 
 def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRuntime | None = None) -> FastAPI:
@@ -298,6 +302,35 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
     async def recommendations(request: Request, actor: Identity = Depends(identity)) -> dict[str, Any]:
         return await runtime.manager.fleet.recommendations(caller(actor, request))
 
+    @app.get("/api/agent/models")
+    async def agent_models(actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return {"items": await _available_agent_models(runtime, actor)}
+
+    @app.get("/api/agent/sessions")
+    async def agent_sessions(actor: Identity = Depends(identity)) -> dict[str, Any]:
+        return {"items": runtime.replay.list(actor)}
+
+    @app.post("/api/agent/sessions", status_code=201)
+    async def agent_session_create(
+        body: AgentSessionCreate, actor: Identity = Depends(csrf),
+    ) -> dict[str, Any]:
+        models = await _available_agent_models(runtime, actor)
+        selected = next((row for row in models if row["target_id"] == body.target_id), None)
+        if body.target_id and (selected is None or not selected["reachable"]):
+            raise HTTPException(409, "selected agent model is not reachable")
+        settings = _default_agent_settings(runtime.config)
+        if selected:
+            settings.update({
+                "engine": selected["engine"], "model": selected["model"],
+                "target_id": selected["target_id"],
+                "inference_url": selected.get("inference_url"),
+            })
+        session = runtime.replay.open(actor, settings=settings)
+        return {
+            "resume_token": session["resume_token"], "settings": session["settings"],
+            "event_count": 0,
+        }
+
     @rest("action.plan", "post", "/api/actions/plan")
     async def action_plan(body: MutationBody, request: Request, action: str, target: str, actor: Identity = Depends(csrf)) -> Any:
         return domain_payload(await runtime.manager.actions.plan(
@@ -358,10 +391,23 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         if not value or not permits(value.role, Permission.FLEET_READ):
             await websocket.close(code=4401)
             return
-        session = runtime.replay.open(value, websocket.query_params.get("resume_token"))
+        defaults = _default_agent_settings(runtime.config)
+        configured = next(
+            (row for row in await _available_agent_models(runtime, value)
+             if row["target_id"] == defaults.get("target_id") and row["reachable"]),
+            None,
+        )
+        if configured:
+            defaults["inference_url"] = configured.get("inference_url")
+        session = runtime.replay.open(
+            value, websocket.query_params.get("resume_token"), settings=defaults,
+        )
         after = int(websocket.query_params.get("after", "0") or 0)
         await websocket.accept()
-        await websocket.send_json({"type": "session", "resume_token": session["resume_token"]})
+        await websocket.send_json({
+            "type": "session", "resume_token": session["resume_token"],
+            "settings": dict(session.get("settings") or {}),
+        })
         for event in runtime.replay.replay(session, after):
             await websocket.send_json(event)
 
@@ -375,6 +421,24 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
                 packet = await websocket.receive_json()
                 if packet.get("type") == "pong":
                     continue
+                if packet.get("type") == "model.select":
+                    if not packet.get("target_id"):
+                        settings = runtime.replay.update_settings(
+                            session, engine=None, model=None, target_id=None, inference_url=None,
+                        )
+                        await emit("session.updated", {"settings": settings})
+                        continue
+                    models = await _available_agent_models(runtime, value)
+                    selected = next((row for row in models if row["target_id"] == packet.get("target_id")), None)
+                    if selected is None or not selected["reachable"]:
+                        await emit("error", {"detail": "Selected agent model is not reachable."})
+                        continue
+                    settings = runtime.replay.update_settings(
+                        session, engine=selected["engine"], model=selected["model"],
+                        target_id=selected["target_id"], inference_url=selected.get("inference_url"),
+                    )
+                    await emit("session.updated", {"settings": settings})
+                    continue
                 if packet.get("type") != "message":
                     await emit("error", {"detail": "unsupported message type"})
                     continue
@@ -384,7 +448,16 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
                     continue
                 await websocket.send_json({"type": "ack", "message_id": message_id, "duplicate": False})
                 try:
-                    answer = await runtime.agent.answer(value, str(packet.get("text", "")), emit)
+                    prompt = str(packet.get("text", ""))
+                    target = dict(session.get("settings") or {})
+                    if prompt.startswith("/"):
+                        answer = await _agent_command(runtime, value, session, prompt)
+                        if target != dict(session.get("settings") or {}):
+                            await emit("session.updated", {
+                                "settings": dict(session.get("settings") or {}),
+                            })
+                    else:
+                        answer = await runtime.agent.answer(value, prompt, emit, target=target)
                     words = answer.split(" ")
                     for index, word in enumerate(words):
                         await emit("message.delta", {"request_message_id": message_id, "text": word + (" " if index < len(words) - 1 else "")})
@@ -397,10 +470,85 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
             heartbeat.cancel()
 
     @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
     async def index() -> FileResponse:
         return FileResponse(static / "index.html")
 
     return app
+
+
+def _default_agent_settings(config: ControlPlaneConfig) -> dict[str, Any]:
+    return {
+        "engine": config.agent.engine,
+        "model": config.agent.model,
+        "target_id": (
+            f"{config.agent.engine}:{config.agent.model}"
+            if config.agent.engine and config.agent.model else None
+        ),
+    }
+
+
+async def _available_agent_models(runtime: ControlRuntime, identity: Identity) -> list[dict[str, Any]]:
+    fleet = await runtime.manager.fleet.list(identity.caller(transport="control-ui"))
+    values: list[dict[str, Any]] = []
+    for engine in fleet.items:
+        health = str(engine.get("health") or "unknown").casefold()
+        reachable = (
+            bool(engine.get("inference_url"))
+            and engine.get("status") != "OFFLINE"
+            and health not in {"offline", "failed", "unreachable"}
+        )
+        for model in engine.get("models") or []:
+            runtime_model = str(model.get("runtime_model_id") or "default")
+            model_id = str(model.get("model_id") or runtime_model)
+            values.append({
+                "target_id": f"{engine['name']}:{runtime_model}",
+                "engine": engine["name"], "engine_type": engine.get("engine"),
+                "model": runtime_model, "model_id": model_id,
+                "reachable": reachable, "health": engine.get("health"),
+                "status": engine.get("status"), "inference_url": engine.get("inference_url"),
+            })
+    return sorted(values, key=lambda row: (not row["reachable"], row["engine"], row["model"]))
+
+
+async def _agent_command(
+    runtime: ControlRuntime, identity: Identity, session: dict[str, Any], command: str,
+) -> str:
+    """Mirror the common PRA Agent TUI commands in browser chat."""
+
+    parts = command.strip().split()
+    name = parts[0].casefold()
+    models = await _available_agent_models(runtime, identity)
+    if name in {"/help", "/tips"}:
+        return (
+            "Commands: /status, /models, /model use <engine:model>, /sessions, "
+            "/new, /clear, /fleet, /help. Operational changes still require the governed UI."
+        )
+    if name == "/models":
+        return "Available models:\n" + "\n".join(
+            f"- {row['target_id']}: {'reachable' if row['reachable'] else 'unreachable'} ({row['model_id']})"
+            for row in models
+        )
+    if name == "/model" and len(parts) >= 3 and parts[1].casefold() == "use":
+        selected = next((row for row in models if row["target_id"] == parts[2]), None)
+        if selected is None or not selected["reachable"]:
+            return f"Target {parts[2]!r} is not reachable. Use /models."
+        runtime.replay.update_settings(
+            session, engine=selected["engine"], model=selected["model"],
+            target_id=selected["target_id"], inference_url=selected.get("inference_url"),
+        )
+        return f"Agent model switched to {selected['target_id']}."
+    if name == "/sessions":
+        return f"You have {len(runtime.replay.list(identity))} retained Control Plane sessions."
+    if name == "/status":
+        settings = dict(session.get("settings") or {})
+        return f"Session is connected. Agent target: {settings.get('target_id') or 'manager-only fallback'}."
+    if name == "/fleet":
+        summary = (await runtime.manager.fleet.list(identity.caller(transport="agent"))).summary
+        return f"Fleet: {summary.get('total', 0)} total, {summary.get('healthy', 0)} in sync, {summary.get('offline', 0)} offline."
+    if name in {"/new", "/clear"}:
+        return f"Use the {name[1:].title()} toolbar action in the chat panel."
+    return "Unknown command. Use /help."
 
 
 def _websocket_identity(websocket: WebSocket, runtime: ControlRuntime) -> Identity | None:

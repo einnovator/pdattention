@@ -54,6 +54,7 @@ class AgentSession(Base):
     role: Mapped[str] = mapped_column(String(64))
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     seen_message_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -76,6 +77,7 @@ class ControlStore:
         self.engine = create_engine(database_url, **kwargs)
         Base.metadata.create_all(self.engine)
         self._upgrade_audit_schema()
+        self._upgrade_agent_session_schema()
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     def audit(self, **values: Any) -> dict[str, Any]:
@@ -103,6 +105,14 @@ class ControlStore:
             for name, sql_type in additions.items():
                 if name not in columns:
                     connection.execute(text(f"ALTER TABLE {AuditEvent.__tablename__} ADD COLUMN {name} {sql_type}"))
+
+    def _upgrade_agent_session_schema(self) -> None:
+        """Add session presentation settings to databases created before UI sessions."""
+
+        columns = {column["name"] for column in inspect(self.engine).get_columns(AgentSession.__tablename__)}
+        if "settings" not in columns:
+            with self.engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {AgentSession.__tablename__} ADD COLUMN settings JSON"))
 
     def audit_events(self, *, limit: int = 200, offset: int = 0) -> dict[str, Any]:
         with self.sessions() as session:
@@ -149,8 +159,17 @@ class ControlStore:
             else:
                 row.events = values["events"]
                 row.seen_message_ids = values["seen_message_ids"]
+                row.settings = values.get("settings")
                 row.updated_at = utcnow()
             session.commit()
+
+    def list_agent_sessions(self, actor: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(AgentSession).where(AgentSession.actor == actor)
+                .order_by(AgentSession.updated_at.desc()).limit(limit)
+            ).all()
+            return [self._row(row) for row in rows]
 
     def put_action_plan(self, plan_id: str, payload: dict[str, Any], idempotency_key: str | None) -> None:
         with self.sessions() as session:
