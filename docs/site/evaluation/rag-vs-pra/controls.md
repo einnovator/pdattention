@@ -14,4 +14,4 @@ Increasing candidate breadth introduces 3, 8, 18, or 48 non-gold documents aroun
 
 ## Selector and transport controls
 
-The L1/L2 selection grid compares selector outputs. A model-backed native run additionally compares visible selected text with detached native K/V. For representation-only E0/E2 claims, the selected chunk IDs must be frozen once and fed to both transports; independent selection is forbidden.
+The L1/L2 selection grid compares selector outputs. A model-backed native run additionally compares visible selected text with detached native K/V. For representation-only selected-text/native-K/V claims, the selected chunk IDs must be frozen once and fed to both transports; independent selection is forbidden.

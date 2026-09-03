@@ -32,6 +32,20 @@ python -m experiments.rag_vs_pra.run_eval_ladder \
 
 Change `--stage fixed` to `--stage retrieval` for unmodified BM25 candidate sets.
 
+## Native MLX generation
+
+```bash
+python -m experiments.rag_vs_pra.run_eval_ladder \
+  --dataset multihoprag --stage fixed \
+  --candidate-counts 20,50 --token-budgets 2048 \
+  --max-examples 10 --seed 11 \
+  --backend mlx-native \
+  --model mlx-community/Qwen3-4B-4bit \
+  --revision 4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25 \
+  --max-new-tokens 32 \
+  --output results/multihoprag_mlx_native.json.gz
+```
+
 ## Native HF generation
 
 ```bash

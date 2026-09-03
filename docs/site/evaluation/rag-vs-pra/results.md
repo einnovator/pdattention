@@ -31,6 +31,21 @@ At 8K--16K, the selectors converge because most useful chunks fit. The measured 
 
 The current persistent-corpus cohort avoids 20.8% of repeated chunk materialization after 50 queries. It does not yet include engine-measured TTFT or physical native-cache residency.
 
+## Qwen3-4B MLX generation smoke
+
+Ten of the same L1 questions were executed with the exact `mlx-community/Qwen3-4B-4bit` revision on a 48 GiB M4 Pro. Standard RAG used selected text in the ordinary prompt cache. PRA used the generic selector and all-layer detached native K/V. Both used greedy 32-token generation after symmetric path warm-up.
+
+| Candidates | Condition | Official task score | Strict EM | Token F1 | TTFT ms | Completion ms | Visible prompt tokens | Native K/V tokens |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | Standard RAG | **0.90** | 0.00 | **0.094** | 172.2 | **563.4** | 2,110 | 0 |
+| 20 | RAG + PRA | 0.70 | 0.00 | 0.077 | 172.8 | 646.6 | **82** | 2,032 |
+| 50 | Standard RAG | **0.90** | 0.00 | **0.091** | **165.4** | **557.1** | 2,107 | 0 |
+| 50 | RAG + PRA | 0.80 | 0.00 | 0.081 | 174.5 | 646.9 | **82** | 2,035 |
+
+The model often generated explanatory sentences, so strict short-answer EM is zero even when the gold answer token appears. The official task score is therefore more informative here, but the strict values remain visible. PRA reduces visible prompt tokens by about 96%, yet its all-layer 2K-token native memory occupies about 300 MB. Cold source ingestion is similar (`2.39--2.46` seconds), while native completion is about 15% slower. This smoke closes neither the quality nor economic gate.
+
+The product comparison changes both context selection and representation, by design. It does not by itself attribute the quality loss to routing versus native transport. Prior frozen-selection MLX parity checks cover transport; a larger RAG cohort should repeat that control within this exact benchmark.
+
 ## Claim boundary
 
-These 50-question curves establish auditable candidate controls and a parameter-free selection signal. They do not yet establish end-task superiority, a learned-adaptor gain, or an engine-level economic win. Those claims require model-backed EM/F1, frozen E0/E2 transport, and larger cohorts.
+The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The 10-question model smoke establishes a negative end-to-end gate, not superiority. A learned-adaptor gain and engine-level economic win remain unestablished. Those claims require a larger model-backed cohort, frozen selected-text/native-K/V transport inside this workload, and repeated-query engine measurements.

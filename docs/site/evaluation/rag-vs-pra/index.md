@@ -18,6 +18,7 @@ This design asks whether PRA preserves access to more useful evidence at a match
 - **L1:** 50 official MultiHop-RAG questions use gold-present candidate sets of 5, 10, 20, and 50 documents at 2K, 4K, 8K, and 16K physical-token budgets.
 - **L2:** the same cohort uses real BM25 first-stage retrieval over all 609 official corpus documents.
 - **L6 diagnostic:** 50 queries measure cumulative visible text and unique newly materialized chunks over a persistent corpus.
+- **Model smoke:** Qwen3-4B MLX executes 10 L1 questions through visible selected text and all-layer native K/V; the quality/economic gate is negative.
 
 The L1/L2 grid currently uses a deterministic answer-availability probe. It is selection evidence, not a model answer-quality result. Model-backed and engine-native rows are labeled separately.
 

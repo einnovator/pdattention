@@ -9,7 +9,7 @@
 \newcommand{\QualityMax}{\texttt{QUALITY\_\allowbreak MAX}}
 \newcommand{\ReferenceCorrectness}{\texttt{REFERENCE\_\allowbreak CORRECTNESS}}
 \newcommand{\CalibrationPending}{\texttt{CALIBRATION\_\allowbreak PENDING}}
-\graphicspath{{../shared/results/paper4_5_runtime/}}
+\graphicspath{{../shared/results/paper4_5_runtime/}{../shared/results/paper4_5_runtime_productization/rag/}}
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_cross_model_results.tex}
@@ -79,6 +79,15 @@ Learned routing improves held-out QASPER $R_{20}$ for every model, by
 0.085--0.360 absolute, but does not transfer uniformly to HotpotQA. The public
 bundles therefore keep parameter-free cosine routing as the default and expose
 the learned router only through an explicitly QASPER-qualified profile.
+A new matched-candidate document evaluation freezes the external retriever and
+its ordered documents before comparing Standard RAG packing with parameter-free
+PRA selection. On 50 MultiHop-RAG questions at a 2K-token budget, PRA raises
+answer-string availability by 0.10--0.12 absolute across candidate sets of
+5--50 documents. Evidence coverage improves most clearly at 5--20 candidates;
+at 50 real-retrieval candidates it does not, delimiting the selection claim.
+Across 50 questions over one persistent corpus, unique PRA-selected chunks
+total 80,535 tokens versus 101,730 repeatedly visible Standard-RAG tokens, a
+20.8\% accounting reduction before engine latency is considered.
 DeepSeek Harness and Pi bridges preserve typed
 tool-result identity through explicit ordinary-engine fallback in all
 \AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
@@ -1391,6 +1400,34 @@ execution semantics and relative routing work, not language quality or
 production latency. EOS can terminate before three tokens, so token-level
 operation counts are averaged over the actual forwards.
 
+\subsection{Matched-candidate document-RAG protocol}
+
+We evaluate PRA after, rather than in place of, first-stage corpus retrieval.
+The official MultiHop-RAG release contains 2,556 questions and 609 news
+documents, with evidence distributed over two to four documents per
+question~\cite{tang2024multihoprag}. We select 50 questions with seed 11. For
+each question and candidate count $N\in\{5,10,20,50\}$, BM25 produces one
+ordered candidate receipt. The receipt includes dataset, corpus, retriever, and
+index revisions; document IDs, ranks, scores, and content digests; a 256-token,
+32-token-overlap chunker; and the seed. Both conditions reject a changed or
+missing document before selection.
+
+Standard RAG ranks all candidate chunks by BM25 and packs whole chunks until
+the physical budget. Parameter-free PRA retains the same documents as typed,
+versioned resources and rank-fuses BM25 with a deterministic hashed-semantic
+view before materializing exact source intervals. We evaluate 2K, 4K, 8K, and
+16K budgets. L1 inserts any missing gold documents after first-stage retrieval,
+isolating context selection. L2 preserves unmodified BM25 candidates, exposing
+first-stage misses. Gold-document packing is an oracle diagnostic and is
+excluded from headline deltas.
+
+The broad grid uses a deterministic answer-availability probe: success means
+that an accepted answer string occurs in selected context. It measures whether
+selection exposes an answer, not whether a model generates it. We therefore
+report it separately from strict EM, token F1, and the official MultiHop-RAG
+token-intersection score. Detailed gzip artifacts retain every question,
+candidate receipt, selected character interval, metric, and failure class.
+
 \section{Results}
 
 \subsection{Five product questions}
@@ -1448,6 +1485,86 @@ body transmissions give $G_{\mathrm{session}}=275/21=13.10$. Because every
 CUDA row passes its quality gate, useful throughput equals 56.25 requests/s for
 E0, 45.46 for HOT E2, and 42.44 for WARM E2. Context and Native Gain therefore
 do not imply a throughput win.
+
+\subsection{Matched RAG candidates expose a budget-sensitive selection signal}
+
+Table~\ref{tab:rag-selection} reports the 2K-budget probe. At five and twenty
+gold-present candidates, PRA improves both answer availability and supporting
+document/span coverage. At fifty candidates, answer availability remains
+higher, but the span advantage disappears. The real-retrieval condition is
+stricter: at $N=50$, PRA raises answer availability from 0.64 to 0.76 while
+supporting-document coverage falls from 0.515 to 0.505 and false selection
+rises from 0.776 to 0.795. The latter row is not evidence of better grounded
+answering. It shows why answer presence, evidence coverage, and distractor
+exposure must remain separate.
+
+\begin{table}[H]
+\centering
+\small
+\caption{MultiHop-RAG 50-question selection probe at a 2K physical-token
+budget. ``Avail.'' is answer-string availability, not generated-answer EM.}
+\label{tab:rag-selection}
+\begin{tabular}{llrrrrr}
+\toprule
+Stage & $N$ & Condition & Avail. & Support docs & Support spans & False docs \\
+\midrule
+Gold present & 5  & RAG & .64 & .670 & .368 & .518 \\
+Gold present & 5  & PRA & .74 & .818 & .525 & .468 \\
+Gold present & 20 & RAG & .60 & .508 & .315 & .736 \\
+Gold present & 20 & PRA & .70 & .618 & .385 & .721 \\
+Gold present & 50 & RAG & .64 & .522 & .345 & .774 \\
+Gold present & 50 & PRA & .76 & .538 & .310 & .785 \\
+\midrule
+Real BM25 & 5  & RAG & .58 & .405 & .247 & .684 \\
+Real BM25 & 5  & PRA & .68 & .472 & .327 & .701 \\
+Real BM25 & 20 & RAG & .56 & .430 & .268 & .769 \\
+Real BM25 & 20 & PRA & .68 & .493 & .318 & .777 \\
+Real BM25 & 50 & RAG & .64 & .515 & .338 & .776 \\
+Real BM25 & 50 & PRA & .76 & .505 & .300 & .795 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{multihoprag_fixed_candidate_curves.pdf}
+\caption{Gold-present candidate and physical-budget curves. Parameter-free PRA
+has its clearest advantage under the 2K bottleneck; the conditions converge as
+most useful chunks fit. The vertical quantity is answer availability, not
+model accuracy.}
+\label{fig:rag-curves}
+\end{figure}
+
+The multi-query diagnostic asks 50 questions against one persistent corpus at
+$N=20$ and 2K. Standard RAG serializes 101,730 selected tokens cumulatively.
+Counting a PRA chunk only on first materialization yields 80,535 tokens across
+349 unique chunks, avoiding 21,195 repeated tokens (20.8\%). Figure
+~\ref{fig:rag-reuse} also exposes the boundary: these questions share little
+evidence, so PRA does not approach a one-time-ingestion asymptote. This is token
+accounting, not an engine speed result.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.76\linewidth]{multihoprag_reuse_curve.pdf}
+\caption{Cumulative selected-text transmission versus unique newly materialized
+PRA chunks over 50 real-retrieval questions. Physical cache hits and wall time
+remain for engine qualification.}
+\label{fig:rag-reuse}
+\end{figure}
+
+A ten-question L1 smoke then executes the product conditions with the exact
+\path{mlx-community/Qwen3-4B-4bit} revision on a 48~GiB M4 Pro. At $N=20$,
+Standard RAG scores 0.90 under MultiHop-RAG's official token-intersection metric
+and 0.094 token F1; generic PRA scores 0.70 and 0.077. At $N=50$, the scores are
+0.90/0.091 and 0.80/0.081. Strict EM is zero throughout because the model emits
+explanatory sentences rather than only the short target. PRA reduces mean
+visible prompt width from 2,110 to 82 tokens, but retains about 300~MB of
+all-layer native K/V. Mean cold source ingestion is 2.39--2.46~s in both modes;
+TTFT is 165--172~ms for Standard RAG and 173--175~ms for PRA, while completion
+rises from 557--563~ms to 647~ms. This is a negative quality and economic gate,
+not a native-E2 win. Because the product conditions also use different context
+selectors, this run does not attribute the loss between selection and native
+transport; selector-frozen engine parity remains a separate control.
 
 \subsection{Stable prefix and session-delta contract}
 
@@ -2652,6 +2769,17 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
+The document-RAG ladder is also incomplete. The 50-question MultiHop-RAG grid
+establishes candidate identity, budget controls, and a selection signal, but its
+answer-availability probe is not generated-answer quality. The ten-question
+Qwen3-4B smoke is too small for a headline quality estimate and closes neither
+the quality nor economic gate. A qualified document adaptor is absent. The next
+stage must add a strong dense or reranked RAG baseline, at least 50--100
+model-backed examples, selector-frozen E0/E2 controls within the same workload,
+and repeated-query physical cache measurements. KILT Natural Questions and
+HotpotQA require the pinned KILT knowledge source; they remain unmeasured rather
+than being approximated from answer provenance.
+
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
 experiments. They do not by themselves measure physical prefix-cache hits,
 continuous batching, or engine queueing. Companion experiments now measure
@@ -2689,11 +2817,12 @@ and warm-cache locality.  End-to-end runs should report TTFT, inter-token
 latency, throughput, peak HBM, off-device bytes, temporary bytes, transfers,
 and reload amplification together.
 
-The next policy experiment should use a trained model and retrieval workload,
+The next policy experiment should expand the trained-model retrieval smoke,
 hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
-latency, selection churn, and routing-layer disagreement. The implemented
-phase/shared handoff closes the cache-correctness prerequisite; its remaining
-gate is workload-scale calibration rather than mechanism availability.
+latency, selection churn, and routing-layer disagreement over a powered cohort.
+The implemented phase/shared handoff closes the cache-correctness prerequisite;
+its remaining gate is workload-scale calibration rather than mechanism
+availability.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled vLLM
@@ -2754,7 +2883,11 @@ missing detail can never trigger a silent profile downgrade. The eager
 primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 remains a negative gate. Companion engine runs establish pinned native
-realizations but still leave portable E2/E3 integration unmeasured. The practical
+realizations but still leave portable E2/E3 integration unmeasured. The new
+document-RAG ladder adds auditable same-candidate comparisons and finds a
+budget-sensitive parameter-free selection signal, but its first model-backed
+smoke is negative: context visibility falls sharply while quality does not yet
+hold and native completion costs more. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
