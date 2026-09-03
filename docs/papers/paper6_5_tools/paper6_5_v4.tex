@@ -26,7 +26,9 @@ Discovery, Progressive Disclosure, and Reactive Execution}
 \end{center}
 
 \begin{abstract}
-Large agents may register hundreds or thousands of tools and skills even though
+We ask whether PRA can represent and progressively disclose thousands of tools
+and skills without flooding active model context. Large agents may register
+hundreds or thousands of capabilities even though
 one decision typically needs only a few. Exposing every schema and instruction
 wastes active context; forcing an external router to choose exactly one removes
 the language model's ability to discriminate among plausible capabilities. We
@@ -59,6 +61,10 @@ model confusion, or unsafe execution.
 \end{abstract}
 
 \section{Introduction}
+
+The companion runtime paper owns the shared Selected Context and typed-record
+contracts~\cite{praruntime}. This paper studies one bounded capability problem:
+discovering, disclosing, choosing, and authorizing tools and skills at scale.
 
 An agent's logical capability environment can be much larger than the context
 needed for one decision. A software assistant may have thousands of APIs, data
@@ -848,7 +854,7 @@ already formed attention query~\cite{tang2024quest}. Paper 6.5 operates before
 full capability materialization. Its frozen native-Q/K result is a bounded
 negative control, not a general argument against trained model-native routing.
 
-\section{Limitations}
+\section{Negative Results and Limitations}
 
 Most generation experiments use frozen Qwen3-0.6B. The matched chooser
 decomposition adds one 4-bit Qwen3-14B replication, but it remains within one
@@ -898,5 +904,6 @@ disclosure makes bounded candidate breadth economical. The measured boundary
 is equally important: progressive disclosure reduces context cost; it does not
 solve missing candidates, model confusion, or authorization.
 
+\appendix
 \clearpage
 \input{paper6_5_appendices.tex}
