@@ -331,6 +331,109 @@ class HFNativeBackend:
             self.max_new_tokens = original
 
 
+class MLXNativeBackend:
+    """Matched selected-text and native-K/V execution using MLX-LM caches."""
+
+    publishable_answer_quality = True
+
+    def __init__(self, model_id: str, revision: str, max_new_tokens: int) -> None:
+        from mlx_lm import load
+
+        self.name = f"mlx_native:{model_id}@{revision}"
+        self.model_id = model_id
+        self.revision = revision
+        self.max_new_tokens = max_new_tokens
+        self.model, self.tokenizer = load(model_id, revision=revision)
+
+    def token_count(self, text: str) -> int:
+        return len(self.tokenizer.encode(text, add_special_tokens=False))
+
+    def _query(self, question: RAGQuestion) -> str:
+        return (
+            "/no_think\nUse only the available evidence. Give only the shortest "
+            f"supported answer.\nQuestion: {question.question}\nAnswer:"
+        )
+
+    def _generate(self, query_tokens, cache):
+        import mlx.core as mx
+        from mlx_lm.generate import generate_step
+        from mlx_lm.sample_utils import make_sampler
+
+        started = time.perf_counter()
+        arrivals = []
+        generated = []
+        for token, _ in generate_step(
+            mx.array(query_tokens, dtype=mx.int32),
+            self.model,
+            max_tokens=self.max_new_tokens,
+            prompt_cache=cache,
+            sampler=make_sampler(temp=0),
+        ):
+            generated.append(int(token))
+            arrivals.append((time.perf_counter() - started) * 1000.0)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        return self.tokenizer.decode(generated).strip(), {
+            "ttft_ms": arrivals[0] if arrivals else elapsed_ms,
+            "itl_ms": (
+                sum(right - left for left, right in zip(arrivals, arrivals[1:]))
+                / (len(arrivals) - 1)
+                if len(arrivals) > 1
+                else 0.0
+            ),
+            "total_latency_ms": elapsed_ms,
+            "generated_tokens": len(generated),
+            "tokens_per_second": len(generated) / max(elapsed_ms / 1000.0, 1e-9),
+        }
+
+    def answer(
+        self, question: RAGQuestion, context: str, condition: ContextCondition
+    ) -> tuple[str, Mapping[str, object]]:
+        import mlx.core as mx
+        from mlx_lm.models.cache import make_prompt_cache
+        from pra_mlx.native import encode_native_memory, make_native_prompt_cache
+
+        source_tokens = list(
+            self.tokenizer.encode(context.rstrip() + "\n\n", add_special_tokens=False)
+        )
+        query_tokens = list(
+            self.tokenizer.encode(self._query(question), add_special_tokens=False)
+        )
+        native = condition is ContextCondition.PRA_NO_ADAPTOR
+        started = time.perf_counter()
+        if native:
+            memory = encode_native_memory(self.model, source_tokens)
+            cache = make_native_prompt_cache(self.model, memory)
+            native_bytes = memory.nbytes
+        else:
+            cache = make_prompt_cache(self.model)
+            self.model(mx.array(source_tokens, dtype=mx.int32)[None], cache=cache)
+            mx.eval([layer.state for layer in cache])
+            native_bytes = 0
+        ingestion_ms = (time.perf_counter() - started) * 1000.0
+        prediction, serving = self._generate(query_tokens, cache)
+        return prediction, {
+            **serving,
+            "native_encode_ms": ingestion_ms if native else 0.0,
+            "visible_text_ingestion_ms": ingestion_ms if not native else 0.0,
+            "active_detail_bytes": native_bytes,
+            "visible_prompt_tokens": len(query_tokens) if native else len(source_tokens) + len(query_tokens),
+            "selected_native_kv_tokens": len(source_tokens) if native else 0,
+        }
+
+    def warmup(self, question: RAGQuestion, contexts: Mapping[ContextCondition, str]) -> None:
+        original = self.max_new_tokens
+        self.max_new_tokens = 1
+        try:
+            self.answer(question, contexts[ContextCondition.NO_PRA], ContextCondition.NO_PRA)
+            self.answer(
+                question,
+                contexts[ContextCondition.PRA_NO_ADAPTOR],
+                ContextCondition.PRA_NO_ADAPTOR,
+            )
+        finally:
+            self.max_new_tokens = original
+
+
 def _condition_row(
     *,
     question: RAGQuestion,
@@ -443,7 +546,9 @@ def main() -> None:
     parser.add_argument("--max-examples", type=int, default=20)
     parser.add_argument("--seed", type=int, default=11)
     parser.add_argument(
-        "--backend", choices=("probe", "hf-text", "hf-native"), default="probe"
+        "--backend",
+        choices=("probe", "hf-text", "hf-native", "mlx-native"),
+        default="probe",
     )
     parser.add_argument("--model", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--revision", default="main")
@@ -464,7 +569,7 @@ def main() -> None:
         backend = EvidenceProbeBackend()
     elif args.backend == "hf-text":
         backend = HFTextBackend(args.model, args.revision, args.device, args.max_new_tokens)
-    else:
+    elif args.backend == "hf-native":
         backend = HFNativeBackend(
             args.model,
             args.revision,
@@ -473,6 +578,8 @@ def main() -> None:
             args.consumption_layers,
             max(args.token_budgets),
         )
+    else:
+        backend = MLXNativeBackend(args.model, args.revision, args.max_new_tokens)
     token_count = getattr(backend, "token_count", None)
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     rows = []
