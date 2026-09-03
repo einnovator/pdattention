@@ -10,39 +10,33 @@ Semantic Memory Contracts, E0 Serving Evidence, and the Native Attachment Bounda
 \maketitle
 
 \begin{abstract}
-TensorRT-LLM already provides paged K/V caching, prefix reuse, in-flight
-batching, priority-aware retention, and external K/V connectors. Progressive
-Retrieval Attention (PRA) adds a different abstraction: immutable semantic
-resources selected by the current query rather than by prefix identity. We
-implement a TensorRT-LLM provider, an OpenAI-compatible selected-text path, and
-request-safe contracts for topology-bound native blocks, authorization,
-pinning, exactly-once attachment, cleanup, and prefix-pool exclusion. A live
-TensorRT-LLM 1.2.1 audit finds the official connector and paged-cache APIs but
-no public operation that attaches arbitrary selected non-prefix blocks to
-attention. A second, source-hash-bound audit follows the request conversion,
-attention metadata, cache manager, connector, and fused operator call. It
-finds that a correct E2 path would cross five coupled surfaces, including the
-fused operator ABI; page-table splicing alone would change sequential geometry
-and cache-write offsets. Native E2 execution is therefore an explicit upstream
-gate, not a text fallback or fragile package monkey-patch reported as native
-memory. On an RTX 5060 Laptop GPU with
-TinyLlama-1.1B, selected-text E0 and bounded full context both recover the
-controlled answer in every measured request. At eight concurrent shared
-requests, selected text uses 67 visible prompt tokens rather than 1,040,
-reaches 41.7 rather than 27.2 requests/s, and reduces TTFT p99 from 155.5 to
-57.9 ms. An expanded 1,240-request sweep through concurrency 16 reaches 81.9
-requests/s for independent selected inputs versus 53.6 for full context, with
-50.5 versus 157.8 ms TTFT p99. A three-point pressure curve extends full
-context to 1,276 tokens: selected throughput remains 78.0--81.9 requests/s,
-whereas full context reaches 52.6--56.9 requests/s at the largest point. A
-separate 360-request natural cohort covers
-QASPER, HotpotQA, and 2WikiMultiHopQA. A further 120-request, two-turn session
-cohort shows that logical visibility reuse reduces the measured second-turn
-prompt from 797 to 658 tokens while preserving output behavior in 20/20 paired
-cases. Absolute exact-code success remains 0/20 in both conditions, exposing a
-TinyLlama instruction-following limit rather than claiming task quality. These results establish the transport baseline and integration
-boundary needed for an upstream E2 contract; they do not establish the
-economics or parity of native TensorRT-LLM PRA.
+We ask what Progressive Retrieval Attention (PRA) improves in front of
+TensorRT-LLM and which gains come from session-aware Selected Context rather
+than native engine integration. TensorRT-LLM already owns paged K/V, prefix
+reuse, in-flight batching, and connector lifecycles. We implement an
+OpenAI-compatible Selected Context path (E0), semantic resource identities,
+authorization and cleanup contracts, and a capability gate for Native Memory
+(E2). A pinned source audit finds no public arbitrary non-prefix attachment
+operation; a correct E2 implementation would cross request conversion,
+scheduler metadata, cache management, connector state, and the fused attention
+ABI.
+
+On an RTX 5060 Laptop GPU, a 1,240-request load sweep through concurrency
+sixteen reaches 81.9 requests/s for independent selected inputs versus 53.6
+for full context. Matched TTFT p99 is 50.5 versus 157.8 ms. Across a
+three-point pressure curve, selected throughput remains 78.0--81.9 requests/s
+as full visible context grows to 1,276 tokens. A separate 360-request natural
+cohort covers QASPER, HotpotQA, and 2Wiki. A 120-request two-turn session
+cohort reduces turn-two prompt tokens from 797 to 658 and newly visible
+resource tokens from 52 to 26, while all 20 paired outputs match.
+
+These are transport and serving results, not task-quality or native-memory
+claims. TinyLlama obtains 0/20 exact-code success in both session conditions,
+and the installed public API cannot execute E2. Page-table splicing alone would
+also corrupt sequential geometry and cache-write offsets. The recommended path
+for TensorRT-LLM 1.2.1 is therefore session-aware E0 with ordinary prefix
+reuse. Native PRA remains an upstream integration contract whose quality,
+memory, and economic effects are \textsc{not measured}.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -90,6 +84,11 @@ scheduler physical ownership of those selected K/V pages. This paper measures
 the first step and specifies the boundary to the latter two.
 
 \section{Introduction}
+This paper asks what PRA improves in front of TensorRT-LLM before arbitrary
+non-prefix K/V attachment exists. The companion runtime paper owns the common
+deployment and evidence contract~\cite{praruntime}; this paper separates
+session-aware selected-text gains from unimplemented native claims.
+
 Prefix caching asks whether a request begins with tokens that an engine has
 already processed. PRA asks which independently retained resource is relevant
 to the current query. The two mechanisms can cooperate, but only if three
@@ -469,7 +468,7 @@ source, and cached decode. Only after exact/logit parity is acceptable should
 connector transfer, eviction hints, disaggregation, and quantized K/V be
 benchmarked.
 
-\section{Limitations}
+\section{Negative Results and Limitations}
 The controlled code task is synthetic; the additional natural cohort is small
 and uses a weak QA checkpoint. The original tail estimates use five waves and
 the expanded endpoints use ten. Only one
@@ -510,6 +509,9 @@ against the live installed package; it records source hashes, line evidence,
 gate decisions, required patch surfaces, and rejected shortcuts.
 
 \begin{thebibliography}{9}
+\bibitem{praruntime}
+J. Simao. \emph{Productizing Progressive Retrieval Attention: A Runtime,
+Gateway, and Deployment Architecture}. 2026.
 \bibitem{trtllm}
 NVIDIA. \emph{TensorRT-LLM Documentation}.\\
 \url{https://nvidia.github.io/TensorRT-LLM/}
