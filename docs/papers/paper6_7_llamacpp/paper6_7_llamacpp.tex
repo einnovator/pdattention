@@ -42,6 +42,13 @@ The companion runtime paper defines the common E0/E2/E3 and evidence
 contracts~\cite{praruntime}. This paper isolates the llama.cpp mechanism and
 its portability boundary.
 
+In product terms, No PRA is ordinary inference without PRA selection; Selected
+Context (E0) renders a PRA selection as visible text; Native Memory (E2)
+realizes that same frozen selection as detached K/V; and Native Serving (E3)
+adds scheduler-owned placement and lifecycle. Bundle or adaptor use is
+orthogonal. Accordingly, the matched results below are Native Memory versus
+Selected Context, not PRA versus No PRA, and do not measure an adaptor gain.
+
 Local inference has two kinds of context pressure. The first is computational:
 long prompts increase prefill work and K/V residency. The second is semantic:
 applications need records, documents, tool outputs, and task state that do not
