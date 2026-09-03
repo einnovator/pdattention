@@ -43,6 +43,13 @@ The companion runtime paper defines the common E0/E2/E3 and evidence
 contracts~\cite{praruntime}. This paper evaluates Ollama as a deployment
 surface and makes delegation boundaries explicit.
 
+In product terms, No PRA is ordinary inference without PRA selection; Selected
+Context (E0) renders a PRA selection as visible text; Native Memory (E2)
+realizes that same frozen selection as detached K/V; and Native Serving (E3)
+adds scheduler-owned placement and lifecycle. Bundle or adaptor use is
+orthogonal. The delegated cohort below therefore measures Native Memory versus
+Selected Context, not PRA versus No PRA or bundle versus no adaptor.
+
 Ollama's value is operational simplicity: a model name, one daemon, and a
 familiar API. A PRA integration that requires every application to understand
 engine-specific K/V state would undermine that value. We instead treat Ollama
