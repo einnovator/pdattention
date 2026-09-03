@@ -26,108 +26,41 @@ A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) lets a query select a bounded subset of
-URI-addressed, model-native key/value memory.  Earlier work established the
-model interface, external-memory lifecycle, typed capability records, and
-compact typed-result backing,
-but those parts did not yet form one product surface, and logical sparsity did
-not by itself establish lower latency or accelerator memory.  We introduce a
-unified runtime that preserves the existing Hugging Face API while adding
-an engine-neutral four-axis execution policy, request-owned selection plans,
-versioned systems configuration, authenticated sessions, lazy tool and skill
-disclosure, independently authorized tool execution, session-scoped result
-compaction, size-adaptive native result indexing, lazy selected-region native
-encoding, durable task-aware agent state, selective replay, deduplicated K/V interval planning, physical byte
-accounting, a versioned cross-model product-profile registry, bounded caching,
-profiling, and a scheduler-unaware serving
-handoff. A standalone gateway now separates agent semantics, PRA mediation,
-and engine-native state through a JSON logical-reference contract and explicit
-capability negotiation. The agent now constructs an OpenAI-style conversational
-spine plus detached typed records; AUTO negotiation preserves those records for
-PRA-aware gateways and engines and renders text only at a compatibility
-boundary. It streams HF-backed responses with request-owned
-cleanup. The gateway now resolves engine-specific cache/session profiles,
-exercises prepare/close lifecycles, preserves append-only G10 prefixes, and
-transports message and resource deltas without conflating conventional prefix
-K/V with PRA-native state. A five-turn deterministic profile preserves the
-prior serialized prefix on all four eligible turns; physical cache hits remain
-unmeasured. A native-reference audit found and corrected a positional collision:
-external keys retained source-relative RoPE coordinates while direct queries
-restarted at zero. On a random tiny Qwen fixture, the corrected full-reference
-path matches visible-prefix logits to $5.97\times10^{-8}$ maximum absolute
-error. On three one-token continuation cases, full native replay preserves
-visible-prefix top tokens and answer accuracy for Qwen3-0.6B and a public
-Llama-3.2-1B weight mirror. Gemma-3-1B preserves disabled behavior, native MQA
-shape, positions, and decode lifetime, but its four global PRA consumers do not
-reproduce the semantics of a visible prefix passing through 22 unchanged local
-sliding layers; we report that family as partial topology. The runtime now
-separates address encoding, detail-K/V encoding, request-time
-routing, and memory consumption. A corrected 102-row layer calibration finds
-that no sparse profile is portable across the three families: all eligible
-layers are the balanced correctness profile for each model, while Qwen's
-last-24 profile is only a small-cohort quality-max candidate.
-A 48~GiB M4 Pro calibration then extends Qwen to 8B, 14B, 32B, and
-30B-A3B over 60 unique natural-QA model--example pairs. Full concatenated
-native replay preserves every selected-text sequence. Dense 32B is less
-likelihood-sensitive to reduced consumer suffixes, but no sparse profile
-preserves enough sequence identity to graduate beyond calibration-pending.
-Separate five-seed routing qualifications package exact 4-bit MLX identities
-for Qwen3-4B, Qwen3-14B, Llama-3.1-8B, and Gemma-3-1B, plus matched-size
-bfloat16 HF identities for Qwen2.5-1.5B-Instruct and
-Qwen2.5-Coder-1.5B-Instruct.
-Learned routing improves held-out QASPER $R_{20}$ for every model, by
-0.085--0.360 absolute, but does not transfer uniformly to HotpotQA. The public
-bundles therefore keep parameter-free cosine routing as the default and expose
-the learned router only through an explicitly QASPER-qualified profile.
-A new matched-candidate document evaluation freezes the external retriever and
-its ordered documents before comparing Standard RAG packing with parameter-free
-PRA selection. On 50 MultiHop-RAG questions at a 2K-token budget, PRA raises
-answer-string availability by 0.10--0.12 absolute across candidate sets of
-5--50 documents. Evidence coverage improves most clearly at 5--20 candidates;
-at 50 real-retrieval candidates it does not, delimiting the selection claim.
-Across 50 questions over one persistent corpus, unique PRA-selected chunks
-total 80,535 tokens versus 101,730 repeatedly visible Standard-RAG tokens, a
-20.8\% accounting reduction before engine latency is considered.
-DeepSeek Harness and Pi bridges preserve typed
-tool-result identity through explicit ordinary-engine fallback in all
-\AgentPluginCases{} contract cases. In a five-seed tiny-HF mechanism profile, token-shared
-selection required
-\ExecutionTokenSharedRoutes{} routing operations per request, versus
-\ExecutionTokenPerLayerRoutes{} for token-per-layer, a
-\ExecutionRoutingReduction{}$\times$ reduction with three active layers. On a
-CUDA 12.6 host with an NVIDIA GTX 950M,
-gathering 512 of 8,192 native-K/V tokens takes a median
-\RuntimeCudaIndexBatchOneMs{} ms at batch one, and packing eight selected
-intervals takes \RuntimeCudaPackBatchOneMs{} ms.  The same packed payload costs
-\RuntimeCudaHBMMs{} ms when HBM-resident, \RuntimeCudaPinnedMs{} ms from pinned
-CPU memory, and \RuntimeCudaOrdinaryMs{} ms from ordinary CPU memory.  Thus,
-off-device transfer is \RuntimePinnedRatio{}--\RuntimeOrdinaryRatio{} times the
-HBM-resident packing cost on this host.  Compilation is a negative capability
-gate: the CPU toolchain lacks an available compiler and the GPU is below the
-Triton capability floor.  No optional serving engine is installed.  The result
-is therefore a tested portable eager baseline and reproducible measurement
-contract, not a fused-kernel or serving-engine speed claim. Companion Apple-Silicon
-runs apply that contract to one frozen 60-example selection cohort in MLX-LM,
-SGLang-MLX, and vLLM-Metal. Native E2 removes 90.6--93.0\% of visible prompt
-tokens, and all three engines preserve all 840 paired outputs. The corrected
-vLLM run first restores E0 source pages through APC and captures E2 source
-pages from vLLM's own prefill, preventing fused-kernel geometry from being
-confounded with representation. An expanded 149-question confirmation per
-engine preserves 6,258/6,258 pairs overall. Four-regime cost ratios still show that
-semantic transport does not by itself imply a large economic win. A separate
-live storage study connects the same lifecycle manager to vLLM pages, SGLang
-HiCache-backed arrays, and MLX arrays. Across 17 model/dataset cohorts spanning
-Qwen, Llama, and Gemma, lossless WARM preserves 265/265 outputs and every
-manager recovers after restart; int8 COLD is exact in only 61/265 sequences and
-remains opt-in. Gemma is unsupported by the pinned SGLang-MLX backend because
-that runtime cannot represent its per-layer sliding-window topology. A later
-30-example Qwen3-32B MLX cohort on 48~GiB preserves every concatenated-E2
-sequence; warm E2/E0 is 1.011 and cold usable-context E2/E0 is 0.976. On CUDA,
-a scheduler-invisible vLLM 0.28 bridge also preserves all 128 outputs per
-condition while removing selected source tokens from scheduler geometry, but
-E0 still delivers 56.25 successful requests/s versus 45.46 for HOT E2. The
-runtime therefore treats semantic parity, context reduction, and economic
-qualification as separate gates.
+We ask how Progressive Retrieval Attention (PRA) can become a portable runtime
+abstraction without confusing a small logical selection with a systems-level
+saving. We organize deployment into three depths: Selected Context serializes
+chosen evidence as visible text (E0); Native Memory supplies selected
+model-native key/value state outside the visible prompt (E2); and Native
+Serving gives the engine scheduler direct ownership of placement and reuse
+(E3). The implementation unifies authenticated resources, typed records,
+tasks, sessions, routing, physical materialization, storage lifecycle, engine
+capability negotiation, and evidence receipts behind one runtime and gateway.
+The contract keeps ordinary prefix K/V distinct from query-addressed PRA state
+and falls back to E0 when a deeper capability is unavailable.
+
+The evaluation separates quality, context, and economics. On frozen routed
+evidence, MLX-LM, SGLang-MLX, and vLLM-Metal remove 90.6--93.0\% of visible
+prompt tokens and preserve 6,258/6,258 paired outputs across 149 questions per
+engine. Lossless WARM storage preserves 265/265 outputs over 17
+model--dataset cohorts and survives restart, whereas int8 COLD storage is exact
+in only 61/265 sequences and remains opt-in. Qwen3-32B reaches a warm E2/E0
+cost ratio of 1.011 and a cold usable-context ratio of 0.976 on Apple Silicon.
+A scheduler-invisible CUDA vLLM prototype preserves 128/128 outputs in each of
+FULL, E0, E2-HOT, and E2-WARM, but E0 sustains 56.3 requests/s versus 45.5 and
+42.4 for the two native modes. Thus semantic parity and scheduler invisibility
+do not yet imply an economic win.
+
+The same evidence discipline applies above the engine. On 50 MultiHop-RAG
+questions, parameter-free PRA raises answer-string availability by
+0.10--0.12 at a 2K-token budget and reduces unique selected tokens by 20.8\%
+over repeated standard-RAG packing. A matched Qwen3-4B precision study finds
+the deployed PRA pipeline progressively closer to baseline from INT4 through
+INT8 to BF16, but it is a ten-question, one-seed result with no qualified
+learned adaptor. The robust product contribution is therefore selective
+logical context with explicit provenance. Native Memory and Native Serving are
+optional, engine- and workload-qualified optimizations; fused serving,
+selector-frozen precision transfer, and production-scale profile calibration
+remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -186,7 +119,7 @@ and
 modern-GPU transfer overlap, and native serving-engine integration.
 \end{itemize}
 
-\section{The Systems Gap}
+\section{PRA Runtime Abstraction}
 
 \subsection{Logical and physical memory are different quantities}
 
@@ -249,7 +182,7 @@ source fetch and native encoding; compiled paths pay graph capture and code
 generation.  Reporting only warm attention can therefore reverse the practical
 conclusion.
 
-\section{A Unified Runtime Contract}
+\section{Deployment and Integration Model}
 
 \subsection{One facade, separate authorities}
 
@@ -1061,7 +994,7 @@ entries. A concurrent same-URI fixture confirms tenant isolation under pressure
 and cancellation cleanup. This is logical/runtime isolation, not hard GPU
 partitioning.
 
-\section{Compilation and Engine Boundaries}
+\section{Engine-Portability Model}
 
 \subsection{Agent, gateway, and engine are independent}
 
@@ -1314,7 +1247,7 @@ GQA reduces the number of physical K/V heads~\cite{ainslie2023gqa}.  Our runtime
 preserves this layout through warm storage and materialization.  It does not
 expand K/V to query-head count as an implementation convenience.
 
-\section{Experimental Design}
+\section{Canonical Evaluation Methodology}
 
 \subsection{Questions and claim levels}
 
@@ -2092,7 +2025,17 @@ quality effect: once all eight resources fit, reloads disappear.}
 \label{fig:runtime-long-pressure}
 \end{figure}
 
-\section{Compatibility and Product Boundary}
+\subsection{Interpretation}
+
+The results separate three claims that are often collapsed. Selection can
+improve evidence availability and reduce visible context before any engine
+change. Native Memory can preserve the same selected evidence while moving it
+outside prompt accounting. Native Serving becomes economically useful only
+when the engine owns attachment, placement, reuse, and cleanup cheaply enough
+to offset its control-path cost. Exactness and token reduction close broadly;
+the economic gate remains engine- and workload-dependent.
+
+\section{Cross-Model, Precision, and Product Qualification}
 
 \subsection{Common Qualification Contract}
 
@@ -2840,7 +2783,7 @@ engine-specific Grafana dashboards plus profile-gated Collector/Prometheus/
 Grafana Compose deployment.  Host-native MLX and embedded runtimes use the same
 collector through a documented hybrid-host arrangement.
 
-\section{Limitations and Next Gates}
+\section{Negative Results and Next Gates}
 
 The current evidence is intentionally incomplete. The local HF compilation
 probe uses an old CUDA GPU, while companion experiments span two Apple hosts,
@@ -2991,6 +2934,7 @@ conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
 
+\appendix
 \appendix
 \section{Reimplementation Guide}
 
