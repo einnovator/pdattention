@@ -410,6 +410,7 @@ def _manifest(
     paired_evidence: list[dict],
 ) -> dict:
     commit = _git_commit()
+    runtime_smoke = QUANTIZED_RESULTS / slug / "runtime_smoke.json"
     learned_adapters = {}
     if comparison is not None and router_config is not None:
         learned_adapters["combined-router-d128"] = {
@@ -487,7 +488,7 @@ def _manifest(
         "runtime_compatibility": (
             {
                 "hf": {
-                    "selected_context": "validated",
+                    "selected_context": "validated" if comparison is not None else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
                     "native_memory": "AVAILABLE",
                     "native_serving": "NOT_MEASURED",
                     "recommended": "Selected Context with BALANCED",
@@ -502,7 +503,7 @@ def _manifest(
             if engine == "hf"
             else {
                 "mlx": {
-                    "selected_context": "validated",
+                    "selected_context": "validated" if (paired_evidence or comparison is not None) else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
                     "native_memory": "QUALIFIED" if paired_evidence else "AVAILABLE",
                     "native_serving": "NOT_MEASURED",
                     "recommended": "Native Memory with BALANCED" if paired_evidence else "Selected Context with BALANCED",
@@ -526,6 +527,8 @@ def _manifest(
                 if paired_evidence
                 else "CONTROLLED"
                 if comparison is not None
+                else "SMOKE"
+                if runtime_smoke.is_file()
                 else "NOT_MEASURED"
             ),
             "headline": [row for row in paired_evidence if row["dataset"] == "combined"],
@@ -571,13 +574,18 @@ def _manifest(
                 *(
                     ["Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality."]
                     if comparison is not None
-                    else ["End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity."]
+                    else [
+                        "The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt; it is not an end-task quality or serving benchmark."
+                        if runtime_smoke.is_file()
+                        else "End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity."
+                    ]
                 ),
                 *spec.get("extra_limitations", []),
                 "Base-model and dataset licenses apply separately to the router artifact.",
             ],
             "artifacts": [
                 *(["qualification/structural_validation.json"] if (QUANTIZED_RESULTS / slug / "structural_validation.json").is_file() else []),
+                *(["qualification/runtime_smoke.json"] if runtime_smoke.is_file() else []),
                 *(["qualification/comparison.json", "qualification/feature_dataset_manifest.json", "qualification/catalog_summary.json"] if comparison is not None else []),
                 *(
                     [f"qualification/{spec['paired_evidence']}", "qualification/canonical_evidence.json"]
@@ -593,11 +601,18 @@ def _manifest(
             "hf_collection": COLLECTION,
             "license": spec["license"],
             "license_note": "Router and project terms do not replace the base-model or dataset licenses.",
-            "source_artifact": spec.get("paired_evidence", f"artifacts/pra_hf/routers/{slug}-combined-d128"),
-            "selection_reason": "Exact-identity paired natural-QA qualification, with routing research kept separate.",
+            "source_artifact": spec.get(
+                "paired_evidence",
+                f"docs/papers/shared/results/paper4_5_runtime/quantized_bundles/{slug}",
+            ),
+            "selection_reason": (
+                "Exact-identity paired natural-QA qualification, with routing research kept separate."
+                if paired_evidence
+                else "Fleet-compatible exact quantization with evidence isolated from other weight representations."
+            ),
         },
         "trust": {
-            "status": "eInnovator-qualified",
+            "status": "eInnovator-qualified" if (paired_evidence or comparison is not None) else "eInnovator-maintained",
             "publisher": "EInnovator",
             "scope": f"exact {quantization} {engine.upper()} model identity; evidence does not transfer across revisions, engines, or quantizations",
         },
@@ -623,6 +638,7 @@ def build_one(slug: str, *, force: bool = False) -> Path:
         artifact_reference=f"qualification/{spec['paired_evidence']}",
     ) if evidence_path and evidence_path.is_file() else []
     structural_validation = QUANTIZED_RESULTS / slug / "structural_validation.json"
+    runtime_smoke = QUANTIZED_RESULTS / slug / "runtime_smoke.json"
     output = BUNDLES / spec["repo"].split("/", 1)[1]
     with tempfile.TemporaryDirectory(prefix=f"pra-{slug}-bundle-") as temporary:
         run = Path(temporary)
@@ -651,6 +667,8 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             )
         if structural_validation.is_file():
             shutil.copy2(structural_validation, qualification / "structural_validation.json")
+        if runtime_smoke.is_file():
+            shutil.copy2(runtime_smoke, qualification / "runtime_smoke.json")
         (run / "pra.yaml").write_text(
             yaml.safe_dump(
                 _manifest(slug, spec, comparison, router_config, paired_evidence), sort_keys=False
