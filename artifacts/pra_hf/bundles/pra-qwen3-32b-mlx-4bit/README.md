@@ -171,8 +171,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
-- Bundle build commit: `678a463f68a5ef7ae32fe700d99e23274ac61854`
+- PRA commit: `04800d424092571f2e9eae32a3c0ea0c01224304`
+- Bundle build commit: `04800d424092571f2e9eae32a3c0ea0c01224304`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.
