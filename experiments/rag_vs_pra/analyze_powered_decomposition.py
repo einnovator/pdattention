@@ -11,12 +11,18 @@ from collections import Counter
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from pra_hf.rag_evaluation import ContextCondition
+from experiments.rag_vs_pra.datasets import load_multihop_rag
+from pra_hf.rag_evaluation import (
+    CandidateReceipt,
+    ContextCondition,
+    prepare_candidate_context,
+)
 from pra_hf.rag_powered import (
     paired_delta,
     qualification_gates,
     summarize_rows,
     write_csv,
+    write_results,
 )
 
 
@@ -43,6 +49,62 @@ def _normalize_failure_classes(rows: Sequence[dict[str, object]]) -> None:
             row["failure_class"] = "PRA_SELECTOR_MISS"
         elif condition != ContextCondition.NO_PRA_STANDARD_RAG.value and not gold.issubset(selected):
             row["failure_class"] = "PRA_DISTRACTOR_SELECTION"
+
+
+def _enrich_gold_chunk_recall(
+    root: Path,
+    rows: Sequence[dict[str, object]],
+    *,
+    dataset: str,
+    cache_dir: Path,
+) -> None:
+    """Reconstruct exact gold chunks for resumable pre-schema result rows."""
+
+    if dataset != "multihoprag":
+        return
+    documents, questions, _ = load_multihop_rag(cache_dir)
+    documents_by_id = {document.document_id: document for document in documents}
+    questions_by_id = {question.example_id: question for question in questions}
+    cache: dict[str, set[str]] = {}
+    for row in rows:
+        if row.get("status") != "MEASURED":
+            continue
+        receipt_id = str(row["candidate_receipt_id"])
+        relevant = cache.get(receipt_id)
+        if relevant is None:
+            receipt = CandidateReceipt.from_dict(
+                json.loads(
+                    (root / "candidate_receipts" / f"{receipt_id}.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+            )
+            question = questions_by_id[str(row["example_id"])]
+            candidates = prepare_candidate_context(receipt, documents_by_id).chunks
+            relevant = {
+                chunk.chunk_id
+                for chunk in candidates
+                if (
+                    any(
+                        chunk.document_id == document_id
+                        and chunk.start < end
+                        and start < chunk.end
+                        for start, end in spans
+                    )
+                    for document_id, spans in question.gold_spans.items()
+                )
+                or (
+                    chunk.document_id in question.gold_document_ids
+                    and not question.gold_spans.get(chunk.document_id)
+                )
+            }
+            cache[receipt_id] = relevant
+        selected = set(map(str, row.get("selected_chunk_ids", [])))
+        metrics = row.get("retrieval_context_metrics")
+        if isinstance(metrics, dict):
+            metrics["gold_chunk_recall"] = (
+                len(relevant.intersection(selected)) / len(relevant) if relevant else 0.0
+            )
 
 
 def _primary_rows(
@@ -341,17 +403,25 @@ def main() -> None:
     parser.add_argument("--primary-candidate-count", type=int, default=20)
     parser.add_argument("--primary-token-budget", type=int, default=2048)
     parser.add_argument("--minimum-examples", type=int, default=50)
+    parser.add_argument("--cache-dir", type=Path, default=Path(".cache/rag_eval"))
     args = parser.parse_args()
 
     root = args.input_dir
     rows = _load_rows(root / "condition_results.jsonl.gz")
+    manifest = json.loads((root / "cohort_manifest.json").read_text(encoding="utf-8"))
+    _enrich_gold_chunk_recall(
+        root,
+        rows,
+        dataset=str(manifest["dataset"]),
+        cache_dir=args.cache_dir,
+    )
     _normalize_failure_classes(rows)
+    write_results(root / "condition_results.jsonl.gz", rows)
     summaries = summarize_rows(rows)
     failures = _failure_rows(rows)
     deltas = _deltas(rows)
     gates = qualification_gates(summaries, minimum_examples=args.minimum_examples)
     curve = _persistent_curve(rows, args.primary_candidate_count, args.primary_token_budget)
-    manifest = json.loads((root / "cohort_manifest.json").read_text(encoding="utf-8"))
 
     write_csv(root / "summary.csv", summaries)
     write_csv(root / "failure_summary.csv", failures)

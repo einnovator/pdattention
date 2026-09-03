@@ -475,6 +475,7 @@ class PackedContext:
     selector_name: str
     bundle_id: str | None = None
     bundle_revision: str | None = None
+    candidate_chunks: tuple[RAGChunk, ...] = ()
 
     @property
     def selected_document_ids(self) -> tuple[str, ...]:
@@ -904,6 +905,7 @@ def select_context(
         selector_name=selector.name,
         bundle_id=bundle_id,
         bundle_revision=bundle_revision,
+        candidate_chunks=prepared.chunks,
     )
 
 
@@ -932,6 +934,7 @@ def packed_context_from_ranking(
         selector_name=selector_name,
         bundle_id=bundle_id,
         bundle_revision=bundle_revision,
+        candidate_chunks=prepared.chunks,
     )
 
 
@@ -954,6 +957,13 @@ def oracle_gold_document_context(
     )
     ranked = tuple(RankedChunk(chunk, 1.0, rank, {"oracle": rank}) for rank, chunk in enumerate(chunks, 1))
     selected = pack_ranked_chunks(ranked, token_budget)
+    candidate_chunks = tuple(
+        chunk
+        for document_id in receipt.candidate_document_ids
+        for chunk in chunk_document(
+            documents[document_id], receipt.chunker, token_count=token_count
+        )
+    )
     return PackedContext(
         ContextCondition.ORACLE_GOLD_DOCUMENTS,
         selected,
@@ -967,6 +977,7 @@ def oracle_gold_document_context(
         0.0,
         0.0,
         "oracle_gold_documents",
+        candidate_chunks=candidate_chunks,
     )
 
 
@@ -1005,6 +1016,24 @@ def context_metrics(
                 for row in context.chunks
             ):
                 span_hits += 1
+    candidate_gold_chunks = {
+        chunk.chunk_id
+        for chunk in context.candidate_chunks
+        if (
+            any(
+                chunk.document_id == document_id
+                and chunk.start < end
+                and start < chunk.end
+                for start, end in spans
+            )
+            for document_id, spans in question.gold_spans.items()
+        )
+        or (
+            chunk.document_id in question.gold_document_ids
+            and not question.gold_spans.get(chunk.document_id)
+        )
+    }
+    selected_chunk_ids = set(context.selected_chunk_ids)
     normalized_context = " ".join(_terms(context.text))
     answer_available = any(
         " ".join(_terms(answer)) in normalized_context
@@ -1020,7 +1049,10 @@ def context_metrics(
         "gold_document_selected_fraction": len(selected_gold) / max(len(selected_ids), 1),
         "false_selected_document_fraction": false_count / max(len(selected_ids), 1),
         "gold_chunk_recall": (
-            span_hits / span_total if span_total else support_coverage
+            len(candidate_gold_chunks.intersection(selected_chunk_ids))
+            / len(candidate_gold_chunks)
+            if candidate_gold_chunks
+            else 0.0
         ),
         "answer_string_availability": float(answer_available),
         "logical_candidate_tokens": context.candidate_tokens,
