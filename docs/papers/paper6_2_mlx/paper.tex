@@ -1332,6 +1332,44 @@ rather than a selector-frozen precision-invariance result.}
 \label{fig:mlx-precision-rag}
 \end{figure}
 
+\subsection{Selector-frozen document-RAG realization}
+
+Paper 4.5 defines the retrieval protocol; here we report only its MLX
+realization result. Fifty held-out MultiHop-RAG questions use Qwen3-4B 4-bit,
+$N=20$, a 2K selected-token budget, deterministic generation, and one immutable
+selection receipt per Selected Context/Native Memory pair. Both the generic
+PRA selector and a pinned cross-encoder reranker preserve every generated
+output when selected text is replaced by detached native K/V. Thus the native
+path does not explain the selector's quality deficit in this cohort.
+
+\begin{table}[H]
+\centering
+\small
+\caption{MLX selector-frozen realization ($n=50$). TTFT and total latency are
+means in milliseconds. Cold includes native encoding; warm native rows reuse
+retained K/V, while Selected Context is re-prefilled.}
+\label{tab:mlx-powered-rag}
+\begin{tabular}{llrrrrrr}
+\toprule
+Selector & Regime & SC F1 & NM F1 & SC TTFT & NM TTFT & SC total & NM total \\
+\midrule
+Generic & cold & .071 & .071 & 2633 & 2648 & 3024 & 3121 \\
+Generic & warm & .071 & .071 & 2640 & 166 & 3031 & 638 \\
+Reranker & cold & .081 & .081 & 2637 & 2663 & 3030 & 3135 \\
+Reranker & warm & .081 & .081 & 2643 & 166 & 3034 & 639 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Native realization removes about 2,026 source tokens from the visible prompt,
+leaving 79 visible tokens and retaining approximately 299~MB of active detail.
+Cold execution costs 96--105~ms more end-to-end than Selected Context. Warm
+reuse reverses the comparison: TTFT falls by about 2.48~s and total latency by
+about 2.40~s, with unchanged generated output. This qualifies native
+realization for repeated identical selections on the measured MLX path; it
+does not qualify the upstream selector, and it does not establish equivalence
+to a selected-text path backed by an ordinary prefix-cache hit.
+
 An independent FP32 checkpoint, cross-precision adaptor transfer, peak-memory
 capture, and a non-Qwen matched replication remain unmeasured. Casting the
 published BF16 source to float32 would not create an independent FP32 weight
