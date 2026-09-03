@@ -298,3 +298,17 @@ trust:
   publisher: EInnovator
   scope: exact bfloat16 HF model identity; evidence does not transfer across revisions,
     engines, or quantizations
+supported_precisions:
+- precision_family: BF16
+  encoding: PyTorch-bfloat16
+  serving_precision: BF16
+  feature_extraction_precision: NOT_MEASURED
+  adaptor_parameter_precision: NOT_MEASURED
+  engine: hf
+  mode: Selected Context
+  profile: BALANCED
+  evidence_tier: CONTROLLED
+  datasets:
+  - qasper
+  - hotpotqa
+  artifact: docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/qwen2.5-coder-1.5b-instruct/comparison.json

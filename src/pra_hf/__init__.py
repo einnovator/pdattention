@@ -185,6 +185,17 @@ from .canonical_evidence import (
     render_latex_table as render_canonical_latex_table,
     render_markdown_table as render_canonical_markdown_table,
 )
+from .precision import (
+    MemoryGateObservation,
+    MemoryGateStatus,
+    PrecisionDescriptor,
+    classify_memory_gate,
+    infer_precision,
+)
+from .precision_qualification import (
+    PrecisionQualificationRequest,
+    PrecisionQualificationService,
+)
 from .onboarding import (
     DoctorService,
     ModelInspector,
@@ -660,6 +671,13 @@ __all__ += [
     "BUNDLE_SCHEMA_VERSION",
     "validate_model_card",
     "ProfileCalibrator",
+    "PrecisionDescriptor",
+    "MemoryGateObservation",
+    "MemoryGateStatus",
+    "classify_memory_gate",
+    "infer_precision",
+    "PrecisionQualificationRequest",
+    "PrecisionQualificationService",
     "RuntimeConfig",
     "RuntimeDoctorReport",
     "RuntimeHandle",

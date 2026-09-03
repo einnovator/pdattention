@@ -13,8 +13,10 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, Mapping, Sequence, get_type_hints
 
+from .precision import infer_precision
 
-PRODUCT_MATRIX_SCHEMA_VERSION = "2.0"
+
+PRODUCT_MATRIX_SCHEMA_VERSION = "2.1"
 PRODUCT_MATRIX_STATUSES = {
     "MEASURED",
     "CONTROLLED",
@@ -65,6 +67,11 @@ class ProductMatrixRow:
     representation: str = "E0_SELECTED"
     selector_digest: str | None = None
     quantization: str | None = None
+    precision_family: str = "UNSPECIFIED"
+    precision_encoding: str = "UNSPECIFIED"
+    serving_precision: str | None = None
+    feature_extraction_precision: str | None = None
+    adaptor_parameter_precision: str | None = None
     cpu: str | None = None
     accelerator: str | None = None
     vram_bytes: float | None = None
@@ -107,6 +114,9 @@ class ProductMatrixRow:
     peak_memory_bytes: float | None = None
     peak_device_memory_bytes: float | None = None
     peak_host_memory_bytes: float | None = None
+    model_artifact_bytes: float | None = None
+    load_time_ms: float | None = None
+    max_successful_context_tokens: float | None = None
 
     ttft_ms: float | None = None
     itl_ms: float | None = None
@@ -205,6 +215,21 @@ class ProductMatrixRow:
 
         object.__setattr__(self, "consumer_layers", tuple(self.consumer_layers))
         object.__setattr__(self, "verified_invariants", tuple(self.verified_invariants))
+        precision = infer_precision(
+            self.quantization,
+            engine=self.engine,
+            precision_family=(
+                None if self.precision_family == "UNSPECIFIED" else self.precision_family
+            ),
+            precision_encoding=(
+                None if self.precision_encoding == "UNSPECIFIED" else self.precision_encoding
+            ),
+            feature_extraction_precision=self.feature_extraction_precision,
+            adaptor_parameter_precision=self.adaptor_parameter_precision,
+        )
+        object.__setattr__(self, "precision_family", precision.precision_family)
+        object.__setattr__(self, "precision_encoding", precision.precision_encoding)
+        object.__setattr__(self, "serving_precision", self.serving_precision or precision.serving_precision)
         self._derive_metrics()
 
         metric_names = self.metric_fields()
@@ -359,7 +384,7 @@ class ProductMatrix:
             raise ValueError(f"Unknown product-matrix document fields: {', '.join(unknown)}")
         rows: Sequence[Mapping[str, Any]] = value.get("rows", ())
         schema_version = str(value.get("schema_version", ""))
-        if schema_version == "1.0":
+        if schema_version in {"1.0", "2.0"}:
             schema_version = PRODUCT_MATRIX_SCHEMA_VERSION
         return cls(
             schema_version=schema_version,

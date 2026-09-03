@@ -12,6 +12,8 @@ from typing import Any, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .precision import PRECISION_FAMILIES
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -134,8 +136,28 @@ class EvidenceKey(StrictModel):
     model_id: str
     model_revision: str
     model_fingerprint: str | None = None
+    precision_family: str = "UNSPECIFIED"
+    precision_encoding: str = "UNSPECIFIED"
     mode: str
     profile: str
+
+    @field_validator("precision_family")
+    @classmethod
+    def normalize_precision_family(cls, value: str) -> str:
+        family = value.strip().upper()
+        if family not in PRECISION_FAMILIES:
+            raise ValueError(f"unknown precision family: {value!r}")
+        return family
+
+    @model_validator(mode="after")
+    def require_paired_precision_identity(self) -> "EvidenceKey":
+        if bool(self.precision_family == "UNSPECIFIED") != bool(
+            self.precision_encoding == "UNSPECIFIED"
+        ):
+            raise ValueError("precision family and encoding must be supplied together")
+        if not self.precision_encoding.strip():
+            raise ValueError("precision encoding cannot be empty")
+        return self
 
 
 class EvidenceProvenance(StrictModel):
@@ -148,6 +170,15 @@ class EvidenceProvenance(StrictModel):
     commit: str | None = None
     date: str
     artifacts: tuple[str, ...] = ()
+    tokenizer_revision: str | None = None
+    config_hash: str | None = None
+    quantization_config_hash: str | None = None
+    conversion_revision: str | None = None
+    conversion_tool: str | None = None
+    quantization_recipe: str | None = None
+    artifact_checksum: str | None = None
+    feature_extraction_precision: str | None = None
+    adaptor_parameter_precision: str | None = None
 
 
 class MetricDelta(StrictModel):
@@ -163,7 +194,7 @@ class MetricDelta(StrictModel):
 class CanonicalEvidenceRecord(StrictModel):
     """A matched No-PRA / PRA / PRA-bundle comparison for one exact key."""
 
-    schema_version: int = 1
+    schema_version: int = 2
     key: EvidenceKey
     metric_definitions: dict[str, MetricDefinition]
     conditions: dict[EvidenceCondition, ConditionEvidence]
@@ -172,6 +203,8 @@ class CanonicalEvidenceRecord(StrictModel):
 
     @model_validator(mode="after")
     def validate_condition_and_metric_contract(self) -> "CanonicalEvidenceRecord":
+        if self.schema_version >= 2 and self.key.precision_family == "UNSPECIFIED":
+            raise ValueError("canonical evidence schema 2 requires explicit precision identity")
         required = set(EvidenceCondition)
         if set(self.conditions) != required:
             missing = sorted(value.value for value in required - set(self.conditions))
@@ -333,6 +366,8 @@ def render_markdown_table(
             if len(adaptor_states) == 1
             else MeasurementState.NEEDS_RUN.value
         )
+        if state == MeasurementState.NOT_MEASURED.value:
+            state = MeasurementState.NEEDS_RUN.value
         lines += [
             "",
             f"PRA - Adaptor Bundle: `{state}` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.",
@@ -406,8 +441,14 @@ STANDARD_METRICS: dict[str, MetricDefinition] = {
         MetricDefinition(name="gold_answer_log_probability", group=MetricGroup.QUALITY, unit="log_probability", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Mean log-probability assigned to the gold answer."),
         MetricDefinition(name="verifier_checks_passed", group=MetricGroup.QUALITY, unit="count", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="sum", description="Official verifier checks passed."),
         MetricDefinition(name="input_tokens", group=MetricGroup.CONTEXT, unit="token", direction=MetricDirection.LOWER_IS_BETTER, aggregation="sum", description="Cumulative model input tokens."),
+        MetricDefinition(name="logical_candidate_tokens", group=MetricGroup.CONTEXT, unit="token", direction=MetricDirection.NEUTRAL, aggregation="mean", description="Tokens in the logical candidate set before selection."),
         MetricDefinition(name="visible_tokens", group=MetricGroup.CONTEXT, unit="token", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Tokens visible in the sequential prompt."),
         MetricDefinition(name="selected_native_kv_tokens", group=MetricGroup.CONTEXT, unit="token", direction=MetricDirection.NEUTRAL, aggregation="mean", description="Native K/V tokens selected outside the sequential prompt."),
+        MetricDefinition(name="selected_full_ratio", group=MetricGroup.CONTEXT, unit="fraction", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Selected physical tokens divided by logical candidate tokens."),
+        MetricDefinition(name="newly_materialized_tokens", group=MetricGroup.CONTEXT, unit="token", direction=MetricDirection.LOWER_IS_BETTER, aggregation="sum", description="Selected tokens materialized for the first time."),
+        MetricDefinition(name="materialization_avoidance", group=MetricGroup.CONTEXT, unit="fraction", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Fraction of otherwise repeated materialization avoided."),
+        MetricDefinition(name="visible_reuse", group=MetricGroup.CONTEXT, unit="fraction", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Fraction of visible context reused by the ordinary engine cache."),
+        MetricDefinition(name="native_reuse", group=MetricGroup.CONTEXT, unit="fraction", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Fraction of selected native K/V reused without re-encoding."),
         MetricDefinition(name="ttft_p50_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p50", description="Median time to first generated token."),
         MetricDefinition(name="ttft_p95_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p95", description="95th-percentile time to first generated token."),
         MetricDefinition(name="ttft_p99_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p99", description="99th-percentile time to first generated token."),
@@ -420,8 +461,19 @@ STANDARD_METRICS: dict[str, MetricDefinition] = {
         MetricDefinition(name="inference_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean cumulative model-inference time per benchmark task."),
         MetricDefinition(name="task_wall_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="median", description="End-to-end task wall time."),
         MetricDefinition(name="completion_latency_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean end-to-end completion latency."),
+        MetricDefinition(name="prefill_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean model prefill time per request."),
+        MetricDefinition(name="decode_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean decode time after prefill."),
+        MetricDefinition(name="load_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean model artifact load time."),
         MetricDefinition(name="peak_accelerator_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak accelerator-resident memory."),
         MetricDefinition(name="peak_memory_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak memory reported by the engine-specific allocator."),
+        MetricDefinition(name="peak_unified_memory_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak Apple unified-memory residency."),
+        MetricDefinition(name="peak_host_memory_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak host-memory residency."),
+        MetricDefinition(name="kv_memory_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="K/V memory attributable to the measured request or retained resource."),
+        MetricDefinition(name="temporary_allocation_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak temporary allocation outside persistent model and K/V state."),
+        MetricDefinition(name="transfer_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="sum", description="Bytes transferred across the measured device or storage boundary."),
+        MetricDefinition(name="storage_reloads", group=MetricGroup.RESOURCES, unit="count", direction=MetricDirection.LOWER_IS_BETTER, aggregation="sum", description="Storage-to-active residency reloads."),
+        MetricDefinition(name="model_artifact_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Size of the exact model artifact used by the run."),
+        MetricDefinition(name="max_successful_context_tokens", group=MetricGroup.RESOURCES, unit="token", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="max", description="Largest context that passed the deterministic memory gate."),
         MetricDefinition(name="active_detail_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Native detail bytes active for the request."),
         MetricDefinition(name="retained_detail_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Native detail bytes retained for reuse."),
         MetricDefinition(name="cost_per_successful_task", group=MetricGroup.COST, unit="USD/task", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Total cost divided by successful tasks."),

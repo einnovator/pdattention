@@ -20,6 +20,7 @@ from .canonical_evidence import (
     MetricObservation,
     STANDARD_METRICS,
 )
+from .precision import PrecisionDescriptor, infer_precision
 
 
 EVIDENCE_TIERS = frozenset(
@@ -55,6 +56,21 @@ class EvidenceIdentity:
     engine_version: str
     profile: str
     execution_mode: str
+    precision_family: str | None = None
+    precision_encoding: str | None = None
+    feature_extraction_precision: str | None = None
+    adaptor_parameter_precision: str | None = None
+
+    @property
+    def precision(self) -> PrecisionDescriptor:
+        return infer_precision(
+            self.quantization,
+            engine=self.engine,
+            precision_family=self.precision_family,
+            precision_encoding=self.precision_encoding,
+            feature_extraction_precision=self.feature_extraction_precision,
+            adaptor_parameter_precision=self.adaptor_parameter_precision,
+        )
 
 
 def file_sha256(path: str | Path) -> str:
@@ -300,6 +316,8 @@ def import_matched_e0_e2_evidence(
                 "model_id": identity.model_id,
                 "model_revision": identity.model_revision,
                 "quantization": identity.quantization,
+                "precision_family": identity.precision.precision_family,
+                "precision_encoding": identity.precision.precision_encoding,
                 "engine": identity.engine,
                 "engine_version": identity.engine_version,
                 "profile": identity.profile,
@@ -404,6 +422,8 @@ def import_mlx_paired_evidence(
                 "model_id": identity.model_id,
                 "model_revision": identity.model_revision,
                 "quantization": identity.quantization,
+                "precision_family": identity.precision.precision_family,
+                "precision_encoding": identity.precision.precision_encoding,
                 "engine": identity.engine,
                 "engine_version": identity.engine_version,
                 "profile": identity.profile,
@@ -496,7 +516,14 @@ def canonicalize_paired_transport_evidence(
         )
         for name in metric_names
     }
+    precision = infer_precision(
+        row.get("quantization"),
+        engine=str(row.get("engine", "")),
+        precision_family=row.get("precision_family"),
+        precision_encoding=row.get("precision_encoding"),
+    )
     return CanonicalEvidenceRecord(
+        schema_version=2,
         key=EvidenceKey(
             task=str(row.get("dataset", "NOT_MEASURED")),
             hardware=str(row.get("hardware", "NOT_MEASURED")),
@@ -504,6 +531,8 @@ def canonicalize_paired_transport_evidence(
             engine_version=str(row.get("engine_version", "NOT_MEASURED")),
             model_id=str(row.get("model_id", "NOT_MEASURED")),
             model_revision=str(row.get("model_revision", "NOT_MEASURED")),
+            precision_family=precision.precision_family,
+            precision_encoding=precision.precision_encoding,
             mode=str(row.get("execution_mode", "native-memory")).lower().replace(" ", "-"),
             profile=str(row.get("profile", "balanced")).lower(),
         ),
@@ -519,6 +548,8 @@ def canonicalize_paired_transport_evidence(
             commit=row.get("pra_commit"),
             date=str(row.get("date", "NOT_MEASURED")),
             artifacts=tuple(str(value) for value in (row.get("artifact"),) if value),
+            feature_extraction_precision=row.get("feature_extraction_precision"),
+            adaptor_parameter_precision=row.get("adaptor_parameter_precision"),
         ),
         evidence_tier=str(row.get("evidence_tier", "CONTROLLED")),
     )
@@ -563,6 +594,8 @@ def import_product_matrix_evidence(
                 "model_id": identity.model_id,
                 "model_revision": identity.model_revision,
                 "quantization": identity.quantization,
+                "precision_family": identity.precision.precision_family,
+                "precision_encoding": identity.precision.precision_encoding,
                 "engine": identity.engine,
                 "engine_version": identity.engine_version,
                 "profile": identity.profile,
@@ -640,6 +673,22 @@ def validate_bundle_evidence(bundle: Any) -> None:
                 errors.append(f"headline {key} disagrees with bundle")
         if _quantization(row.get("quantization")) != _quantization(bundle.base_model.get("quantization")):
             errors.append("headline quantization disagrees with bundle")
+        if row.get("precision_family") or row.get("precision_encoding"):
+            expected_precision = infer_precision(
+                bundle.base_model.get("quantization"),
+                engine=str(row.get("engine", "")),
+            )
+            row_precision = infer_precision(
+                row.get("quantization"),
+                engine=str(row.get("engine", "")),
+                precision_family=row.get("precision_family"),
+                precision_encoding=row.get("precision_encoding"),
+            )
+            if (
+                row_precision.precision_family != expected_precision.precision_family
+                or row_precision.precision_encoding != expected_precision.precision_encoding
+            ):
+                errors.append("headline precision identity disagrees with bundle")
         if row.get("profile") not in bundle.profiles:
             errors.append(f"headline profile {row.get('profile')!r} is absent from bundle")
         if row.get("evidence_tier") not in EVIDENCE_TIERS:
@@ -668,5 +717,14 @@ def validate_bundle_evidence(bundle: Any) -> None:
             errors.append("canonical evidence model_id disagrees with bundle")
         if record.key.model_revision != bundle.base_model.get("revision"):
             errors.append("canonical evidence model_revision disagrees with bundle")
+        supported = bundle.supported_precisions if hasattr(bundle, "supported_precisions") else ()
+        if supported and record.key.precision_family != "UNSPECIFIED" and not any(
+            str(item.get("precision_family", "")).upper() == record.key.precision_family
+            and str(item.get("encoding", item.get("precision_encoding", "")))
+            == record.key.precision_encoding
+            for item in supported
+            if isinstance(item, Mapping)
+        ):
+            errors.append("canonical evidence precision is absent from bundle support")
     if errors:
         raise EvidenceValidationError("; ".join(errors))

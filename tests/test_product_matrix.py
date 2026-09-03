@@ -21,6 +21,8 @@ def _row(**overrides):
         "model_revision": "revision",
         "model_size": 600_000_000,
         "model_variant": "instruct",
+        "precision_family": "INT4",
+        "precision_encoding": "MLX-4bit",
         "engine": "mlx",
         "engine_version": "0.32",
         "hardware": "Apple M5 16GB",
@@ -80,6 +82,14 @@ def test_quality_adjusted_throughput_and_cost_are_derived_from_measured_inputs()
     assert row.successful_requests_per_second == 3.0
     assert row.successful_tasks_per_accelerator_hour == 10_800.0
     assert row.cost_per_successful_task == pytest.approx(2.0 / 10_800.0)
+
+
+def test_product_matrix_preserves_exact_precision_encoding() -> None:
+    row = _row(quantization="4bit")
+    assert row.precision_family == "INT4"
+    assert row.precision_encoding == "MLX-4bit"
+    payload = row.to_dict()
+    assert ProductMatrixRow.from_dict(payload).precision_encoding == "MLX-4bit"
 
 
 def test_throughput_without_quality_is_rejected() -> None:

@@ -24,6 +24,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Architecture: `Qwen2ForCausalLM`
 - Parameters: `1.5B`
 - Tokenizer revision: `989aa7980e4cf806f80c7fef2b1adb7bc71aa306`
+- Serving precision: `BF16` / `PyTorch-bfloat16`
 - Post-training: `general instruction tuning`
 
 ## Recommended configuration
@@ -35,6 +36,14 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Native Memory status: **AVAILABLE**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
+
+## Precision qualification
+
+Precision evidence is scoped to the exact model conversion, engine, mode, and profile. Qualification does not transfer automatically between BF16, INT8, INT4, or encoding-specific formats.
+
+| Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| BF16 | PyTorch-bfloat16 | BF16 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | hf | Selected Context | BALANCED | CONTROLLED | qasper, hotpotqa |
 
 ## Headline results
 

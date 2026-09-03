@@ -13,7 +13,7 @@ def test_product_matrix_builder_normalizes_existing_evidence() -> None:
     assert len(matrix.rows) >= 20
     assert {row.model_family.lower() for row in matrix.rows} >= {"qwen", "llama", "gemma"}
     assert all(not isinstance(row.ttft_ms, str) for row in matrix.rows)
-    assert matrix.schema_version == "2.0"
+    assert matrix.schema_version == "2.1"
     assert all(row.metric_statuses for row in matrix.rows)
     assert {row.integration_level for row in matrix.rows} >= {"E0", "E2"}
     assert {row.representation for row in matrix.rows} >= {

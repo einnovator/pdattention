@@ -18,6 +18,7 @@ from pra_hf.canonical_evidence import (
     MetricObservation,
     STANDARD_METRICS,
 )
+from pra_hf.precision import infer_precision
 
 from .schema import CodingAgentRun, PRAMode
 
@@ -160,7 +161,9 @@ def canonical_agent_evidence(
     hardware = ", ".join(f"{key}={value}" for key, value in sorted(identity.hardware.items())) or identity.host
     task_ids = sorted({row.identity.task_id for row in baseline})
     run_ids = tuple(row.identity.run_id for row in [*baseline, *pra_no_adaptor, *pra_adaptor_bundle])
+    precision = infer_precision(identity.quantization, engine=identity.engine)
     return CanonicalEvidenceRecord(
+        schema_version=2 if precision.is_explicit else 1,
         key=EvidenceKey(
             task=f"{identity.benchmark}:{','.join(task_ids)}",
             hardware=hardware,
@@ -168,6 +171,8 @@ def canonical_agent_evidence(
             engine_version=identity.engine_version or "NOT_MEASURED",
             model_id=identity.model,
             model_revision=identity.model_revision or "NOT_MEASURED",
+            precision_family=precision.precision_family,
+            precision_encoding=precision.precision_encoding,
             mode=mode,
             profile=profile,
         ),
@@ -178,6 +183,7 @@ def canonical_agent_evidence(
             run_ids=run_ids,
             commit=commit,
             date=date,
+            feature_extraction_precision=precision.feature_extraction_precision,
         ),
         evidence_tier="CONTROLLED" if gate["eligible"] else "BLOCKED",
     )

@@ -6,6 +6,7 @@ import json
 import sys
 import asyncio
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -35,6 +36,11 @@ from .model import PRAForCausalLM
 from .onboarding import DoctorService, ModelInspector, ModelValidator, OnboardingPipeline, ProfileCalibrator, StructuralAdapterBuilder
 from .observability import Observability, load_observability_config
 from .product_config import dump_data
+from .precision import PrecisionDescriptor
+from .precision_qualification import (
+    PrecisionQualificationRequest,
+    PrecisionQualificationService,
+)
 from .product_qualification import (
     EngineProductRegistry,
     QualificationService,
@@ -637,6 +643,82 @@ def model_onboard(model, manifest, suite, output, device, engine, revision, forc
         result["requested"] = {"device": device, "engine": engine, "jobs": jobs}
         results.append(result)
     _emit({"runs": results}, json_output=json_output, yaml_output=yaml_output)
+
+
+@model_cli.command("qualify-precision")
+@click.option("--model", "model_id", required=True, help="Exact base or converted model ID.")
+@click.option("-r", "--revision", help="Immutable model or conversion revision.")
+@click.option("--tokenizer-revision")
+@click.option("--precision", "precision_family", required=True, type=click.Choice(
+    ["fp32", "fp16", "bf16", "int8", "int6", "int4", "mxfp4", "other"],
+    case_sensitive=False,
+))
+@click.option("--encoding", "precision_encoding", required=True, help="Exact encoding, for example MLX-4bit or AWQ-4bit.")
+@click.option("-e", "--engine", required=True)
+@click.option("--engine-version", default="NOT_MEASURED", show_default=True)
+@click.option("-D", "--dataset", required=True)
+@click.option("-p", "--profile", default="balanced", show_default=True)
+@click.option("--mode", default="native-memory", show_default=True)
+@click.option("--feature-extraction-precision")
+@click.option("--adaptor-parameter-precision")
+@click.option("--config-hash")
+@click.option("--quantization-config-hash")
+@click.option("--conversion-revision")
+@click.option("--conversion-tool")
+@click.option("--quantization-recipe")
+@click.option("--artifact-checksum")
+@click.option("--bundle-id")
+@click.option("--bundle-revision")
+@click.option("--evidence-tier", default="NOT_MEASURED", show_default=True)
+@click.option("--memory-gate", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--evidence", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("-o", "--output", required=True, type=click.Path(path_type=Path))
+@_output_options
+def model_qualify_precision(
+    model_id, revision, tokenizer_revision, precision_family, precision_encoding,
+    engine, engine_version, dataset, profile, mode, feature_extraction_precision,
+    adaptor_parameter_precision, config_hash, quantization_config_hash,
+    conversion_revision, conversion_tool, quantization_recipe, artifact_checksum,
+    bundle_id, bundle_revision, evidence_tier, memory_gate, evidence, output,
+    json_output, yaml_output,
+) -> None:
+    """Build an exact-identity precision qualification and publication record."""
+
+    try:
+        request = PrecisionQualificationRequest(
+            model_id=model_id,
+            revision=revision,
+            tokenizer_revision=tokenizer_revision,
+            engine=engine,
+            engine_version=engine_version,
+            dataset=dataset,
+            profile=profile,
+            mode=mode,
+            precision=PrecisionDescriptor(
+                precision_family=precision_family,
+                precision_encoding=precision_encoding,
+                feature_extraction_precision=feature_extraction_precision,
+                adaptor_parameter_precision=adaptor_parameter_precision,
+            ),
+            feature_extraction_precision=feature_extraction_precision,
+            adaptor_parameter_precision=adaptor_parameter_precision,
+            config_hash=config_hash,
+            quantization_config_hash=quantization_config_hash,
+            conversion_revision=conversion_revision,
+            conversion_tool=conversion_tool,
+            quantization_recipe=quantization_recipe,
+            artifact_checksum=artifact_checksum,
+            bundle_id=bundle_id,
+            bundle_revision=bundle_revision,
+            evidence_tier=evidence_tier,
+            date=date.today().isoformat(),
+        )
+        result = PrecisionQualificationService().qualify(
+            request, output=output, evidence=evidence, memory_gate=memory_gate
+        )
+    except (OSError, ValueError) as error:
+        raise click.ClickException(str(error)) from error
+    _emit(result, json_output=json_output, yaml_output=yaml_output)
 
 
 @cli.group("adapter")

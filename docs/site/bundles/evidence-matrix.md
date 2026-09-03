@@ -4,64 +4,64 @@ This page compares the same task, hardware, engine, model, mode, and profile und
 
 ## Coverage by model, engine, mode, and profile
 
-| Model | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Evidence tier |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `mlx-community/Qwen3-14B-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-4bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-4bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-32B-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-32B-4bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-32B-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-4bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | hf | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Llama-3.1-8B-Instruct-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Llama-3.1-8B-Instruct-4bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Llama-3.1-8B-Instruct-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Llama-3.1-8B-Instruct-4bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Qwen3-4B-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Qwen3-4B-4bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Qwen3-4B-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/Qwen3-4B-4bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-4bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-4bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-4bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-4bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen3-0.6B` | hf | Selected Context | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
-| `Qwen/Qwen3-0.6B` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
-| `Qwen/Qwen3-0.6B` | hf | Selected Context | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
-| `Qwen/Qwen3-0.6B` | hf | Selected Context | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
-| `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-4B-8bit` | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-14B-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-6bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-6bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Qwen3-8B-6bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Llama-3.2-1B-Instruct-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Llama-3.2-1B-Instruct-8bit` | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/Llama-3.2-1B-Instruct-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
-| `mlx-community/gemma-3-1b-it-8bit` | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-8bit` | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `mlx-community/gemma-3-1b-it-8bit` | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
-| `Qwen/Qwen2.5-1.5B-Instruct` | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| Model | Precision | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Evidence tier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `mlx-community/Qwen3-14B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-32B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-32B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-32B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | BF16 / PyTorch-bfloat16 | hf | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Llama-3.1-8B-Instruct-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Llama-3.1-8B-Instruct-4bit` | INT4 / MLX-4bit | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Llama-3.1-8B-Instruct-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Llama-3.1-8B-Instruct-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Qwen3-4B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Qwen3-4B-4bit` | INT4 / MLX-4bit | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Qwen3-4B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/Qwen3-4B-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-4bit` | INT4 / MLX-4bit | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-4bit` | INT4 / MLX-4bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-4bit` | INT4 / MLX-4bit | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen3-0.6B` | FP16 / PyTorch-float16 | hf | Selected Context | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
+| `Qwen/Qwen3-0.6B` | FP16 / PyTorch-float16 | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
+| `Qwen/Qwen3-0.6B` | FP16 / PyTorch-float16 | hf | Selected Context | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
+| `Qwen/Qwen3-0.6B` | FP16 / PyTorch-float16 | hf | Selected Context | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | RESEARCH |
+| `mlx-community/Qwen3-4B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-4B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-4B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-4B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-14B-8bit` | INT8 / MLX-8bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-6bit` | INT6 / MLX-6bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-6bit` | INT6 / MLX-6bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Qwen3-8B-6bit` | INT6 / MLX-6bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Llama-3.2-1B-Instruct-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Llama-3.2-1B-Instruct-8bit` | INT8 / MLX-8bit | mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/Llama-3.2-1B-Instruct-8bit` | INT8 / MLX-8bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | ENGINE_QUALIFIED |
+| `mlx-community/gemma-3-1b-it-8bit` | INT8 / MLX-8bit | mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-8bit` | INT8 / MLX-8bit | mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `mlx-community/gemma-3-1b-it-8bit` | INT8 / MLX-8bit | mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
+| `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | CONTROLLED |
 
 A `MEASURED (n)` cell reports the number of scalar metrics available for that exact condition. Detailed values follow only for measured records; profile rows without matched evidence remain explicit.
 
@@ -69,7 +69,7 @@ A `MEASURED (n)` cell reports the number of scalar metrics available for that ex
 
 ### mlx-community/Qwen3-14B-4bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -109,7 +109,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-32B-4bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -149,7 +149,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-8B-4bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -189,7 +189,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-4B-8bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -234,7 +234,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-8B-8bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -279,7 +279,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-14B-8bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -324,7 +324,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Qwen3-8B-6bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -369,7 +369,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/Llama-3.2-1B-Instruct-8bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -414,7 +414,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### mlx-community/gemma-3-1b-it-8bit / mlx-lm / native-memory / balanced
 
-Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 
@@ -459,7 +459,7 @@ Task: `combined`. Hardware: `Apple M4 Pro (Mac16,7), 48 GB`. Evidence: `ENGINE_Q
 
 ### Qwen/Qwen2.5-1.5B-Instruct / huggingface_eager / native-memory / balanced
 
-Task: `combined`. Hardware: `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`. Evidence: `ENGINE_QUALIFIED`.
+Task: `combined`. Hardware: `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`. Precision: `UNSPECIFIED` / `UNSPECIFIED`. Evidence: `ENGINE_QUALIFIED`.
 
 #### Quality
 

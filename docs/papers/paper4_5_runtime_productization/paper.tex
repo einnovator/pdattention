@@ -2375,6 +2375,64 @@ adaptor arm. Other exact identities state \texttt{NO\_QUALIFIED\_ADAPTER}.
 The machine-readable audit retains this distinction for cards, CLI reports,
 and Control Plane views.
 
+\subsection{Precision and quantization robustness}
+
+Precision is now part of the canonical evidence key rather than an informal
+model-name suffix.  Each row records a broad numerical family (for example,
+\texttt{INT4}) and the concrete encoding (for example,
+\texttt{MLX-4bit}); serving, feature-extraction, and adaptor-parameter
+precisions remain separate.  This prevents evidence for MLX 4-bit weights from
+silently qualifying AWQ, GPTQ, GGUF, BF16, or another conversion of the same
+source model.  Converted artifacts additionally admit source and tokenizer
+revisions, quantization configuration hashes, conversion recipes, and artifact
+checksums.
+
+The current normalized ledger contains 53 planned or observed exact-precision
+rows.  Five have matched No-PRA and generic-PRA end-task measurements;
+46 planned rows still require execution.  Table~\ref{tab:precision-ladder}
+shows only measured rows, while the machine-readable supplement retains all
+missing and blocked states.  Qwen3-14B is the sole present within-model
+cross-precision comparison: both MLX 4-bit and MLX 8-bit preserve the measured
+generic-PRA token-F1 exactly, although the 4-bit cohort has only 15 pairs and
+the 8-bit cohort has 60.  These observations support exact-encoding
+qualification, not a general claim that PRA is precision invariant.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Observed exact-precision generic-PRA rows.  Missing FP32/BF16 and
+learned-adaptor cells are omitted here but retained as explicit states in the
+53-row generated ledger.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper4_5_runtime_productization/precision_ladder/generated_precision_ladder.tex}}
+\label{tab:precision-ladder}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper4_5_runtime_productization/precision_ladder/precision_observed_metrics.pdf}
+\caption{Observed visible-context accounting and generic-PRA token-F1 change
+by exact precision encoding.  The plot deliberately excludes planned rows;
+absence is not rendered as zero.}
+\label{fig:precision-ladder}
+\end{figure}
+
+The public workflow is reproducible through
+\texttt{pra model qualify-precision}.  It resolves an immutable model identity,
+classifies staged memory gates, validates imported evidence against the exact
+precision key, and emits the canonical JSON, CSV matrix, card fragment, and
+LaTeX table from one record.  Every current local bundle now declares
+\texttt{supported\_precisions}; the catalog exposes size, family, encoding,
+engine, mode, profile, datasets, and evidence tier.  No learned-adaptor arm is
+inferred from the presence of a structural bundle.
+
+The primary Qwen3-4B FP32/BF16/INT8/INT4 MultiHop-RAG experiment, a matched
+non-Qwen replication, Qwen3-14B BF16, and cross-precision adaptor transfer are
+not complete.  Their ledger cells remain \texttt{NEEDS\_RUN} or
+\texttt{NO\_QUALIFIED\_ADAPTER}.  In particular, the existing Qwen3-4B 4-bit
+Selected Context and 8-bit Native Memory artifacts use different execution
+conditions and cannot be interpreted as a controlled precision effect.
+
 The expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs
 overall; the pooled Wilson 95\% lower bound is 0.9994. Visible-token reduction

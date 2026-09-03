@@ -8,6 +8,7 @@ from typing import Any, Mapping
 import yaml
 
 from .bundle_evidence import EVIDENCE_TIERS
+from .precision import PRECISION_FAMILIES
 
 
 DEFAULT_CATALOG = Path(__file__).parent / "model_profiles" / "bundle_catalog.yaml"
@@ -28,11 +29,17 @@ def load_bundle_catalog(path: str | Path = DEFAULT_CATALOG) -> dict[str, Any]:
     if len(repos) != len(set(repos)):
         raise ValueError("Bundle catalog repository IDs must be unique.")
     for row in rows:
-        missing = [key for key in ("repo", "model", "role", "evidence_tier", "recommendation", "qualification_date") if not row.get(key)]
+        missing = [key for key in (
+            "repo", "model", "model_size", "family", "precision_family",
+            "precision_encoding", "engine", "role", "evidence_tier",
+            "recommendation", "qualification_date",
+        ) if not row.get(key)]
         if missing:
             raise ValueError(f"Catalog row {row.get('repo')!r} is missing: {', '.join(missing)}")
         if row["evidence_tier"] not in EVIDENCE_TIERS:
             raise ValueError(f"Catalog row {row['repo']!r} has an invalid evidence tier.")
+        if str(row["precision_family"]).upper() not in PRECISION_FAMILIES:
+            raise ValueError(f"Catalog row {row['repo']!r} has an invalid precision family.")
     return value
 
 
@@ -49,12 +56,12 @@ def render_catalog(catalog: Mapping[str, Any]) -> str:
     lines = [
         "# PRA Runtime Bundle Catalog", "",
         "PRA Runtime Bundles package structural mappings, profiles, optional learned components, exact compatibility metadata, and qualification evidence. They do not replace or duplicate model weights.", "",
-        "| Order | Runtime bundle | Exact model identity | Role | Evidence | Recommendation | Release |",
-        "| ---: | --- | --- | --- | --- | --- | --- |",
+        "| Order | Runtime bundle | Exact model identity | Size | Family | Precision | Engine | Role | Evidence | Recommendation | Release |",
+        "| ---: | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in catalog["bundles"]:
         lines.append(
-            f"| {row['order']} | [`{row['repo']}`](https://huggingface.co/{row['repo']}) | `{row['model']}` | {row['role']} | {row['evidence_tier']} | {row['recommendation']} | {row.get('publication_status', 'CANDIDATE')} |"
+            f"| {row['order']} | [`{row['repo']}`](https://huggingface.co/{row['repo']}) | `{row['model']}` | {row['model_size']} | {row['family']} | {row['precision_family']} / {row['precision_encoding']} | {row['engine']} | {row['role']} | {row['evidence_tier']} | {row['recommendation']} | {row.get('publication_status', 'CANDIDATE')} |"
         )
     lines += ["", "The order reflects useful measured evidence, not publication date. `AVAILABLE`, `QUALIFIED`, and `RECOMMENDED` are independent states.", ""]
     return "\n".join(lines)
@@ -63,21 +70,21 @@ def render_catalog(catalog: Mapping[str, Any]) -> str:
 def render_qualification_matrix(catalog: Mapping[str, Any]) -> str:
     lines = [
         "# Bundle Qualification Matrix", "",
-        "Every row is scoped to the exact model revision, quantization, engine, profile, mode, hardware, and linked artifact. Family resemblance does not transfer qualification.", "",
-        "| Bundle | Engine | Recommended mode | Profile | Quality gate | Context saving | Evidence | Artifact |",
-        "| --- | --- | --- | --- | --- | ---: | --- | --- |",
+        "Every row is scoped to the exact model revision, precision encoding, engine, profile, mode, hardware, and linked artifact. Family resemblance does not transfer qualification.", "",
+        "| Bundle | Precision | Engine | Recommended mode | Profile | Quality gate | Context saving | Evidence | Datasets | Artifact |",
+        "| --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- |",
     ]
     for row in catalog["bundles"]:
         artifact = row.get("artifact", "")
         artifact_link = f"[source](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/{artifact})" if artifact else "NOT_MEASURED"
         lines.append(
-            f"| [`{row['repo'].split('/', 1)[-1]}`](https://huggingface.co/{row['repo']}) | {row['engine']} | {row['recommendation'].split(' with ')[0]} | {row['profile']} | {row['quality_gate']} | {row['context_saving']} | {row['evidence_tier']} | {artifact_link} |"
+            f"| [`{row['repo'].split('/', 1)[-1]}`](https://huggingface.co/{row['repo']}) | {row['precision_family']} / {row['precision_encoding']} | {row['engine']} | {row['recommendation'].split(' with ')[0]} | {row['profile']} | {row['quality_gate']} | {row['context_saving']} | {row['evidence_tier']} | {', '.join(row.get('datasets', ())) or 'NOT_MEASURED'} | {artifact_link} |"
         )
     lines += [
         "", "## Canonical condition audit", "",
         "This audit asks whether the same task, exact model, engine/hardware, mode, and profile have been measured under all three conditions. `AVAILABLE_EXISTING` here means that at least the quality, context, serving, and memory fields present in the linked selector-frozen artifact can be imported; it does not imply that every requested metric exists.", "",
-        "| Task/dataset | HW/engine | Model | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Task/dataset | HW/engine | Model | Precision | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in catalog["bundles"]:
         paired_transport = "mac_scaling/" in str(row.get("artifact", ""))
@@ -86,6 +93,7 @@ def render_qualification_matrix(catalog: Mapping[str, Any]) -> str:
         lines.append(
             f"| {'Natural QA (QASPER / HotpotQA / 2Wiki)' if paired_transport else 'Exact-identity qualification workload'} "
             f"| {row['engine']} / artifact-recorded hardware | `{row['model']}` "
+            f"| {row['precision_family']} / {row['precision_encoding']} "
             f"| {row['recommendation'].split(' with ')[0]} | {row['profile']} "
             f"| `{state}` | `{state}` | `{bundle_state}` "
             f"| `{'AVAILABLE_EXISTING' if paired_transport else 'NEEDS_RUN'}` | `{bundle_state}` |"
@@ -121,8 +129,8 @@ def render_canonical_evidence_catalog(
         "# Canonical Evidence Matrix", "",
         "This page compares the same task, hardware, engine, model, mode, and profile under **No PRA**, **PRA - No Adaptor**, and **PRA - Adaptor Bundle**. Values are absolute measurements; each delta is candidate minus No PRA. Missing data is never rendered as zero.", "",
         "## Coverage by model, engine, mode, and profile", "",
-        "| Model | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Evidence tier |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Model | Precision | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Evidence tier |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for catalog_row in catalog["bundles"]:
         bundle_dir = root / catalog_row["repo"].split("/", 1)[-1]
@@ -142,7 +150,7 @@ def render_canonical_evidence_catalog(
                 and (record.key.engine.lower() == engine.lower() or record.key.engine.lower().startswith(engine.lower() + "-"))
             ]
             lines.append(
-                f"| `{catalog_row['model']}` | {engine} | {mode} | {str(profile_name).upper()} "
+                f"| `{catalog_row['model']}` | {catalog_row['precision_family']} / {catalog_row['precision_encoding']} | {engine} | {mode} | {str(profile_name).upper()} "
                 f"| {_catalog_condition_coverage(matches, EvidenceCondition.NO_PRA)} "
                 f"| {_catalog_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR)} "
                 f"| {_catalog_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE)} "
@@ -159,7 +167,7 @@ def render_canonical_evidence_catalog(
             detailed += 1
             lines += [
                 f"### {catalog_row['model']} / {record.key.engine} / {record.key.mode} / {record.key.profile}", "",
-                f"Task: `{record.key.task}`. Hardware: `{record.key.hardware}`. Evidence: `{record.evidence_tier}`.", "",
+                f"Task: `{record.key.task}`. Hardware: `{record.key.hardware}`. Precision: `{record.key.precision_family}` / `{record.key.precision_encoding}`. Evidence: `{record.evidence_tier}`.", "",
             ]
             for group in MetricGroup:
                 if not any(definition.group == group for definition in record.metric_definitions.values()):

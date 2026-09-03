@@ -3159,6 +3159,64 @@ Model: Qwen/Qwen3-1.7B
 Output: .pra/runs/onboarding/Qwen--Qwen3-1.7B
 ```
 
+### `pra model qualify-precision`
+
+Build an exact-identity precision qualification and publication record.
+
+**Usage**
+
+```text
+pra model qualify-precision [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--model` | TEXT | `-` | yes | Exact base or converted model ID. |
+| `-r`, `--revision` | TEXT | `-` | no | Immutable model or conversion revision. |
+| `--tokenizer-revision` | TEXT | `-` | no | Configure `tokenizer-revision`. |
+| `--precision` | fp32 / fp16 / bf16 / int8 / int6 / int4 / mxfp4 / other | `-` | yes | Configure `precision-family`. |
+| `--encoding` | TEXT | `-` | yes | Exact encoding, for example MLX-4bit or AWQ-4bit. |
+| `-e`, `--engine` | TEXT | `-` | yes | Select the runtime or evidence-registry engine. |
+| `--engine-version` | TEXT | `NOT_MEASURED` | no | Report the observed engine version when it cannot be discovered. |
+| `-D`, `--dataset` | TEXT | `-` | yes | Name the evaluation dataset. |
+| `-p`, `--profile` | TEXT | `balanced` | no | Select a named PRA or agent profile. |
+| `--mode` | TEXT | `native-memory` | no | Select the product execution or gateway mediation mode. |
+| `--feature-extraction-precision` | TEXT | `-` | no | Configure `feature-extraction-precision`. |
+| `--adaptor-parameter-precision` | TEXT | `-` | no | Configure `adaptor-parameter-precision`. |
+| `--config-hash` | TEXT | `-` | no | Configure `config-hash`. |
+| `--quantization-config-hash` | TEXT | `-` | no | Configure `quantization-config-hash`. |
+| `--conversion-revision` | TEXT | `-` | no | Configure `conversion-revision`. |
+| `--conversion-tool` | TEXT | `-` | no | Configure `conversion-tool`. |
+| `--quantization-recipe` | TEXT | `-` | no | Configure `quantization-recipe`. |
+| `--artifact-checksum` | TEXT | `-` | no | Configure `artifact-checksum`. |
+| `--bundle-id` | TEXT | `-` | no | Configure `bundle-id`. |
+| `--bundle-revision` | TEXT | `-` | no | Configure `bundle-revision`. |
+| `--evidence-tier` | TEXT | `NOT_MEASURED` | no | Configure `evidence-tier`. |
+| `--memory-gate` | PATH | `-` | no | Configure `memory-gate`. |
+| `--evidence` | PATH | `-` | no | Configure `evidence`. |
+| `-o`, `--output` | PATH | `-` | yes | Write artifacts to this file or directory. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra model qualify-precision --model Qwen/Qwen3-4B --revision IMMUTABLE_COMMIT --precision bf16 --encoding PyTorch-bfloat16 --engine hf --dataset multihop-rag --profile balanced -o .pra/runs/qwen3-4b-bf16
+```
+
+**Example output**
+
+```text
+Precision: BF16 / PyTorch-bfloat16
+Memory gate: NOT_MEASURED
+No PRA: NEEDS_RUN
+PRA - No Adaptor: NEEDS_RUN
+PRA - Adaptor Bundle: NO_QUALIFIED_ADAPTER
+```
+
 ## Learned adapters
 
 ### `pra adapter inspect`

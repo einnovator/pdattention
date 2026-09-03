@@ -1,0 +1,144 @@
+schema_version: 1
+updated: 2026-09-04
+principle: Qualification is model-, revision-, encoding-, engine-, mode-, and profile-specific.
+targets:
+  - model: Qwen/Qwen3-1.7B
+    size: 1.7B
+    family: qwen3
+    tier: A
+    priority: P0_REFERENCE
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: meta-llama/Llama-3.2-1B-Instruct
+    size: 1B
+    family: llama3
+    tier: A
+    priority: P0_REFERENCE
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: Qwen/Qwen3-4B
+    size: 4B
+    family: qwen3
+    tier: B
+    priority: P1_FLAGSHIP_PRECISION
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: meta-llama/Llama-3.2-3B-Instruct
+    size: 3B
+    family: llama3
+    tier: B
+    priority: P2_CROSS_FAMILY
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: google/gemma-3-4b-it
+    size: 4B
+    family: gemma3
+    tier: B
+    priority: P3_TOPOLOGY
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: HuggingFaceTB/SmolLM3-3B
+    size: 3B
+    family: smollm3
+    tier: B
+    priority: P3_LONG_CONTEXT
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: Qwen/Qwen3-8B
+    size: 8B
+    family: qwen3
+    tier: C
+    priority: P5_SCALE
+    precisions: [FP32, BF16, INT8, INT6, INT4]
+  - model: mistralai/Mistral-7B-Instruct-v0.3
+    size: 7B
+    family: mistral
+    tier: C
+    priority: P5_SCALE
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: Qwen/Qwen3-14B
+    size: 14B
+    family: qwen3
+    tier: D
+    priority: P0_FLAGSHIP_BF16
+    precisions: [BF16, INT8, INT4]
+  - model: google/gemma-3-12b-it
+    size: 12B
+    family: gemma3
+    tier: D
+    priority: P6_LARGE_NON_QWEN
+    precisions: [BF16, INT8, INT4]
+  - model: Qwen/Qwen3-32B
+    size: 32B
+    family: qwen3
+    tier: E
+    priority: P7_QUANTIZED_LARGE
+    precisions: [INT8, INT4]
+  - model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    size: 30B-A3B
+    family: qwen3-coder
+    tier: E
+    priority: P7_CODING_LARGE
+    precisions: [INT8, INT4]
+  - model: Qwen/Qwen2.5-3B-Instruct
+    size: 3B
+    family: qwen2.5
+    tier: B
+    priority: P4_INSTRUCT
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: Qwen/Qwen2.5-Coder-3B-Instruct
+    size: 3B
+    family: qwen2.5-coder
+    tier: B
+    priority: P4_CODING
+    precisions: [FP32, BF16, INT8, INT4]
+  - model: mlx-community/Qwen3-4B-4bit
+    base_model: Qwen/Qwen3-4B
+    size: 4B
+    family: qwen3
+    tier: MEASURED_VARIANT
+    priority: P1_FLAGSHIP_PRECISION
+    precisions: [INT4]
+    catalog_repo: EInnovator/pra-qwen3-4b-mlx-4bit
+  - model: mlx-community/Qwen3-4B-8bit
+    base_model: Qwen/Qwen3-4B
+    size: 4B
+    family: qwen3
+    tier: MEASURED_VARIANT
+    priority: P1_FLAGSHIP_PRECISION
+    precisions: [INT8]
+    catalog_repo: EInnovator/pra-qwen3-4b-mlx-8bit
+  - model: mlx-community/Qwen3-14B-4bit
+    base_model: Qwen/Qwen3-14B
+    size: 14B
+    family: qwen3
+    tier: MEASURED_VARIANT
+    priority: P0_FLAGSHIP_BF16
+    precisions: [INT4]
+    catalog_repo: EInnovator/pra-qwen3-14b-mlx-4bit
+  - model: mlx-community/Qwen3-14B-8bit
+    base_model: Qwen/Qwen3-14B
+    size: 14B
+    family: qwen3
+    tier: MEASURED_VARIANT
+    priority: P0_FLAGSHIP_BF16
+    precisions: [INT8]
+    catalog_repo: EInnovator/pra-qwen3-14b-mlx-8bit
+  - model: mlx-community/Llama-3.2-1B-Instruct-8bit
+    base_model: meta-llama/Llama-3.2-1B-Instruct
+    size: 1B
+    family: llama3
+    tier: MEASURED_VARIANT
+    priority: P2_CROSS_FAMILY
+    precisions: [INT8]
+    catalog_repo: EInnovator/pra-llama3-2-1b-mlx-8bit
+  - model: mlx-community/gemma-3-1b-it-4bit
+    base_model: google/gemma-3-1b-it
+    size: 1B
+    family: gemma3
+    tier: MEASURED_VARIANT
+    priority: P3_TOPOLOGY
+    precisions: [INT4]
+    catalog_repo: EInnovator/pra-gemma3-1b-mlx-4bit
+  - model: mlx-community/gemma-3-1b-it-8bit
+    base_model: google/gemma-3-1b-it
+    size: 1B
+    family: gemma3
+    tier: MEASURED_VARIANT
+    priority: P3_TOPOLOGY
+    precisions: [INT8]
+    catalog_repo: EInnovator/pra-gemma3-1b-mlx-8bit

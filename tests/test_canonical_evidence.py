@@ -31,7 +31,7 @@ def _record() -> CanonicalEvidenceRecord:
         key=EvidenceKey(
             task="qasper", hardware="m5-48gb", engine="mlx", engine_version="0.29",
             model_id="Qwen/Qwen3-32B", model_revision="abc", mode="native-memory",
-            profile="balanced",
+            precision_family="INT4", precision_encoding="MLX-4bit", profile="balanced",
         ),
         metric_definitions=metrics,
         conditions={
@@ -145,3 +145,16 @@ def test_record_requires_exactly_three_conditions() -> None:
     del payload["conditions"][EvidenceCondition.PRA_NO_ADAPTOR]
     with pytest.raises(ValidationError, match="exactly three conditions"):
         CanonicalEvidenceRecord.model_validate(payload)
+
+
+def test_schema_two_requires_exact_precision_but_legacy_schema_remains_readable() -> None:
+    payload = _record().model_dump(mode="json")
+    payload["key"].update(
+        precision_family="UNSPECIFIED", precision_encoding="UNSPECIFIED"
+    )
+    with pytest.raises(ValidationError, match="explicit precision"):
+        CanonicalEvidenceRecord.model_validate(payload)
+
+    payload["schema_version"] = 1
+    legacy = CanonicalEvidenceRecord.model_validate(payload)
+    assert legacy.key.precision_family == "UNSPECIFIED"

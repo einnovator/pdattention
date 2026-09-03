@@ -25,6 +25,7 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Architecture: `Qwen3ForCausalLM`
 - Parameters: `4B`
 - Tokenizer revision: `0348ad770d2ae658ca47b0579b2d2c37b20bbcac`
+- Serving precision: `INT8` / `MLX-8bit`
 - Post-training: `pretrained and post-trained`
 
 ## Recommended configuration
@@ -36,6 +37,14 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Native Memory status: **QUALIFIED**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
+
+## Precision qualification
+
+Precision evidence is scoped to the exact model conversion, engine, mode, and profile. Qualification does not transfer automatically between BF16, INT8, INT4, or encoding-specific formats.
+
+| Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| INT8 | MLX-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Native Memory | BALANCED | ENGINE_QUALIFIED | qasper, hotpotqa, 2wikimultihopqa |
 
 ## Headline results
 
@@ -74,7 +83,7 @@ Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas 
 
 ### combined / mlx-lm / balanced
 
-Exact identity: `mlx-community/Qwen3-4B-8bit` at `0348ad770d2ae658ca47b0579b2d2c37b20bbcac` on `Apple M4 Pro (Mac16,7), 48 GB`.
+Exact identity: `mlx-community/Qwen3-4B-8bit` at `0348ad770d2ae658ca47b0579b2d2c37b20bbcac` on `Apple M4 Pro (Mac16,7), 48 GB`; precision `UNSPECIFIED` / `UNSPECIFIED`.
 
 #### Quality
 

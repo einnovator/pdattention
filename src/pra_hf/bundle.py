@@ -11,7 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import yaml
 
-from .bundle_evidence import EvidenceValidationError, validate_bundle_evidence
+from .bundle_evidence import EVIDENCE_TIERS, EvidenceValidationError, validate_bundle_evidence
 from .canonical_evidence import (
     CanonicalEvidenceRecord,
     EvidenceCondition,
@@ -19,6 +19,7 @@ from .canonical_evidence import (
     MetricGroup,
     render_markdown_table,
 )
+from .precision import PRECISION_FAMILIES, infer_precision
 
 
 BUNDLE_SCHEMA_VERSION = 2
@@ -95,6 +96,7 @@ class PRAModelBundle:
 
     base_model: Mapping[str, Any]
     structural_adapter: Mapping[str, Any]
+    supported_precisions: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
     learned_adapters: Mapping[str, Any] = field(default_factory=dict)
     profiles: Mapping[str, Any] = field(default_factory=dict)
     qualification: Mapping[str, Any] = field(default_factory=dict)
@@ -137,6 +139,7 @@ class PRAModelBundle:
         bundle = cls(
             base_model=value.get("base_model", value.get("model", {})),
             structural_adapter=value.get("structural_adapter", {}),
+            supported_precisions=tuple(value.get("supported_precisions", ())),
             learned_adapters=value.get("learned_adapters", {}),
             profiles=value.get("profiles", {}),
             qualification=value.get("qualification", value.get("benchmark_evidence", {})),
@@ -159,6 +162,7 @@ class PRAModelBundle:
             "schema_version": self.schema_version,
             "base_model": dict(self.base_model),
             "structural_adapter": dict(self.structural_adapter),
+            "supported_precisions": [dict(value) for value in self.supported_precisions],
             "learned_adapters": dict(self.learned_adapters),
             "profiles": dict(self.profiles),
             "qualification": dict(self.qualification),
@@ -236,6 +240,19 @@ class PRAModelBundle:
                 errors.append("base_model.revision must be immutable")
             if not self.base_model.get("fingerprint"):
                 errors.append("base_model.fingerprint is required")
+        for index, raw in enumerate(self.supported_precisions):
+            if not isinstance(raw, Mapping):
+                errors.append(f"supported_precisions[{index}] must be a mapping")
+                continue
+            family = str(raw.get("precision_family", "")).upper()
+            encoding = str(raw.get("encoding", raw.get("precision_encoding", "")))
+            tier = str(raw.get("evidence_tier", ""))
+            if family not in PRECISION_FAMILIES or family == "UNSPECIFIED":
+                errors.append(f"supported_precisions[{index}] has invalid precision_family")
+            if not encoding:
+                errors.append(f"supported_precisions[{index}] requires encoding")
+            if tier not in EVIDENCE_TIERS:
+                errors.append(f"supported_precisions[{index}] has invalid evidence_tier")
         try:
             validate_bundle_evidence(self)
         except EvidenceValidationError as error:
@@ -317,9 +334,25 @@ class BundleBuilder:
         structural = self._copy_structural(source, target, runtime.get("structural_adapter", {}))
         learned = self._copy_learned(source, target, runtime.get("learned_adapters", {}))
         self._copy_auxiliary(source, target)
+        supported_precisions = tuple(runtime.get("supported_precisions", ()))
+        if not supported_precisions:
+            inferred = infer_precision(
+                base_model.get("quantization"), engine=runtime.get("preferred_engine")
+            )
+            if inferred.is_explicit:
+                supported_precisions = (
+                    {
+                        "precision_family": inferred.precision_family,
+                        "encoding": inferred.precision_encoding,
+                        "evidence_tier": runtime.get("qualification", {}).get(
+                            "status", "NOT_MEASURED"
+                        ),
+                    },
+                )
         bundle = PRAModelBundle(
             base_model=base_model,
             structural_adapter=structural,
+            supported_precisions=supported_precisions,
             learned_adapters=learned,
             profiles=runtime.get("profiles", {}),
             qualification=runtime.get("qualification", runtime.get("benchmark_evidence", {})),
@@ -455,6 +488,18 @@ class BundleBuilder:
             if isinstance(title_suffix, Mapping)
             else str(title_suffix or "")
         )
+        inferred_precision = infer_precision(title_suffix, engine=engine_name)
+        precision_rows = [
+            dict(value) for value in bundle.supported_precisions if isinstance(value, Mapping)
+        ]
+        if not precision_rows and inferred_precision.is_explicit:
+            precision_rows = [
+                {
+                    "precision_family": inferred_precision.precision_family,
+                    "encoding": inferred_precision.precision_encoding,
+                    "evidence_tier": qualification.get("status", "NOT_MEASURED"),
+                }
+            ]
         title_engine = " / ".join(value for value in (engine_name.upper(), quantization) if value)
         lines = ["---", yaml.safe_dump(metadata, sort_keys=False).strip(), "---", "", f"# PRA Runtime Bundle for {model} · {title_engine}", ""]
         lines += [
@@ -462,13 +507,39 @@ class BundleBuilder:
             "This repository packages the model-specific Progressive Retrieval Attention (PRA) structural mapping, runtime profiles, optional learned components, compatibility metadata, and measured qualification evidence. It does not contain the base-model weights and is not an ordinary LoRA quality fine-tune.", "",
             f"- Base model: `{model}`", f"- Immutable revision: `{revision}`",
             f"- Architecture: `{architecture}`", f"- Parameters: `{parameters}`",
-            f"- Tokenizer revision: `{tokenizer_revision}`", "",
+            f"- Tokenizer revision: `{tokenizer_revision}`",
+            f"- Serving precision: `{inferred_precision.precision_family}` / `{inferred_precision.precision_encoding}`", "",
             "## Recommended configuration", "",
             f"- Engine: **{engine_name}**", f"- Recommended PRA mode: **{mode}**",
             f"- Recommended profile: **{recommended_name.upper()}**",
             f"- Bundle evidence tier: **{qualification.get('status', 'NOT_MEASURED')}**",
             f"- Native Memory status: **{native_status}**", "",
             "Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.", "",
+            "## Precision qualification", "",
+            "Precision evidence is scoped to the exact model conversion, engine, mode, and profile. Qualification does not transfer automatically between BF16, INT8, INT4, or encoding-specific formats.", "",
+            "| Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for precision_row in precision_rows:
+            datasets_value = precision_row.get("datasets", "NOT_MEASURED")
+            if isinstance(datasets_value, Sequence) and not isinstance(datasets_value, str):
+                datasets_value = ", ".join(str(value) for value in datasets_value)
+            lines.append(
+                f"| {precision_row.get('precision_family', 'UNSPECIFIED')} "
+                f"| {precision_row.get('encoding', precision_row.get('precision_encoding', 'UNSPECIFIED'))} "
+                f"| {precision_row.get('serving_precision', precision_row.get('precision_family', 'UNSPECIFIED'))} "
+                f"| {_public_state(precision_row.get('feature_extraction_precision'))} "
+                f"| {_public_state(precision_row.get('adaptor_parameter_precision'), fallback='NO_QUALIFIED_ADAPTER')} "
+                f"| {precision_row.get('engine', engine_name)} "
+                f"| {precision_row.get('mode', mode)} "
+                f"| {precision_row.get('profile', recommended_name.upper())} "
+                f"| {precision_row.get('evidence_tier', 'NOT_MEASURED')} "
+                f"| {datasets_value} |"
+            )
+        if not precision_rows:
+            lines.append("| UNSPECIFIED | UNSPECIFIED | NOT_MEASURED | NOT_MEASURED | NOT_APPLICABLE | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |")
+        lines += [
+            "",
             "## Headline results", "",
         ]
         if post_training:
@@ -577,7 +648,7 @@ class BundleBuilder:
             for record in canonical_records:
                 lines += [
                     f"### {record.key.task} / {record.key.engine} / {record.key.profile}", "",
-                    f"Exact identity: `{record.key.model_id}` at `{record.key.model_revision}` on `{record.key.hardware}`.", "",
+                    f"Exact identity: `{record.key.model_id}` at `{record.key.model_revision}` on `{record.key.hardware}`; precision `{record.key.precision_family}` / `{record.key.precision_encoding}`.", "",
                 ]
                 for group in MetricGroup:
                     if not any(metric.group == group for metric in record.metric_definitions.values()):
@@ -683,6 +754,14 @@ def _metric(value: Any) -> str:
     if value is None or value == "":
         return "NEEDS_RUN"
     return f"{value:.4g}" if isinstance(value, float) else str(value)
+
+
+def _public_state(value: Any, *, fallback: str = "NEEDS_RUN") -> str:
+    """Render a missing card field as an actionable coverage state."""
+
+    if value is None or str(value).upper() in {"", "NOT_MEASURED", "UNSPECIFIED"}:
+        return fallback
+    return str(value)
 
 
 def _signed(value: Any) -> str:

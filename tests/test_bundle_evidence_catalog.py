@@ -247,6 +247,9 @@ def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
     assert "15/15" in text
     assert "-89.1%" in text
     assert "## Evidence by engine, mode, and profile" in text
+    assert "## Precision qualification" in text
+    assert "INT4" in text
+    assert "MLX-4bit" in text
     assert "| mlx | Native Memory | BALANCED | MEASURED" in text
     assert "Output Tokens Per Second" in text
     assert "ITL p95 (ms)" in text
@@ -268,6 +271,8 @@ def test_catalog_order_reference_role_and_collection_membership() -> None:
     assert "reference" in reference["role"].lower()
     assert any("coder" in row["model"].lower() for row in rows)
     assert any("instruct" in row["model"].lower() for row in rows)
+    assert all(row["precision_family"] != "UNSPECIFIED" for row in rows)
+    assert all(row["precision_encoding"] for row in rows)
     matrix = render_qualification_matrix(catalog)
     assert "Qualification Matrix" in matrix
     assert "Canonical condition audit" in matrix
