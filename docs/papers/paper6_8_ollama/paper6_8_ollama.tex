@@ -11,8 +11,10 @@ Transparent Context Optimization for Local-Model Applications}
 \maketitle
 
 \begin{abstract}
-Ollama combines local-model packaging, lifecycle management, and a stable
-application API. Progressive Retrieval Attention (PRA) should preserve that
+We ask what Progressive Retrieval Attention (PRA) benefits are available
+through stock Ollama and where native execution must be delegated. Ollama
+combines local-model packaging, lifecycle management, and a stable application
+API. PRA should preserve that
 product surface: ordinary installations receive selected-text E0, while a
 PRA-aware model backend may negotiate native E2 without requiring a second
 attention implementation in Ollama. We implement this capability-negotiated
@@ -37,6 +39,10 @@ runs have exact schedule-matched logits and persistent decode. A versioned,
 \end{abstract}
 
 \section{Introduction}
+The companion runtime paper defines the common E0/E2/E3 and evidence
+contracts~\cite{praruntime}. This paper evaluates Ollama as a deployment
+surface and makes delegation boundaries explicit.
+
 Ollama's value is operational simplicity: a model name, one daemon, and a
 familiar API. A PRA integration that requires every application to understand
 engine-specific K/V state would undermine that value. We instead treat Ollama
@@ -327,6 +333,13 @@ answer 25/25 controlled facts correctly.}
 \label{fig:native-delegation}
 \end{figure}
 
+\section{Result Interpretation}
+Stock Ollama establishes a useful Selected Context path: applications retain
+the ordinary API while PRA reduces visible context. Native Memory is a
+different claim. It is measured only through the pinned llama.cpp sidecar, so
+the result qualifies delegated execution rather than a hidden capability of
+the stock runner. This distinction is the product boundary summarized next.
+
 \section{Deployment Matrix}
 \begin{table}[H]
 \centering\small
@@ -348,7 +361,7 @@ request can carry stable identities while the backend performs native
 materialization. If the handshake disappears after an upgrade or model switch,
 AUTO returns to E0.
 
-\section{Limitations and Next Work}
+\section{Negative Results and Next Work}
 The original Windows runtime is old relative to the pinned source audit; the
 paper does not merge those observations with the separate 0.30.8 M5 and 0.32.7
 M4 Pro replications. Three model sizes are measured, but all natural cohorts are small.
@@ -377,6 +390,8 @@ probe, tests, raw JSON, lifecycle benchmark, plot generator, README, and
 manuscript.
 
 \begin{thebibliography}{9}
+\bibitem{praruntime} J. Simao. \emph{Productizing Progressive Retrieval
+Attention: A Runtime, Gateway, and Deployment Architecture}. 2026.
 \bibitem{ollama} Ollama contributors. \emph{Ollama}.
 \url{https://github.com/ollama/ollama}
 \bibitem{openai} OpenAI. \emph{Chat Completions API}.
