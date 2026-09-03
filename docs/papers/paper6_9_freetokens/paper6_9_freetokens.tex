@@ -54,10 +54,15 @@ a controlled bandwidth sweep that exposes both the promise and failure modes of
 simple coordination.
 
 \section{PRA and Integration Levels}
-E0 supplies selected evidence as visible text. E1 carries resource identity and
-lifecycle metadata. E2 consumes detached selected native K/V. E3 additionally
-requires the real FreeToken scheduler to own PRA placement, prefetch, sharing,
-and eviction. Only E3 permits claims about joint runtime scheduling.
+The product evidence conditions are No PRA, Selected Context, Native Memory,
+and Native Serving; bundle or adaptor use is an orthogonal axis. No PRA means
+ordinary inference without PRA selection. Selected Context (E0) supplies
+PRA-selected evidence as visible text. E1 carries resource identity and
+lifecycle metadata. Native Memory (E2) consumes detached selected K/V. Native
+Serving (E3) additionally requires the real FreeToken scheduler to own PRA
+placement, prefetch, sharing, and eviction. Only E3 permits claims about joint
+runtime scheduling. The controlled coordination sweep is not a true No-PRA
+comparison, and live E2/E3 model evidence remains absent.
 
 Native PRA attention joins direct and memory keys before one softmax,
 \begin{equation}
