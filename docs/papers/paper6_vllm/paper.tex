@@ -12,79 +12,35 @@
 \maketitle
 
 \begin{abstract}
-vLLM virtualizes where sequential key--value (KV) blocks reside. Progressive
-Retrieval Attention (PRA) virtualizes a different choice: which subset of a
-logically large, non-prefix memory is active for a query. We define a
-capability-honest integration boundary between these mappings, implement a
-stable logical PRA block namespace and residency state machine, and implement
-a vLLM-Metal store that places selected K/V in native paged-cache blocks. On
-an Apple M5 with vLLM 0.28.0 and the
-vLLM-Metal plugin, a 25-request smoke study separates exact-prefix reuse from
-selected-memory recovery. A selected 365-token prompt and the 1,577-token full
-context both recover the codeword in 5/5 requests; the selected condition uses
-76.9\% fewer visible tokens and reduces cold time to first token (TTFT) from
-776.6 to 80.7 ms. Warm TTFT is 46.2 versus 52.9 ms, while vLLM reports an
-aggregate prefix-cache hit rate of 75.3--83.4\%. These measurements establish a
-strong black-box baseline. Separately, 80 controlled kernel measurements over
-five seeds, 16--512 selected tokens, and concurrency 1--8 match dense attention
-within maximum absolute error 0.00391. Warm native paged attention rises from
-0.489 to 0.642 ms; immutable block sharing avoids up to 14.0 MB at concurrency
-eight. A subsequent five-seed live V1 experiment reserves scheduler-invisible
-tail pages and prepends them only to attention block tables. Native and full
-context recover 5/5 answers, disabled memory recovers 0/5, cleanup leaks are
-0/5, and wrong memory controls follow the wrong fact in 5/5 cases. This closes
-controlled V1 generation on Metal. A second five-seed cohort combines native
-PRA with APC over concurrency 1--8: selected memory recovers 75/75 answers,
-alternating selected and ordinary requests score 40/40 on their expected
-outcome, wrong memory redirects 30/40 outputs, and throughput reaches 34.41
-requests/s at concurrency eight. A selection-derived APC salt prevents the
-same visible query from reusing state created under different hidden memory;
-after the first selected request, APC supplies 128--144 prompt tokens.
-A CUDA E0 reproduction on an RTX
-5060 Laptop GPU adds a 360-request natural-QA cohort and a 1,240-request warm
-load sweep. Selected text reaches 92.7 requests/s at concurrency 16; the
-independent full-context workload saturates at 12.0 requests/s and 1.15 s TTFT
-p99. A three-point pressure curve extends full context to 1,274 tokens: at
-concurrency 16 independent full context reaches 10.0 requests/s and 1.41 s
-TTFT p99, while 66-token selection remains above 91.9 requests/s and below
-47.2 ms. A final matched-selection study
-uses the same routed QASPER, HotpotQA, and 2WikiMultiHopQA evidence for visible
-E0 and native E2 execution. E2 removes 90.6--93.0\% of visible prompt tokens,
-and all 840 paired outputs are exact. A geometry audit explains an earlier
-593/840 result: it compared full-prefix E0 prefill with query-only E2 prefill,
-so the two conditions traversed different fused-kernel shapes. Priming E0's
-source through APC and capturing E2 pages from vLLM's own source prefill holds
-that geometry fixed. Cold, warm, multi-query, and concurrency cost ratios are
-0.985, 1.004, 0.993, and 0.981, respectively, where lower is better. Exact
-matched-quality promotion is therefore closed for this model and backend.
-Replications with Qwen3-1.7B,
-Llama-3.2-1B-Instruct, and Gemma-3-1B-IT also obtain 840/840 exact pairs each.
-Across all four checkpoints and 3,360 pairs, every completion is exact and all
-four execution-cost ratios remain within 3.1\% of parity. An expanded
-Qwen3-1.7B confirmation uses 149 unique examples and preserves 2,086/2,086
-pairs; its four macro cost ratios remain within 0.991--1.009. An expanded live storage study then obtains 80/80
-lossless WARM output and array parity with restart recovery; int8 COLD is exact
-in only 17/80 sequences and is not promoted as a default. Finally, a vLLM
-0.28 CUDA connector candidate stores source K/V by semantic identity and loads
-it into request-owned pages without recomputing the source content. A
-five-seed causal control obtains 5/5 exact E0/native pairs, 5/5 wrong-memory
-redirections, and zero disabled or cleanup leaks. With source-only geometry
-matched through APC, a 60-example natural cohort obtains 60/60 exact pairs and
-identical F1. Median candidate/E0 completion ratios are 0.964 on QASPER, 1.005
-on HotpotQA, and 1.073 on 2Wiki. Because vLLM still reserves source-length
-placeholder slots, this closes native transfer and APC coexistence on CUDA,
-not scheduler-invisible detached E2 or its memory economics. A follow-up
-45-request CUDA batch sweep covers concurrency 1--8: every expected selected
-resource is recovered, no ordinary request receives forbidden selected detail,
-and shared-native throughput reaches 48.9 requests/s at concurrency eight. We
-then add a version-bounded CUDA worker hook that reserves a physical cache tail
-without increasing the scheduler's block count. In a 512-request matched
-matrix at concurrency eight, FULL, E0, E2-HOT, and E2-WARM each recover 128/128
-answers; both E2 conditions are token-exact with E0 and use no request-owned
-PRA slots. E2 reduces scheduler prompt accounting from 36 to 20 tokens and
-shares one 0.34 MiB native block, but reaches only 45.5 HOT and 42.4 WARM
-requests/s versus 56.3 for E0. Scheduler invisibility is therefore established
-as a controlled CUDA mechanism, while the current hook is not an economic win.
+We ask how far query-selected logical context can integrate into vLLM and what
+Native Memory costs once retrieval is held fixed. PRA and vLLM virtualize
+different mappings: PRA chooses which non-prefix resource intervals are active,
+whereas vLLM places sequential K/V in physical pages. We define Selected
+Context (E0), detached Native Memory (E2), and scheduler-owned Native Serving
+(E3), then implement stable semantic block identities, request-scoped
+attachment, hidden-memory cache salts, lifecycle cleanup, and capability-honest
+fallback. Placement, synchronization, copying, and reclamation remain explicit
+at every depth.
+
+On frozen QASPER, HotpotQA, and 2Wiki selections, E2 removes 90.6--93.0\% of
+visible prompt tokens. Qwen3-0.6B, Qwen3-1.7B, Llama-3.2-1B-Instruct, and
+Gemma-3-1B-IT preserve all 3,360 E0/E2 output pairs, with cold, warm,
+multi-query, and concurrent completion-cost ratios within 3.1\% of parity. An
+expanded Qwen3-1.7B cohort preserves 2,086/2,086 pairs and keeps all four macro
+ratios between 0.991 and 1.009. Wrong-memory, disabled-memory, cleanup, and
+concurrency controls establish causal use without cross-request leakage.
+
+A CUDA vLLM 0.28 worker hook then reserves physical cache pages without adding
+the selected source to scheduler prompt geometry. In a 512-request matrix,
+FULL, E0, E2-HOT, and E2-WARM each recover 128/128 answers; both native modes
+are token-exact with E0 and share one 0.34 MiB source block across eight
+requests. This closes scheduler invisibility as a controlled mechanism, not as
+a product result. E0 sustains 56.3 requests/s, compared with 45.5 for E2-HOT
+and 42.4 for E2-WARM, while the preallocated cache pool prevents a peak-HBM
+claim. The current detached path is therefore semantically exact but
+economically negative at this scale. An upstream attachment seam, LMCache
+integration, online TTFT/ITL tails, and continuous-batching pressure remain
+necessary before qualifying native PRA as a vLLM serving advantage.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -164,6 +120,11 @@ The middle arrow cannot be inferred from ordinary prefix equality. Two requests
 may share the same resource but select different intervals; two physical cache
 slots may hold the same immutable detail while using request-local position
 metadata.
+
+The companion runtime paper defines the common E0/E2/E3 contract, evidence
+identity, and fallback rules~\cite{praruntime}. This paper asks the narrower
+vLLM question: which of those contracts can be realized by vLLM's page and
+scheduler ownership, and at what measured cost?
 
 This paper asks whether exposing that middle mapping to vLLM improves the
 quality-adjusted memory, latency, and throughput frontier beyond an optimized
@@ -958,6 +919,8 @@ one shared 16-token block occupying 0.34 MiB. Peak CUDA allocation is unchanged
 at 4,638.9 MiB because vLLM preallocates the cache pool and the reserve exists
 for every condition.
 
+\subsection{Result interpretation}
+
 The economic result is negative at this scale. E0 reaches 56.3 requests/s;
 HOT reaches 45.5 and WARM 42.4, or 80.8\% and 75.4\% of E0 throughput. Median
 completion rises from 133.4 ms to 172.7 and 179.6 ms. HOT p95 attachment is
@@ -1029,7 +992,7 @@ attach, and storage metrics; vLLM scheduler, APC, paged-K/V, queue, and serving
 metrics remain engine-native.  Primary latency and throughput tables in this
 paper were collected with detailed tracing disabled.
 
-\section{Falsification and Limitations}
+\section{Negative Results, Falsification, and Limitations}
 The central thesis fails if an optimized E0/G10 integration matches an
 engine-aware implementation at equal quality across memory pressure,
 concurrency, and reuse. The present data make that falsifier stronger: the
@@ -1100,6 +1063,11 @@ claims.
 W. Kwon et al.
 \newblock Efficient Memory Management for Large Language Model Serving with PagedAttention.
 \newblock In \emph{Proceedings of SOSP}, 2023.
+\bibitem{praruntime}
+PRA Research Program.
+\newblock From Sparse Selection to Physical Savings: A Unified Runtime and
+Measurement Contract for Progressive Retrieval Attention.
+\newblock Companion manuscript, 2026.
 \end{thebibliography}
 
 \end{document}
