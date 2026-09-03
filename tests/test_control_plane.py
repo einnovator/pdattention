@@ -481,8 +481,11 @@ def test_frontend_contains_required_stack_and_reconnect_protocol():
     assert 'id="info-modal"' not in html
     assert "loading-state" in script and "loading-spinner" in styles
     assert "host.className = 'workspace-host'" in script
-    assert ".workspace-host { width: 100%; height: 100%; min-width: 0; }" in styles
-    assert ".workspace-content, .engine-section { width: 100%; min-width: 0; }" in styles
+    assert ".workspace-host { width: 100%; max-width: 100%; height: 100%; min-width: 0; overflow: hidden; }" in styles
+    assert ".workspace-panel { width: 100%; max-width: 100%; min-width: 0;" in styles
+    assert "overflow-x: auto; overflow-y: auto;" in styles
+    assert ".workspace-content, .engine-section { width: 100%; max-width: 100%; min-width: 0; }" in styles
+    assert ".workspace-content .table-responsive, .engine-section .table-responsive" in styles
     assert ".loading-state { width: 100%; min-width: 0;" in styles
     assert "Loading remote fleet state" in script
     assert "Engine state" in script and "Desired state" in script
