@@ -11,8 +11,10 @@ Portable Sequence-Attached Semantic K/V in the GGUF Ecosystem}
 \maketitle
 
 \begin{abstract}
-llama.cpp makes quantized local inference portable across CPUs and accelerator
-backends. Progressive Retrieval Attention (PRA) asks for a different form of
+We ask for the narrowest real Native Memory primitive that Progressive
+Retrieval Attention (PRA) can exploit in llama.cpp. llama.cpp makes quantized
+local inference portable across CPUs and accelerator backends, while PRA asks
+for a different form of
 portability: independently addressable semantic records whose selected native
 key/value (K/V) states can be reused without becoming visible prompt tokens.
 We pin llama.cpp commit
@@ -36,6 +38,10 @@ scheduler-owned resource allocation remains E3 work.
 \end{abstract}
 
 \section{Introduction}
+The companion runtime paper defines the common E0/E2/E3 and evidence
+contracts~\cite{praruntime}. This paper isolates the llama.cpp mechanism and
+its portability boundary.
+
 Local inference has two kinds of context pressure. The first is computational:
 long prompts increase prefill work and K/V residency. The second is semantic:
 applications need records, documents, tool outputs, and task state that do not
@@ -346,7 +352,7 @@ removes the source sequence and clears its pin. These checks close transport,
 reuse, isolation, sharing, and cleanup for this narrow mechanism; they do not
 establish natural-QA quality or a production scheduler.
 
-\section{Capability and Stop Gate}
+\section{Result Interpretation and Stop Gate}
 \begin{table}[h]
 \centering\small
 \caption{Qualification by backend and level at the pinned revision.}
@@ -367,7 +373,7 @@ the server path now has explicit ingest, attach, reuse, concurrency, isolation,
 and release. Multi-resource controls, physical byte accounting under sustained
 load, CUDA/Vulkan replication, and E3 scheduler ownership remain open.
 
-\section{Limitations and Next Work}
+\section{Negative Results and Next Work}
 The cohorts remain small; the 8B replication broadens model scale but not the
 number of independent questions. Native parity uses five synthetic factual
 prompts and one model, not natural QA. The concurrency cohort has only 15
@@ -396,6 +402,8 @@ available on the Paper 6.7 research branch. The README records the exact branch,
 pinned model, backend flags, and benchmark invocation.
 
 \begin{thebibliography}{9}
+\bibitem{praruntime} J. Simao. \emph{Productizing Progressive Retrieval
+Attention: A Runtime, Gateway, and Deployment Architecture}. 2026.
 \bibitem{llamacpp} G. Gerganov et al. \emph{llama.cpp}. 2023--2026.
 \url{https://github.com/ggml-org/llama.cpp}
 \bibitem{gguf} llama.cpp contributors. \emph{GGUF format documentation}.
