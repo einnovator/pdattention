@@ -2184,81 +2184,79 @@ E0 themselves differ in 2/5. The SDK therefore treats all three pinned paths
 as semantic mechanism passes while keeping their economic status experimental.
 Engine labels alone never select these capabilities.
 
-For product evidence we additionally normalize these measurements into three
-conditions rather than exposing only paper-level E0/E2 labels.  The historical
-MLX rows directly support No PRA and PRA without learned adaptor behavior. They
-do not record resolution of the subsequently published immutable bundle, so
-that third condition remains \texttt{NOT\_MEASURED}; it is not duplicated from
-the generic PRA row. Tables~\ref{tab:canonical-mlx-evidence} and
-\ref{tab:canonical-mlx-serving} show the compact flagship view. Deltas are
-candidate minus No PRA and preserve their sign. Inter-token latency (ITL) and
-output-token rate are decode-only measures after the first generated token;
-they are not aliases for request throughput.
+For product evidence we normalize each run into three conditions rather than
+exposing only paper-level E0/E2 labels: No PRA (the frozen selection rendered
+as visible text), PRA without a learned adaptor (the same selected source
+materialized as native K/V), and PRA with an exact learned-adaptor bundle.  The
+qualification runner pins model revision, tokenizer, quantization, engine, and
+selector output. It executes QASPER, HotpotQA, and 2Wiki separately and records
+the source artifacts and checksums in the card. Thus a result for MLX 8-bit is
+never inherited by MLX 6-bit, bitsandbytes 8-bit, or another checkpoint.
+
+Table~\ref{tab:quantized-bundle-quality} reports the new exact-identity cohorts.
+The MLX runs contain 20 examples per dataset and five dataset seeds (60 unique
+questions per identity). The smaller CUDA bitsandbytes run contains five
+examples per dataset (15 total) and is intentionally presented as controlled,
+not production-scale, evidence. Native Memory is promoted only when exact
+sequence agreement is at least 95\% and mean token-F1 change is no worse than
+$-0.01$. This gate is stricter than average-score similarity: it rejects the
+Gemma path despite its modest $-0.0036$ F1 change because only 3/60 sequences
+match exactly.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Canonical exact-identity MLX evidence over the 15-example combined
-natural-QA cohort. Bundle means PRA with the immutable Runtime Bundle.}
-\begin{tabular}{llrrrr}
+\caption{Exact-identity selected-text (E0) versus native-K/V (E2) bundle
+qualification. The selector output is frozen between conditions. ``Promote''
+means Native Memory with BALANCED becomes the exact-identity default.}
+\begin{tabular}{lrrrrrrl}
 \toprule
-Model & Metric & No PRA & PRA no adaptor & $\Delta$ no adaptor & PRA bundle \\
+Model / quantization & $N$ & Exact & E0 F1 & E2 F1 & Visible $\Delta$ & Completion $\Delta$ & Gate \\
 \midrule
-Qwen3-8B  & token F1 & 0.2365 & 0.2365 & 0.0000 & NOT MEASURED \\
-           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
-Qwen3-14B & token F1 & 0.2775 & 0.2775 & 0.0000 & NOT MEASURED \\
-           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
-Qwen3-32B & token F1 & 0.2312 & 0.2312 & 0.0000 & NOT MEASURED \\
-           & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
+Llama-3.2-1B MLX 8-bit & 60 & 60/60 & 0.1254 & 0.1254 & $-91.5\%$ & $-0.2\%$ & Promote \\
+Gemma-3-1B MLX 8-bit & 60 & 3/60 & 0.0735 & 0.0699 & $-91.1\%$ & $+5.9\%$ & Candidate \\
+Qwen3-4B MLX 8-bit & 60 & 60/60 & 0.1315 & 0.1315 & $-91.5\%$ & $+1.9\%$ & Promote \\
+Qwen3-8B MLX 6-bit & 60 & 60/60 & 0.1582 & 0.1582 & $-91.5\%$ & $+1.4\%$ & Promote \\
+Qwen3-8B MLX 8-bit & 60 & 60/60 & 0.1440 & 0.1440 & $-91.5\%$ & $+0.6\%$ & Promote \\
+Qwen3-14B MLX 8-bit & 60 & 60/60 & 0.1494 & 0.1494 & $-91.5\%$ & $+0.3\%$ & Promote \\
+Qwen2.5-1.5B BNB 8-bit & 15 & 0/15 & 0.3991 & 0.0179 & $-91.7\%$ & $+203.5\%$ & Candidate \\
 \bottomrule
 \end{tabular}
-\label{tab:canonical-mlx-evidence}
+\label{tab:quantized-bundle-quality}
 \end{table}
 
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{Serving and resource measurements for the same exact-identity MLX
-cohorts. Output rate is decode-only; peak memory is Apple unified memory.}
-\begin{tabular}{llrrrr}
-\toprule
-Model & Metric & No PRA & PRA no adaptor & $\Delta$ no adaptor & PRA bundle \\
-\midrule
-Qwen3-8B  & TTFT p95 (ms) & 183.0 & 231.0 & +48.0 & NOT MEASURED \\
-           & ITL p95 (ms) & 18.98 & 20.52 & +1.54 & NOT MEASURED \\
-           & output tokens/s & 53.30 & 51.11 & -2.20 & NOT MEASURED \\
-           & completion mean (ms) & 275.95 & 284.09 & +8.14 & NOT MEASURED \\
-           & peak memory (GiB) & 4.824 & 4.781 & -0.043 & NOT MEASURED \\
-Qwen3-14B & TTFT p95 (ms) & 339.2 & 338.3 & -0.9 & NOT MEASURED \\
-           & ITL p95 (ms) & 34.63 & 35.46 & +0.83 & NOT MEASURED \\
-           & output tokens/s & 29.09 & 28.41 & -0.68 & NOT MEASURED \\
-           & completion mean (ms) & 507.83 & 513.25 & +5.42 & NOT MEASURED \\
-           & peak memory (GiB) & 8.242 & 8.190 & -0.052 & NOT MEASURED \\
-Qwen3-32B & TTFT p95 (ms) & 799.8 & 797.3 & -2.5 & NOT MEASURED \\
-           & ITL p95 (ms) & 78.26 & 80.34 & +2.08 & NOT MEASURED \\
-           & output tokens/s & 12.87 & 12.63 & -0.25 & NOT MEASURED \\
-           & completion mean (ms) & 1177.04 & 1183.23 & +6.19 & NOT MEASURED \\
-           & peak memory (GiB) & 17.839 & 17.750 & -0.089 & NOT MEASURED \\
-\bottomrule
-\end{tabular}
-\label{tab:canonical-mlx-serving}
-\end{table}
+The passing Qwen and Llama rows preserve output exactly while hiding about
+91.5\% of selected source tokens from the visible prompt. Median TTFT changes
+are $-6.9\%$ for Llama, $-9.2\%$ for Qwen3-4B, $+0.7\%$ for Qwen3-8B 6-bit,
+$-5.7\%$ for Qwen3-8B 8-bit, and $-2.4\%$ for Qwen3-14B 8-bit. Mean completion
+overhead within the Qwen 8-bit family falls from 1.9\% at 4B to 0.6\% at 8B
+and 0.3\% at 14B. This is a useful scaling observation, but not yet a scaling
+law: the cohort and host are fixed and the models have different output
+distributions.
 
-The public catalog applies the same schema to all nine current bundles:
-Qwen3 at 0.6B, 4B, 8B, 14B, and 32B; Qwen2.5 and Qwen2.5-Coder at
-1.5B; Llama-3.1-8B-Instruct; and Gemma-3-1B-IT. Each card enumerates every
-declared engine, mode, and profile. Only the Qwen3 8B/14B/32B MLX BALANCED
-rows currently have matched end-task and serving measurements for both No PRA
-and PRA without an adaptor. The other rows remain visibly
-\texttt{NOT\_MEASURED}; their routing qualification is not relabeled as answer
-quality or engine performance. The generated site evidence matrix is the
-exhaustive catalog view, while these tables retain the paper's measured subset.
+The two rejected rows identify different integration boundaries. Gemma's mixed
+local/global attention geometry needs architecture-specific native-memory
+calibration. The eager bitsandbytes path preserves evidence recall and removes
+91.7\% of visible tokens, but loses 0.3813 combined token F1 and takes roughly
+three times as long end to end; Selected Context therefore remains its default.
+Neither failure is converted into an unspecified missing value.
 
-This table should not be read as evidence that a learned adaptor is necessary.
-The qualified BALANCED profile is generic and all-layer; the missing condition
-asks a narrower reproducibility question: was that exact published bundle and
-revision resolved during the measured request? The machine-readable audit
-retains this distinction for cards, CLI reports, and Control Plane views.
+The public catalog applies the same schema to 16 current bundles. Each card
+enumerates every declared engine, mode, and profile and labels absent work by
+cause: \texttt{NEEDS\_RUN}, \texttt{NO\_QUALIFIED\_ADAPTER}, or
+\texttt{CALIBRATION\_PENDING}. No public card prints the ambiguous literal
+\texttt{NOT\_MEASURED}. Five Qwen/Llama quantized identities now carry promoted
+Native Memory evidence; Gemma MLX 8-bit and Qwen2.5 bitsandbytes 8-bit carry
+measured candidate failures. The generated site evidence matrix remains the
+exhaustive view.
+
+These results do not show that a learned adaptor is necessary. The promoted
+BALANCED profiles use parameter-free routing and all eligible consumer layers.
+The Qwen3-4B bundle includes an opt-in learned router whose QASPER recall gain
+does not transfer to HotpotQA; it is not substituted for a missing end-task
+adaptor arm. Other exact identities state \texttt{NO\_QUALIFIED\_ADAPTER}.
+The machine-readable audit retains this distinction for cards, CLI reports,
+and Control Plane views.
 
 The expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs

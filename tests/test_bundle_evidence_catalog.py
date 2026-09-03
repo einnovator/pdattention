@@ -301,9 +301,10 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     [
         ("pra-qwen3-8b-mlx-6bit", 6),
         ("pra-qwen3-8b-mlx-8bit", 8),
+        ("pra-qwen3-14b-mlx-8bit", 8),
     ],
 )
-def test_qwen_8b_quantized_native_results_are_exact_identity_qualified(
+def test_qwen_quantized_native_results_are_exact_identity_qualified(
     bundle_name: str, bits: int
 ) -> None:
     bundle = PRAModelBundle.from_pretrained(
