@@ -1,0 +1,321 @@
+"""Analyze powered RAG condition rows into auditable tables and plots."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import json
+import math
+from collections import Counter
+from pathlib import Path
+from typing import Mapping, Sequence
+
+from pra_hf.rag_evaluation import ContextCondition
+from pra_hf.rag_powered import (
+    paired_delta,
+    qualification_gates,
+    summarize_rows,
+    write_csv,
+)
+
+
+def _load_rows(path: Path) -> list[dict[str, object]]:
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        return [json.loads(line) for line in stream if line.strip()]
+
+
+def _primary_rows(
+    summaries: Sequence[Mapping[str, object]], candidate_count: int, token_budget: int
+) -> list[Mapping[str, object]]:
+    return [
+        row
+        for row in summaries
+        if int(row["candidate_count"]) == candidate_count
+        and int(row["token_budget"]) == token_budget
+        and row.get("status") == "MEASURED"
+    ]
+
+
+def _failure_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    groups: dict[tuple[object, ...], Counter[str]] = {}
+    for row in rows:
+        if row.get("status") != "MEASURED":
+            continue
+        key = (
+            row["condition"],
+            row["selector_profile"],
+            row["candidate_count"],
+            row["token_budget"],
+            row["regime"],
+        )
+        groups.setdefault(key, Counter())[str(row.get("failure_class", "UNKNOWN"))] += 1
+    result = []
+    for key, counts in sorted(groups.items(), key=lambda item: tuple(map(str, item[0]))):
+        for failure, count in sorted(counts.items()):
+            result.append(
+                {
+                    "condition": key[0],
+                    "selector_profile": key[1],
+                    "candidate_count": key[2],
+                    "token_budget": key[3],
+                    "regime": key[4],
+                    "failure_class": failure,
+                    "examples": count,
+                }
+            )
+    return result
+
+
+def _deltas(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    comparisons = (
+        (
+            "native_vs_selected_generic",
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            "pra_generic",
+        ),
+        (
+            "native_vs_selected_strong",
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            "pra_strong_reranker",
+        ),
+    )
+    result = []
+    for name, left, right, selector in comparisons:
+        for regime in ("COLD", "WARM"):
+            for metric in (
+                "exact_match",
+                "token_f1",
+                "official_multihop_rag_score",
+                "visible_prompt_tokens",
+                "ttft_ms",
+                "total_latency_ms",
+                "tokens_per_second",
+                "peak_memory_bytes",
+            ):
+                value = paired_delta(
+                    rows,
+                    left_condition=left,
+                    right_condition=right,
+                    metric=metric,
+                    selector_profile=selector,
+                    regime=regime,
+                )
+                value["comparison"] = name
+                result.append(value)
+    return result
+
+
+def _persistent_curve(
+    rows: Sequence[Mapping[str, object]], candidate_count: int, token_budget: int
+) -> list[dict[str, object]]:
+    selected = [
+        row
+        for row in rows
+        if row.get("status") == "MEASURED"
+        and row["candidate_count"] == candidate_count
+        and row["token_budget"] == token_budget
+        and row["regime"] == "COLD"
+        and (
+            (
+                row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value
+                and row["selector_profile"] == "standard_bm25"
+            )
+            or (
+                row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value
+                and row["selector_profile"] == "pra_generic"
+            )
+        )
+    ]
+    selected.sort(key=lambda row: (str(row["example_id"]), str(row["condition"])))
+    seen_chunks: set[str] = set()
+    cumulative_visible = 0
+    cumulative_unique_native = 0
+    cumulative_wall = 0.0
+    result = []
+    for row in selected:
+        condition = str(row["condition"])
+        intervals = row.get("selected_intervals", [])
+        if condition == ContextCondition.NO_PRA_STANDARD_RAG.value:
+            cumulative_visible += int(
+                row.get("retrieval_context_metrics", {}).get("physical_context_tokens", 0)
+            )
+        else:
+            for interval in intervals:
+                chunk_id = str(interval["chunk_id"])
+                if chunk_id not in seen_chunks:
+                    seen_chunks.add(chunk_id)
+                    cumulative_unique_native += int(interval["token_count"])
+        serving = row.get("serving_metrics", {})
+        cumulative_wall += float(serving.get("total_latency_ms") or 0.0) + float(
+            serving.get("ingestion_ms") or 0.0
+        )
+        result.append(
+            {
+                "example_id": row["example_id"],
+                "condition": condition,
+                "cumulative_visible_tokens": cumulative_visible,
+                "cumulative_unique_native_tokens": cumulative_unique_native,
+                "cumulative_wall_ms": cumulative_wall,
+            }
+        )
+    return result
+
+
+def _plots(
+    summaries: Sequence[Mapping[str, object]],
+    curve: Sequence[Mapping[str, object]],
+    output: Path,
+    candidate_count: int,
+    token_budget: int,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    output.mkdir(parents=True, exist_ok=True)
+    primary = [row for row in _primary_rows(summaries, candidate_count, token_budget) if row["regime"] == "COLD"]
+    labels = [f"{row['selector_profile']}\n{str(row['condition']).replace('_NO_ADAPTOR', '')}" for row in primary]
+    specs = (
+        ("generated_quality", "token_f1", "Token F1", (0.0, 1.0)),
+        ("visible_tokens", "visible_prompt_tokens", "Visible prompt tokens", None),
+        ("ttft_p95", "ttft_p95_ms", "TTFT p95 (ms)", None),
+        ("completion_latency", "completion_latency_ms", "Completion latency (ms)", None),
+        ("support_coverage", "supporting_document_coverage", "Supporting-document coverage", (0.0, 1.0)),
+    )
+    for filename, metric, ylabel, limits in specs:
+        values = [float(row.get(metric) or 0.0) for row in primary]
+        fig, axis = plt.subplots(figsize=(12, 5.5))
+        axis.bar(range(len(values)), values, color="#1f6f78")
+        axis.set_xticks(range(len(values)), labels, rotation=25, ha="right")
+        axis.set_ylabel(ylabel)
+        axis.grid(axis="y", alpha=0.25)
+        if limits:
+            axis.set_ylim(*limits)
+        fig.tight_layout()
+        for suffix in ("png", "pdf"):
+            fig.savefig(output / f"{filename}.{suffix}", dpi=180)
+        plt.close(fig)
+
+    if curve:
+        fig, axis = plt.subplots(figsize=(9, 5.5))
+        visible = [row for row in curve if row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value]
+        native = [row for row in curve if row["condition"] == ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value]
+        axis.plot(range(1, len(visible) + 1), [row["cumulative_visible_tokens"] for row in visible], label="Standard RAG repeated visible")
+        axis.plot(range(1, len(native) + 1), [row["cumulative_unique_native_tokens"] for row in native], label="PRA unique selected chunks")
+        axis.set_xlabel("Questions")
+        axis.set_ylabel("Cumulative source tokens")
+        axis.legend()
+        axis.grid(alpha=0.25)
+        fig.tight_layout()
+        for suffix in ("png", "pdf"):
+            fig.savefig(output / f"cumulative_repeated_query_tokens.{suffix}", dpi=180)
+        plt.close(fig)
+
+        fig, axis = plt.subplots(figsize=(9, 5.5))
+        for condition, label in (
+            (ContextCondition.NO_PRA_STANDARD_RAG.value, "Standard RAG"),
+            (ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value, "PRA Native Memory"),
+        ):
+            values = [row for row in curve if row["condition"] == condition]
+            axis.plot(range(1, len(values) + 1), [row["cumulative_wall_ms"] for row in values], label=label)
+        axis.set_xlabel("Questions")
+        axis.set_ylabel("Cumulative wall time (ms)")
+        axis.legend()
+        axis.grid(alpha=0.25)
+        fig.tight_layout()
+        for suffix in ("png", "pdf"):
+            fig.savefig(output / f"cumulative_repeated_query_wall_time.{suffix}", dpi=180)
+        plt.close(fig)
+
+
+def _paper_table(rows: Sequence[Mapping[str, object]]) -> str:
+    lines = [
+        r"\begin{tabular}{llrrrrrr}",
+        r"\toprule",
+        r"Condition & Selector & F1 & Official & Visible & Native & TTFT p95 & Latency \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        condition = str(row["condition"]).replace("_", r"\_")
+        selector = str(row["selector_profile"]).replace("_", r"\_")
+        def fmt(name: str, digits: int = 3) -> str:
+            value = row.get(name)
+            return "--" if value is None else f"{float(value):.{digits}f}"
+        lines.append(
+            f"{condition} & {selector} & {fmt('token_f1')} & "
+            f"{fmt('official_multihop_rag_score')} & {fmt('visible_prompt_tokens', 0)} & "
+            f"{fmt('selected_native_kv_tokens', 0)} & {fmt('ttft_p95_ms', 1)} & "
+            f"{fmt('total_latency_ms', 1)} \\\\"
+        )
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    return "\n".join(lines) + "\n"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-dir", type=Path, required=True)
+    parser.add_argument("--primary-candidate-count", type=int, default=20)
+    parser.add_argument("--primary-token-budget", type=int, default=2048)
+    parser.add_argument("--minimum-examples", type=int, default=50)
+    args = parser.parse_args()
+
+    root = args.input_dir
+    rows = _load_rows(root / "condition_results.jsonl.gz")
+    summaries = summarize_rows(rows)
+    failures = _failure_rows(rows)
+    deltas = _deltas(rows)
+    gates = qualification_gates(summaries, minimum_examples=args.minimum_examples)
+    curve = _persistent_curve(rows, args.primary_candidate_count, args.primary_token_budget)
+    manifest = json.loads((root / "cohort_manifest.json").read_text(encoding="utf-8"))
+
+    write_csv(root / "summary.csv", summaries)
+    write_csv(root / "failure_summary.csv", failures)
+    write_csv(root / "condition_deltas.csv", deltas)
+    write_csv(root / "persistent_corpus_curve.csv", curve)
+    primary = _primary_rows(summaries, args.primary_candidate_count, args.primary_token_budget)
+    (root / "paper_table.tex").write_text(_paper_table(primary), encoding="utf-8")
+    canonical = {
+        "schema_version": "pra-rag-powered-evidence-v1",
+        "key": {
+            "task_dataset": "MultiHop-RAG",
+            "hardware_engine": f"{manifest['hardware']['machine']}/{manifest['engine']}",
+            "model": manifest["model"],
+            "model_revision": manifest["model_revision"],
+            "precision": manifest["precision"],
+            "profile": "RAG_POWERED_DECOMPOSITION",
+        },
+        "conditions": summaries,
+        "deltas": deltas,
+        "qualification_gates": gates,
+        "provenance": {
+            "run_id": manifest["run_id"],
+            "git_commit": manifest["git_commit"],
+            "cohort_manifest": "cohort_manifest.json",
+            "condition_rows": "condition_results.jsonl.gz",
+        },
+    }
+    (root / "canonical_evidence.json").write_text(
+        json.dumps(canonical, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    card_status = gates["card_gate"]
+    (root / "hf_card_fragment.md").write_text(
+        "## MultiHop-RAG powered qualification\n\n"
+        f"**RAG QUALIFICATION: {card_status}**\n\n"
+        "This row decomposes Standard RAG, PRA Selected Context, and selector-frozen "
+        "PRA Native Memory. Bundle arms remain `NO_QUALIFIED_ADAPTER` unless an exact "
+        "model/precision adapter passes the held-out gate.\n",
+        encoding="utf-8",
+    )
+    _plots(
+        summaries,
+        curve,
+        root / "plots",
+        args.primary_candidate_count,
+        args.primary_token_budget,
+    )
+    print(json.dumps({"rows": len(rows), "summaries": len(summaries), "gates": gates}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

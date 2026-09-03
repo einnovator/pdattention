@@ -426,13 +426,31 @@ def make_candidate_receipt(
 
 
 class ContextCondition(str, Enum):
-    NO_PRA = "NO_PRA"
+    NO_PRA_STANDARD_RAG = "NO_PRA_STANDARD_RAG"
+    # Source compatibility for the first RAG ladder. Serialized evidence uses
+    # the specialized condition above rather than the generic product label.
+    NO_PRA = "NO_PRA_STANDARD_RAG"
     PRA_SELECTED_CONTEXT_NO_ADAPTOR = "PRA_SELECTED_CONTEXT_NO_ADAPTOR"
     PRA_NATIVE_MEMORY_NO_ADAPTOR = "PRA_NATIVE_MEMORY_NO_ADAPTOR"
     PRA_SELECTED_CONTEXT_BUNDLE = "PRA_SELECTED_CONTEXT_BUNDLE"
     PRA_NATIVE_MEMORY_BUNDLE = "PRA_NATIVE_MEMORY_BUNDLE"
     ORACLE_GOLD_DOCUMENTS = "oracle_gold_documents"
     ORACLE_GOLD_SPANS = "oracle_gold_spans"
+
+
+class RAGFailureClass(str, Enum):
+    """Primary stage responsible for one powered RAG outcome."""
+
+    FIRST_STAGE_RETRIEVAL_MISS = "FIRST_STAGE_RETRIEVAL_MISS"
+    STANDARD_RAG_PACKING_MISS = "STANDARD_RAG_PACKING_MISS"
+    PRA_SELECTOR_MISS = "PRA_SELECTOR_MISS"
+    PRA_DISTRACTOR_SELECTION = "PRA_DISTRACTOR_SELECTION"
+    PRA_MATERIALIZATION_MISS = "PRA_MATERIALIZATION_MISS"
+    GENERATION_FAILURE = "GENERATION_FAILURE"
+    ANSWER_FORMAT_FAILURE = "ANSWER_FORMAT_FAILURE"
+    NATIVE_REALIZATION_MISMATCH = "NATIVE_REALIZATION_MISMATCH"
+    BUNDLE_SELECTOR_REGRESSION = "BUNDLE_SELECTOR_REGRESSION"
+    SUCCESS = "SUCCESS"
 
 
 @dataclass(frozen=True)
@@ -469,6 +487,159 @@ class PackedContext:
     @property
     def text(self) -> str:
         return "\n\n".join(row.chunk.text for row in self.chunks)
+
+
+@dataclass(frozen=True)
+class SelectedInterval:
+    """One ranked source interval frozen before its execution representation."""
+
+    chunk_id: str
+    document_id: str
+    start: int
+    end: int
+    token_count: int
+    rank: int
+    score: float
+    channel_ranks: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.chunk_id or not self.document_id:
+            raise ValueError("selected intervals require chunk and document IDs")
+        if self.start < 0 or self.end <= self.start or self.token_count <= 0:
+            raise ValueError("selected intervals require valid non-empty bounds")
+        if self.rank <= 0:
+            raise ValueError("selected interval rank must be positive")
+        object.__setattr__(self, "channel_ranks", dict(self.channel_ranks))
+
+
+@dataclass(frozen=True)
+class SelectionReceipt:
+    """Immutable selector output shared by selected-text and native-K/V arms.
+
+    The execution condition is deliberately absent from the digest. Therefore
+    selected-text and native-memory arms only claim selector freeze when they
+    carry the same receipt ID.
+    """
+
+    candidate_receipt_id: str
+    example_id: str
+    selector_name: str
+    selector_revision: str
+    token_budget: int
+    intervals: tuple[SelectedInterval, ...]
+    bundle_id: str | None = None
+    bundle_revision: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.candidate_receipt_id or not self.example_id or not self.selector_name:
+            raise ValueError("selection receipt identity fields are required")
+        if self.token_budget <= 0:
+            raise ValueError("selection receipt token budget must be positive")
+        if bool(self.bundle_id) != bool(self.bundle_revision):
+            raise ValueError("bundle ID and immutable revision must be supplied together")
+        if tuple(row.rank for row in self.intervals) != tuple(
+            range(1, len(self.intervals) + 1)
+        ):
+            raise ValueError("selected interval ranks must be contiguous and one-based")
+        if len({row.chunk_id for row in self.intervals}) != len(self.intervals):
+            raise ValueError("selected chunk IDs must be unique")
+
+    @property
+    def receipt_id(self) -> str:
+        return _digest(self.to_dict(include_receipt_id=False))
+
+    @classmethod
+    def from_context(
+        cls,
+        *,
+        candidate_receipt_id: str,
+        example_id: str,
+        context: PackedContext,
+        selector_revision: str = "v1",
+    ) -> "SelectionReceipt":
+        return cls(
+            candidate_receipt_id=candidate_receipt_id,
+            example_id=example_id,
+            selector_name=context.selector_name,
+            selector_revision=selector_revision,
+            token_budget=context.token_budget,
+            intervals=tuple(
+                SelectedInterval(
+                    chunk_id=row.chunk.chunk_id,
+                    document_id=row.chunk.document_id,
+                    start=row.chunk.start,
+                    end=row.chunk.end,
+                    token_count=row.chunk.token_count,
+                    rank=rank,
+                    score=row.score,
+                    channel_ranks=row.channel_ranks,
+                )
+                for rank, row in enumerate(context.chunks, 1)
+            ),
+            bundle_id=context.bundle_id,
+            bundle_revision=context.bundle_revision,
+        )
+
+    def to_dict(self, *, include_receipt_id: bool = True) -> dict[str, object]:
+        value: dict[str, object] = {
+            "candidate_receipt_id": self.candidate_receipt_id,
+            "example_id": self.example_id,
+            "selector_name": self.selector_name,
+            "selector_revision": self.selector_revision,
+            "token_budget": self.token_budget,
+            "intervals": [asdict(row) for row in self.intervals],
+            "bundle_id": self.bundle_id,
+            "bundle_revision": self.bundle_revision,
+        }
+        if include_receipt_id:
+            value["receipt_id"] = self.receipt_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> "SelectionReceipt":
+        supplied_id = value.get("receipt_id")
+        receipt = cls(
+            candidate_receipt_id=str(value["candidate_receipt_id"]),
+            example_id=str(value["example_id"]),
+            selector_name=str(value["selector_name"]),
+            selector_revision=str(value["selector_revision"]),
+            token_budget=int(value["token_budget"]),
+            intervals=tuple(
+                SelectedInterval(
+                    chunk_id=str(row["chunk_id"]),
+                    document_id=str(row["document_id"]),
+                    start=int(row["start"]),
+                    end=int(row["end"]),
+                    token_count=int(row["token_count"]),
+                    rank=int(row["rank"]),
+                    score=float(row["score"]),
+                    channel_ranks={
+                        str(key): int(rank)
+                        for key, rank in dict(row.get("channel_ranks", {})).items()
+                    },
+                )
+                for row in value["intervals"]  # type: ignore[index]
+            ),
+            bundle_id=str(value["bundle_id"]) if value.get("bundle_id") else None,
+            bundle_revision=(
+                str(value["bundle_revision"]) if value.get("bundle_revision") else None
+            ),
+        )
+        if supplied_id is not None and supplied_id != receipt.receipt_id:
+            raise ValueError("selection receipt digest does not match its contents")
+        return receipt
+
+    def validate_context(self, context: PackedContext) -> None:
+        """Reject any execution arm that changed the frozen selector output."""
+
+        other = SelectionReceipt.from_context(
+            candidate_receipt_id=self.candidate_receipt_id,
+            example_id=self.example_id,
+            context=context,
+            selector_revision=self.selector_revision,
+        )
+        if other.receipt_id != self.receipt_id:
+            raise ValueError("execution context differs from its frozen selection receipt")
 
 
 class ChunkSelector(Protocol):
@@ -547,6 +718,87 @@ class StandardRAGSelector:
         ordered = sorted(chunks, key=lambda chunk: (-scores[chunk.chunk_id], chunk.chunk_id))
         return tuple(
             RankedChunk(chunk, scores[chunk.chunk_id], rank, {"bm25": rank})
+            for rank, chunk in enumerate(ordered, 1)
+        )
+
+
+class CrossEncoderRAGSelector:
+    """Conventional query/chunk cross-encoder reranker over frozen candidates.
+
+    ``score_pairs`` keeps the contract testable without a model download.
+    Powered runs lazily load a pinned Transformers sequence classifier and
+    score all query/chunk pairs in deterministic batches.
+    """
+
+    def __init__(
+        self,
+        *,
+        model_id: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        revision: str = "main",
+        device: str = "cpu",
+        batch_size: int = 16,
+        score_pairs: Callable[[Sequence[tuple[str, str]]], Sequence[float]] | None = None,
+        name_prefix: str = "strong_rag",
+    ) -> None:
+        if not model_id or not revision or batch_size <= 0:
+            raise ValueError("cross-encoder model, revision, and batch size are required")
+        self.model_id = model_id
+        self.revision = revision
+        self.device = device
+        self.batch_size = batch_size
+        self._score_pairs = score_pairs
+        self._model = None
+        self._tokenizer = None
+        self.name = f"{name_prefix}_cross_encoder:{model_id}@{revision}"
+
+    def _load(self) -> None:
+        if self._model is not None:
+            return
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id, revision=self.revision
+        )
+        self._model = AutoModelForSequenceClassification.from_pretrained(
+            self.model_id, revision=self.revision
+        ).to(self.device)
+        self._model.eval()
+
+    def _transformer_scores(
+        self, pairs: Sequence[tuple[str, str]]
+    ) -> tuple[float, ...]:
+        import torch
+
+        self._load()
+        scores: list[float] = []
+        assert self._model is not None and self._tokenizer is not None
+        with torch.inference_mode():
+            for first in range(0, len(pairs), self.batch_size):
+                batch = pairs[first : first + self.batch_size]
+                encoded = self._tokenizer(
+                    [query for query, _ in batch],
+                    [text for _, text in batch],
+                    padding=True,
+                    truncation=True,
+                    max_length=512,
+                    return_tensors="pt",
+                )
+                encoded = {key: value.to(self.device) for key, value in encoded.items()}
+                logits = self._model(**encoded).logits.detach().float().cpu()
+                values = logits[:, 0] if logits.shape[-1] == 1 else logits[:, -1]
+                scores.extend(float(value) for value in values)
+        return tuple(scores)
+
+    def rank(self, query: str, chunks: Sequence[RAGChunk]) -> tuple[RankedChunk, ...]:
+        pairs = tuple((query, chunk.text) for chunk in chunks)
+        scorer = self._score_pairs or self._transformer_scores
+        scores = tuple(float(value) for value in scorer(pairs))
+        if len(scores) != len(chunks):
+            raise ValueError("cross-encoder returned a score count that differs from chunks")
+        by_id = {chunk.chunk_id: score for chunk, score in zip(chunks, scores)}
+        ordered = sorted(chunks, key=lambda chunk: (-by_id[chunk.chunk_id], chunk.chunk_id))
+        return tuple(
+            RankedChunk(chunk, by_id[chunk.chunk_id], rank, {"cross_encoder": rank})
             for rank, chunk in enumerate(ordered, 1)
         )
 
@@ -753,6 +1005,12 @@ def context_metrics(
                 for row in context.chunks
             ):
                 span_hits += 1
+    normalized_context = " ".join(_terms(context.text))
+    answer_available = any(
+        " ".join(_terms(answer)) in normalized_context
+        for answer in question.answers
+        if _terms(answer)
+    )
     return {
         "document_recall_at_candidate_k": document_recall,
         "supporting_document_coverage": support_coverage,
@@ -761,6 +1019,10 @@ def context_metrics(
         "ndcg": _dcg(relevances) / _dcg(ideal) if ideal and _dcg(ideal) else 0.0,
         "gold_document_selected_fraction": len(selected_gold) / max(len(selected_ids), 1),
         "false_selected_document_fraction": false_count / max(len(selected_ids), 1),
+        "gold_chunk_recall": (
+            span_hits / span_total if span_total else support_coverage
+        ),
+        "answer_string_availability": float(answer_available),
         "logical_candidate_tokens": context.candidate_tokens,
         "physical_context_tokens": context.packed_tokens,
         "selected_full_ratio": context.packed_tokens / max(context.candidate_tokens, 1),
@@ -819,21 +1081,32 @@ def failure_classification(
     context: PackedContext,
     answer_correct: bool,
     materialization_ok: bool = True,
+    answer_format_ok: bool = True,
+    native_realization_match: bool = True,
+    bundle_selector_regressed: bool = False,
 ) -> str:
     """Assign one primary failure stage for per-example analysis."""
 
     if not question.gold_document_ids.issubset(receipt.candidate_document_ids):
-        return "first_stage_retrieval_failure"
+        return RAGFailureClass.FIRST_STAGE_RETRIEVAL_MISS.value
+    if bundle_selector_regressed:
+        return RAGFailureClass.BUNDLE_SELECTOR_REGRESSION.value
+    if not native_realization_match:
+        return RAGFailureClass.NATIVE_REALIZATION_MISMATCH.value
     if not materialization_ok:
-        return "materialization_failure"
-    if context.packed_tokens == 0:
-        return "insufficient_token_budget"
-    if not question.gold_document_ids.intersection(context.selected_document_ids):
-        return (
-            "standard_rag_packing_failure"
-            if context.condition is ContextCondition.NO_PRA
-            else "pra_document_selection_failure"
-        )
+        return RAGFailureClass.PRA_MATERIALIZATION_MISS.value
+    selected_gold = question.gold_document_ids.intersection(context.selected_document_ids)
+    if not selected_gold:
+        if context.condition is ContextCondition.NO_PRA_STANDARD_RAG:
+            return RAGFailureClass.STANDARD_RAG_PACKING_MISS.value
+        return RAGFailureClass.PRA_SELECTOR_MISS.value
+    if (
+        context.condition is not ContextCondition.NO_PRA_STANDARD_RAG
+        and not question.gold_document_ids.issubset(context.selected_document_ids)
+    ):
+        return RAGFailureClass.PRA_DISTRACTOR_SELECTION.value
+    if not answer_format_ok:
+        return RAGFailureClass.ANSWER_FORMAT_FAILURE.value
     if not answer_correct:
-        return "generation_failure"
-    return "success"
+        return RAGFailureClass.GENERATION_FAILURE.value
+    return RAGFailureClass.SUCCESS.value
