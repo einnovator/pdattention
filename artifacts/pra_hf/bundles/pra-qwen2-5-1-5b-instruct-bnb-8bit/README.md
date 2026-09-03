@@ -44,7 +44,7 @@ This bounded check loads the published quantized checkpoint, discovers the adapt
 | --- | --- | ---: | ---: | ---: | --- |
 | RUNTIME_SMOKE_VALIDATED | NVIDIA GeForce RTX 5060 Laptop GPU, 8151 MiB | 15.76 s | 4.841 s | 1.71 GiB | exact checkpoint load, adapter projection discovery, and bounded generation |
 
-End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.
+Runtime smoke does not establish end-task quality, Native Memory parity, routing quality, or serving economics. The coverage table below identifies the exact follow-up state.
 
 ## Evidence by engine, mode, and profile
 
@@ -52,9 +52,9 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NO_QUALIFIED_ADAPTER | NEEDS_RUN |
+| hf | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
 
 ## Canonical three-condition evidence
 
@@ -64,7 +64,7 @@ A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is no
 | --- | --- |
 | No PRA | `NEEDS_RUN` |
 | PRA - No Adaptor | `NEEDS_RUN` |
-| PRA - Adaptor Bundle | `NEEDS_RUN` |
+| PRA - Adaptor Bundle | `NO_QUALIFIED_ADAPTER` |
 
 Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
 
@@ -96,8 +96,7 @@ pra serve Qwen/Qwen2.5-1.5B-Instruct -e hf -a EInnovator/pra-qwen2-5-1-5b-instru
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| hf | SMOKE | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
-| mlx | portable | NOT_MEASURED for a quantized MLX derivative | NOT_MEASURED | Selected Context; exact HF artifact only |
+| hf | SMOKE | AVAILABLE | NOT_APPLICABLE | Selected Context with BALANCED |
 
 ## End-to-end qualification
 
@@ -136,8 +135,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
-- Bundle build commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

@@ -225,6 +225,78 @@
       }
     },
     {
+      "slug": "qwen3-4b-mlx-8bit",
+      "label": "Qwen3-4B 8-bit",
+      "base_model": "mlx-community/Qwen3-4B-8bit",
+      "base_model_revision": "0348ad770d2ae658ca47b0579b2d2c37b20bbcac",
+      "selected_seed": 37,
+      "adapter_parameters": 655360,
+      "training_examples": 48,
+      "validation_examples": 16,
+      "test_examples": 32,
+      "seeds": [
+        11,
+        23,
+        37,
+        53,
+        71
+      ],
+      "recommendation": "Learned for QASPER; generic for HotpotQA",
+      "datasets": {
+        "qasper": {
+          "R@20%": {
+            "generic": 0.446434,
+            "learned": 0.566285,
+            "delta": 0.119851
+          },
+          "MRR": {
+            "generic": 0.257605,
+            "learned": 0.766098,
+            "delta": 0.508494
+          },
+          "AUC0-30": {
+            "generic": 0.339811,
+            "learned": 0.510201,
+            "delta": 0.17039
+          }
+        },
+        "hotpotqa": {
+          "R@20%": {
+            "generic": 0.407143,
+            "learned": 0.180357,
+            "delta": -0.226786
+          },
+          "MRR": {
+            "generic": 0.550942,
+            "learned": 0.232643,
+            "delta": -0.318299
+          },
+          "AUC0-30": {
+            "generic": 0.351136,
+            "learned": 0.181654,
+            "delta": -0.169482
+          }
+        },
+        "combined": {
+          "R@20%": {
+            "generic": 0.426789,
+            "learned": 0.373321,
+            "delta": -0.053467
+          },
+          "MRR": {
+            "generic": 0.404274,
+            "learned": 0.499371,
+            "delta": 0.095097
+          },
+          "AUC0-30": {
+            "generic": 0.345474,
+            "learned": 0.345928,
+            "delta": 0.000454
+          }
+        }
+      }
+    },
+    {
       "slug": "qwen3-14b",
       "label": "Qwen3-14B",
       "base_model": "mlx-community/Qwen3-14B-4bit",

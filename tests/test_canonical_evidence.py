@@ -95,6 +95,30 @@ def test_renderers_use_canonical_condition_grammar() -> None:
     assert "Official Task Success" in latex
 
 
+def test_compact_card_table_collapses_uniformly_unrun_adaptor_metrics() -> None:
+    record = _record()
+    missing = {
+        name: MetricObservation.missing(
+            MeasurementState.NEEDS_RUN, "Exact learned-adaptor arm was not run."
+        )
+        for name in record.metric_definitions
+    }
+    record = record.model_copy(update={
+        "conditions": {
+            **record.conditions,
+            EvidenceCondition.PRA_ADAPTOR_BUNDLE: ConditionEvidence(metrics=missing),
+        }
+    })
+
+    markdown = render_markdown_table(
+        record, MetricGroup.SERVING, compact_missing=True
+    )
+
+    assert "| No PRA | PRA - No Adaptor | Delta No Adaptor |" in markdown
+    assert "Delta Bundle" not in markdown
+    assert markdown.count("NEEDS_RUN") == 1
+
+
 def test_control_plane_serialization_contains_computed_deltas() -> None:
     payload = _record().serialize_for_control_plane()
     assert payload["conditions"]["no_pra"]["metrics"]["ttft_p95_ms"]["value"] == 1000

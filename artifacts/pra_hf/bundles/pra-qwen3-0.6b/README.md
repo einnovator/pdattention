@@ -44,10 +44,10 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| hf | Selected Context | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Selected Context | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Selected Context | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Selected Context | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NOT_APPLICABLE | NEEDS_RUN |
+| hf | Selected Context | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | QASPER-LEARNED | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN |
 
 ## Canonical three-condition evidence
 
@@ -90,9 +90,8 @@ pra serve Qwen/Qwen3-0.6B -e hf -a EInnovator/pra-qwen3-0.6b -p balanced
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| hf | validated | controlled validation | NOT_MEASURED | Selected Context; qualify Native Memory locally |
-| mlx | validated | NOT_MEASURED for this exact base revision | NOT_MEASURED | Selected Context |
-| vllm | validated | NOT_MEASURED for this bundle | NOT_MEASURED for this bundle | Selected Context |
+| hf | validated | controlled validation | NOT_APPLICABLE | Selected Context; qualify Native Memory locally |
+| vllm | validated | NOT_APPLICABLE | NOT_APPLICABLE | Selected Context |
 
 ## End-to-end qualification
 
@@ -135,8 +134,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
-- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

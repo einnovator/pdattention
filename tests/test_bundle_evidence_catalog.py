@@ -220,7 +220,8 @@ def test_quantized_bundles_preserve_exact_identity_without_transferred_evidence(
     assert bundle.validate()["status"] == "VALID"
     card = BundleBuilder.model_card(bundle)
     assert "No learned router is bundled" in card
-    assert "NOT_MEASURED" in card
+    assert "NO_QUALIFIED_ADAPTER" in card
+    assert "NEEDS_RUN" in card
     assert "Exact-identity runtime smoke" in card
     assert "RUNTIME_SMOKE_VALIDATED" in card
     assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
@@ -250,3 +251,20 @@ def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric
     assert "TTFT p95 (ms)" in text
     assert "ITL p95 (ms)" in text
     assert "Delta Bundle" in text
+
+
+def test_published_cards_use_actionable_coverage_states() -> None:
+    cards = sorted((ROOT / "artifacts/pra_hf/bundles").glob("*/README.md"))
+    assert cards
+    for card in cards:
+        text = card.read_text(encoding="utf-8")
+        assert "NOT_MEASURED" not in text, card
+        assert any(
+            state in text
+            for state in (
+                "MEASURED",
+                "NEEDS_RUN",
+                "CALIBRATION_PENDING",
+                "NO_QUALIFIED_ADAPTER",
+            )
+        ), card

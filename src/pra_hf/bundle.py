@@ -15,6 +15,7 @@ from .bundle_evidence import EvidenceValidationError, validate_bundle_evidence
 from .canonical_evidence import (
     CanonicalEvidenceRecord,
     EvidenceCondition,
+    MeasurementState,
     MetricGroup,
     render_markdown_table,
 )
@@ -514,7 +515,7 @@ class BundleBuilder:
                 f"| {runtime_smoke.get('status', 'NOT_MEASURED')} | {runtime.get('hardware', 'NOT_MEASURED')} "
                 f"| {_metric(runtime_smoke.get('load_seconds'))} s | {_metric(runtime_smoke.get('generation_seconds'))} s "
                 f"| {_bytes(peak_bytes)} | {runtime_smoke.get('claim_scope', 'runtime smoke')} |", "",
-                "End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.", "",
+                "Runtime smoke does not establish end-task quality, Native Memory parity, routing quality, or serving economics. The coverage table below identifies the exact follow-up state.", "",
             ]
         canonical_records = _canonical_evidence_rows(bundle)
         lines += [
@@ -546,12 +547,27 @@ class BundleBuilder:
                     for evidence in record.conditions.values()
                 )
             })
+            profile_status = str(value.get("status", "NEEDS_RUN")).upper()
+            routing_adapter = value.get("routing_adapter")
+            def fallback(condition: EvidenceCondition) -> str:
+                if profile_status == "CALIBRATION_PENDING":
+                    return "CALIBRATION_PENDING"
+                if condition == EvidenceCondition.PRA_ADAPTOR_BUNDLE:
+                    if routing_adapter:
+                        return "NEEDS_RUN"
+                    return (
+                        "NOT_APPLICABLE"
+                        if bundle.learned_adapters
+                        else "NO_QUALIFIED_ADAPTER"
+                    )
+                return "NEEDS_RUN"
+
             lines.append(
                 f"| {profile_engine} | {profile_mode} | {str(name).upper()} "
-                f"| {_condition_coverage(matches, EvidenceCondition.NO_PRA)} "
-                f"| {_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR)} "
-                f"| {_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE)} "
-                f"| {', '.join(groups) if groups else 'NOT_MEASURED'} |"
+                f"| {_condition_coverage(matches, EvidenceCondition.NO_PRA, fallback(EvidenceCondition.NO_PRA))} "
+                f"| {_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR, fallback(EvidenceCondition.PRA_NO_ADAPTOR))} "
+                f"| {_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE, fallback(EvidenceCondition.PRA_ADAPTOR_BUNDLE))} "
+                f"| {', '.join(groups) if groups else fallback(EvidenceCondition.PRA_NO_ADAPTOR)} |"
             )
         lines += ["", "## Canonical three-condition evidence", ""]
         if canonical_records:
@@ -566,7 +582,10 @@ class BundleBuilder:
                 for group in MetricGroup:
                     if not any(metric.group == group for metric in record.metric_definitions.values()):
                         continue
-                    lines += [f"#### {group.value.title()}", "", render_markdown_table(record, group).rstrip(), ""]
+                    lines += [
+                        f"#### {group.value.title()}", "",
+                        render_markdown_table(record, group, compact_missing=True).rstrip(), "",
+                    ]
         else:
             lines += [
                 "A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.", "",
@@ -574,7 +593,7 @@ class BundleBuilder:
                 "| --- | --- |",
                 "| No PRA | `NEEDS_RUN` |",
                 "| PRA - No Adaptor | `NEEDS_RUN` |",
-                "| PRA - Adaptor Bundle | `NEEDS_RUN` |", "",
+                f"| PRA - Adaptor Bundle | `{'NEEDS_RUN' if bundle.learned_adapters else 'NO_QUALIFIED_ADAPTER'}` |", "",
                 "Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.", "",
             ]
         lines += [
@@ -712,7 +731,9 @@ def _canonical_evidence_rows(bundle: PRAModelBundle) -> list[CanonicalEvidenceRe
 
 
 def _condition_coverage(
-    records: Sequence[CanonicalEvidenceRecord], condition: EvidenceCondition
+    records: Sequence[CanonicalEvidenceRecord],
+    condition: EvidenceCondition,
+    fallback: str = "NEEDS_RUN",
 ) -> str:
     """Summarize measured scalar coverage for one card profile row."""
 
@@ -721,14 +742,26 @@ def _condition_coverage(
         for record in records
         for observation in record.conditions[condition].metrics.values()
     ]
-    measured = sum(observation.state.value == "MEASURED" for observation in observations)
+    measured = sum(observation.state == MeasurementState.MEASURED for observation in observations)
     if measured:
-        return f"MEASURED ({measured})"
+        return (
+            f"MEASURED ({measured})"
+            if measured == len(observations)
+            else f"PARTIAL ({measured}/{len(observations)})"
+        )
     states = {observation.state.value for observation in observations}
-    for state in ("BLOCKED", "NOT_MEASURED", "NOT_APPLICABLE"):
+    for state in (
+        "BLOCKED",
+        "NEEDS_RUN",
+        "CALIBRATION_PENDING",
+        "NO_QUALIFIED_ADAPTER",
+        "NOT_APPLICABLE",
+    ):
         if state in states:
             return state
-    return "NOT_MEASURED"
+    if "NOT_MEASURED" in states:
+        return "NEEDS_RUN"
+    return fallback
 
 
 def validate_model_card(text: str, bundle: PRAModelBundle | None = None) -> dict[str, Any]:

@@ -41,13 +41,19 @@ class MetricGroup(str, Enum):
 class MeasurementState(str, Enum):
     MEASURED = "MEASURED"
     NOT_MEASURED = "NOT_MEASURED"
+    NEEDS_RUN = "NEEDS_RUN"
+    CALIBRATION_PENDING = "CALIBRATION_PENDING"
+    NO_QUALIFIED_ADAPTER = "NO_QUALIFIED_ADAPTER"
     NOT_APPLICABLE = "NOT_APPLICABLE"
     BLOCKED = "BLOCKED"
 
 
 class AuditState(str, Enum):
     AVAILABLE_EXISTING = "AVAILABLE_EXISTING"
+    PARTIAL = "PARTIAL"
     NEEDS_RUN = "NEEDS_RUN"
+    CALIBRATION_PENDING = "CALIBRATION_PENDING"
+    NO_QUALIFIED_ADAPTER = "NO_QUALIFIED_ADAPTER"
     NOT_APPLICABLE = "NOT_APPLICABLE"
     BLOCKED = "BLOCKED"
 
@@ -264,29 +270,61 @@ class CanonicalEvidenceRecord(StrictModel):
         return payload
 
 
-def render_markdown_table(record: CanonicalEvidenceRecord, group: MetricGroup | None = None) -> str:
-    """Render grouped canonical condition values with signed deltas."""
+def render_markdown_table(
+    record: CanonicalEvidenceRecord,
+    group: MetricGroup | None = None,
+    *,
+    compact_missing: bool = False,
+) -> str:
+    """Render grouped canonical values, optionally collapsing an unrun adaptor arm."""
 
-    lines = [
-        "| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    metric_names = [
+        name
+        for name, definition in record.metric_definitions.items()
+        if group is None or definition.group == group
     ]
-    for name, definition in record.metric_definitions.items():
-        if group is not None and definition.group != group:
-            continue
+    adaptor_measured = any(
+        record.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE]
+        .metrics.get(name, MetricObservation.missing(MeasurementState.NEEDS_RUN))
+        .state
+        == MeasurementState.MEASURED
+        for name in metric_names
+    )
+    include_adaptor = not compact_missing or adaptor_measured
+    if include_adaptor:
+        lines = [
+            "| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    else:
+        lines = [
+            "| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |",
+            "| --- | --- | --- | ---: | ---: | ---: |",
+        ]
+    for name in metric_names:
+        definition = record.metric_definitions[name]
         no_pra = record.conditions[EvidenceCondition.NO_PRA].metrics.get(name)
         no_adapter = record.conditions[EvidenceCondition.PRA_NO_ADAPTOR].metrics.get(name)
         bundle = record.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics.get(name)
         delta_no_adapter = record.delta(name, EvidenceCondition.PRA_NO_ADAPTOR)
         delta_bundle = record.delta(name, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
+        cells = [
+            _metric_label(name), definition.unit, definition.direction.value,
+            _format_observation(no_pra), _format_observation(no_adapter),
+        ]
+        if include_adaptor:
+            cells.append(_format_observation(bundle))
+        cells.append(_format_delta(delta_no_adapter))
+        if include_adaptor:
+            cells.append(_format_delta(delta_bundle))
         lines.append(
-            "| " + " | ".join((
-                _metric_label(name), definition.unit, definition.direction.value,
-                _format_observation(no_pra), _format_observation(no_adapter),
-                _format_observation(bundle), _format_delta(delta_no_adapter),
-                _format_delta(delta_bundle),
-            )) + " |"
+            "| " + " | ".join(cells) + " |"
         )
+    if compact_missing and not include_adaptor:
+        lines += [
+            "",
+            "PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.",
+        ]
     return "\n".join(lines) + "\n"
 
 

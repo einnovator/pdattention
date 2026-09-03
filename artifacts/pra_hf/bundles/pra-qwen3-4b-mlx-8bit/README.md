@@ -48,7 +48,7 @@ This bounded check loads the published quantized checkpoint, discovers the adapt
 | --- | --- | ---: | ---: | ---: | --- |
 | RUNTIME_SMOKE_VALIDATED | Model Name: MacBook Pro; Chip: Apple M4 Pro; Memory: 48 GB | 151.1 s | 1.014 s | 4.03 GiB | exact checkpoint load, adapter projection discovery, and bounded generation |
 
-End-task quality, Native Memory parity, learned routing, TTFT, ITL, and sustained throughput remain `NOT_MEASURED` for this exact identity.
+Runtime smoke does not establish end-task quality, Native Memory parity, routing quality, or serving economics. The coverage table below identifies the exact follow-up state.
 
 ## Evidence by engine, mode, and profile
 
@@ -56,10 +56,10 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| mlx | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NOT_APPLICABLE | NEEDS_RUN |
+| mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Native Memory | QASPER-LEARNED | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN |
 
 ## Canonical three-condition evidence
 
@@ -102,8 +102,7 @@ pra serve mlx-community/Qwen3-4B-8bit -e mlx -a EInnovator/pra-qwen3-4b-mlx-8bit
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
-| hf | portable | NOT_MEASURED for the full-precision HF counterpart | NOT_MEASURED | Selected Context; exact MLX artifact only |
+| mlx | validated | AVAILABLE | NOT_APPLICABLE | Selected Context with BALANCED |
 
 ## End-to-end qualification
 
@@ -157,8 +156,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
-- Bundle build commit: `5c1be10d5aca50c7ae93194b68e30c0d64fefd0c`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

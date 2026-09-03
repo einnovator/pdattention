@@ -53,9 +53,9 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | context, quality, resources, serving |
-| mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| mlx | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NEEDS_RUN | context, quality, resources, serving |
+| mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
 
 ## Canonical three-condition evidence
 
@@ -67,39 +67,47 @@ Exact identity: `mlx-community/Qwen3-32B-4bit` at `bcaaf7f538adf166c1080a2befdb4
 
 #### Quality
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Token F1 | fraction | higher_is_better | 0.231164 | 0.231164 | NOT_MEASURED | +0 (+0.00%) | NOT_MEASURED |
-| Exact Match | fraction | higher_is_better | 0 | 0 | NOT_MEASURED | +0 | NOT_MEASURED |
-| Gold Answer Log Probability | log_probability | higher_is_better | -9.57946 | -9.57946 | NOT_MEASURED | +0 (-0.00%) | NOT_MEASURED |
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.231164 | 0.231164 | +0 (+0.00%) |
+| Exact Match | fraction | higher_is_better | 0 | 0 | +0 |
+| Gold Answer Log Probability | log_probability | higher_is_better | -9.57946 | -9.57946 | +0 (-0.00%) |
+
+PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
 
 #### Context
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Visible Tokens | token | lower_is_better | 315.533 | 34.2667 | NOT_MEASURED | -281.267 (-89.14%) | NOT_MEASURED |
-| Selected Native K/V Tokens | token | neutral | 0 | 18001.1 | NOT_MEASURED | +18001.1 | NOT_MEASURED |
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 315.533 | 34.2667 | -281.267 (-89.14%) |
+| Selected Native K/V Tokens | token | neutral | 0 | 18001.1 | +18001.1 |
+
+PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
 
 #### Serving
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| TTFT p50 (ms) | ms | lower_is_better | 524.92 | 490.204 | NOT_MEASURED | -34.7164 (-6.61%) | NOT_MEASURED |
-| TTFT p95 (ms) | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
-| TTFT p99 (ms) | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
-| ITL p50 (ms) | ms | lower_is_better | 77.7091 | 79.0556 | NOT_MEASURED | +1.34651 (+1.73%) | NOT_MEASURED |
-| ITL p95 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | NOT_MEASURED | +2.08218 (+2.66%) | NOT_MEASURED |
-| ITL p99 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | NOT_MEASURED | +2.08218 (+2.66%) | NOT_MEASURED |
-| Output Tokens Per Second | output_token/s | higher_is_better | 12.8734 | 12.6266 | NOT_MEASURED | -0.246821 (-1.92%) | NOT_MEASURED |
-| Completion Latency Mean (ms) | ms | lower_is_better | 1177.04 | 1183.23 | NOT_MEASURED | +6.18768 (+0.53%) | NOT_MEASURED |
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| TTFT p50 (ms) | ms | lower_is_better | 524.92 | 490.204 | -34.7164 (-6.61%) |
+| TTFT p95 (ms) | ms | lower_is_better | 799.757 | 797.258 | -2.49929 (-0.31%) |
+| TTFT p99 (ms) | ms | lower_is_better | 799.757 | 797.258 | -2.49929 (-0.31%) |
+| ITL p50 (ms) | ms | lower_is_better | 77.7091 | 79.0556 | +1.34651 (+1.73%) |
+| ITL p95 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | +2.08218 (+2.66%) |
+| ITL p99 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | +2.08218 (+2.66%) |
+| Output Tokens Per Second | output_token/s | higher_is_better | 12.8734 | 12.6266 | -0.246821 (-1.92%) |
+| Completion Latency Mean (ms) | ms | lower_is_better | 1177.04 | 1183.23 | +6.18768 (+0.53%) |
+
+PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
 
 #### Resources
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Active Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
-| Retained Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
-| Peak Memory Bytes | byte | lower_is_better | 1.91537e+10 | 1.9058e+10 | NOT_MEASURED | -9.56826e+07 (-0.50%) | NOT_MEASURED |
+| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
+| --- | --- | --- | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | +7.37324e+07 |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | +7.37324e+07 |
+| Peak Memory Bytes | byte | lower_is_better | 1.91537e+10 | 1.9058e+10 | -9.56826e+07 (-0.50%) |
+
+PRA - Adaptor Bundle: `NEEDS_RUN` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
 
 ## Installation
 
@@ -129,8 +137,7 @@ pra serve mlx-community/Qwen3-32B-4bit -e mlx -a EInnovator/pra-qwen3-32b-mlx-4b
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | QUALIFIED | NOT_MEASURED | Native Memory with BALANCED |
-| hf | portable | NOT_MEASURED for the full-precision HF counterpart | NOT_MEASURED | Selected Context; exact MLX artifact only |
+| mlx | validated | QUALIFIED | NOT_APPLICABLE | Native Memory with BALANCED |
 
 ## End-to-end qualification
 
@@ -172,11 +179,11 @@ pra report .pra/runs/qasper --format html
 
 ## Known limitations
 
-- The learned router improves QASPER but is not uniformly positive on HotpotQA; it is opt-in rather than the bundle default.
+- No learned router is bundled for this exact quantized identity; routing-adapter transfer from another quantization is intentionally disallowed.
 - Paired natural-QA evidence contains five examples per dataset and supports engine qualification, not production qualification.
 - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers.
 - The qualification identity is the exact 4bit MLX model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.
-- Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality.
+- The selector-frozen natural-QA run qualifies the generic Native Memory path; an exact learned-adaptor arm still requires a separate run.
 - Base-model and dataset licenses apply separately to the router artifact.
 
 ## Training/creation
@@ -185,8 +192,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
-- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

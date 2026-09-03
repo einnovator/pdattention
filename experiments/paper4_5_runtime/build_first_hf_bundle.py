@@ -125,19 +125,13 @@ def _manifest(commit: str, router_config: dict) -> dict:
             "hf": {
                 "selected_context": "validated",
                 "native_memory": "controlled validation",
-                "native_serving": "NOT_MEASURED",
+                "native_serving": "NOT_APPLICABLE",
                 "recommended": "Selected Context; qualify Native Memory locally",
-            },
-            "mlx": {
-                "selected_context": "validated",
-                "native_memory": "NOT_MEASURED for this exact base revision",
-                "native_serving": "NOT_MEASURED",
-                "recommended": "Selected Context",
             },
             "vllm": {
                 "selected_context": "validated",
-                "native_memory": "NOT_MEASURED for this bundle",
-                "native_serving": "NOT_MEASURED for this bundle",
+                "native_memory": "NOT_APPLICABLE",
+                "native_serving": "NOT_APPLICABLE",
                 "recommended": "Selected Context",
             },
         },

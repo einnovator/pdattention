@@ -235,6 +235,7 @@ qualification:
   - *id004
   - *id005
   - *id006
+  runtime_smoke: null
   training:
     datasets: QASPER and HotpotQA
     train_examples: 48
@@ -265,13 +266,8 @@ runtime_compatibility:
   mlx:
     selected_context: validated
     native_memory: AVAILABLE
-    native_serving: NOT_MEASURED
+    native_serving: NOT_APPLICABLE
     recommended: Selected Context with BALANCED
-  hf:
-    selected_context: portable
-    native_memory: NOT_MEASURED for the full-precision HF counterpart
-    native_serving: NOT_MEASURED
-    recommended: Selected Context; exact MLX artifact only
 engine_realizations:
   mlx:
     bundle_consumed_by: pra_runtime
@@ -279,20 +275,20 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
-  bundle_build_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
+  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
   hf_repo: EInnovator/pra-llama3-1-8b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: llama3.1
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: artifacts/pra_hf/routers/llama3-8b-combined-d128
-  selection_reason: Exact-identity paired natural-QA qualification, with routing research
-    kept separate.
+  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/llama3-8b
+  selection_reason: Fleet-compatible exact quantization with evidence isolated from
+    other weight representations.
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: 7f1c890729d1641b0693b4068bed59b1c2b18e3744b70bb3eb1be069c9b798ad
   learned_adapters/combined-router-d128/config.json: de48f3e4f4f357dd28947f563e0b679585416229815a7355b6c6b316e28d2529
-  qualification/catalog_summary.json: bdf42af02e948b52953b33c61197b915e37e4e003a2addf00c3fa61b5a6bf0d9
+  qualification/catalog_summary.json: c20e46dbc58e32ce0a57208fe612732e399c7b428b361cad5c77a01015d60c99
   qualification/comparison.json: edbf90e073ef7dd89e1704833a7f6110498e8314cbe34c95d3f9f7fcaedcb62c
   qualification/feature_dataset_manifest.json: 717daafd0329a95b1fff7067a23d47894095624560c670daf9111b99b9157148
   structural_adapter/pra_adapter.yaml: 5d3bbc2ba0a4390e7d1f64516e6ada412097ffa4a577483e43e20bc2ce432a44

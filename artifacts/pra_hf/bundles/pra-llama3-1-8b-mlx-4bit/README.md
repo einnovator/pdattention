@@ -46,10 +46,10 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| mlx | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| mlx | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NOT_APPLICABLE | NEEDS_RUN |
+| mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Native Memory | QASPER-LEARNED | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN |
 
 ## Canonical three-condition evidence
 
@@ -92,8 +92,7 @@ pra serve mlx-community/Llama-3.1-8B-Instruct-4bit -e mlx -a EInnovator/pra-llam
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
-| hf | portable | NOT_MEASURED for the full-precision HF counterpart | NOT_MEASURED | Selected Context; exact MLX artifact only |
+| mlx | validated | AVAILABLE | NOT_APPLICABLE | Selected Context with BALANCED |
 
 ## End-to-end qualification
 
@@ -147,8 +146,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
-- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

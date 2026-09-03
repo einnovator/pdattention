@@ -710,18 +710,19 @@ qualification:
     artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
   - *id001
   routing_diagnostics: []
+  runtime_smoke: null
   training: {}
   limitations:
-  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
-    it is opt-in rather than the bundle default.
+  - No learned router is bundled for this exact quantized identity; routing-adapter
+    transfer from another quantization is intentionally disallowed.
   - Paired natural-QA evidence contains five examples per dataset and supports engine
     qualification, not production qualification.
   - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
     therefore retains all eligible layers.
   - The qualification identity is the exact 4bit MLX model and revision; it does not
     transfer automatically to another checkpoint, engine, or quantization.
-  - Routing evidence compares a frozen generic router with a small learned router;
-    it does not establish end-task generation quality.
+  - The selector-frozen natural-QA run qualifies the generic Native Memory path; an
+    exact learned-adaptor arm still requires a separate run.
   - Base-model and dataset licenses apply separately to the router artifact.
   artifacts:
   - qualification/qwen3_32b_mlx_profiles.json
@@ -730,13 +731,8 @@ runtime_compatibility:
   mlx:
     selected_context: validated
     native_memory: QUALIFIED
-    native_serving: NOT_MEASURED
+    native_serving: NOT_APPLICABLE
     recommended: Native Memory with BALANCED
-  hf:
-    selected_context: portable
-    native_memory: NOT_MEASURED for the full-precision HF counterpart
-    native_serving: NOT_MEASURED
-    recommended: Selected Context; exact MLX artifact only
 engine_realizations:
   mlx:
     bundle_consumed_by: pra_runtime
@@ -744,8 +740,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
-  bundle_build_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
+  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
   hf_repo: EInnovator/pra-qwen3-32b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0

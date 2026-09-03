@@ -46,10 +46,10 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 | Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| hf | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
-| hf | Native Memory | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NOT_APPLICABLE | NEEDS_RUN |
+| hf | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Native Memory | QASPER-LEARNED | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN |
 
 ## Canonical three-condition evidence
 
@@ -92,8 +92,7 @@ pra serve Qwen/Qwen2.5-Coder-1.5B-Instruct -e hf -a EInnovator/pra-qwen2-5-coder
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| hf | validated | AVAILABLE | NOT_MEASURED | Selected Context with BALANCED |
-| mlx | portable | NOT_MEASURED for a quantized MLX derivative | NOT_MEASURED | Selected Context; exact HF artifact only |
+| hf | validated | AVAILABLE | NOT_APPLICABLE | Selected Context with BALANCED |
 
 ## End-to-end qualification
 
@@ -148,8 +147,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
-- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

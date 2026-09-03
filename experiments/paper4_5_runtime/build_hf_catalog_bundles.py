@@ -489,14 +489,8 @@ def _manifest(
                 "hf": {
                     "selected_context": "validated" if comparison is not None else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
                     "native_memory": "AVAILABLE",
-                    "native_serving": "NOT_MEASURED",
+                    "native_serving": "NOT_APPLICABLE",
                     "recommended": "Selected Context with BALANCED",
-                },
-                "mlx": {
-                    "selected_context": "portable",
-                    "native_memory": "NOT_MEASURED for a quantized MLX derivative",
-                    "native_serving": "NOT_MEASURED",
-                    "recommended": "Selected Context; exact HF artifact only",
                 },
             }
             if engine == "hf"
@@ -504,14 +498,8 @@ def _manifest(
                 "mlx": {
                     "selected_context": "validated" if (paired_evidence or comparison is not None) else "SMOKE" if runtime_smoke.is_file() else "AVAILABLE",
                     "native_memory": "QUALIFIED" if paired_evidence else "AVAILABLE",
-                    "native_serving": "NOT_MEASURED",
+                    "native_serving": "NOT_APPLICABLE",
                     "recommended": "Native Memory with BALANCED" if paired_evidence else "Selected Context with BALANCED",
-                },
-                "hf": {
-                    "selected_context": "portable",
-                    "native_memory": "NOT_MEASURED for the full-precision HF counterpart",
-                    "native_serving": "NOT_MEASURED",
-                    "recommended": "Selected Context; exact MLX artifact only",
                 },
             }
         ),
@@ -579,9 +567,13 @@ def _manifest(
                     ["Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality."]
                     if comparison is not None
                     else [
+                        "The selector-frozen natural-QA run qualifies the generic Native Memory path; an exact learned-adaptor arm still requires a separate run."
+                    ]
+                    if paired_evidence
+                    else [
                         "The runtime smoke loads the exact quantized checkpoint and generates a fixed prompt; it is not an end-task quality or serving benchmark."
                         if runtime_smoke.is_file()
-                        else "End-task quality, serving latency, and native-memory parity remain NOT_MEASURED for this exact identity."
+                        else "End-task quality, serving latency, and native-memory parity require an exact-identity qualification run."
                     ]
                 ),
                 *spec.get("extra_limitations", []),
