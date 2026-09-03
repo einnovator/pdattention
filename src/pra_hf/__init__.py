@@ -113,6 +113,24 @@ from .agent_resources import (
 from .tool_records import ToolRecord, ToolSchema, tool_record_from_callable
 from .toolsets import Tool, Toolset, default_toolset
 from .agent import AgentTurn, PRAAgent, PRAAgentConfig
+from .agent_config import (
+    AgentRuntimeSettings,
+    ControlPlaneClientConfig,
+    MCPAgentConfig,
+    MCPServerConfig,
+    PRAAgentSettings,
+    ProviderConfig,
+    TUIConfig,
+)
+from .agent_control_plane import (
+    AmbiguousTargetError,
+    ControlPlaneClient,
+    InferenceTarget,
+    InferenceTargetManager,
+)
+from .agent_mcp import MCPClientManager, MCPConnectionState, MCPServerStatus
+from .agent_workspace import AttachmentInfo, AttachmentManager, HistoryManager, export_session
+from .tui import CommandRegistry, CommandSpec
 from .agent_transport import (
     AgentTransportCapabilities,
     AgentTransportError,

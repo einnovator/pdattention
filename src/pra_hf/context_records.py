@@ -38,6 +38,10 @@ class RecordType(str, Enum):
     TASK_STATE = "task_state"
     TASK_EVENT = "task_event"
     GENERIC_DOCUMENT = "generic_document"
+    USER_PASTE = "user.paste"
+    ATTACHMENT = "session.attachment"
+    ATTACHMENT_EVENT = "session.attachment_event"
+    MCP_RESOURCE = "mcp.resource"
 
     @classmethod
     def _missing_(cls, value: object):

@@ -114,6 +114,9 @@ EXAMPLES = {
     "pra agent inspect": "pra agent inspect --profile work --yaml",
     "pra agent start": "pra agent start --profile work --host 127.0.0.1 --port 8765 --detach --open",
     "pra agent stop": "pra agent stop",
+    "pra agent mcp list": "pra agent mcp list --config pra-agent.yaml --connect --json",
+    "pra agent mcp add": "pra agent mcp add docs http://127.0.0.1:9400/mcp --config pra-agent.yaml --save",
+    "pra agent mcp remove": "pra agent mcp remove docs --config pra-agent.yaml --save",
 }
 
 
@@ -217,6 +220,9 @@ OUTPUTS = {
     "pra agent inspect": "agent_profile: work\nmodel: Qwen/Qwen3-0.6B\ncontext_transport: auto\ntools: ask",
     "pra agent start": "PRA Agent Web UI started\nURL: http://127.0.0.1:8765\nDetached: true",
     "pra agent stop": "PRA Agent Web UI stopped.",
+    "pra agent mcp list": "servers:\n- name: docs\n  state: CONNECTED\n  tool_count: 4\n  resource_count: 2",
+    "pra agent mcp add": "Saved MCP server docs to pra-agent.yaml.",
+    "pra agent mcp remove": "Removed MCP server docs from pra-agent.yaml.",
 }
 
 

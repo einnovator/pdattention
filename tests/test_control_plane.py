@@ -12,6 +12,7 @@ from pra_control.auth import AuthService, Identity
 from pra_control.clients import AsyncServiceClient
 from pra_control.config import (
     ControlAuthConfig,
+    ControlAuthProfile,
     ControlPlaneConfig,
     EngineTargetConfig,
     FleetConfig,
@@ -91,6 +92,19 @@ def set_identity(client: TestClient, runtime: ControlRuntime, role: Role) -> Ide
     identity = Identity(f"test:{role.value}", role.value, None, role, "test", f"csrf-{role.value}")
     client.cookies.set(COOKIE, runtime.auth.codec.encode(identity))
     return identity
+
+
+def test_control_plane_accepts_configured_agent_bearer(control, monkeypatch):
+    client, runtime = control
+    monkeypatch.setenv("PRA_AGENT_CONTROL_TOKEN", "agent-secret")
+    runtime.config.auth_profiles["agent"] = ControlAuthProfile(
+        type="bearer_token", subject="pra-agent", roles=[Role.VIEWER],
+        token_env="PRA_AGENT_CONTROL_TOKEN",
+    )
+    response = client.get("/api/fleet", headers={"Authorization": "Bearer agent-secret"})
+    assert response.status_code == 200
+    denied = client.get("/api/fleet", headers={"Authorization": "Bearer wrong"})
+    assert denied.status_code == 401
 
 
 def test_config_precedence_and_non_loopback_guard(monkeypatch, tmp_path):

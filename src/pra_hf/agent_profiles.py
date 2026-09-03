@@ -10,6 +10,7 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from .agent import PRAAgent, PRAAgentConfig
+from .agent_config import PRAAgentSettings
 from .agent_transport import (
     ContextTransportMode,
     NegotiatedRemoteBackend,
@@ -64,6 +65,7 @@ class AgentProfile:
     required_context_capabilities: tuple[str, ...] = ()
     max_new_tokens: int = 1024
     reserved: Mapping[str, Any] = field(default_factory=dict)
+    application_settings: PRAAgentSettings | None = None
 
     def __post_init__(self) -> None:
         if self.context_records <= 0 or self.max_new_tokens <= 0:
@@ -147,6 +149,9 @@ class AgentProfile:
 
     def redacted_dict(self) -> dict[str, Any]:
         value = asdict(self)
+        value["application_settings"] = (
+            self.application_settings.redacted() if self.application_settings else None
+        )
         if self.credentials_file:
             value["credentials_file"] = str(Path(self.credentials_file).expanduser())
         value["credentials"] = "referenced, not loaded into profile output" if self.credentials_file else None
@@ -312,6 +317,42 @@ class AgentLauncher:
             max_new_tokens=profile.max_new_tokens,
             task_scope=profile.tasks.get("scope_policy", TaskScopePolicy.TASK_ADAPTIVE.value),
         )
+        mcp_config = load_mcp_config(profile)
+        if mcp_config and "servers" not in mcp_config:
+            mcp_config = {"servers": mcp_config}
+        settings = profile.application_settings or PRAAgentSettings.model_validate({
+            "agent": {
+                "model": profile.model,
+                "provider": "profile" if profile.runtime.endpoint else None,
+                "user_id": agent_config.user_id,
+                "tenant_id": agent_config.tenant_id,
+                "task_scope": agent_config.task_scope.value,
+                "context_records": agent_config.context_records,
+                "tool_candidates": agent_config.tool_candidates,
+                "max_tool_rounds": agent_config.max_tool_rounds,
+                "allow_writes": agent_config.allow_writes,
+                "allow_destructive": agent_config.allow_destructive,
+                "max_new_tokens": agent_config.max_new_tokens,
+            },
+            "providers": ({"profile": {
+                "type": profile.runtime.engine,
+                "base_url": profile.runtime.endpoint,
+                "model": profile.model,
+                "engine_instance": profile.runtime.engine,
+                "credentials_file": profile.credentials_file,
+            }} if profile.runtime.endpoint else {}),
+            "mcp": mcp_config,
+            "session": {"path": str(sessions), "resume_last": profile.resume_last},
+        })
+        if profile.application_settings is not None:
+            host = settings.agent
+            agent_config = PRAAgentConfig(
+                user_id=host.user_id, tenant_id=host.tenant_id,
+                task_scope=host.task_scope, context_records=host.context_records,
+                tool_candidates=host.tool_candidates, max_tool_rounds=host.max_tool_rounds,
+                allow_writes=host.allow_writes, allow_destructive=host.allow_destructive,
+                max_new_tokens=host.max_new_tokens,
+            )
         skill_values: list[Skill] = []
         for directory in profile.skill_directories:
             path = Path(directory).expanduser()
@@ -330,6 +371,7 @@ class AgentLauncher:
                 runtime_config={"profile": profile.pra} if profile.pra else None,
                 revision=profile.model_revision,
                 observability=observability,
+                settings=settings,
             )
         else:
             if not profile.runtime.endpoint:
@@ -357,7 +399,7 @@ class AgentLauncher:
                 session_service=LocalSessionService(sessions),
                 observability=observability,
             )
-            agent = PRAAgent(runtime, config=agent_config, observability=observability)
+            agent = PRAAgent(runtime, config=agent_config, observability=observability, settings=settings)
         transport_summary = (
             {
                 "requested": profile.context_transport.value,

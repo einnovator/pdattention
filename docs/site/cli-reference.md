@@ -3873,6 +3873,116 @@ Resolution reason: native economics require qualified evidence
 
 ## Agents
 
+### `pra agent mcp list`
+
+List configured MCP servers without exposing credentials.
+
+**Usage**
+
+```text
+pra agent mcp list [OPTIONS]
+```
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | no | Load an explicit agent profile document. |
+| `--connect` | flag | `off` | no | Connect and include live status. |
+| `--json` | flag | `off` | no | Emit JSON. |
+| `--yaml` | flag | `off` | no | Emit YAML. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra agent mcp list --config pra-agent.yaml --connect --json
+```
+
+**Example output**
+
+```text
+servers:
+- name: docs
+  state: CONNECTED
+  tool_count: 4
+  resource_count: 2
+```
+
+### `pra agent mcp add`
+
+Add an HTTP MCP server to Agent configuration.
+
+**Usage**
+
+```text
+pra agent mcp add [OPTIONS] NAME URL
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | New assessment name. |
+| `URL` | yes | PRA management API base URL. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | yes | Load an explicit agent profile document. |
+| `--save` | flag | `off` | no | Persist explicitly; otherwise only validate. |
+| `--required` | flag | `off` | no | Configure `required`. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra agent mcp add docs http://127.0.0.1:9400/mcp --config pra-agent.yaml --save
+```
+
+**Example output**
+
+```text
+Saved MCP server docs to pra-agent.yaml.
+```
+
+### `pra agent mcp remove`
+
+Remove a configured MCP server.
+
+**Usage**
+
+```text
+pra agent mcp remove [OPTIONS] NAME
+```
+
+**Arguments**
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | New assessment name. |
+
+**Options**
+
+| Option | Value | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `--config` | PATH | `-` | yes | Load an explicit agent profile document. |
+| `--save` | flag | `off` | no | Persist explicitly; otherwise only validate. |
+| `-h`, `--help` | flag | `off` | no | Show command help and exit. |
+
+**Common use**
+
+```bash
+pra agent mcp remove docs --config pra-agent.yaml --save
+```
+
+**Example output**
+
+```text
+Removed MCP server docs from pra-agent.yaml.
+```
+
 ### `pra agent chat`
 
 Open the persistent TUI; no flags uses the default profile.

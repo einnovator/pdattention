@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -11,7 +13,9 @@ import click
 import torch
 import yaml
 
-from .agent_profiles import AgentLauncher, AgentProfileRegistry, load_mcp_config
+from .agent_profiles import AgentLauncher, AgentProfile, AgentProfileRegistry, load_mcp_config
+from .agent_config import MCPServerConfig, PRAAgentSettings
+from .agent_mcp import MCPClientManager
 from .bundle import (
     BundleBuilder,
     BundleResolver,
@@ -1155,10 +1159,115 @@ def agent_cli() -> None:
     """Chat, run tasks, and launch the optional web UI."""
 
 
+@agent_cli.group("mcp")
+def agent_mcp_cli() -> None:
+    """Configure and inspect PRA Agent MCP clients."""
+
+
+def _agent_settings(path: Path | None) -> PRAAgentSettings:
+    return PRAAgentSettings.from_file(path) if path and path.exists() else PRAAgentSettings()
+
+
+@agent_mcp_cli.command("list")
+@click.option("--config", type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--connect", is_flag=True, help="Connect and include live status.")
+@_output_options
+def agent_mcp_list(config, connect, json_output, yaml_output) -> None:
+    """List configured MCP servers without exposing credentials."""
+    settings = _agent_settings(config)
+    if connect:
+        async def inspect():
+            manager = MCPClientManager(settings.mcp)
+            try:
+                await manager.connect_all()
+                return [vars(row) | {"state": row.state.value} for row in await manager.list_servers()]
+            finally:
+                await manager.disconnect_all()
+        rows = asyncio.run(inspect())
+    else:
+        rows = [{"name": name, **server.model_dump(mode="json", exclude={"auth"}),
+                 "auth": server.auth.model_dump(mode="json", exclude_none=True)}
+                for name, server in settings.mcp.servers.items()]
+    _emit({"servers": rows}, json_output=json_output, yaml_output=yaml_output)
+
+
+@agent_mcp_cli.command("add")
+@click.argument("name")
+@click.argument("url")
+@click.option("--config", required=True, type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--save", is_flag=True, help="Persist explicitly; otherwise only validate.")
+@click.option("--required", is_flag=True)
+def agent_mcp_add(name, url, config, save, required) -> None:
+    """Add an HTTP MCP server to Agent configuration."""
+    settings = _agent_settings(config)
+    settings.mcp.servers[name] = MCPServerConfig(url=url, required=required)
+    if save:
+        settings.save(config)
+        click.echo(f"Saved MCP server {name} to {config}.")
+    else:
+        click.echo(f"Validated MCP server {name}; pass --save to persist.")
+
+
+@agent_mcp_cli.command("remove")
+@click.argument("name")
+@click.option("--config", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--save", is_flag=True, help="Persist explicitly; otherwise only validate.")
+def agent_mcp_remove(name, config, save) -> None:
+    """Remove a configured MCP server."""
+    settings = _agent_settings(config)
+    if name not in settings.mcp.servers:
+        raise click.ClickException(f"Unknown MCP server: {name}")
+    del settings.mcp.servers[name]
+    if save:
+        settings.save(config)
+        click.echo(f"Removed MCP server {name} from {config}.")
+    else:
+        click.echo(f"Validated removal of {name}; pass --save to persist.")
+
+
 def _resolve_agent_profile(
     profile, config, model, pra, engine, endpoint, workspace, skills,
     context_transport=None, allow_text_fallback=None,
 ):
+    if config:
+        try:
+            application = PRAAgentSettings.from_file(config)
+        except Exception:
+            application = None
+        if application is not None:
+            selected_provider = application.agent.provider or next(iter(application.providers), None)
+            provider = application.providers.get(selected_provider) if selected_provider else None
+            app_overrides = {"agent": {}}
+            if model:
+                app_overrides["agent"]["model"] = model
+            if endpoint and selected_provider:
+                app_overrides["providers"] = {selected_provider: {"base_url": endpoint}}
+            source_file = application.source_file
+            application = PRAAgentSettings.merge(application, app_overrides)
+            application.source_file = source_file
+            provider = application.providers.get(selected_provider) if selected_provider else provider
+            values = {
+                "model": {"id": application.agent.model or (provider.model if provider else None)},
+                "runtime": {
+                    "mode": "gateway" if provider and provider.base_url else "embedded",
+                    "engine": engine or (provider.type if provider else "hf"),
+                    "endpoint": endpoint or (provider.base_url if provider else None),
+                },
+                "workspace": str(workspace or "."),
+                "sessions": {"path": application.session.path, "resume_last": application.session.resume_last},
+                "tools": {"allow_writes": application.agent.allow_writes,
+                          "allow_destructive": application.agent.allow_destructive,
+                          "candidates": application.agent.tool_candidates,
+                          "max_rounds": application.agent.max_tool_rounds},
+                "skills": {"directories": [str(path) for path in skills]},
+                "context": {"records": application.agent.context_records,
+                            "transport": context_transport or "auto",
+                            "allow_text_fallback": True if allow_text_fallback is None else allow_text_fallback},
+                "generation": {"max_new_tokens": application.agent.max_new_tokens},
+                "pra": {"profile": pra} if pra else {},
+            }
+            selected = replace(AgentProfile.from_dict("config", values), application_settings=application)
+            return selected, (f"application:{config}",)
     overrides = {}
     if model:
         overrides["model"] = model
@@ -1216,9 +1325,10 @@ def agent_chat(legacy_model, profile, pra, model, engine, endpoint, config, work
     _emit(launch.summary)
     try:
         launch.agent.start_session(session, resume=resume or selected.resume_last, task_description=task)
+        asyncio.run(launch.agent.start())
         AgentShell(launch.agent).run()
     finally:
-        launch.agent.close()
+        asyncio.run(launch.agent.aclose())
         telemetry.close()
 
 
@@ -1237,13 +1347,14 @@ def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, 
     launch = AgentLauncher().launch(selected, observability=telemetry)
     try:
         launch.agent.start_session(session, resume=resume or selected.resume_last, task_description=task)
+        asyncio.run(launch.agent.start())
         turn = launch.agent.run_turn(query)
         if json_output:
             _emit({"response": turn.text, "session_id": turn.session.session_id, "tool_calls": len(turn.tool_executions), "selected_records": list(turn.selected_record_ids), "task_state": turn.session.tasks.to_dict(), "metrics": launch.agent.runtime.inspect(), "resolution": trace if verbose else None}, json_output=True)
         else:
             click.echo(turn.text)
     finally:
-        launch.agent.close()
+        asyncio.run(launch.agent.aclose())
         telemetry.close()
 
 
@@ -1252,8 +1363,14 @@ def agent_run(prompt, profile, pra, model, engine, endpoint, config, workspace, 
 @click.option("-c", "--config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @_output_options
 def agent_inspect(profile, config, json_output, yaml_output) -> None:
-    selected, sources = AgentProfileRegistry().resolve(profile_name=profile, config_path=config)
-    _emit({"sources": sources, "profile": selected.redacted_dict(), "mcp": load_mcp_config(selected)}, json_output=json_output, yaml_output=yaml_output)
+    selected, sources = _resolve_agent_profile(
+        profile, config, None, None, None, None, None, (), None, None
+    )
+    mcp = (
+        selected.application_settings.redacted().get("mcp", {})
+        if selected.application_settings else load_mcp_config(selected)
+    )
+    _emit({"sources": sources, "profile": selected.redacted_dict(), "mcp": mcp}, json_output=json_output, yaml_output=yaml_output)
 
 
 @agent_cli.command("start")

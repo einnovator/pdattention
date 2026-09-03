@@ -12,7 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .agent_execution import (
     ExecutionAuthorization,
@@ -20,8 +20,13 @@ from .agent_execution import (
     parse_tool_call,
     resource_tool_schema,
 )
-from .agent_resources import AgentResource, DiscoveryRequest, SideEffectClass
-from .agent_transport import AgentTurnContext, render_text_prompt
+from .agent_resources import AgentResource, DiscoveryRequest, PersistentResourceIndex, SideEffectClass
+from .agent_transport import AgentTurnContext, NegotiatedRemoteBackend, render_text_prompt
+from .agent_config import PRAAgentSettings
+from .agent_control_plane import ControlPlaneClient, InferenceTarget, InferenceTargetManager
+from .agent_mcp import MCPClientManager
+from .agent_workspace import AttachmentManager, HistoryManager, export_session
+from .agent_execution import SafeToolExecutor
 from .capability_sdk import AgentConfig, CapabilitySDK
 from .context_records import ContextRecord, RecordType
 from .model import GenerationResult
@@ -84,15 +89,57 @@ class PRAAgent:
         toolset: Toolset | None = None,
         authorization_callback: Callable[[AgentResource, ToolCall], bool] | None = None,
         observability: Observability | None = None,
+        settings: PRAAgentSettings | Mapping[str, Any] | None = None,
+        config_file: str | Path | None = None,
     ) -> None:
         self.runtime = runtime
-        self.config = config or PRAAgentConfig()
+        base_settings = PRAAgentSettings.compose(config_file=config_file, config=settings)
+        host = base_settings.agent
+        self.config = config or PRAAgentConfig(
+            user_id=host.user_id,
+            tenant_id=host.tenant_id,
+            task_scope=host.task_scope,
+            context_records=host.context_records,
+            tool_candidates=host.tool_candidates,
+            max_tool_rounds=host.max_tool_rounds,
+            allow_writes=host.allow_writes,
+            allow_destructive=host.allow_destructive,
+            max_new_tokens=host.max_new_tokens,
+        )
         self.toolset = toolset
         self.authorization_callback = authorization_callback
         self.observability = observability or getattr(
             runtime, "observability", DISABLED_OBSERVABILITY
         )
         self.session = None
+        self.settings = PRAAgentSettings.merge(
+            base_settings,
+            {"agent": {
+                "user_id": self.config.user_id,
+                "tenant_id": self.config.tenant_id,
+                "context_records": self.config.context_records,
+                "tool_candidates": self.config.tool_candidates,
+                "max_tool_rounds": self.config.max_tool_rounds,
+                "allow_writes": self.config.allow_writes,
+                "allow_destructive": self.config.allow_destructive,
+                "max_new_tokens": self.config.max_new_tokens,
+            }} if config is not None else {},
+        )
+        self.settings.source_file = base_settings.source_file
+        cp_config = self.settings.control_plane
+        self.control_plane = ControlPlaneClient(cp_config) if cp_config and cp_config.enabled else None
+        self.mcp = MCPClientManager(self.settings.mcp)
+        self.targets = InferenceTargetManager(self.settings.providers, self.control_plane)
+        self.sessions = self.runtime.session_service
+        self.attachments = AttachmentManager(
+            lambda record: self.runtime.append_session_record(self.session, record),
+            lambda: self.state.records,
+        )
+        self.history = HistoryManager(
+            self.settings.tui.history_file,
+            limit=self.settings.tui.history_size,
+            suppress_duplicates=self.settings.tui.suppress_duplicates,
+        )
 
     @classmethod
     def from_pretrained(
@@ -109,6 +156,8 @@ class PRAAgent:
         session_service: SessionService | None = None,
         sessions_path: str | Path = ".pra/sessions",
         observability: Observability | None = None,
+        settings: PRAAgentSettings | Mapping[str, Any] | None = None,
+        config_file: str | Path | None = None,
         **model_kwargs: object,
     ) -> "PRAAgent":
         """Load a model and assemble the complete local agent SDK."""
@@ -144,7 +193,109 @@ class PRAAgent:
             config=agent_config,
             toolset=toolset,
             observability=observability,
+            settings=settings,
+            config_file=config_file,
         )
+
+    @classmethod
+    def from_config_file(
+        cls, path: str | Path, *, config: PRAAgentSettings | Mapping[str, Any] | None = None,
+        runtime_config: PRARuntimeConfig | Mapping[str, object] | None = None,
+        observability: Observability | None = None,
+    ) -> "PRAAgent":
+        """Create a remote Agent from the configured provider without loading a local model."""
+
+        settings = PRAAgentSettings.compose(config_file=path, config=config)
+        provider_name = settings.agent.provider or next(iter(settings.providers), None)
+        if not provider_name or provider_name not in settings.providers:
+            raise ValueError("Agent config must select a configured provider.")
+        provider = settings.providers[provider_name]
+        if not provider.base_url:
+            raise ValueError(f"Provider {provider_name!r} requires base_url.")
+        host = settings.agent
+        policy = PRAAgentConfig(
+            user_id=host.user_id, tenant_id=host.tenant_id, task_scope=host.task_scope,
+            context_records=host.context_records, tool_candidates=host.tool_candidates,
+            max_tool_rounds=host.max_tool_rounds, allow_writes=host.allow_writes,
+            allow_destructive=host.allow_destructive, max_new_tokens=host.max_new_tokens,
+        )
+        backend = NegotiatedRemoteBackend(provider.base_url, provider.model or settings.agent.model,
+                                           credentials_file=provider.credentials_file,
+                                           observability=observability)
+        runtime = PRARuntime(config=PRARuntimeConfig(**dict(runtime_config or {})), backend=backend,
+                             session_service=LocalSessionService(settings.session.path),
+                             observability=observability)
+        return cls(runtime, config=policy, settings=settings, config_file=path,
+                   observability=observability)
+
+    async def start(self) -> None:
+        """Connect optional remote services and publish their typed capabilities."""
+
+        await self.mcp.connect_all()
+        await self._refresh_mcp_capabilities()
+        if self.control_plane:
+            await self.control_plane.list_engines()
+
+    async def _refresh_mcp_capabilities(self) -> None:
+        records = await self.mcp.tool_records(self.config.tenant_id)
+        if not records:
+            return
+        existing = tuple(self.runtime.capabilities.tools) if self.runtime.capabilities else ()
+        capabilities = CapabilitySDK(AgentConfig(
+            tools=(*existing, *records), namespace="pra-agent", tenant_id=self.config.tenant_id,
+            max_candidates=self.config.tool_candidates,
+        ))
+        resources = capabilities.resources()
+        handlers = dict(getattr(self.runtime.executor, "handlers", {}))
+        handlers.update(self.mcp.tool_handlers())
+        self.runtime.capabilities = capabilities
+        self.runtime.discovery = PersistentResourceIndex(resources)
+        self.runtime.executor = SafeToolExecutor(resources, handlers)
+
+    async def switch_target(self, value: str) -> InferenceTarget:
+        """Switch providers while retaining logical records and dropping model-native state."""
+
+        target = await self.targets.resolve(value)
+        if not target.endpoint:
+            raise ValueError(f"Target {target.target_id!r} has no inference endpoint.")
+        backend = NegotiatedRemoteBackend(
+            target.endpoint, target.model_id,
+            credentials_file=target.credentials_ref,
+            observability=self.observability,
+        )
+        state = self.state if self.session is not None else None
+        previous = self.targets.active.target_id if self.targets.active else None
+        if self.session is not None:
+            self.runtime.append_session_record(
+                self.session,
+                ContextRecord(
+                    f"model-switch:{uuid.uuid4().hex}", RecordType.SESSION_RECORD,
+                    {"event": "model_switch", "previous_target": previous,
+                     "target": target.target_id, "native_state_invalidated": True,
+                     "timestamp": time.time()},
+                ),
+            )
+            state = self.state
+        if self.session is not None:
+            self.runtime.close_session(self.session)
+            self.session = None
+        self.runtime.backend = backend
+        if state is not None:
+            self.start_session(state.session_id, resume=True)
+        self.targets.active = target
+        return target
+
+    async def attach_mcp_resource(self, server: str, uri: str) -> Any:
+        """Read one MCP resource and retain its identity/content in this session."""
+
+        result = await self.mcp.read_resource(server, uri)
+        contents = getattr(result, "contents", ())
+        text = "\n".join(str(getattr(row, "text", "")) for row in contents)
+        mime = next((str(getattr(row, "mimeType", "text/plain")) for row in contents), "text/plain")
+        return self.attachments.add_mcp_resource(server, uri, text, mime_type=mime)
+
+    def export_session(self, path: str | Path) -> Path:
+        return export_session(self.state, path)
 
     def start_session(
         self,
@@ -506,3 +657,9 @@ class PRAAgent:
         self.observability.set_gauge(
             "pra_agent_active_sessions", len(self.runtime.sessions)
         )
+
+    async def aclose(self) -> None:
+        """Close MCP transports and ephemeral model state."""
+
+        await self.mcp.disconnect_all()
+        self.close()

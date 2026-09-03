@@ -106,7 +106,10 @@ def test_agent_guides_cover_gateway_and_direct_engine_paths() -> None:
         "codex-cli.md",
         "claude-code.md",
     }
-    section_pages = {"index.md", "benchmarks.md"}
+    section_pages = {
+        "index.md", "benchmarks.md", "configuration.md", "mcp-control-plane.md",
+        "tui.md", "slash-commands.md", "opencode-audit.md",
+    }
     assert expected == {
         path.name for path in agents.glob("*.md") if path.name not in section_pages
     }

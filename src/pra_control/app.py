@@ -23,7 +23,7 @@ from .fleet import FleetService
 from .managers import ControlManager
 from .operations import OPERATION_CATALOG, TOOL_CATALOG, allowed
 from .persistence import ControlStore
-from .rbac import Permission, permits
+from .rbac import Permission, Role, permits
 from .saml import SAMLService, SAMLUnavailable
 
 
@@ -131,6 +131,19 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         return decorate
 
     def identity(request: Request) -> Identity:
+        authorization = request.headers.get("Authorization", "")
+        if authorization.casefold().startswith("bearer "):
+            supplied = authorization.split(None, 1)[1]
+            order = {Role.VIEWER: 0, Role.OPERATOR: 1, Role.APPROVER: 2, Role.ADMINISTRATOR: 3}
+            for name, profile in config.auth_profiles.items():
+                expected = profile.token()
+                if profile.type in {"bearer_token", "client_credentials"} and expected and secrets.compare_digest(supplied, expected):
+                    role = max(profile.roles or [Role.VIEWER], key=order.__getitem__)
+                    return Identity(
+                        profile.subject or name, profile.subject or name, None, role,
+                        f"service:{name}", secrets.token_urlsafe(24),
+                    )
+            raise HTTPException(401, "invalid bearer token")
         token = request.cookies.get(COOKIE)
         value = runtime.auth.codec.decode(token) if token else runtime.auth.development_identity()
         if not value:
@@ -138,6 +151,8 @@ def create_app(config: ControlPlaneConfig | None = None, *, runtime: ControlRunt
         return value
 
     def csrf(request: Request, value: Identity = Depends(identity)) -> Identity:
+        if request.headers.get("Authorization", "").casefold().startswith("bearer "):
+            return value
         if runtime.auth.development_identity() == value:
             return value
         supplied = request.headers.get("X-CSRF-Token", "")

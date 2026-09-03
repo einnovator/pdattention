@@ -4,6 +4,14 @@ PRA Agent is the first-party agent surface. It owns persistent sessions, tasks,
 typed context records, tool authorization, lazy tool and skill disclosure, and
 the handoff to an embedded runtime, gateway, or direct remote engine.
 
+The current SDK also exposes `agent.mcp`, `agent.control_plane`, `agent.targets`,
+`agent.attachments`, `agent.history`, and `agent.sessions`. MCP controls remote
+tools and resources; direct Control Plane REST controls deterministic fleet and
+model discovery. Neither transport is required for local use.
+
+See [Agent configuration](configuration.md), [MCP and Control Plane](mcp-control-plane.md),
+and the [interactive TUI](tui.md) for the distributed client workflow.
+
 ## Start locally
 
 The shortest path embeds the Hugging Face runtime in the agent process:
