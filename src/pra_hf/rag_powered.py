@@ -285,11 +285,25 @@ def qualification_gates(
 
     measured = [row for row in summaries if row.get("status") == "MEASURED"]
     powered = [row for row in measured if int(row.get("examples", 0)) >= minimum_examples]
-    baselines = [
+    standard_baselines = [
         row
         for row in powered
         if row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value
         and row["selector_profile"] == "standard_bm25"
+        and row["regime"] == "COLD"
+    ]
+    strong_baselines = [
+        row
+        for row in powered
+        if row["condition"] == ContextCondition.NO_PRA_STANDARD_RAG.value
+        and row["selector_profile"] == "strong_conventional_reranker"
+        and row["regime"] == "COLD"
+    ]
+    generic_selected = [
+        row
+        for row in powered
+        if row["condition"] == ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value
+        and row["selector_profile"] == "pra_generic"
         and row["regime"] == "COLD"
     ]
     selected = [
@@ -324,26 +338,44 @@ def qualification_gates(
             ContextCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
         }
     ]
-    def by_config(values: Sequence[Mapping[str, object]]) -> dict[tuple[object, object], Mapping[str, object]]:
+    def by_config(
+        values: Sequence[Mapping[str, object]], *, include_selector: bool = False
+    ) -> dict[tuple[object, ...], Mapping[str, object]]:
+        if include_selector:
+            return {
+                (row["candidate_count"], row["token_budget"], row["selector_profile"]): row
+                for row in values
+            }
         return {(row["candidate_count"], row["token_budget"]): row for row in values}
-    baseline_by_config = by_config(baselines)
-    selected_by_config = by_config(selected)
-    native_by_config = by_config(native)
-    warm_selected_by_config = by_config(warm_selected)
-    warm_native_by_config = by_config(warm_native)
+
+    standard_by_config = by_config(standard_baselines)
+    strong_by_config = by_config(strong_baselines)
+    generic_selected_by_config = by_config(generic_selected)
+    strongest_baseline_by_config = {
+        **standard_by_config,
+        **strong_by_config,
+    }
+    selected_by_config = by_config(selected, include_selector=True)
+    native_by_config = by_config(native, include_selector=True)
+    warm_selected_by_config = by_config(warm_selected, include_selector=True)
+    warm_native_by_config = by_config(warm_native, include_selector=True)
     selection_pass = any(
         (
             float(selected_row.get("token_f1") or 0.0)
-            >= float(baseline_by_config[key].get("token_f1") or 0.0) - 0.02
+            >= float(strongest_baseline_by_config[key].get("token_f1") or 0.0) - 0.02
             and (
                 float(selected_row.get("physical_context_tokens") or math.inf)
-                <= 0.8 * float(baseline_by_config[key].get("physical_context_tokens") or 0.0)
+                <= 0.8
+                * float(
+                    strongest_baseline_by_config[key].get("physical_context_tokens")
+                    or 0.0
+                )
                 or float(selected_row.get("token_f1") or 0.0)
-                > float(baseline_by_config[key].get("token_f1") or 0.0)
+                > float(strongest_baseline_by_config[key].get("token_f1") or 0.0)
             )
         )
-        for key, selected_row in selected_by_config.items()
-        if key in baseline_by_config
+        for key, selected_row in generic_selected_by_config.items()
+        if key in strongest_baseline_by_config
     )
     native_pass = any(
         float(native_row.get("token_f1") or 0.0)
@@ -366,6 +398,9 @@ def qualification_gates(
     return {
         "minimum_examples": minimum_examples,
         "selection_gate": "PASS" if selection_pass else "FAIL",
+        "selection_comparator": (
+            "strong_conventional_reranker" if strong_by_config else "standard_bm25"
+        ),
         "native_memory_gate": "PASS" if native_pass else "FAIL",
         "economic_gate": "PASS" if economic_pass else "FAIL",
         "bundle_gate": "PASS" if bundle_pass else "NO_QUALIFIED_ADAPTER",
