@@ -14,7 +14,8 @@ DEFAULT_OUTPUT = ROOT / "docs/papers/shared/results/paper4_5_runtime_productizat
 CONDITIONS = ("no_pra", "pra_no_adaptor", "pra_adaptor_bundle")
 FLAGSHIP_METRICS = (
     "token_f1", "exact_match", "visible_tokens", "ttft_p50_ms", "ttft_p95_ms",
-    "ttft_p99_ms", "output_tokens_per_second", "requests_per_second",
+    "ttft_p99_ms", "itl_p50_ms", "itl_p95_ms", "itl_p99_ms",
+    "output_tokens_per_second", "requests_per_second",
     "completion_latency_mean_ms", "peak_memory_bytes", "cost_per_successful_task",
 )
 
@@ -27,8 +28,9 @@ def build_audit(catalog: dict) -> dict:
         for metric in FLAGSHIP_METRICS:
             available = paired_transport and metric in {
                 "token_f1", "exact_match", "visible_tokens", "ttft_p50_ms",
-                "ttft_p95_ms", "ttft_p99_ms", "completion_latency_mean_ms",
-                "peak_memory_bytes",
+                "ttft_p95_ms", "ttft_p99_ms", "itl_p50_ms", "itl_p95_ms",
+                "itl_p99_ms", "output_tokens_per_second",
+                "completion_latency_mean_ms", "peak_memory_bytes",
             }
             metrics[metric] = {
                 "no_pra": "AVAILABLE_EXISTING" if available else "NEEDS_RUN",

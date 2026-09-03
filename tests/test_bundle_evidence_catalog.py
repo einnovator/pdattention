@@ -8,6 +8,7 @@ import pytest
 from pra_hf.bundle import BundleBuilder, BundleValidationError, PRAModelBundle
 from pra_hf.bundle_catalog import (
     load_bundle_catalog,
+    render_canonical_evidence_catalog,
     render_catalog,
     render_qualification_matrix,
     validate_collection_membership,
@@ -50,6 +51,8 @@ def test_mlx_importer_builds_paired_baseline_relative_evidence() -> None:
     assert combined["baseline"]["quality"] == combined["pra"]["quality"]
     assert combined["deltas"]["quality"] == 0.0
     assert combined["deltas"]["visible_tokens_pct"] == pytest.approx(-89.14008)
+    assert combined["baseline"]["itl_ms"]["p95"] > 0
+    assert combined["pra"]["output_tokens_per_second"] > 0
     assert combined["semantic_equivalence"] == {
         "exact_output_pairs": 15,
         "paired_examples": 15,
@@ -59,6 +62,8 @@ def test_mlx_importer_builds_paired_baseline_relative_evidence() -> None:
 
     canonical = canonicalize_paired_transport_evidence(combined)
     assert canonical.delta("visible_tokens", EvidenceCondition.PRA_NO_ADAPTOR).percent_delta == pytest.approx(-89.14008)
+    assert canonical.conditions[EvidenceCondition.NO_PRA].metrics["itl_p95_ms"].value > 0
+    assert canonical.conditions[EvidenceCondition.PRA_NO_ADAPTOR].metrics["output_tokens_per_second"].value > 0
     assert canonical.conditions[EvidenceCondition.PRA_ADAPTOR_BUNDLE].metrics["token_f1"].state == MeasurementState.NOT_MEASURED
     assert canonical.key.model_revision == _identity().model_revision
 
@@ -142,6 +147,10 @@ def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
     assert "Recommended profile: **BALANCED**" in text
     assert "15/15" in text
     assert "-89.1%" in text
+    assert "## Evidence by engine, mode, and profile" in text
+    assert "| mlx | Native Memory | BALANCED | MEASURED" in text
+    assert "Output Tokens Per Second" in text
+    assert "ITL p95 (ms)" in text
     assert "SHA-256" in text
     assert "70.32 MiB" in text
     assert "## Expected metrics" not in text
@@ -185,3 +194,15 @@ def test_catalog_canonical_audit_never_encodes_missing_as_zero() -> None:
     }
     assert states <= {"AVAILABLE_EXISTING", "NEEDS_RUN", "NOT_APPLICABLE", "BLOCKED"}
     assert 0 not in states
+
+
+def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric() -> None:
+    text = render_canonical_evidence_catalog(load_bundle_catalog())
+    for row in load_bundle_catalog()["bundles"]:
+        assert row["model"] in text
+    assert "PRA - No Adaptor" in text
+    assert "PRA - Adaptor Bundle" in text
+    assert "Output Tokens Per Second" in text
+    assert "TTFT p95 (ms)" in text
+    assert "ITL p95 (ms)" in text
+    assert "Delta Bundle" in text

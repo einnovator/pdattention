@@ -29,6 +29,7 @@ from experiments.agents.runner import (
     run_manifest,
 )
 from experiments.agents.schema import (
+    AgentBehaviorMetrics,
     AgentEngineMatrix,
     BenchmarkManifest,
     CodingAgentRun,
@@ -37,6 +38,8 @@ from experiments.agents.schema import (
     PRAMode,
     ProtocolManifest,
     ResourceMetrics,
+    TimingMetrics,
+    TokenMetrics,
 )
 
 
@@ -299,8 +302,38 @@ def test_zero_success_agent_baseline_blocks_pra_conditions(tmp_path: Path) -> No
     assert gate["eligible"] is False
     assert gate["official_success_rate"] == 0
     assert evidence.evidence_tier == "BLOCKED"
+    baseline_metrics = evidence.conditions[EvidenceCondition.NO_PRA].metrics
+    assert baseline_metrics["output_tokens_per_second"].state == MeasurementState.NOT_MEASURED
+    assert baseline_metrics["requests_per_second"].state == MeasurementState.NOT_MEASURED
+    assert baseline_metrics["queue_time_mean_ms"].state == MeasurementState.NOT_MEASURED
+    assert baseline_metrics["inference_time_mean_ms"].state == MeasurementState.NOT_MEASURED
+    assert baseline_metrics["ttft_p95_ms"].state == MeasurementState.NOT_MEASURED
+    assert baseline_metrics["peak_accelerator_bytes"].state == MeasurementState.NOT_MEASURED
     for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE):
         assert evidence.conditions[condition].metrics["official_task_success"].state == MeasurementState.BLOCKED
+
+
+def test_agent_throughput_uses_reported_model_time(tmp_path: Path) -> None:
+    manifest = BenchmarkManifest.load(ROOT / "manifests" / "fixture_smoke.yaml")
+    row = run_manifest(
+        manifest, FixtureAgentAdapter(), output=tmp_path,
+        agent="fixture-agent", engine="fixture", model="fixture-model",
+        pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+    )[0]
+    timed = row.model_copy(update={
+        "behavior": AgentBehaviorMetrics(model_calls=2),
+        "tokens": TokenMetrics(input_tokens=20, output_tokens=10),
+        "timings": TimingMetrics(
+            task_wall_ms=1200,
+            inference_ms=1000,
+            ttft_samples_ms=(100, 100),
+        ),
+    })
+    metrics = canonical_agent_evidence([timed], date="2026-09-03").conditions[
+        EvidenceCondition.NO_PRA
+    ].metrics
+    assert metrics["output_tokens_per_second"].value == 10.0
+    assert metrics["requests_per_second"].value == 2.0
 
 
 def test_agent_baseline_inside_target_band_is_eligible(tmp_path: Path) -> None:

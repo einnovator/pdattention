@@ -93,6 +93,38 @@
         "aggregation": "p99",
         "description": "99th-percentile time to first generated token."
       },
+      "itl_p50_ms": {
+        "name": "itl_p50_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p50",
+        "description": "Median inter-token latency after the first generated token."
+      },
+      "itl_p95_ms": {
+        "name": "itl_p95_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p95",
+        "description": "95th-percentile inter-token latency after the first generated token."
+      },
+      "itl_p99_ms": {
+        "name": "itl_p99_ms",
+        "group": "serving",
+        "unit": "ms",
+        "direction": "lower_is_better",
+        "aggregation": "p99",
+        "description": "99th-percentile inter-token latency after the first generated token."
+      },
+      "output_tokens_per_second": {
+        "name": "output_tokens_per_second",
+        "group": "serving",
+        "unit": "output_token/s",
+        "direction": "higher_is_better",
+        "aggregation": "mean",
+        "description": "Mean decode-only output-token rate, excluding time to first token."
+      },
       "completion_latency_mean_ms": {
         "name": "completion_latency_mean_ms",
         "group": "serving",
@@ -163,6 +195,26 @@
             "state": "MEASURED",
             "note": null
           },
+          "itl_p50_ms": {
+            "value": 34.382178570792476,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p95_ms": {
+            "value": 34.627351142782054,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p99_ms": {
+            "value": 34.627351142782054,
+            "state": "MEASURED",
+            "note": null
+          },
+          "output_tokens_per_second": {
+            "value": 29.091133280525803,
+            "state": "MEASURED",
+            "note": null
+          },
           "completion_latency_mean_ms": {
             "value": 507.8287193318829,
             "state": "MEASURED",
@@ -229,6 +281,26 @@
             "state": "MEASURED",
             "note": null
           },
+          "itl_p50_ms": {
+            "value": 35.224690428419436,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p95_ms": {
+            "value": 35.45511899989963,
+            "state": "MEASURED",
+            "note": null
+          },
+          "itl_p99_ms": {
+            "value": 35.45511899989963,
+            "state": "MEASURED",
+            "note": null
+          },
+          "output_tokens_per_second": {
+            "value": 28.411334824304248,
+            "state": "MEASURED",
+            "note": null
+          },
           "completion_latency_mean_ms": {
             "value": 513.2481610004712,
             "state": "MEASURED",
@@ -291,6 +363,26 @@
             "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
           },
           "ttft_p99_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "itl_p50_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "itl_p95_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "itl_p99_ms": {
+            "value": null,
+            "state": "NOT_MEASURED",
+            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+          },
+          "output_tokens_per_second": {
             "value": null,
             "state": "NOT_MEASURED",
             "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
@@ -416,6 +508,42 @@
           "percent_delta": -0.27835137769684914,
           "state": "MEASURED"
         },
+        "itl_p50_ms": {
+          "metric": "itl_p50_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 34.382178570792476,
+          "candidate": 35.224690428419436,
+          "delta": 0.8425118576269597,
+          "percent_delta": 2.450431859319904,
+          "state": "MEASURED"
+        },
+        "itl_p95_ms": {
+          "metric": "itl_p95_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 34.627351142782054,
+          "candidate": 35.45511899989963,
+          "delta": 0.8277678571175784,
+          "percent_delta": 2.3905029688940664,
+          "state": "MEASURED"
+        },
+        "itl_p99_ms": {
+          "metric": "itl_p99_ms",
+          "condition": "pra_no_adaptor",
+          "baseline": 34.627351142782054,
+          "candidate": 35.45511899989963,
+          "delta": 0.8277678571175784,
+          "percent_delta": 2.3905029688940664,
+          "state": "MEASURED"
+        },
+        "output_tokens_per_second": {
+          "metric": "output_tokens_per_second",
+          "condition": "pra_no_adaptor",
+          "baseline": 29.091133280525803,
+          "candidate": 28.411334824304248,
+          "delta": -0.6797984562215547,
+          "percent_delta": -2.336789184753506,
+          "state": "MEASURED"
+        },
         "completion_latency_mean_ms": {
           "metric": "completion_latency_mean_ms",
           "condition": "pra_no_adaptor",
@@ -521,6 +649,42 @@
           "metric": "ttft_p99_ms",
           "condition": "pra_adaptor_bundle",
           "baseline": 339.22949999396224,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "itl_p50_ms": {
+          "metric": "itl_p50_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 34.382178570792476,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "itl_p95_ms": {
+          "metric": "itl_p95_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 34.627351142782054,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "itl_p99_ms": {
+          "metric": "itl_p99_ms",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 34.627351142782054,
+          "candidate": null,
+          "delta": null,
+          "percent_delta": null,
+          "state": "NOT_MEASURED"
+        },
+        "output_tokens_per_second": {
+          "metric": "output_tokens_per_second",
+          "condition": "pra_adaptor_bundle",
+          "baseline": 29.091133280525803,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -632,6 +796,42 @@
         "metric": "ttft_p99_ms",
         "condition": "pra_adaptor_bundle",
         "baseline": 338.2852500071749,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "itl_p50_ms": {
+        "metric": "itl_p50_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 35.224690428419436,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "itl_p95_ms": {
+        "metric": "itl_p95_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 35.45511899989963,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "itl_p99_ms": {
+        "metric": "itl_p99_ms",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 35.45511899989963,
+        "candidate": null,
+        "delta": null,
+        "percent_delta": null,
+        "state": "NOT_MEASURED"
+      },
+      "output_tokens_per_second": {
+        "metric": "output_tokens_per_second",
+        "condition": "pra_adaptor_bundle",
+        "baseline": 28.411334824304248,
         "candidate": null,
         "delta": null,
         "percent_delta": null,

@@ -47,6 +47,16 @@ All headline rows use the same frozen selected evidence in the baseline and PRA 
 
 Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA (n=15); 2026-09-01; PRA commit `4b4486a66c80d09aa7982be29812d4027c57a4e3`; artifact `qualification/qwen3_32b_mlx_profiles.json`; SHA-256 `79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04`.
 
+## Evidence by engine, mode, and profile
+
+Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
+
+| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
+| --- | --- | --- | --- | --- | --- | --- |
+| mlx | Native Memory | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NOT_MEASURED | context, quality, resources, serving |
+| mlx | Native Memory | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+
 ## Canonical three-condition evidence
 
 Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.
@@ -59,33 +69,37 @@ Exact identity: `mlx-community/Qwen3-32B-4bit` at `bcaaf7f538adf166c1080a2befdb4
 
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| token_f1 | fraction | higher_is_better | 0.231164 | 0.231164 | NOT_MEASURED | +0 (+0.00%) | NOT_MEASURED |
-| exact_match | fraction | higher_is_better | 0 | 0 | NOT_MEASURED | +0 | NOT_MEASURED |
-| gold_answer_log_probability | log_probability | higher_is_better | -9.57946 | -9.57946 | NOT_MEASURED | +0 (-0.00%) | NOT_MEASURED |
+| Token F1 | fraction | higher_is_better | 0.231164 | 0.231164 | NOT_MEASURED | +0 (+0.00%) | NOT_MEASURED |
+| Exact Match | fraction | higher_is_better | 0 | 0 | NOT_MEASURED | +0 | NOT_MEASURED |
+| Gold Answer Log Probability | log_probability | higher_is_better | -9.57946 | -9.57946 | NOT_MEASURED | +0 (-0.00%) | NOT_MEASURED |
 
 #### Context
 
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| visible_tokens | token | lower_is_better | 315.533 | 34.2667 | NOT_MEASURED | -281.267 (-89.14%) | NOT_MEASURED |
-| selected_native_kv_tokens | token | neutral | 0 | 18001.1 | NOT_MEASURED | +18001.1 | NOT_MEASURED |
+| Visible Tokens | token | lower_is_better | 315.533 | 34.2667 | NOT_MEASURED | -281.267 (-89.14%) | NOT_MEASURED |
+| Selected Native K/V Tokens | token | neutral | 0 | 18001.1 | NOT_MEASURED | +18001.1 | NOT_MEASURED |
 
 #### Serving
 
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| ttft_p50_ms | ms | lower_is_better | 524.92 | 490.204 | NOT_MEASURED | -34.7164 (-6.61%) | NOT_MEASURED |
-| ttft_p95_ms | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
-| ttft_p99_ms | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
-| completion_latency_mean_ms | ms | lower_is_better | 1177.04 | 1183.23 | NOT_MEASURED | +6.18768 (+0.53%) | NOT_MEASURED |
+| TTFT p50 (ms) | ms | lower_is_better | 524.92 | 490.204 | NOT_MEASURED | -34.7164 (-6.61%) | NOT_MEASURED |
+| TTFT p95 (ms) | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
+| TTFT p99 (ms) | ms | lower_is_better | 799.757 | 797.258 | NOT_MEASURED | -2.49929 (-0.31%) | NOT_MEASURED |
+| ITL p50 (ms) | ms | lower_is_better | 77.7091 | 79.0556 | NOT_MEASURED | +1.34651 (+1.73%) | NOT_MEASURED |
+| ITL p95 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | NOT_MEASURED | +2.08218 (+2.66%) | NOT_MEASURED |
+| ITL p99 (ms) | ms | lower_is_better | 78.2616 | 80.3438 | NOT_MEASURED | +2.08218 (+2.66%) | NOT_MEASURED |
+| Output Tokens Per Second | output_token/s | higher_is_better | 12.8734 | 12.6266 | NOT_MEASURED | -0.246821 (-1.92%) | NOT_MEASURED |
+| Completion Latency Mean (ms) | ms | lower_is_better | 1177.04 | 1183.23 | NOT_MEASURED | +6.18768 (+0.53%) | NOT_MEASURED |
 
 #### Resources
 
 | Metric | Unit | Direction | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Delta No Adaptor | Delta Bundle |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| active_detail_bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
-| retained_detail_bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
-| peak_memory_bytes | byte | lower_is_better | 1.91537e+10 | 1.9058e+10 | NOT_MEASURED | -9.56826e+07 (-0.50%) | NOT_MEASURED |
+| Active Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 7.37324e+07 | NOT_MEASURED | +7.37324e+07 | NOT_MEASURED |
+| Peak Memory Bytes | byte | lower_is_better | 1.91537e+10 | 1.9058e+10 | NOT_MEASURED | -9.56826e+07 (-0.50%) | NOT_MEASURED |
 
 ## Installation
 
@@ -171,8 +185,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `04800d424092571f2e9eae32a3c0ea0c01224304`
-- Bundle build commit: `04800d424092571f2e9eae32a3c0ea0c01224304`
+- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

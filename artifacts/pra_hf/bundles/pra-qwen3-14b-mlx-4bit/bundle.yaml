@@ -113,6 +113,11 @@ qualification:
         p50: 210.72420799464453
         p95: 339.22949999396224
         p99: 339.22949999396224
+      itl_ms:
+        p50: 34.382178570792476
+        p95: 34.627351142782054
+        p99: 34.627351142782054
+      output_tokens_per_second: 29.091133280525803
       completion_latency_ms:
         mean: 507.8287193318829
         p50: 451.47266700223554
@@ -132,6 +137,11 @@ qualification:
         p50: 210.37279200390913
         p95: 338.2852500071749
         p99: 338.2852500071749
+      itl_ms:
+        p50: 35.224690428419436
+        p95: 35.45511899989963
+        p99: 35.45511899989963
+      output_tokens_per_second: 28.411334824304248
       completion_latency_ms:
         mean: 513.2481610004712
         p50: 457.8021249908488
@@ -237,6 +247,36 @@ qualification:
         direction: lower_is_better
         aggregation: p99
         description: 99th-percentile time to first generated token.
+      itl_p50_ms:
+        name: itl_p50_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p50
+        description: Median inter-token latency after the first generated token.
+      itl_p95_ms:
+        name: itl_p95_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p95
+        description: 95th-percentile inter-token latency after the first generated
+          token.
+      itl_p99_ms:
+        name: itl_p99_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p99
+        description: 99th-percentile inter-token latency after the first generated
+          token.
+      output_tokens_per_second:
+        name: output_tokens_per_second
+        group: serving
+        unit: output_token/s
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean decode-only output-token rate, excluding time to first token.
       completion_latency_mean_ms:
         name: completion_latency_mean_ms
         group: serving
@@ -294,6 +334,22 @@ qualification:
             value: 339.22949999396224
             state: MEASURED
             note: null
+          itl_p50_ms:
+            value: 34.382178570792476
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 34.627351142782054
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 34.627351142782054
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 29.091133280525803
+            state: MEASURED
+            note: null
           completion_latency_mean_ms:
             value: 507.8287193318829
             state: MEASURED
@@ -344,6 +400,22 @@ qualification:
             note: null
           ttft_p99_ms:
             value: 338.2852500071749
+            state: MEASURED
+            note: null
+          itl_p50_ms:
+            value: 35.224690428419436
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 35.45511899989963
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 35.45511899989963
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 28.411334824304248
             state: MEASURED
             note: null
           completion_latency_mean_ms:
@@ -408,6 +480,26 @@ qualification:
             state: NOT_MEASURED
             note: The paired engine run did not resolve and record the immutable Runtime
               Bundle.
+          itl_p50_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          itl_p95_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          itl_p99_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          output_tokens_per_second:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
           completion_latency_mean_ms:
             value: null
             state: NOT_MEASURED
@@ -457,6 +549,11 @@ qualification:
         p50: 209.8581249883864
         p95: 333.41912500327453
         p99: 333.41912500327453
+      itl_ms:
+        p50: 34.34889285667201
+        p95: 34.436744143022224
+        p99: 34.436744143022224
+      output_tokens_per_second: 29.126159584257778
       completion_latency_ms:
         mean: 499.31481659878045
         p50: 450.65929199336097
@@ -476,6 +573,11 @@ qualification:
         p50: 210.37279200390913
         p95: 332.46525000140537
         p99: 332.46525000140537
+      itl_ms:
+        p50: 35.32704757110748
+        p95: 35.34566071383389
+        p99: 35.34566071383389
+      output_tokens_per_second: 28.389591318438566
       completion_latency_ms:
         mean: 505.2794666000409
         p50: 457.8021249908488
@@ -522,6 +624,11 @@ qualification:
         p50: 333.7056250020396
         p95: 339.22949999396224
         p99: 339.22949999396224
+      itl_ms:
+        p50: 34.382178570792476
+        p95: 34.537482143995085
+        p99: 34.537482143995085
+      output_tokens_per_second: 29.075306008141762
       completion_latency_ms:
         mean: 574.8120663978625
         p50: 574.0946250007255
@@ -541,6 +648,11 @@ qualification:
         p50: 333.9459170092596
         p95: 338.2852500071749
         p99: 338.2852500071749
+      itl_ms:
+        p50: 35.108458286101396
+        p95: 35.45511899989963
+        p99: 35.45511899989963
+      output_tokens_per_second: 28.42843537882896
       completion_latency_ms:
         mean: 579.9797166051576
         p50: 579.7111250140006
@@ -587,6 +699,11 @@ qualification:
         p50: 209.07304200227372
         p95: 210.72420799464453
         p99: 210.72420799464453
+      itl_ms:
+        p50: 34.410000001246644
+        p95: 34.627351142782054
+        p99: 34.627351142782054
+      output_tokens_per_second: 29.071934249177872
       completion_latency_ms:
         mean: 449.3592749990057
         p50: 450.1107079995563
@@ -606,6 +723,11 @@ qualification:
         p50: 208.31050000560936
         p95: 209.72354098921642
         p99: 209.72354098921642
+      itl_ms:
+        p50: 35.224690428419436
+        p95: 35.35971428625219
+        p99: 35.35971428625219
+      output_tokens_per_second: 28.415977775645214
       completion_latency_ms:
         mean: 454.48529979621526
         p50: 453.95070798986126
@@ -820,8 +942,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 04800d424092571f2e9eae32a3c0ea0c01224304
-  bundle_build_commit: 04800d424092571f2e9eae32a3c0ea0c01224304
+  pra_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
+  bundle_build_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
   hf_repo: EInnovator/pra-qwen3-14b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -833,7 +955,7 @@ provenance:
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: 852edb720e84d3a8c142c8302b98aa202920e6064ba41bffd95ab12cb1f73a42
   learned_adapters/combined-router-d128/config.json: fec04b7654bc08237d89aa9a9e467a552044a9e96d36b98571311dc11ea87999
-  qualification/canonical_evidence.json: e9d81c08380349ef7239e37fe747d2dea391bea2145a7e751bb99ecbeccd73c2
+  qualification/canonical_evidence.json: 37e19d20631de03d7d8b045901d8e46b112319128c56fecbaae17d61bed0ba53
   qualification/catalog_summary.json: bdf42af02e948b52953b33c61197b915e37e4e003a2addf00c3fa61b5a6bf0d9
   qualification/comparison.json: 179ff806087c8be7b2b9f6e4a32a0e4ebfef2b7831482738271724af0e2f9fdb
   qualification/feature_dataset_manifest.json: 3be491913530f60718e9b8480cb7d2d9da3c9030de340f805c47864989ae555e

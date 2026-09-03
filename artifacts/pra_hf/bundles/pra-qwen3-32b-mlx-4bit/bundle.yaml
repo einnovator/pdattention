@@ -71,6 +71,11 @@ qualification:
         p50: 524.9199579993729
         p95: 799.7567919956055
         p99: 799.7567919956055
+      itl_ms:
+        p50: 77.70905357028823
+        p95: 78.26163685656086
+        p99: 78.26163685656086
+      output_tokens_per_second: 12.87342763766492
       completion_latency_ms:
         mean: 1177.0423334654577
         p50: 1071.9014579954091
@@ -90,6 +95,11 @@ qualification:
         p50: 490.2035419945605
         p95: 797.2575000021607
         p99: 797.2575000021607
+      itl_ms:
+        p50: 79.05556557151223
+        p95: 80.34381542945214
+        p99: 80.34381542945214
+      output_tokens_per_second: 12.626606986603758
       completion_latency_ms:
         mean: 1183.2300168006138
         p50: 1050.0842920009745
@@ -195,6 +205,36 @@ qualification:
         direction: lower_is_better
         aggregation: p99
         description: 99th-percentile time to first generated token.
+      itl_p50_ms:
+        name: itl_p50_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p50
+        description: Median inter-token latency after the first generated token.
+      itl_p95_ms:
+        name: itl_p95_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p95
+        description: 95th-percentile inter-token latency after the first generated
+          token.
+      itl_p99_ms:
+        name: itl_p99_ms
+        group: serving
+        unit: ms
+        direction: lower_is_better
+        aggregation: p99
+        description: 99th-percentile inter-token latency after the first generated
+          token.
+      output_tokens_per_second:
+        name: output_tokens_per_second
+        group: serving
+        unit: output_token/s
+        direction: higher_is_better
+        aggregation: mean
+        description: Mean decode-only output-token rate, excluding time to first token.
       completion_latency_mean_ms:
         name: completion_latency_mean_ms
         group: serving
@@ -252,6 +292,22 @@ qualification:
             value: 799.7567919956055
             state: MEASURED
             note: null
+          itl_p50_ms:
+            value: 77.70905357028823
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 78.26163685656086
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 78.26163685656086
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 12.87342763766492
+            state: MEASURED
+            note: null
           completion_latency_mean_ms:
             value: 1177.0423334654577
             state: MEASURED
@@ -302,6 +358,22 @@ qualification:
             note: null
           ttft_p99_ms:
             value: 797.2575000021607
+            state: MEASURED
+            note: null
+          itl_p50_ms:
+            value: 79.05556557151223
+            state: MEASURED
+            note: null
+          itl_p95_ms:
+            value: 80.34381542945214
+            state: MEASURED
+            note: null
+          itl_p99_ms:
+            value: 80.34381542945214
+            state: MEASURED
+            note: null
+          output_tokens_per_second:
+            value: 12.626606986603758
             state: MEASURED
             note: null
           completion_latency_mean_ms:
@@ -366,6 +438,26 @@ qualification:
             state: NOT_MEASURED
             note: The paired engine run did not resolve and record the immutable Runtime
               Bundle.
+          itl_p50_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          itl_p95_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          itl_p99_ms:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
+          output_tokens_per_second:
+            value: null
+            state: NOT_MEASURED
+            note: The paired engine run did not resolve and record the immutable Runtime
+              Bundle.
           completion_latency_mean_ms:
             value: null
             state: NOT_MEASURED
@@ -415,6 +507,11 @@ qualification:
         p50: 493.9697500085458
         p95: 795.5082499975106
         p99: 795.5082499975106
+      itl_ms:
+        p50: 77.71427985738099
+        p95: 78.25289285600385
+        p99: 78.25289285600385
+      output_tokens_per_second: 12.868058122518086
       completion_latency_ms:
         mean: 1155.448350199731
         p50: 1041.754417004995
@@ -434,6 +531,11 @@ qualification:
         p50: 490.2035419945605
         p95: 789.2545829963638
         p99: 789.2545829963638
+      itl_ms:
+        p50: 79.38464885644082
+        p95: 79.56813099943767
+        p99: 79.56813099943767
+      output_tokens_per_second: 12.616361816694589
       completion_latency_ms:
         mean: 1164.007333398331
         p50: 1047.1918749972247
@@ -480,6 +582,11 @@ qualification:
         p50: 791.5717500000028
         p95: 799.7567919956055
         p99: 799.7567919956055
+      itl_ms:
+        p50: 77.41454757134696
+        p95: 77.83182728703001
+        p99: 77.83182728703001
+      output_tokens_per_second: 12.921684697167494
       completion_latency_ms:
         mean: 1333.5392001987202
         p50: 1336.4022500027204
@@ -499,6 +606,11 @@ qualification:
         p50: 791.6999580047559
         p95: 797.2575000021607
         p99: 797.2575000021607
+      itl_ms:
+        p50: 78.95381557214672
+        p95: 79.5025475714023
+        p99: 79.5025475714023
+      output_tokens_per_second: 12.655284531074669
       completion_latency_ms:
         mean: 1343.1802084029187
         p50: 1343.3941249968484
@@ -545,6 +657,11 @@ qualification:
         p50: 489.091167008155
         p95: 524.9199579993729
         p99: 524.9199579993729
+      itl_ms:
+        p50: 78.1385297138643
+        p95: 78.26163685656086
+        p99: 78.26163685656086
+      output_tokens_per_second: 12.830540093309178
       completion_latency_ms:
         mean: 1042.1394499979215
         p50: 1036.9351250119507
@@ -564,6 +681,11 @@ qualification:
         p50: 487.6619999995455
         p95: 488.7310000049183
         p99: 488.7310000049183
+      itl_ms:
+        p50: 79.4442618560944
+        p95: 80.34381542945214
+        p99: 80.34381542945214
+      output_tokens_per_second: 12.608174612042017
       completion_latency_ms:
         mean: 1042.5025086005917
         p50: 1043.608583000605
@@ -622,8 +744,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 04800d424092571f2e9eae32a3c0ea0c01224304
-  bundle_build_commit: 04800d424092571f2e9eae32a3c0ea0c01224304
+  pra_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
+  bundle_build_commit: 845e1ccac90eb09c31f2681443800e2d845179b8
   hf_repo: EInnovator/pra-qwen3-32b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -633,7 +755,7 @@ provenance:
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
-  qualification/canonical_evidence.json: 845cb54a4e35b62227ccdd5bab5c4f5dd0d9776e5e8354fb2560ec80c6dd9092
+  qualification/canonical_evidence.json: eb89dad0dbdcd6e68c1596684b30a937afd7e8d14d3933f9722934e1ee1e447f
   qualification/qwen3_32b_mlx_profiles.json: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
   structural_adapter/pra_adapter.yaml: 958453da926dd6d7ccca23f36c334a47f2728f912886a671d519a12d02c77769
 trust:

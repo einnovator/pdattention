@@ -2189,8 +2189,11 @@ conditions rather than exposing only paper-level E0/E2 labels.  The historical
 MLX rows directly support No PRA and PRA without learned adaptor behavior. They
 do not record resolution of the subsequently published immutable bundle, so
 that third condition remains \texttt{NOT\_MEASURED}; it is not duplicated from
-the generic PRA row. Table~\ref{tab:canonical-mlx-evidence} shows the compact
-flagship view. Deltas are candidate minus No PRA and preserve their sign.
+the generic PRA row. Tables~\ref{tab:canonical-mlx-evidence} and
+\ref{tab:canonical-mlx-serving} show the compact flagship view. Deltas are
+candidate minus No PRA and preserve their sign. Inter-token latency (ITL) and
+output-token rate are decode-only measures after the first generated token;
+they are not aliases for request throughput.
 
 \begin{table}[H]
 \centering
@@ -2203,17 +2206,53 @@ Model & Metric & No PRA & PRA no adaptor & $\Delta$ no adaptor & PRA bundle \\
 \midrule
 Qwen3-8B  & token F1 & 0.2365 & 0.2365 & 0.0000 & NOT MEASURED \\
            & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
-           & TTFT p95 (ms) & 182.4 & 181.6 & -0.8 & NOT MEASURED \\
 Qwen3-14B & token F1 & 0.2775 & 0.2775 & 0.0000 & NOT MEASURED \\
            & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
-           & TTFT p95 (ms) & 339.2 & 338.3 & -0.9 & NOT MEASURED \\
 Qwen3-32B & token F1 & 0.2312 & 0.2312 & 0.0000 & NOT MEASURED \\
            & visible tokens & 315.5 & 34.3 & -281.3 & NOT MEASURED \\
-           & TTFT p95 (ms) & 799.8 & 797.3 & -2.5 & NOT MEASURED \\
 \bottomrule
 \end{tabular}
 \label{tab:canonical-mlx-evidence}
 \end{table}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Serving and resource measurements for the same exact-identity MLX
+cohorts. Output rate is decode-only; peak memory is Apple unified memory.}
+\begin{tabular}{llrrrr}
+\toprule
+Model & Metric & No PRA & PRA no adaptor & $\Delta$ no adaptor & PRA bundle \\
+\midrule
+Qwen3-8B  & TTFT p95 (ms) & 183.0 & 231.0 & +48.0 & NOT MEASURED \\
+           & ITL p95 (ms) & 18.98 & 20.52 & +1.54 & NOT MEASURED \\
+           & output tokens/s & 53.30 & 51.11 & -2.20 & NOT MEASURED \\
+           & completion mean (ms) & 275.95 & 284.09 & +8.14 & NOT MEASURED \\
+           & peak memory (GiB) & 4.824 & 4.781 & -0.043 & NOT MEASURED \\
+Qwen3-14B & TTFT p95 (ms) & 339.2 & 338.3 & -0.9 & NOT MEASURED \\
+           & ITL p95 (ms) & 34.63 & 35.46 & +0.83 & NOT MEASURED \\
+           & output tokens/s & 29.09 & 28.41 & -0.68 & NOT MEASURED \\
+           & completion mean (ms) & 507.83 & 513.25 & +5.42 & NOT MEASURED \\
+           & peak memory (GiB) & 8.242 & 8.190 & -0.052 & NOT MEASURED \\
+Qwen3-32B & TTFT p95 (ms) & 799.8 & 797.3 & -2.5 & NOT MEASURED \\
+           & ITL p95 (ms) & 78.26 & 80.34 & +2.08 & NOT MEASURED \\
+           & output tokens/s & 12.87 & 12.63 & -0.25 & NOT MEASURED \\
+           & completion mean (ms) & 1177.04 & 1183.23 & +6.19 & NOT MEASURED \\
+           & peak memory (GiB) & 17.839 & 17.750 & -0.089 & NOT MEASURED \\
+\bottomrule
+\end{tabular}
+\label{tab:canonical-mlx-serving}
+\end{table}
+
+The public catalog applies the same schema to all nine current bundles:
+Qwen3 at 0.6B, 4B, 8B, 14B, and 32B; Qwen2.5 and Qwen2.5-Coder at
+1.5B; Llama-3.1-8B-Instruct; and Gemma-3-1B-IT. Each card enumerates every
+declared engine, mode, and profile. Only the Qwen3 8B/14B/32B MLX BALANCED
+rows currently have matched end-task and serving measurements for both No PRA
+and PRA without an adaptor. The other rows remain visibly
+\texttt{NOT\_MEASURED}; their routing qualification is not relabeled as answer
+quality or engine performance. The generated site evidence matrix is the
+exhaustive catalog view, while these tables retain the paper's measured subset.
 
 This table should not be read as evidence that a learned adaptor is necessary.
 The qualified BALANCED profile is generic and all-layer; the missing condition
@@ -2470,8 +2509,9 @@ No PRA, PRA without an adaptor, and PRA with the immutable Runtime Bundle under
 BALANCED. Table~\ref{tab:agent-canonical-gate} makes the unrun conditions
 explicit: \texttt{BLOCKED} is missing evidence caused by the quality floor, not
 a synthetic zero or an observed PRA failure. The normalized schema retains
-official score, verifier counts, turns, tool calls, cumulative context, timing,
-resource use, and cost for that subsequent paired analysis.
+official score, verifier counts, turns, tool calls, cumulative context, TTFT
+and ITL distributions, decode output tokens/s, model-call requests/s, queue and
+inference time, resource use, and cost for that subsequent paired analysis.
 
 \begin{table}[H]
 \centering

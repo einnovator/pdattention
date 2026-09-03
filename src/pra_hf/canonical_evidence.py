@@ -281,7 +281,7 @@ def render_markdown_table(record: CanonicalEvidenceRecord, group: MetricGroup | 
         delta_bundle = record.delta(name, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
         lines.append(
             "| " + " | ".join((
-                name, definition.unit, definition.direction.value,
+                _metric_label(name), definition.unit, definition.direction.value,
                 _format_observation(no_pra), _format_observation(no_adapter),
                 _format_observation(bundle), _format_delta(delta_no_adapter),
                 _format_delta(delta_bundle),
@@ -310,7 +310,7 @@ def render_latex_table(record: CanonicalEvidenceRecord, group: MetricGroup | Non
             _format_delta(record.delta(name, condition))
             for condition in (EvidenceCondition.PRA_NO_ADAPTOR, EvidenceCondition.PRA_ADAPTOR_BUNDLE)
         ]
-        cells = [name.replace("_", r"\_"), definition.unit, definition.direction.value.replace("_", r"\_"), *values, *deltas]
+        cells = [_metric_label(name).replace("_", r"\_"), definition.unit, definition.direction.value.replace("_", r"\_"), *values, *deltas]
         rows.append(" & ".join(cells) + r" \\")
     rows.extend((r"\bottomrule", r"\end{tabular}"))
     return "\n".join(rows) + "\n"
@@ -332,6 +332,21 @@ def _format_delta(value: MetricDelta) -> str:
     return f"{value.delta:+.6g}{percent}"
 
 
+def _metric_label(name: str) -> str:
+    """Return a compact public label without obscuring aggregation semantics."""
+
+    initialisms = {"ttft": "TTFT", "itl": "ITL", "kv": "K/V", "f1": "F1"}
+    parts = name.split("_")
+    unit_suffix = " (ms)" if parts[-1:] == ["ms"] else ""
+    if unit_suffix:
+        parts.pop()
+    words = [
+        initialisms.get(part, part if part.startswith("p") and part[1:].isdigit() else part.title())
+        for part in parts
+    ]
+    return " ".join(words) + unit_suffix
+
+
 STANDARD_METRICS: dict[str, MetricDefinition] = {
     row.name: row
     for row in (
@@ -346,8 +361,13 @@ STANDARD_METRICS: dict[str, MetricDefinition] = {
         MetricDefinition(name="ttft_p50_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p50", description="Median time to first generated token."),
         MetricDefinition(name="ttft_p95_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p95", description="95th-percentile time to first generated token."),
         MetricDefinition(name="ttft_p99_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p99", description="99th-percentile time to first generated token."),
-        MetricDefinition(name="output_tokens_per_second", group=MetricGroup.SERVING, unit="output_token/s", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Generated output tokens per second."),
+        MetricDefinition(name="itl_p50_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p50", description="Median inter-token latency after the first generated token."),
+        MetricDefinition(name="itl_p95_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p95", description="95th-percentile inter-token latency after the first generated token."),
+        MetricDefinition(name="itl_p99_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="p99", description="99th-percentile inter-token latency after the first generated token."),
+        MetricDefinition(name="output_tokens_per_second", group=MetricGroup.SERVING, unit="output_token/s", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Mean decode-only output-token rate, excluding time to first token."),
         MetricDefinition(name="requests_per_second", group=MetricGroup.SERVING, unit="request/s", direction=MetricDirection.HIGHER_IS_BETTER, aggregation="mean", description="Successful and failed completed requests per second."),
+        MetricDefinition(name="queue_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean engine or gateway queue time per benchmark task."),
+        MetricDefinition(name="inference_time_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean cumulative model-inference time per benchmark task."),
         MetricDefinition(name="task_wall_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="median", description="End-to-end task wall time."),
         MetricDefinition(name="completion_latency_mean_ms", group=MetricGroup.SERVING, unit="ms", direction=MetricDirection.LOWER_IS_BETTER, aggregation="mean", description="Mean end-to-end completion latency."),
         MetricDefinition(name="peak_accelerator_bytes", group=MetricGroup.RESOURCES, unit="byte", direction=MetricDirection.LOWER_IS_BETTER, aggregation="max", description="Peak accelerator-resident memory."),

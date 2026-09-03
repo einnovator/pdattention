@@ -18,6 +18,33 @@ External code or documentation RAG is outside this campaign.
 4. **Stage D/E, breadth:** commercial-native controls and larger official
    benchmark cohorts are added only after the pilot is stable.
 
+## Find a measurable no-PRA task band
+
+The present official runs do not yet admit a PRA efficacy comparison:
+Qwen3-14B/OpenCode scored `0/5`, Qwen3-Coder-30B/OpenCode scored `0/1`, and the
+deterministic Stage-A fixture is deliberately too easy. The next baseline
+screen therefore targets a `30%-80%` no-PRA success band rather than choosing
+tasks only because they are available.
+
+`PRA-Coding-Tasks-v1` is the recommended controlled screening set: 24-40
+small repository tasks spanning unit-test repair, one-function implementation,
+parser fixes, CLI options, configuration precedence, small multi-file
+refactors, type-check fixes, API call-site updates, validation, and executable
+documentation examples. Every task must freeze its repository revision, test
+command, timeout, allowed scope, and checksum. This set is for screening and
+mechanism attribution; SWE-bench Lite/Verified, Commit0, RepoQA, and
+Terminal-Bench remain the external validation layers.
+
+Once a baseline enters the admission band, the first comparison is only No
+PRA, PRA - No Adaptor/BALANCED, and PRA - Adaptor Bundle/BALANCED. The report
+must show absolute and baseline-relative task success, cumulative tokens,
+TTFT p50/p95/p99, ITL p50/p95/p99, decode output tokens/s, model requests/s,
+queue/inference time, task wall time, peak memory, and cost. Missing engine
+telemetry remains `NOT_MEASURED`.
+
+The same condition grammar used by model cards is visible in the
+[Canonical Evidence Matrix](../bundles/evidence-matrix.md).
+
 Terminal-Bench 2.1 is primary. SWE-bench Lite is the development secondary and
 SWE-bench Verified is reserved for promoted configurations. Their official
 harnesses remain responsible for task setup and grading.

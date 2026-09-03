@@ -28,7 +28,19 @@ AGENT_EVIDENCE_METRICS = {
         "official_task_success",
         "verifier_checks_passed",
         "input_tokens",
+        "ttft_p50_ms",
+        "ttft_p95_ms",
+        "ttft_p99_ms",
+        "itl_p50_ms",
+        "itl_p95_ms",
+        "itl_p99_ms",
+        "output_tokens_per_second",
+        "requests_per_second",
+        "queue_time_mean_ms",
+        "inference_time_mean_ms",
         "task_wall_ms",
+        "peak_memory_bytes",
+        "peak_accelerator_bytes",
         "cost_per_successful_task",
     )
 }
@@ -174,11 +186,42 @@ def canonical_agent_evidence(
 def _agent_metrics(rows: Sequence[CodingAgentRun]) -> dict[str, MetricObservation]:
     successes = [row for row in rows if row.outcome.success]
     passed = [row.outcome.tests_passed for row in rows if row.outcome.tests_passed is not None]
+    ttft = [sample for row in rows for sample in row.timings.ttft_samples_ms]
+    itl = [sample for row in rows for sample in row.timings.itl_samples_ms]
+    inference_ms = sum(row.timings.inference_ms for row in rows)
+    queue_samples = [row.timings.queue_ms for row in rows if row.timings.queue_ms > 0]
+    inference_samples = [row.timings.inference_ms for row in rows if row.timings.inference_ms > 0]
+    model_calls = sum(row.behavior.model_calls for row in rows)
+    output_tokens = sum(row.tokens.output_tokens for row in rows)
+    decode_ms = inference_ms - sum(ttft)
+    decode_tokens = output_tokens - model_calls
+    decode_rate_available = (
+        inference_ms > 0
+        and model_calls > 0
+        and len(ttft) >= model_calls
+        and decode_ms > 0
+        and decode_tokens > 0
+    )
+    peak_memory = [row.resources.peak_ram_bytes for row in rows if row.resources.peak_ram_bytes is not None]
+    peak_accelerator = [row.resources.peak_accelerator_bytes for row in rows if row.resources.peak_accelerator_bytes is not None]
+    missing = lambda note: MetricObservation.missing(MeasurementState.NOT_MEASURED, note)
     return {
         "official_task_success": MetricObservation.measured(sum(row.outcome.success for row in rows) / len(rows)),
-        "verifier_checks_passed": MetricObservation.measured(float(sum(passed))),
-        "input_tokens": MetricObservation.measured(float(sum(row.tokens.input_tokens for row in rows))),
+        "verifier_checks_passed": MetricObservation.measured(float(sum(passed))) if passed else missing("The verifier did not report check counts."),
+        "input_tokens": MetricObservation.measured(float(sum(row.tokens.input_tokens for row in rows))) if any(row.tokens.input_tokens > 0 for row in rows) else missing("The agent harness did not report input-token usage."),
+        "ttft_p50_ms": MetricObservation.measured(float(statistics.median(ttft))) if ttft else missing("The agent harness did not expose per-request TTFT samples."),
+        "ttft_p95_ms": MetricObservation.measured(_percentile(ttft, 0.95)) if ttft else missing("The agent harness did not expose per-request TTFT samples."),
+        "ttft_p99_ms": MetricObservation.measured(_percentile(ttft, 0.99)) if ttft else missing("The agent harness did not expose per-request TTFT samples."),
+        "itl_p50_ms": MetricObservation.measured(float(statistics.median(itl))) if itl else missing("The agent harness did not expose per-request ITL samples."),
+        "itl_p95_ms": MetricObservation.measured(_percentile(itl, 0.95)) if itl else missing("The agent harness did not expose per-request ITL samples."),
+        "itl_p99_ms": MetricObservation.measured(_percentile(itl, 0.99)) if itl else missing("The agent harness did not expose per-request ITL samples."),
+        "output_tokens_per_second": MetricObservation.measured(1000.0 * decode_tokens / decode_ms) if decode_rate_available else missing("Decode-only rate requires output-token, model-call, TTFT, and inference-duration telemetry."),
+        "requests_per_second": MetricObservation.measured(1000.0 * model_calls / inference_ms) if inference_ms > 0 and model_calls else missing("Model-call counts or inference time were not reported."),
+        "queue_time_mean_ms": MetricObservation.measured(float(statistics.mean(queue_samples))) if queue_samples else missing("The engine or gateway did not report queue time."),
+        "inference_time_mean_ms": MetricObservation.measured(float(statistics.mean(inference_samples))) if inference_samples else missing("The agent harness did not report model inference time."),
         "task_wall_ms": MetricObservation.measured(float(statistics.median(row.timings.task_wall_ms for row in rows))),
+        "peak_memory_bytes": MetricObservation.measured(float(max(peak_memory))) if peak_memory else missing("Peak host memory was not captured."),
+        "peak_accelerator_bytes": MetricObservation.measured(float(max(peak_accelerator))) if peak_accelerator else missing("Peak accelerator memory was not captured."),
         "cost_per_successful_task": (
             MetricObservation.measured(sum(float(row.cost.total or 0) for row in rows) / len(successes))
             if successes else MetricObservation.missing(
@@ -186,6 +229,12 @@ def _agent_metrics(rows: Sequence[CodingAgentRun]) -> dict[str, MetricObservatio
             )
         ),
     }
+
+
+def _percentile(values: Sequence[float], fraction: float) -> float:
+    ordered = sorted(float(value) for value in values)
+    index = max(0, min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1))
+    return ordered[index]
 
 
 def _missing_agent_metrics(blocked_note: str | None) -> dict[str, MetricObservation]:

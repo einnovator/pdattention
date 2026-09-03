@@ -83,8 +83,18 @@ def _summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         return [float(row[name]) for row in rows if row.get(name) is not None]
 
     ttft = values("ttft_ms")
+    itl = values("itl_ms")
     completion = values("completion_latency_ms")
     visible = values("visible_prompt_tokens")
+    decode_rates = []
+    for row in rows:
+        generated = int(row.get("generated_tokens") or 0)
+        completion_ms = row.get("completion_latency_ms")
+        ttft_ms = row.get("ttft_ms")
+        if generated > 1 and completion_ms is not None and ttft_ms is not None:
+            decode_ms = float(completion_ms) - float(ttft_ms)
+            if decode_ms > 0:
+                decode_rates.append(1000.0 * (generated - 1) / decode_ms)
     return {
         "quality_metric": "token_f1",
         "quality": mean(values("token_f1")),
@@ -95,6 +105,12 @@ def _summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "active_detail_bytes": mean(values("active_detail_bytes")),
         "retained_detail_bytes": mean(values("retained_detail_bytes")),
         "ttft_ms": {"p50": median(ttft), "p95": _percentile(ttft, 0.95), "p99": _percentile(ttft, 0.99)},
+        "itl_ms": {
+            "p50": median(itl) if itl else None,
+            "p95": _percentile(itl, 0.95) if itl else None,
+            "p99": _percentile(itl, 0.99) if itl else None,
+        },
+        "output_tokens_per_second": mean(decode_rates) if decode_rates else None,
         "completion_latency_ms": {
             "mean": mean(completion),
             "p50": median(completion),
@@ -231,6 +247,10 @@ def canonicalize_paired_transport_evidence(row: Mapping[str, Any]) -> CanonicalE
             "ttft_p50_ms": ttft.get("p50") if isinstance(ttft, Mapping) else None,
             "ttft_p95_ms": ttft.get("p95") if isinstance(ttft, Mapping) else None,
             "ttft_p99_ms": ttft.get("p99") if isinstance(ttft, Mapping) else None,
+            "itl_p50_ms": source.get("itl_ms", {}).get("p50") if isinstance(source.get("itl_ms"), Mapping) else None,
+            "itl_p95_ms": source.get("itl_ms", {}).get("p95") if isinstance(source.get("itl_ms"), Mapping) else None,
+            "itl_p99_ms": source.get("itl_ms", {}).get("p99") if isinstance(source.get("itl_ms"), Mapping) else None,
+            "output_tokens_per_second": source.get("output_tokens_per_second"),
             "completion_latency_mean_ms": completion.get("mean") if isinstance(completion, Mapping) else None,
             "peak_memory_bytes": source.get("peak_memory_bytes"),
         }

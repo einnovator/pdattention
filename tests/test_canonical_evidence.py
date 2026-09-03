@@ -92,7 +92,7 @@ def test_renderers_use_canonical_condition_grammar() -> None:
     assert "No PRA | PRA - No Adaptor | PRA - Adaptor Bundle" in markdown
     assert "-250 (-25.00%)" in markdown
     assert "PRA no adaptor & PRA bundle" in latex
-    assert "official\\_task\\_success" in latex
+    assert "Official Task Success" in latex
 
 
 def test_control_plane_serialization_contains_computed_deltas() -> None:

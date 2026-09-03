@@ -38,6 +38,17 @@ Availability, qualification, and recommendation are separate. A mode may be impl
 
 No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
+## Evidence by engine, mode, and profile
+
+Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
+
+| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
+| --- | --- | --- | --- | --- | --- | --- |
+| hf | Selected Context | QUALITY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Selected Context | BALANCED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Selected Context | ECONOMY | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+| hf | Selected Context | QASPER-LEARNED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
+
 ## Canonical three-condition evidence
 
 A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
@@ -124,8 +135,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `52ea386f56fc8d81346325619f3523e585abf78d`
-- Bundle build commit: `52ea386f56fc8d81346325619f3523e585abf78d`
+- PRA commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
+- Bundle build commit: `845e1ccac90eb09c31f2681443800e2d845179b8`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

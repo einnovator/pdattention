@@ -12,14 +12,20 @@ from typing import Any, Iterable, Mapping, Sequence
 import yaml
 
 from .bundle_evidence import EvidenceValidationError, validate_bundle_evidence
-from .canonical_evidence import CanonicalEvidenceRecord, MetricGroup, render_markdown_table
+from .canonical_evidence import (
+    CanonicalEvidenceRecord,
+    EvidenceCondition,
+    MetricGroup,
+    render_markdown_table,
+)
 
 
 BUNDLE_SCHEMA_VERSION = 2
 MANIFEST_NAMES = ("bundle.yaml", "pra.yaml")
 PUBLIC_CARD_SECTIONS = (
     "What this PRA Runtime Bundle is", "Recommended configuration",
-    "Headline results", "Installation", "Quickstart", "Profiles",
+    "Headline results", "Evidence by engine, mode, and profile",
+    "Installation", "Quickstart", "Profiles",
     "Engine compatibility", "End-to-end qualification",
     "Native Memory qualification", "Research diagnostics",
     "How to evaluate locally", "Known limitations", "Training/creation",
@@ -492,8 +498,44 @@ class BundleBuilder:
             ]
         else:
             lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
-        lines += ["## Canonical three-condition evidence", ""]
         canonical_records = _canonical_evidence_rows(bundle)
+        lines += [
+            "## Evidence by engine, mode, and profile", "",
+            "Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.", "",
+            "| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for name, item in bundle.profiles.items():
+            value = item if isinstance(item, Mapping) else {}
+            profile_engine = str(value.get("engine", engine_name))
+            profile_mode = str(value.get("mode", mode))
+            matches = [
+                record for record in canonical_records
+                if record.key.profile.lower() == str(name).lower()
+                and record.key.mode.replace("_", "-").lower() == profile_mode.replace(" ", "-").replace("_", "-").lower()
+                and (
+                    record.key.engine.lower() == profile_engine.lower()
+                    or record.key.engine.lower().startswith(profile_engine.lower() + "-")
+                )
+            ]
+            groups = sorted({
+                definition.group.value
+                for record in matches
+                for metric, definition in record.metric_definitions.items()
+                if any(
+                    evidence.metrics.get(metric) is not None
+                    and evidence.metrics[metric].state.value == "MEASURED"
+                    for evidence in record.conditions.values()
+                )
+            })
+            lines.append(
+                f"| {profile_engine} | {profile_mode} | {str(name).upper()} "
+                f"| {_condition_coverage(matches, EvidenceCondition.NO_PRA)} "
+                f"| {_condition_coverage(matches, EvidenceCondition.PRA_NO_ADAPTOR)} "
+                f"| {_condition_coverage(matches, EvidenceCondition.PRA_ADAPTOR_BUNDLE)} "
+                f"| {', '.join(groups) if groups else 'NOT_MEASURED'} |"
+            )
+        lines += ["", "## Canonical three-condition evidence", ""]
         if canonical_records:
             lines += [
                 "Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.", "",
@@ -649,6 +691,26 @@ def _canonical_evidence_rows(bundle: PRAModelBundle) -> list[CanonicalEvidenceRe
         fields = CanonicalEvidenceRecord.model_fields
         records.append(CanonicalEvidenceRecord.model_validate({name: value[name] for name in fields if name in value}))
     return records
+
+
+def _condition_coverage(
+    records: Sequence[CanonicalEvidenceRecord], condition: EvidenceCondition
+) -> str:
+    """Summarize measured scalar coverage for one card profile row."""
+
+    observations = [
+        observation
+        for record in records
+        for observation in record.conditions[condition].metrics.values()
+    ]
+    measured = sum(observation.state.value == "MEASURED" for observation in observations)
+    if measured:
+        return f"MEASURED ({measured})"
+    states = {observation.state.value for observation in observations}
+    for state in ("BLOCKED", "NOT_MEASURED", "NOT_APPLICABLE"):
+        if state in states:
+            return state
+    return "NOT_MEASURED"
 
 
 def validate_model_card(text: str, bundle: PRAModelBundle | None = None) -> dict[str, Any]:
