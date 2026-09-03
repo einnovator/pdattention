@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 9e9b5e5de1cba5e53c3498674e1500e7571832915f0b5e9959167120d8a98c24
+supported_precisions:
+- precision_family: INT4
+  encoding: MLX-4bit
+  evidence_tier: ENGINE_QUALIFIED
 learned_adapters:
   combined-router-d128:
     path: learned_adapters/combined-router-d128
@@ -93,6 +97,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-4bit
     model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -165,7 +171,7 @@ qualification:
     artifact: qualification/qwen3_14b_mlx_profiles.json
     artifact_sha256: 4e6d844bd34a22fe3f15ce205e4928070638f39ae73a144f8320b373b83ec7fd
   canonical_evidence:
-  - schema_version: 1
+  - schema_version: 3
     key:
       task: combined
       hardware: Apple M4 Pro (Mac16,7), 48 GB
@@ -174,6 +180,8 @@ qualification:
       model_id: mlx-community/Qwen3-14B-4bit
       model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
       model_fingerprint: null
+      precision_family: INT4
+      precision_encoding: MLX-4bit
       mode: native-memory
       profile: balanced
     metric_definitions:
@@ -292,7 +300,7 @@ qualification:
         aggregation: max
         description: Peak memory reported by the engine-specific allocator.
     conditions:
-      no_pra:
+      PRA_SELECTED_CONTEXT_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.27746031746031746
@@ -360,7 +368,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_no_adaptor:
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.27746031746031746
@@ -428,88 +436,88 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_adaptor_bundle:
+      PRA_NATIVE_MEMORY_BUNDLE:
         metrics:
           token_f1:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           exact_match:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           gold_answer_log_probability:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           visible_tokens:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           selected_native_kv_tokens:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           active_detail_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           retained_detail_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           ttft_p50_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           ttft_p95_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           ttft_p99_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           itl_p50_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           itl_p95_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           itl_p99_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           output_tokens_per_second:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           completion_latency_mean_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
           peak_memory_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NEEDS_RUN
+            note: The exact learned router is bundled but has not completed the matched
+              end-task arm.
         bundle_id: null
         bundle_revision: null
     provenance:
@@ -523,12 +531,23 @@ qualification:
       date: '2026-09-01'
       artifacts:
       - qualification/qwen3_14b_mlx_profiles.json
+      tokenizer_revision: null
+      config_hash: null
+      quantization_config_hash: null
+      conversion_revision: null
+      conversion_tool: null
+      quantization_recipe: null
+      artifact_checksum: null
+      feature_extraction_precision: null
+      adaptor_parameter_precision: null
     evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: mlx-community/Qwen3-14B-4bit
     model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -604,6 +623,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-4bit
     model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -679,6 +700,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-4bit
     model_revision: a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -910,7 +933,7 @@ qualification:
   limitations:
   - The learned router improves QASPER but is not uniformly positive on HotpotQA;
     it is opt-in rather than the bundle default.
-  - Paired natural-QA evidence contains five examples per dataset and supports engine
+  - Paired natural-QA evidence contains 5 examples per dataset and supports engine
     qualification, not production qualification.
   - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
     therefore retains all eligible layers.
@@ -938,20 +961,21 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-qwen3-14b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: qwen3_14b_mlx_profiles.json
+  source_artifact:
+  - docs/papers/shared/results/mac_scaling/qwen3_14b_mlx_profiles.json
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
   learned_adapters/combined-router-d128/adapter_model.pt: 852edb720e84d3a8c142c8302b98aa202920e6064ba41bffd95ab12cb1f73a42
   learned_adapters/combined-router-d128/config.json: fec04b7654bc08237d89aa9a9e467a552044a9e96d36b98571311dc11ea87999
-  qualification/canonical_evidence.json: 37e19d20631de03d7d8b045901d8e46b112319128c56fecbaae17d61bed0ba53
+  qualification/canonical_evidence.json: b56c5691d9163798dee4daa310750da533840802ac2fb3ece9a3d908da0c7ed9
   qualification/catalog_summary.json: c20e46dbc58e32ce0a57208fe612732e399c7b428b361cad5c77a01015d60c99
   qualification/comparison.json: 179ff806087c8be7b2b9f6e4a32a0e4ebfef2b7831482738271724af0e2f9fdb
   qualification/feature_dataset_manifest.json: 3be491913530f60718e9b8480cb7d2d9da3c9030de340f805c47864989ae555e
@@ -962,18 +986,3 @@ trust:
   publisher: EInnovator
   scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT4
-  encoding: MLX-4bit
-  serving_precision: INT4
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Native Memory
-  profile: BALANCED
-  evidence_tier: ENGINE_QUALIFIED
-  datasets:
-  - qasper
-  - hotpotqa
-  - 2wikimultihopqa
-  artifact: docs/papers/shared/results/mac_scaling/qwen3_14b_mlx_profiles.json

@@ -1,6 +1,6 @@
 [
   {
-    "schema_version": 1,
+    "schema_version": 3,
     "key": {
       "task": "combined",
       "hardware": "Apple M4 Pro (Mac16,7), 48 GB",
@@ -9,6 +9,8 @@
       "model_id": "mlx-community/Qwen3-14B-4bit",
       "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
       "model_fingerprint": null,
+      "precision_family": "INT4",
+      "precision_encoding": "MLX-4bit",
       "mode": "native-memory",
       "profile": "balanced"
     },
@@ -143,7 +145,7 @@
       }
     },
     "conditions": {
-      "no_pra": {
+      "PRA_SELECTED_CONTEXT_NO_ADAPTOR": {
         "metrics": {
           "token_f1": {
             "value": 0.27746031746031746,
@@ -229,7 +231,7 @@
         "bundle_id": null,
         "bundle_revision": null
       },
-      "pra_no_adaptor": {
+      "PRA_NATIVE_MEMORY_NO_ADAPTOR": {
         "metrics": {
           "token_f1": {
             "value": 0.27746031746031746,
@@ -315,87 +317,87 @@
         "bundle_id": null,
         "bundle_revision": null
       },
-      "pra_adaptor_bundle": {
+      "PRA_NATIVE_MEMORY_BUNDLE": {
         "metrics": {
           "token_f1": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "exact_match": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "gold_answer_log_probability": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "visible_tokens": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "selected_native_kv_tokens": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "active_detail_bytes": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "retained_detail_bytes": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "ttft_p50_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "ttft_p95_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "ttft_p99_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "itl_p50_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "itl_p95_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "itl_p99_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "output_tokens_per_second": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "completion_latency_mean_ms": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           },
           "peak_memory_bytes": {
             "value": null,
-            "state": "NOT_MEASURED",
-            "note": "The paired engine run did not resolve and record the immutable Runtime Bundle."
+            "state": "NEEDS_RUN",
+            "note": "The exact learned router is bundled but has not completed the matched end-task arm."
           }
         },
         "bundle_id": null,
@@ -413,14 +415,25 @@
       "date": "2026-09-01",
       "artifacts": [
         "qualification/qwen3_14b_mlx_profiles.json"
-      ]
+      ],
+      "tokenizer_revision": null,
+      "config_hash": null,
+      "quantization_config_hash": null,
+      "conversion_revision": null,
+      "conversion_tool": null,
+      "quantization_recipe": null,
+      "artifact_checksum": null,
+      "feature_extraction_precision": null,
+      "adaptor_parameter_precision": null
     },
     "evidence_tier": "ENGINE_QUALIFIED",
     "deltas": {
-      "pra_no_adaptor": {
+      "delta_nm_vs_sc": {
         "token_f1": {
           "metric": "token_f1",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.27746031746031746,
           "candidate": 0.27746031746031746,
           "delta": 0.0,
@@ -429,7 +442,9 @@
         },
         "exact_match": {
           "metric": "exact_match",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 0.0,
           "delta": 0.0,
@@ -438,7 +453,9 @@
         },
         "gold_answer_log_probability": {
           "metric": "gold_answer_log_probability",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": -9.97838643391927,
           "candidate": -9.97838643391927,
           "delta": 0.0,
@@ -447,7 +464,9 @@
         },
         "visible_tokens": {
           "metric": "visible_tokens",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 315.53333333333336,
           "candidate": 34.266666666666666,
           "delta": -281.2666666666667,
@@ -456,7 +475,9 @@
         },
         "selected_native_kv_tokens": {
           "metric": "selected_native_kv_tokens",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 11250.666666666666,
           "delta": 11250.666666666666,
@@ -465,7 +486,9 @@
         },
         "active_detail_bytes": {
           "metric": "active_detail_bytes",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 46082730.666666664,
           "delta": 46082730.666666664,
@@ -474,7 +497,9 @@
         },
         "retained_detail_bytes": {
           "metric": "retained_detail_bytes",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 46082730.666666664,
           "delta": 46082730.666666664,
@@ -483,7 +508,9 @@
         },
         "ttft_p50_ms": {
           "metric": "ttft_p50_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 210.72420799464453,
           "candidate": 210.37279200390913,
           "delta": -0.3514159907354042,
@@ -492,7 +519,9 @@
         },
         "ttft_p95_ms": {
           "metric": "ttft_p95_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 339.22949999396224,
           "candidate": 338.2852500071749,
           "delta": -0.9442499867873266,
@@ -501,7 +530,9 @@
         },
         "ttft_p99_ms": {
           "metric": "ttft_p99_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 339.22949999396224,
           "candidate": 338.2852500071749,
           "delta": -0.9442499867873266,
@@ -510,7 +541,9 @@
         },
         "itl_p50_ms": {
           "metric": "itl_p50_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 34.382178570792476,
           "candidate": 35.224690428419436,
           "delta": 0.8425118576269597,
@@ -519,7 +552,9 @@
         },
         "itl_p95_ms": {
           "metric": "itl_p95_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 34.627351142782054,
           "candidate": 35.45511899989963,
           "delta": 0.8277678571175784,
@@ -528,7 +563,9 @@
         },
         "itl_p99_ms": {
           "metric": "itl_p99_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 34.627351142782054,
           "candidate": 35.45511899989963,
           "delta": 0.8277678571175784,
@@ -537,7 +574,9 @@
         },
         "output_tokens_per_second": {
           "metric": "output_tokens_per_second",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 29.091133280525803,
           "candidate": 28.411334824304248,
           "delta": -0.6797984562215547,
@@ -546,7 +585,9 @@
         },
         "completion_latency_mean_ms": {
           "metric": "completion_latency_mean_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 507.8287193318829,
           "candidate": 513.2481610004712,
           "delta": 5.41944166858832,
@@ -555,7 +596,9 @@
         },
         "peak_memory_bytes": {
           "metric": "peak_memory_bytes",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 8850340060.0,
           "candidate": 8794683612.0,
           "delta": -55656448.0,
@@ -563,297 +606,183 @@
           "state": "MEASURED"
         }
       },
-      "pra_adaptor_bundle": {
+      "delta_nm_bundle_vs_nm": {
         "token_f1": {
           "metric": "token_f1",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": 0.27746031746031746,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "exact_match": {
           "metric": "exact_match",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": 0.0,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "gold_answer_log_probability": {
           "metric": "gold_answer_log_probability",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": -9.97838643391927,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "visible_tokens": {
           "metric": "visible_tokens",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 315.53333333333336,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 34.266666666666666,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "selected_native_kv_tokens": {
           "metric": "selected_native_kv_tokens",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 11250.666666666666,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "active_detail_bytes": {
           "metric": "active_detail_bytes",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 46082730.666666664,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "retained_detail_bytes": {
           "metric": "retained_detail_bytes",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 46082730.666666664,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "ttft_p50_ms": {
           "metric": "ttft_p50_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 210.72420799464453,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 210.37279200390913,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "ttft_p95_ms": {
           "metric": "ttft_p95_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 339.22949999396224,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 338.2852500071749,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "ttft_p99_ms": {
           "metric": "ttft_p99_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 339.22949999396224,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 338.2852500071749,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "itl_p50_ms": {
           "metric": "itl_p50_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 34.382178570792476,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 35.224690428419436,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "itl_p95_ms": {
           "metric": "itl_p95_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 34.627351142782054,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 35.45511899989963,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "itl_p99_ms": {
           "metric": "itl_p99_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 34.627351142782054,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 35.45511899989963,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "output_tokens_per_second": {
           "metric": "output_tokens_per_second",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 29.091133280525803,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 28.411334824304248,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "completion_latency_mean_ms": {
           "metric": "completion_latency_mean_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 507.8287193318829,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 513.2481610004712,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         },
         "peak_memory_bytes": {
           "metric": "peak_memory_bytes",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 8850340060.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 8794683612.0,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
-          "state": "NOT_MEASURED"
+          "state": "NEEDS_RUN"
         }
-      }
-    },
-    "incremental_adaptor_deltas": {
-      "token_f1": {
-        "metric": "token_f1",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 0.27746031746031746,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "exact_match": {
-        "metric": "exact_match",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 0.0,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "gold_answer_log_probability": {
-        "metric": "gold_answer_log_probability",
-        "condition": "pra_adaptor_bundle",
-        "baseline": -9.97838643391927,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "visible_tokens": {
-        "metric": "visible_tokens",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 34.266666666666666,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "selected_native_kv_tokens": {
-        "metric": "selected_native_kv_tokens",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 11250.666666666666,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "active_detail_bytes": {
-        "metric": "active_detail_bytes",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 46082730.666666664,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "retained_detail_bytes": {
-        "metric": "retained_detail_bytes",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 46082730.666666664,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "ttft_p50_ms": {
-        "metric": "ttft_p50_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 210.37279200390913,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "ttft_p95_ms": {
-        "metric": "ttft_p95_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 338.2852500071749,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "ttft_p99_ms": {
-        "metric": "ttft_p99_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 338.2852500071749,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "itl_p50_ms": {
-        "metric": "itl_p50_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 35.224690428419436,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "itl_p95_ms": {
-        "metric": "itl_p95_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 35.45511899989963,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "itl_p99_ms": {
-        "metric": "itl_p99_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 35.45511899989963,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "output_tokens_per_second": {
-        "metric": "output_tokens_per_second",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 28.411334824304248,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "completion_latency_mean_ms": {
-        "metric": "completion_latency_mean_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 513.2481610004712,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
-      },
-      "peak_memory_bytes": {
-        "metric": "peak_memory_bytes",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 8794683612.0,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NOT_MEASURED"
       }
     }
   }

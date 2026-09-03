@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 44264ae701f5175481b7b306fbdb47e5b88631bb75114443de7ec4209ea74165
+supported_precisions:
+- precision_family: INT8
+  encoding: PyTorch-bnb-8bit
+  evidence_tier: ENGINE_QUALIFIED
 learned_adapters: {}
 profiles:
   quality:
@@ -51,6 +55,8 @@ qualification:
     model_id: Qwen/Qwen2.5-1.5B-Instruct
     model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
     quantization: bnb-8bit
+    precision_family: INT8
+    precision_encoding: PyTorch-bnb-8bit
     engine: huggingface_eager
     engine_version: 5.16.1
     profile: balanced
@@ -128,7 +134,7 @@ qualification:
       qualification/matched_e0_e2_2wikimultihopqa.json
     artifact_sha256: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
   canonical_evidence:
-  - schema_version: 1
+  - schema_version: 3
     key:
       task: combined
       hardware: NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB
@@ -137,6 +143,8 @@ qualification:
       model_id: Qwen/Qwen2.5-1.5B-Instruct
       model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
       model_fingerprint: null
+      precision_family: INT8
+      precision_encoding: PyTorch-bnb-8bit
       mode: native-memory
       profile: balanced
     metric_definitions:
@@ -204,7 +212,7 @@ qualification:
         aggregation: mean
         description: Mean end-to-end completion latency.
     conditions:
-      no_pra:
+      PRA_SELECTED_CONTEXT_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.3991111111111111
@@ -244,7 +252,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_no_adaptor:
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.017857142857142856
@@ -284,7 +292,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_adaptor_bundle:
+      PRA_NATIVE_MEMORY_BUNDLE:
         metrics:
           token_f1:
             value: null
@@ -336,12 +344,23 @@ qualification:
       artifacts:
       - qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
         qualification/matched_e0_e2_2wikimultihopqa.json
+      tokenizer_revision: null
+      config_hash: null
+      quantization_config_hash: null
+      conversion_revision: null
+      conversion_tool: null
+      quantization_recipe: null
+      artifact_checksum: null
+      feature_extraction_precision: null
+      adaptor_parameter_precision: null
     evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: Qwen/Qwen2.5-1.5B-Instruct
     model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
     quantization: bnb-8bit
+    precision_family: INT8
+    precision_encoding: PyTorch-bnb-8bit
     engine: huggingface_eager
     engine_version: 5.16.1
     profile: balanced
@@ -422,6 +441,8 @@ qualification:
     model_id: Qwen/Qwen2.5-1.5B-Instruct
     model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
     quantization: bnb-8bit
+    precision_family: INT8
+    precision_encoding: PyTorch-bnb-8bit
     engine: huggingface_eager
     engine_version: 5.16.1
     profile: balanced
@@ -502,6 +523,8 @@ qualification:
     model_id: Qwen/Qwen2.5-1.5B-Instruct
     model_revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
     quantization: bnb-8bit
+    precision_family: INT8
+    precision_encoding: PyTorch-bnb-8bit
     engine: huggingface_eager
     engine_version: 5.16.1
     profile: balanced
@@ -648,8 +671,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 15b73e96201951fdd47e6925dda9415236ddc7b7
-  bundle_build_commit: 15b73e96201951fdd47e6925dda9415236ddc7b7
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -662,7 +685,7 @@ provenance:
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
-  qualification/canonical_evidence.json: deef74bce50c58d7618660d6d253ba407ac809fdf09dbb6e1e941033982f9784
+  qualification/canonical_evidence.json: d0ec05624eba17fd02ac4c223be769496100665a2228705888227783832e839d
   qualification/matched_e0_e2_2wikimultihopqa.json: fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737
   qualification/matched_e0_e2_hotpotqa.json: 2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc
   qualification/matched_e0_e2_qasper.json: d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd
@@ -674,18 +697,3 @@ trust:
   publisher: EInnovator
   scope: exact bnb-8bit HF model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT8
-  encoding: bitsandbytes-8bit-LLM.int8
-  serving_precision: INT8
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: hf
-  mode: Selected Context
-  profile: BALANCED
-  evidence_tier: CONTROLLED
-  datasets:
-  - qasper
-  - hotpotqa
-  - 2wikimultihopqa
-  artifact: docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/qualification_summary.json

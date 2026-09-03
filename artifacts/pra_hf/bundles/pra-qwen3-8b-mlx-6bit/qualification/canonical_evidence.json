@@ -1,6 +1,6 @@
 [
   {
-    "schema_version": 1,
+    "schema_version": 3,
     "key": {
       "task": "combined",
       "hardware": "Apple M4 Pro (Mac16,7), 48 GB",
@@ -9,6 +9,8 @@
       "model_id": "mlx-community/Qwen3-8B-6bit",
       "model_revision": "35a99712f90d6c2c9a2407a3857e104a46edd9e6",
       "model_fingerprint": null,
+      "precision_family": "INT6",
+      "precision_encoding": "MLX-6bit",
       "mode": "native-memory",
       "profile": "balanced"
     },
@@ -143,7 +145,7 @@
       }
     },
     "conditions": {
-      "no_pra": {
+      "PRA_SELECTED_CONTEXT_NO_ADAPTOR": {
         "metrics": {
           "token_f1": {
             "value": 0.1582324329545243,
@@ -229,7 +231,7 @@
         "bundle_id": null,
         "bundle_revision": null
       },
-      "pra_no_adaptor": {
+      "PRA_NATIVE_MEMORY_NO_ADAPTOR": {
         "metrics": {
           "token_f1": {
             "value": 0.1582324329545243,
@@ -315,7 +317,7 @@
         "bundle_id": null,
         "bundle_revision": null
       },
-      "pra_adaptor_bundle": {
+      "PRA_NATIVE_MEMORY_BUNDLE": {
         "metrics": {
           "token_f1": {
             "value": null,
@@ -413,14 +415,25 @@
       "date": "2026-09-03",
       "artifacts": [
         "qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json"
-      ]
+      ],
+      "tokenizer_revision": null,
+      "config_hash": null,
+      "quantization_config_hash": null,
+      "conversion_revision": null,
+      "conversion_tool": null,
+      "quantization_recipe": null,
+      "artifact_checksum": null,
+      "feature_extraction_precision": null,
+      "adaptor_parameter_precision": null
     },
     "evidence_tier": "ENGINE_QUALIFIED",
     "deltas": {
-      "pra_no_adaptor": {
+      "delta_nm_vs_sc": {
         "token_f1": {
           "metric": "token_f1",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.1582324329545243,
           "candidate": 0.1582324329545243,
           "delta": 0.0,
@@ -429,7 +442,9 @@
         },
         "exact_match": {
           "metric": "exact_match",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 0.0,
           "delta": 0.0,
@@ -438,7 +453,9 @@
         },
         "gold_answer_log_probability": {
           "metric": "gold_answer_log_probability",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": -18.85678284962972,
           "candidate": -18.85678284962972,
           "delta": 0.0,
@@ -447,7 +464,9 @@
         },
         "evidence_recall": {
           "metric": "evidence_recall",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.6159722222222223,
           "candidate": 0.6159722222222223,
           "delta": 0.0,
@@ -456,7 +475,9 @@
         },
         "visible_tokens": {
           "metric": "visible_tokens",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 396.31666666666666,
           "candidate": 33.516666666666666,
           "delta": -362.8,
@@ -465,7 +486,9 @@
         },
         "selected_native_kv_tokens": {
           "metric": "selected_native_kv_tokens",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 362.8,
           "delta": 362.8,
@@ -474,7 +497,9 @@
         },
         "active_detail_bytes": {
           "metric": "active_detail_bytes",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 53497036.8,
           "delta": 53497036.8,
@@ -483,7 +508,9 @@
         },
         "retained_detail_bytes": {
           "metric": "retained_detail_bytes",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 0.0,
           "candidate": 53497036.8,
           "delta": 53497036.8,
@@ -492,7 +519,9 @@
         },
         "ttft_p50_ms": {
           "metric": "ttft_p50_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 174.6120415336918,
           "candidate": 175.75729149393737,
           "delta": 1.1452499602455646,
@@ -501,7 +530,9 @@
         },
         "ttft_p95_ms": {
           "metric": "ttft_p95_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 224.64625001884997,
           "candidate": 203.59454199206084,
           "delta": -21.05170802678913,
@@ -510,7 +541,9 @@
         },
         "ttft_p99_ms": {
           "metric": "ttft_p99_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 227.00741601875052,
           "candidate": 219.18633300811052,
           "delta": -7.821083010639995,
@@ -519,7 +552,9 @@
         },
         "itl_p50_ms": {
           "metric": "itl_p50_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 27.132314305914484,
           "candidate": 28.16370108706431,
           "delta": 1.031386781149827,
@@ -528,7 +563,9 @@
         },
         "itl_p95_ms": {
           "metric": "itl_p95_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 28.941215565124445,
           "candidate": 29.379034435133573,
           "delta": 0.4378188700091279,
@@ -537,7 +574,9 @@
         },
         "itl_p99_ms": {
           "metric": "itl_p99_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 29.470112303818535,
           "candidate": 31.0572934787437,
           "delta": 1.5871811749251634,
@@ -546,7 +585,9 @@
         },
         "output_tokens_per_second": {
           "metric": "output_tokens_per_second",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 29.823901185928527,
           "candidate": 29.39642590294064,
           "delta": -0.4274752829878885,
@@ -555,7 +596,9 @@
         },
         "completion_latency_mean_ms": {
           "metric": "completion_latency_mean_ms",
-          "condition": "pra_no_adaptor",
+          "name": "delta_nm_vs_sc",
+          "source_condition": "PRA_SELECTED_CONTEXT_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
           "baseline": 806.7466687178239,
           "candidate": 818.3153007975003,
           "delta": 11.568632079676377,
@@ -563,10 +606,12 @@
           "state": "MEASURED"
         }
       },
-      "pra_adaptor_bundle": {
+      "delta_nm_bundle_vs_nm": {
         "token_f1": {
           "metric": "token_f1",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": 0.1582324329545243,
           "candidate": null,
           "delta": null,
@@ -575,7 +620,9 @@
         },
         "exact_match": {
           "metric": "exact_match",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": 0.0,
           "candidate": null,
           "delta": null,
@@ -584,7 +631,9 @@
         },
         "gold_answer_log_probability": {
           "metric": "gold_answer_log_probability",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": -18.85678284962972,
           "candidate": null,
           "delta": null,
@@ -593,7 +642,9 @@
         },
         "evidence_recall": {
           "metric": "evidence_recall",
-          "condition": "pra_adaptor_bundle",
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
           "baseline": 0.6159722222222223,
           "candidate": null,
           "delta": null,
@@ -602,8 +653,10 @@
         },
         "visible_tokens": {
           "metric": "visible_tokens",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 396.31666666666666,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 33.516666666666666,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -611,8 +664,10 @@
         },
         "selected_native_kv_tokens": {
           "metric": "selected_native_kv_tokens",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 362.8,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -620,8 +675,10 @@
         },
         "active_detail_bytes": {
           "metric": "active_detail_bytes",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 53497036.8,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -629,8 +686,10 @@
         },
         "retained_detail_bytes": {
           "metric": "retained_detail_bytes",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 0.0,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 53497036.8,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -638,8 +697,10 @@
         },
         "ttft_p50_ms": {
           "metric": "ttft_p50_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 174.6120415336918,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 175.75729149393737,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -647,8 +708,10 @@
         },
         "ttft_p95_ms": {
           "metric": "ttft_p95_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 224.64625001884997,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 203.59454199206084,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -656,8 +719,10 @@
         },
         "ttft_p99_ms": {
           "metric": "ttft_p99_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 227.00741601875052,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 219.18633300811052,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -665,8 +730,10 @@
         },
         "itl_p50_ms": {
           "metric": "itl_p50_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 27.132314305914484,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 28.16370108706431,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -674,8 +741,10 @@
         },
         "itl_p95_ms": {
           "metric": "itl_p95_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 28.941215565124445,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 29.379034435133573,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -683,8 +752,10 @@
         },
         "itl_p99_ms": {
           "metric": "itl_p99_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 29.470112303818535,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 31.0572934787437,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -692,8 +763,10 @@
         },
         "output_tokens_per_second": {
           "metric": "output_tokens_per_second",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 29.823901185928527,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 29.39642590294064,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
@@ -701,159 +774,15 @@
         },
         "completion_latency_mean_ms": {
           "metric": "completion_latency_mean_ms",
-          "condition": "pra_adaptor_bundle",
-          "baseline": 806.7466687178239,
+          "name": "delta_nm_bundle_vs_nm",
+          "source_condition": "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+          "target_condition": "PRA_NATIVE_MEMORY_BUNDLE",
+          "baseline": 818.3153007975003,
           "candidate": null,
           "delta": null,
           "percent_delta": null,
           "state": "NO_QUALIFIED_ADAPTER"
         }
-      }
-    },
-    "incremental_adaptor_deltas": {
-      "token_f1": {
-        "metric": "token_f1",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 0.1582324329545243,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "exact_match": {
-        "metric": "exact_match",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 0.0,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "gold_answer_log_probability": {
-        "metric": "gold_answer_log_probability",
-        "condition": "pra_adaptor_bundle",
-        "baseline": -18.85678284962972,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "evidence_recall": {
-        "metric": "evidence_recall",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 0.6159722222222223,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "visible_tokens": {
-        "metric": "visible_tokens",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 33.516666666666666,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "selected_native_kv_tokens": {
-        "metric": "selected_native_kv_tokens",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 362.8,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "active_detail_bytes": {
-        "metric": "active_detail_bytes",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 53497036.8,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "retained_detail_bytes": {
-        "metric": "retained_detail_bytes",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 53497036.8,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "ttft_p50_ms": {
-        "metric": "ttft_p50_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 175.75729149393737,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "ttft_p95_ms": {
-        "metric": "ttft_p95_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 203.59454199206084,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "ttft_p99_ms": {
-        "metric": "ttft_p99_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 219.18633300811052,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "itl_p50_ms": {
-        "metric": "itl_p50_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 28.16370108706431,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "itl_p95_ms": {
-        "metric": "itl_p95_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 29.379034435133573,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "itl_p99_ms": {
-        "metric": "itl_p99_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 31.0572934787437,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "output_tokens_per_second": {
-        "metric": "output_tokens_per_second",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 29.39642590294064,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
-      },
-      "completion_latency_mean_ms": {
-        "metric": "completion_latency_mean_ms",
-        "condition": "pra_adaptor_bundle",
-        "baseline": 818.3153007975003,
-        "candidate": null,
-        "delta": null,
-        "percent_delta": null,
-        "state": "NO_QUALIFIED_ADAPTER"
       }
     }
   }

@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 391c9ce6446b9a963c25d7402db56da0b2176131fed62d5adc82a0f1557b829f
+supported_precisions:
+- precision_family: INT8
+  encoding: MLX-8bit
+  evidence_tier: ENGINE_QUALIFIED
 learned_adapters: {}
 profiles:
   quality:
@@ -51,6 +55,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-8bit
     model_revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -128,7 +134,7 @@ qualification:
       qualification/matched_e0_e2_2wikimultihopqa.json
     artifact_sha256: bbb070206b08d1ce2c9c4fe4e807c9f02204e81d99d0ef4a4487f2915b62b4cd,2fad18cd234a531a40b30f5e69e6646c7020bc0f7a5a111f8bc2764f0a7fb16e,0e535af1ef7a189bf85d223f17317dfcacd9c74cf3d851b82e835c3003c8d5dd
   canonical_evidence:
-  - schema_version: 1
+  - schema_version: 3
     key:
       task: combined
       hardware: Apple M4 Pro (Mac16,7), 48 GB
@@ -137,6 +143,8 @@ qualification:
       model_id: mlx-community/Qwen3-14B-8bit
       model_revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
       model_fingerprint: null
+      precision_family: INT8
+      precision_encoding: MLX-8bit
       mode: native-memory
       profile: balanced
     metric_definitions:
@@ -255,7 +263,7 @@ qualification:
         aggregation: mean
         description: Mean end-to-end completion latency.
     conditions:
-      no_pra:
+      PRA_SELECTED_CONTEXT_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.14940198548503839
@@ -323,7 +331,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_no_adaptor:
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.14940198548503839
@@ -391,7 +399,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_adaptor_bundle:
+      PRA_NATIVE_MEMORY_BUNDLE:
         metrics:
           token_f1:
             value: null
@@ -471,12 +479,23 @@ qualification:
       artifacts:
       - qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
         qualification/matched_e0_e2_2wikimultihopqa.json
+      tokenizer_revision: null
+      config_hash: null
+      quantization_config_hash: null
+      conversion_revision: null
+      conversion_tool: null
+      quantization_recipe: null
+      artifact_checksum: null
+      feature_extraction_precision: null
+      adaptor_parameter_precision: null
     evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: mlx-community/Qwen3-14B-8bit
     model_revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -557,6 +576,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-8bit
     model_revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -637,6 +658,8 @@ qualification:
     model_id: mlx-community/Qwen3-14B-8bit
     model_revision: da33cf28f06636847fd9e93e0a03d819b84cb55e
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -783,8 +806,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 99b47d069581ace5e7fcd6ea1bdce2d9c2b2f012
-  bundle_build_commit: 99b47d069581ace5e7fcd6ea1bdce2d9c2b2f012
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-qwen3-14b-mlx-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
@@ -797,7 +820,7 @@ provenance:
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
-  qualification/canonical_evidence.json: 58829cfb225a026f7c79a7ca31588fdd03d8c8e8747f1f69d792e4e71cd55a1d
+  qualification/canonical_evidence.json: ed3d5b3cc5ed13ed986ab2563e8875f1d0d99c39f8251a93904aaf47439a09dd
   qualification/matched_e0_e2_2wikimultihopqa.json: 0e535af1ef7a189bf85d223f17317dfcacd9c74cf3d851b82e835c3003c8d5dd
   qualification/matched_e0_e2_hotpotqa.json: 2fad18cd234a531a40b30f5e69e6646c7020bc0f7a5a111f8bc2764f0a7fb16e
   qualification/matched_e0_e2_qasper.json: bbb070206b08d1ce2c9c4fe4e807c9f02204e81d99d0ef4a4487f2915b62b4cd
@@ -809,18 +832,3 @@ trust:
   publisher: EInnovator
   scope: exact 8bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT8
-  encoding: MLX-8bit
-  serving_precision: INT8
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Native Memory
-  profile: BALANCED
-  evidence_tier: ENGINE_QUALIFIED
-  datasets:
-  - qasper
-  - hotpotqa
-  - 2wikimultihopqa
-  artifact: docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen3-14b-mlx-8bit/qualification_summary.json

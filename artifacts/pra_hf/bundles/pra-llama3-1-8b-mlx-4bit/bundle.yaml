@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 3d772ca13e8bdea582a1a0e2f2cf9ca3e3c92c71b97c1c9a7367ea9087cecf13
+supported_precisions:
+- precision_family: INT4
+  encoding: MLX-4bit
+  evidence_tier: CONTROLLED
 learned_adapters:
   combined-router-d128:
     path: learned_adapters/combined-router-d128
@@ -275,8 +279,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-llama3-1-8b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: llama3.1
@@ -297,17 +301,3 @@ trust:
   publisher: EInnovator
   scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT4
-  encoding: MLX-4bit
-  serving_precision: INT4
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Selected Context
-  profile: BALANCED
-  evidence_tier: CONTROLLED
-  datasets:
-  - qasper
-  - hotpotqa
-  artifact: docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/llama3-8b/comparison.json

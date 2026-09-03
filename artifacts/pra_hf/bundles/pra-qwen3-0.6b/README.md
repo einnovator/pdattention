@@ -41,7 +41,7 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 | Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FP16 | PyTorch-float16 | FP16 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | hf | Selected Context | BALANCED | RESEARCH | controlled-reference |
+| UNSPECIFIED | UNSPECIFIED | NOT_MEASURED | NOT_MEASURED | NOT_APPLICABLE | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED | NOT_MEASURED |
 
 ## Headline results
 
@@ -51,22 +51,22 @@ No paired end-task headline is available for this exact model, revision, quantiz
 
 Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
 
-| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
+| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| hf | Selected Context | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
-| hf | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NOT_APPLICABLE | NEEDS_RUN |
-| hf | Selected Context | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
-| hf | Selected Context | QASPER-LEARNED | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN | NEEDS_RUN |
+| hf | Selected Context | QUALITY | CALIBRATION_PENDING | Selected Context: CALIBRATION_PENDING | Selected Context + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | BALANCED | NEEDS_RUN | Selected Context: NEEDS_RUN | Selected Context + Bundle: NOT_APPLICABLE | NEEDS_RUN |
+| hf | Selected Context | ECONOMY | CALIBRATION_PENDING | Selected Context: CALIBRATION_PENDING | Selected Context + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | QASPER-LEARNED | NEEDS_RUN | Selected Context: NEEDS_RUN | Selected Context + Bundle: NEEDS_RUN | NEEDS_RUN |
 
-## Canonical three-condition evidence
+## Canonical staged evidence
 
-A complete matched No PRA / PRA - No Adaptor / PRA - Adaptor Bundle cohort is not packaged for this exact identity.
+A complete staged cohort is not packaged for this exact identity.
 
 | Condition | Evidence status |
 | --- | --- |
 | No PRA | `NEEDS_RUN` |
-| PRA - No Adaptor | `NEEDS_RUN` |
-| PRA - Adaptor Bundle | `NEEDS_RUN` |
+| Selected Context | `NEEDS_RUN` |
+| Selected Context + Bundle | `NEEDS_RUN` |
 
 Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.
 
@@ -143,8 +143,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
-- Bundle build commit: `430292dc5b8b57a9d99158bf945a0a118b2c50c1`
+- PRA commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
+- Bundle build commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

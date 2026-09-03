@@ -44,15 +44,15 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 | Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| INT8 | MLX-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Native Memory | BALANCED | ENGINE_QUALIFIED | qasper, hotpotqa, 2wikimultihopqa |
+| INT8 | MLX-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Native Memory | BALANCED | ENGINE_QUALIFIED | NOT_MEASURED |
 
 ## Headline results
 
-| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |
+| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | combined (n=60) | token_f1=0.144 | token_f1=0.144 | +0.0000 | -91.5% | -5.7% | +0.6% | 60/60 | ENGINE_QUALIFIED |
 
-All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
+All headline rows freeze the PRA-selected evidence. Deltas are Native Memory minus Selected Context; negative latency and visible-context deltas are reductions. These rows contain no ordinary No-PRA arm.
 
 Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA; cold direct query (n=60); 2026-09-03; PRA commit `None`; artifact `qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json`; SHA-256 `312d6fc5e1df75d5e8c83598efa35ff960f5ccc078b7766523121cc795cc8bcf,a46a8d6b2b0951a225ff7745af8daf5b0ef11009e1b4175f419fcf50582cfb48,dd6044a32173ce41179b4b34c85883c8039bc7680138fd13bf91962e8772f06f`.
 
@@ -70,70 +70,60 @@ Runtime smoke does not establish end-task quality, Native Memory parity, routing
 
 Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
 
-| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
+| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| mlx | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
-| mlx | Native Memory | BALANCED | MEASURED (16) | MEASURED (16) | NO_QUALIFIED_ADAPTER | context, quality, resources, routing, serving |
-| mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Native Memory | QUALITY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
+| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: MEASURED (16) | Native Memory + Bundle: NO_QUALIFIED_ADAPTER | context, quality, resources, routing, serving |
+| mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
 
-## Canonical three-condition evidence
+## Canonical staged evidence
 
-Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.
+Each table holds task, hardware, engine, model, precision, and profile fixed. Every delta names its source and target; bundle use is held orthogonal to execution depth.
 
 ### combined / mlx-lm / balanced
 
-Exact identity: `mlx-community/Qwen3-8B-8bit` at `48a0b75b1ae72503e21e1558d040bc227510ff06` on `Apple M4 Pro (Mac16,7), 48 GB`; precision `UNSPECIFIED` / `UNSPECIFIED`.
+Exact identity: `mlx-community/Qwen3-8B-8bit` at `48a0b75b1ae72503e21e1558d040bc227510ff06` on `Apple M4 Pro (Mac16,7), 48 GB`; precision `INT8` / `MLX-8bit`.
 
 #### Quality
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Token F1 | fraction | higher_is_better | 0.144011 | 0.144011 | +0 (+0.00%) |
-| Exact Match | fraction | higher_is_better | 0 | 0 | +0 |
-| Gold Answer Log Probability | log_probability | higher_is_better | -19.1076 | -19.1076 | +0 (-0.00%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.144011 | 0.144011 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
+| Exact Match | fraction | higher_is_better | 0 | 0 | NO_QUALIFIED_ADAPTER | +0 | NO_QUALIFIED_ADAPTER |
+| Gold Answer Log Probability | log_probability | higher_is_better | -19.1076 | -19.1076 | NO_QUALIFIED_ADAPTER | +0 (-0.00%) | NO_QUALIFIED_ADAPTER |
 
 #### Context
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Visible Tokens | token | lower_is_better | 396.317 | 33.5167 | -362.8 (-91.54%) |
-| Selected Native K/V Tokens | token | neutral | 0 | 362.8 | +362.8 |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 396.317 | 33.5167 | NO_QUALIFIED_ADAPTER | -362.8 (-91.54%) | NO_QUALIFIED_ADAPTER |
+| Selected Native K/V Tokens | token | neutral | 0 | 362.8 | NO_QUALIFIED_ADAPTER | +362.8 | NO_QUALIFIED_ADAPTER |
 
 #### Serving
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| TTFT p50 (ms) | ms | lower_is_better | 186.881 | 176.211 | -10.6696 (-5.71%) |
-| TTFT p95 (ms) | ms | lower_is_better | 232.033 | 208.936 | -23.0971 (-9.95%) |
-| TTFT p99 (ms) | ms | lower_is_better | 249.496 | 212.698 | -36.7977 (-14.75%) |
-| ITL p50 (ms) | ms | lower_is_better | 34.8123 | 35.6742 | +0.861843 (+2.48%) |
-| ITL p95 (ms) | ms | lower_is_better | 36.4766 | 36.8092 | +0.332536 (+0.91%) |
-| ITL p99 (ms) | ms | lower_is_better | 36.8347 | 37.1582 | +0.323467 (+0.88%) |
-| Output Tokens Per Second | output_token/s | higher_is_better | 24.4728 | 24.3286 | -0.144183 (-0.59%) |
-| Completion Latency Mean (ms) | ms | lower_is_better | 981.993 | 987.449 | +5.4559 (+0.56%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| TTFT p50 (ms) | ms | lower_is_better | 186.881 | 176.211 | NO_QUALIFIED_ADAPTER | -10.6696 (-5.71%) | NO_QUALIFIED_ADAPTER |
+| TTFT p95 (ms) | ms | lower_is_better | 232.033 | 208.936 | NO_QUALIFIED_ADAPTER | -23.0971 (-9.95%) | NO_QUALIFIED_ADAPTER |
+| TTFT p99 (ms) | ms | lower_is_better | 249.496 | 212.698 | NO_QUALIFIED_ADAPTER | -36.7977 (-14.75%) | NO_QUALIFIED_ADAPTER |
+| ITL p50 (ms) | ms | lower_is_better | 34.8123 | 35.6742 | NO_QUALIFIED_ADAPTER | +0.861843 (+2.48%) | NO_QUALIFIED_ADAPTER |
+| ITL p95 (ms) | ms | lower_is_better | 36.4766 | 36.8092 | NO_QUALIFIED_ADAPTER | +0.332536 (+0.91%) | NO_QUALIFIED_ADAPTER |
+| ITL p99 (ms) | ms | lower_is_better | 36.8347 | 37.1582 | NO_QUALIFIED_ADAPTER | +0.323467 (+0.88%) | NO_QUALIFIED_ADAPTER |
+| Output Tokens Per Second | output_token/s | higher_is_better | 24.4728 | 24.3286 | NO_QUALIFIED_ADAPTER | -0.144183 (-0.59%) | NO_QUALIFIED_ADAPTER |
+| Completion Latency Mean (ms) | ms | lower_is_better | 981.993 | 987.449 | NO_QUALIFIED_ADAPTER | +5.4559 (+0.56%) | NO_QUALIFIED_ADAPTER |
 
 #### Resources
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Active Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | +5.3497e+07 |
-| Retained Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | +5.3497e+07 |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
 
 #### Routing
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | +0 (+0.00%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
 
 ## Installation
 
@@ -218,8 +208,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `e2ed99f7619b2c1ff770e006ba7705207a779760`
-- Bundle build commit: `e2ed99f7619b2c1ff770e006ba7705207a779760`
+- PRA commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
+- Bundle build commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

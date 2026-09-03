@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 0ff62ffe79727700cfc3273947b22655abd0925e8472fa97935a69784ccb602e
+supported_precisions:
+- precision_family: INT4
+  encoding: MLX-4bit
+  evidence_tier: CONTROLLED
 learned_adapters:
   combined-router-d128:
     path: learned_adapters/combined-router-d128
@@ -279,8 +283,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-gemma3-1b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: gemma
@@ -301,17 +305,3 @@ trust:
   publisher: EInnovator
   scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT4
-  encoding: MLX-4bit
-  serving_precision: INT4
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Selected Context
-  profile: BALANCED
-  evidence_tier: CONTROLLED
-  datasets:
-  - qasper
-  - hotpotqa
-  artifact: docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/gemma3-1b/comparison.json

@@ -44,15 +44,15 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 | Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| INT8 | bitsandbytes-8bit-LLM.int8 | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | hf | Selected Context | BALANCED | CONTROLLED | qasper, hotpotqa, 2wikimultihopqa |
+| INT8 | PyTorch-bnb-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | hf | Selected Context | BALANCED | ENGINE_QUALIFIED | NOT_MEASURED |
 
 ## Headline results
 
-| Workload | Baseline quality | PRA quality | Quality Δ | Input/context Δ | TTFT Δ | Completion Δ | Paired parity | Evidence |
+| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | combined (n=15) | token_f1=0.3991 | token_f1=0.01786 | -0.3813 | -91.7% | NEEDS_RUN | +203.5% | 0/15 | ENGINE_QUALIFIED |
 
-All headline rows use the same frozen selected evidence in the baseline and PRA paths. Deltas are PRA minus baseline; negative latency and context deltas are reductions.
+All headline rows freeze the PRA-selected evidence. Deltas are Native Memory minus Selected Context; negative latency and visible-context deltas are reductions. These rows contain no ordinary No-PRA arm.
 
 Evidence receipt: `huggingface_eager 5.16.1`; NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB; selector-frozen natural QA; cold direct query (n=15); 2026-09-03; PRA commit `None`; artifact `qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json`; SHA-256 `d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737`.
 
@@ -70,63 +70,53 @@ Runtime smoke does not establish end-task quality, Native Memory parity, routing
 
 Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
 
-| Engine | Mode | Profile | No PRA | PRA - No Adaptor | PRA - Adaptor Bundle | Measured metric groups |
+| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
-| hf | Native Memory | QUALITY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
-| hf | Selected Context | BALANCED | NEEDS_RUN | NEEDS_RUN | NO_QUALIFIED_ADAPTER | NEEDS_RUN |
-| hf | Native Memory | ECONOMY | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Native Memory | QUALITY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
+| hf | Selected Context | BALANCED | NEEDS_RUN | Selected Context: NEEDS_RUN | Selected Context + Bundle: NO_QUALIFIED_ADAPTER | NEEDS_RUN |
+| hf | Native Memory | ECONOMY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
 
-## Canonical three-condition evidence
+## Canonical staged evidence
 
-Each table holds task, hardware, engine, model, mode, and profile fixed. Deltas are candidate minus No PRA and retain their mathematical sign.
+Each table holds task, hardware, engine, model, precision, and profile fixed. Every delta names its source and target; bundle use is held orthogonal to execution depth.
 
 ### combined / huggingface_eager / balanced
 
-Exact identity: `Qwen/Qwen2.5-1.5B-Instruct` at `989aa7980e4cf806f80c7fef2b1adb7bc71aa306` on `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`; precision `UNSPECIFIED` / `UNSPECIFIED`.
+Exact identity: `Qwen/Qwen2.5-1.5B-Instruct` at `989aa7980e4cf806f80c7fef2b1adb7bc71aa306` on `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`; precision `INT8` / `PyTorch-bnb-8bit`.
 
 #### Quality
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Token F1 | fraction | higher_is_better | 0.399111 | 0.0178571 | -0.381254 (-95.53%) |
-| Exact Match | fraction | higher_is_better | 0.333333 | 0 | -0.333333 (-100.00%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Token F1 | fraction | higher_is_better | 0.399111 | 0.0178571 | NO_QUALIFIED_ADAPTER | -0.381254 (-95.53%) | NO_QUALIFIED_ADAPTER |
+| Exact Match | fraction | higher_is_better | 0.333333 | 0 | NO_QUALIFIED_ADAPTER | -0.333333 (-100.00%) | NO_QUALIFIED_ADAPTER |
 
 #### Context
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Visible Tokens | token | lower_is_better | 404.6 | 33.6 | -371 (-91.70%) |
-| Selected Native K/V Tokens | token | neutral | 0 | 371 | +371 |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Visible Tokens | token | lower_is_better | 404.6 | 33.6 | NO_QUALIFIED_ADAPTER | -371 (-91.70%) | NO_QUALIFIED_ADAPTER |
+| Selected Native K/V Tokens | token | neutral | 0 | 371 | NO_QUALIFIED_ADAPTER | +371 | NO_QUALIFIED_ADAPTER |
 
 #### Serving
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Output Tokens Per Second | output_token/s | higher_is_better | 2.30576 | 2.09692 | -0.208833 (-9.06%) |
-| Completion Latency Mean (ms) | ms | lower_is_better | 3772.26 | 11448.4 | +7676.19 (+203.49%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Output Tokens Per Second | output_token/s | higher_is_better | 2.30576 | 2.09692 | NO_QUALIFIED_ADAPTER | -0.208833 (-9.06%) | NO_QUALIFIED_ADAPTER |
+| Completion Latency Mean (ms) | ms | lower_is_better | 3772.26 | 11448.4 | NO_QUALIFIED_ADAPTER | +7676.19 (+203.49%) | NO_QUALIFIED_ADAPTER |
 
 #### Resources
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Active Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | +1.06373e+07 |
-| Retained Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | +1.06373e+07 |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Active Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
+| Retained Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
 
 #### Routing
 
-| Metric | Unit | Direction | No PRA | PRA - No Adaptor | Delta No Adaptor |
-| --- | --- | --- | ---: | ---: | ---: |
-| Evidence Recall | fraction | higher_is_better | 0.75 | 0.75 | +0 (+0.00%) |
-
-PRA - Adaptor Bundle: `NO_QUALIFIED_ADAPTER` for this metric group; the transport run did not evaluate an immutable learned-adaptor condition.
+| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Evidence Recall | fraction | higher_is_better | 0.75 | 0.75 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
 
 ## Installation
 
@@ -211,8 +201,8 @@ The structural adapter is training-free. Learned-component training metadata is 
 
 ## Reproducibility
 
-- PRA commit: `15b73e96201951fdd47e6925dda9415236ddc7b7`
-- Bundle build commit: `15b73e96201951fdd47e6925dda9415236ddc7b7`
+- PRA commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
+- Bundle build commit: `81f42d69936bf50eb6fe11a0f7477b415bbf250d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: 2bf521001cfe73e4547e6020ace5c2bd169723c0cf216489107cf26706986a68
+supported_precisions:
+- precision_family: INT4
+  encoding: MLX-4bit
+  evidence_tier: ENGINE_QUALIFIED
 learned_adapters: {}
 profiles:
   quality:
@@ -51,6 +55,8 @@ qualification:
     model_id: mlx-community/Qwen3-32B-4bit
     model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -123,7 +129,7 @@ qualification:
     artifact: qualification/qwen3_32b_mlx_profiles.json
     artifact_sha256: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
   canonical_evidence:
-  - schema_version: 1
+  - schema_version: 3
     key:
       task: combined
       hardware: Apple M4 Pro (Mac16,7), 48 GB
@@ -132,6 +138,8 @@ qualification:
       model_id: mlx-community/Qwen3-32B-4bit
       model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
       model_fingerprint: null
+      precision_family: INT4
+      precision_encoding: MLX-4bit
       mode: native-memory
       profile: balanced
     metric_definitions:
@@ -250,7 +258,7 @@ qualification:
         aggregation: max
         description: Peak memory reported by the engine-specific allocator.
     conditions:
-      no_pra:
+      PRA_SELECTED_CONTEXT_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.23116402116402116
@@ -318,7 +326,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_no_adaptor:
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.23116402116402116
@@ -386,88 +394,72 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_adaptor_bundle:
+      PRA_NATIVE_MEMORY_BUNDLE:
         metrics:
           token_f1:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           exact_match:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           gold_answer_log_probability:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           visible_tokens:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           selected_native_kv_tokens:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           active_detail_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           retained_detail_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           ttft_p50_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           ttft_p95_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           ttft_p99_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           itl_p50_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           itl_p95_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           itl_p99_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           output_tokens_per_second:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           completion_latency_mean_ms:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
           peak_memory_bytes:
             value: null
-            state: NOT_MEASURED
-            note: The paired engine run did not resolve and record the immutable Runtime
-              Bundle.
+            state: NO_QUALIFIED_ADAPTER
+            note: No learned adaptor qualified for this exact model revision and quantization.
         bundle_id: null
         bundle_revision: null
     provenance:
@@ -481,12 +473,23 @@ qualification:
       date: '2026-09-01'
       artifacts:
       - qualification/qwen3_32b_mlx_profiles.json
+      tokenizer_revision: null
+      config_hash: null
+      quantization_config_hash: null
+      conversion_revision: null
+      conversion_tool: null
+      quantization_recipe: null
+      artifact_checksum: null
+      feature_extraction_precision: null
+      adaptor_parameter_precision: null
     evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: mlx-community/Qwen3-32B-4bit
     model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -562,6 +565,8 @@ qualification:
     model_id: mlx-community/Qwen3-32B-4bit
     model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -637,6 +642,8 @@ qualification:
     model_id: mlx-community/Qwen3-32B-4bit
     model_revision: bcaaf7f538adf166c1080a2befdb4f6019f66639
     quantization: 4bit
+    precision_family: INT4
+    precision_encoding: MLX-4bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -715,7 +722,7 @@ qualification:
   limitations:
   - No learned router is bundled for this exact quantized identity; routing-adapter
     transfer from another quantization is intentionally disallowed.
-  - Paired natural-QA evidence contains five examples per dataset and supports engine
+  - Paired natural-QA evidence contains 5 examples per dataset and supports engine
     qualification, not production qualification.
   - Reduced consumer-layer configurations failed the held-out quality gate; BALANCED
     therefore retains all eligible layers.
@@ -740,18 +747,19 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
-  bundle_build_commit: 430292dc5b8b57a9d99158bf945a0a118b2c50c1
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-qwen3-32b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0
   license_note: Router and project terms do not replace the base-model or dataset
     licenses.
-  source_artifact: qwen3_32b_mlx_profiles.json
+  source_artifact:
+  - docs/papers/shared/results/mac_scaling/qwen3_32b_mlx_profiles.json
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
-  qualification/canonical_evidence.json: eb89dad0dbdcd6e68c1596684b30a937afd7e8d14d3933f9722934e1ee1e447f
+  qualification/canonical_evidence.json: e32896ea84cedcb6a4ab16f27c2ecbdd09c0646e26368e49e7dc6a8308233940
   qualification/qwen3_32b_mlx_profiles.json: 79bccb629dd3805a7fb39c0eb109f6ac2dc53ea5dbf5c2a8aed7f9224093dd04
   structural_adapter/pra_adapter.yaml: 958453da926dd6d7ccca23f36c334a47f2728f912886a671d519a12d02c77769
 trust:
@@ -759,18 +767,3 @@ trust:
   publisher: EInnovator
   scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT4
-  encoding: MLX-4bit
-  serving_precision: INT4
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Native Memory
-  profile: BALANCED
-  evidence_tier: ENGINE_QUALIFIED
-  datasets:
-  - qasper
-  - hotpotqa
-  - 2wikimultihopqa
-  artifact: docs/papers/shared/results/mac_scaling/qwen3_32b_mlx_profiles.json

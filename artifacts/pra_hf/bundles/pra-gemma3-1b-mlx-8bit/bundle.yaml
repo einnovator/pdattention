@@ -16,6 +16,10 @@ structural_adapter:
   path: structural_adapter
   status: validated
   fingerprint: ac84c843a7e3d8f12a47ad0e79f1ee271a1f91a4c6bda7f7c80725fb40d35c99
+supported_precisions:
+- precision_family: INT8
+  encoding: MLX-8bit
+  evidence_tier: ENGINE_QUALIFIED
 learned_adapters: {}
 profiles:
   quality:
@@ -55,6 +59,8 @@ qualification:
     model_id: mlx-community/gemma-3-1b-it-8bit
     model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -132,7 +138,7 @@ qualification:
       qualification/matched_e0_e2_2wikimultihopqa.json
     artifact_sha256: ca7c9a7929b5376b269b0b312d01dff3f5ab7f3263a5fba7c3ce084da6546fad,80cc399baab9fc1a500bb9375ef0d82ce47e8cb1bd552373970309cebcc1ea0d,0177e860677d0f12513bbf155bac3ab849710f5e6456ed1ab15528661ffa2384
   canonical_evidence:
-  - schema_version: 1
+  - schema_version: 3
     key:
       task: combined
       hardware: Apple M4 Pro (Mac16,7), 48 GB
@@ -141,6 +147,8 @@ qualification:
       model_id: mlx-community/gemma-3-1b-it-8bit
       model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
       model_fingerprint: null
+      precision_family: INT8
+      precision_encoding: MLX-8bit
       mode: native-memory
       profile: balanced
     metric_definitions:
@@ -259,7 +267,7 @@ qualification:
         aggregation: mean
         description: Mean end-to-end completion latency.
     conditions:
-      no_pra:
+      PRA_SELECTED_CONTEXT_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.07351739524441099
@@ -327,7 +335,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_no_adaptor:
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
         metrics:
           token_f1:
             value: 0.06990959645216611
@@ -395,7 +403,7 @@ qualification:
             note: null
         bundle_id: null
         bundle_revision: null
-      pra_adaptor_bundle:
+      PRA_NATIVE_MEMORY_BUNDLE:
         metrics:
           token_f1:
             value: null
@@ -475,12 +483,23 @@ qualification:
       artifacts:
       - qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json,
         qualification/matched_e0_e2_2wikimultihopqa.json
+      tokenizer_revision: null
+      config_hash: null
+      quantization_config_hash: null
+      conversion_revision: null
+      conversion_tool: null
+      quantization_recipe: null
+      artifact_checksum: null
+      feature_extraction_precision: null
+      adaptor_parameter_precision: null
     evidence_tier: ENGINE_QUALIFIED
   metrics:
   - metric_class: END_TASK
     model_id: mlx-community/gemma-3-1b-it-8bit
     model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -561,6 +580,8 @@ qualification:
     model_id: mlx-community/gemma-3-1b-it-8bit
     model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -641,6 +662,8 @@ qualification:
     model_id: mlx-community/gemma-3-1b-it-8bit
     model_revision: 7b963136f21d05ca8b367c93a9c47a7944ad281a
     quantization: 8bit
+    precision_family: INT8
+    precision_encoding: MLX-8bit
     engine: mlx-lm
     engine_version: 0.31.3
     profile: balanced
@@ -787,8 +810,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 03a72c91472c33ab5b73715cd78eed1032934df2
-  bundle_build_commit: 03a72c91472c33ab5b73715cd78eed1032934df2
+  pra_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
+  bundle_build_commit: 81f42d69936bf50eb6fe11a0f7477b415bbf250d
   hf_repo: EInnovator/pra-gemma3-1b-mlx-8bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: gemma
@@ -801,7 +824,7 @@ provenance:
   selection_reason: Exact-identity paired natural-QA qualification, with routing research
     kept separate.
 checksums:
-  qualification/canonical_evidence.json: 6c1e4c766bbf0003003455be2349d23f848df3ffa3fa18b7da6551c5da1bbb0c
+  qualification/canonical_evidence.json: b1da1a0813ea2a404ee2a3d83d7e3a8ae76e176454d2a2a2abcba3c3fc4d5e84
   qualification/matched_e0_e2_2wikimultihopqa.json: 0177e860677d0f12513bbf155bac3ab849710f5e6456ed1ab15528661ffa2384
   qualification/matched_e0_e2_hotpotqa.json: 80cc399baab9fc1a500bb9375ef0d82ce47e8cb1bd552373970309cebcc1ea0d
   qualification/matched_e0_e2_qasper.json: ca7c9a7929b5376b269b0b312d01dff3f5ab7f3263a5fba7c3ce084da6546fad
@@ -813,18 +836,3 @@ trust:
   publisher: EInnovator
   scope: exact 8bit MLX model identity; evidence does not transfer across revisions,
     engines, or quantizations
-supported_precisions:
-- precision_family: INT8
-  encoding: MLX-8bit
-  serving_precision: INT8
-  feature_extraction_precision: NOT_MEASURED
-  adaptor_parameter_precision: NOT_MEASURED
-  engine: mlx
-  mode: Selected Context
-  profile: BALANCED
-  evidence_tier: CONTROLLED
-  datasets:
-  - qasper
-  - hotpotqa
-  - 2wikimultihopqa
-  artifact: docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/gemma3-1b-mlx-8bit/qualification_summary.json
