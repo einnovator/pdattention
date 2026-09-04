@@ -10,6 +10,10 @@ This directory contains the committed evidence used by Paper 3.2.
 - `local_retrieval/` contains the matched 50-question CUDA retrieval ladder:
   BM25, FAISS/BGE dense, hybrid RRF, the historical MiniLM reranker, and the
   stronger BGE-v2-M3 reranker.
+- `composition_natural/` contains selector-frozen natural partial-
+  materialization, independent-composition, repair-geometry, and document-order
+  measurements. Repair rows are diagnostic because fresh packed states were
+  computed before replacement.
 - `mechanism_smoke/` and `model_smoke/` contain earlier implementation gates.
 
 Regenerate the five-seed aggregate from the repository root with:
