@@ -30,6 +30,9 @@ SUMMARY_METRICS = (
     "total_latency_ms",
     "ingestion_ms",
     "native_reuse",
+    "ordinary_prefix_cache_hit",
+    "gold_answer_mean_nll",
+    "gold_answer_log_probability",
 )
 
 
@@ -38,7 +41,7 @@ def _load_jsonl(path: Path) -> list[dict[str, object]]:
         return [json.loads(line) for line in stream if line.strip()]
 
 
-def _metric(row: Mapping[str, object], name: str) -> float | None:
+def _raw_metric(row: Mapping[str, object], name: str) -> object | None:
     value = row.get(name)
     if value is None:
         for container_name in ("retrieval_context_metrics", "serving_metrics"):
@@ -46,6 +49,11 @@ def _metric(row: Mapping[str, object], name: str) -> float | None:
             if isinstance(container, Mapping) and name in container:
                 value = container[name]
                 break
+    return value
+
+
+def _metric(row: Mapping[str, object], name: str) -> float | None:
+    value = _raw_metric(row, name)
     return float(value) if value is not None else None
 
 
@@ -105,6 +113,26 @@ def _parity(rows: list[dict[str, object]]) -> dict[str, object]:
             pair[SELECTED]["token_f1"] == pair[NATIVE]["token_f1"]
             for pair in values
         )
+        logit_pairs = [
+            pair
+            for pair in values
+            if _raw_metric(pair[SELECTED], "first_step_logits_sha256") is not None
+            and _raw_metric(pair[NATIVE], "first_step_logits_sha256") is not None
+        ]
+        logit_hash_matches = sum(
+            _raw_metric(pair[SELECTED], "first_step_logits_sha256")
+            == _raw_metric(pair[NATIVE], "first_step_logits_sha256")
+            for pair in logit_pairs
+        )
+        nll_deltas = [
+            abs(
+                float(_metric(pair[SELECTED], "gold_answer_mean_nll") or 0.0)
+                - float(_metric(pair[NATIVE], "gold_answer_mean_nll") or 0.0)
+            )
+            for pair in values
+            if _metric(pair[SELECTED], "gold_answer_mean_nll") is not None
+            and _metric(pair[NATIVE], "gold_answer_mean_nll") is not None
+        ]
         return {
             "complete_pairs": len(values),
             "candidate_receipt_matches": candidate_matches,
@@ -112,6 +140,14 @@ def _parity(rows: list[dict[str, object]]) -> dict[str, object]:
             "selected_interval_matches": interval_matches,
             "exact_output_matches": output_matches,
             "token_f1_matches": score_matches,
+            "first_step_logit_hash_matches": logit_hash_matches,
+            "first_step_logit_hash_pairs": len(logit_pairs),
+            "gold_answer_nll_pairs": len(nll_deltas),
+            "gold_answer_nll_max_abs_delta": max(nll_deltas, default=None),
+            "all_scored_pairs_logit_nll_equivalent": bool(logit_pairs)
+            and len(logit_pairs) == len(nll_deltas)
+            and logit_hash_matches == len(logit_pairs)
+            and max(nll_deltas, default=float("inf")) <= 1e-6,
             "all_pairs_transport_equivalent": bool(values)
             and candidate_matches
             == receipt_matches

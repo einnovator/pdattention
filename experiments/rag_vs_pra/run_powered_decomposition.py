@@ -51,8 +51,12 @@ from pra_hf.rag_powered import (
 )
 
 
-SCHEMA_VERSION = "pra-rag-powered-v1"
+SCHEMA_VERSION = "pra-rag-powered-v2"
 DEFAULT_RERANKER = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+NATIVE_CONDITIONS = {
+    ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+    ContextCondition.PRA_NATIVE_MEMORY_BUNDLE,
+}
 
 
 def _parse_ints(value: str) -> tuple[int, ...]:
@@ -163,6 +167,7 @@ class ProbeBackend:
             "newly_materialized_tokens": 0 if regime == "WARM" and native else tokens,
             "visible_reuse": 0.0,
             "native_reuse": float(regime == "WARM" and native),
+            "ordinary_prefix_cache_hit": float(regime == "PREFIX_WARM" and not native),
             "ingestion_ms": 0.0,
             "active_detail_bytes": 0,
             "retained_detail_bytes": 0,
@@ -171,6 +176,10 @@ class ProbeBackend:
             "temporary_allocation_bytes": None,
             "cache_key": selection_receipt_id,
             "native_state_fingerprint": None,
+            "gold_answer_mean_nll": None,
+            "gold_answer_log_probability": None,
+            "gold_answer_token_count": None,
+            "first_step_logits_sha256": None,
         }
 
     def release(self, selection_receipt_id: str) -> None:
@@ -201,16 +210,14 @@ class PersistentMLXBackend:
         self.native_cache_unit = native_cache_unit
         self.model, self.tokenizer = load(model_id, revision=revision)
         self._native_memories: dict[str, object] = {}
+        self._text_prefixes: dict[str, tuple[object, ...]] = {}
 
     def token_count(self, text: str) -> int:
         return len(self.tokenizer.encode(text, add_special_tokens=False))
 
     @staticmethod
     def _is_native(condition: ContextCondition) -> bool:
-        return condition in {
-            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
-            ContextCondition.PRA_NATIVE_MEMORY_BUNDLE,
-        }
+        return condition in NATIVE_CONDITIONS
 
     def _query(self, question: RAGQuestion) -> str:
         return (
@@ -252,6 +259,76 @@ class PersistentMLXBackend:
             "output_tokens_per_second": len(generated) / max(elapsed / 1000.0, 1e-9),
         }
 
+    @staticmethod
+    def _snapshot_cache(cache: Sequence[object]) -> tuple[object, ...]:
+        """Retain immutable source-prefix states before query decoding mutates a cache."""
+
+        return tuple(layer.state for layer in cache)
+
+    def _cache_from_states(self, states: Sequence[object]):
+        """Create a request-local MLX cache from an ordinary cached text prefix."""
+
+        from mlx_lm.models.cache import make_prompt_cache
+
+        cache = make_prompt_cache(self.model)
+        if len(cache) != len(states):
+            raise ValueError("ordinary prefix state does not match the model layer count")
+        for layer, state in zip(cache, states):
+            layer.state = state
+        return cache
+
+    def _score_gold_answer(self, question: RAGQuestion, query_tokens, cache):
+        """Teacher-force one accepted answer and fingerprint its first-step logits."""
+
+        import mlx.core as mx
+        import numpy as np
+
+        answer = min(
+            question.answers,
+            key=lambda value: len(
+                self.tokenizer.encode(" " + value, add_special_tokens=False)
+            ),
+        )
+        answer_tokens = list(
+            self.tokenizer.encode(" " + answer, add_special_tokens=False)
+        )
+        if not answer_tokens:
+            return {
+                "gold_answer_text": answer,
+                "gold_answer_mean_nll": None,
+                "gold_answer_log_probability": None,
+                "gold_answer_token_count": 0,
+                "gold_answer_token_log_probabilities": [],
+                "first_answer_token_id": None,
+                "first_step_logits_sha256": None,
+                "gold_scoring_ms": 0.0,
+            }
+
+        inputs = list(query_tokens) + answer_tokens[:-1]
+        started = time.perf_counter()
+        logits = self.model(mx.array(inputs, dtype=mx.int32)[None], cache=cache)
+        start = len(query_tokens) - 1
+        answer_logits = logits[0, start : start + len(answer_tokens), :]
+        targets = mx.array(answer_tokens, dtype=mx.int32)[:, None]
+        selected_logits = mx.take_along_axis(answer_logits, targets, axis=-1).squeeze(-1)
+        log_probabilities = selected_logits - mx.logsumexp(answer_logits, axis=-1)
+        first_logits = answer_logits[0]
+        mx.eval(log_probabilities, first_logits)
+        values = np.asarray(log_probabilities, dtype=np.float64)
+        first = np.asarray(first_logits, dtype="<f4")
+        elapsed = (time.perf_counter() - started) * 1000.0
+        total_log_probability = float(values.sum())
+        return {
+            "gold_answer_text": answer,
+            "gold_answer_mean_nll": -total_log_probability / len(answer_tokens),
+            "gold_answer_log_probability": total_log_probability,
+            "gold_answer_token_count": len(answer_tokens),
+            "gold_answer_token_log_probabilities": values.tolist(),
+            "first_answer_token_id": answer_tokens[0],
+            "first_step_logits_sha256": hashlib.sha256(first.tobytes()).hexdigest(),
+            "gold_scoring_ms": elapsed,
+        }
+
     def answer(
         self,
         question: RAGQuestion,
@@ -270,8 +347,10 @@ class PersistentMLXBackend:
             make_native_prompt_cache,
         )
 
-        if regime not in {"COLD", "WARM", "PERSISTENT_CORPUS"}:
-            raise ValueError("regime must be COLD, WARM, or PERSISTENT_CORPUS")
+        if regime not in {"COLD", "WARM", "PREFIX_WARM", "PERSISTENT_CORPUS"}:
+            raise ValueError(
+                "regime must be COLD, WARM, PREFIX_WARM, or PERSISTENT_CORPUS"
+            )
         source_tokens = list(
             self.tokenizer.encode(context.rstrip() + "\n\n", add_special_tokens=False)
         )
@@ -280,6 +359,7 @@ class PersistentMLXBackend:
         )
         native = self._is_native(condition)
         cache_hit = False
+        prefix_cache_hit = False
         cache_hits = 0
         cache_lookups = 0
         newly_materialized_tokens = len(source_tokens)
@@ -301,6 +381,8 @@ class PersistentMLXBackend:
         if reset_peak is not None:
             reset_peak()
         ingestion_started = time.perf_counter()
+        memory = None
+        source_states = None
         if native:
             if self.native_cache_unit == "chunk":
                 if not selected_texts:
@@ -343,12 +425,32 @@ class PersistentMLXBackend:
             cache = make_native_prompt_cache(self.model, memory)
             native_bytes = int(memory.nbytes)
         else:
-            cache = make_prompt_cache(self.model)
-            self.model(mx.array(source_tokens, dtype=mx.int32)[None], cache=cache)
-            mx.eval([layer.state for layer in cache])
+            if regime == "PREFIX_WARM":
+                source_states = self._text_prefixes.get(selection_receipt_id)
+                if source_states is None:
+                    raise RuntimeError(
+                        "ordinary prefix-cache execution has no retained cold prefix"
+                    )
+                cache = self._cache_from_states(source_states)
+                prefix_cache_hit = True
+                newly_materialized_tokens = 0
+            else:
+                cache = make_prompt_cache(self.model)
+                self.model(mx.array(source_tokens, dtype=mx.int32)[None], cache=cache)
+                mx.eval([layer.state for layer in cache])
+                source_states = self._snapshot_cache(cache)
+                if regime == "COLD":
+                    self._text_prefixes[selection_receipt_id] = source_states
             native_bytes = 0
         ingestion_ms = (time.perf_counter() - ingestion_started) * 1000.0
         prediction, serving = self._generate(query_tokens, cache)
+        if native:
+            assert memory is not None
+            scoring_cache = make_native_prompt_cache(self.model, memory)
+        else:
+            assert source_states is not None
+            scoring_cache = self._cache_from_states(source_states)
+        gold_scoring = self._score_gold_answer(question, query_tokens, scoring_cache)
         decode_total_ms = float(serving["total_latency_ms"])
         decode_ttft_ms = float(serving["ttft_ms"])
         generated_tokens = int(serving["generated_tokens"])
@@ -379,10 +481,11 @@ class PersistentMLXBackend:
             ),
             "selected_native_kv_tokens": materialized_native_tokens if native else 0,
             "newly_materialized_tokens": newly_materialized_tokens,
-            "visible_reuse": 0.0,
+            "visible_reuse": float(prefix_cache_hit),
             "native_reuse": (
                 cache_hits / cache_lookups if native and cache_lookups else 0.0
             ),
+            "ordinary_prefix_cache_hit": float(prefix_cache_hit),
             "native_cache_hits": cache_hits,
             "native_cache_lookups": cache_lookups,
             "native_cache_unit": self.native_cache_unit,
@@ -409,11 +512,13 @@ class PersistentMLXBackend:
                 if native
                 else None
             ),
+            **gold_scoring,
         }
 
     def release(self, selection_receipt_id: str) -> None:
         if self.native_cache_unit == "selection":
             self._native_memories.pop(selection_receipt_id, None)
+        self._text_prefixes.pop(selection_receipt_id, None)
 
 
 def _row(
@@ -535,7 +640,7 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument(
         "--regimes",
-        choices=("cold-warm", "persistent-corpus"),
+        choices=("cold-warm", "cold-warm-prefix", "persistent-corpus"),
         default="cold-warm",
     )
     parser.add_argument(
@@ -598,11 +703,12 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     candidate_receipts: dict[str, CandidateReceipt] = {}
     selection_receipts: dict[str, SelectionReceipt] = {}
-    regimes = (
-        ("COLD", "WARM")
-        if args.regimes == "cold-warm"
-        else ("PERSISTENT_CORPUS",)
-    )
+    if args.regimes == "cold-warm":
+        regimes = ("COLD", "WARM")
+    elif args.regimes == "cold-warm-prefix":
+        regimes = ("COLD", "WARM", "PREFIX_WARM")
+    else:
+        regimes = ("PERSISTENT_CORPUS",)
     started_run = time.time()
     for question_index, question in enumerate(questions, 1):
         print(f"[{question_index}/{len(questions)}] {question.example_id}", flush=True)
@@ -685,6 +791,8 @@ def main() -> None:
                     selection_receipts[selection.receipt_id] = selection
                     for regime in regimes:
                         for condition in conditions:
+                            if regime == "PREFIX_WARM" and condition in NATIVE_CONDITIONS:
+                                continue
                             context = replace(base, condition=condition)
                             rows.append(
                                 _row(

@@ -15,6 +15,7 @@ from experiments.rag_vs_pra.analyze_powered_decomposition import (
     _paper_runtime_table,
     _paper_table,
 )
+from experiments.paper3_2_rag.analyze_model_smoke import _parity
 from pra_hf.rag_evaluation import ContextCondition
 from pra_hf.rag_powered import (
     answer_metrics,
@@ -268,3 +269,34 @@ def test_strong_reranker_visible_path_requires_exact_output_parity() -> None:
     selected["prediction"] = "Oslo"
     with pytest.raises(ValueError, match="output mismatch"):
         validate_strong_reranker_parity([standard, selected])
+
+
+def test_model_analysis_keeps_logit_and_nll_parity_separate() -> None:
+    selected = _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same")
+    native = _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "same")
+    for row in (selected, native):
+        row.update(
+            {
+                "seed": 11,
+                "candidate_receipt_id": "candidate",
+                "selected_intervals": [{"chunk_id": "chunk"}],
+                "prediction": "Lisbon",
+            }
+        )
+        row["serving_metrics"].update(
+            {
+                "gold_answer_mean_nll": 1.25,
+                "first_step_logits_sha256": "a" * 64,
+            }
+        )
+
+    result = _parity([selected, native])
+    assert result["complete_pairs"] == 1
+    assert result["all_pairs_transport_equivalent"] is True
+    assert result["all_scored_pairs_logit_nll_equivalent"] is True
+    assert result["gold_answer_nll_max_abs_delta"] == 0.0
+
+    native["serving_metrics"]["gold_answer_mean_nll"] = 1.5
+    changed = _parity([selected, native])
+    assert changed["all_pairs_transport_equivalent"] is True
+    assert changed["all_scored_pairs_logit_nll_equivalent"] is False
