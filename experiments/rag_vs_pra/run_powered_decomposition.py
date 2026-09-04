@@ -57,6 +57,9 @@ NATIVE_CONDITIONS = {
     ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
     ContextCondition.PRA_NATIVE_MEMORY_BUNDLE,
 }
+SELECTOR_PROFILES = frozenset(
+    {"standard_bm25", "pra_generic", "strong_conventional_reranker", "pra_strong_reranker"}
+)
 
 
 def _parse_ints(value: str) -> tuple[int, ...]:
@@ -64,6 +67,16 @@ def _parse_ints(value: str) -> tuple[int, ...]:
     if not parsed or any(item <= 0 for item in parsed):
         raise argparse.ArgumentTypeError("expected comma-separated positive integers")
     return parsed
+
+
+def _parse_selectors(value: str) -> tuple[str, ...]:
+    parsed = tuple(item.strip() for item in value.split(",") if item.strip())
+    unknown = set(parsed) - SELECTOR_PROFILES
+    if not parsed or unknown:
+        raise argparse.ArgumentTypeError(
+            f"expected selector profiles from {sorted(SELECTOR_PROFILES)}; unknown={sorted(unknown)}"
+        )
+    return tuple(dict.fromkeys(parsed))
 
 
 def _digest(value: object) -> str:
@@ -652,6 +665,12 @@ def main() -> None:
     parser.add_argument("--reranker-device", default="cpu")
     parser.add_argument("--reranker-batch-size", type=int, default=16)
     parser.add_argument("--skip-strong", action="store_true")
+    parser.add_argument(
+        "--selectors",
+        type=_parse_selectors,
+        default=tuple(sorted(SELECTOR_PROFILES)),
+        help="Comma-separated selector profiles; use pra_strong_reranker for reduced scaling runs.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -670,9 +689,14 @@ def main() -> None:
     model_revision = (
         "fixture" if args.backend == "probe" else _resolve_hf_revision(args.model, args.revision)
     )
+    strong_requested = bool(
+        {"strong_conventional_reranker", "pra_strong_reranker"}.intersection(args.selectors)
+    )
+    if args.skip_strong and strong_requested:
+        parser.error("--skip-strong conflicts with a strong selector in --selectors")
     reranker_revision = (
         "skipped"
-        if args.skip_strong
+        if not strong_requested
         else _resolve_hf_revision(args.reranker, args.reranker_revision)
     )
     backend = (
@@ -687,7 +711,7 @@ def main() -> None:
     )
     strong_selector = (
         None
-        if args.skip_strong
+        if not strong_requested
         else CrossEncoderRAGSelector(
             model_id=args.reranker,
             revision=reranker_revision,
@@ -730,30 +754,38 @@ def main() -> None:
             prepared = prepare_candidate_context(
                 receipt, documents_by_id, token_count=backend.token_count
             )
-            selectors: list[tuple[str, object, tuple[ContextCondition, ...]]] = [
-                (
-                    "standard_bm25",
-                    StandardRAGSelector(),
-                    (ContextCondition.NO_PRA_STANDARD_RAG,),
-                ),
-                (
-                    "pra_generic",
-                    PRAHybridSelector(),
+            selectors: list[tuple[str, object, tuple[ContextCondition, ...]]] = []
+            if "standard_bm25" in args.selectors:
+                selectors.append(
                     (
-                        ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
-                        ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
-                    ),
-                ),
-            ]
-            if not args.skip_strong:
+                        "standard_bm25",
+                        StandardRAGSelector(),
+                        (ContextCondition.NO_PRA_STANDARD_RAG,),
+                    )
+                )
+            if "pra_generic" in args.selectors:
+                selectors.append(
+                    (
+                        "pra_generic",
+                        PRAHybridSelector(),
+                        (
+                            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+                            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+                        ),
+                    )
+                )
+            if strong_requested:
                 assert strong_selector is not None
-                selectors.extend(
-                    (
+                if "strong_conventional_reranker" in args.selectors:
+                    selectors.append(
                         (
                             "strong_conventional_reranker",
                             strong_selector,
                             (ContextCondition.NO_PRA_STANDARD_RAG,),
-                        ),
+                        )
+                    )
+                if "pra_strong_reranker" in args.selectors:
+                    selectors.append(
                         (
                             "pra_strong_reranker",
                             strong_selector,
@@ -761,9 +793,8 @@ def main() -> None:
                                 ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
                                 ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
                             ),
-                        ),
+                        )
                     )
-                )
             ranking_cache: dict[int, tuple[object, float]] = {}
             for selector_profile, selector, conditions in selectors:
                 cached_ranking = ranking_cache.get(id(selector))
@@ -864,8 +895,9 @@ def main() -> None:
         "reranker": {
             "model_id": args.reranker,
             "revision": reranker_revision,
-            "status": "SKIPPED" if args.skip_strong else "MEASURED",
+            "status": "MEASURED" if strong_requested else "SKIPPED",
         },
+        "selector_profiles": list(args.selectors),
         "backend": backend.name,
         "model": args.model,
         "model_revision": model_revision,
