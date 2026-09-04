@@ -22,6 +22,13 @@ This directory contains the committed evidence used by Paper 3.2.
   fresh reprefill, ordinary exact-prefix reuse, contiguous selection reuse,
   independently cached resource reuse, rebinding plus diagnostic repair, and
   partial materialization while retaining per-turn selection receipts.
+- `position_natural/` contains the natural positional-policy sweep over
+  source-local, packed rebound, adjacent, rank, score, near-band, and random
+  geometries.
+- `scale/` contains the reduced model-scaling replications. Each run retains
+  candidate and selection receipts, compressed per-condition rows, and a
+  cohort manifest; `publication/publication_summary.json` regenerates their
+  parity and timing summaries.
 - `mechanism_smoke/` and `model_smoke/` contain earlier implementation gates.
 
 Regenerate the five-seed aggregate from the repository root with:

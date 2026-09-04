@@ -3,12 +3,87 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 from pathlib import Path
+from statistics import mean
 
 
 def _load(path: Path | None) -> dict[str, object] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path is not None else None
+
+
+def _summarize_scale_run(run_dir: Path) -> dict[str, object]:
+    manifest = _load(run_dir / "cohort_manifest.json")
+    assert manifest is not None
+    with gzip.open(run_dir / "condition_results.jsonl.gz", "rt", encoding="utf-8") as source:
+        rows = [json.loads(line) for line in source]
+    rows = [row for row in rows if row.get("status") == "MEASURED"]
+
+    def condition(name: str, regime: str) -> list[dict[str, object]]:
+        return [
+            row for row in rows if row["condition"] == name and row["regime"] == regime
+        ]
+
+    def averages(selected: list[dict[str, object]]) -> dict[str, float]:
+        serving = [row["serving_metrics"] for row in selected]
+        return {
+            "examples": len(selected),
+            "token_f1": mean(float(row["token_f1"]) for row in selected),
+            "gold_answer_mean_nll": mean(float(row["gold_answer_mean_nll"]) for row in serving),
+            "ttft_ms": mean(float(row["ttft_ms"]) for row in serving),
+            "total_latency_ms": mean(float(row["total_latency_ms"]) for row in serving),
+            "visible_prompt_tokens": mean(float(row["visible_prompt_tokens"]) for row in serving),
+            "selected_native_kv_tokens": mean(
+                float(row["selected_native_kv_tokens"]) for row in serving
+            ),
+        }
+
+    text_cold = condition("PRA_SELECTED_CONTEXT_NO_ADAPTOR", "COLD")
+    text_warm = condition("PRA_SELECTED_CONTEXT_NO_ADAPTOR", "WARM")
+    prefix_warm = condition("PRA_SELECTED_CONTEXT_NO_ADAPTOR", "PREFIX_WARM")
+    native_cold = condition("PRA_NATIVE_MEMORY_NO_ADAPTOR", "COLD")
+    native_warm = condition("PRA_NATIVE_MEMORY_NO_ADAPTOR", "WARM")
+    native_by_pair = {
+        (row["example_id"], row["regime"], row["selection_receipt_id"]): row
+        for row in native_cold + native_warm
+    }
+    paired = []
+    for text_row in text_cold + text_warm:
+        key = (
+            text_row["example_id"],
+            text_row["regime"],
+            text_row["selection_receipt_id"],
+        )
+        paired.append((text_row, native_by_pair[key]))
+    parity = {
+        "pairs": len(paired),
+        "output_matches": sum(left["prediction"] == right["prediction"] for left, right in paired),
+        "logit_hash_matches": sum(
+            left["serving_metrics"]["first_step_logits_sha256"]
+            == right["serving_metrics"]["first_step_logits_sha256"]
+            for left, right in paired
+        ),
+        "gold_nll_max_abs_delta": max(
+            abs(
+                float(left["serving_metrics"]["gold_answer_mean_nll"])
+                - float(right["serving_metrics"]["gold_answer_mean_nll"])
+            )
+            for left, right in paired
+        ),
+    }
+    return {
+        "model": manifest["model"],
+        "model_revision": manifest["model_revision"],
+        "seed": manifest["seed"],
+        "hardware": manifest["hardware"],
+        "text_cold": averages(text_cold),
+        "text_warm_reprefill": averages(text_warm),
+        "text_exact_prefix": averages(prefix_warm),
+        "native_cold": averages(native_cold),
+        "native_warm": averages(native_warm),
+        "parity": parity,
+    }
 
 
 def _composition_plot(summary: dict[str, object], output: Path) -> None:
@@ -117,6 +192,64 @@ def _nonprefix_reuse_plot(summary: dict[str, object], output: Path) -> None:
     plt.close(fig)
 
 
+def _scale_plot(rows: list[dict[str, object]], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    labels = [str(row["model"]).split("/")[-1].replace("-4bit", "") for row in rows]
+    ttft_reprefill = [
+        float(row["native_warm"]["ttft_ms"]) / float(row["text_warm_reprefill"]["ttft_ms"])
+        for row in rows
+    ]
+    ttft_prefix = [
+        float(row["native_warm"]["ttft_ms"]) / float(row["text_exact_prefix"]["ttft_ms"])
+        for row in rows
+    ]
+    x = list(range(len(rows)))
+    width = 0.36
+    fig, axis = plt.subplots(figsize=(7.8, 3.5))
+    axis.bar([value - width / 2 for value in x], ttft_reprefill, width, label="vs text re-prefill")
+    axis.bar([value + width / 2 for value in x], ttft_prefix, width, label="vs exact prefix cache")
+    axis.axhline(1.0, color="#111827", linewidth=1)
+    axis.set_xticks(x, labels, rotation=20, ha="right")
+    axis.set_ylabel("Native warm TTFT ratio")
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _position_plot(summary: dict[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    comparisons = summary["summary"]["fresh_packed_comparisons"]
+    preferred = [
+        "NATIVE_SOURCE_LOCAL",
+        "NATIVE_GLOBAL_REBOUND",
+        "POSITION_RESOURCE_ADJACENT",
+        "POSITION_RANK_DISTANCE",
+        "POSITION_SCORE_DISTANCE",
+        "POSITION_NON_OVERLAPPING_NEAR_BANDS",
+        "POSITION_RANDOM_DISTANCE",
+    ]
+    rows = [(name, comparisons[name]) for name in preferred if name in comparisons]
+    labels = [
+        name.replace("NATIVE_", "").replace("POSITION_", "").replace("NON_OVERLAPPING_", "")
+        for name, _ in rows
+    ]
+    x = list(range(len(rows)))
+    fig, axis = plt.subplots(figsize=(8.6, 3.5))
+    axis.bar(x, [float(row["first_step_js_divergence_mean"]) for _, row in rows], color="#7c3aed")
+    axis.set_xticks(x, labels, rotation=25, ha="right")
+    axis.set_ylabel("Mean first-step JS vs fresh packed")
+    axis.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _retrieval_plot(summary: dict[str, object], output: Path) -> None:
     import matplotlib.pyplot as plt
 
@@ -151,6 +284,8 @@ def main() -> None:
     parser.add_argument("--service-summary", type=Path)
     parser.add_argument("--transport-summary", type=Path)
     parser.add_argument("--nonprefix-manifest", type=Path)
+    parser.add_argument("--scale-run", type=Path, action="append", default=[])
+    parser.add_argument("--position-manifest", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -175,6 +310,13 @@ def main() -> None:
     if nonprefix is not None:
         result["nonprefix_reuse"] = nonprefix["summary"]
         _nonprefix_reuse_plot(nonprefix, args.output_dir / "nonprefix_reuse")
+    if args.scale_run:
+        result["scale"] = [_summarize_scale_run(path) for path in args.scale_run]
+        _scale_plot(result["scale"], args.output_dir / "scale_transport")
+    position = _load(args.position_manifest)
+    if position is not None:
+        result["position"] = position["summary"]
+        _position_plot(position, args.output_dir / "position_policy_js")
     (args.output_dir / "publication_summary.json").write_text(
         json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
     )
