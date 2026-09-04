@@ -125,6 +125,28 @@ def test_evidence_probe_cannot_open_model_backed_gates() -> None:
     assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
 
 
+def test_persistent_corpus_does_not_fail_decomposition_gates() -> None:
+    rows = [
+        _row(
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+            "same",
+            regime="PERSISTENT_CORPUS",
+        ),
+        _row(
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+            "same",
+            regime="PERSISTENT_CORPUS",
+        ),
+    ]
+    gates = qualification_gates(summarize_rows(rows), minimum_examples=1)
+    expected = "NOT_APPLICABLE_PERSISTENT_CORPUS"
+    assert gates["selection_gate"] == expected
+    assert gates["selection_comparator"] == expected
+    assert gates["native_memory_gate"] == expected
+    assert gates["economic_gate"] == expected
+    assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
+
+
 def test_condition_results_jsonl_is_compressed_and_roundtrips(tmp_path: Path) -> None:
     rows = [_row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same")]
     path = tmp_path / "condition_results.jsonl.gz"

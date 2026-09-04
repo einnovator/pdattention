@@ -405,25 +405,35 @@ def qualification_gates(
         row.get("status") == "MEASURED" for row in bundle
     )
     model_backed = bool(powered)
+    powered_regimes = {str(row.get("regime")) for row in powered}
+    persistent_only = model_backed and powered_regimes == {"PERSISTENT_CORPUS"}
+    decomposition_status = (
+        "NOT_APPLICABLE_PERSISTENT_CORPUS"
+        if persistent_only
+        else None
+    )
     return {
         "minimum_examples": minimum_examples,
         "selection_gate": (
-            "PASS" if selection_pass else "FAIL"
+            decomposition_status or ("PASS" if selection_pass else "FAIL")
         ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
         "selection_comparator": (
             (
-                "strong_conventional_reranker"
-                if strong_by_config
-                else "standard_bm25"
+                decomposition_status
+                or (
+                    "strong_conventional_reranker"
+                    if strong_by_config
+                    else "standard_bm25"
+                )
             )
             if model_backed
             else "NOT_APPLICABLE_NON_MODEL"
         ),
         "native_memory_gate": (
-            "PASS" if native_pass else "FAIL"
+            decomposition_status or ("PASS" if native_pass else "FAIL")
         ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
         "economic_gate": (
-            "PASS" if economic_pass else "FAIL"
+            decomposition_status or ("PASS" if economic_pass else "FAIL")
         ) if model_backed else "NOT_APPLICABLE_NON_MODEL",
         "bundle_gate": "PASS" if bundle_pass else "NO_QUALIFIED_ADAPTER",
         "card_gate": (
