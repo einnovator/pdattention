@@ -504,6 +504,13 @@ def main() -> None:
             current_chunks = set(order)
             overlap = len(current_chunks & previous_chunk_ids) / max(len(current_chunks), 1)
             for row in [fresh_row, text_row, contiguous_row, *native_rows, partial_row]:
+                resource_newly_encoded = int(
+                    row.get(
+                        "newly_encoded_tokens",
+                        row.get("newly_materialized_native_tokens", 0),
+                    )
+                )
+                diagnostic_recomputed = int(row.get("repaired_token_count", 0))
                 row.update(
                     {
                         "schema_version": SCHEMA_VERSION,
@@ -514,11 +521,10 @@ def main() -> None:
                         "selected_document_ids": list(document_ids),
                         "previous_turn_resource_overlap": overlap,
                         "output_matches_fresh": str(row["prediction"]) == fresh_prediction,
-                        "newly_encoded_tokens": int(
-                            row.get(
-                                "newly_encoded_tokens",
-                                row.get("newly_materialized_native_tokens", 0),
-                            )
+                        "resource_newly_encoded_tokens": resource_newly_encoded,
+                        "diagnostic_recomputed_tokens": diagnostic_recomputed,
+                        "newly_encoded_tokens": (
+                            resource_newly_encoded + diagnostic_recomputed
                         ),
                         "reused_tokens": int(
                             row.get("reused_tokens", row.get("reused_native_tokens", 0))
