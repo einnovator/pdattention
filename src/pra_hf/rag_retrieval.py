@@ -111,7 +111,13 @@ class SentenceTransformerEmbedder:
 
     @property
     def dimensions(self) -> int:
-        value = self._load().get_sentence_embedding_dimension()
+        model = self._load()
+        operation = getattr(model, "get_embedding_dimension", None)
+        value = (
+            operation()
+            if operation is not None
+            else model.get_sentence_embedding_dimension()
+        )
         if value is None:
             raise RuntimeError("sentence transformer exposes no embedding dimensions")
         return int(value)
