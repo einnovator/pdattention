@@ -189,6 +189,24 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
     )
 
 
+def _rope_inverse_frequencies(rope: object, dimensions: int):
+    """Return the exact per-pair angular frequencies used by an MLX RoPE."""
+
+    import mlx.core as mx
+
+    configured = getattr(rope, "_freqs", None)
+    if configured is not None:
+        # Llama-3 RoPE stores wavelength-like divisors after its piecewise
+        # long-context scaling. Reusing this tensor avoids approximating the
+        # host geometry with a single base value.
+        return mx.reciprocal(configured.astype(mx.float32))
+    base = float(getattr(rope, "base", 10_000.0))
+    return mx.exp(
+        -mx.arange(0, dimensions, 2, dtype=mx.float32)
+        * (mx.log(mx.array(base, dtype=mx.float32)) / dimensions)
+    )
+
+
 def _rotate_keys_by_delta(keys, rope: object, delta: int):
     """Apply one constant RoPE phase delta to post-RoPE keys.
 
@@ -205,12 +223,8 @@ def _rotate_keys_by_delta(keys, rope: object, delta: int):
     dimensions = int(getattr(rope, "dims"))
     if dimensions <= 0 or dimensions > int(keys.shape[-1]) or dimensions % 2:
         raise ValueError("unsupported RoPE dimensions for native key rebinding")
-    base = float(getattr(rope, "base", 10_000.0))
     scale = float(getattr(rope, "scale", 1.0))
-    frequencies = mx.exp(
-        -mx.arange(0, dimensions, 2, dtype=mx.float32)
-        * (mx.log(mx.array(base, dtype=mx.float32)) / dimensions)
-    )
+    frequencies = _rope_inverse_frequencies(rope, dimensions)
     angles = frequencies * (float(delta) * scale)
     cosine = mx.cos(angles).astype(keys.dtype)
     sine = mx.sin(angles).astype(keys.dtype)
@@ -245,12 +259,8 @@ def _rotate_keys_by_position_deltas(keys, rope: object, deltas: Sequence[int]):
     dimensions = int(getattr(rope, "dims"))
     if dimensions <= 0 or dimensions > int(keys.shape[-1]) or dimensions % 2:
         raise ValueError("unsupported RoPE dimensions for native key rebinding")
-    base = float(getattr(rope, "base", 10_000.0))
     scale = float(getattr(rope, "scale", 1.0))
-    frequencies = mx.exp(
-        -mx.arange(0, dimensions, 2, dtype=mx.float32)
-        * (mx.log(mx.array(base, dtype=mx.float32)) / dimensions)
-    )
+    frequencies = _rope_inverse_frequencies(rope, dimensions)
     offsets = mx.array(deltas, dtype=mx.float32)[:, None]
     angles = offsets * frequencies[None, :] * scale
     cosine = mx.cos(angles)[None, None, :, :].astype(keys.dtype)

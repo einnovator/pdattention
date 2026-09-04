@@ -250,6 +250,56 @@ def _position_plot(summary: dict[str, object], output: Path) -> None:
     plt.close(fig)
 
 
+def _summarize_scale_composition(path: Path) -> dict[str, object]:
+    manifest = _load(path / "manifest.json")
+    assert manifest is not None
+    comparisons = manifest["summary"]["fresh_packed_comparisons"]
+    names = (
+        "NATIVE_CONTIGUOUS",
+        "NATIVE_SOURCE_LOCAL",
+        "NATIVE_GLOBAL_REBOUND",
+        "REPAIR_LATER_PREFIX_0.5",
+        "REPAIR_EVEN_1",
+        "PARTIAL_SCORE_0.75",
+    )
+    return {
+        "model": manifest["model"],
+        "model_revision": manifest["model_revision"],
+        "examples": len(manifest["question_ids"]),
+        "conditions": {name: comparisons[name] for name in names},
+    }
+
+
+def _scale_composition_plot(rows: list[dict[str, object]], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    conditions = (
+        ("NATIVE_SOURCE_LOCAL", "source-local"),
+        ("NATIVE_GLOBAL_REBOUND", "packed rebound"),
+        ("REPAIR_LATER_PREFIX_0.5", "50% later-prefix repair"),
+    )
+    labels = [str(row["model"]).split("/")[-1].replace("-4bit", "") for row in rows]
+    x = list(range(len(rows)))
+    width = 0.24
+    fig, axis = plt.subplots(figsize=(8.2, 3.5))
+    for index, (condition, label) in enumerate(conditions):
+        values = []
+        for row in rows:
+            result = row["conditions"][condition]
+            values.append(float(result["output_matches"]) / float(result["pairs"]))
+        positions = [value + (index - 1) * width for value in x]
+        axis.bar(positions, values, width, label=label)
+    axis.set_xticks(x, labels, rotation=20, ha="right")
+    axis.set_ylim(0.0, 1.0)
+    axis.set_ylabel("Generated-output parity vs fresh packed")
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _retrieval_plot(summary: dict[str, object], output: Path) -> None:
     import matplotlib.pyplot as plt
 
@@ -286,6 +336,7 @@ def main() -> None:
     parser.add_argument("--nonprefix-manifest", type=Path)
     parser.add_argument("--scale-run", type=Path, action="append", default=[])
     parser.add_argument("--position-manifest", type=Path)
+    parser.add_argument("--scale-composition", type=Path, action="append", default=[])
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -317,6 +368,13 @@ def main() -> None:
     if position is not None:
         result["position"] = position["summary"]
         _position_plot(position, args.output_dir / "position_policy_js")
+    if args.scale_composition:
+        result["scale_composition"] = [
+            _summarize_scale_composition(path) for path in args.scale_composition
+        ]
+        _scale_composition_plot(
+            result["scale_composition"], args.output_dir / "scale_composition_parity"
+        )
     (args.output_dir / "publication_summary.json").write_text(
         json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
     )

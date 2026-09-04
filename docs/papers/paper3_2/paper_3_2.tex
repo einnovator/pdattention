@@ -408,7 +408,7 @@ The native and repeated-selection economic gates pass at the prespecified
 match the strongest conventional selector. The public-card gate also remains
 closed because no exact model/precision adaptor is qualified. The five-seed
 answer-log-probability and independently composed-resource experiments below
-extend this initial cohort; cross-family replication remains required.
+extend this initial cohort; a reduced Llama-family replication is also reported.
 
 \FloatBarrier
 
@@ -1004,6 +1004,42 @@ encoded representation still needs a better contextualization mechanism.
 The light segment is resource-addressed native reuse; fidelity is reported in
 the text and must not be inferred from cost alone.}
 \label{fig:nonprefix-reuse}
+\end{figure}
+
+\subsection{Model scale and family replication}
+We repeat the selector-frozen contiguous transport control on one 20-question
+cohort at 4B and 8B scale and on a second model family. All 120 cold/warm pairs
+match generated output, first-step-logit hash, and gold-answer NLL exactly.
+Table~\ref{tab:scale-transport} reports warm timing. Native TTFT is 5.9--6.5\%
+of selected-text re-prefill, but remains 4.6--7.2\% slower than an exact prefix
+hit. The Llama row shows that the result is not specific to Qwen's tokenizer or
+model implementation. The quality differences among rows are model effects,
+not transport effects, because text and native realization agree within every
+row.
+
+\begin{table}[ht]
+\centering
+\caption{Reduced MultiHop-RAG scale replication (20 questions, seed 11).
+TTFT columns are selected-text re-prefill, warm native, and exact prefix.}
+\label{tab:scale-transport}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Model & F1 & NLL & Pair parity & Text/native/prefix TTFT (ms) \\
+\midrule
+Qwen3-4B & .290 & 2.290 & 40/40 & 2572 / 167 / 156 \\
+Qwen3-8B & .308 & 2.100 & 40/40 & 4724 / 280 / 268 \\
+Llama-3.1-8B & .365 & 1.188 & 40/40 & 4573 / 274 / 261 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/publication/scale_transport.pdf}
+\caption{Warm native TTFT relative to text re-prefill and exact-prefix reuse.
+The horizontal line marks equal cost; lower is better.}
+\label{fig:scale-transport}
 \end{figure}
 
 \section{Interpretation and Falsification}

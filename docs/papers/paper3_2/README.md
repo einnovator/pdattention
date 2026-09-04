@@ -68,7 +68,7 @@ The first natural replication is under
 `docs/papers/shared/results/paper3_2_rag/natural/`. It contains 50 fixed
 MultiHop-RAG questions, pinned Qwen3-1.7B-4bit and cross-encoder revisions, 200
 exact matched realization pairs, and disjoint cold/warm metrics. This is one
-cohort seed and does not replace the planned five-seed or cross-family runs.
+cohort seed and does not replace the later five-seed or cross-family runs.
 
 Regenerate its profile-separated aggregate with:
 
@@ -79,4 +79,31 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.analyze_model_smoke \
   --output-dir docs/papers/shared/results/paper3_2_rag/natural/paper3_2_m1_multihoprag_strong_n20_2k_50/aggregate \
   --selector-profile pra_strong_reranker \
   --scope "50-question MultiHop-RAG cohort; selector-frozen transport and initial natural quality evidence"
+```
+
+The completed next-iteration evidence is organized under
+`docs/papers/shared/results/paper3_2_rag/`:
+
+- `natural_five_seed/` contains five 30-question natural cohorts and 600 exact
+  selected-text/native transport comparisons.
+- `local_retrieval/`, `service_retrieval/`, and `service_retrieval_cuda/`
+  contain the local and Elasticsearch/Qdrant retrieval ladders.
+- `composition_natural/` and `position_natural/` contain the natural
+  materialization, recomposition, repair, order, and position diagnostics.
+- `nonprefix_reuse/` contains five four-turn changing-selection sequences.
+- `scale/` contains the reduced 4B, 8B, and cross-family replications.
+
+Regenerate the compact publication plots and scale summary with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
+  --composition-manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed11/manifest.json \
+  --position-manifest docs/papers/shared/results/paper3_2_rag/position_natural/qwen3_1_7b_seed11/manifest.json \
+  --retrieval-summary docs/papers/shared/results/paper3_2_rag/local_retrieval/summary.json \
+  --service-summary docs/papers/shared/results/paper3_2_rag/service_retrieval_cuda/summary.json \
+  --nonprefix-manifest docs/papers/shared/results/paper3_2_rag/nonprefix_reuse/qwen3_1_7b_seed11/manifest.json \
+  --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_4b_seed11 \
+  --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_8b_seed11 \
+  --scale-run docs/papers/shared/results/paper3_2_rag/scale/llama3_1_8b_seed11 \
+  --output-dir docs/papers/shared/results/paper3_2_rag/publication
 ```
