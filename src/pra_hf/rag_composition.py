@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import itertools
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Mapping, Sequence
@@ -398,3 +399,36 @@ def permute_resources(
     if len(by_id) != len(resources) or set(order) != set(by_id) or len(order) != len(resources):
         raise ValueError("order must contain every unique resource ID exactly once")
     return tuple(by_id[resource_id] for resource_id in order)
+
+
+def permutation_orders(
+    resource_ids: Sequence[str], *, seed: int = 0, max_random: int = 4
+) -> tuple[tuple[str, ...], ...]:
+    """Return canonical, reverse, and bounded deterministic resource orders."""
+
+    canonical = tuple(resource_ids)
+    if not canonical or len(set(canonical)) != len(canonical):
+        raise ValueError("resource IDs must be non-empty and unique")
+    orders: list[tuple[str, ...]] = [canonical]
+    reverse = tuple(reversed(canonical))
+    if reverse not in orders:
+        orders.append(reverse)
+    if len(canonical) <= 7:
+        candidates = list(itertools.permutations(canonical))
+        random.Random(seed).shuffle(candidates)
+        for order in candidates:
+            if order not in orders:
+                orders.append(order)
+            if len(orders) >= 2 + max_random:
+                break
+    else:
+        rng = random.Random(seed)
+        attempts = 0
+        while len(orders) < 2 + max_random and attempts < max_random * 20:
+            candidate = list(canonical)
+            rng.shuffle(candidate)
+            order = tuple(candidate)
+            if order not in orders:
+                orders.append(order)
+            attempts += 1
+    return tuple(orders)

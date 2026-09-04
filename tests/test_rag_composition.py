@@ -13,6 +13,7 @@ from pra_hf.rag_composition import (
     SelectedResource,
     SelectorRole,
     compose_resources,
+    permutation_orders,
     permute_resources,
 )
 
@@ -119,6 +120,15 @@ def test_d1_d2_permutation_changes_order_but_not_resources() -> None:
     ).receipt_id
 
 
+def test_permutation_orders_include_canonical_reverse_and_seeded_variants() -> None:
+    first = permutation_orders(("D1", "D2", "D3"), seed=17, max_random=3)
+    second = permutation_orders(("D1", "D2", "D3"), seed=17, max_random=3)
+    assert first == second
+    assert first[:2] == (("D1", "D2", "D3"), ("D3", "D2", "D1"))
+    assert len(first) == 5
+    assert len(set(first)) == len(first)
+
+
 def test_composition_receipt_roundtrip_and_tamper_detection() -> None:
     receipt = _compose(PositionPolicy.GLOBAL_PACKED)
     restored = CompositionReceipt.from_dict(receipt.to_dict())
@@ -144,4 +154,3 @@ def test_invalid_permutation_and_duplicate_identity_are_rejected() -> None:
             profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_REBOUND,
             position_policy=PositionPolicy.GLOBAL_PACKED,
         )
-
