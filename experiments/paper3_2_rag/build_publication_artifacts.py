@@ -18,10 +18,11 @@ def _composition_plot(summary: dict[str, object], output: Path) -> None:
     preferred = [
         "NATIVE_SOURCE_LOCAL",
         "NATIVE_GLOBAL_REBOUND",
-        "REPAIR_0.25",
-        "REPAIR_0.5",
-        "REPAIR_0.75",
-        "REPAIR_1",
+        "REPAIR_BOUNDARY_0.25",
+        "REPAIR_BOUNDARY_0.5",
+        "REPAIR_LATER_PREFIX_0.25",
+        "REPAIR_LATER_PREFIX_0.5",
+        "REPAIR_EVEN_1",
     ]
     labels = [name for name in preferred if name in comparisons]
     values = [float(comparisons[name]["gold_nll_mean_abs_delta"]) for name in labels]
@@ -35,6 +36,81 @@ def _composition_plot(summary: dict[str, object], output: Path) -> None:
     axis.set_xlabel("Independent-memory realization")
     axis.grid(axis="y", alpha=0.25)
     axis.tick_params(axis="x", rotation=20)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _partial_materialization_plot(summary: dict[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    rows = [
+        row
+        for row in summary["summary"]["conditions"]
+        if row["resource_order_name"] == "canonical"
+        and (row["condition"] == "FRESH_PACKED" or row["condition"].startswith("PARTIAL_"))
+    ]
+    policies = {
+        "FRESH_PACKED": ("full", "#111827"),
+        "PARTIAL_SCORE": ("score", "#2563eb"),
+        "PARTIAL_ORACLE": ("evidence oracle", "#15803d"),
+        "PARTIAL_WRONG": ("wrong memory", "#b42318"),
+    }
+    fig, (quality, nll) = plt.subplots(1, 2, figsize=(8.6, 3.5))
+    for prefix, (label, color) in policies.items():
+        selected = [row for row in rows if row["condition"].startswith(prefix)]
+        selected.sort(key=lambda row: float(row["active_native_tokens"]))
+        if not selected:
+            continue
+        x = [float(row["active_native_tokens"]) for row in selected]
+        quality.plot(x, [float(row["token_f1"]) for row in selected], marker="o", label=label, color=color)
+        nll.plot(x, [float(row["gold_answer_mean_nll"]) for row in selected], marker="o", label=label, color=color)
+    quality.set_ylabel("Token F1")
+    nll.set_ylabel("Gold-answer mean NLL")
+    for axis in (quality, nll):
+        axis.set_xlabel("Active native K/V entries")
+        axis.grid(alpha=0.25)
+    quality.legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _nonprefix_reuse_plot(summary: dict[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    rows = summary["summary"]["conditions"]
+    preferred = [
+        "FRESH_PACKED",
+        "ORDINARY_PREFIX_CACHE",
+        "PRA_GLOBAL_REBOUND",
+        "PRA_REBOUND_REPAIR_0.25",
+        "PRA_PARTIAL_0.5",
+    ]
+    selected = [next(row for row in rows if row["condition"] == name) for name in preferred]
+    labels = [
+        "fresh",
+        "prefix cache",
+        "PRA rebound",
+        "PRA + 25% repair",
+        "PRA partial 50%",
+    ]
+    new = [float(row["newly_encoded_tokens"]) for row in selected]
+    reused = [float(row["reused_tokens"]) for row in selected]
+    total = [float(row["total_with_materialization_ms"]) for row in selected]
+    x = list(range(len(labels)))
+    fig, (tokens, latency) = plt.subplots(1, 2, figsize=(9.0, 3.6))
+    tokens.bar(x, new, label="newly encoded", color="#2563eb")
+    tokens.bar(x, reused, bottom=new, label="reused native", color="#93c5fd")
+    tokens.set_ylabel("Mean selected K/V entries per turn")
+    tokens.legend(fontsize=7)
+    latency.bar(x, total, color="#0f766e")
+    latency.set_ylabel("Mean total latency (ms)")
+    for axis in (tokens, latency):
+        axis.set_xticks(x, labels, rotation=25, ha="right")
+        axis.grid(axis="y", alpha=0.25)
     fig.tight_layout()
     fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
     fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
@@ -74,6 +150,7 @@ def main() -> None:
     parser.add_argument("--retrieval-summary", type=Path)
     parser.add_argument("--service-summary", type=Path)
     parser.add_argument("--transport-summary", type=Path)
+    parser.add_argument("--nonprefix-manifest", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +159,7 @@ def main() -> None:
     if composition is not None:
         result["composition"] = composition["summary"]
         _composition_plot(composition, args.output_dir / "composition_nll_repair_curve")
+        _partial_materialization_plot(composition, args.output_dir / "partial_materialization_frontier")
     retrieval = _load(args.retrieval_summary)
     if retrieval is not None:
         result["local_retrieval"] = retrieval
@@ -93,6 +171,10 @@ def main() -> None:
     transport = _load(args.transport_summary)
     if transport is not None:
         result["transport"] = transport
+    nonprefix = _load(args.nonprefix_manifest)
+    if nonprefix is not None:
+        result["nonprefix_reuse"] = nonprefix["summary"]
+        _nonprefix_reuse_plot(nonprefix, args.output_dir / "nonprefix_reuse")
     (args.output_dir / "publication_summary.json").write_text(
         json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
     )

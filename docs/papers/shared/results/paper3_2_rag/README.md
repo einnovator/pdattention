@@ -7,6 +7,10 @@ This directory contains the committed evidence used by Paper 3.2.
 - `service_retrieval/` contains the 50-question Elasticsearch and Qdrant
   retrieval run with query embedding, service search, and client overhead
   reported separately.
+- `service_retrieval_cuda/` repeats the same frozen 50-question service run
+  with BGE query embedding on an NVIDIA RTX 5060. The retrieval identities and
+  recall values are unchanged; the artifact isolates the embedding-device
+  effect from Elasticsearch/Qdrant service time.
 - `local_retrieval/` contains the matched 50-question CUDA retrieval ladder:
   BM25, FAISS/BGE dense, hybrid RRF, the historical MiniLM reranker, and the
   stronger BGE-v2-M3 reranker.
@@ -14,6 +18,10 @@ This directory contains the committed evidence used by Paper 3.2.
   materialization, independent-composition, repair-geometry, and document-order
   measurements. Repair rows are diagnostic because fresh packed states were
   computed before replacement.
+- `nonprefix_reuse/` contains natural changing-selection sequences. It compares
+  fresh reprefill, ordinary exact-prefix reuse, contiguous selection reuse,
+  independently cached resource reuse, rebinding plus diagnostic repair, and
+  partial materialization while retaining per-turn selection receipts.
 - `mechanism_smoke/` and `model_smoke/` contain earlier implementation gates.
 
 Regenerate the five-seed aggregate from the repository root with:
