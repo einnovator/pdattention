@@ -63,3 +63,20 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.analyze_model_smoke \
 It is a controlled Qwen3-1.7B-4bit transport smoke over seeds
 `11, 23, 37, 71, 101`. Its 150 selected-text/native pairs are output-exact,
 but it does not qualify the generic selector or establish natural-task quality.
+
+The first natural replication is under
+`docs/papers/shared/results/paper3_2_rag/natural/`. It contains 50 fixed
+MultiHop-RAG questions, pinned Qwen3-1.7B-4bit and cross-encoder revisions, 200
+exact matched realization pairs, and disjoint cold/warm metrics. This is one
+cohort seed and does not replace the planned five-seed or cross-family runs.
+
+Regenerate its profile-separated aggregate with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.analyze_model_smoke \
+  --input-root docs/papers/shared/results/paper3_2_rag/natural \
+  --run-pattern paper3_2_m1_multihoprag_strong_n20_2k_50 \
+  --output-dir docs/papers/shared/results/paper3_2_rag/natural/paper3_2_m1_multihoprag_strong_n20_2k_50/aggregate \
+  --selector-profile pra_strong_reranker \
+  --scope "50-question MultiHop-RAG cohort; selector-frozen transport and initial natural quality evidence"
+```

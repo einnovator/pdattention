@@ -30,7 +30,7 @@ Retrieval-augmented generation (RAG) reduces the amount of external information 
 
 This paper studies these issues jointly across multiple RAG and long-context QA datasets.  We compare full documents in context, conventional RAG with lexical, dense, hybrid, reranked, and real vector-database indices, and PRA variants that use full or partial materialization and multiple routing modes.  We then freeze selected evidence and isolate realization and composition: fresh selected-text encoding, contiguous native reuse, independently cached native fragments, RoPE composition-coordinate rebinding, and limited contextual repair.  Finally, we test whether arbitrary document serialization matters by comparing $D_1D_2Q$ with $D_2D_1Q$ and broader resource permutations under multiple positional policies, including source-local, globally packed, resource-adjacent, rank-derived, score-derived, near-band, and randomized geometries.
 
-The experimental program begins with small models for broad causal sweeps and progressively repeats only qualified conditions on 4B, 8B, and larger models.  In an initial five-seed Qwen3-1.7B transport gate, 150 selector-frozen Selected Context/Native Memory pairs produced identical outputs.  Cold native realization was 4.1\% slower in total latency, while exact warm reuse reduced mean time-to-first-token by 63.8\% and total latency by 34.5\%.  This controlled fixture is a mechanism result, not a natural-task quality claim: the generic PRA selector slightly underperformed BM25 and the selection gate remains closed.  The central question is not whether PRA replaces mature retrieval infrastructure, but whether external retrieval, selective materialization, persistent native memory, and request-specific composition can form a better quality--context--latency frontier than either full context or conventional RAG alone.
+The experimental program begins with small models for broad causal sweeps and progressively repeats only qualified conditions on 4B, 8B, and larger models.  In an initial five-seed Qwen3-1.7B transport gate, 150 selector-frozen Selected Context/Native Memory pairs produced identical outputs.  Cold native realization was 4.1\% slower in total latency, while exact warm reuse reduced mean time-to-first-token by 63.8\% and total latency by 34.5\%.  A first 50-question MultiHop-RAG replication preserved all 200 generic- and strong-selector cold/warm matched outputs and reduced strong-selector warm TTFT by 92.7\%.  Generic PRA raised answer-string availability and support coverage but scored .44 under the official metric versus .48 for BM25; a pinned cross-encoder scored .50 and PRA preserved its output exactly.  These results support RAG plus PRA realization but leave replacement-selector claims open.  The central question is not whether PRA replaces mature retrieval infrastructure, but whether external retrieval, selective materialization, persistent native memory, and request-specific composition can form a better quality--context--latency frontier than either full context or conventional RAG alone.
 \end{abstract}
 
 \section{Introduction}
@@ -102,9 +102,13 @@ attention competition rather than harmless context. Second, a small global budge
 automatically sufficient. Under oracle selection, exact disclosure reduced
 active K/V by 20.9\% on MuSiQue and 44.4\% on 2Wiki relative to whole parents,
 but a common 128-token allocation did not preserve all distributed MuSiQue
-evidence. These are inherited materialization findings, not Paper~3.2 RAG
-results. We reuse the mechanism and causal controls, then remeasure the frontier
-after realistic retrieval rather than oracle selection.
+evidence. A later Paper~3.0 audit found that this inherited pretrained replay
+restarted direct-query RoPE positions at zero. The comparisons remain paired
+within that historical transport, but Paper~3.2 does not treat their absolute
+quality as corrected-position evidence. These are inherited materialization
+findings, not Paper~3.2 RAG results. We reuse the mechanism and causal controls,
+then remeasure the frontier after realistic retrieval rather than oracle
+selection.
 
 Paper~3.0 also found that consumer-layer placement materially changes the
 effect of disclosed memory, whereas contextual representation change by itself
@@ -332,9 +336,66 @@ token F1 .109 and supporting-document coverage .933, while the generic PRA
 selector obtained .094 and .873. The fixture is lexical, small, and repeated
 across seeds; exact match was zero for every arm because the model returned
 sentences rather than the requested short value. Accordingly, the selection
-gate and public-card gate remain closed. The next powered stage must use
-natural held-out cohorts and score answer log-probability or normalized answer
-quality in addition to exact match.
+gate remains closed on this fixture.
+
+\subsubsection{Natural MultiHop-RAG replication}
+
+We then ran the same pinned model on 50 sampled MultiHop-RAG questions at the
+inherited $N=20$, 2K-token operating point, with a cross-encoder pinned to
+revision \texttt{233902d2}. This is one fixed cohort (seed 11), not five
+independent natural cohorts. All 200 cold/warm Selected Context/Native Memory
+pairs---100 generic and 100 cross-encoder-selected---again shared candidate and
+selection receipts, intervals, scores, and exact generated output.
+Table~\ref{tab:natural-m1} separates selection from realization.
+
+\begin{table}[ht]
+\centering
+\caption{Qwen3-1.7B on 50 MultiHop-RAG questions. ``Vis./native'' reports
+direct visible prompt tokens and selected native K/V tokens.}
+\label{tab:natural-m1}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Condition & Regime & official & F1 & support & vis./native & TTFT & total \\
+\midrule
+BM25 text & Cold & .480 & .119 & .400 & 2108/0 & 1013 & 1105 \\
+Cross-encoder text & Cold & .500 & .137 & .455 & 2110/0 & 1020 & 1111 \\
+PRA generic selected & Cold & .440 & .122 & .468 & 2105/0 & 1000 & 1092 \\
+PRA strong selected & Cold & .500 & .137 & .455 & 2110/0 & 1003 & 1095 \\
+PRA strong native & Cold & .500 & .137 & .455 & 79/2031 & 1005 & 1129 \\
+PRA strong native & Warm & .500 & .137 & .455 & 79/2031 & 73 & 196 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Generic PRA raised answer-string availability from .56 to .64 and
+supporting-document coverage from .400 to .468; gold-chunk recall moved from
+.0448 to .0484. The official score nevertheless fell from .48 to .44, while
+token F1 changed from .119 to .122. The cross-encoder was stronger: answer
+availability .70, official score .50, and token F1 .137. Its ordinary RAG,
+PRA Selected Context, and PRA Native Memory outputs agree exactly. The result
+therefore supports conventional retrieval followed by PRA realization, but
+does not establish PRA as a better first- or second-stage selector.
+
+Cold strong-selector native execution was 3.1\% slower end to end than its
+matched Selected Context arm, while TTFT changed by only 0.2\%. Retaining the
+exact selection reduced TTFT from 999 to 73~ms (92.7\%) and total latency from
+1091 to 196~ms (82.0\%), at 222.1~MiB of active all-layer K/V.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/natural/paper3_2_m1_multihoprag_strong_n20_2k_50/aggregate/model_smoke_transport.pdf}
+\caption{Single-cohort MultiHop-RAG realization cost with selector output
+frozen. No between-seed error bars are available for this first natural run.}
+\label{fig:natural-m1-transport}
+\end{figure}
+
+The native and repeated-selection economic gates pass at the prespecified
+50-example threshold. The selection gate fails because generic PRA does not
+match the strongest conventional selector. The public-card gate also remains
+closed because no exact model/precision adaptor is qualified. Natural
+cross-seed, answer-log-probability, cross-family, and independently
+composed-resource experiments remain required.
 
 \FloatBarrier
 
@@ -864,7 +925,9 @@ The immediate goal is conservative: first reproduce ordinary packed-RAG geometry
 
 \section{Conclusion}
 
-Paper~3.2 evaluates PRA in the setting where RAG systems are actually deployed: mature lexical/vector retrieval, reranking, changing evidence sets, and repeated queries.  It compares full-document context, conventional RAG, and PRA under matched retrieval and materialization budgets, then isolates the harder problem of composing independently cached native resources.  The intended result is not necessarily a new retriever.  A successful outcome may instead be a reusable layer beneath existing RAG: external search finds the evidence, PRA preserves and selectively materializes it, and request-specific composition makes persistent native memory usable across changing queries.
+Paper~3.2 evaluates PRA in the setting where RAG systems are actually deployed: mature lexical/vector retrieval, reranking, changing evidence sets, and repeated queries.  The first model-backed results establish a narrow but useful fact. For contiguous selected evidence, native MLX realization is output-exact on both a five-seed fixture and one 50-question MultiHop-RAG cohort; exact warm reuse substantially reduces TTFT and total latency, while cold execution remains slightly slower. On the natural cohort a pinned cross-encoder remains stronger than generic PRA selection, and PRA preserves that stronger selector's output and quality exactly. The same evidence says nothing yet about arbitrary composition of independently cached resources.
+
+The paper therefore continues to compare full-document context, conventional RAG, and PRA under matched retrieval and materialization budgets, then isolates the harder composition problem. The intended result is not necessarily a new retriever. A successful outcome may instead be a reusable layer beneath existing RAG: external search finds the evidence, PRA preserves and selectively materializes it, and request-specific composition makes persistent native memory usable across changing queries.
 
 \bibliographystyle{plain}
 % \bibliography{references}
@@ -881,8 +944,8 @@ Planned artifact groups include full-context results, retrieval/index results, s
 \toprule
 Backend & Role & Deployment & Status \\
 \midrule
-BM25 local & lexical reference & in process & planned \\
-FAISS & dense reference & in process & planned \\
+BM25 local & lexical reference & in process & measured, initial cohorts \\
+FAISS & dense reference & in process & implemented, unmeasured \\
 Elasticsearch & lexical/vector/hybrid & remote Docker & planned \\
 Qdrant & vector/hybrid & remote Docker & planned \\
 Weaviate or Milvus & vector/hybrid & remote Docker & planned \\

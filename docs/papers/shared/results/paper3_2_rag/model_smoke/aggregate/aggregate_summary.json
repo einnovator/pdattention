@@ -13,6 +13,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 0.0,
       "selected_native_kv_tokens_seed_sd": 0.0,
+      "selector_profile": "standard_bm25",
       "supporting_document_coverage_mean": 0.9333333333333333,
       "supporting_document_coverage_seed_sd": 0.0,
       "token_f1_mean": 0.10932400932400932,
@@ -37,6 +38,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 0.0,
       "selected_native_kv_tokens_seed_sd": 0.0,
+      "selector_profile": "standard_bm25",
       "supporting_document_coverage_mean": 0.9333333333333333,
       "supporting_document_coverage_seed_sd": 0.0,
       "token_f1_mean": 0.10932400932400932,
@@ -61,6 +63,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 121.55999999999999,
       "selected_native_kv_tokens_seed_sd": 0.07601169500660987,
+      "selector_profile": "pra_generic",
       "supporting_document_coverage_mean": 0.8733333333333334,
       "supporting_document_coverage_seed_sd": 0.014907119849998594,
       "token_f1_mean": 0.09352913752913752,
@@ -85,6 +88,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 121.55999999999999,
       "selected_native_kv_tokens_seed_sd": 0.07601169500660987,
+      "selector_profile": "pra_generic",
       "supporting_document_coverage_mean": 0.8733333333333334,
       "supporting_document_coverage_seed_sd": 0.014907119849998594,
       "token_f1_mean": 0.09352913752913752,
@@ -109,6 +113,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 0.0,
       "selected_native_kv_tokens_seed_sd": 0.0,
+      "selector_profile": "pra_generic",
       "supporting_document_coverage_mean": 0.8733333333333334,
       "supporting_document_coverage_seed_sd": 0.014907119849998594,
       "token_f1_mean": 0.09352913752913752,
@@ -133,6 +138,7 @@
       "seeds": 5,
       "selected_native_kv_tokens_mean": 0.0,
       "selected_native_kv_tokens_seed_sd": 0.0,
+      "selector_profile": "pra_generic",
       "supporting_document_coverage_mean": 0.8733333333333334,
       "supporting_document_coverage_seed_sd": 0.014907119849998594,
       "token_f1_mean": 0.09352913752913752,
@@ -156,14 +162,19 @@
   "measured_rows": 450,
   "model": "mlx-community/Qwen3-1.7B-4bit",
   "model_revision": "3b1b1768f8f8cf8351c712464f906e86c2b8269e",
-  "native_over_selected_cold_ingestion_ms": 1.0225975286981945,
-  "native_over_selected_cold_total_latency_ms": 1.04123459467948,
-  "native_over_selected_cold_ttft_ms": 1.0331917833703177,
-  "native_over_selected_warm_ingestion_ms": 0.0005855615555736828,
-  "native_over_selected_warm_total_latency_ms": 0.6548876552900896,
-  "native_over_selected_warm_ttft_ms": 0.3615239367171157,
   "parity": {
     "all_pairs_transport_equivalent": true,
+    "by_selector_profile": {
+      "pra_generic": {
+        "all_pairs_transport_equivalent": true,
+        "candidate_receipt_matches": 150,
+        "complete_pairs": 150,
+        "exact_output_matches": 150,
+        "selected_interval_matches": 150,
+        "selection_receipt_matches": 150,
+        "token_f1_matches": 150
+      }
+    },
     "candidate_receipt_matches": 150,
     "complete_pairs": 150,
     "exact_output_matches": 150,
@@ -171,8 +182,18 @@
     "selection_receipt_matches": 150,
     "token_f1_matches": 150
   },
+  "realization_ratios": {
+    "pra_generic": {
+      "native_over_selected_cold_ingestion_ms": 1.0225975286981945,
+      "native_over_selected_cold_total_latency_ms": 1.04123459467948,
+      "native_over_selected_cold_ttft_ms": 1.0331917833703177,
+      "native_over_selected_warm_ingestion_ms": 0.0005855615555736828,
+      "native_over_selected_warm_total_latency_ms": 0.6548876552900896,
+      "native_over_selected_warm_ttft_ms": 0.3615239367171157
+    }
+  },
   "replication_unit": "seed",
-  "schema_version": "paper3.2-model-smoke-aggregate-v1",
+  "schema_version": "paper3.2-model-run-aggregate-v1",
   "scope": "controlled fixture; not a natural-task quality claim",
   "seeds": [
     11,
