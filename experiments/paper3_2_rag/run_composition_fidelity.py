@@ -295,6 +295,10 @@ def _row(
         **_distribution_diagnostics(reference_first_step_logits, first_step_logits),
         **metrics,
     }
+    row["ttft_with_materialization_ms"] = float(metrics["ttft_ms"]) + encode_ms
+    row["total_with_materialization_ms"] = (
+        float(metrics["total_latency_ms"]) + encode_ms
+    )
     if retain_first_step_logits:
         row["_first_step_logits_f32"] = first_step_logits
     return row

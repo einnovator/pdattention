@@ -34,6 +34,30 @@ K/V, independently encoded source-local K/V, GLOBAL_PACKED RoPE rebinding, and
 a diagnostic repair curve. Repair rows use already computed fresh states and
 must not be presented as deployable compute savings.
 
+The next-iteration controls add exact token-budget partial materialization,
+evidence-aware oracle and equal-budget wrong-memory conditions, deterministic
+prefix/boundary/later-resource repair geometries, first-step JS/KL diagnostics,
+and optional receipt-driven position policies.
+
+## Changing-selection reuse
+
+`run_nonprefix_reuse` builds deterministic natural query sequences whose frozen
+strong-reranker selections overlap. It measures ordinary exact-prefix reuse,
+exact contiguous-block reuse, persistent chunk-native source-local and rebound
+composition, boundary repair, and partial materialization with disjoint token
+accounting.
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_nonprefix_reuse \
+  --cache-dir .cache/rag_eval \
+  --candidate-questions 50 \
+  --sequence-length 4 \
+  --sequence-count 5 \
+  --repair-fraction 0.25 \
+  --partial-fraction 0.5 \
+  --output reports/paper3_2_nonprefix_reuse
+```
+
 ## Retrieval
 
 `run_retrieval_ladder` measures local BM25, BGE dense FAISS, hybrid RRF, the
