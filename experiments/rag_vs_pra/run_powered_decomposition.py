@@ -264,7 +264,7 @@ class PersistentMLXBackend:
     ) -> tuple[str, Mapping[str, object]]:
         import mlx.core as mx
         from mlx_lm.models.cache import make_prompt_cache
-        from pra_mlx.native import (
+        from pra_hf.rag_mlx_native import (
             combine_native_memories,
             encode_native_memory,
             make_native_prompt_cache,
