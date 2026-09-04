@@ -1,0 +1,72 @@
+{
+  "calibration_manifests": [
+    "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed11/manifest.json",
+    "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed23/manifest.json",
+    "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed37/manifest.json"
+  ],
+  "evaluation": {
+    "best_fixed_calibration_action": {
+      "action": "REPAIR_LATER_PREFIX_0.5",
+      "exact_output_recovery": 0.675,
+      "examples": 80,
+      "mean_first_step_js": 0.013894424179220589,
+      "mean_gold_answer_nll": 7.264296874999999,
+      "mean_repair_fraction": 0.5,
+      "mean_repaired_tokens": 658.35,
+      "mean_token_f1": 0.1211309523809524
+    },
+    "fresh_packed_reference": {
+      "exact_output_recovery": 1.0,
+      "examples": 80,
+      "mean_first_step_js": 0.0,
+      "mean_gold_answer_nll": 6.987421875,
+      "mean_repair_fraction": 0.0,
+      "mean_repaired_tokens": 0.0,
+      "mean_token_f1": 0.14821428571428572
+    },
+    "query_conditioned_policy": {
+      "exact_output_recovery": 0.6625,
+      "examples": 80,
+      "mean_first_step_js": 0.017711819009862694,
+      "mean_gold_answer_nll": 7.336171875,
+      "mean_repair_fraction": 0.4125,
+      "mean_repaired_tokens": 553.05,
+      "mean_token_f1": 0.1211309523809524
+    },
+    "rebound_without_repair": {
+      "exact_output_recovery": 0.1,
+      "examples": 80,
+      "mean_first_step_js": 0.1516677814922956,
+      "mean_gold_answer_nll": 4.011796875,
+      "mean_repair_fraction": 0.0,
+      "mean_repaired_tokens": 0.0,
+      "mean_token_f1": 0.16976190476190478
+    },
+    "repaired_token_savings_vs_best_fixed": 0.15994531784005483,
+    "selected_action_counts": {
+      "REPAIR_LATER_PREFIX_0.25": 28,
+      "REPAIR_LATER_PREFIX_0.5": 52
+    }
+  },
+  "evaluation_manifests": [
+    "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed71/manifest.json",
+    "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed101/manifest.json"
+  ],
+  "policy": {
+    "cell_actions": {
+      "comparison_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+      "comparison_query|short|few": "REPAIR_LATER_PREFIX_0.25",
+      "inference_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+      "inference_query|short|few": "REPAIR_LATER_PREFIX_0.25",
+      "null_query|short|few": "REPAIR_LATER_PREFIX_0.5",
+      "temporal_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+      "temporal_query|short|few": "REPAIR_LATER_PREFIX_0.25"
+    },
+    "cost_weight": 0.05,
+    "global_action": "REPAIR_LATER_PREFIX_0.5",
+    "max_repair_fraction": 0.5,
+    "resource_median": 4.0,
+    "token_median": 1314.0
+  },
+  "schema_version": "paper3.2-heldout-repair-policy-v1"
+}

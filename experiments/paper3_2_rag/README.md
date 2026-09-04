@@ -94,6 +94,36 @@ tokens are consumed by the runtime and are not serialized as evidence text to
 an unadapted base model. This keeps persistent record identity separate from
 the model-visible question and from the materialized native K/V.
 
+Aggregate replicated scale runs separately from one-seed pilots so their
+replication unit and confidence intervals remain visible:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_native_records \
+  --manifest reports/paper3_2_native_records/qwen3_4b_seed11/manifest.json \
+  --manifest reports/paper3_2_native_records/qwen3_4b_seed23/manifest.json \
+  --manifest reports/paper3_2_native_records/qwen3_4b_seed37/manifest.json \
+  --manifest reports/paper3_2_native_records/qwen3_4b_seed71/manifest.json \
+  --manifest reports/paper3_2_native_records/qwen3_4b_seed101/manifest.json \
+  --output reports/paper3_2_native_records/qwen3_4b_five_seed/manifest.json
+```
+
+`calibrate_composition_policy` fits an intentionally small repair controller
+on calibration seeds and evaluates the frozen actions on disjoint seeds. The
+controller sees question type, native-token length, and resource count only;
+answers, support labels, and evaluation outcomes are unavailable at decision
+time. Its objective combines first-step JS divergence with recomputation cost.
+This is a composition-fidelity diagnostic, not a learned answer-quality claim.
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.calibrate_composition_policy \
+  --calibration-manifest reports/composition/qwen3_1_7b_seed11/manifest.json \
+  --calibration-manifest reports/composition/qwen3_1_7b_seed23/manifest.json \
+  --calibration-manifest reports/composition/qwen3_1_7b_seed37/manifest.json \
+  --evaluation-manifest reports/composition/qwen3_1_7b_seed71/manifest.json \
+  --evaluation-manifest reports/composition/qwen3_1_7b_seed101/manifest.json \
+  --output reports/composition/heldout_repair_policy.json
+```
+
 ## Retrieval
 
 `run_retrieval_ladder` measures local BM25, BGE dense FAISS, hybrid RRF, the

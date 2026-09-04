@@ -435,6 +435,58 @@ def _native_record_scale_summary(run_dirs: list[Path]) -> list[dict[str, object]
     return result
 
 
+def _native_record_scale_aggregate_summary(
+    manifest_paths: list[Path],
+) -> list[dict[str, object]]:
+    """Summarize replicated scale runs without collapsing them into pilot rows."""
+
+    result = []
+    for manifest_path in manifest_paths:
+        manifest = _load(manifest_path)
+        assert manifest is not None
+        canonical = {
+            (row["selector"], row["representation"]): row
+            for row in manifest["conditions"]
+            if row["order_name"] == "canonical"
+        }
+        selectors = sorted(
+            {
+                str(row["selector"])
+                for row in manifest["conditions"]
+                if row["order_name"] == "canonical"
+            }
+        )
+        if len(selectors) != 1:
+            raise ValueError(f"Scale aggregate must contain one selector: {selectors}")
+        selector = selectors[0]
+        packed = canonical[(selector, "PACKED_RAG_TEXT")]
+        records = canonical[(selector, "PRA_EXPLICIT_RECORDS")]
+        delta = manifest["representation_deltas"][
+            f"{selector}|PRA_EXPLICIT_RECORDS"
+        ]
+        result.append(
+            {
+                "model": manifest["model"],
+                "seeds": manifest["seeds"],
+                "seed_count": len(manifest["seeds"]),
+                "examples": packed["examples"],
+                "selector": selector,
+                "packed_token_f1": packed["token_f1"],
+                "record_token_f1": records["token_f1"],
+                "token_f1_delta": delta["token_f1_delta"]["mean"],
+                "token_f1_delta_95_ci": delta["token_f1_delta"]["bootstrap_95_ci"],
+                "packed_gold_nll": packed["gold_answer_mean_nll"],
+                "record_gold_nll": records["gold_answer_mean_nll"],
+                "gold_nll_delta": delta["gold_nll_delta"]["mean"],
+                "gold_nll_delta_95_ci": delta["gold_nll_delta"]["bootstrap_95_ci"],
+                "output_agreement": records["exact_output_agreement_with_packed"],
+                "first_step_js": records["first_step_js_vs_packed"],
+                "reuse": manifest["reuse"],
+            }
+        )
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--composition-manifest", type=Path)
@@ -447,6 +499,10 @@ def main() -> None:
     parser.add_argument("--scale-composition", type=Path, action="append", default=[])
     parser.add_argument("--native-record-aggregate", type=Path)
     parser.add_argument("--native-record-scale-run", type=Path, action="append", default=[])
+    parser.add_argument(
+        "--native-record-scale-aggregate", type=Path, action="append", default=[]
+    )
+    parser.add_argument("--heldout-repair-policy", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -498,6 +554,13 @@ def main() -> None:
         result["native_record_scale"] = _native_record_scale_summary(
             args.native_record_scale_run
         )
+    if args.native_record_scale_aggregate:
+        result["native_record_scale_aggregates"] = (
+            _native_record_scale_aggregate_summary(args.native_record_scale_aggregate)
+        )
+    heldout_repair = _load(args.heldout_repair_policy)
+    if heldout_repair is not None:
+        result["heldout_repair_policy"] = heldout_repair
     (args.output_dir / "publication_summary.json").write_text(
         json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
     )

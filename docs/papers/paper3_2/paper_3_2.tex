@@ -1032,25 +1032,27 @@ delta of $-.0438$ (95\% CI $[-.0733,-.0213]$). The record path thus provides
 the desired non-prefix addressability, but the original record-reference
 hypothesis is not validated at 1.7B because task quality is not preserved.
 
-Three reduced ten-question pilots test whether scale alone resolves the gap.
-It does not produce a monotonic result. Qwen3-4B changes F1 from .156 to .173,
-Qwen3-8B from .182 to .115, and Llama-3.1-8B from .173 to .162. First-step JS
-is .185, .099, and .130, respectively, and generated-output agreement is zero
-in all three pilots. These cohorts are too small for a positive scale claim;
-the isolated Qwen3-4B improvement motivates replication rather than promotion
-to a runtime default.
+The initially positive Qwen3-4B seed was repeated over all five predeclared
+seeds. Across 50 questions, packed F1 is .133 and record F1 is .112, a seed-level
+mean delta of $-.021$ (bootstrap 95\% CI $[-.055,.007]$). The seed deltas are
+$+.018,+.006,-.024,-.089,-.015$: the apparent seed-11 gain does not replicate.
+Mean answer NLL changes from 3.076 to 2.756, but its delta interval also crosses
+zero ($-.320$, $[-.697,.140]$), and output agreement remains zero. The one-seed
+Qwen3-8B and Llama-3.1-8B pilots are also negative. Scale alone therefore does
+not qualify independent records as a runtime default.
 
 \begin{table}[ht]
 \centering
-\caption{Reduced native-record scale/family pilots (ten questions each,
-MiniLM selection, seed 11). P/R are packed/record values.}
+\caption{Native-record scale/family checks with MiniLM selection. Qwen3-4B
+uses five seeds and 50 questions; the 8B rows remain seed-11 ten-question
+pilots. P/R are packed/record values.}
 \label{tab:native-record-scale}
 \small
 \begin{tabular}{lrrrr}
 \toprule
 Model & F1 P/R & $\Delta$F1 & NLL P/R & JS \\
 \midrule
-Qwen3-4B & .156/.173 & +.018 & 1.556/1.970 & .185 \\
+Qwen3-4B & .133/.112 & $-.021$ & 3.076/2.756 & .185 \\
 Qwen3-8B & .182/.115 & $-.067$ & 2.356/2.375 & .099 \\
 Llama-3.1-8B & .173/.162 & $-.011$ & .961/1.679 & .130 \\
 \bottomrule
@@ -1125,6 +1127,42 @@ position policies (200 order-specific comparisons per policy across five
 cohorts).}
 \label{fig:position-policy}
 \end{figure}
+
+\subsection{Held-out repair calibration}
+The fixed ladder makes a small adaptive test meaningful. We fit a bounded
+lookup policy on seeds 11, 23, and 37, then freeze it for seeds 71 and 101.
+The policy observes only question type, selected native-token length, and
+resource count. Within each coarse feature cell it chooses among rebound and
+the measured repair actions up to 50\%, minimizing first-step JS plus a
+linear recomputation penalty. It never observes answers, support labels, or
+evaluation outcomes at request time.
+
+Table~\ref{tab:heldout-repair} reports 80 held-out order-specific cases. The
+policy chooses 25\% repair for 28 cases and 50\% for 52. It recovers 66.25\%
+of fresh outputs, compared with 67.5\% for the calibration-selected fixed
+50\% action, while repairing 553 rather than 658 tokens per case (16.0\%
+less). This is a modest fidelity--cost improvement, not an answer-quality
+improvement: policy F1 is .121 versus .148 for fresh packed encoding and .170
+for unrepaired rebound. First-step imitation is therefore an insufficient
+objective for promoting adaptive composition.
+
+\begin{table}[ht]
+\centering
+\caption{Held-out repair calibration on seeds 71 and 101. Recovery is exact
+generated-output agreement with fresh packed encoding.}
+\label{tab:heldout-repair}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Condition & Recovery & JS & Repaired tokens & F1 \\
+\midrule
+Fresh packed reference & 1.000 & .0000 & 0 & .148 \\
+Unrepaired rebound & .100 & .1517 & 0 & .170 \\
+Best fixed (later-prefix 50\%) & .675 & .0139 & 658 & .121 \\
+Query-conditioned policy & .663 & .0177 & 553 & .121 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Partial materialization}
 Table~\ref{tab:partial-materialization} holds selected resources and order
@@ -1268,8 +1306,8 @@ The native-record experiment sharpens the third conclusion. The failure is not
 an artifact of bypassing the public abstraction: canonical Paper~4.5 records,
 explicit references, rooted routing, and strong rerankers reach the same
 boundary. Better selectors improve evidence coverage and downstream quality,
-but frozen-selection record realization still regresses on the powered 1.7B
-comparison. Conversely, explicit and rooted references agree exactly, so the
+but frozen-selection record realization regresses on both the powered 1.7B
+comparison and the replicated 4B comparison. Conversely, explicit and rooted references agree exactly, so the
 reference parser and root resolver are not the source of the measured loss.
 The large reduction in order sensitivity is real, but lower sensitivity is
 useful only if subsequent training or composition repair also preserves answer
@@ -1285,9 +1323,12 @@ fragments.
 Partial materialization remains an open adaptive-control problem. The 75\%
 point matches mean F1 on the first seed but not across five cohorts;
 non-monotonic smaller budgets and output flips show that evidence coverage and
-attention competition cannot be reduced to token count alone. A learned or
-query-calibrated policy must pass held-out validation before becoming a product
-profile. Likewise, the measured order sensitivity motivates multi-frame
+attention competition cannot be reduced to token count alone. The held-out
+query-calibrated repair policy saves 16\% of repair work relative to its best
+fixed comparator at nearly the same output-recovery rate, but lowers answer F1
+and therefore fails the product-quality gate. A learned policy needs an
+answer-aware training objective and a new held-out validation before becoming
+a product profile. Likewise, the measured order sensitivity motivates multi-frame
 geometry but does not count as evidence that any alternative geometry is
 better.
 

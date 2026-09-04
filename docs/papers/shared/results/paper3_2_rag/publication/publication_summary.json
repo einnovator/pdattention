@@ -4224,6 +4224,78 @@
       }
     }
   },
+  "heldout_repair_policy": {
+    "calibration_manifests": [
+      "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed11/manifest.json",
+      "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed23/manifest.json",
+      "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed37/manifest.json"
+    ],
+    "evaluation": {
+      "best_fixed_calibration_action": {
+        "action": "REPAIR_LATER_PREFIX_0.5",
+        "exact_output_recovery": 0.675,
+        "examples": 80,
+        "mean_first_step_js": 0.013894424179220589,
+        "mean_gold_answer_nll": 7.264296874999999,
+        "mean_repair_fraction": 0.5,
+        "mean_repaired_tokens": 658.35,
+        "mean_token_f1": 0.1211309523809524
+      },
+      "fresh_packed_reference": {
+        "exact_output_recovery": 1.0,
+        "examples": 80,
+        "mean_first_step_js": 0.0,
+        "mean_gold_answer_nll": 6.987421875,
+        "mean_repair_fraction": 0.0,
+        "mean_repaired_tokens": 0.0,
+        "mean_token_f1": 0.14821428571428572
+      },
+      "query_conditioned_policy": {
+        "exact_output_recovery": 0.6625,
+        "examples": 80,
+        "mean_first_step_js": 0.017711819009862694,
+        "mean_gold_answer_nll": 7.336171875,
+        "mean_repair_fraction": 0.4125,
+        "mean_repaired_tokens": 553.05,
+        "mean_token_f1": 0.1211309523809524
+      },
+      "rebound_without_repair": {
+        "exact_output_recovery": 0.1,
+        "examples": 80,
+        "mean_first_step_js": 0.1516677814922956,
+        "mean_gold_answer_nll": 4.011796875,
+        "mean_repair_fraction": 0.0,
+        "mean_repaired_tokens": 0.0,
+        "mean_token_f1": 0.16976190476190478
+      },
+      "repaired_token_savings_vs_best_fixed": 0.15994531784005483,
+      "selected_action_counts": {
+        "REPAIR_LATER_PREFIX_0.25": 28,
+        "REPAIR_LATER_PREFIX_0.5": 52
+      }
+    },
+    "evaluation_manifests": [
+      "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed71/manifest.json",
+      "docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed101/manifest.json"
+    ],
+    "policy": {
+      "cell_actions": {
+        "comparison_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+        "comparison_query|short|few": "REPAIR_LATER_PREFIX_0.25",
+        "inference_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+        "inference_query|short|few": "REPAIR_LATER_PREFIX_0.25",
+        "null_query|short|few": "REPAIR_LATER_PREFIX_0.5",
+        "temporal_query|long|few": "REPAIR_LATER_PREFIX_0.5",
+        "temporal_query|short|few": "REPAIR_LATER_PREFIX_0.25"
+      },
+      "cost_weight": 0.05,
+      "global_action": "REPAIR_LATER_PREFIX_0.5",
+      "max_repair_fraction": 0.5,
+      "resource_median": 4.0,
+      "token_median": 1314.0
+    },
+    "schema_version": "paper3.2-heldout-repair-policy-v1"
+  },
   "local_retrieval": {
     "build_time_ms": {
       "bm25": 255.55037200000186,
@@ -4477,33 +4549,6 @@
   "native_record_scale": [
     {
       "examples": 10,
-      "first_step_js": 0.18493551849763248,
-      "model": {
-        "id": "mlx-community/Qwen3-4B-4bit",
-        "revision": "4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25"
-      },
-      "output_agreement": 0.0,
-      "packed_gold_nll": 1.55625,
-      "packed_token_f1": 0.15567765567765568,
-      "record_gold_nll": 1.97,
-      "record_token_f1": 0.1734965034965035,
-      "reuse": {
-        "mean_exact_prefix_reusable_tokens": 0.0,
-        "mean_newly_encoded_native_tokens": 1781.75,
-        "mean_overlap_fraction": 0.09523809523809523,
-        "mean_packed_token_f1": 0.14102564102564102,
-        "mean_reused_native_tokens": 245.75,
-        "mean_token_f1": 0.15247668997668998,
-        "mean_token_f1_delta_vs_packed": 0.011451048951048936,
-        "sequences": 2,
-        "turns": 8
-      },
-      "seed": 11,
-      "selector": "minilm",
-      "token_f1_delta": 0.01781884781884782
-    },
-    {
-      "examples": 10,
       "first_step_js": 0.09914084859026467,
       "model": {
         "id": "mlx-community/Qwen3-8B-4bit",
@@ -4555,6 +4600,147 @@
       "seed": 11,
       "selector": "minilm",
       "token_f1_delta": -0.011394161394161384
+    }
+  ],
+  "native_record_scale_aggregates": [
+    {
+      "examples": 50,
+      "first_step_js": 0.18469403982317442,
+      "gold_nll_delta": -0.3204583333333334,
+      "gold_nll_delta_95_ci": [
+        -0.6971666666666667,
+        0.14045833333333335
+      ],
+      "model": {
+        "id": "mlx-community/Qwen3-4B-4bit",
+        "revision": "4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25"
+      },
+      "output_agreement": 0.0,
+      "packed_gold_nll": 3.0764583333333335,
+      "packed_token_f1": 0.13324753024753025,
+      "record_gold_nll": 2.7560000000000002,
+      "record_token_f1": 0.11237640137640138,
+      "reuse": {
+        "mean_exact_prefix_reusable_tokens": {
+          "bootstrap_95_ci": [
+            0.0,
+            64.08
+          ],
+          "mean": 25.96,
+          "seed_values": [
+            0.0,
+            34.5,
+            0.0,
+            95.3,
+            0.0
+          ],
+          "standard_deviation": 41.541340854623364
+        },
+        "mean_newly_encoded_native_tokens": {
+          "bootstrap_95_ci": [
+            1723.6799999999998,
+            1925.9
+          ],
+          "mean": 1820.5900000000001,
+          "seed_values": [
+            1781.75,
+            1785.1,
+            2013.2,
+            1655.2,
+            1867.7
+          ],
+          "standard_deviation": 131.7572597620336
+        },
+        "mean_overlap_fraction": {
+          "bootstrap_95_ci": [
+            0.03571428571428571,
+            0.13452380952380955
+          ],
+          "mean": 0.0869047619047619,
+          "seed_values": [
+            0.09523809523809523,
+            0.08333333333333333,
+            0.0,
+            0.16666666666666669,
+            0.08928571428571427
+          ],
+          "standard_deviation": 0.059165588760900854
+        },
+        "mean_packed_token_f1": {
+          "bootstrap_95_ci": [
+            0.12004895104895105,
+            0.14058530358530358
+          ],
+          "mean": 0.13031712731712733,
+          "seed_values": [
+            0.14102564102564102,
+            0.13594017094017094,
+            0.1181818181818182,
+            0.11397047397047397,
+            0.14246753246753247
+          ],
+          "standard_deviation": 0.013307911502150138
+        },
+        "mean_reused_native_tokens": {
+          "bootstrap_95_ci": [
+            92.4,
+            302.12
+          ],
+          "mean": 202.15,
+          "seed_values": [
+            245.75,
+            231.0,
+            0.0,
+            372.8,
+            161.2
+          ],
+          "standard_deviation": 136.37836155343706
+        },
+        "mean_token_f1": {
+          "bootstrap_95_ci": [
+            0.06435003885003884,
+            0.14312809412809413
+          ],
+          "mean": 0.10817243867243867,
+          "seed_values": [
+            0.15247668997668998,
+            0.14157509157509157,
+            0.09427350427350427,
+            0.025,
+            0.12753690753690755
+          ],
+          "standard_deviation": 0.051391685833203596
+        },
+        "mean_token_f1_delta_vs_packed": {
+          "bootstrap_95_ci": [
+            -0.05590281801531799,
+            0.0038482628482628413
+          ],
+          "mean": -0.022144688644688652,
+          "seed_values": [
+            0.011451048951048936,
+            0.00563492063492064,
+            -0.02390831390831391,
+            -0.08897047397047397,
+            -0.014930624930624945
+          ],
+          "standard_deviation": 0.04006625434851136
+        }
+      },
+      "seed_count": 5,
+      "seeds": [
+        11,
+        23,
+        37,
+        71,
+        101
+      ],
+      "selector": "minilm",
+      "token_f1_delta": -0.020871128871128873,
+      "token_f1_delta_95_ci": [
+        -0.05528631368631364,
+        0.007036630036630034
+      ]
     }
   ],
   "native_records": {

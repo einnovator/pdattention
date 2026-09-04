@@ -95,9 +95,13 @@ The completed next-iteration evidence is organized under
 - `scale/` contains the reduced 4B, 8B, and cross-family replications.
 - `native_records/` contains five 30-question Qwen3-1.7B runs through the
   canonical Paper 4.5 `ContextRecord`/URI/resolver path, their seed aggregate,
-  and reduced Qwen3-4B, Qwen3-8B, and Llama-3.1-8B pilots. Each run keeps
+  a five-seed Qwen3-4B confirmation, and reduced Qwen3-8B and Llama-3.1-8B
+  pilots. Each run keeps
   candidate, reranker, selection, record-resolution, generation, and reuse
   receipts separate.
+- `composition_natural/heldout_repair_policy.json` fits a bounded repair
+  controller on seeds 11/23/37 and evaluates it without refitting on seeds
+  71/101.
 
 First regenerate the seed-aware aggregates from the five raw manifests. The
 aggregator retains seed summaries and reports deterministic seed-bootstrap
@@ -118,6 +122,18 @@ Build the position aggregate from the same five composition manifests; each
 now includes the complete position sweep. Use the same command with
 `--kind nonprefix` and the five manifests under `nonprefix_reuse/` to produce
 `nonprefix_reuse/five_seed/manifest.json`.
+Build the replicated 4B native-record row with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_native_records \
+  --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed11/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed23/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed37/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed71/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed101/manifest.json \
+  --output docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_five_seed/manifest.json
+```
+
 Regenerate the compact publication plots and scale summary with:
 
 ```bash
@@ -134,8 +150,9 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
   --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/qwen3_8b_seed11 \
   --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/llama3_1_8b_seed11 \
   --native-record-aggregate docs/papers/shared/results/paper3_2_rag/native_records/five_seed/manifest.json \
-  --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed11 \
+  --native-record-scale-aggregate docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_five_seed/manifest.json \
   --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/qwen3_8b_seed11 \
   --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/llama3_1_8b_seed11 \
+  --heldout-repair-policy docs/papers/shared/results/paper3_2_rag/composition_natural/heldout_repair_policy.json \
   --output-dir docs/papers/shared/results/paper3_2_rag/publication
 ```
