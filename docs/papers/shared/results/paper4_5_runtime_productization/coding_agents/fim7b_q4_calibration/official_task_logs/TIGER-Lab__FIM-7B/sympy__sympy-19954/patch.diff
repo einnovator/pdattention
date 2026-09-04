@@ -1,0 +1,109 @@
+diff --git a/edge_case_tests.py b/edge_case_tests.py
+new file mode 100644
+index 0000000000..58281f9d90
+--- /dev/null
++++ b/edge_case_tests.py
+@@ -0,0 +1,48 @@
++import signal
++import sys
++from sympy.combinatorics import DihedralGroup, PermutationGroup
++
++def timeout_handler(signum, frame):
++    print("Script execution timed out!")
++    sys.exit(1)
++
++# Set timeout of 20 seconds
++signal.signal(signal.SIGALRM, timeout_handler)
++signal.alarm(20)
++
++def test_edge_cases():
++    print("Testing edge cases for sylow_subgroup...")
++    
++    # Test case 1: DihedralGroup(2*25) with p=2
++    print("\nTest case 1: DihedralGroup(2*25) with p=2")
++    try:
++        G = DihedralGroup(2*25)
++        S2 = G.sylow_subgroup(p=2)
++        print("Success: Sylow subgroup found")
++        print(f"Order of Sylow subgroup: {S2.order()}")
++    except Exception as e:
++        print(f"Error: {str(e)}")
++    
++    # Test case 2: Small group with p=2
++    print("\nTest case 2: Small group with p=2")
++    try:
++        from sympy.combinatorics import Permutation
++        G = PermutationGroup([Permutation([0, 1, 2])])
++        S2 = G.sylow_subgroup(p=2)
++        print("Success: Sylow subgroup found")
++        print(f"Order of Sylow subgroup: {S2.order()}")
++    except Exception as e:
++        print(f"Error: {str(e)}")
++    
++    # Test case 3: Group with p=3
++    print("\nTest case 3: DihedralGroup(6) with p=3")
++    try:
++        G = DihedralGroup(6)
++        S3 = G.sylow_subgroup(p=3)
++        print("Success: Sylow subgroup found")
++        print(f"Order of Sylow subgroup: {S3.order()}")
++    except Exception as e:
++        print(f"Error: {str(e)}")
++
++if __name__ == "__main__":
++    test_edge_cases()
+\ No newline at end of file
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..ff320d084c
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,32 @@
++import signal
++import sys
++from sympy.combinatorics import DihedralGroup
++
++def timeout_handler(signum, frame):
++    print("Script execution timed out!")
++    sys.exit(1)
++
++# Set timeout of 20 seconds
++signal.signal(signal.SIGALRM, timeout_handler)
++signal.alarm(20)
++
++def test_sylow_subgroup():
++    print("Testing sylow_subgroup with DihedralGroup(18)...")
++    G = DihedralGroup(18)
++    try:
++        S2 = G.sylow_subgroup(p=2)
++        print("Success: Sylow subgroup found")
++        print(f"Order of Sylow subgroup: {S2.order()}")
++        return True
++    except IndexError as e:
++        print(f"Error: IndexError occurred - {str(e)}")
++        return False
++    except Exception as e:
++        print(f"Error: Unexpected exception - {str(e)}")
++        return False
++
++if __name__ == "__main__":
++    success = test_sylow_subgroup()
++    if not success:
++        sys.exit(1)
++    sys.exit(0)
+\ No newline at end of file
+diff --git a/sympy/combinatorics/perm_groups.py b/sympy/combinatorics/perm_groups.py
+index de94ddabb4..f35c7bb6ef 100644
+--- a/sympy/combinatorics/perm_groups.py
++++ b/sympy/combinatorics/perm_groups.py
+@@ -2198,8 +2198,9 @@ def _number_blocks(blocks):
+                 for i, r in enumerate(rep_blocks):
+                     if len(r) > len(rep) and rep.issubset(r):
+                         # i-th block system is not minimal
+-                        del num_blocks[i], blocks[i]
+                         to_remove.append(rep_blocks[i])
++                        minimal = False
++                        break
+                     elif len(r) < len(rep) and r.issubset(rep):
+                         # the system being checked is not minimal
+                         minimal = False

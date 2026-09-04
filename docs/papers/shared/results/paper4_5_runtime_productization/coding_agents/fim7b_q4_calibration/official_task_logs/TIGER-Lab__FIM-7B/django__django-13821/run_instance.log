@@ -1,0 +1,106 @@
+2026-09-04 22:31:15,168 - INFO - Environment image sweb.env.py.x86_64.e83e37f52c09532c62acfb:latest found for django__django-13821
+Building instance image sweb.eval.x86_64.django__django-13821:latest for django__django-13821
+2026-09-04 22:31:54,899 - INFO - Creating container for django__django-13821...
+2026-09-04 22:31:54,946 - INFO - Container for django__django-13821 created: 8eedb4cd8d43694bb6a25a87db3ceb832e7592d272c49c507fe2934e56fe03b5
+2026-09-04 22:31:55,049 - INFO - Container for django__django-13821 started: 8eedb4cd8d43694bb6a25a87db3ceb832e7592d272c49c507fe2934e56fe03b5
+2026-09-04 22:31:55,049 - INFO - Intermediate patch for django__django-13821 written to logs/run_evaluation/fim7b-q4-no-pra-smoke/TIGER-Lab__FIM-7B/django__django-13821/patch.diff, now applying to container...
+2026-09-04 22:31:55,187 - INFO - >>>>> Applied Patch:
+/tmp/patch.diff:51: trailing whitespace.
+        
+/tmp/patch.diff:64: trailing whitespace.
+        
+/tmp/patch.diff:67: trailing whitespace.
+    
+/tmp/patch.diff:75: trailing whitespace.
+        
+/tmp/patch.diff:78: trailing whitespace.
+        
+Checking patch django/db/backends/sqlite3/base.py...
+Checking patch django/db/backends/sqlite3/features.py...
+Checking patch reproduce_issue.py...
+Applied patch django/db/backends/sqlite3/base.py cleanly.
+Applied patch django/db/backends/sqlite3/features.py cleanly.
+Applied patch reproduce_issue.py cleanly.
+warning: 5 lines add whitespace errors.
+
+2026-09-04 22:31:55,689 - INFO - Git diff before:
+diff --git a/django/db/backends/sqlite3/base.py b/django/db/backends/sqlite3/base.py
+index ab4ea70492..dcff5534e0 100644
+--- a/django/db/backends/sqlite3/base.py
++++ b/django/db/backends/sqlite3/base.py
+@@ -64,8 +64,8 @@ def list_aggregate(function):
+ 
+ 
+ def check_sqlite_version():
+-    if Database.sqlite_version_info < (3, 8, 3):
+-        raise ImproperlyConfigured('SQLite 3.8.3 or later is required (found %s).' % Database.sqlite_version)
++    if Database.sqlite_version_info < (3, 9, 0):
++        raise ImproperlyConfigured('SQLite 3.9.0 or later is required (found %s).' % Database.sqlite_version)
+ 
+ 
+ check_sqlite_version()
+diff --git a/django/db/backends/sqlite3/features.py b/django/db/backends/sqlite3/features.py
+index 3348256c74..6ed7c65b51 100644
+--- a/django/db/backends/sqlite3/features.py
++++ b/django/db/backends/sqlite3/features.py
+@@ -101,13 +101,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
+ 
+     @cached_property
+     def supports_json_field(self):
+-        with self.connection.cursor() as cursor:
+-            try:
+-                with transaction.atomic(self.connection.alias):
+-                    cursor.execute('SELECT JSON(\'{"a": "b"}\')')
+-            except OperationalError:
+-                return False
+-        return True
++        return Database.sqlite_version_info >= (3, 9, 0)
+ 
+     can_introspect_json_field = property(operator.attrgetter('supports_json_field'))
+     has_json_object_function = property(operator.attrgetter('supports_json_field'))
+2026-09-04 22:31:55,690 - INFO - Eval script for django__django-13821 written to logs/run_evaluation/fim7b-q4-no-pra-smoke/TIGER-Lab__FIM-7B/django__django-13821/eval.sh; copying to container...
+2026-09-04 22:31:59,106 - INFO - Test runtime: 3.30 seconds
+2026-09-04 22:31:59,106 - INFO - Test output for django__django-13821 written to logs/run_evaluation/fim7b-q4-no-pra-smoke/TIGER-Lab__FIM-7B/django__django-13821/test_output.txt
+2026-09-04 22:31:59,151 - INFO - Git diff after:
+diff --git a/django/db/backends/sqlite3/base.py b/django/db/backends/sqlite3/base.py
+index ab4ea70492..dcff5534e0 100644
+--- a/django/db/backends/sqlite3/base.py
++++ b/django/db/backends/sqlite3/base.py
+@@ -64,8 +64,8 @@ def list_aggregate(function):
+ 
+ 
+ def check_sqlite_version():
+-    if Database.sqlite_version_info < (3, 8, 3):
+-        raise ImproperlyConfigured('SQLite 3.8.3 or later is required (found %s).' % Database.sqlite_version)
++    if Database.sqlite_version_info < (3, 9, 0):
++        raise ImproperlyConfigured('SQLite 3.9.0 or later is required (found %s).' % Database.sqlite_version)
+ 
+ 
+ check_sqlite_version()
+diff --git a/django/db/backends/sqlite3/features.py b/django/db/backends/sqlite3/features.py
+index 3348256c74..6ed7c65b51 100644
+--- a/django/db/backends/sqlite3/features.py
++++ b/django/db/backends/sqlite3/features.py
+@@ -101,13 +101,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
+ 
+     @cached_property
+     def supports_json_field(self):
+-        with self.connection.cursor() as cursor:
+-            try:
+-                with transaction.atomic(self.connection.alias):
+-                    cursor.execute('SELECT JSON(\'{"a": "b"}\')')
+-            except OperationalError:
+-                return False
+-        return True
++        return Database.sqlite_version_info >= (3, 9, 0)
+ 
+     can_introspect_json_field = property(operator.attrgetter('supports_json_field'))
+     has_json_object_function = property(operator.attrgetter('supports_json_field'))
+2026-09-04 22:31:59,151 - INFO - Grading answer for django__django-13821...
+2026-09-04 22:31:59,152 - INFO - report: {'django__django-13821': {'patch_is_None': False, 'patch_exists': True, 'patch_successfully_applied': True, 'resolved': True, 'tests_status': {'FAIL_TO_PASS': {'success': ['test_check_sqlite_version (backends.sqlite.tests.Tests)'], 'failure': []}, 'PASS_TO_PASS': {'success': ['test_parameter_escaping (backends.sqlite.tests.EscapingChecksDebug)', 'test_parameter_escaping (backends.sqlite.tests.EscapingChecks)', 'test_no_interpolation (backends.sqlite.tests.LastExecutedQueryTest)', 'test_parameter_quoting (backends.sqlite.tests.LastExecutedQueryTest)', 'Raise NotSupportedError when aggregating on date/time fields.', 'test_distinct_aggregation (backends.sqlite.tests.Tests)', 'test_distinct_aggregation_multiple_args_no_distinct (backends.sqlite.tests.Tests)', 'A named in-memory db should be allowed where supported.', 'test_pathlib_name (backends.sqlite.tests.Tests)', 'test_regexp_function (backends.sqlite.tests.Tests)', 'test_database_sharing_in_threads (backends.sqlite.tests.ThreadSharing)', 'test_autoincrement (backends.sqlite.tests.SchemaTests)', 'test_constraint_checks_disabled_atomic_allowed (backends.sqlite.tests.SchemaTests)', 'test_disable_constraint_checking_failure_disallowed (backends.sqlite.tests.SchemaTests)'], 'failure': []}, 'FAIL_TO_FAIL': {'success': [], 'failure': []}, 'PASS_TO_FAIL': {'success': [], 'failure': []}}}}
+Result for django__django-13821: resolved: True
+2026-09-04 22:31:59,153 - INFO - Attempting to stop container sweb.eval.django__django-13821.fim7b-q4-no-pra-smoke...
+2026-09-04 22:32:14,348 - INFO - Attempting to remove container sweb.eval.django__django-13821.fim7b-q4-no-pra-smoke...
+2026-09-04 22:32:14,378 - INFO - Container sweb.eval.django__django-13821.fim7b-q4-no-pra-smoke removed.
+2026-09-04 22:32:14,378 - INFO - Attempting to remove image sweb.eval.x86_64.django__django-13821:latest...
+2026-09-04 22:32:14,549 - INFO - Image sweb.eval.x86_64.django__django-13821:latest removed.

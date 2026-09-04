@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "run_id": "fim7b-q4-no-pra-smoke",
+  "started_at": "2026-09-04T21:12:00Z",
+  "completed_at": "2026-09-04T21:33:00Z",
+  "mode": "native",
+  "pra_enabled": false,
+  "gateway_enabled": false,
+  "purpose": "distributed no-PRA infrastructure calibration",
+  "pra_repository": {
+    "branch": "research/paper4-5-runtime",
+    "commit": "f60b6847eb65f8a5be9c758a34a2ebdc09244e6e",
+    "dirty": true
+  },
+  "benchmark": "SWE-bench Verified",
+  "official_result_source_url": "https://huggingface.co/TIGER-Lab/FIM-7B",
+  "dataset": "R2E-Gym/SWE-Bench-Verified",
+  "split": "test",
+  "cohort": {
+    "selection": "R2E-Gym shuffled test order",
+    "shuffle_seed": 42,
+    "start_idx": 0,
+    "count": 2,
+    "instance_ids": [
+      "sympy__sympy-19954",
+      "django__django-13821"
+    ]
+  },
+  "model": {
+    "published_identity": "TIGER-Lab/FIM-7B",
+    "published_revision": "5a1d4294185e4fa0bbd40750c87d0beab7e67a3a",
+    "tokenizer_revision": "5a1d4294185e4fa0bbd40750c87d0beab7e67a3a",
+    "gguf_source": "mradermacher/FIM-7B-GGUF",
+    "gguf_revision": "c6b2f7a4b7462c1c74a892b27325e2e34e09f07d",
+    "gguf_file": "FIM-7B.Q4_K_M.gguf",
+    "gguf_sha256": "c977a5e45a86517b02a64c13efba0aaf1ae4137f1bbc1190e439b97ec7c2e42e",
+    "quantization": "Q4_K_M"
+  },
+  "serving": {
+    "engine": "llama.cpp",
+    "engine_version": "1-ac4cdde",
+    "served_model": "FIM-7B",
+    "context_limit": 32768,
+    "temperature": 0.0,
+    "model_host": "Mac16,7; Apple M4 Pro; 48 GiB; macOS 26.6"
+  },
+  "agent": {
+    "harness": "R2E-Gym",
+    "harness_revision": "0d94c4eb9431cd195c55a7ea3abd54006c9a1735",
+    "uv_lock_sha256": "1084b56be576c576da0cba6f7a83c0ba80a934ff717ba787507d0f48b902ee2b",
+    "harness_dirty_at_capture": true,
+    "generated_untracked_paths_only": true,
+    "scaffold": "r2egym",
+    "max_steps": 40,
+    "max_steps_absolute": 100,
+    "function_calling": false,
+    "workers": 1,
+    "runner_sha256_at_launch": null,
+    "runner_sha256_at_capture": "011e7fac6c6aaf2e48358657c3172900e7942c9ab8cb69db8370f09e3eb92c03",
+    "runner_hash_note": "The launch hash was not captured by the precursor runner; the raw trajectory, predictions, inference log, and command are retained.",
+    "agent_and_grader_host": "WSL2; Linux 6.18.33.2; x86_64; RTX 5060 Laptop 8151 MiB; driver 592.19"
+  },
+  "grading": {
+    "grader": "swebench.harness.run_evaluation",
+    "swebench_version": "3.0.2",
+    "official_container_harness": true,
+    "timeout_seconds": 1200,
+    "cache_level": "env",
+    "grader_errors": 0,
+    "environment_build_wall_time_s": 217.30,
+    "task_grading_wall_time_s": {
+      "django__django-13821": 59.21,
+      "sympy__sympy-19954": 50.29
+    }
+  },
+  "configuration_differences_from_published_baseline": [
+    "engine=llama.cpp-not-vLLM",
+    "quantization=Q4_K_M-not-BF16",
+    "cohort=2-not-500",
+    "context=32768-not-65536"
+  ],
+  "admissibility": {
+    "status": "BASELINE_ATTEMPTED",
+    "can_unlock_gateway_or_pra": false
+  }
+}

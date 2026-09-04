@@ -1,0 +1,167 @@
+"""Reproduction gates for the long-running Paper 4.5 agent campaign."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+
+from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
+from experiments.paper4_5_agent.runners.r2egym import (
+    locate_official_report,
+    normalize_official_report,
+    trajectories_to_predictions,
+    write_task_results,
+)
+from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
+from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
+
+
+ROOT = Path(__file__).parents[1]
+CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
+
+
+def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:
+    campaign = CampaignConfig.load(CONFIG)
+    baseline = campaign.baselines[0]
+    assert baseline.model == "TIGER-Lab/FIM-14B"
+    assert baseline.published_score == 0.292
+    assert baseline.published_total == 500
+    assert baseline.max_steps_absolute == 100
+    assert baseline.function_calling is False
+    assert baseline.prefix_caching is True
+    assert campaign.cells[0].baseline_cell is None
+    assert all(cell.baseline_cell == "fim14b-no-pra" for cell in campaign.cells[1:])
+
+
+def test_changed_engine_is_attempted_not_reproduced() -> None:
+    campaign = CampaignConfig.load(CONFIG)
+    result = OfficialResult(
+        official_grader=True, score=0.30, resolved=150, total=500,
+        configuration_differences=("engine: MLX instead of vLLM",),
+    )
+    review = review_result(
+        campaign.baselines[0], result, absolute_tolerance=0.05, require_exact_cohort=True,
+    )
+    assert review.status == ReproductionStatus.BASELINE_ATTEMPTED
+    assert not review.compatible
+
+
+def test_compatible_official_result_admits_baseline() -> None:
+    campaign = CampaignConfig.load(CONFIG)
+    result = OfficialResult(official_grader=True, score=0.29, resolved=145, total=500)
+    review = review_result(
+        campaign.baselines[0], result, absolute_tolerance=0.05, require_exact_cohort=True,
+    )
+    assert review.status == ReproductionStatus.BASELINE_REPRODUCED
+
+
+def test_treatment_without_baseline_dependency_is_rejected() -> None:
+    payload = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    payload["cells"][1]["baseline_cell"] = None
+    with pytest.raises(ValueError, match="require baseline_cell"):
+        CampaignConfig.model_validate(payload)
+
+
+def test_dry_run_persists_reports_and_blocks_treatments(tmp_path: Path) -> None:
+    payload = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "campaign")
+    for cell in payload["cells"]:
+        cell["enabled"] = True
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    # The runner resolves output relative to the repository inferred from config;
+    # an absolute path remains absolute on every supported host.
+    state = run_campaign(config, max_hours=1, resume=False, dry_run=True)
+    assert state["cells"]["fim14b-no-pra"]["state"] == "PENDING"
+    assert state["cells"]["fim14b-gateway-passthrough"]["state"] == "BLOCKED"
+    output = tmp_path / "campaign"
+    assert (output / "campaign_state.json").is_file()
+    assert (output / "reproduction_report.md").is_file()
+    assert json.loads((output / "summary.json").read_text())["pra_interpretation_allowed"] is False
+
+
+def test_r2egym_converter_uses_only_visible_trajectory_patch(tmp_path: Path) -> None:
+    source = tmp_path / "trajectory.jsonl"
+    source.write_text(json.dumps({
+        "ds": {"instance_id": "repo__project-1", "patch": "hidden-gold"},
+        "output_patch": "diff --git a/a.py b/a.py\n",
+    }) + "\n", encoding="utf-8")
+    destination = tmp_path / "predictions.jsonl"
+    rows = trajectories_to_predictions(source, destination, "TIGER-Lab/FIM-7B")
+    assert rows[0]["model_patch"].startswith("diff --git")
+    assert "hidden-gold" not in destination.read_text(encoding="utf-8")
+
+
+def test_official_swebench_report_is_normalized(tmp_path: Path) -> None:
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({
+        "submitted_ids": ["a", "b"], "resolved_ids": ["a"],
+    }), encoding="utf-8")
+    receipt = normalize_official_report(
+        report, tmp_path / "official_result.json",
+        configuration_differences=("engine: llama.cpp instead of vLLM",),
+    )
+    assert receipt["score"] == 0.5
+    assert receipt["official_grader"] is True
+    assert receipt["configuration_differences"]
+
+
+def test_official_report_written_in_harness_root_is_retained(tmp_path: Path) -> None:
+    output = tmp_path / "artifacts"
+    output.mkdir()
+    report = tmp_path / "model.smoke.json"
+    report.write_text('{"submitted_ids": ["a"]}', encoding="utf-8")
+
+    located = locate_official_report(output, tmp_path, "smoke")
+
+    assert located == output / report.name
+    assert located.read_bytes() == report.read_bytes()
+
+
+def test_r2egym_task_telemetry_keeps_no_pra_costs_separate(tmp_path: Path) -> None:
+    trajectories = tmp_path / "trajectory.jsonl"
+    trajectories.write_text(json.dumps({
+        "ds": {"instance_id": "repo__project-1"},
+        "max_token_limit": 32768,
+        "exit_reason": "agent",
+        "output_patch": "diff",
+        "trajectory_steps": [{
+            "token_usage_prompt": 100, "token_usage_completion": 20,
+            "llm_exec_time": 2.0, "env_exec_time": 0.5, "total_time_traj": 2.5,
+        }],
+    }) + "\n", encoding="utf-8")
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({
+        "submitted_ids": ["repo__project-1"],
+        "resolved_ids": ["repo__project-1"], "error_ids": [],
+    }), encoding="utf-8")
+    rows = write_task_results(
+        trajectories, report, tmp_path / "results.jsonl",
+        model="model", model_revision="revision", engine="llama.cpp",
+        engine_version="version", quantization="Q4_K_M", harness_version="commit",
+    )
+    assert rows[0]["resolved"] is True
+    assert rows[0]["physical_input_tokens"] == rows[0]["logical_input_tokens"] == 100
+    assert rows[0]["pra_route_time_s"] == rows[0]["pra_memory_bytes"] == 0
+    assert rows[0]["prefill_time_s"] is None
+
+
+def test_distributed_result_import_preserves_attempted_status(tmp_path: Path) -> None:
+    payload = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "campaign")
+    payload["cells"] = [payload["cells"][0]]
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    result = tmp_path / "official_result.json"
+    result.write_text(json.dumps({
+        "official_grader": True, "score": 0.5, "resolved": 1, "total": 2,
+        "configuration_differences": ["cohort=2-not-500"],
+    }), encoding="utf-8")
+    state = record_result(config, cell_id="fim14b-no-pra", result_path=result)
+    cell = state["cells"]["fim14b-no-pra"]
+    assert cell["reproduction_status"] == "BASELINE_ATTEMPTED"
+    assert (tmp_path / "campaign/reproduction_report.md").is_file()

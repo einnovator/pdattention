@@ -1,0 +1,43 @@
+schema_version: 1
+campaign_id: paper4-5-fim7b-q4-r2egym-calibration-v1
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim7b_q4_calibration
+baselines:
+  - baseline_id: fim7b-r2egym-verified
+    source_url: https://huggingface.co/TIGER-Lab/FIM-7B
+    source_revision: 5a1d4294185e4fa0bbd40750c87d0beab7e67a3a
+    published_score: 0.178
+    published_total: 500
+    benchmark: SWE-bench Verified
+    dataset: R2E-Gym/SWE-Bench-Verified
+    split: test
+    harness: R2E-Gym
+    harness_version: 0d94c4eb9431cd195c55a7ea3abd54006c9a1735
+    model: TIGER-Lab/FIM-7B
+    model_revision: 5a1d4294185e4fa0bbd40750c87d0beab7e67a3a
+    tokenizer_revision: 5a1d4294185e4fa0bbd40750c87d0beab7e67a3a
+    engine: vllm
+    engine_version: published-card-unspecified
+    dtype: bfloat16
+    scaffold: r2egym
+    context_limit: 65536
+    max_steps: 40
+    max_steps_absolute: 100
+    temperature: 0
+    function_calling: false
+    prefix_caching: true
+    tool_configuration: unmodified R2E-Gym Docker edit environment
+    grading: official SWE-bench container harness
+cells:
+  - cell_id: fim7b-q4-no-pra-smoke
+    stage: A
+    mode: native
+    baseline_id: fim7b-r2egym-verified
+    command: [python, -m, experiments.paper4_5_agent.runners.r2egym]
+    timeout_seconds: 14400
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim7b_q4_calibration/official_result.json
+      absolute_tolerance: 0.05
+      require_exact_cohort: true
+    enabled: false
+    notes:
+      - Manual remote runner adds Q4_K_M, llama.cpp, and two-case cohort differences.

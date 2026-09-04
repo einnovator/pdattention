@@ -1,0 +1,80 @@
+{
+  "campaign_id": "paper4-5-fim7b-q4-r2egym-calibration-v1",
+  "baselines": [
+    {
+      "baseline_id": "fim7b-r2egym-verified",
+      "source_url": "https://huggingface.co/TIGER-Lab/FIM-7B",
+      "source_revision": "5a1d4294185e4fa0bbd40750c87d0beab7e67a3a",
+      "published_score": 0.178,
+      "published_resolved": null,
+      "published_total": 500,
+      "benchmark": "SWE-bench Verified",
+      "dataset": "R2E-Gym/SWE-Bench-Verified",
+      "split": "test",
+      "task_ids": [],
+      "harness": "R2E-Gym",
+      "harness_version": "0d94c4eb9431cd195c55a7ea3abd54006c9a1735",
+      "model": "TIGER-Lab/FIM-7B",
+      "model_revision": "5a1d4294185e4fa0bbd40750c87d0beab7e67a3a",
+      "tokenizer_revision": "5a1d4294185e4fa0bbd40750c87d0beab7e67a3a",
+      "engine": "vllm",
+      "engine_version": "published-card-unspecified",
+      "dtype": "bfloat16",
+      "quantization": null,
+      "scaffold": "r2egym",
+      "context_limit": 65536,
+      "max_steps": 40,
+      "max_steps_absolute": 100,
+      "temperature": 0.0,
+      "function_calling": false,
+      "prefix_caching": true,
+      "tool_configuration": "unmodified R2E-Gym Docker edit environment",
+      "grading": "official SWE-bench container harness",
+      "notes": []
+    }
+  ],
+  "cells": {
+    "fim7b-q4-no-pra-smoke": {
+      "state": "COMPLETED",
+      "finished_at": "2026-09-04T21:42:59.831317+00:00",
+      "result": {
+        "official_grader": true,
+        "score": 0.5,
+        "resolved": 1,
+        "total": 2,
+        "task_ids": [
+          "django__django-13821",
+          "sympy__sympy-19954"
+        ],
+        "configuration_differences": [
+          "engine=llama.cpp-not-vLLM",
+          "quantization=Q4_K_M-not-BF16",
+          "cohort=2-not-500",
+          "context=32768-not-65536"
+        ],
+        "grader_artifact": "docs\\papers\\shared\\results\\paper4_5_runtime_productization\\coding_agents\\fim7b_q4_calibration\\TIGER-Lab__FIM-7B.fim7b-q4-no-pra-smoke.json"
+      },
+      "review": {
+        "status": "BASELINE_ATTEMPTED",
+        "compatible": false,
+        "published_score": 0.178,
+        "observed_score": 0.5,
+        "score_delta": 0.322,
+        "observed_interval_95": [
+          0.09453120573423074,
+          0.9054687942657693
+        ],
+        "reasons": [
+          "Configuration difference: engine=llama.cpp-not-vLLM",
+          "Configuration difference: quantization=Q4_K_M-not-BF16",
+          "Configuration difference: cohort=2-not-500",
+          "Configuration difference: context=32768-not-65536",
+          "Cohort size differs: observed 2, published 500."
+        ]
+      },
+      "reproduction_status": "BASELINE_ATTEMPTED",
+      "imported_from": "docs\\papers\\shared\\results\\paper4_5_runtime_productization\\coding_agents\\fim7b_q4_calibration\\official_result.json"
+    }
+  },
+  "pra_interpretation_allowed": false
+}

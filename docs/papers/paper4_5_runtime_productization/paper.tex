@@ -2835,6 +2835,43 @@ completed all five No-PRA smoke trials without harness exceptions, but solved
 cumulative input tokens. We therefore did not promote that pairing into a PRA
 profile sweep.
 
+The follow-up campaign makes that sequencing executable rather than relying on
+operator convention. Each published baseline pins source and model revisions,
+harness, cohort, scaffold, engine, precision, context and step limits, decoding
+policy, and official grader. A resumable scheduler writes a durable receipt
+after every state transition. Gateway pass-through, Selected Context, and
+native-PRA cells cannot launch until their exact No-PRA dependency is marked
+\texttt{BASELINE\_REPRODUCED}. A smoke subset or a changed engine,
+quantization, or context window remains
+\texttt{BASELINE\_ATTEMPTED}; it can qualify infrastructure but cannot authorize
+a PRA efficacy claim.
+
+The first capable reproduction target is TIGER-Lab FIM-14B under its published
+R2E-Gym configuration~\cite{wang2026fim,jain2025r2egym}: all 500 SWE-bench
+Verified instances, an ordinary vLLM endpoint, BF16 weights, temperature zero,
+a 65,536-token limit, 40 normal steps with an absolute cap of 100, and official
+SWE-bench container grading. The
+reported three-seed mean is 29.20\%. The available CUDA host has only 8~GiB of
+device memory, so it cannot host this exact 14B cell. A quantized FIM-7B
+llama.cpp run on the 48~GiB M4 is therefore recorded only as a No-PRA
+distributed-path calibration. This distinction prevents a convenient but
+non-identical local configuration from being mislabeled as reproduction.
+
+The calibration completed two seed-42 instances through an ordinary
+llama.cpp endpoint, the unmodified R2E-Gym scaffold, and official SWE-bench
+container grading. It resolved \path{django__django-13821} and did not resolve
+\path{sympy__sympy-19954}: 1/2, with a Wilson 95\% interval of
+9.5--90.5\% and no grader errors. The resolved task terminated naturally after
+31 model calls; the unresolved task reached the 40-step limit. Across both
+tasks the agent made 72 calls, accumulated 1,123,772 prompt tokens and 11,878
+completion tokens, and recorded 607.4 seconds of trajectory time. The small
+cohort does establish a functioning distributed
+model--agent--container-grader path and a nonzero task signal. It does not
+estimate population accuracy: llama.cpp, Q4\_K\_M, two instances, and a
+32,768-token context differ from the published
+vLLM/BF16/500-instance/65,536-token setup. The scheduler therefore assigns
+\texttt{BASELINE\_ATTEMPTED}, and no gateway or PRA cell is admissible yet.
+
 Increasing code-model capacity did not close this admission gate. OpenCode with
 Ollama/Qwen3-Coder-30B scored 0/1 on
 \texttt{query-optimize} and passed 4/6 verifier tests. It made five tool calls,
@@ -2878,8 +2915,8 @@ preregistered 30--80\% admission band. Only then may identical tasks compare
 No PRA, PRA Selected Context without an adaptor, and Selected Context with the
 immutable Runtime Bundle under
 BALANCED. Table~\ref{tab:agent-canonical-gate} makes the unrun conditions
-explicit: \texttt{BLOCKED} is missing evidence caused by the quality floor, not
-a synthetic zero or an observed PRA failure. The normalized schema retains
+explicit: \texttt{BLOCKED} is missing evidence caused by the quality or
+reproduction gate, not a synthetic zero or an observed PRA failure. The normalized schema retains
 official score, verifier counts, turns, tool calls, cumulative context, TTFT
 and ITL distributions, decode output tokens/s, model-call requests/s, queue and
 inference time, resource use, and cost for that subsequent paired analysis.
@@ -2887,9 +2924,11 @@ inference time, resource use, and cost for that subsequent paired analysis.
 \begin{table}[H]
 \centering
 \small
-\caption{Canonical coding-agent admission evidence. Both Selected Context conditions were
-withheld because No-PRA official success was zero. Deltas therefore remain
-blocked rather than being computed from invented values.}
+\caption{Canonical coding-agent admission evidence. The Qwen Selected Context
+conditions were withheld because No-PRA official success was zero. The
+nonzero FIM-7B smoke remains withheld because its engine, precision, cohort,
+and context differ from the published baseline. Deltas remain blocked rather
+than being computed across inadmissible cells.}
 \begin{tabular}{llrrr}
 \toprule
 Cohort & Metric & No PRA & Selected Context & Selected + bundle \\
@@ -2899,6 +2938,7 @@ Qwen3-14B, five tasks & Verifier checks & 7/12 & BLOCKED & BLOCKED \\
 Qwen3-14B, five tasks & Input tokens & 100,883 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, one task & Official success & 0/1 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, one task & Verifier checks & 4/6 & BLOCKED & BLOCKED \\
+FIM-7B Q4, two tasks & Official success & 1/2 attempted & BLOCKED & BLOCKED \\
 \bottomrule
 \end{tabular}
 \label{tab:agent-canonical-gate}
@@ -3441,6 +3481,9 @@ task DAG, provenance, scope admission, and working-set lifecycle\\
 resumable coding-agent terminal\\
 \path{experiments/agents/} & Frozen Terminal-Bench/SWE-bench manifests,
 pinned agent adapters, official-Harbor normalization, and paired analysis\\
+\path{experiments/paper4_5_agent/} & Published-baseline cards, resumable
+campaign state, distributed result import, official SWE-bench normalization,
+and hard No-PRA reproduction gates\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\

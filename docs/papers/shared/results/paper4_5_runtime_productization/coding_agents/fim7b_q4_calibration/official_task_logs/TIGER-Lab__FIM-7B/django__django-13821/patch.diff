@@ -1,0 +1,85 @@
+diff --git a/django/db/backends/sqlite3/base.py b/django/db/backends/sqlite3/base.py
+index ab4ea70492..dcff5534e0 100644
+--- a/django/db/backends/sqlite3/base.py
++++ b/django/db/backends/sqlite3/base.py
+@@ -64,8 +64,8 @@ def list_aggregate(function):
+ 
+ 
+ def check_sqlite_version():
+-    if Database.sqlite_version_info < (3, 8, 3):
+-        raise ImproperlyConfigured('SQLite 3.8.3 or later is required (found %s).' % Database.sqlite_version)
++    if Database.sqlite_version_info < (3, 9, 0):
++        raise ImproperlyConfigured('SQLite 3.9.0 or later is required (found %s).' % Database.sqlite_version)
+ 
+ 
+ check_sqlite_version()
+diff --git a/django/db/backends/sqlite3/features.py b/django/db/backends/sqlite3/features.py
+index 3348256c74..6ed7c65b51 100644
+--- a/django/db/backends/sqlite3/features.py
++++ b/django/db/backends/sqlite3/features.py
+@@ -101,13 +101,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
+ 
+     @cached_property
+     def supports_json_field(self):
+-        with self.connection.cursor() as cursor:
+-            try:
+-                with transaction.atomic(self.connection.alias):
+-                    cursor.execute('SELECT JSON(\'{"a": "b"}\')')
+-            except OperationalError:
+-                return False
+-        return True
++        return Database.sqlite_version_info >= (3, 9, 0)
+ 
+     can_introspect_json_field = property(operator.attrgetter('supports_json_field'))
+     has_json_object_function = property(operator.attrgetter('supports_json_field'))
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 0000000000..a59c649cd6
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,44 @@
++import sys
++import time
++import sqlite3
++from sqlite3 import dbapi2 as sqlite
++from django.core.exceptions import ImproperlyConfigured
++
++def check_sqlite_version():
++    try:
++        # Get the SQLite version info
++        version_info = sqlite.sqlite_version_info
++        
++        # Check if version is less than 3.9.0
++        if version_info < (3, 9, 0):
++            print("ERROR: SQLite version is less than 3.9.0")
++            print(f"Current SQLite version: {sqlite.sqlite_version}")
++            return False
++        else:
++            print("SUCCESS: SQLite version is 3.9.0 or higher")
++            print(f"Current SQLite version: {sqlite.sqlite_version}")
++            return True
++    except Exception as e:
++        print(f"Error checking SQLite version: {str(e)}")
++        return False
++        
++def main():
++    start_time = time.time()
++    
++    try:
++        # Set a timeout of 20 seconds
++        while time.time() - start_time < 20:
++            result = check_sqlite_version()
++            if not result:
++                sys.exit(1)
++            time.sleep(1)
++        
++        print("Timeout reached!")
++        sys.exit(1)
++        
++    except Exception as e:
++        print(f"Error occurred: {str(e)}")
++        sys.exit(1)
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file

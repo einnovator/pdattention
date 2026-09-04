@@ -1,0 +1,82 @@
+schema_version: 1
+campaign_id: paper4-5-fim14b-r2egym-v1
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim14b_r2egym_campaign
+baselines:
+  - baseline_id: fim14b-r2egym-verified
+    source_url: https://huggingface.co/TIGER-Lab/FIM-14B
+    source_revision: c06455c0e18ae4991d5699a83f97b4edbfb21147
+    published_score: 0.292
+    published_total: 500
+    benchmark: SWE-bench Verified
+    dataset: R2E-Gym/SWE-Bench-Verified
+    split: test
+    harness: R2E-Gym
+    harness_version: upstream-pinned-required
+    model: TIGER-Lab/FIM-14B
+    model_revision: c06455c0e18ae4991d5699a83f97b4edbfb21147
+    tokenizer_revision: c06455c0e18ae4991d5699a83f97b4edbfb21147
+    engine: vllm
+    engine_version: pin-on-qualified-host
+    dtype: bfloat16
+    scaffold: r2egym
+    context_limit: 65536
+    max_steps: 40
+    max_steps_absolute: 100
+    temperature: 0
+    function_calling: false
+    prefix_caching: true
+    tool_configuration: unmodified R2E-Gym Docker edit environment
+    grading: official SWE-bench container harness
+    notes:
+      - Published value is a three-seed mean; each local seed remains separately reported.
+cells:
+  - cell_id: fim14b-no-pra
+    stage: B
+    mode: native
+    baseline_id: fim14b-r2egym-verified
+    command:
+      - python
+      - -m
+      - experiments.paper4_5_agent.runners.r2egym
+      - --r2egym-root
+      - /opt/R2E-Gym
+      - --output
+      - docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim14b_r2egym_campaign
+      - --base-url
+      - http://127.0.0.1:8400/v1
+      - --model
+      - TIGER-Lab/FIM-14B
+      - --served-model
+      - FIM-14B
+      - --run-id
+      - fim14b-no-pra
+      - --count
+      - '500'
+    timeout_seconds: 64800
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim14b_r2egym_campaign/official_result.json
+      absolute_tolerance: 0.05
+      require_exact_cohort: true
+    enabled: false
+    notes:
+      - Disabled until a BF16-capable vLLM host and pinned R2E-Gym checkout are recorded.
+  - cell_id: fim14b-gateway-passthrough
+    stage: C
+    mode: gateway_passthrough
+    baseline_id: fim14b-r2egym-verified
+    baseline_cell: fim14b-no-pra
+    command: [python, -c, "raise SystemExit('gateway runner is locked until baseline reproduction')"]
+    timeout_seconds: 64800
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim14b_r2egym_campaign/gateway_result.json
+    enabled: false
+  - cell_id: fim14b-gateway-pra-balanced
+    stage: C
+    mode: gateway_pra
+    baseline_id: fim14b-r2egym-verified
+    baseline_cell: fim14b-no-pra
+    command: [python, -c, "raise SystemExit('PRA runner is locked until baseline reproduction')"]
+    timeout_seconds: 64800
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim14b_r2egym_campaign/pra_result.json
+    enabled: false

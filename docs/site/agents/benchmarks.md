@@ -18,6 +18,49 @@ External code or documentation RAG is outside this campaign.
 4. **Stage D/E, breadth:** commercial-native controls and larger official
    benchmark cohorts are added only after the pilot is stable.
 
+## Reproduce before enabling PRA
+
+The long-running campaign is controlled by
+`experiments.paper4_5_agent.run_campaign`. Each cell pins the published score,
+source revision, benchmark cohort, model and tokenizer revisions, harness,
+engine, precision, scaffold, context limit, decoding policy, step limit, and
+official grader. The scheduler writes durable state and four partial reports
+after every transition, so an interrupted run can resume without repeating
+completed instances.
+
+```bash
+python -m experiments.paper4_5_agent.run_campaign \
+  --config experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml \
+  --max-hours 16 --resume
+```
+
+`gateway_passthrough`, `gateway_pra`, and `native_pra` cells must name an exact
+no-PRA dependency. They are blocked unless that dependency has been officially
+graded and marked `BASELINE_REPRODUCED`. A changed engine, quantization,
+context limit, task cohort, or unofficial grader remains
+`BASELINE_ATTEMPTED`, even when it is operationally useful.
+
+The primary target is
+[`TIGER-Lab/FIM-14B`](https://huggingface.co/TIGER-Lab/FIM-14B), whose model
+card reports `29.20%` on all 500 SWE-bench Verified instances with the
+R2E-Gym scaffold. The exact BF16/vLLM cell does not fit the available 8 GiB
+CUDA host. A no-PRA FIM-7B Q4_K_M/llama.cpp smoke on the 48 GiB M4 therefore
+qualifies the distributed model, agent, Docker, and grader path only; its
+configuration differences prevent it from unlocking PRA experiments.
+
+The FIM-7B calibration resolved one of two official SWE-bench Verified tasks
+with no grader errors. One task terminated naturally after 31 calls and the
+other reached the 40-step limit. Across both tasks the unmodified R2E-Gym
+agent made 72 model calls, accumulated 1,123,772 prompt tokens and 11,878
+output tokens, and recorded 607.4 seconds of trajectory time. The observed
+`1/2` has a wide Wilson 95% interval (`9.5-90.5%`) and is not compared as an
+accuracy estimate with the published 500-task `17.8%` result. Its campaign
+status is `BASELINE_ATTEMPTED`; no gateway or PRA treatment was run.
+
+Raw trajectories, predictions, the official grader report, the normalized
+receipt, per-task telemetry, and the run manifest are retained under
+`docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim7b_q4_calibration/`.
+
 ## Find a measurable no-PRA task band
 
 The present official runs do not yet admit a PRA efficacy comparison:
