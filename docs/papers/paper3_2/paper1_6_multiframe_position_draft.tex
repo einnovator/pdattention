@@ -1,0 +1,156 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,microtype,enumitem,hyperref,xcolor}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,urlcolor=blue!45!black,citecolor=blue!45!black}
+
+\title{Multi-Frame Positional Geometry for Retrieval-Native Attention}
+\author{Jorge Sim\~ao\\EInnovator R\&D}
+\date{Inception Draft --- August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Progressive Retrieval Attention (PRA) retains external resources outside the live sequential prompt and materializes only query-selected native key--value (K/V) memory. Prior work established that external K/V must be transported with a coherent positional frame and that rotary positional encoding (RoPE) permits deferred rebinding. This paper asks a different question: once external memory can be rebound correctly, must independently retrieved resources inhabit one global positional sequence at all? Conventional concatenation assigns arbitrary inter-resource order and query distance even when those relations have no semantic meaning. We study resource-relative positional frames that preserve each resource's internal token geometry while independently controlling its relation to the live query. Holding retrieval, selected K/V, materialization, attention budget, and model weights fixed, we compare globally preserved, globally packed, query-adjacent, rank-distance, score-distance, nearby-band, and randomized positional policies. Primary outcomes include task quality, source-distance robustness, distractor sensitivity, and prediction consistency under irrelevant resource permutations. The result determines whether multi-frame rebinding is merely a clean systems abstraction or should become a calibrated semantic dimension of the PRA runtime.
+\end{abstract}
+
+\section{Introduction}
+A conventional transformer prompt imposes one total positional order. If independent resources $D_1,D_2,D_3$ are serialized before a query $q$, serialization asserts both an inter-resource order and different resource--query distances. These relationships may be artifacts of packing rather than properties of the task.
+
+PRA changes the setting. Retrieved resources possess stable logical identity outside the live prompt, and native K/V can be rebound at consumption time. A resource $r$ can preserve its internal source geometry,
+\[
+p'_{r,i}=b_r+p_{r,i},
+\]
+while choosing $b_r$ independently for each request. Multiple resources may therefore overlap in effective RoPE coordinates without sharing logical identity or physical storage.
+
+The central decomposition is
+\[
+\boxed{\text{logical identity}}
+\neq
+\boxed{\text{physical residency}}
+\neq
+\boxed{\text{positional frame}}.
+\]
+Paper 1.5 established the machinery needed for correct rebinding. Paper 1.6 evaluates which positional topology retrieval-native memory should use.
+
+\section{From Correct Rebinding to Positional Topology}
+For a live local sequence, the query retains an ordinary sequential trajectory:
+\[
+p_{q,0}=p_{\mathrm{source}}+T_{\mathrm{local}}.
+\]
+Attention may nevertheless expose
+\[
+T_{\mathrm{attn}}=T_{\mathrm{selected}}+T_{\mathrm{local}}+T_q
+\]
+K/V positions. Selected PRA memory increases attention width without becoming additional sequential history.
+
+At a consumer layer,
+\[
+K=[K_{D_1}^{\phi_1};K_{D_2}^{\phi_2};\cdots;K_{\mathrm{local}};K_q],
+\]
+with one normal attention softmax. The functions $\phi_r$ alter positional geometry, not resource identity or normalization.
+
+\section{Positional Policies}
+We compare seven policies while holding retrieval and selected memory fixed.
+
+\paragraph{P0: Global source.}
+Use a correct globally coherent source frame and serve as the Paper-1.5 correctness reference.
+
+\paragraph{P1: Global packed.}
+Pack selected resources sequentially into one virtual sequence before local context.
+
+\paragraph{P2: Resource adjacent.}
+Each resource independently terminates next to the query. Resource-relative coordinate ranges may overlap.
+
+\paragraph{P3: Rank distance.}
+Map retrieval rank to resource--query distance.
+
+\paragraph{P4: Score distance.}
+Map a predeclared normalized retrieval score to positional distance.
+
+\paragraph{P5: Nearby non-overlapping bands.}
+Place selected resources in bounded nearby bands while preserving one monotonic order.
+
+\paragraph{P6: Random distance.}
+Randomize offsets inside a matched distance envelope as a negative control.
+
+For every policy, resource-internal token distances are preserved.
+
+\section{Hypotheses}
+\begin{description}[leftmargin=1.7cm,style=nextline]
+\item[H1] Incorrect external-memory geometry materially degrades prediction.
+\item[H2] Resource-relative frames reduce prediction variance under irrelevant resource permutations.
+\item[H3] Query-relative rebinding reduces degradation with original source distance.
+\item[H4] A suitable multi-frame policy preserves or improves task quality.
+\item[H5] Fully overlapping frames may incur an out-of-distribution penalty because pretrained models learned a single monotonic positional topology.
+\end{description}
+
+\section{Permutation Consistency}
+For a fixed evidence set $D=\{D_1,\ldots,D_k\}$ we generate irrelevant serialization permutations $\pi_i(D)$. We report accuracy, NLL, target probability, answer-flip rate, and probability variance. A primary consistency measure is
+\[
+C_{\mathrm{perm}}=
+\mathbb{E}_{i,j}
+\left[
+D_{\mathrm{JS}}
+\left(
+P(y\mid\pi_i(D),q),
+P(y\mid\pi_j(D),q)
+\right)
+\right].
+\]
+A compelling positive result is equal or higher quality with lower permutation sensitivity.
+
+\section{Distance, Distractors, and Multiple Resources}
+The source-distance experiment moves identical evidence progressively farther from the query under global policies while leaving resource-relative policies unchanged. The distractor experiment sweeps irrelevant selected resources over $\{0,2,4,8,16,32\}$. A multi-resource experiment uses $\{1,2,4,8\}$ relevant resources and includes redundant, complementary multi-hop, and conflicting evidence.
+
+\section{Experimental Methodology}
+Primary experiments use the simplest validated native PRA path and \texttt{REFERENCE\_CORRECTNESS} layer/materialization settings. We begin with Qwen3-0.6B and Llama 3.2-1B. Workloads include controlled synthetic facts, HotpotQA/2Wiki/MuSiQue, QASPER, and typed Paper-7 records.
+
+All positional-policy comparisons are paired: selected resources, K/V, token budget, retrieval scores, local prompt, and generation settings are identical. Only positional mapping changes. We report bootstrap confidence intervals and per-model/per-workload effects rather than hiding sign reversals in one aggregate.
+
+\section{Layer-Profile Interaction}
+After the reference experiment, a limited factorial subset compares positional policies with calibrated consumer/detail-layer profiles. The question is whether improved positional geometry can preserve quality with fewer native consumer/detail layers, creating a direct quality--memory interaction relevant to Paper 4.5.
+
+\section{Engine Reproduction}
+The main experiment should remain engine-independent and run through the simplest validated native path. A small subset is reproduced through one engine-native integration, initially MLX if practical, to test whether observed positional effects survive outside the Hugging Face harness.
+
+\section{Metrics}
+Primary outcomes are task accuracy or EM, NLL, target probability, permutation JS/KL divergence, answer-flip rate, calibration where meaningful, distractor sensitivity, and the slope of quality against original source distance. Secondary diagnostics include evidence attention mass, attention entropy, resource-level attention distribution, and logit margin. Systems measurements include rebinding latency and positional-metadata/storage overhead.
+
+\section{Falsification}
+The multi-frame quality hypothesis is not supported if a correct global frame matches or beats resource-relative policies on quality and robustness. Negative outcomes include overlapping frames harming accuracy, distractors becoming over-salient, consistency improving only by sacrificing quality, gains being confined to synthetic data, or positional policies failing to transfer across model families.
+
+A negative result remains informative: Paper-1.5 rebinding would then be primarily a correctness and systems abstraction rather than a semantic-quality mechanism.
+
+\section{Implications for the PRA Runtime}
+Paper 4.5 should not change defaults before this evidence exists. If no robust advantage emerges, the runtime retains the reference correctness geometry and exposes multi-frame policies only experimentally. If a robust model/workload-specific effect appears, semantic PRA profiles gain an explicit positional-policy field, for example:
+\begin{verbatim}
+position:
+  policy: resource_adjacent
+  parameters: {}
+  evidence_tier: BENCHMARK
+\end{verbatim}
+The profile registry must retain the policy and its evidence provenance.
+
+At the engine boundary, three mappings remain independent:
+\[
+\text{logical resource identity},
+\qquad
+\text{physical engine placement},
+\qquad
+\text{request-specific positional mapping}.
+\]
+vLLM scheduler length, SGLang Radix length, and MLX prompt/rotating-cache length must not be used to infer PRA resource positions.
+
+\section{Related Work}
+The final manuscript will position the study relative to RoPE and relative positional encoding, position interpolation and context scaling, lost-in-the-middle effects, retrieval/external-memory attention, permutation sensitivity in long prompts, and structured or relational positional encodings. The review should distinguish prior positional mechanisms from the specific setting studied here: independently retained native-K/V resources with request-specific positional rebinding.
+
+\section{Limitations}
+The pretrained models were trained primarily on single monotonic sequences, so overlapping resource-relative frames are out of distribution. Effects may vary by model family, size, fine-tune, workload, and consumer-layer profile. Retrieval quality is intentionally held fixed; this paper does not claim to improve discovery. Engine-specific scheduling and physical-residency performance are secondary to the positional-quality question.
+
+\section{Conclusion}
+Correct positional transport is necessary but does not determine the best topology for retrieval-native memory. PRA makes it possible to preserve each resource's internal geometry while choosing its query-relative placement independently. Paper 1.6 tests whether that freedom improves quality, distance robustness, and invariance to arbitrary resource serialization, or whether pretrained models continue to prefer a single global positional sequence. Either result provides a concrete positional-policy recommendation for the PRA runtime and its engine integrations.
+
+\end{document}
+

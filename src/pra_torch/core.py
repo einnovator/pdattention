@@ -11,6 +11,12 @@ import torch.nn.functional as F
 
 from .memory import PRAMemoryCache, SelectedChunk
 from .memory_batching import MemoryBatchingStats, native_kv_attention
+from .materialization import (
+    LogicalInterval,
+    gather_logical_kv,
+    logical_domain,
+    shards_from_chunks,
+)
 
 
 def synchronize_detailed_timing(tensor: torch.Tensor, enabled: bool) -> None:
@@ -202,6 +208,244 @@ class PRAExecutionCore:
             "highest_budget_rejected_score": max((hit.chunk_score for hit in rejected), default=float("nan")),
         }
 
+    def _logical_intervals(self, selected: list[SelectedChunk]) -> list[LogicalInterval]:
+        """Parse explicit source-relative disclosure requests from fixed selections."""
+        intervals: list[LogicalInterval] = []
+        for hit in selected:
+            for value in hit.metadata.get("materialization_intervals", ()):
+                if isinstance(value, LogicalInterval):
+                    intervals.append(value)
+                    continue
+                if not isinstance(value, dict):
+                    raise TypeError("Materialization intervals must be mappings or LogicalInterval objects.")
+                domain = logical_domain(
+                    str(value.get("domain", value.get("source_uri", hit.source_uri)))
+                )
+                intervals.append(
+                    LogicalInterval(
+                        domain=domain,
+                        start=int(value["start"]),
+                        end=int(value["end"]),
+                        evidence_start=(
+                            int(value["evidence_start"])
+                            if value.get("evidence_start") is not None
+                            else None
+                        ),
+                        evidence_end=(
+                            int(value["evidence_end"])
+                            if value.get("evidence_end") is not None
+                            else None
+                        ),
+                        score=float(value.get("score", hit.chunk_score)),
+                    )
+                )
+        if not intervals:
+            raise ValueError(
+                "Logical interval materialization requires explicit "
+                "materialization_intervals on at least one selected hit."
+            )
+        return intervals
+
+    def _materialize_logical_intervals(
+        self,
+        selected: list[SelectedChunk],
+        query: torch.Tensor,
+        *,
+        direct_tokens: int,
+        routing_candidates: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, list[SelectedChunk], int, int, float, dict[str, float]]:
+        """Gather exact logical windows from canonical contextual K/V shards."""
+        intervals = self._logical_intervals(selected)
+        chunks = []
+        seen_shards: set[tuple[str, str]] = set()
+        for hit in selected:
+            layer_memory = hit.entry.layer_memory.get(self.layer_id)
+            if layer_memory is None:
+                continue
+            for chunk in layer_memory.chunks:
+                identity = (chunk.source_uri, chunk.chunk_id)
+                if identity not in seen_shards:
+                    seen_shards.add(identity)
+                    chunks.append(chunk)
+        gathered = gather_logical_kv(
+            shards_from_chunks(chunks),
+            intervals,
+            device=query.device,
+            dtype=query.dtype,
+        )
+
+        key = gathered.key
+        value = gathered.value
+        gist_tokens = 0
+        gist_transfer_bytes = 0
+        gist_transfer_seconds = 0.0
+        if self.config.detail_materialization == "gist_plus_logical_intervals":
+            # These are physical native-K/V means, not routing-space gists. That
+            # distinction matters for GQA models whose routing width is hidden_size.
+            gist_keys = [hit.chunk.token_kv.k.mean(dim=2, keepdim=True) for hit in selected]
+            gist_values = [hit.chunk.token_kv.v.mean(dim=2, keepdim=True) for hit in selected]
+            gist_tokens = len(gist_keys)
+            gist_transfer_bytes = sum(
+                k.numel() * k.element_size() + v.numel() * v.element_size()
+                for k, v in zip(gist_keys, gist_values)
+                if k.device != query.device or v.device != query.device
+            )
+            synchronize_detailed_timing(query, self.config.collect_detailed_timing and gist_transfer_bytes > 0)
+            transfer_started = time.perf_counter()
+            gist_keys = [k.to(query.device, query.dtype) for k in gist_keys]
+            gist_values = [v.to(query.device, query.dtype) for v in gist_values]
+            synchronize_detailed_timing(query, self.config.collect_detailed_timing and gist_transfer_bytes > 0)
+            if gist_transfer_bytes:
+                gist_transfer_seconds = time.perf_counter() - transfer_started
+            key = torch.cat((*gist_keys, key), dim=2)
+            value = torch.cat((*gist_values, value), dim=2)
+
+        hard_remaining = (
+            self.config.effective_model_max_context_tokens
+            - int(direct_tokens)
+            - self.config.context_safety_reserve_tokens
+        )
+        if hard_remaining < 0:
+            raise ValueError("Direct context and safety reserve exceed model_max_context_tokens.")
+        memory_budget = hard_remaining
+        if self.config.max_materialized_memory_tokens is not None:
+            memory_budget = min(memory_budget, self.config.max_materialized_memory_tokens)
+        materialized = int(key.shape[2])
+        if materialized > memory_budget:
+            raise ValueError(
+                f"Logical materialization requested {materialized} native K/V tokens "
+                f"but only {memory_budget} are available. Allocate intervals before gather."
+            )
+        stats = gathered.stats
+        budget_stats = {
+            "model_max_context_tokens": float(self.config.effective_model_max_context_tokens),
+            "direct_context_tokens": float(direct_tokens),
+            "memory_budget_tokens": float(memory_budget),
+            "routing_candidates": float(routing_candidates),
+            "routing_topk_candidates": float(len(selected)),
+            "chunks_materialized": float(stats.storage_shards_touched),
+            "chunks_budget_rejected": 0.0,
+            "memory_tokens_requested": float(stats.requested_tokens_pre_dedup + gist_tokens),
+            "memory_tokens_materialized": float(materialized),
+            "materialization_budget_utilization": materialized / max(memory_budget, 1),
+            "lowest_materialized_score": min((hit.chunk_score for hit in selected), default=float("nan")),
+            "highest_budget_rejected_score": float("nan"),
+            "requested_tokens_pre_dedup": float(stats.requested_tokens_pre_dedup),
+            "deduplicated_materialization_tokens": float(stats.deduplicated_tokens),
+            "materialized_native_kv_tokens": float(materialized),
+            "materialized_native_kv_bytes": float(
+                key.numel() * key.element_size() + value.numel() * value.element_size()
+            ),
+            "materialized_gist_kv_tokens": float(gist_tokens),
+            "evidence_kv_tokens": float(stats.evidence_tokens),
+            "non_evidence_kv_tokens": float(stats.non_evidence_tokens + gist_tokens),
+            "evidence_density": stats.evidence_tokens / max(materialized, 1),
+            "storage_shards_touched": float(stats.storage_shards_touched),
+            "cross_shard_interval_count": float(stats.cross_shard_interval_count),
+            "interval_resolution_seconds": stats.interval_resolution_seconds,
+            "logical_gather_seconds": stats.gather_seconds,
+            "logical_h2d_seconds": stats.h2d_seconds + gist_transfer_seconds,
+        }
+        return (
+            key,
+            value,
+            selected,
+            stats.requested_tokens_pre_dedup - stats.deduplicated_tokens,
+            stats.transferred_kv_bytes + gist_transfer_bytes,
+            stats.h2d_seconds + gist_transfer_seconds,
+            budget_stats,
+        )
+
+    def _materialize_native_gists(
+        self,
+        selected: list[SelectedChunk],
+        query: torch.Tensor,
+        *,
+        direct_tokens: int,
+        routing_candidates: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, list[SelectedChunk], int, int, float, dict[str, float]]:
+        """Expose one native-head K/V mean for each selected conceptual chunk."""
+        empty = query.new_empty((1, self.num_key_value_heads, 0, self.head_dim))
+        if not selected:
+            return empty, empty, selected, 0, 0, 0.0, {
+                "model_max_context_tokens": float(self.config.effective_model_max_context_tokens),
+                "direct_context_tokens": float(direct_tokens),
+                "memory_budget_tokens": 0.0,
+                "routing_candidates": float(routing_candidates),
+                "routing_topk_candidates": 0.0,
+                "chunks_materialized": 0.0,
+                "chunks_budget_rejected": 0.0,
+                "memory_tokens_requested": 0.0,
+                "memory_tokens_materialized": 0.0,
+                "materialization_budget_utilization": 0.0,
+                "lowest_materialized_score": float("nan"),
+                "highest_budget_rejected_score": float("nan"),
+            }
+        hard_remaining = (
+            self.config.effective_model_max_context_tokens
+            - int(direct_tokens)
+            - self.config.context_safety_reserve_tokens
+        )
+        memory_budget = max(hard_remaining, 0)
+        if self.config.max_materialized_memory_tokens is not None:
+            memory_budget = min(memory_budget, self.config.max_materialized_memory_tokens)
+        if len(selected) > memory_budget:
+            raise ValueError("Native gist materialization exceeds the available K/V budget.")
+        keys = [hit.chunk.token_kv.k.mean(dim=2, keepdim=True) for hit in selected]
+        values = [hit.chunk.token_kv.v.mean(dim=2, keepdim=True) for hit in selected]
+        transfer_bytes = sum(
+            key.numel() * key.element_size() + value.numel() * value.element_size()
+            for key, value in zip(keys, values)
+            if key.device != query.device or value.device != query.device
+        )
+        synchronize_detailed_timing(query, self.config.collect_detailed_timing and transfer_bytes > 0)
+        started = time.perf_counter()
+        keys = [key.to(query.device, query.dtype) for key in keys]
+        values = [value.to(query.device, query.dtype) for value in values]
+        synchronize_detailed_timing(query, self.config.collect_detailed_timing and transfer_bytes > 0)
+        duration = time.perf_counter() - started if transfer_bytes else 0.0
+        tokens = len(selected)
+        bytes_used = sum(
+            key.numel() * key.element_size() + value.numel() * value.element_size()
+            for key, value in zip(keys, values)
+        )
+        stats = {
+            "model_max_context_tokens": float(self.config.effective_model_max_context_tokens),
+            "direct_context_tokens": float(direct_tokens),
+            "memory_budget_tokens": float(memory_budget),
+            "routing_candidates": float(routing_candidates),
+            "routing_topk_candidates": float(tokens),
+            "chunks_materialized": float(tokens),
+            "chunks_budget_rejected": 0.0,
+            "memory_tokens_requested": float(tokens),
+            "memory_tokens_materialized": float(tokens),
+            "materialization_budget_utilization": tokens / max(memory_budget, 1),
+            "lowest_materialized_score": min(hit.chunk_score for hit in selected),
+            "highest_budget_rejected_score": float("nan"),
+            "requested_tokens_pre_dedup": float(tokens),
+            "deduplicated_materialization_tokens": float(tokens),
+            "materialized_native_kv_tokens": float(tokens),
+            "materialized_native_kv_bytes": float(bytes_used),
+            "materialized_gist_kv_tokens": float(tokens),
+            "evidence_kv_tokens": 0.0,
+            "non_evidence_kv_tokens": float(tokens),
+            "evidence_density": 0.0,
+            "storage_shards_touched": float(tokens),
+            "cross_shard_interval_count": 0.0,
+            "interval_resolution_seconds": 0.0,
+            "logical_gather_seconds": 0.0,
+            "logical_h2d_seconds": duration,
+        }
+        return (
+            torch.cat(keys, dim=2),
+            torch.cat(values, dim=2),
+            selected,
+            0,
+            transfer_bytes,
+            duration,
+            stats,
+        )
+
     def materialize_selected_kv(
         self,
         selected: list[SelectedChunk],
@@ -221,6 +465,31 @@ class PRAExecutionCore:
             if identity not in seen:
                 seen.add(identity)
                 deduplicated.append(hit)
+        if not deduplicated:
+            empty = query.new_empty((1, self.num_key_value_heads, 0, self.head_dim))
+            _retained, budget_stats = self.budget_selected_memory(
+                [],
+                direct_tokens=direct_tokens,
+                routing_candidates=routing_candidates,
+            )
+            return empty, empty, [], 0, 0, 0.0, budget_stats
+        if self.config.detail_materialization == "native_gist_only":
+            return self._materialize_native_gists(
+                deduplicated,
+                query,
+                direct_tokens=direct_tokens,
+                routing_candidates=routing_candidates,
+            )
+        if self.config.detail_materialization in {
+            "logical_intervals",
+            "gist_plus_logical_intervals",
+        }:
+            return self._materialize_logical_intervals(
+                deduplicated,
+                query,
+                direct_tokens=direct_tokens,
+                routing_candidates=routing_candidates,
+            )
         selected, budget_stats = self.budget_selected_memory(
             deduplicated,
             direct_tokens=direct_tokens,
@@ -481,6 +750,27 @@ class PRAExecutionCore:
             "memory_tokens_materialized",
         )
         metrics = {key: sum(row[key] for row in prepared.budget_stats) for key in aggregate_keys}
+        paper3_sum_keys = (
+            "requested_tokens_pre_dedup",
+            "deduplicated_materialization_tokens",
+            "materialized_native_kv_tokens",
+            "materialized_native_kv_bytes",
+            "materialized_gist_kv_tokens",
+            "evidence_kv_tokens",
+            "non_evidence_kv_tokens",
+            "storage_shards_touched",
+            "cross_shard_interval_count",
+            "interval_resolution_seconds",
+            "logical_gather_seconds",
+            "logical_h2d_seconds",
+        )
+        for key in paper3_sum_keys:
+            if any(key in row for row in prepared.budget_stats):
+                metrics[key] = sum(float(row.get(key, 0.0)) for row in prepared.budget_stats)
+        if "materialized_native_kv_tokens" in metrics:
+            metrics["evidence_density"] = metrics.get("evidence_kv_tokens", 0.0) / max(
+                metrics["materialized_native_kv_tokens"], 1.0
+            )
         utilization = [row["materialization_budget_utilization"] for row in prepared.budget_stats]
         metrics.update(
             {

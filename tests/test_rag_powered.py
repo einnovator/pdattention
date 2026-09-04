@@ -1,0 +1,270 @@
+from __future__ import annotations
+
+import gzip
+import json
+from pathlib import Path
+
+import pytest
+
+from experiments.rag_vs_pra.analyze_powered_decomposition import (
+    _deltas,
+    _enrich_answer_and_resource_diagnostics,
+    _normalize_failure_classes,
+    _paper_gate_table,
+    _paper_quality_table,
+    _paper_runtime_table,
+    _paper_table,
+)
+from pra_hf.rag_evaluation import ContextCondition
+from pra_hf.rag_powered import (
+    answer_metrics,
+    answer_normalization_diagnostics,
+    bootstrap_mean_ci,
+    official_multihop_rag_score,
+    paired_delta,
+    percentile,
+    qualification_gates,
+    summarize_rows,
+    validate_selector_frozen_rows,
+    validate_strong_reranker_parity,
+    write_results,
+)
+
+
+def _row(condition: ContextCondition, receipt: str, *, regime: str = "COLD"):
+    return {
+        "example_id": "q1",
+        "condition": condition.value,
+        "selector_profile": "pra_generic",
+        "candidate_count": 20,
+        "token_budget": 2048,
+        "regime": regime,
+        "status": "MEASURED",
+        "selection_receipt_id": receipt,
+        "exact_match": 1.0,
+        "token_f1": 0.8,
+        "official_multihop_rag_score": 1.0,
+        "failure_class": "SUCCESS",
+        "retrieval_context_metrics": {
+            "supporting_document_coverage": 1.0,
+            "materialization_avoidance": 0.5,
+        },
+        "serving_metrics": {
+            "ttft_ms": 10.0,
+            "itl_ms": 2.0,
+            "total_latency_ms": 20.0,
+            "native_reuse": float(regime == "WARM"),
+        },
+    }
+
+
+def test_official_score_matches_upstream_token_intersection() -> None:
+    assert official_multihop_rag_score("The answer is Lisbon", ("Lisbon",)) == 1.0
+    assert official_multihop_rag_score("Oslo", ("Lisbon",)) == 0.0
+    assert percentile([1, 2, 3, 4], 0.5) == 2.5
+    low, high = bootstrap_mean_ci([0.0, 1.0], seed=7, samples=200)
+    assert low == 0.0
+    assert high == 1.0
+
+
+def test_answer_normalization_diagnostics_are_explicit() -> None:
+    exact, f1 = answer_metrics("The Lisbon!", ("Lisbon",))
+    diagnostics = answer_normalization_diagnostics("The Lisbon!", ("Lisbon",))
+    assert (exact, f1) == (1.0, 1.0)
+    assert diagnostics["normalized_prediction"] == "lisbon"
+    assert diagnostics["normalization_changed_prediction"] is True
+    assert diagnostics["match_kind"] == "NORMALIZED_EXACT"
+    assert diagnostics["answer_format_ok"] is True
+
+
+def test_selector_freeze_validation_and_paired_delta() -> None:
+    rows = [
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "same"),
+    ]
+    validate_selector_frozen_rows(rows)
+    summary = summarize_rows(rows)
+    assert len(summary) == 2
+    delta = paired_delta(
+        rows,
+        left_condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+        right_condition=ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+        metric="token_f1",
+        selector_profile="pra_generic",
+        regime="COLD",
+    )
+    assert delta["paired_examples"] == 1
+    assert delta["mean_delta"] == 0.0
+
+    rows[1]["selection_receipt_id"] = "different"
+    with pytest.raises(ValueError, match="mismatch"):
+        validate_selector_frozen_rows(rows)
+
+
+def test_cross_selector_deltas_and_unavailable_bundle_are_attributed() -> None:
+    standard = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    standard["selector_profile"] = "standard_bm25"
+    standard["token_f1"] = 0.6
+    selected = _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "selected")
+    selected["token_f1"] = 0.8
+    bundle = _row(ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE, "bundle")
+    bundle.update(
+        {
+            "selector_profile": "bundle_exact_qualified",
+            "status": "NO_QUALIFIED_ADAPTER",
+            "token_f1": None,
+        }
+    )
+    delta = paired_delta(
+        [standard, selected],
+        left_condition=ContextCondition.NO_PRA_STANDARD_RAG.value,
+        right_condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+        metric="token_f1",
+        selector_profile="standard_bm25",
+        right_selector_profile="pra_generic",
+        regime="COLD",
+    )
+    assert delta["mean_delta"] == pytest.approx(0.2)
+    assert delta["right_selector_profile"] == "pra_generic"
+    deltas = _deltas([standard, selected, bundle])
+    assert any(
+        row["comparison"] == "selected_generic_vs_standard"
+        and row["metric"] == "token_f1"
+        and row["status"] == "MEASURED"
+        for row in deltas
+    )
+    assert any(
+        row["comparison"] == "selected_bundle_vs_selected_generic"
+        and row["status"] == "NO_QUALIFIED_ADAPTER"
+        for row in deltas
+    )
+
+
+def test_analysis_backfills_answer_and_temporary_allocation_diagnostics() -> None:
+    row = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    row.update({"prediction": "The Lisbon!", "gold_answers": ["Lisbon"]})
+    row["serving_metrics"].update(
+        {"peak_memory_bytes": 150, "active_memory_bytes": 100}
+    )
+    row["resource_metrics"] = {"temporary_allocation_bytes": None}
+    _enrich_answer_and_resource_diagnostics([row])
+    assert row["answer_normalization"]["match_kind"] == "NORMALIZED_EXACT"
+    assert row["serving_metrics"]["temporary_allocation_bytes"] == 50
+    assert row["resource_metrics"]["temporary_allocation_bytes"] == 50
+
+
+def test_cold_and_warm_are_never_aggregated_together() -> None:
+    rows = [
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "cold", regime="COLD"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "cold", regime="COLD"),
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "warm", regime="WARM"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "warm", regime="WARM"),
+    ]
+    summaries = summarize_rows(rows)
+    assert {row["regime"] for row in summaries} == {"COLD", "WARM"}
+    assert all(row["examples"] == 1 for row in summaries)
+
+
+def test_bundle_and_card_gate_stays_closed_without_qualified_adapter() -> None:
+    summaries = summarize_rows(
+        [
+            _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same"),
+            _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "same"),
+        ]
+    )
+    gates = qualification_gates(summaries, minimum_examples=1)
+    assert gates["bundle_gate"] == "NO_QUALIFIED_ADAPTER"
+    assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
+
+
+def test_evidence_probe_cannot_open_model_backed_gates() -> None:
+    rows = [
+        _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same"),
+        _row(ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR, "same"),
+    ]
+    for row in rows:
+        row["answer_quality_publishable"] = False
+    gates = qualification_gates(summarize_rows(rows), minimum_examples=1)
+    assert gates["selection_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["selection_comparator"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["native_memory_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["economic_gate"] == "NOT_APPLICABLE_NON_MODEL"
+    assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
+
+
+def test_persistent_corpus_does_not_fail_decomposition_gates() -> None:
+    rows = [
+        _row(
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+            "same",
+            regime="PERSISTENT_CORPUS",
+        ),
+        _row(
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+            "same",
+            regime="PERSISTENT_CORPUS",
+        ),
+    ]
+    gates = qualification_gates(summarize_rows(rows), minimum_examples=1)
+    expected = "NOT_APPLICABLE_PERSISTENT_CORPUS"
+    assert gates["selection_gate"] == expected
+    assert gates["selection_comparator"] == expected
+    assert gates["native_memory_gate"] == expected
+    assert gates["economic_gate"] == expected
+    assert gates["card_gate"] == "FAILED_OR_CANDIDATE_ONLY"
+
+
+def test_condition_results_jsonl_is_compressed_and_roundtrips(tmp_path: Path) -> None:
+    rows = [_row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same")]
+    path = tmp_path / "condition_results.jsonl.gz"
+    write_results(path, rows)
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        assert json.loads(stream.readline())["example_id"] == "q1"
+
+
+def test_failure_normalization_and_paper_table_generation() -> None:
+    selected = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    selected.update(
+        {
+            "selector_profile": "standard_bm25",
+            "gold_document_ids": ["gold-a", "gold-b"],
+            "candidate_document_ids": ["gold-a", "gold-b", "noise"],
+            "selected_document_ids": ["gold-a", "noise"],
+            "failure_class": "GENERATION_FAILURE",
+        }
+    )
+    _normalize_failure_classes([selected])
+    assert selected["failure_class"] == "STANDARD_RAG_PACKING_MISS"
+    table = _paper_table(summarize_rows([selected]))
+    assert "standard\\_bm25" in table
+    assert "Token F1" not in table
+    assert "Answer avail." in _paper_quality_table(summarize_rows([selected]))
+    assert "TTFT p95" in _paper_runtime_table([])
+    gate_table = _paper_gate_table(
+        {
+            "selection_gate": "FAIL",
+            "native_memory_gate": "PASS",
+            "economic_gate": "PASS",
+            "bundle_gate": "NO_QUALIFIED_ADAPTER",
+            "card_gate": "FAILED_OR_CANDIDATE_ONLY",
+        }
+    )
+    assert "Native realization & \\texttt{PASS}" in gate_table
+    assert "NO\\_QUALIFIED\\_ADAPTER" in gate_table
+
+
+def test_strong_reranker_visible_path_requires_exact_output_parity() -> None:
+    standard = _row(ContextCondition.NO_PRA_STANDARD_RAG, "shared")
+    standard.update(
+        {
+            "selector_profile": "strong_conventional_reranker",
+            "prediction": "Lisbon",
+        }
+    )
+    selected = _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "shared")
+    selected.update({"selector_profile": "pra_strong_reranker", "prediction": "Lisbon"})
+    validate_strong_reranker_parity([standard, selected])
+
+    selected["prediction"] = "Oslo"
+    with pytest.raises(ValueError, match="output mismatch"):
+        validate_strong_reranker_parity([standard, selected])

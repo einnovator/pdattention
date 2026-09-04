@@ -1,0 +1,820 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{multirow}
+
+\title{Paper 3.2: RAG, PRA, and Composable Native Memory\\
+\large Retrieval, Materialization, Ordering, and Positional Geometry}
+\author{Jorge Sim\~ao}
+\date{Draft --- September 2026}
+
+\newcommand{\pra}{\textsc{PRA}}
+\newcommand{\rag}{\textsc{RAG}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieval-augmented generation (RAG) reduces the amount of external information presented to a language model, while Progressive Retrieval Attention (PRA) additionally allows selected evidence to be represented, stored, and reused as model-native memory.  Earlier PRA work separated retrieval from native K/V materialization, and preliminary Paper~4.5 experiments suggest a practically important regime: a strong conventional RAG retriever or reranker can choose the evidence while PRA reuses the resulting selected context as persistent native memory.  When exactly the same selected block is reused, preliminary Qwen3-4B and Qwen3-8B measurements show exact generated-output preservation together with large reductions in warm time-to-first-token.  However, recomposing independently cached chunks across changing selections produced a quality regression, exposing a second problem: separately stored resources have source-local positional and contextual histories that need not match the positions and causal context induced when ordinary RAG serializes them into a new prompt.
+
+This paper studies these issues jointly across multiple RAG and long-context QA datasets.  We compare full documents in context, conventional RAG with lexical, dense, hybrid, reranked, and real vector-database indices, and PRA variants that use full or partial materialization and multiple routing modes.  We then freeze selected evidence and isolate realization and composition: fresh selected-text encoding, contiguous native reuse, independently cached native fragments, RoPE composition-coordinate rebinding, and limited contextual repair.  Finally, we test whether arbitrary document serialization matters by comparing $D_1D_2Q$ with $D_2D_1Q$ and broader resource permutations under multiple positional policies, including source-local, globally packed, resource-adjacent, rank-derived, score-derived, near-band, and randomized geometries.
+
+The experimental program begins with small models for broad causal sweeps and progressively repeats only qualified conditions on 4B, 8B, and larger models.  The central question is not whether PRA replaces mature retrieval infrastructure, but whether external retrieval, selective materialization, persistent native memory, and request-specific composition can form a better quality--context--latency frontier than either full context or conventional RAG alone.
+\end{abstract}
+
+\section{Introduction}
+
+Large language models increasingly operate over collections of documents that are too large, too dynamic, or too expensive to place directly in every prompt.  Conventional RAG addresses this problem by searching an external index, selecting a small evidence set, serializing that evidence as text, and re-prefilling the model.  This design has two distinct consequences.  First, retrieval quality becomes a major determinant of answer quality.  Second, evidence that is reused across questions is nevertheless often tokenized and prefetched through the model again unless an ordinary serving cache happens to match the new prefix.
+
+PRA introduces a different memory boundary.  Retrieved information can be stored as independently addressable resources and selected native K/V can be materialized on demand.  This raises a systems opportunity---persistent reuse of evidence---but also a representation question that conventional RAG hides.  A prompt such as
+\[
+D_1\,D_2\,D_3\,Q
+\]
+imposes a total order and a precise metric distance among documents even when $D_1,D_2,D_3$ are logically independent sources.  If these resources are encoded separately and reused later, their original positional coordinates and contextual histories are no longer automatically equivalent to the newly serialized RAG sequence.
+
+This paper therefore asks four linked but separable questions:
+\begin{enumerate}[leftmargin=*]
+    \item Which external retrieval/index strategies provide the strongest candidate evidence?
+    \item Given the same candidates, how do conventional RAG and PRA routing compare?
+    \item Given the same selected evidence, what quality--cost frontier is obtained by full text, full native, and partial PRA materialization?
+    \item When selected native resources are independently stored, what ordering and positional composition should they use, and how much recomputation is required to recover fresh-context behavior?
+\end{enumerate}
+
+The paper deliberately allows the strongest architecture to be complementary:
+\[
+\text{mature RAG retrieval/reranking}
+\rightarrow
+\text{PRA persistent/native realization}
+\rightarrow
+\text{LLM}.
+\]
+PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
+
+\paragraph{Contributions planned.}
+We target five contributions.
+\begin{enumerate}[leftmargin=*]
+    \item A controlled Full-Document vs conventional-RAG vs PRA evaluation over several RAG/long-context datasets.
+    \item A retrieval-index comparison spanning local BM25/FAISS/hybrid baselines and real remote vector/search services.
+    \item A routing/materialization decomposition that separates evidence selection from the representation consumed by the model.
+    \item A multi-resource composition study derived from the earlier Paper~1.6 plan, including document permutations and alternative positional topologies.
+    \item A persistent overlapping-RAG experiment that measures whether independently cached native evidence can be rebound or selectively repaired instead of fully prefetched again.
+\end{enumerate}
+
+\section{Relationship to Prior PRA Work}
+
+\subsection{Paper 1.5: positional transport}
+Paper~1.5 established source-relative positional transport, deferred/pre-RoPE machinery, and rebinding algebra.  It also separated positional fragmentation from contextualization fragmentation: changing the RoPE phase of a cached key can correct effective position, but it cannot reconstruct causal context that was absent when the hidden state was originally computed.
+
+Paper~3.2 reuses that machinery and focuses on multi-resource composition rather than re-deriving the positional transport result.
+
+\subsection{The unexecuted Paper 1.6 plan}
+An earlier Paper~1.6 plan proposed ``multi-frame positional geometry'' for independently retrieved resources.  It asked whether external resources need one global positional sequence and proposed source/global, globally packed, resource-adjacent, rank-distance, score-distance, near-band, and randomized policies, together with permutation, source-distance, distractor, and multi-resource experiments.  That plan was not executed as a standalone paper.  Paper~3.2 incorporates its central experiments in a practical RAG setting.
+
+\subsection{Paper 3.0: causal materialization}
+Paper~3.0 fixes selection and varies only the native K/V detail made active. It
+distinguishes evidence that justifies an answer to a reader from contextual
+states that are computationally sufficient for a particular frozen model, and
+establishes that encoding, search, and materialization granularities need not
+coincide. Its logical interval abstraction unions overlap only within one
+source domain, gathers across physical storage shards, and records requested,
+deduplicated, evidence, non-evidence, and transferred K/V separately.
+
+Those experiments provide two constraints for the present study. First,
+whole-parent disclosure is a physical control, not an oracle optimum: in the
+controlled study, exact cores averaged 5.25 K/V tokens and reduced K/V by
+92.9\% relative to whole selected parents. Second, a small global budget is not
+automatically sufficient. Under oracle selection, exact disclosure reduced
+active K/V by 20.9\% on MuSiQue and 44.4\% on 2Wiki relative to whole parents,
+but a common 128-token allocation did not preserve all distributed MuSiQue
+evidence. These are inherited materialization findings, not Paper~3.2 RAG
+results. We reuse the mechanism and causal controls, then remeasure the frontier
+after realistic retrieval rather than oracle selection.
+
+\subsection{Paper 3.1: retrieval addresses}
+Paper~3.1 studies compact persistent retrieval indices, especially generated summaries versus lexical, extractive, and native-QK alternatives.  Its conclusion is kept separate.  Paper~3.2 may reuse those indices as routing arms, but the present question is end-to-end RAG composition rather than summary generation.
+
+\subsection{Paper 4.5: preliminary RAG/runtime evidence}
+Paper~4.5 provides the initial RAG harness, candidate and selection receipts, Selected Context and Native Memory modes, and preliminary warm-reuse measurements.  The present paper treats these as motivating evidence and reruns the decisive comparisons under a frozen Paper~3.2 protocol.
+
+\section{Preliminary Evidence from Paper 4.5}
+\label{sec:prelim}
+
+The preliminary measurements already suggest that two claims should be kept separate.
+
+\paragraph{Strong RAG selection plus contiguous Native Memory.}
+A strong conventional reranker selected chunks that were then consumed either as Selected Context or as PRA Native Memory.  With selection receipts frozen, the Selected Context and corresponding PRA path preserved generated outputs.  Reusing the same contiguous selected native block also preserved outputs.
+
+Representative warm measurements are summarized in Table~\ref{tab:prelim-warm}.  These values are inherited preliminary evidence and are not yet final Paper~3.2 results.
+
+\begin{table}[ht]
+\centering
+\caption{Preliminary Paper~4.5 warm repeated-selection results.}
+\label{tab:prelim-warm}
+\begin{tabular}{llrr}
+\toprule
+Model / regime & Condition & Total latency (s) & TTFT (s) \\
+\midrule
+Qwen3-4B, representative & Selected Context & 3.031 & 2.640 \\
+                         & Native Memory    & 0.638 & 0.166 \\
+\midrule
+Qwen3-4B, 4K & Selected Context & 6.121 & -- \\
+              & Native Memory    & 0.799 & -- \\
+\midrule
+Qwen3-8B & Selected Context & 5.541 & 4.908 \\
+          & Native Memory    & 0.990 & 0.276 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Persistent independent chunks.}
+A second experiment allowed selections to change and attempted reuse of independently cached chunks.  The preliminary run obtained roughly 22\% mean native chunk hits and reduced 101,294 selected tokens to 80,117 uniquely materialized native tokens, with cumulative runtime decreasing from approximately 151.19~s to 131.78~s.  However, the official score changed from approximately 0.440 for Selected Context to 0.380 for independently cached persistent native chunks.
+
+This distinction motivates the central composition experiment:
+\[
+\begin{aligned}
+&\text{exact same contiguous block reuse}\\
+&\qquad\neq \text{arbitrary recomposition of independently contextualized chunks}.
+\end{aligned}
+\]
+
+\subsection{Inherited protocol and selection boundary}
+The Paper~4.5 protocol used 50 fixed MultiHop-RAG questions (seed 11) from a
+609-document corpus. BM25 produced immutable candidate receipts at
+$N\in\{5,10,20,50\}$; a 256-token chunker with 32-token overlap then supplied
+either global BM25 packing or parameter-free PRA rank fusion. A broad probe
+measured answer-string availability in selected context, not generated-answer
+quality. At the 2K budget and $N=20$, PRA increased availability from .56 to
+.68, supporting-document coverage from .430 to .493, and span coverage from
+.268 to .318, while false selected-document fraction rose from .769 to .777.
+At $N=50$, availability increased from .64 to .76, but support coverage changed
+from .515 to .505, span coverage from .338 to .300, and false-document fraction
+from .776 to .795. The result is a budget-sensitive selection signal, not
+evidence of better grounded generation.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper4_5_runtime_productization/rag/multihoprag_fixed_candidate_curves.pdf}
+\caption{Inherited Paper~4.5 selection probe. The vertical measure is whether
+selected context contains an accepted answer string; it is not model accuracy.
+The source artifact remains preliminary for Paper~3.2.}
+\label{fig:inherited-selection-probe}
+\end{figure}
+
+\subsection{Inherited powered decomposition}
+The powered 4B run used the same 50 questions, $N=20$, a 2K budget, pinned
+Qwen3-4B 4-bit weights, and a fixed cross-encoder. Standard BM25 obtained .500
+official score and .082 token F1. The stronger conventional selector obtained
+.440/.081, and generic PRA obtained .440/.071. The generic selector nevertheless
+increased supporting-document coverage from .400 to .468 and gold-chunk recall
+from .0448 to .0484. Thus evidence exposure and generated-answer quality moved
+in different directions, closing the inherited selection gate.
+
+The matched realization result was positive and narrower. Strong conventional
+and strong-PRA Selected Context produced identical outputs; within generic and
+strong PRA, Selected Context and Native Memory also matched all generated
+outputs. Generic cold native execution cost 3.121~s versus 3.024~s for selected
+text, a 3.2\% regression. Reusing the exact native selection reduced mean TTFT
+from 2.640 to 0.166~s and total latency from 3.031 to 0.638~s, while carrying
+approximately 299~MB of active all-layer K/V. The 4K boundary retained exact
+realization, paid a 3.3\% cold regression, and reduced warm total latency from
+6.121 to 0.799~s at roughly 602~MB active K/V.
+
+The prespecified 8B replication preserved the distinction. Standard BM25,
+the stronger conventional selector, and generic PRA scored .520/.093,
+.480/.096, and .440/.081, respectively. Both native realization pairs remained
+output-exact. Cold native execution was 1.8\% slower (5.636 versus 5.535~s),
+whereas retained native reuse reduced total latency from 5.541 to 0.990~s and
+TTFT from 4.908 to 0.276~s, using approximately 285~MB of active detail.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
+\caption{Inherited selector-frozen Qwen3-4B TTFT. Cold and retained-selection
+regimes are disjoint; the warm result is a repeated-selection benefit, not an
+unconditional RAG speedup or a comparison against an ordinary prefix-cache hit.}
+\label{fig:inherited-powered-ttft}
+\end{figure}
+
+Finally, the independent-chunk run changed both geometry and reuse unit. It
+reused 22.0\% of chunk lookups, reduced approximately 101,294 selected tokens
+to 80,117 uniquely materialized tokens, and lowered cumulative wall time from
+151.19 to 131.78~s. Official score changed from .440 to .380 while token F1
+changed from .071 to .086. Independently encoded chunks retained source-local
+post-RoPE positions instead of the fresh selected text's packed global
+positions. Paper~3.2 therefore treats this row as the motivating composition
+failure, not as transport parity or cache corruption. All numbers in this
+section are inherited from commit
+\texttt{f60b6847eb65f8a5be9c758a34a2ebdc09244e6e} and remain preliminary until
+reproduced here.
+
+\section{Paper 3.2 Mechanism Gate}
+\label{sec:mechanism-gate}
+
+Before loading a model, we ran the complete receipt and geometry pipeline on
+15 controlled multi-document questions under five corpus seeds. Three
+first-stage backends produced 225 immutable candidate receipts; external-order
+and PRA-refined selections produced 450 selection receipts; six composed
+profiles and seven applicable position policies produced 4,050 composition
+receipts. Every receipt round-tripped with a stable digest, and all position
+policies preserved resource identity, source hash, token count, and internal
+token offsets.
+
+At document Recall@10, BM25, exact hashed-dense retrieval, and RRF hybrid
+obtained .833, .900, and .913. Their external-order selected-document recalls
+were .587, .667, and .733. PRA second-stage ranking reached .733 for all three
+candidate sets. Figure~\ref{fig:mechanism-retrieval} shows the decomposition.
+The synthetic fixture is deliberately lexical and small, so these numbers
+validate information flow and candidate ceilings; they do not rank production
+retrievers.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/retrieval_recall.pdf}
+\caption{Five-seed synthetic retrieval and frozen-selection mechanism gate.
+No language model is run, and answer-quality metrics are intentionally absent.}
+\label{fig:mechanism-retrieval}
+\end{figure}
+
+The coordinate check also distinguishes overlap from identity collision.
+Globally packed, rank-distance, random-distance, and non-overlapping near-band
+policies assign disjoint effective positions. Source-local and
+resource-adjacent policies intentionally overlap approximately .807 of numeric
+coordinates on this fixture; score-distance overlaps .455. In every case the
+resource URI and chunk identity remain part of the native address, so equal
+position numbers from different documents are not deduplicated. This gate
+qualifies the experiment machinery only. Model-backed permutation, rebinding,
+and repair results remain pending.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/position_collisions.pdf}
+\caption{Effective-coordinate overlap by declared composition policy. Numeric
+position overlap is intentional for source-local and adjacent-resource frames;
+logical resource identities remain distinct.}
+\label{fig:mechanism-position-overlap}
+\end{figure}
+
+\section{Experimental Questions}
+
+\subsection{Full context, RAG, or PRA?}
+When all candidate documents fit the native context window, we compare:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Full-Doc-In-Context}: all candidate documents are freshly encoded;
+    \item \textbf{conventional RAG}: retrieved chunks are freshly packed as text;
+    \item \textbf{PRA full materialization}: PRA routes but exposes all tokens of selected resources;
+    \item \textbf{PRA partial materialization}: PRA exposes a bounded selected subset;
+    \item \textbf{PRA Native Memory}: selected evidence is represented by reusable native K/V.
+\end{enumerate}
+Full context is a reference rather than a guaranteed upper bound: retrieval may improve quality by removing distractors.
+
+\subsection{Does PRA need to replace the RAG retriever?}
+No such assumption is made.  We test:
+\[
+\begin{array}{l}
+\text{external retrieval} \rightarrow \text{ordinary RAG},\\
+\text{external retrieval} \rightarrow \text{PRA second-stage selection},\\
+\text{strong reranker} \rightarrow \text{PRA Selected Context},\\
+\text{strong reranker} \rightarrow \text{PRA Native Memory}.
+\end{array}
+\]
+This explicitly separates selection quality from realization and reuse.
+
+\subsection{RAG+PRA as a composed system}
+\label{sec:rag-pra-design}
+
+We represent RAG+PRA as a sequence of independently auditable stages:
+\[
+\begin{split}
+&\text{query and corpus revision}
+\rightarrow \text{external retrieval/index}
+\rightarrow \text{candidate receipt}\\
+&\rightarrow \text{optional PRA second-stage routing}
+\rightarrow \text{selection receipt}
+\rightarrow \text{materialization and composition}\\
+&\rightarrow \text{Selected Context or Native Memory}
+\rightarrow \text{persistent reuse}
+\rightarrow \text{generation}.
+\end{split}
+\]
+External retrieval may use BM25, dense/FAISS search, hybrid fusion, a strong
+reranker, or a retrieval service. Its immutable candidate receipt records
+source identities, spans, scores, ranks, and index revision. The subsequent
+selection receipt fixes the exact evidence consumed by matched realization
+conditions. In particular, a native-memory condition cannot rerun retrieval
+and still be described as a transport comparison.
+
+Table~\ref{tab:rag-pra-profiles} defines the composed profiles used throughout
+the study. These profiles let us test PRA in three distinct roles: replacement
+selector, second-stage selector, and realization/reuse layer after a conventional
+selector.
+
+\begin{table*}[ht]
+\centering
+\small
+\caption{Canonical RAG+PRA profiles. Conditions sharing a selection receipt
+hold evidence fixed and change only its realization or composition.}
+\label{tab:rag-pra-profiles}
+\begin{tabular}{p{0.29\textwidth}p{0.25\textwidth}p{0.38\textwidth}}
+\toprule
+Profile & Selection & Realization and purpose \\
+\midrule
+\texttt{RAG\_ONLY\_TEXT} & External RAG & Freshly packed visible text; strong conventional baseline. \\
+\texttt{RAG\_PLUS\_PRA\_SELECTED} & External RAG, optionally PRA-refined & Fresh Selected Context; isolates second-stage routing without native transport. \\
+\shortstack[l]{\texttt{RAG\_PLUS\_PRA}\cr\texttt{NATIVE\_CONTIGUOUS}} & Frozen external selection & One reusable packed native block; isolates reuse under ordinary packed geometry. \\
+\shortstack[l]{\texttt{RAG\_PLUS\_PRA}\cr\texttt{NATIVE\_INDEPENDENT}} & Frozen external selection & Independently cached source-position K/V; exposes composition error. \\
+\texttt{RAG\_PLUS\_PRA\_NATIVE\_REBOUND} & Frozen external selection & Independent K/V rebound to request-specific composition positions; isolates positional repair. \\
+\texttt{RAG\_PLUS\_PRA\_REPAIR} & Frozen external selection & Rebound K/V plus bounded contextual repair; estimates the recomputation needed for fresh-context parity. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The first comparison is always \texttt{RAG\_ONLY\_TEXT} against the
+realization-only native profiles with identical evidence. We then evaluate
+external retrieval followed by PRA refinement, and only afterward PRA as a
+replacement selector. Thus a retrieval improvement, a materialization saving,
+and a positional-recomposition result remain separate empirical claims.
+
+\section{Datasets}
+
+The study uses a staged dataset ladder.
+
+\paragraph{Mechanism and inherited QA.}
+Controlled synthetic multi-document facts provide exact causal checks.  Natural PRA cohorts include HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue.
+
+\paragraph{Flagship RAG.}
+MultiHop-RAG is the mandatory first flagship dataset because preliminary Paper~4.5 infrastructure already exists.  Once the protocol is stable we add KILT Natural Questions and KILT HotpotQA.
+
+For each dataset we freeze corpus and query revisions, official metrics, chunking, candidate document construction, evidence labels where available, and the subset for which Full-Doc-In-Context fits the model's native window.
+
+\section{Model Scaling}
+
+The full experimental grid is intentionally run only on small models.
+
+\paragraph{Stage M0.}
+Qwen3-0.6B is the primary mechanism model.  Llama~3.2-1B provides an early cross-family check where practical.
+
+\paragraph{Stage M1.}
+After correctness gates, a 1--2B class model is used for reduced replication.
+
+\paragraph{Stage M2.}
+Qwen3-4B is mandatory because it connects directly to Paper~4.5 preliminary RAG evidence.  Qwen3-8B is the first scaling replication.
+
+\paragraph{Stage M3.}
+Only the strongest conditions are repeated on Qwen3-14B and, if compute permits, a larger Qwen and at least one non-Qwen family.
+
+This staged design tests whether an apparent mechanism survives scale without multiplying every retrieval, position, and materialization factor at every model size.
+
+\section{Retrieval and Index Strategies}
+
+\subsection{Local/custom indices}
+We begin with transparent in-process baselines.
+
+\paragraph{BM25.}
+A pinned BM25 implementation provides the lexical reference.
+
+\paragraph{Dense semantic retrieval.}
+The requested ``FAS'' path is interpreted as FAISS.  We use one frozen embedding model and compare exact dense search on small corpora with a pinned FAISS ANN configuration on larger corpora.
+
+\paragraph{Hybrid.}
+Lexical and dense candidates are fused first using reciprocal-rank fusion (RRF).  A predeclared weighted fusion may be added as a secondary arm.
+
+\paragraph{Strong conventional reranker.}
+A frozen cross-encoder or equivalently strong conventional reranker provides both a competitive RAG baseline and a selector-frozen input to PRA realization.
+
+\subsection{Real retrieval services}
+The remote machine will host containerized services.  The initial target set is:
+\begin{itemize}[leftmargin=*]
+    \item Elasticsearch (or a precisely pinned OpenSearch-compatible path where explicitly intended);
+    \item Qdrant;
+    \item one of Weaviate or Milvus;
+    \item pgvector where operationally inexpensive.
+\end{itemize}
+The user-specified ``Derby'' backend is retained as a requested integration, but its exact product and API must be identified before implementation; the experiment must not silently assume that Apache Derby supplies vector ANN semantics.
+
+The purpose is not to publish a standalone vector-database benchmark.  Instead we ask whether RAG/PRA conclusions survive realistic retrieval infrastructure.  Service latency is decomposed into search, network, reranking, and LLM costs.
+
+\section{PRA Routing and Materialization}
+
+\subsection{Routing families}
+Within an identical candidate corpus, candidate PRA routing modes include:
+\begin{itemize}[leftmargin=*]
+    \item lexical routing;
+    \item native semantic/gist routing;
+    \item native-QK or the strongest inherited low-rank QK selector where available;
+    \item lexical--semantic hybrid routing;
+    \item the strongest inherited generic PRA profile;
+    \item optional Paper~3.1 summary indexing as a secondary arm.
+\end{itemize}
+
+\subsection{Materialization families}
+We distinguish:
+\begin{description}[leftmargin=2.5cm]
+    \item[Full.] Materialize all tokens from each PRA-selected object.
+    \item[Fixed partial.] Materialize a fixed chunk/token budget.
+    \item[Score partial.] Materialize under a frozen threshold/budget policy.
+    \item[Hierarchical.] Use inherited hierarchical routing/materialization where supported.
+    \item[Selected Context.] Render exactly the selected evidence as freshly encoded ordinary text.
+    \item[Native contiguous.] Encode the selected evidence once as one contiguous native block and reuse it.
+    \item[Native independent.] Reuse independently cached chunks/resources and compose them at request time.
+\end{description}
+
+Every condition reports candidate, selected, visible, native, newly materialized, and reused token counts.
+Following Paper~3.0, partial conditions operate on source-relative logical
+intervals. Overlap is deduplicated only within one resource domain, so equal
+numeric offsets in two documents remain distinct native states. In addition to
+the counts above, each run reports requested tokens before union, unique native
+tokens, evidence and non-evidence tokens, evidence density, storage shards
+touched, and cross-shard intervals. Whole-parent and equal-budget wrong-memory
+conditions act as causal controls where evidence labels permit them. Any fixed
+budget that omits a required evidence region is reported as a coverage failure,
+not as evidence that compact materialization is sufficient.
+
+\section{Matched Selection and Realization}
+\label{sec:realization}
+
+The most important causal control freezes the selected chunks.  For exactly the same selection receipt we compare:
+\begin{enumerate}[leftmargin=*]
+    \item fresh selected text;
+    \item contiguous native reuse;
+    \item independently cached native fragments at source-local positions;
+    \item the same independent fragments rebound to packed composition positions;
+    \item rebound fragments with optional limited contextual repair.
+\end{enumerate}
+
+This design ensures that a quality difference after selection cannot be mislabeled as a retrieval failure.
+
+\section{Multi-Resource Positional Geometry}
+
+\subsection{Source and composition coordinates}
+For resource $r$ and token $i$, distinguish
+\[
+p_{\mathrm{src}}(r,i)
+\qquad\text{from}\qquad
+p_{\mathrm{cmp}}(r,i).
+\]
+The first identifies position in the source's own positional frame.  The second is the effective position chosen for the current materialized composition.
+
+A resource-preserving offset can be written
+\[
+p'_{r,i}=b_r+p_{r,i}.
+\]
+The value of $b_r$ is a policy choice, not a consequence of physical K/V residency.
+
+\subsection{Required policies}
+
+\paragraph{SOURCE\_LOCAL.}
+Preserve each resource's source-local coordinates.
+
+\paragraph{GLOBAL\_PACKED.}
+Assign selected resources contiguous positions exactly as in freshly packed RAG.  This is the primary parity policy.
+
+\paragraph{RESOURCE\_ADJACENT.}
+Preserve each resource's internal geometry while independently placing its end near the query.  Different resources may overlap in effective RoPE coordinate ranges while remaining separate K/V objects.
+
+\paragraph{RANK\_DISTANCE.}
+Map retrieval rank to query distance.
+
+\paragraph{SCORE\_DISTANCE.}
+Map a normalized retrieval score to query distance under a frozen mapping.
+
+\paragraph{NON\_OVERLAPPING\_NEAR\_BANDS.}
+Use bounded near-query bands while preserving a monotonic resource ordering.
+
+\paragraph{RANDOM\_DISTANCE.}
+Randomize resource offsets under a matched envelope as a negative control.
+
+All policies use one ordinary attention normalization over the concatenated selected K/V.  The experiment changes positional transforms, not the definition of attention.
+
+\section{Document-Order and Permutation Sensitivity}
+
+The minimal experiment compares
+\[
+D_1\,D_2\,Q
+\qquad\text{with}\qquad
+D_2\,D_1\,Q.
+\]
+For three or more resources we additionally compare canonical retrieval order, reverse order, and random permutations.
+
+We distinguish two experiments.
+
+\paragraph{Composition sensitivity.}
+Resource identities, selected content, selected-token budget, and model are frozen.  Only serialization order and/or positional policy changes.  Retrieval is not rerun.
+
+\paragraph{Pipeline sensitivity.}
+Each retrieval/reranking method is allowed to return and pack its natural order.  This measures complete RAG behavior.
+
+For permutation set $\mathcal{P}$ we report answer flips, target probability variance, and mean pairwise Jensen--Shannon divergence:
+\[
+S_{\mathrm{order}}
+=
+\frac{2}{|\mathcal{P}|(|\mathcal{P}|-1)}
+\sum_{a<b}
+JS(P_a\Vert P_b).
+\]
+A compelling multi-frame result requires maintained or improved task quality in addition to reduced arbitrary permutation variance.
+
+\section{Source Distance, Distractors, and Number of Resources}
+
+Following the earlier Paper~1.6 plan, source-distance experiments hold evidence fixed while varying its source/global distance from the query.  Distractor experiments sweep $0,2,4,8,16,32$ irrelevant resources where context permits.  Relevant-resource experiments sweep $1,2,4,8$ sources and include redundant, complementary multi-hop, and conflicting evidence.
+
+These controls are especially important for RESOURCE\_ADJACENT: placing every resource near the query may reduce lost-in-the-middle effects but could also make irrelevant evidence excessively salient.
+
+\section{Positional vs Contextualization Fragmentation}
+\label{sec:fragmentation}
+
+Consider a selected composition $A,B,C,Q$.
+
+\paragraph{C0: Fresh packed.}
+Freshly encode $[A\,B\,C\,Q]$.  This establishes the matched-content reference.
+
+\paragraph{C1: Native source.}
+Reuse independently cached native $A,B,C$ at their source-local effective positions.
+
+\paragraph{C2: Native rebound packed.}
+Keep the independently computed hidden/K/V states but rebind RoPE keys to the positions that $A,B,C$ would occupy in the packed composition.
+
+For pre-RoPE keys,
+\[
+K_{\mathrm{cmp}}=R_{p_{\mathrm{cmp}}}K_{\mathrm{raw}}.
+\]
+For validated post-RoPE storage,
+\[
+K_{\mathrm{cmp}}
+=
+R_{p_{\mathrm{cmp}}-p_{\mathrm{src}}}
+K_{\mathrm{stored}},
+\]
+subject to the exact model's RoPE/scaling implementation.
+
+\paragraph{C3: Rebound plus repair.}
+If positional rebinding does not restore sufficient quality, selectively recompute a fraction of the selected context.
+
+\paragraph{C4: Full recompute.}
+Fresh reprefill provides the full contextualization reference.
+
+A divergence $D$ can summarize the fraction of source-position error recovered by rebinding:
+\[
+R_{\mathrm{pos}}
+=
+1 -
+\frac{D(P_{\mathrm{fresh}},P_{\mathrm{rebound}})}
+     {D(P_{\mathrm{fresh}},P_{\mathrm{source}})}.
+\]
+The residual gap is not automatically purely contextual, but it directly bounds what positional phase correction alone can achieve.
+
+\section{Selective Contextual Repair}
+
+If C2 remains measurably different from fresh encoding, we test a deliberately simple repair ladder:
+\[
+0\%,\;5\%,\;10\%,\;25\%,\;50\%,\;100\%
+\]
+of selected tokens or equivalent compute, together with boundary-window and first-$N$-tokens-per-resource controls.
+
+A useful result is a Pareto curve:
+\[
+\text{quality/parity recovered}
+\quad\text{vs}\quad
+\text{fraction recomputed}
+\quad\text{vs}\quad
+\text{TTFT/prefill}.
+\]
+Adaptive repair is postponed until fixed policies establish headroom.
+
+\section{Repeated-Query RAG and Persistent Reuse}
+
+Real sessions rarely repeat exactly one selected prompt.  We therefore construct query sequences such as
+\[
+Q_1\rightarrow\{A,B,C\},\qquad
+Q_2\rightarrow\{B,C,D\},\qquad
+Q_3\rightarrow\{A,D,E\}.
+\]
+We compare:
+\begin{enumerate}[leftmargin=*]
+    \item conventional RAG with full reprefill;
+    \item conventional engine prefix/KV caching;
+    \item PRA exact contiguous-block reuse;
+    \item PRA independent native reuse at source positions;
+    \item PRA independent native reuse with packed rebinding;
+    \item packed rebinding plus repair.
+\end{enumerate}
+
+We report selection overlap, native chunk-hit fraction, newly encoded and reused tokens, cumulative TTFT, cumulative prefill, wall time, memory residency, official quality, and output flips.
+
+This is the main product-facing experiment: can PRA reuse semantically recurring, non-prefix evidence while an ordinary RAG retriever continues to determine what is relevant?
+
+\section{Ordinary Cache Controls}
+
+The preliminary warm Native Memory result is not sufficient by itself.  On at least one production-style engine we compare:
+\[
+\begin{array}{l}
+\text{RAG without cache},\\
+\text{RAG + ordinary prefix/APC cache},\\
+\text{RAG + PRA Native Memory},\\
+\text{RAG + prefix cache + PRA}.
+\end{array}
+\]
+Exact-prefix cache hits and query-addressed PRA resource reuse are reported independently.
+
+\section{Metrics and Statistics}
+
+\subsection{Quality}
+We use official EM/F1/accuracy where defined, gold NLL/log-probability, answer margin, generated sequence agreement, and a frozen semantic judge only where official metrics are insufficient.
+
+\subsection{Retrieval}
+Document Recall@$k$, supporting-document/span coverage, MRR, nDCG where meaningful, candidate counts, and reranker displacement are reported.
+
+\subsection{Context and memory}
+Metrics include logical candidate tokens, selected/visible/native/new/reused tokens, materialization avoidance, active K/V bytes, and selected/full ratio.
+
+\subsection{Composition}
+We report answer flips, pairwise JS/KL, target-probability variance, source-distance slopes, distractor sensitivity, and fresh/source/rebound divergences.
+
+\subsection{Systems}
+We report index build time, retrieval p50/p95/p99, rerank latency, prefill, TTFT p50/p95/p99, ITL, completion latency, tokens/s, requests/s, memory, K/V bytes, transfer traffic, and cold/warm/hot state.
+
+All matched conditions use paired statistics and bootstrap 95\% confidence intervals.  Model- and workload-specific sign reversals remain visible rather than being averaged away.
+
+\section{Experimental Schedule}
+
+\subsection{Phase 0: audit and inheritance}
+Paper~4.5 artifacts are copied with provenance and labeled preliminary.  Dataset, model, retriever, chunker, and generation revisions are verified.
+
+\subsection{Phase 1: small-model baseline}
+Qwen3-0.6B runs Full-Doc-In-Context, BM25, FAISS dense, hybrid, strong-reranker RAG, and Full Selected Context.
+Candidate and selection receipts are frozen in this phase. The first composed
+comparison runs \texttt{RAG\_ONLY\_TEXT} against
+\texttt{RAG\_PLUS\_PRA\_NATIVE\_CONTIGUOUS}, isolating representation and
+reuse before changing the selector.
+
+\subsection{Phase 2: PRA routing/materialization}
+On identical candidate receipts we run the routing families and full/partial materialization ladder.  Clearly dominated arms are pruned.
+The complete RAG+PRA profile matrix is then crossed with conventional selection,
+PRA second-stage selection, and PRA replacement selection. Realization arms
+within each selector condition share one immutable selection receipt.
+
+\subsection{Phase 3: ordering and position}
+The seven positional policies, $D_1D_2/D_2D_1$, broader permutations, source distance, and distractors are run on the small model.
+
+\subsection{Phase 4: composition fidelity}
+Fresh packed, source-native, packed-rebound, and repair conditions isolate positional and contextualization effects.
+
+\subsection{Phase 5: real retrieval services}
+Elasticsearch and at least one dedicated vector database are deployed remotely.
+Qdrant, Weaviate, Milvus, and pgvector integrations are added as budget permits.
+The requested Derby integration is added after exact backend identity is pinned.
+
+\subsection{Phase 6: powered 4B study}
+Qwen3-4B repeats only frozen best conditions on MultiHop-RAG and key inherited QA cohorts.  The preliminary Paper~4.5 rows are reproduced or explicitly marked non-reproduced.
+
+\subsection{Phase 7: 8B replication}
+Qwen3-8B runs the decisive reduced matrix.
+
+\subsection{Phase 8: larger/cross-family}
+Qwen3-14B and one non-Qwen model provide minimal scaling/family confirmation when compute permits.
+
+\subsection{Phase 9: KILT validation}
+KILT Natural Questions and KILT HotpotQA are added only after the protocol is stable.
+
+\section{Planned Results}
+
+\begin{table}[ht]
+\centering
+\caption{Primary end-to-end quality--context--latency table.}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Quality & Evidence R & Visible tok. & TTFT & KV bytes \\
+\midrule
+Full Doc & TBD & TBD & TBD & TBD & TBD\\
+RAG BM25 & TBD & TBD & TBD & TBD & TBD\\
+RAG Dense & TBD & TBD & TBD & TBD & TBD\\
+RAG Hybrid & TBD & TBD & TBD & TBD & TBD\\
+Strong RAG & TBD & TBD & TBD & TBD & TBD\\
+PRA Full Materialization & TBD & TBD & TBD & TBD & TBD\\
+PRA Partial & TBD & TBD & TBD & TBD & TBD\\
+Strong RAG + PRA Selected & TBD & TBD & TBD & TBD & TBD\\
+Strong RAG + PRA Native & TBD & TBD & TBD & TBD & TBD\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Matched realization/composition experiment.}
+\begin{tabular}{lrrrr}
+\toprule
+Realization & Task score & KL/JS vs fresh & Seq. parity & TTFT \\
+\midrule
+Fresh selected text & TBD & 0 & 1.0 & TBD\\
+Native contiguous & TBD & TBD & TBD & TBD\\
+Independent source-pos. & TBD & TBD & TBD & TBD\\
+Independent packed-rebound & TBD & TBD & TBD & TBD\\
+Rebound + repair & TBD & TBD & TBD & TBD\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Order/position robustness.}
+\begin{tabular}{lrrrr}
+\toprule
+Position policy & Quality & Pairwise JS & Flip rate & Distance slope \\
+\midrule
+SOURCE\_LOCAL & TBD & TBD & TBD & TBD\\
+GLOBAL\_PACKED & TBD & TBD & TBD & TBD\\
+RESOURCE\_ADJACENT & TBD & TBD & TBD & TBD\\
+RANK\_DISTANCE & TBD & TBD & TBD & TBD\\
+SCORE\_DISTANCE & TBD & TBD & TBD & TBD\\
+NEAR\_BANDS & TBD & TBD & TBD & TBD\\
+RANDOM\_DISTANCE & TBD & TBD & TBD & TBD\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Expected Outcomes and Falsification}
+
+Several outcomes are scientifically useful.
+
+\paragraph{A: RAG selection + PRA realization wins.}
+Strong conventional retrieval/reranking remains best for selection, while PRA preserves quality and materially reduces repeated prefill/TTFT through persistent native reuse.  This supports PRA as a memory/runtime layer beneath existing RAG.
+
+\paragraph{B: PRA routing/materialization adds value.}
+A PRA routing or partial-materialization condition improves quality at matched active-context budget, or achieves matched quality with materially less context.
+
+\paragraph{C: packed rebinding largely solves independent-chunk reuse.}
+The gap between fresh selected text and independently cached native fragments is mostly positional.  GLOBAL\_PACKED rebinding restores quality without full reprefill.
+
+\paragraph{D: contextual repair is necessary but cheap.}
+Rebinding helps but limited recomputation is needed.  A small repair fraction recovers most of the fresh-context quality while preserving a substantial reuse advantage.
+
+\paragraph{E: multi-frame geometry is semantically useful.}
+A resource-relative policy reduces arbitrary order/source-distance sensitivity without reducing quality.
+
+\paragraph{F: negative boundary.}
+Strong conventional RAG plus ordinary serving caches matches or dominates PRA, independent fragments require almost full reprefill, or pretrained models consistently prefer conventional packed global positions.  Such a result bounds where native persistent composition is useful.
+
+The paper must explicitly report if:
+\begin{itemize}[leftmargin=*]
+    \item Full Doc dominates whenever it fits;
+    \item PRA routing loses to strong conventional retrieval;
+    \item partial materialization damages answer quality;
+    \item native warm gains vanish under prefix/APC controls;
+    \item rebinding does not repair recomposition;
+    \item repair approaches full recomputation cost;
+    \item overlapping/query-adjacent frames amplify distractors;
+    \item lower permutation variance accompanies lower accuracy;
+    \item results fail to transfer across model size or family.
+\end{itemize}
+
+\section{Systems and Reproducibility}
+
+Every run persists dataset/corpus revision, query identity, candidate receipt, candidate scores, reranker scores, selected resource/chunk IDs, selected order, spans, materialization receipt, source and composition positions, position policy, model/tokenizer revision, generation settings, backend/index version, hardware, and run/commit IDs.
+
+Real retrieval services run in pinned Docker/Compose environments.  Network/service latency is separated from model inference.  FAISS in-process latency is not directly compared with remote-service end-to-end latency without decomposition.
+
+\section{Discussion}
+
+The broader representational question is whether a transformer must interpret a retrieved evidence set through a fabricated one-dimensional global sequence.  Local order inside a document is usually meaningful; structural order among sections can also be meaningful; but serialization order among independently retrieved resources may be arbitrary.  PRA makes this distinction explicit because logical identity, physical K/V residency, source coordinates, and request-specific composition coordinates can be represented separately.
+
+The immediate goal is conservative: first reproduce ordinary packed-RAG geometry using GLOBAL\_PACKED rebinding.  Only after parity is understood do we test whether resource-relative geometries can reduce arbitrary serialization effects.
+
+\section{Conclusion}
+
+Paper~3.2 evaluates PRA in the setting where RAG systems are actually deployed: mature lexical/vector retrieval, reranking, changing evidence sets, and repeated queries.  It compares full-document context, conventional RAG, and PRA under matched retrieval and materialization budgets, then isolates the harder problem of composing independently cached native resources.  The intended result is not necessarily a new retriever.  A successful outcome may instead be a reusable layer beneath existing RAG: external search finds the evidence, PRA preserves and selectively materializes it, and request-specific composition makes persistent native memory usable across changing queries.
+
+\bibliographystyle{plain}
+% \bibliography{references}
+
+\appendix
+
+\section{Required Artifact Schema}
+Planned artifact groups include full-context results, retrieval/index results, service-backed retrieval results, PRA routing and materialization, matched realization, positional policies, permutation/source-distance/distractor sweeps, repair curves, repeated-query reuse, scaling, failure summaries, and canonical evidence records.
+
+\section{Initial Service Matrix}
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+Backend & Role & Deployment & Status \\
+\midrule
+BM25 local & lexical reference & in process & planned \\
+FAISS & dense reference & in process & planned \\
+Elasticsearch & lexical/vector/hybrid & remote Docker & planned \\
+Qdrant & vector/hybrid & remote Docker & planned \\
+Weaviate or Milvus & vector/hybrid & remote Docker & planned \\
+pgvector & DB-integrated vector & remote Docker & optional/planned \\
+Derby & user-requested backend & TBD & identity to resolve \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
