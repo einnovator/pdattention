@@ -1553,6 +1553,15 @@ lowercased token-intersection score; answer availability is not generation.}
 \label{tab:powered-rag-quality}
 \end{table}
 
+\begin{table}[H]
+\centering
+\small
+\caption{Final powered-RAG qualification decisions. A passing realization or
+economic gate does not override the failed upstream selection gate.}
+\input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_gate_table.tex}
+\label{tab:powered-rag-gates}
+\end{table}
+
 Standard BM25 obtains 0.500 official score and 0.082 token F1. The generic PRA
 selector raises supporting-document coverage from 0.400 to 0.468 and gold
 chunk recall from 0.0448 to 0.0484, but generated score falls to 0.440 and F1
@@ -1561,6 +1570,13 @@ and lowers false selected-document fraction from 0.752 to 0.691, yet its
 generated score remains 0.440. Better evidence exposure therefore does not by
 itself imply better answer generation. Against both the standard and stronger
 conventional controls, the selection gate is closed.
+
+Answer-normalization diagnostics also rule out malformed output as the cause:
+all 50 primary-arm generations satisfy the predeclared format check. None is a
+normalized exact short answer; 34 standard-BM25 and 29 generic-PRA generations
+have nonzero normalized token overlap with an accepted answer. The reported
+zero EM therefore reflects verbose or partial model answers rather than an
+unrecorded scoring transformation.
 
 The realization result is different. The strong conventional control and the
 strong PRA Selected Context arm have identical receipts and outputs. Within

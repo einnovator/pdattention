@@ -61,6 +61,16 @@ The powered follow-up uses the same 50 held-out questions at `N=20` and a 2K phy
 
 The selection gate remains closed. Generic PRA exposes slightly more supporting-document evidence than BM25 but reduces generated score; the strong reranker exposes the answer more often without improving generated score. This is precisely why evidence availability and model output are reported separately.
 
+| Qualification gate | Decision |
+| --- | --- |
+| Selection | **FAIL** |
+| Native realization | **PASS** |
+| Repeated-selection economics | **PASS** |
+| Exact bundle/adaptor | `NO_QUALIFIED_ADAPTER` |
+| Public bundle-card promotion | `FAILED_OR_CANDIDATE_ONLY` |
+
+The answer diagnostics make the zero strict EM less mysterious: all 50 primary-arm outputs pass the fixed format check, but none is a normalized exact short answer. Standard BM25 has normalized token overlap on 34/50 outputs and generic PRA on 29/50. The analysis persists normalized text, match class, token count, and format status for every measured condition rather than silently changing generation style.
+
 ![Powered Qwen3-4B generated quality](../../assets/results/rag/powered_qwen3_4b_generated_quality.png)
 
 The native realization gate passes. Selected Context and Native Memory produce identical outputs for every frozen generic and strong-reranker selection. The strong conventional arm and strong PRA Selected Context arm are also exact receipt/output controls, ruling out a label-specific execution advantage.

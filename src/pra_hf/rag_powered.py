@@ -13,7 +13,9 @@ import io
 import json
 import math
 import random
+import re
 import statistics
+import string
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -28,6 +30,72 @@ POWERED_CONDITIONS = (
     ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE.value,
     ContextCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
 )
+
+
+def normalize_answer(text: str) -> str:
+    """Apply the benchmark's explicit EM/F1 normalization contract."""
+
+    value = text.casefold()
+    value = "".join(char for char in value if char not in string.punctuation)
+    value = re.sub(r"\b(a|an|the)\b", " ", value)
+    return " ".join(value.split())
+
+
+def answer_metrics(prediction: str, answers: Sequence[str]) -> tuple[float, float]:
+    """Return normalized exact match and best token F1 over accepted answers."""
+
+    predicted = normalize_answer(prediction).split()
+    exact = 0.0
+    best_f1 = 0.0
+    for answer in answers:
+        gold = normalize_answer(answer).split()
+        exact = max(exact, float(predicted == gold))
+        common = sum(
+            min(predicted.count(token), gold.count(token)) for token in set(predicted)
+        )
+        if not predicted or not gold:
+            score = float(predicted == gold)
+        else:
+            precision = common / len(predicted)
+            recall = common / len(gold)
+            score = (
+                0.0
+                if not precision + recall
+                else 2 * precision * recall / (precision + recall)
+            )
+        best_f1 = max(best_f1, score)
+    return exact, best_f1
+
+
+def answer_normalization_diagnostics(
+    prediction: str, answers: Sequence[str]
+) -> dict[str, object]:
+    """Expose normalization and format effects instead of hiding them in EM."""
+
+    normalized_prediction = normalize_answer(prediction)
+    normalized_answers = tuple(normalize_answer(answer) for answer in answers)
+    exact, token_f1 = answer_metrics(prediction, answers)
+    answer_format_ok = bool(prediction.strip()) and len(prediction.split()) <= 64
+    if not normalized_prediction:
+        match_kind = "EMPTY"
+    elif exact:
+        match_kind = "NORMALIZED_EXACT"
+    elif token_f1 > 0.0:
+        match_kind = "TOKEN_OVERLAP"
+    else:
+        match_kind = "NO_OVERLAP"
+    return {
+        "normalized_prediction": normalized_prediction,
+        "normalized_gold_answers": list(normalized_answers),
+        "prediction_token_count": len(normalized_prediction.split()),
+        "normalization_changed_prediction": (
+            normalized_prediction != prediction.casefold().strip()
+        ),
+        "answer_format_ok": answer_format_ok,
+        "match_kind": match_kind,
+        "normalized_exact_match": exact,
+        "normalized_token_f1": token_f1,
+    }
 
 
 def official_multihop_rag_score(prediction: str, answers: Sequence[str]) -> float:
@@ -248,31 +316,41 @@ def paired_delta(
     right_condition: str,
     metric: str,
     selector_profile: str,
+    right_selector_profile: str | None = None,
     regime: str,
 ) -> dict[str, object]:
-    """Compute a matched right-minus-left delta without mixing selectors."""
+    """Compute a matched right-minus-left delta with explicit selector arms."""
 
+    left_selector_profile = selector_profile
+    right_selector_profile = right_selector_profile or selector_profile
     index: dict[tuple[object, ...], dict[str, Mapping[str, object]]] = {}
     for row in rows:
-        if row.get("selector_profile") != selector_profile or row.get("regime") != regime:
+        if row.get("regime") != regime or row.get("status") != "MEASURED":
             continue
         condition = str(row["condition"])
-        if condition not in {left_condition, right_condition}:
+        profile = str(row.get("selector_profile"))
+        if condition == left_condition and profile == left_selector_profile:
+            side = "left"
+        elif condition == right_condition and profile == right_selector_profile:
+            side = "right"
+        else:
             continue
         key = (row["example_id"], row["candidate_count"], row["token_budget"])
-        index.setdefault(key, {})[condition] = row
+        index.setdefault(key, {})[side] = row
     deltas = []
     for pair in index.values():
-        if left_condition not in pair or right_condition not in pair:
+        if set(pair) != {"left", "right"}:
             continue
-        left = _metric(pair[left_condition], metric)
-        right = _metric(pair[right_condition], metric)
+        left = _metric(pair["left"], metric)
+        right = _metric(pair["right"], metric)
         if left is not None and right is not None:
             deltas.append(right - left)
     return {
         "left_condition": left_condition,
         "right_condition": right_condition,
-        "selector_profile": selector_profile,
+        "selector_profile": left_selector_profile,
+        "left_selector_profile": left_selector_profile,
+        "right_selector_profile": right_selector_profile,
         "regime": regime,
         "metric": metric,
         "paired_examples": len(deltas),

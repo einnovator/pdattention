@@ -7,13 +7,18 @@ from pathlib import Path
 import pytest
 
 from experiments.rag_vs_pra.analyze_powered_decomposition import (
+    _deltas,
+    _enrich_answer_and_resource_diagnostics,
     _normalize_failure_classes,
+    _paper_gate_table,
     _paper_quality_table,
     _paper_runtime_table,
     _paper_table,
 )
 from pra_hf.rag_evaluation import ContextCondition
 from pra_hf.rag_powered import (
+    answer_metrics,
+    answer_normalization_diagnostics,
     bootstrap_mean_ci,
     official_multihop_rag_score,
     paired_delta,
@@ -62,6 +67,16 @@ def test_official_score_matches_upstream_token_intersection() -> None:
     assert high == 1.0
 
 
+def test_answer_normalization_diagnostics_are_explicit() -> None:
+    exact, f1 = answer_metrics("The Lisbon!", ("Lisbon",))
+    diagnostics = answer_normalization_diagnostics("The Lisbon!", ("Lisbon",))
+    assert (exact, f1) == (1.0, 1.0)
+    assert diagnostics["normalized_prediction"] == "lisbon"
+    assert diagnostics["normalization_changed_prediction"] is True
+    assert diagnostics["match_kind"] == "NORMALIZED_EXACT"
+    assert diagnostics["answer_format_ok"] is True
+
+
 def test_selector_freeze_validation_and_paired_delta() -> None:
     rows = [
         _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "same"),
@@ -84,6 +99,58 @@ def test_selector_freeze_validation_and_paired_delta() -> None:
     rows[1]["selection_receipt_id"] = "different"
     with pytest.raises(ValueError, match="mismatch"):
         validate_selector_frozen_rows(rows)
+
+
+def test_cross_selector_deltas_and_unavailable_bundle_are_attributed() -> None:
+    standard = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    standard["selector_profile"] = "standard_bm25"
+    standard["token_f1"] = 0.6
+    selected = _row(ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR, "selected")
+    selected["token_f1"] = 0.8
+    bundle = _row(ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE, "bundle")
+    bundle.update(
+        {
+            "selector_profile": "bundle_exact_qualified",
+            "status": "NO_QUALIFIED_ADAPTER",
+            "token_f1": None,
+        }
+    )
+    delta = paired_delta(
+        [standard, selected],
+        left_condition=ContextCondition.NO_PRA_STANDARD_RAG.value,
+        right_condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+        metric="token_f1",
+        selector_profile="standard_bm25",
+        right_selector_profile="pra_generic",
+        regime="COLD",
+    )
+    assert delta["mean_delta"] == pytest.approx(0.2)
+    assert delta["right_selector_profile"] == "pra_generic"
+    deltas = _deltas([standard, selected, bundle])
+    assert any(
+        row["comparison"] == "selected_generic_vs_standard"
+        and row["metric"] == "token_f1"
+        and row["status"] == "MEASURED"
+        for row in deltas
+    )
+    assert any(
+        row["comparison"] == "selected_bundle_vs_selected_generic"
+        and row["status"] == "NO_QUALIFIED_ADAPTER"
+        for row in deltas
+    )
+
+
+def test_analysis_backfills_answer_and_temporary_allocation_diagnostics() -> None:
+    row = _row(ContextCondition.NO_PRA_STANDARD_RAG, "baseline")
+    row.update({"prediction": "The Lisbon!", "gold_answers": ["Lisbon"]})
+    row["serving_metrics"].update(
+        {"peak_memory_bytes": 150, "active_memory_bytes": 100}
+    )
+    row["resource_metrics"] = {"temporary_allocation_bytes": None}
+    _enrich_answer_and_resource_diagnostics([row])
+    assert row["answer_normalization"]["match_kind"] == "NORMALIZED_EXACT"
+    assert row["serving_metrics"]["temporary_allocation_bytes"] == 50
+    assert row["resource_metrics"]["temporary_allocation_bytes"] == 50
 
 
 def test_cold_and_warm_are_never_aggregated_together() -> None:
@@ -173,6 +240,17 @@ def test_failure_normalization_and_paper_table_generation() -> None:
     assert "Token F1" not in table
     assert "Answer avail." in _paper_quality_table(summarize_rows([selected]))
     assert "TTFT p95" in _paper_runtime_table([])
+    gate_table = _paper_gate_table(
+        {
+            "selection_gate": "FAIL",
+            "native_memory_gate": "PASS",
+            "economic_gate": "PASS",
+            "bundle_gate": "NO_QUALIFIED_ADAPTER",
+            "card_gate": "FAILED_OR_CANDIDATE_ONLY",
+        }
+    )
+    assert "Native realization & \\texttt{PASS}" in gate_table
+    assert "NO\\_QUALIFIED\\_ADAPTER" in gate_table
 
 
 def test_strong_reranker_visible_path_requires_exact_output_parity() -> None:

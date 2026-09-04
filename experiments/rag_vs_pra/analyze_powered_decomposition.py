@@ -18,6 +18,7 @@ from pra_hf.rag_evaluation import (
     prepare_candidate_context,
 )
 from pra_hf.rag_powered import (
+    answer_normalization_diagnostics,
     paired_delta,
     qualification_gates,
     summarize_rows,
@@ -49,6 +50,30 @@ def _normalize_failure_classes(rows: Sequence[dict[str, object]]) -> None:
             row["failure_class"] = "PRA_SELECTOR_MISS"
         elif condition != ContextCondition.NO_PRA_STANDARD_RAG.value and not gold.issubset(selected):
             row["failure_class"] = "PRA_DISTRACTOR_SELECTION"
+
+
+def _enrich_answer_and_resource_diagnostics(
+    rows: Sequence[dict[str, object]],
+) -> None:
+    """Backfill diagnostics derivable from immutable model outputs and counters."""
+
+    for row in rows:
+        if row.get("status") != "MEASURED":
+            continue
+        row["answer_normalization"] = answer_normalization_diagnostics(
+            str(row.get("prediction", "")),
+            tuple(map(str, row.get("gold_answers", ()))),
+        )
+        serving = row.get("serving_metrics")
+        resource = row.get("resource_metrics")
+        if not isinstance(serving, dict) or not isinstance(resource, dict):
+            continue
+        peak = serving.get("peak_memory_bytes")
+        active = serving.get("active_memory_bytes")
+        if peak is not None and active is not None:
+            temporary = max(int(peak) - int(active), 0)
+            serving["temporary_allocation_bytes"] = temporary
+            resource["temporary_allocation_bytes"] = temporary
 
 
 def _enrich_gold_chunk_recall(
@@ -152,9 +177,24 @@ def _failure_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object
 def _deltas(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
     comparisons = (
         (
+            "selected_generic_vs_standard",
+            ContextCondition.NO_PRA_STANDARD_RAG.value,
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            "standard_bm25",
+            "pra_generic",
+        ),
+        (
+            "selected_strong_vs_strong_conventional",
+            ContextCondition.NO_PRA_STANDARD_RAG.value,
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            "strong_conventional_reranker",
+            "pra_strong_reranker",
+        ),
+        (
             "native_vs_selected_generic",
             ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
             ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            "pra_generic",
             "pra_generic",
         ),
         (
@@ -162,30 +202,71 @@ def _deltas(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
             ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
             ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
             "pra_strong_reranker",
+            "pra_strong_reranker",
+        ),
+        (
+            "selected_bundle_vs_selected_generic",
+            ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR.value,
+            ContextCondition.PRA_SELECTED_CONTEXT_BUNDLE.value,
+            "pra_generic",
+            "bundle_exact_qualified",
+        ),
+        (
+            "native_bundle_vs_native_generic",
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            ContextCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
+            "pra_generic",
+            "bundle_exact_qualified",
+        ),
+        (
+            "native_generic_vs_standard",
+            ContextCondition.NO_PRA_STANDARD_RAG.value,
+            ContextCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR.value,
+            "standard_bm25",
+            "pra_generic",
+        ),
+        (
+            "native_bundle_vs_standard",
+            ContextCondition.NO_PRA_STANDARD_RAG.value,
+            ContextCondition.PRA_NATIVE_MEMORY_BUNDLE.value,
+            "standard_bm25",
+            "bundle_exact_qualified",
         ),
     )
     result = []
-    for name, left, right, selector in comparisons:
-        for regime in ("COLD", "WARM"):
+    regimes = sorted({str(row.get("regime")) for row in rows if row.get("regime")})
+    for name, left, right, left_selector, right_selector in comparisons:
+        for regime in regimes:
             for metric in (
                 "exact_match",
                 "token_f1",
                 "official_multihop_rag_score",
+                "physical_context_tokens",
                 "visible_prompt_tokens",
+                "selected_native_kv_tokens",
                 "ttft_ms",
                 "total_latency_ms",
                 "tokens_per_second",
+                "active_detail_bytes",
                 "peak_memory_bytes",
+                "temporary_allocation_bytes",
             ):
                 value = paired_delta(
                     rows,
                     left_condition=left,
                     right_condition=right,
                     metric=metric,
-                    selector_profile=selector,
+                    selector_profile=left_selector,
+                    right_selector_profile=right_selector,
                     regime=regime,
                 )
                 value["comparison"] = name
+                if int(value["paired_examples"]) > 0:
+                    value["status"] = "MEASURED"
+                elif "bundle" in name:
+                    value["status"] = "NO_QUALIFIED_ADAPTER"
+                else:
+                    value["status"] = "NOT_MEASURED"
                 result.append(value)
     return result
 
@@ -433,6 +514,29 @@ def _paper_runtime_table(rows: Sequence[Mapping[str, object]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _paper_gate_table(gates: Mapping[str, object]) -> str:
+    """Render the final decomposition decisions from canonical gate output."""
+
+    rows = (
+        ("Selection", "selection_gate"),
+        ("Native realization", "native_memory_gate"),
+        ("Repeated-selection economics", "economic_gate"),
+        ("Exact bundle/adaptor", "bundle_gate"),
+        ("Public card", "card_gate"),
+    )
+    lines = [
+        r"\begin{tabular}{ll}",
+        r"\toprule",
+        "Gate & Decision " + r"\\",
+        r"\midrule",
+    ]
+    for label, key in rows:
+        decision = str(gates.get(key, "NOT_MEASURED")).replace("_", r"\_")
+        lines.append(f"{label} & \\texttt{{{decision}}} " + r"\\")
+    lines.extend((r"\bottomrule", r"\end{tabular}"))
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", type=Path, required=True)
@@ -452,6 +556,7 @@ def main() -> None:
         cache_dir=args.cache_dir,
     )
     _normalize_failure_classes(rows)
+    _enrich_answer_and_resource_diagnostics(rows)
     write_results(root / "condition_results.jsonl.gz", rows)
     summaries = summarize_rows(rows)
     failures = _failure_rows(rows)
@@ -470,6 +575,9 @@ def main() -> None:
     )
     (root / "paper_runtime_table.tex").write_text(
         _paper_runtime_table(primary), encoding="utf-8"
+    )
+    (root / "paper_gate_table.tex").write_text(
+        _paper_gate_table(gates), encoding="utf-8"
     )
     canonical = {
         "schema_version": "pra-rag-powered-evidence-v1",
@@ -498,6 +606,10 @@ def main() -> None:
     (root / "hf_card_fragment.md").write_text(
         "## MultiHop-RAG powered qualification\n\n"
         f"**RAG QUALIFICATION: {card_status}**\n\n"
+        f"- Selection: `{gates['selection_gate']}`\n"
+        f"- Native realization: `{gates['native_memory_gate']}`\n"
+        f"- Repeated-selection economics: `{gates['economic_gate']}`\n"
+        f"- Exact bundle/adaptor: `{gates['bundle_gate']}`\n\n"
         "This row decomposes Standard RAG, PRA Selected Context, and selector-frozen "
         "PRA Native Memory. Bundle arms remain `NO_QUALIFIED_ADAPTER` unless an exact "
         "model/precision adapter passes the held-out gate.\n",

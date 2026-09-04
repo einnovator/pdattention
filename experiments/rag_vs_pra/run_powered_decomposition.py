@@ -15,7 +15,6 @@ import json
 import platform
 import re
 import statistics
-import string
 import subprocess
 import time
 from dataclasses import asdict, replace
@@ -44,7 +43,12 @@ from pra_hf.rag_evaluation import (
     packed_context_from_ranking,
     prepare_candidate_context,
 )
-from pra_hf.rag_powered import official_multihop_rag_score, write_results
+from pra_hf.rag_powered import (
+    answer_metrics,
+    answer_normalization_diagnostics,
+    official_multihop_rag_score,
+    write_results,
+)
 
 
 SCHEMA_VERSION = "pra-rag-powered-v1"
@@ -111,31 +115,6 @@ def _resolve_hf_revision(model_id: str, revision: str) -> str:
         raise RuntimeError(
             f"cannot resolve immutable Hugging Face revision for {model_id}@{revision}"
         ) from exc
-
-
-def _normalize(text: str) -> str:
-    value = text.casefold()
-    value = "".join(char for char in value if char not in string.punctuation)
-    value = re.sub(r"\b(a|an|the)\b", " ", value)
-    return " ".join(value.split())
-
-
-def _answer_metrics(prediction: str, answers: Sequence[str]) -> tuple[float, float]:
-    predicted = _normalize(prediction).split()
-    exact = 0.0
-    f1 = 0.0
-    for answer in answers:
-        gold = _normalize(answer).split()
-        exact = max(exact, float(predicted == gold))
-        common = sum(min(predicted.count(token), gold.count(token)) for token in set(predicted))
-        if not predicted or not gold:
-            score = float(predicted == gold)
-        else:
-            precision = common / len(predicted)
-            recall = common / len(gold)
-            score = 0.0 if not precision + recall else 2 * precision * recall / (precision + recall)
-        f1 = max(f1, score)
-    return exact, f1
 
 
 class ProbeBackend:
@@ -409,7 +388,11 @@ class PersistentMLXBackend:
             "native_cache_unit": self.native_cache_unit,
             "peak_memory_bytes": peak,
             "active_memory_bytes": active,
-            "temporary_allocation_bytes": None,
+            "temporary_allocation_bytes": (
+                max(peak - active, 0)
+                if peak is not None and active is not None
+                else None
+            ),
             "cache_key": selection_receipt_id,
             "native_state_fingerprint": (
                 _digest(
@@ -454,9 +437,10 @@ def _row(
         regime=regime,
         selected_texts=tuple(row.chunk.text for row in context.chunks),
     )
-    exact, token_f1 = _answer_metrics(prediction, question.answers)
+    exact, token_f1 = answer_metrics(prediction, question.answers)
+    normalization = answer_normalization_diagnostics(prediction, question.answers)
     metrics = context_metrics(question, receipt, context)
-    answer_format_ok = bool(prediction.strip()) and len(prediction.split()) <= 64
+    answer_format_ok = bool(normalization["answer_format_ok"])
     return {
         "example_id": question.example_id,
         "question_type": question.question_type,
@@ -480,6 +464,7 @@ def _row(
         "official_multihop_rag_score": official_multihop_rag_score(
             prediction, question.answers
         ),
+        "answer_normalization": normalization,
         "answer_quality_publishable": backend.publishable_answer_quality,
         "failure_class": failure_classification(
             question=question,
