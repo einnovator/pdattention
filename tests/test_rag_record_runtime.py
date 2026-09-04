@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from experiments.paper3_2_rag.run_native_record_reranker import _mean_present
 from pra_hf.rag_evaluation import (
     ChunkerConfig,
     ContextCondition,
@@ -197,3 +198,7 @@ def test_bm25_then_generic_reranker_narrows_and_persists_scores() -> None:
     assert result.receipt.candidates[0].first_stage_rank >= 1
     assert result.receipt.receipt_id
 
+
+def test_nullable_aggregate_metric_does_not_invent_a_baseline_value() -> None:
+    assert _mean_present(({"metric": None},), "metric") is None
+    assert _mean_present(({"metric": 1.0}, {"metric": None}, {"metric": 3.0}), "metric") == 2.0

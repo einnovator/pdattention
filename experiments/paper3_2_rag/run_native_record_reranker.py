@@ -266,6 +266,15 @@ def _pairwise_js(logits: Sequence[object]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _mean_present(
+    rows: Sequence[Mapping[str, object]], name: str
+) -> float | None:
+    """Average a nullable metric without inventing a baseline value."""
+
+    values = [float(row[name]) for row in rows if row.get(name) is not None]
+    return statistics.fmean(values) if values else None
+
+
 def _aggregate(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
     grouped: dict[tuple[str, str, str], list[Mapping[str, object]]] = {}
     for row in rows:
@@ -286,11 +295,7 @@ def _aggregate(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
                 "official_score": statistics.fmean(
                     float(row["official_multihop_rag_score"]) for row in values
                 ),
-                "gold_answer_mean_nll": statistics.fmean(
-                    float(row["gold_answer_mean_nll"])
-                    for row in values
-                    if row.get("gold_answer_mean_nll") is not None
-                ),
+                "gold_answer_mean_nll": _mean_present(values, "gold_answer_mean_nll"),
                 "supporting_document_coverage": statistics.fmean(
                     float(row["retrieval_context_metrics"]["supporting_document_coverage"])
                     for row in values
@@ -319,10 +324,8 @@ def _aggregate(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
                 "total_latency_ms": statistics.fmean(
                     float(row["total_latency_ms"]) for row in values
                 ),
-                "first_step_js_vs_packed": statistics.fmean(
-                    float(row["first_step_js_divergence"])
-                    for row in values
-                    if row.get("first_step_js_divergence") is not None
+                "first_step_js_vs_packed": _mean_present(
+                    values, "first_step_js_divergence"
                 ),
             }
         )
@@ -821,4 +824,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
