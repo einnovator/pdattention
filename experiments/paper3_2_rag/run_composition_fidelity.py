@@ -56,6 +56,7 @@ from pra_hf.rag_mlx_native import (
     encode_native_memory,
     make_native_prompt_cache,
     rebind_native_memories_global_packed,
+    rebind_native_memories_to_receipt,
 )
 from pra_hf.rag_materialization import (
     TokenMaterializationPlan,
@@ -98,6 +99,17 @@ def _repair_modes(value: str) -> tuple[str, ...]:
             f"repair modes must be selected from {sorted(supported)}; got {sorted(unknown)}"
         )
     return modes
+
+
+def _position_policies(value: str) -> tuple[PositionPolicy, ...]:
+    try:
+        return tuple(
+            PositionPolicy(item.strip())
+            for item in value.split(",")
+            if item.strip()
+        )
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def _token_segments(tokenizer: object, texts: Sequence[str]) -> tuple[tuple[int, ...], ...]:
@@ -448,6 +460,13 @@ def main() -> None:
     parser.add_argument(
         "--materialization-fractions", type=_floats, default=(0.125, 0.25, 0.5, 0.75)
     )
+    parser.add_argument(
+        "--position-policies",
+        type=_position_policies,
+        default=(),
+        help="Optional comma-separated additional position policies",
+    )
+    parser.add_argument("--position-near-gap", type=int, default=4)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -598,6 +617,34 @@ def main() -> None:
                     ("NATIVE_GLOBAL_REBOUND", rebound, independent_ms + rebind_ms, len(packed_tokens), 0, global_receipt),
                 )
             )
+            for policy in args.position_policies:
+                if policy in {PositionPolicy.SOURCE_LOCAL, PositionPolicy.GLOBAL_PACKED}:
+                    continue
+                policy_receipt = compose_resources(
+                    resources,
+                    selection_receipt_id=selection.receipt_id,
+                    profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_REBOUND,
+                    position_policy=policy,
+                    near_gap=args.position_near_gap,
+                    random_seed=args.seed + order_index,
+                )
+                policy_memory = rebind_native_memories_to_receipt(
+                    backend.model, independent, policy_receipt
+                )
+                rows.append(
+                    _row(
+                        question=question, receipt=receipt, selection=selection,
+                        order_name=order_name, order=order,
+                        condition=f"POSITION_{policy.value}",
+                        memory=policy_memory, backend=backend,
+                        encode_ms=independent_ms,
+                        materialization_token_counts=resource_token_counts,
+                        requested_materialization_tokens=len(packed_tokens),
+                        selected_document_ids=document_ids,
+                        composition_receipt=policy_receipt,
+                        reference_first_step_logits=fresh_logits,
+                    )
+                )
             for fraction in args.repair_fractions:
                 modes = ("even",) if fraction == 1.0 else args.repair_modes
                 for mode in modes:
@@ -718,6 +765,8 @@ def main() -> None:
         "repair_fractions": list(args.repair_fractions),
         "repair_modes": list(args.repair_modes),
         "materialization_fractions": list(args.materialization_fractions),
+        "position_policies": [policy.value for policy in args.position_policies],
+        "position_near_gap": args.position_near_gap,
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),

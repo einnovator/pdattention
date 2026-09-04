@@ -7,6 +7,9 @@ This directory contains the committed evidence used by Paper 3.2.
 - `service_retrieval/` contains the 50-question Elasticsearch and Qdrant
   retrieval run with query embedding, service search, and client overhead
   reported separately.
+- `local_retrieval/` contains the matched 50-question CUDA retrieval ladder:
+  BM25, FAISS/BGE dense, hybrid RRF, the historical MiniLM reranker, and the
+  stronger BGE-v2-M3 reranker.
 - `mechanism_smoke/` and `model_smoke/` contain earlier implementation gates.
 
 Regenerate the five-seed aggregate from the repository root with:

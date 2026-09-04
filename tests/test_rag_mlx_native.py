@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
 from pra_hf.rag_mlx_native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
+    rebind_native_memories_to_receipt,
     repair_token_indices,
 )
 
@@ -67,3 +69,15 @@ def test_repair_token_indices_supports_mechanistic_policies() -> None:
 def test_repair_token_indices_validates_resource_geometry() -> None:
     with pytest.raises(ValueError, match="do not match"):
         repair_token_indices(20, 0.5, mode="boundary", resource_lengths=(5, 5))
+
+
+def test_receipt_rebinding_validates_source_token_geometry_before_mlx() -> None:
+    memory = MLXNativeMemory((MLXNativeLayerKV(_Array(1), _Array(1)),), 2)
+    receipt = SimpleNamespace(
+        placements=(
+            SimpleNamespace(source_positions=(0,), effective_positions=(4,)),
+        ),
+        query_position=8,
+    )
+    with pytest.raises(ValueError, match="source positions"):
+        rebind_native_memories_to_receipt(object(), (memory,), receipt)

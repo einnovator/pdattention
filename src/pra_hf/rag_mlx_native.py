@@ -233,6 +233,47 @@ def _rotate_keys_by_delta(keys, rope: object, delta: int):
     return mx.concatenate((rebound, tail), axis=-1) if tail.shape[-1] else rebound
 
 
+def _rotate_keys_by_position_deltas(keys, rope: object, deltas: Sequence[int]):
+    """Apply a potentially different RoPE phase translation to every key."""
+
+    if len(deltas) != int(keys.shape[2]):
+        raise ValueError("RoPE delta count must match the key token dimension")
+    if not any(deltas):
+        return keys
+    import mlx.core as mx
+
+    dimensions = int(getattr(rope, "dims"))
+    if dimensions <= 0 or dimensions > int(keys.shape[-1]) or dimensions % 2:
+        raise ValueError("unsupported RoPE dimensions for native key rebinding")
+    base = float(getattr(rope, "base", 10_000.0))
+    scale = float(getattr(rope, "scale", 1.0))
+    frequencies = mx.exp(
+        -mx.arange(0, dimensions, 2, dtype=mx.float32)
+        * (mx.log(mx.array(base, dtype=mx.float32)) / dimensions)
+    )
+    offsets = mx.array(deltas, dtype=mx.float32)[:, None]
+    angles = offsets * frequencies[None, :] * scale
+    cosine = mx.cos(angles)[None, None, :, :].astype(keys.dtype)
+    sine = mx.sin(angles)[None, None, :, :].astype(keys.dtype)
+    rotated = keys[..., :dimensions]
+    tail = keys[..., dimensions:]
+    if bool(getattr(rope, "traditional", False)):
+        even = rotated[..., 0::2]
+        odd = rotated[..., 1::2]
+        rebound = mx.stack(
+            (even * cosine - odd * sine, even * sine + odd * cosine), axis=-1
+        ).reshape(rotated.shape)
+    else:
+        half = dimensions // 2
+        first = rotated[..., :half]
+        second = rotated[..., half:]
+        rebound = mx.concatenate(
+            (first * cosine - second * sine, first * sine + second * cosine),
+            axis=-1,
+        )
+    return mx.concatenate((rebound, tail), axis=-1) if tail.shape[-1] else rebound
+
+
 def rebind_native_memories_global_packed(
     model: object,
     memories: Sequence[MLXNativeMemory],
@@ -282,6 +323,68 @@ def rebind_native_memories_global_packed(
         )
     return MLXNativeMemory(
         tuple(layers), source_tokens=cursor, query_position_base=cursor
+    )
+
+
+def rebind_native_memories_to_receipt(
+    model: object,
+    memories: Sequence[MLXNativeMemory],
+    composition_receipt: object,
+) -> MLXNativeMemory:
+    """Rebind independent native memories to an auditable position receipt.
+
+    The receipt is duck-typed to keep this low-level MLX module independent of
+    the RAG policy module. Resource order, source coordinates, target
+    coordinates, and query position must align exactly with ``memories``.
+    """
+
+    placements = tuple(getattr(composition_receipt, "placements"))
+    if not memories or len(memories) != len(placements):
+        raise ValueError("composition receipt must align with native memories")
+    if len({len(memory.layers) for memory in memories}) != 1:
+        raise ValueError("native memories have incompatible layer counts")
+    for memory, placement in zip(memories, placements):
+        if memory.source_tokens != len(placement.source_positions):
+            raise ValueError("receipt source positions do not match native memory")
+        if len(placement.source_positions) != len(placement.effective_positions):
+            raise ValueError("receipt source/effective positions are incompatible")
+
+    import mlx.core as mx
+
+    model_layers = tuple(getattr(getattr(model, "model", model), "layers"))
+    if len(model_layers) != len(memories[0].layers):
+        raise ValueError("native memories do not match the model layer count")
+    layers = []
+    for layer_index, model_layer in enumerate(model_layers):
+        attention = getattr(model_layer, "self_attn", None)
+        rope = getattr(attention, "rope", None)
+        if rope is None:
+            raise ValueError(f"model layer {layer_index} exposes no RoPE module")
+        keys = []
+        values = []
+        for memory, placement in zip(memories, placements):
+            deltas = tuple(
+                target - source
+                for source, target in zip(
+                    placement.source_positions, placement.effective_positions
+                )
+            )
+            keys.append(
+                _rotate_keys_by_position_deltas(
+                    memory.layers[layer_index].keys, rope, deltas
+                )
+            )
+            values.append(memory.layers[layer_index].values)
+        layers.append(
+            MLXNativeLayerKV(
+                mx.concatenate(tuple(keys), axis=2),
+                mx.concatenate(tuple(values), axis=2),
+            )
+        )
+    return MLXNativeMemory(
+        tuple(layers),
+        source_tokens=sum(memory.source_tokens for memory in memories),
+        query_position_base=int(getattr(composition_receipt, "query_position")),
     )
 
 
