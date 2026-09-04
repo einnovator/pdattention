@@ -8,6 +8,7 @@ import pytest
 from pra_hf.rag_mlx_native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
+    _rope_inverse_frequencies,
     rebind_native_memories_to_receipt,
     repair_token_indices,
 )
@@ -81,3 +82,10 @@ def test_receipt_rebinding_validates_source_token_geometry_before_mlx() -> None:
     )
     with pytest.raises(ValueError, match="source positions"):
         rebind_native_memories_to_receipt(object(), (memory,), receipt)
+
+
+def test_rope_inverse_frequencies_honor_host_scaled_geometry() -> None:
+    mx = pytest.importorskip("mlx.core")
+    rope = SimpleNamespace(_freqs=mx.array([2.0, 4.0], dtype=mx.float32))
+    result = _rope_inverse_frequencies(rope, dimensions=4)
+    assert pytest.approx(result.tolist()) == [0.5, 0.25]

@@ -43,7 +43,9 @@ recovered 55\% at best on a ten-question diagnostic. Partial materialization
 reduced active K/V by 25\% without lowering mean token F1 on that small cohort,
 although output parity fell to 50\%. These results establish contiguous native
 transport and non-prefix reuse while locating the remaining bottleneck in
-cross-resource contextualization, not positional transport alone.
+cross-resource contextualization, not positional transport alone. Reduced 4B
+and 8B Qwen and Llama replications preserve contiguous transport exactly;
+50\% repair recovers 50--80\% of outputs, but does not establish parity.
 \end{abstract}
 
 \section{Introduction}
@@ -1040,6 +1042,29 @@ Llama-3.1-8B & .365 & 1.188 & 40/40 & 4573 / 274 / 261 \\
 \caption{Warm native TTFT relative to text re-prefill and exact-prefix reuse.
 The horizontal line marks equal cost; lower is better.}
 \label{fig:scale-transport}
+\end{figure}
+
+The reduced composition matrix is less uniform. On the same five questions in
+canonical and reverse order, 50\% later-resource prefix repair recovers 8/10
+Qwen3-4B outputs, 5/10 Qwen3-8B outputs, and 7/10 Llama-3.1-8B outputs. Packed
+rebinding alone recovers 2/10, 0/10, and 3/10, respectively; full repair is
+10/10 for every model. Mean JS after 50\% repair is .00039, .00200, and .00143.
+This suggests useful bounded repair at larger scale, but neither a monotonic
+model-size law nor parity.
+
+The Llama experiment also exposed an implementation-sensitive requirement.
+Llama-3.1 uses piecewise long-context RoPE frequencies rather than a single
+base. An initial single-base transform worsened JS to .526. The corrected
+rebinder reads the host layer's exact frequency tensor; only corrected values
+are reported above. This is why cross-family validation is necessary even when
+contiguous native transport already passes.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.86\linewidth]{../shared/results/paper3_2_rag/publication/scale_composition_parity.pdf}
+\caption{Independent-composition output parity on the reduced scale cohort.
+Full repair, omitted for scale, is 1.0 for all three models.}
+\label{fig:scale-composition}
 \end{figure}
 
 \section{Interpretation and Falsification}

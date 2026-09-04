@@ -29,6 +29,10 @@ This directory contains the committed evidence used by Paper 3.2.
   candidate and selection receipts, compressed per-condition rows, and a
   cohort manifest; `publication/publication_summary.json` regenerates their
   parity and timing summaries.
+- `scale_composition/` applies the reduced source-local, packed-rebound,
+  50%-repair, full-repair, and 75%-materialization matrix to Qwen3-4B,
+  Qwen3-8B, and Llama-3.1-8B. The Llama artifact uses the corrected host-native
+  Llama-3 frequency tensor for RoPE rebinding.
 - `mechanism_smoke/` and `model_smoke/` contain earlier implementation gates.
 
 Regenerate the five-seed aggregate from the repository root with:
