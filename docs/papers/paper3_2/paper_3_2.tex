@@ -26,7 +26,7 @@
 \maketitle
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) reduces the amount of external information presented to a language model, while Progressive Retrieval Attention (PRA) additionally allows selected evidence to be represented, stored, and reused as model-native memory.  Earlier PRA work separated retrieval from native K/V materialization, and preliminary Paper~4.5 experiments suggest a practically important regime: a strong conventional RAG retriever or reranker can choose the evidence while PRA reuses the resulting selected context as persistent native memory.  When exactly the same selected block is reused, preliminary Qwen3-4B and Qwen3-8B measurements show exact generated-output preservation together with large reductions in warm time-to-first-token.  However, recomposing independently cached chunks across changing selections produced a quality regression, exposing a second problem: separately stored resources have source-local positional and contextual histories that need not match the positions and causal context induced when ordinary RAG serializes them into a new prompt.
+Retrieval-augmented generation (RAG) reduces the amount of external information presented to a language model, while Progressive Retrieval Attention (PRA) additionally allows selected evidence to be represented, stored, and reused as model-native memory.  Earlier PRA work separated retrieval from native K/V materialization, suggesting a practically important regime: a strong conventional RAG retriever or reranker can choose the evidence while PRA reuses the resulting selected context as persistent native memory.  When exactly the same selected block is reused, Qwen3 and Llama measurements at 1.7B--8B scale show exact generated-output preservation together with large reductions in warm time-to-first-token.  However, recomposing independently cached chunks across changing selections produces a quality regression, exposing a second problem: separately stored resources have source-local positional and contextual histories that need not match the positions and causal context induced when ordinary RAG serializes them into a new prompt.
 
 This paper studies these issues jointly across multiple RAG and long-context QA datasets.  We compare full documents in context, conventional RAG with lexical, dense, hybrid, reranked, and real vector-database indices, and PRA variants that use full or partial materialization and multiple routing modes.  We then freeze selected evidence and isolate realization and composition: fresh selected-text encoding, contiguous native reuse, independently cached native fragments, RoPE composition-coordinate rebinding, and limited contextual repair.  Finally, we test whether arbitrary document serialization matters by comparing $D_1D_2Q$ with $D_2D_1Q$ and broader resource permutations under multiple positional policies, including source-local, globally packed, resource-adjacent, rank-derived, score-derived, near-band, and randomized geometries.
 
@@ -35,13 +35,13 @@ selector-frozen text/native comparisons preserved generated output and
 first-step logits exactly, with zero gold-answer NLL difference. Contiguous
 native reuse reduced warm TTFT by 92.3\% and warm total latency by 81.5\%
 relative to re-prefilling the same selected text, but an exact ordinary prefix
-cache remained faster. A separate 20-turn changing-selection cohort produced
-no reusable exact text prefix; resource-addressed PRA reused 29.0\% of selected
+cache remained faster. Five 20-turn changing-selection cohorts produced no
+reusable exact text prefix; resource-addressed PRA reused 28.1\% of selected
 K/V entries. That saving did not imply free composition: independently encoded
-resources preserved only 5--10\% of outputs, and even 50\% contextual repair
-recovered 55\% at best on a ten-question diagnostic. Partial materialization
-reduced active K/V by 25\% without lowering mean token F1 on that small cohort,
-although output parity fell to 50\%. These results establish contiguous native
+resources preserved only 8.5--10.5\% of outputs, and even 50\% contextual
+repair recovered 61.5\% across five natural cohorts. Partial materialization
+reduced active K/V by 25\%, but mean token F1 fell from .234 to .181 and output
+parity to 38\%. These results establish contiguous native
 transport and non-prefix reuse while locating the remaining bottleneck in
 cross-resource contextualization, not positional transport alone. Reduced 4B
 and 8B Qwen and Llama replications preserve contiguous transport exactly;
@@ -408,9 +408,42 @@ frozen. No between-seed error bars are available for this first natural run.}
 The native and repeated-selection economic gates pass at the prespecified
 50-example threshold. The selection gate fails because generic PRA does not
 match the strongest conventional selector. The public-card gate also remains
-closed because no exact model/precision adaptor is qualified. The five-seed
-answer-log-probability and independently composed-resource experiments below
-extend this initial cohort; a reduced Llama-family replication is also reported.
+closed because no exact model/precision adaptor is qualified.
+
+We then replicated transport on five independently sampled 30-question natural
+cohorts (seeds 11, 23, 37, 71, and 101). Across generic and strong selectors and
+cold and warm execution, all 600 matched text/native pairs preserved selection
+receipts, generated output, first-step-logit hashes, and token F1; the maximum
+gold-answer NLL difference was zero. Table~\ref{tab:natural-five-seed} reports
+the strong-selector arm. Relative to repeated selected-text prefill, retained
+native K/V reduced warm TTFT by 92.3\% and total latency by 81.5\%. The exact
+prefix cache was still 6.9\% faster in TTFT and 18.9\% faster end to end than
+native reuse. This is the intended boundary: PRA does not improve an unchanged
+serialized prefix; its target is reuse when evidence recurs outside that prefix.
+
+\begin{table}[ht]
+\centering
+\caption{Five-seed natural transport confirmation (30 questions per seed,
+strong reranker). Quality and support are identical within every matched
+text/native pair.}
+\label{tab:natural-five-seed}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Realization/regime & F1 & Support & Visible/native & TTFT (ms) & Total (ms) \\
+\midrule
+Selected text, cold & .116 & .542 & 2109/0 & 1007 & 1103 \\
+Native K/V, cold & .116 & .542 & 80/2029 & 1016 & 1143 \\
+Selected text, warm re-prefill & .116 & .542 & 2109/0 & 1006 & 1100 \\
+Native K/V, warm & .116 & .542 & 80/2029 & 77 & 203 \\
+Selected text, exact-prefix hit & .116 & .542 & 2109/0 & 72 & 165 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The five-seed answer-log-probability and independently composed-resource
+experiments below extend this transport result; a reduced Llama-family
+replication is also reported.
 
 \FloatBarrier
 
@@ -542,14 +575,13 @@ Lexical and dense candidates are fused first using reciprocal-rank fusion (RRF).
 A frozen cross-encoder or equivalently strong conventional reranker provides both a competitive RAG baseline and a selector-frozen input to PRA realization.
 
 \subsection{Real retrieval services}
-The remote machine will host containerized services.  The initial target set is:
-\begin{itemize}[leftmargin=*]
-    \item Elasticsearch (or a precisely pinned OpenSearch-compatible path where explicitly intended);
-    \item Qdrant;
-    \item one of Weaviate or Milvus;
-    \item pgvector where operationally inexpensive.
-\end{itemize}
-The user-specified ``Derby'' backend is retained as a requested integration, but its exact product and API must be identified before implementation; the experiment must not silently assume that Apache Derby supplies vector ANN semantics.
+We deployed pinned Elasticsearch and Qdrant services and evaluated lexical,
+dense, and service-level RRF retrieval against the same corpus and query
+receipts. Additional database vendors were deliberately deferred: the purpose
+is not a vendor benchmark, and Elasticsearch plus one vector database is enough
+to test whether the retrieval conclusions survive a service boundary. The
+user-specified ``Derby'' name was not silently interpreted as Apache Derby or a
+vector service without a pinned product and API.
 
 The purpose is not to publish a standalone vector-database benchmark.  Instead we ask whether RAG/PRA conclusions survive realistic retrieval infrastructure.  Service latency is decomposed into search, network, reranking, and LLM costs.
 
@@ -794,46 +826,52 @@ We report index build time, retrieval p50/p95/p99, rerank latency, prefill, TTFT
 
 All matched conditions use paired statistics and bootstrap 95\% confidence intervals.  Model- and workload-specific sign reversals remain visible rather than being averaged away.
 
-\section{Experimental Schedule}
+\section{Experimental Sequence and Scope}
 
 \subsection{Phase 0: audit and inheritance}
-Paper~4.5 artifacts are copied with provenance and labeled preliminary.  Dataset, model, retriever, chunker, and generation revisions are verified.
+Paper~4.5 artifacts were copied with provenance and labeled preliminary.
+Dataset, model, retriever, chunker, and generation revisions were verified.
 
 \subsection{Phase 1: small-model baseline}
-Qwen3-0.6B runs Full-Doc-In-Context, BM25, FAISS dense, hybrid, strong-reranker RAG, and Full Selected Context.
-Candidate and selection receipts are frozen in this phase. The first composed
-comparison runs \texttt{RAG\_ONLY\_TEXT} against
-\texttt{RAG\_PLUS\_PRA\_NATIVE\_CONTIGUOUS}, isolating representation and
-reuse before changing the selector.
+Qwen3-1.7B ran the complete controlled and natural mechanism matrices. BM25,
+FAISS dense, hybrid, and two rerankers were evaluated independently of native
+realization. Candidate and selection receipts were frozen. The first composed
+comparison placed fresh selected text against the contiguous native profile,
+isolating representation and reuse before changing the selector.
 
 \subsection{Phase 2: PRA routing/materialization}
-On identical candidate receipts we run the routing families and full/partial materialization ladder.  Clearly dominated arms are pruned.
-The complete RAG+PRA profile matrix is then crossed with conventional selection,
+On identical candidate receipts we ran the routing families and full/partial
+materialization ladder. The complete RAG+PRA profile matrix crossed conventional selection,
 PRA second-stage selection, and PRA replacement selection. Realization arms
 within each selector condition share one immutable selection receipt.
 
 \subsection{Phase 3: ordering and position}
-The seven positional policies, $D_1D_2/D_2D_1$, broader permutations, source distance, and distractors are run on the small model.
+Seven positional policies and canonical, reverse, and random orders were run on
+five natural cohorts. Selected resources and distractors were held fixed.
 
 \subsection{Phase 4: composition fidelity}
-Fresh packed, source-native, packed-rebound, and repair conditions isolate positional and contextualization effects.
+Fresh packed, source-native, packed-rebound, and repair conditions isolated
+positional and contextualization effects.
 
 \subsection{Phase 5: real retrieval services}
-Elasticsearch and at least one dedicated vector database are deployed remotely.
-Qdrant, Weaviate, Milvus, and pgvector integrations are added as budget permits.
-The requested Derby integration is added after exact backend identity is pinned.
+Elasticsearch and Qdrant were deployed remotely. Their embedding, service, and
+end-to-end client latencies are reported separately. Further vendor breadth is
+outside this paper's present scope.
 
 \subsection{Phase 6: powered 4B study}
-Qwen3-4B repeats only frozen best conditions on MultiHop-RAG and key inherited QA cohorts.  The preliminary Paper~4.5 rows are reproduced or explicitly marked non-reproduced.
+Qwen3-4B repeated the decisive frozen transport and reduced composition matrix.
 
 \subsection{Phase 7: 8B replication}
-Qwen3-8B runs the decisive reduced matrix.
+Qwen3-8B repeated the decisive reduced matrix.
 
 \subsection{Phase 8: larger/cross-family}
-Qwen3-14B and one non-Qwen model provide minimal scaling/family confirmation when compute permits.
+Llama-3.1-8B provided the cross-family confirmation. Qwen3-14B was deferred
+because the 4B/8B/Llama matrix already answered the transport-generalization
+question and composition remained the limiting mechanism.
 
 \subsection{Phase 9: KILT validation}
-KILT Natural Questions and KILT HotpotQA are added only after the protocol is stable.
+KILT Natural Questions and KILT HotpotQA remain follow-up datasets; adding
+corpora would not resolve the measured independent-composition failure.
 
 \section{Measured Retrieval and Native-Memory Results}
 
@@ -880,34 +918,36 @@ methods see the same 50 questions and corpus revision.}
 \end{figure}
 
 \subsection{Natural composition and contextual repair}
-We next freeze the historical cross-encoder's selection for ten natural
-questions and four resource orders per question. Table~\ref{tab:composition}
+We next freeze the historical cross-encoder's selection for five independently
+sampled cohorts of ten natural questions, using four resource orders per
+question. Table~\ref{tab:composition}
 compares each native realization with fresh packed encoding. Contiguous reuse
-is numerically exact in all 40 comparisons. Independent source-local encoding
+is numerically exact in all 200 comparisons. Independent source-local encoding
 is not: changing only the RoPE phase to the fresh packed coordinates improves
 mean JS and NLL error but does not restore the missing cross-resource causal
 context. At 50\% recomputation, repairing a contiguous prefix of later
-resources is more faithful than repairing boundaries, but both recover only
-22 of 40 generated outputs. Full recomputation is required for exact parity in
-this cohort.
+resources is more faithful than repairing boundaries, recovering 123 of 200
+outputs versus 120. Only full recomputation reaches exact parity in all five
+cohorts.
 
 \begin{table}[ht]
 \centering
-\caption{Natural independent-composition diagnostic (40 order-specific
-comparisons). NLL is mean absolute gold-answer NLL error versus fresh packed.}
+\caption{Five-seed natural independent-composition experiment (200
+order-specific comparisons). NLL is mean absolute gold-answer NLL error versus
+fresh packed.}
 \label{tab:composition}
 \small
 \begin{tabular}{lrrr}
 \toprule
 Realization & Output parity & JS & $|\Delta\mathrm{NLL}|$ \\
 \midrule
-Contiguous native block & 40/40 & .000 & .000 \\
-Independent source-local & 2/40 & .179 & 2.143 \\
-Global-position rebound & 3/40 & .149 & 1.946 \\
-Boundary repair, 25\% & 14/40 & .077 & 1.166 \\
-Boundary repair, 50\% & 22/40 & .052 & .781 \\
-Later-resource prefix repair, 50\% & 22/40 & .024 & .468 \\
-Full repair & 40/40 & .000 & .000 \\
+Contiguous native block & 200/200 & .000 & .000 \\
+Independent source-local & 17/200 & .168 & 2.638 \\
+Global-position rebound & 21/200 & .138 & 2.305 \\
+Boundary repair, 25\% & 92/200 & .040 & .782 \\
+Boundary repair, 50\% & 120/200 & .026 & .577 \\
+Later-resource prefix repair, 50\% & 123/200 & .014 & .417 \\
+Full repair & 200/200 & .000 & .000 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -916,43 +956,46 @@ Full repair & 40/40 & .000 & .000 \\
 \centering
 \includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/publication/composition_nll_repair_curve.pdf}
 \caption{Position rebinding and deterministic contextual repair reduce the
-composition error, but this cohort reaches exact parity only at full repair.
+composition error, but all five cohorts reach exact parity only at full repair.
 Repair timings are diagnostic because fresh packed states were computed first.}
 \label{fig:composition-repair}
 \end{figure}
 
-Serialization itself is consequential: nine of ten questions generated two or
-three distinct outputs across canonical, reverse, and two random orders. Gold
-NLL variance ranged from zero to 2.90. This establishes order sensitivity but
-does not yet identify an alternative position policy that preserves quality.
+Serialization itself is consequential: 39 of 50 questions generated more than
+one output across canonical, reverse, and two random orders. This establishes
+order sensitivity but does not identify an alternative position policy that
+preserves quality.
 
 \subsection{Alternative positional geometries}
-A reduced two-order sweep evaluates the Paper~1.6 position policies on the same
-ten questions. None dominates packed-position rebinding. GLOBAL\_PACKED gives
-the lowest mean JS divergence (.152) and absolute NLL error (1.947) among the
-reusable geometries, but preserves only one of 20 outputs. Near bands, rank
-distance, and random distance each preserve three outputs while increasing JS
-to .179--.188. RESOURCE\_ADJACENT is weakest, with zero output matches, .216
-JS, and 2.283 NLL error. Position geometry changes the failure, but does not
-replace missing cross-resource contextualization.
+A five-seed sweep evaluates the Paper~1.6 position policies on the same 50
+questions and four orders per question. None dominates packed-position
+rebinding. GLOBAL\_PACKED gives the lowest mean JS divergence (.138) and
+absolute NLL error (2.305) among the reusable geometries, preserving 21 of 200
+outputs. Non-overlapping near bands preserve 23 outputs, but increase JS to
+.149 and NLL error to 2.367. Rank, score, and random distance preserve 19--20
+outputs with JS .151--.153. RESOURCE\_ADJACENT is weakest: 13 output matches,
+.197 JS, and 2.807 NLL error. Position geometry changes the failure, but does
+not replace missing cross-resource contextualization.
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/publication/position_policy_js.pdf}
 \caption{First-step divergence from fresh packed encoding under alternative
-position policies (20 order-specific comparisons per policy).}
+position policies (200 order-specific comparisons per policy across five
+cohorts).}
 \label{fig:position-policy}
 \end{figure}
 
 \subsection{Partial materialization}
 Table~\ref{tab:partial-materialization} holds selected resources and order
-fixed, then reduces active native K/V. Score-ranked 75\% materialization kept
-the cohort's mean token F1 at .213 while lowering active K/V from 1325.5 to
-994.1 and TTFT from 91.9 to 69.0 ms. It preserved only five of ten generated
-outputs, however, and smaller fractions were not monotonic. The equal-budget
-wrong-memory control reduced evidence coverage to .05 and token F1 to .08.
-This ten-question result is a mechanism signal, not a calibrated deployment
-policy.
+fixed, then reduces active native K/V across the five cohorts. Score-ranked
+75\% materialization lowers active K/V from 1320.4 to 990.3 and TTFT from 88.2
+to 68.6 ms, but mean token F1 falls from .234 to .181 and only 19 of 50 outputs
+match full materialization. Smaller fractions are non-monotonic. The
+equal-budget evidence oracle improves support coverage over score selection at
+25\% (.393 versus .318) but does not recover full-context F1. The wrong-memory
+control reduces support coverage to .132. A fixed 75\% policy therefore fails
+the replication gate.
 
 \begin{table}[ht]
 \centering
@@ -963,13 +1006,13 @@ policy.
 \toprule
 Policy & Active K/V & Support & F1 & NLL & TTFT (ms) \\
 \midrule
-Full & 1325.5 & .467 & .213 & 4.376 & 91.9 \\
-Score, 75\% & 994.1 & .442 & .213 & 3.656 & 69.0 \\
-Score, 50\% & 662.8 & .333 & .073 & 3.911 & 66.6 \\
-Score, 25\% & 331.4 & .283 & .120 & 3.806 & 62.1 \\
-Score, 12.5\% & 165.7 & .283 & .080 & 4.937 & 62.8 \\
-Evidence oracle, 25\% & 331.4 & .358 & .145 & 3.753 & 63.4 \\
-Wrong memory, 25\% & 331.4 & .050 & .080 & 5.190 & 62.9 \\
+Full & 1320.4 & .432 & .234 & 5.180 & 88.2 \\
+Score, 75\% & 990.3 & .417 & .181 & 4.176 & 68.6 \\
+Score, 50\% & 660.2 & .368 & .117 & 4.111 & 66.1 \\
+Score, 25\% & 330.1 & .318 & .137 & 4.177 & 62.1 \\
+Score, 12.5\% & 165.1 & .298 & .098 & 4.927 & 61.8 \\
+Evidence oracle, 25\% & 330.1 & .393 & .150 & 4.350 & 62.9 \\
+Wrong memory, 25\% & 330.1 & .132 & .139 & 4.797 & 62.1 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -983,28 +1026,33 @@ metrics need not rank small-sample generations identically.}
 \end{figure}
 
 \subsection{Changing-selection reuse}
-The product-relevant test groups 20 natural questions into five four-turn
-sequences chosen to overlap selected resources. Ordinary exact-prefix caching
-reused zero evidence tokens because each question changed the serialization.
-Resource-addressed PRA reused 384.2 of 1326.2 selected K/V entries per turn on
-average (29.0\%), lowering measured total time from 720.8 to 570.1 ms. Savings
-varied substantially by sequence, from 11.9\% to 57.0\% fewer newly encoded
-entries.
+The product-relevant test groups 100 natural questions across five seeds into
+25 four-turn sequences chosen to overlap selected resources. Ordinary
+exact-prefix caching reuses zero evidence tokens because each question changes
+the serialization. Resource-addressed PRA reuses 372.1 of 1325.0 selected K/V
+entries per turn on average (28.1\%), reducing newly encoded entries by the same
+fraction. Measured total time falls from 716.6 to 557.6 ms (22.2\%).
 
-This is not an end-to-end quality win yet. Global rebound preserved two of 20
-fresh outputs and 25\% diagnostic repair preserved nine. Their mean token F1
-was .130 and .115, respectively, versus .174 for fresh packed encoding.
-Partial 50\% materialization lowered newly encoded K/V by 58.9\% and total time
-by 47.6\%, but preserved one of 20 outputs and reached .102 F1. Thus PRA finds
-reuse that an exact prefix cache cannot express, while the present independently
-encoded representation still needs a better contextualization mechanism.
+This is not an end-to-end quality win yet. Global rebound preserves 7\% of
+fresh outputs (seed-bootstrap 95\% interval 3--10\%) and reaches .172 mean token
+F1 versus .217 for fresh packed encoding. A 25\% diagnostic repair raises
+output parity to 44\% (33--55\%) and F1 to .179. Once repaired-token work is
+counted, however, it requires 1284.1 newly encoded or recomputed token states
+per turn, only 3.1\% below fresh packed encoding. Its measured copy latency is
+not reported as deployable repair latency because the fresh states already
+exist in this diagnostic. Partial 50\% materialization lowers newly encoded K/V
+by 57.1\% and measured total time by 47.2\%, but preserves only 6\% of outputs
+and reaches .150 F1. PRA therefore finds reuse that an exact prefix cache cannot
+express, while the present independently encoded representation still needs a
+better contextualization mechanism.
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=.94\linewidth]{../shared/results/paper3_2_rag/publication/nonprefix_reuse.pdf}
-\caption{Mean per-turn K/V accounting and latency under changing selections.
-The light segment is resource-addressed native reuse; fidelity is reported in
-the text and must not be inferred from cost alone.}
+\caption{Five-seed mean per-turn K/V accounting and measured latency under
+changing selections. Encoding/recomputation and cache hits are shown as
+separate bars rather than as an active-context stack. Diagnostic repair is
+omitted because copying precomputed fresh states is not a deployable timing.}
 \label{fig:nonprefix-reuse}
 \end{figure}
 
@@ -1083,10 +1131,11 @@ This does not invalidate persistent native memory, but it narrows its present
 safe use to contiguous blocks, unchanged selections, or explicitly repaired
 fragments.
 
-Partial materialization remains promising but provisional. Its 75\% point
-matches mean F1 on ten examples, while non-monotonic smaller budgets and output
-flips show that evidence coverage and attention competition cannot be reduced
-to token count alone. A larger held-out replication must precede a product
+Partial materialization remains an open adaptive-control problem. The 75\%
+point matches mean F1 on the first seed but not across five cohorts;
+non-monotonic smaller budgets and output flips show that evidence coverage and
+attention competition cannot be reduced to token count alone. A learned or
+query-calibrated policy must pass held-out validation before becoming a product
 profile. Likewise, the measured order sensitivity motivates multi-frame
 geometry but does not count as evidence that any alternative geometry is
 better.
@@ -1122,15 +1171,16 @@ substantially cheaper than text re-prefill. An exact prefix cache remained the
 better baseline when the serialized prefix itself repeated.
 
 Changing selections reveal both the opportunity and the hard boundary. PRA
-reused 29.0\% of selected K/V where ordinary prefix caching reused none, but
+reused 28.1\% of selected K/V where ordinary prefix caching reused none, but
 independently encoded resources were not compositionally equivalent to a fresh
 packed prompt. Position rebinding helped; 50\% contextual repair helped more;
 neither restored exact behavior reliably. Partial materialization found one
-promising 75\% operating point on ten questions, but the smaller budgets were
-non-monotonic and require replication. The practical architecture is therefore
-clearer than the final solution: external search can freeze strong evidence,
-PRA can store and reuse exact contiguous native blocks, and future work must
-make changed compositions contextually faithful without paying full reprefill.
+apparently promising 75\% point on the first ten questions, but five-seed
+replication rejected it as a quality-preserving fixed policy. The practical
+architecture is therefore clearer than the final solution: external search can
+freeze strong evidence, PRA can store and reuse exact contiguous native blocks,
+and future work must make changed compositions contextually faithful without
+paying full reprefill.
 
 \bibliographystyle{plain}
 % \bibliography{references}

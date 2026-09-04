@@ -88,22 +88,45 @@ The completed next-iteration evidence is organized under
   selected-text/native transport comparisons.
 - `local_retrieval/`, `service_retrieval/`, and `service_retrieval_cuda/`
   contain the local and Elasticsearch/Qdrant retrieval ladders.
-- `composition_natural/` and `position_natural/` contain the natural
+- `composition_natural/` and `position_natural/` contain the five-seed natural
   materialization, recomposition, repair, order, and position diagnostics.
-- `nonprefix_reuse/` contains five four-turn changing-selection sequences.
+- `nonprefix_reuse/` contains five seeds of five four-turn changing-selection
+  sequences.
 - `scale/` contains the reduced 4B, 8B, and cross-family replications.
 
+First regenerate the seed-aware aggregates from the five raw manifests. The
+aggregator retains seed summaries and reports deterministic seed-bootstrap
+intervals rather than treating all executions as independent replicates:
+
+```bash
+python experiments/paper3_2_rag/aggregate_multiseed.py \
+  --kind composition \
+  --manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed11/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed23/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed37/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed71/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed101/manifest.json \
+  --output docs/papers/shared/results/paper3_2_rag/composition_natural/five_seed/manifest.json
+```
+
+Build the position aggregate from the same five composition manifests; each
+now includes the complete position sweep. Use the same command with
+`--kind nonprefix` and the five manifests under `nonprefix_reuse/` to produce
+`nonprefix_reuse/five_seed/manifest.json`.
 Regenerate the compact publication plots and scale summary with:
 
 ```bash
 PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
-  --composition-manifest docs/papers/shared/results/paper3_2_rag/composition_natural/qwen3_1_7b_seed11/manifest.json \
-  --position-manifest docs/papers/shared/results/paper3_2_rag/position_natural/qwen3_1_7b_seed11/manifest.json \
+  --composition-manifest docs/papers/shared/results/paper3_2_rag/composition_natural/five_seed/manifest.json \
+  --position-manifest docs/papers/shared/results/paper3_2_rag/position_natural/five_seed/manifest.json \
   --retrieval-summary docs/papers/shared/results/paper3_2_rag/local_retrieval/summary.json \
   --service-summary docs/papers/shared/results/paper3_2_rag/service_retrieval_cuda/summary.json \
-  --nonprefix-manifest docs/papers/shared/results/paper3_2_rag/nonprefix_reuse/qwen3_1_7b_seed11/manifest.json \
+  --nonprefix-manifest docs/papers/shared/results/paper3_2_rag/nonprefix_reuse/five_seed/manifest.json \
   --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_4b_seed11 \
   --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_8b_seed11 \
   --scale-run docs/papers/shared/results/paper3_2_rag/scale/llama3_1_8b_seed11 \
+  --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/qwen3_4b_seed11 \
+  --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/qwen3_8b_seed11 \
+  --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/llama3_1_8b_seed11 \
   --output-dir docs/papers/shared/results/paper3_2_rag/publication
 ```

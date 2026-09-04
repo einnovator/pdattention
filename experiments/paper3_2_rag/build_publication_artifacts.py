@@ -107,7 +107,7 @@ def _composition_plot(summary: dict[str, object], output: Path) -> None:
     ]
     fig, axis = plt.subplots(figsize=(7.4, 3.4))
     axis.plot(display, values, marker="o", color="#b42318", linewidth=2)
-    axis.set_ylabel("Mean absolute gold-answer NLL delta")
+    axis.set_ylabel("Mean absolute NLL delta")
     axis.set_xlabel("Independent-memory realization")
     axis.grid(axis="y", alpha=0.25)
     axis.tick_params(axis="x", rotation=20)
@@ -161,7 +161,6 @@ def _nonprefix_reuse_plot(summary: dict[str, object], output: Path) -> None:
         "FRESH_PACKED",
         "ORDINARY_PREFIX_CACHE",
         "PRA_GLOBAL_REBOUND",
-        "PRA_REBOUND_REPAIR_0.25",
         "PRA_PARTIAL_0.5",
     ]
     selected = [next(row for row in rows if row["condition"] == name) for name in preferred]
@@ -169,17 +168,29 @@ def _nonprefix_reuse_plot(summary: dict[str, object], output: Path) -> None:
         "fresh",
         "prefix cache",
         "PRA rebound",
-        "PRA + 25% repair",
         "PRA partial 50%",
     ]
     new = [float(row["newly_encoded_tokens"]) for row in selected]
     reused = [float(row["reused_tokens"]) for row in selected]
     total = [float(row["total_with_materialization_ms"]) for row in selected]
     x = list(range(len(labels)))
+    width = 0.36
     fig, (tokens, latency) = plt.subplots(1, 2, figsize=(9.0, 3.6))
-    tokens.bar(x, new, label="newly encoded", color="#2563eb")
-    tokens.bar(x, reused, bottom=new, label="reused native", color="#93c5fd")
-    tokens.set_ylabel("Mean selected K/V entries per turn")
+    tokens.bar(
+        [value - width / 2 for value in x],
+        new,
+        width,
+        label="encode/recompute work",
+        color="#2563eb",
+    )
+    tokens.bar(
+        [value + width / 2 for value in x],
+        reused,
+        width,
+        label="cached resource hits",
+        color="#93c5fd",
+    )
+    tokens.set_ylabel("Mean K/V token count per turn")
     tokens.legend(fontsize=7)
     latency.bar(x, total, color="#0f766e")
     latency.set_ylabel("Mean total latency (ms)")
