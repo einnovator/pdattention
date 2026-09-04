@@ -124,6 +124,13 @@ def test_permutation_orders_include_canonical_reverse_and_seeded_variants() -> N
     first = permutation_orders(("D1", "D2", "D3"), seed=17, max_random=3)
     second = permutation_orders(("D1", "D2", "D3"), seed=17, max_random=3)
     assert first == second
+
+
+def test_permutation_orders_can_disable_random_variants() -> None:
+    assert permutation_orders(("D1", "D2", "D3"), max_random=0) == (
+        ("D1", "D2", "D3"),
+        ("D3", "D2", "D1"),
+    )
     assert first[:2] == (("D1", "D2", "D3"), ("D3", "D2", "D1"))
     assert len(first) == 5
     assert len(set(first)) == len(first)

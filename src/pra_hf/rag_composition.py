@@ -412,10 +412,14 @@ def permutation_orders(
     canonical = tuple(resource_ids)
     if not canonical or len(set(canonical)) != len(canonical):
         raise ValueError("resource IDs must be non-empty and unique")
+    if max_random < 0:
+        raise ValueError("max_random cannot be negative")
     orders: list[tuple[str, ...]] = [canonical]
     reverse = tuple(reversed(canonical))
     if reverse not in orders:
         orders.append(reverse)
+    if max_random == 0:
+        return tuple(orders)
     if len(canonical) <= 7:
         candidates = list(itertools.permutations(canonical))
         random.Random(seed).shuffle(candidates)
