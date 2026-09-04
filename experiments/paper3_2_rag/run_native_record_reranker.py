@@ -43,6 +43,7 @@ from pra_hf.rag_evaluation import (
     SelectionReceipt,
     StandardRAGSelector,
     context_metrics,
+    failure_classification,
     make_candidate_receipt,
     pack_ranked_chunks,
     prepare_candidate_context,
@@ -59,7 +60,7 @@ from pra_hf.rag_record_runtime import (
     RerankerReceipt,
     validate_frozen_record_selection,
 )
-from pra_hf.rag_reuse import greedy_overlap_sequences
+from pra_hf.rag_reuse import greedy_overlap_sequences, longest_common_prefix_length
 
 
 SCHEMA_VERSION = "paper3.2-native-record-reranker-v1"
@@ -173,9 +174,23 @@ def _execute_row(
     record_request=None,
     order_name: str = "canonical",
     reference_first_step_logits=None,
+    reference_prediction: str | None = None,
+    reference_token_f1: float | None = None,
 ):
     prediction, metrics, first_logits = _execute(backend, question, memory)
     exact, token_f1 = answer_metrics(prediction, question.answers)
+    retrieval_metrics = context_metrics(question, receipt, context)
+    if float(retrieval_metrics["supporting_document_coverage"]) < 1.0 and reranker_receipt:
+        failure_class = "PRA_RERANKER_MISS"
+    elif representation.startswith("PRA_") and reference_token_f1 is not None and token_f1 < reference_token_f1:
+        failure_class = "PRA_RECORD_SEMANTIC_QUALITY_DROP"
+    else:
+        failure_class = failure_classification(
+            question=question,
+            receipt=receipt,
+            context=context,
+            answer_correct=bool(exact),
+        )
     row = {
         "schema_version": SCHEMA_VERSION,
         "seed": receipt.seed,
@@ -190,6 +205,7 @@ def _execute_row(
         "reranker_model_id": reranker_receipt.model_id if reranker_receipt else None,
         "reranker_revision": reranker_receipt.model_revision if reranker_receipt else None,
         "reranker_latency_ms": reranker_receipt.latency_ms if reranker_receipt else 0.0,
+        "reranker_receipt": reranker_receipt.to_dict() if reranker_receipt else None,
         "representation": representation,
         "order_name": order_name,
         "selected_document_ids": list(context.selected_document_ids),
@@ -218,7 +234,17 @@ def _execute_row(
             len(record_request.reference_table) if record_request else 0
         ),
         "record_request": record_request.to_dict() if record_request else None,
-        "retrieval_context_metrics": context_metrics(question, receipt, context),
+        "exact_output_agreement_with_packed": (
+            prediction == reference_prediction if reference_prediction is not None else None
+        ),
+        "first_step_logit_agreement_with_packed": (
+            metrics.get("first_step_logits_sha256")
+            == hashlib.sha256(reference_first_step_logits.astype("<f4").tobytes()).hexdigest()
+            if reference_first_step_logits is not None
+            else None
+        ),
+        "failure_class": failure_class,
+        "retrieval_context_metrics": retrieval_metrics,
         **metrics,
         **_distribution_diagnostics(reference_first_step_logits, first_logits),
     }
@@ -304,6 +330,16 @@ def _aggregate(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
                     float(row["retrieval_context_metrics"]["gold_chunk_recall"])
                     for row in values
                 ),
+                "mrr": statistics.fmean(
+                    float(row["retrieval_context_metrics"]["mrr"]) for row in values
+                ),
+                "ndcg": statistics.fmean(
+                    float(row["retrieval_context_metrics"]["ndcg"]) for row in values
+                ),
+                "answer_string_availability": statistics.fmean(
+                    float(row["retrieval_context_metrics"]["answer_string_availability"])
+                    for row in values
+                ),
                 "false_selected_document_fraction": statistics.fmean(
                     float(row["retrieval_context_metrics"]["false_selected_document_fraction"])
                     for row in values
@@ -323,6 +359,15 @@ def _aggregate(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
                 "ttft_ms": statistics.fmean(float(row["ttft_ms"]) for row in values),
                 "total_latency_ms": statistics.fmean(
                     float(row["total_latency_ms"]) for row in values
+                ),
+                "reranker_latency_ms": statistics.fmean(
+                    float(row["reranker_latency_ms"]) for row in values
+                ),
+                "exact_output_agreement_with_packed": _mean_present(
+                    values, "exact_output_agreement_with_packed"
+                ),
+                "first_step_logit_agreement_with_packed": _mean_present(
+                    values, "first_step_logit_agreement_with_packed"
                 ),
                 "first_step_js_vs_packed": _mean_present(
                     values, "first_step_js_divergence"
@@ -515,6 +560,8 @@ def main() -> None:
                 native_cache_hits=1,
                 native_cache_lookups=1,
                 reference_first_step_logits=packed_logits,
+                reference_prediction=str(packed_row["prediction"]),
+                reference_token_f1=float(packed_row["token_f1"]),
             )
             rows.append(contiguous_row)
 
@@ -553,6 +600,8 @@ def main() -> None:
                 native_cache_lookups=lookups,
                 record_request=explicit,
                 reference_first_step_logits=packed_logits,
+                reference_prediction=str(packed_row["prediction"]),
+                reference_token_f1=float(packed_row["token_f1"]),
             )
             rows.append(explicit_row)
 
@@ -592,6 +641,8 @@ def main() -> None:
                 native_cache_lookups=lookups,
                 record_request=routed,
                 reference_first_step_logits=packed_logits,
+                reference_prediction=str(packed_row["prediction"]),
+                reference_token_f1=float(packed_row["token_f1"]),
             )
             rows.append(routed_row)
 
@@ -676,6 +727,8 @@ def main() -> None:
                     record_request=request,
                     order_name=order_name,
                     reference_first_step_logits=packed_logits,
+                    reference_prediction=str(packed_row["prediction"]),
+                    reference_token_f1=float(packed_row["token_f1"]),
                 )
                 rows.append(record_row)
                 record_logits_by_order.append(record_logits)
@@ -711,6 +764,8 @@ def main() -> None:
     for sequence_id, indices in enumerate(sequence_indices, 1):
         cache: dict[str, object] = {}
         previous_ids: set[str] = set()
+        previous_document_ids: set[str] = set()
+        previous_packed_tokens: tuple[int, ...] = ()
         for turn, item_index in enumerate(indices, 1):
             question, receipt, contexts, rerank_receipts = prepared_rows[item_index]
             context = contexts[reuse_selector]
@@ -733,12 +788,31 @@ def main() -> None:
                 reference_table=table,
                 selection=selection,
             )
+            packed_segments = _token_segments(
+                backend.tokenizer, tuple(row.chunk.text for row in context.chunks)
+            )
+            packed_tokens = tuple(
+                token for segment in packed_segments for token in segment
+            )
+            packed_started = time.perf_counter()
+            packed_memory = encode_native_memory(backend.model, packed_tokens)
+            packed_encode_ms = (time.perf_counter() - packed_started) * 1000.0
+            packed_prediction, packed_metrics, packed_logits = _execute(
+                backend, question, packed_memory
+            )
+            packed_exact, packed_f1 = answer_metrics(
+                packed_prediction, question.answers
+            )
             memory, encode_ms, new_tokens, hits, lookups = _record_memory(
                 backend, request, cache
             )
-            prediction, metrics, _ = _execute(backend, question, memory)
+            prediction, metrics, record_logits = _execute(backend, question, memory)
             exact, token_f1 = answer_metrics(prediction, question.answers)
             current_ids = set(request.materialized_chunk_ids)
+            current_document_ids = set(context.selected_document_ids)
+            exact_prefix_tokens = longest_common_prefix_length(
+                previous_packed_tokens, packed_tokens
+            )
             reuse_rows.append(
                 {
                     "sequence_id": sequence_id,
@@ -748,8 +822,13 @@ def main() -> None:
                     "selection_receipt_id": selection.receipt_id,
                     "record_request_receipt_id": request.receipt_id,
                     "selected_chunk_ids": list(request.materialized_chunk_ids),
+                    "selected_document_ids": list(context.selected_document_ids),
                     "record_overlap_fraction": len(current_ids & previous_ids) / max(len(current_ids), 1),
-                    "exact_prefix_reusable_tokens": 0,
+                    "document_overlap_fraction": len(current_document_ids & previous_document_ids)
+                    / max(len(current_document_ids), 1),
+                    "reused_chunk_count": hits,
+                    "reused_document_count": len(current_document_ids & previous_document_ids),
+                    "exact_prefix_reusable_tokens": exact_prefix_tokens,
                     "newly_encoded_native_tokens": new_tokens,
                     "reused_native_tokens": memory.source_tokens - new_tokens,
                     "native_cache_hits": hits,
@@ -757,13 +836,29 @@ def main() -> None:
                     "native_encode_ms": encode_ms,
                     "physical_native_tokens": memory.source_tokens,
                     "prediction": prediction,
+                    "packed_prediction": packed_prediction,
+                    "output_agreement_with_packed": prediction == packed_prediction,
                     "exact_match": exact,
                     "token_f1": token_f1,
+                    "packed_exact_match": packed_exact,
+                    "packed_token_f1": packed_f1,
+                    "token_f1_delta_vs_packed": token_f1 - packed_f1,
                     "official_score": official_multihop_rag_score(prediction, question.answers),
+                    "packed_official_score": official_multihop_rag_score(
+                        packed_prediction, question.answers
+                    ),
+                    "packed_native_encode_ms": packed_encode_ms,
+                    "packed_total_latency_ms": packed_encode_ms
+                    + float(packed_metrics["total_latency_ms"]),
+                    "first_step_js_vs_packed": _distribution_diagnostics(
+                        packed_logits, record_logits
+                    )["first_step_js_divergence"],
                     **metrics,
                 }
             )
             previous_ids = current_ids
+            previous_document_ids = current_document_ids
+            previous_packed_tokens = packed_tokens
 
     args.output.mkdir(parents=True, exist_ok=True)
     with gzip.open(args.output / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
@@ -814,6 +909,15 @@ def main() -> None:
             ) if reuse_rows else None,
             "mean_token_f1": statistics.fmean(float(row["token_f1"]) for row in reuse_rows)
             if reuse_rows else None,
+            "mean_packed_token_f1": statistics.fmean(
+                float(row["packed_token_f1"]) for row in reuse_rows
+            ) if reuse_rows else None,
+            "mean_token_f1_delta_vs_packed": statistics.fmean(
+                float(row["token_f1_delta_vs_packed"]) for row in reuse_rows
+            ) if reuse_rows else None,
+            "mean_exact_prefix_reusable_tokens": statistics.fmean(
+                float(row["exact_prefix_reusable_tokens"]) for row in reuse_rows
+            ) if reuse_rows else None,
         },
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
