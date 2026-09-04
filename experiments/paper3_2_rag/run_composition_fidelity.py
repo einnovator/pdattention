@@ -32,7 +32,13 @@ from experiments.rag_vs_pra.run_powered_decomposition import (
     _resolve_hf_revision,
     _runtime_versions,
 )
-from pra_hf.rag_composition import permutation_orders
+from pra_hf.rag_composition import (
+    PositionPolicy,
+    RAGPRAProfile,
+    SelectedResource,
+    compose_resources,
+    permutation_orders,
+)
 from pra_hf.rag_evaluation import (
     ChunkerConfig,
     ContextCondition,
@@ -51,6 +57,7 @@ from pra_hf.rag_mlx_native import (
     make_native_prompt_cache,
     rebind_native_memories_global_packed,
 )
+from pra_hf.rag_materialization import score_prefix_plan
 from pra_hf.rag_powered import answer_metrics, official_multihop_rag_score
 
 
@@ -130,6 +137,9 @@ def _row(
     backend: PersistentMLXBackend,
     encode_ms: float,
     repair_fraction: float | None = None,
+    materialization_fraction: float = 1.0,
+    selected_document_ids: Sequence[str] = (),
+    composition_receipt=None,
 ) -> dict[str, object]:
     prediction, metrics = _execute(backend, question, memory)
     return {
@@ -138,11 +148,25 @@ def _row(
         "question_type": question.question_type,
         "candidate_receipt_id": receipt.receipt_id,
         "selection_receipt_id": selection.receipt_id,
+        "composition_receipt_id": (
+            composition_receipt.receipt_id if composition_receipt is not None else None
+        ),
+        "position_policy": (
+            composition_receipt.position_policy.value
+            if composition_receipt is not None
+            else None
+        ),
         "selected_chunk_ids": [row.chunk_id for row in selection.intervals],
         "resource_order_name": order_name,
         "resource_order": list(order),
         "condition": condition,
         "repair_fraction": repair_fraction,
+        "materialization_fraction": materialization_fraction,
+        "materialized_document_ids": list(selected_document_ids),
+        "supporting_document_coverage": (
+            len(set(selected_document_ids).intersection(question.gold_document_ids))
+            / max(len(question.gold_document_ids), 1)
+        ),
         "physical_native_tokens": memory.source_tokens,
         "query_position_base": memory.position_base,
         "native_bytes": memory.nbytes,
@@ -253,6 +277,9 @@ def main() -> None:
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
     parser.add_argument("--repair-fractions", type=_floats, default=(0.25, 0.5, 0.75, 1.0))
+    parser.add_argument(
+        "--materialization-fractions", type=_floats, default=(0.25, 0.5, 0.75)
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -329,8 +356,36 @@ def main() -> None:
                 "canonical" if order_index == 0 else "reverse" if order_index == 1 else f"random_{order_index - 1}"
             )
             texts = tuple(by_chunk[chunk_id].chunk.text for chunk_id in order)
+            document_ids = tuple(by_chunk[chunk_id].chunk.document_id for chunk_id in order)
             token_segments = _token_segments(backend.tokenizer, texts)
             packed_tokens = tuple(token for segment in token_segments for token in segment)
+            resources = tuple(
+                SelectedResource(
+                    resource_id=chunk_id,
+                    chunk_id=chunk_id,
+                    source_sha256=hashlib.sha256(
+                        by_chunk[chunk_id].chunk.text.encode("utf-8")
+                    ).hexdigest(),
+                    source_positions=tuple(range(len(segment))),
+                    rank=by_chunk[chunk_id].rank,
+                    score=by_chunk[chunk_id].score,
+                )
+                for chunk_id, segment in zip(order, token_segments)
+            )
+            global_receipt = compose_resources(
+                resources,
+                selection_receipt_id=selection.receipt_id,
+                profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_REBOUND,
+                position_policy=PositionPolicy.GLOBAL_PACKED,
+                near_gap=0,
+            )
+            source_receipt = compose_resources(
+                resources,
+                selection_receipt_id=selection.receipt_id,
+                profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_INDEPENDENT,
+                position_policy=PositionPolicy.SOURCE_LOCAL,
+                near_gap=0,
+            )
             started_encode = time.perf_counter()
             fresh = encode_native_memory(backend.model, packed_tokens)
             fresh_ms = (time.perf_counter() - started_encode) * 1000.0
@@ -349,21 +404,29 @@ def main() -> None:
                         question=question, receipt=receipt, selection=selection,
                         order_name=order_name, order=order, condition="FRESH_PACKED",
                         memory=fresh, backend=backend, encode_ms=fresh_ms,
+                        selected_document_ids=document_ids,
+                        composition_receipt=global_receipt,
                     ),
                     _row(
                         question=question, receipt=receipt, selection=selection,
                         order_name=order_name, order=order, condition="NATIVE_CONTIGUOUS",
                         memory=fresh, backend=backend, encode_ms=0.0,
+                        selected_document_ids=document_ids,
+                        composition_receipt=global_receipt,
                     ),
                     _row(
                         question=question, receipt=receipt, selection=selection,
                         order_name=order_name, order=order, condition="NATIVE_SOURCE_LOCAL",
                         memory=source_local, backend=backend, encode_ms=independent_ms,
+                        selected_document_ids=document_ids,
+                        composition_receipt=source_receipt,
                     ),
                     _row(
                         question=question, receipt=receipt, selection=selection,
                         order_name=order_name, order=order, condition="NATIVE_GLOBAL_REBOUND",
                         memory=rebound, backend=backend, encode_ms=independent_ms + rebind_ms,
+                        selected_document_ids=document_ids,
+                        composition_receipt=global_receipt,
                     ),
                 )
             )
@@ -376,8 +439,54 @@ def main() -> None:
                         condition=f"REPAIR_{fraction:g}", memory=repaired,
                         backend=backend, encode_ms=independent_ms + rebind_ms,
                         repair_fraction=fraction,
+                        selected_document_ids=document_ids,
+                        composition_receipt=compose_resources(
+                            resources,
+                            selection_receipt_id=selection.receipt_id,
+                            profile=RAGPRAProfile.RAG_PLUS_PRA_REPAIR,
+                            position_policy=PositionPolicy.GLOBAL_PACKED,
+                            near_gap=0,
+                            repair_fraction=fraction,
+                        ),
                     )
                 )
+            if order_index == 0:
+                for fraction in args.materialization_fractions:
+                    plan = score_prefix_plan(
+                        tuple(len(segment) for segment in token_segments), fraction
+                    )
+                    partial_segments = tuple(
+                        token_segments[index] for index in plan.selected_indices
+                    )
+                    partial_tokens = tuple(
+                        token for segment in partial_segments for token in segment
+                    )
+                    started_partial = time.perf_counter()
+                    partial = encode_native_memory(backend.model, partial_tokens)
+                    partial_ms = (time.perf_counter() - started_partial) * 1000.0
+                    partial_documents = tuple(
+                        document_ids[index] for index in plan.selected_indices
+                    )
+                    partial_resources = tuple(
+                        resources[index] for index in plan.selected_indices
+                    )
+                    rows.append(
+                        _row(
+                            question=question, receipt=receipt, selection=selection,
+                            order_name=order_name, order=order,
+                            condition=f"PARTIAL_TOP_SCORE_{fraction:g}",
+                            memory=partial, backend=backend, encode_ms=partial_ms,
+                            materialization_fraction=plan.materialized_fraction,
+                            selected_document_ids=partial_documents,
+                            composition_receipt=compose_resources(
+                                partial_resources,
+                                selection_receipt_id=selection.receipt_id,
+                                profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_CONTIGUOUS,
+                                position_policy=PositionPolicy.GLOBAL_PACKED,
+                                near_gap=0,
+                            ),
+                        )
+                    )
 
     args.output.mkdir(parents=True, exist_ok=True)
     with gzip.open(args.output / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
@@ -400,6 +509,7 @@ def main() -> None:
         "max_resources": args.max_resources,
         "max_random_orders": args.max_random_orders,
         "repair_fractions": list(args.repair_fractions),
+        "materialization_fractions": list(args.materialization_fractions),
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),

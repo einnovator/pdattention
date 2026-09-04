@@ -278,7 +278,10 @@ def _minimum_query_position(
         policy_minimum = gap + max_length
     else:
         policy_minimum = total + gap
-    return max(policy_minimum, source_max + gap if policy is PositionPolicy.SOURCE_LOCAL else 0)
+    return max(
+        policy_minimum,
+        source_max + gap + 1 if policy is PositionPolicy.SOURCE_LOCAL else 0,
+    )
 
 
 def compose_resources(
