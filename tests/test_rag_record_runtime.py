@@ -127,6 +127,8 @@ def test_routed_root_resolves_only_selector_selected_children() -> None:
 
     assert request.requested_record_uris == (root_uri,)
     assert request.resolution_mode == "routed_root"
+    assert store.records[root_uri].record_type.value == "rag_chunk_set"
+    assert store.records[root_uri].child_ids
     assert set(request.resolved_document_uris).issubset(
         {store.document_uris[value] for value in receipt.candidate_document_ids}
     )

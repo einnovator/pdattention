@@ -462,12 +462,14 @@ def main() -> None:
 
     rows = []
     order_sensitivity = []
-    persistent_record_cache: dict[str, object] = {}
     for index, (question, receipt, contexts, rerank_receipts) in enumerate(prepared_rows, 1):
         print(f"[execute {index}/{len(prepared_rows)}] {question.example_id}", flush=True)
         model_prompt = _model_prompt(backend, question)
         query_tokens = len(backend.tokenizer.encode(model_prompt, add_special_tokens=False))
         for selector_key, context in contexts.items():
+            # Keep the matched main matrix independent of selector execution
+            # order. Cross-request persistence is measured separately below.
+            condition_record_cache: dict[str, object] = {}
             selection = SelectionReceipt.from_context(
                 candidate_receipt_id=receipt.receipt_id,
                 example_id=question.example_id,
@@ -530,7 +532,7 @@ def main() -> None:
             )
             validate_frozen_record_selection(explicit, selection)
             memory, encode_ms, new_tokens, hits, lookups = _record_memory(
-                backend, explicit, persistent_record_cache
+                backend, explicit, condition_record_cache
             )
             explicit_row, _ = _execute_row(
                 backend=backend,
@@ -569,7 +571,7 @@ def main() -> None:
             )
             validate_frozen_record_selection(routed, selection)
             memory, encode_ms, new_tokens, hits, lookups = _record_memory(
-                backend, routed, persistent_record_cache
+                backend, routed, condition_record_cache
             )
             routed_row, _ = _execute_row(
                 backend=backend,
@@ -596,6 +598,7 @@ def main() -> None:
         if args.order_selector != "none" and args.order_selector in contexts:
             base = contexts[args.order_selector]
             reranker_receipt = rerank_receipts[args.order_selector]
+            order_record_cache: dict[str, object] = {}
             packed_logits_by_order = []
             record_logits_by_order = []
             packed_outputs = []
@@ -651,7 +654,7 @@ def main() -> None:
                     selection=selection,
                 )
                 memory, encode_ms, new_tokens, hits, lookups = _record_memory(
-                    backend, request, persistent_record_cache
+                    backend, request, order_record_cache
                 )
                 record_row, record_logits = _execute_row(
                     backend=backend,

@@ -402,6 +402,20 @@ class PRADocumentRecordStore:
         uri = root_record_uri(self.dataset, request_id)
         child_uris = tuple(self.document_uris[value] for value in candidate_document_ids)
         local_table = {f"<REF_{index}>": child for index, child in enumerate(child_uris, 1)}
+        self.records[uri] = ContextRecord(
+            record_id=uri,
+            record_type=RecordType.RAG_CHUNK_SET,
+            payload={
+                "request_id": request_id,
+                "candidate_document_uris": list(child_uris),
+                "routing": "request_selection_receipt",
+            },
+            child_ids=child_uris,
+            selection_provenance={
+                "owner": "pra_record_resolver",
+                "request_scoped": True,
+            },
+        )
         self.resolver.documents[uri] = {
             "text": "",
             "reference_table": local_table,
@@ -504,4 +518,3 @@ def validate_frozen_record_selection(
         raise ValueError("record request does not carry the frozen selection receipt")
     if request.materialized_chunk_ids != tuple(row.chunk_id for row in selection.intervals):
         raise ValueError("record materialization changed selected chunk order or identity")
-
