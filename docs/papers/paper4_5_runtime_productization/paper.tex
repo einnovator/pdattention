@@ -61,8 +61,10 @@ materialization and reduce cumulative runtime by 12.8\%, yet source-local
 positional composition changes outputs. The robust product contribution is
 therefore selective logical context with explicit provenance. Native Memory
 and Native Serving remain engine-, representation-, and workload-qualified
-optimizations; stronger selection, position-aware chunk composition, and
-production-scale profile calibration remain open.
+optimizations. A Qwen3-8B replication improves absolute F1 but preserves the
+same selector ordering, so larger generation alone does not repair retrieval.
+Stronger selection, position-aware chunk composition, and production-scale
+profile calibration remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -1643,6 +1645,34 @@ must be read with the source-local positional and retained-memory caveats.}
 \label{fig:powered-rag-persistent}
 \end{figure}
 
+\subsection{Qwen3-8B replication}
+
+The prespecified cross-scale replication uses the same 50 question IDs,
+$N=20$, 2K budget, candidate receipts, selectors, prompt, and greedy decoding
+with pinned \path{mlx-community/Qwen3-8B-4bit}. Standard BM25 obtains 0.520
+official score and 0.093 F1; the strong conventional reranker obtains 0.480
+and 0.096; generic PRA obtains 0.440 and 0.081. Absolute F1 rises modestly
+relative to Qwen3-4B, but the ordering does not change and the selection gate
+remains closed. The bootstrap intervals overlap, so the cohort supports a
+negative qualification decision rather than a precise model-size effect.
+
+Both generic and strong-reranker Selected Context/Native Memory pairs remain
+output-exact. Generic cold native execution costs 5.636~s versus 5.535~s, a
+1.8\% total-latency regression. Retaining the same native selection reduces
+warm total latency from 5.541 to 0.990~s (82.1\%) and TTFT from 4.908 to
+0.276~s. Active detail is approximately 285~MB. The 8B run therefore repeats
+the native-memory and repeated-selection economic results, but does not rescue
+the unadapted selector or qualify a bundle card.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_8b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
+\caption{Qwen3-8B selector-frozen TTFT p95 over the same 50 questions. The
+cold paths remain close; retained native K/V removes repeated selected-text
+prefill.}
+\label{fig:powered-rag-8b-ttft}
+\end{figure}
+
 \subsection{Stable prefix and session-delta contract}
 
 \begin{figure}[H]
@@ -2986,9 +3016,10 @@ persistent-chunk reuse. Generic selection does not beat the strong control; no
 qualified document adaptor exists. Contiguous native realization is exact,
 whereas independently encoded source-local chunks change generation and cannot
 support a parity claim. The warm benefit is measured against selected-text
-re-prefill, not an ordinary prefix-cache hit. A larger second-model replication,
-position-aware chunk composition, and a matched prefix-cache control remain
-open. KILT Natural Questions and HotpotQA require the pinned KILT knowledge
+re-prefill, not an ordinary prefix-cache hit. Qwen3-8B repeats the native result
+without repairing selection; a second model family, position-aware chunk
+composition, and a matched prefix-cache control remain open. KILT Natural
+Questions and HotpotQA require the pinned KILT knowledge
 source; they remain unmeasured rather than being approximated from answer
 provenance.
 
@@ -3101,7 +3132,9 @@ reranker, and powered selector-frozen controls. Generic selection remains
 unqualified, while contiguous native realization is output-exact and sharply
 faster when an identical retained selection replaces re-prefill. Reusable
 source-local chunks reduce physical encoding but change generation, exposing a
-positional-composition requirement rather than a free cache win. The practical
+positional-composition requirement rather than a free cache win. Qwen3-8B
+repeats both the failed selector gate and the successful contiguous-native
+realization gate. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.

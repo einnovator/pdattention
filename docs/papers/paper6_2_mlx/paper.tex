@@ -42,10 +42,13 @@ is too small and its selectors are not frozen independently, so it is not a
 precision-invariance result. A separate 50-question, selector-frozen Qwen3-4B
 run preserves every contiguous E0/E2 output at 2K and 4K; retained E2 reduces
 warm total latency by 79.0\% and 86.9\%, respectively, against selected-text
-re-prefill. Chunk-resident source-local K/V is not exact and remains a candidate
-policy. MLX provides a working native PRA mechanism and a clear model-scale
-trend. A fused segmented kernel, broader natural cohorts, and learned consumer
-gates remain the decisive steps for an economic and profile-sparsity claim.
+re-prefill. A matched Qwen3-8B replication preserves every contiguous output and
+reduces repeated-selection latency by 82.1\%, but larger generation does not
+repair the generic selector. Chunk-resident source-local K/V is not exact and
+remains a candidate policy. MLX provides a working native PRA mechanism and a
+clear model-scale trend. A fused segmented kernel, broader natural cohorts,
+and learned consumer gates remain the decisive steps for an economic and
+profile-sparsity claim.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -1390,6 +1393,15 @@ whereas visible concatenation assigns global positions. This policy is therefore
 reported as lifecycle evidence with decomposition gates marked not applicable;
 it is not included in MLX's exact contiguous-realization claim.
 
+Qwen3-8B repeats the contiguous experiment on the same 50 questions, 2K
+budget, and frozen receipts. Generic Selected Context and Native Memory both
+obtain 0.440 official score and 0.081 F1; the strong-reranker pair obtains
+0.480 and 0.096. Every paired output matches. Cold native total latency is
+5.636~s versus 5.535~s for Selected Context, while retained native latency is
+0.990~s versus 5.541~s for re-prefill. Thus generator scale does not repair
+selection, but the native realization and repeated-selection result transfer
+from 4B to 8B on this MLX/Qwen family.
+
 An independent FP32 checkpoint, cross-precision adaptor transfer, peak-memory
 capture, and a non-Qwen matched replication remain unmeasured. Casting the
 published BF16 source to float32 would not create an independent FP32 weight
@@ -1414,6 +1426,8 @@ concurrency/sharing & controlled closed & five seeds at 1--8 requests; 108 MiB a
 natural transport & controlled closed & 80/80 native; disabled/shuffled near chance \\
 natural QA transport & controlled closed & original QASPER/Hotpot/2Wiki answers with causal controls \\
 routed natural QA & controlled partial & 60/60 consumption parity; recall@4 0.348--0.775; oracle gap open \\
+document-RAG contiguous & controlled closed & Qwen3-4B/8B, $n=50$ each; selector-frozen outputs exact; repeated-selection E2 faster than re-prefill \\
+document-RAG chunk residency & open & 22.0\% chunk hits and 12.8\% lower wall time, but source-local composition changes generation \\
 matched E0/E2 economics & controlled closed & 2,086/2,086 expanded outputs; all four E2/E0 cost ratios exceed one \\
 quantized PRA detail & controlled candidate & per-head int8 halves residency; native dequantization before attention \\
 memory pressure & controlled closed & 3,145 requests across compact, long-session, and crossed tier/window pressure \\

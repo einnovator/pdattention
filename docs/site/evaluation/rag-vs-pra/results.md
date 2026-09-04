@@ -90,6 +90,14 @@ The output is not exact: official score changes from `0.440` for Selected Contex
 
 ![Physical persistent-corpus cumulative source tokens](../../assets/results/rag/powered_qwen3_4b_persistent_tokens.png)
 
+## Qwen3-8B replication
+
+The prespecified larger-generator replication uses the same 50 question IDs, `N=20`, 2K budget, candidate receipts, and selectors with pinned `mlx-community/Qwen3-8B-4bit`. Standard BM25 obtains `0.520` official score and `0.093` F1; the strong conventional reranker obtains `0.480` and `0.096`; generic PRA obtains `0.440` and `0.081`. The larger generator modestly improves F1 but does not change the selector ordering. The selection gate remains closed.
+
+Every generic and strong-reranker Selected Context/Native Memory pair remains output-exact. Generic cold Native Memory costs `5.636 s` versus `5.535 s` for Selected Context (`+1.8%`). Retaining the same native selection costs `0.990 s` versus `5.541 s` for selected-text re-prefill (`-82.1%`), and lowers mean TTFT from `4.908 s` to `0.276 s`. Active detail is about `285 MB`. Native realization and repeated-selection economics therefore transfer from 4B to 8B within Qwen, but no selector or adaptor is qualified.
+
+![Powered Qwen3-8B selector-frozen cold and warm TTFT p95](../../assets/results/rag/powered_qwen3_8b_realization_ttft.png)
+
 ## Claim boundary
 
-The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The original 10-question smoke remains a negative end-to-end gate. The powered cohorts localize that failure to selection and establish selector-frozen contiguous-native parity plus a warm repeated-selection runtime win at 2K and 4K. They do **not** qualify generic PRA selection or a learned adaptor. Physical changing-selection reuse is promising but position-sensitive, so it is evidence for the next representation design rather than a broad persistent-corpus claim.
+The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The original 10-question smoke remains a negative end-to-end gate. The powered cohorts localize that failure to selection and establish selector-frozen contiguous-native parity plus a warm repeated-selection runtime win at 2K and 4K. They do **not** qualify generic PRA selection or a learned adaptor. Physical changing-selection reuse is promising but position-sensitive, so it is evidence for the next representation design rather than a broad persistent-corpus claim. Qwen3-8B repeats both the failed generic-selection gate and the successful contiguous-native realization gate.
