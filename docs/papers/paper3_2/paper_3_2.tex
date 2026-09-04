@@ -41,7 +41,14 @@ K/V entries. That saving did not imply free composition: independently encoded
 resources preserved only 8.5--10.5\% of outputs, and even 50\% contextual
 repair recovered 61.5\% across five natural cohorts. Partial materialization
 reduced active K/V by 25\%, but mean token F1 fell from .234 to .181 and output
-parity to 38\%. These results establish contiguous native
+parity to 38\%. A final five-seed test exercises the intended URI-addressed
+record path with BM25, MiniLM, and BGE reranking. Learned reranking raises
+packed F1 from .093 to .134, but independently encoded records remain lower at
+.080; the BGE paired F1 delta is $-.055$ (seed-bootstrap 95\% CI
+$[-.076,-.035]$). Record-relative execution reduces mean pairwise order JS by
+98.6\%, while reusing 327.7 native token states per changed query versus 19.1
+exact-prefix tokens, but this stability and reuse do not yet preserve quality.
+These results establish contiguous native
 transport and non-prefix reuse while locating the remaining bottleneck in
 cross-resource contextualization, not positional transport alone. Reduced 4B
 and 8B Qwen and Llama replications preserve contiguous transport exactly;
@@ -58,12 +65,14 @@ D_1\,D_2\,D_3\,Q
 \]
 imposes a total order and a precise metric distance among documents even when $D_1,D_2,D_3$ are logically independent sources.  If these resources are encoded separately and reused later, their original positional coordinates and contextual histories are no longer automatically equivalent to the newly serialized RAG sequence.
 
-This paper therefore asks four linked but separable questions:
+This paper therefore asks five linked but separable questions:
 \begin{enumerate}[leftmargin=*]
     \item Which external retrieval/index strategies provide the strongest candidate evidence?
     \item Given the same candidates, how do conventional RAG and PRA routing compare?
     \item Given the same selected evidence, what quality--cost frontier is obtained by full text, full native, and partial PRA materialization?
     \item When selected native resources are independently stored, what ordering and positional composition should they use, and how much recomputation is required to recover fresh-context behavior?
+    \item Does the production URI/record/resolver path alter that conclusion,
+    and can a strong BM25--reranker selector close the remaining gap?
 \end{enumerate}
 
 The paper deliberately allows the strongest architecture to be complementary:
@@ -77,13 +86,16 @@ The paper deliberately allows the strongest architecture to be complementary:
 PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
 
 \paragraph{Contributions.}
-We make five contributions.
+We make six contributions.
 \begin{enumerate}[leftmargin=*]
     \item A five-seed natural test showing exact selected-text/native transport under frozen retrieval, with ordinary prefix caching as a separate control.
     \item A retrieval-index comparison spanning BM25, dense FAISS, hybrid RRF, two rerankers, Elasticsearch, and Qdrant with decomposed service latency.
     \item A causal materialization ladder that contrasts score-ranked, evidence-aware, and equal-budget wrong memory while reporting active native K/V explicitly.
     \item A multi-resource composition study derived from the earlier Paper~1.6 plan, separating RoPE rebinding from contextual repair and document-order sensitivity.
     \item A changing-selection experiment showing non-prefix native reuse and its present fidelity cost across natural overlapping query sequences.
+    \item An end-to-end test of canonical PRA document records and root
+    references with BM25, MiniLM, and BGE selection, including five-seed order
+    and changing-query reuse measurements.
 \end{enumerate}
 
 \section{Relationship to Prior PRA Work}
@@ -496,6 +508,31 @@ selection receipt fixes the exact evidence consumed by matched realization
 conditions. In particular, a native-memory condition cannot rerun retrieval
 and still be described as a transport comparison.
 
+\subsection{Canonical PRA record contract}
+The record experiment reuses the Paper~4.5 runtime contract rather than an
+experiment-specific document type. Each source is a versioned
+\texttt{ContextRecord} of type \texttt{generic\_document}; its payload retains
+the source URI, document metadata, sections, and immutable chunk descriptors.
+Each chunk is a child \texttt{rag\_chunk} record with source-relative character
+offsets and a stable URI of the form
+\texttt{pra://multihoprag/document/$d$\#chunk=$i$}. Records carry the same
+selection policy, named views, source fingerprint, and serialization boundary
+used by the runtime SDK. Ingestion receipts also use the semantic fields of
+the Paper~4.5 \texttt{PRAStorageEntry}: logical key, record type, retention
+class, resource version, reconstructability, source URI, and source hash.
+Engine-specific model, topology, data-type, layout, position-policy, and
+consumer-profile fields are bound only when native K/V is encoded.
+
+Request-specific ranks and reranker scores never mutate persistent records.
+They remain in candidate and selection receipts. An explicit request resolves
+leaf document references; a routed request resolves one request-scoped
+\texttt{rag\_chunk\_set} root and then applies the same frozen selection.
+Reference tokens are removed before model tokenization. Both paths persist the
+logical prompt, resolved record and chunk URIs, visible model prompt,
+selection-receipt identity, and hashes of materialized text. This separation
+allows the measured record behavior to be merged into Paper~4.5 without a
+record-schema translation layer.
+
 Table~\ref{tab:rag-pra-profiles} defines the composed profiles used throughout
 the study. These profiles let us test PRA in three distinct roles: replacement
 selector, second-stage selector, and realization/reuse layer after a conventional
@@ -873,6 +910,13 @@ question and composition remained the limiting mechanism.
 KILT Natural Questions and KILT HotpotQA remain follow-up datasets; adding
 corpora would not resolve the measured independent-composition failure.
 
+\subsection{Phase 10: native records and internal reranking}
+The final experiment ingests MultiHop-RAG documents through the canonical
+Paper~4.5 record envelope, resolves explicit leaves or a routed root, and
+materializes frozen chunk selections. Qwen3-1.7B runs BM25, historical MiniLM,
+and BGE-v2-M3 selectors on five seeds of 30 questions. Qwen3-4B, Qwen3-8B, and
+Llama-3.1-8B repeat the MiniLM comparison on one ten-question pilot each.
+
 \section{Measured Retrieval and Native-Memory Results}
 
 \subsection{Retrieval remains an independent component}
@@ -916,6 +960,102 @@ local comparison. These results evaluate retrieval, not PRA transport.
 methods see the same 50 questions and corpus revision.}
 \label{fig:retrieval-ladder}
 \end{figure}
+
+\subsection{Native record referencing and learned reranking}
+The earlier composition matrix injects K/V directly to isolate geometry. The
+record experiment instead exercises the intended user-visible path:
+ingestion, URI reference, resolver, frozen selection, native chunk
+materialization, and generation. Explicit leaf references and a routed root
+produce identical selected chunks and identical outputs in every measured
+condition; root resolution therefore introduces no additional loss.
+
+Table~\ref{tab:native-record-selector} separates selector improvement from
+record realization. MiniLM and BGE improve support coverage and packed-text
+F1 over BM25. The same ordering survives record realization, so learned
+reranking is useful inside PRA. It does not close the representation gap:
+all three paired record deltas are negative across all five seeds. BGE reaches
+the strongest packed F1, .134, and strongest record F1, .080, but its paired
+delta remains $-.055$ (95\% CI $[-.076,-.035]$). Gold-answer NLL moves in the
+opposite direction for the 1.7B record conditions (for BGE, 5.820 to 2.827),
+while generated-answer F1 falls. We therefore report both and do not treat
+teacher-forced NLL alone as evidence of better answering.
+
+\begin{table}[ht]
+\centering
+\caption{Five-seed native-record experiment on Qwen3-1.7B (150 questions).
+Support is mean supporting-document coverage. Latency is reranker latency and
+includes first-use costs. Intervals are seed-bootstrap 95\% CIs.}
+\label{tab:native-record-selector}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Selector & Support & Packed F1 & Record F1 & Paired $\Delta$ F1 & Rerank (ms) \\
+\midrule
+BM25 & .375 & .093 & .059 & $-.034$ [$-.044,-.028$] & 0.0 \\
+MiniLM & .558 & .124 & .079 & $-.045$ [$-.082,-.021$] & 497.8 \\
+BGE-v2-M3 & .638 & .134 & .080 & $-.055$ [$-.076,-.035$] & 4788.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/publication/native_record_selector_quality.pdf}
+\caption{Better reranking improves both packed and record-relative answering,
+but does not remove the independent-record quality gap. All bars use the same
+frozen selection within each selector.}
+\label{fig:native-record-selector}
+\end{figure}
+
+Record-relative execution is much less sensitive to arbitrary record order.
+Across canonical, reverse, and two random permutations, mean pairwise
+first-step JS falls from .04595 for packed text to .000647 for records
+(98.6\% lower), and unique outputs per question fall from 2.68 to 1.65. Mean
+F1 variance across orders falls from .00437 to .00107. Figure~\ref{fig:native-record-order}
+shows the two direct robustness measures. This is a mechanistic result, not a
+quality win: the canonical record F1 remains below packed F1.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/publication/native_record_order_sensitivity.pdf}
+\caption{Independent records reduce sensitivity to arbitrary cross-document
+serialization. The lower variance is interpreted together with, not instead
+of, the quality regression in Table~\ref{tab:native-record-selector}.}
+\label{fig:native-record-order}
+\end{figure}
+
+The changing-query record test contains 25 four-turn sequences. Exact-prefix
+matching reuses 19.1 tokens per turn on average, mostly prompt scaffolding;
+stable chunk identities expose 327.7 reusable native token states while 1693.5
+new states are encoded. Packed F1 is .1214 and record F1 is .0775, a paired
+delta of $-.0438$ (95\% CI $[-.0733,-.0213]$). The record path thus provides
+the desired non-prefix addressability, but the original record-reference
+hypothesis is not validated at 1.7B because task quality is not preserved.
+
+Three reduced ten-question pilots test whether scale alone resolves the gap.
+It does not produce a monotonic result. Qwen3-4B changes F1 from .156 to .173,
+Qwen3-8B from .182 to .115, and Llama-3.1-8B from .173 to .162. First-step JS
+is .185, .099, and .130, respectively, and generated-output agreement is zero
+in all three pilots. These cohorts are too small for a positive scale claim;
+the isolated Qwen3-4B improvement motivates replication rather than promotion
+to a runtime default.
+
+\begin{table}[ht]
+\centering
+\caption{Reduced native-record scale/family pilots (ten questions each,
+MiniLM selection, seed 11). P/R are packed/record values.}
+\label{tab:native-record-scale}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Model & F1 P/R & $\Delta$F1 & NLL P/R & JS \\
+\midrule
+Qwen3-4B & .156/.173 & +.018 & 1.556/1.970 & .185 \\
+Qwen3-8B & .182/.115 & $-.067$ & 2.356/2.375 & .099 \\
+Llama-3.1-8B & .173/.162 & $-.011$ & .961/1.679 & .130 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Natural composition and contextual repair}
 We next freeze the historical cross-encoder's selection for five independently
@@ -1124,6 +1264,17 @@ measurable where exact-prefix reuse is zero. Third, useful composition is not
 yet established: RoPE rebinding removes only part of the error, and the tested
 bounded repair policies do not recover fresh behavior reliably.
 
+The native-record experiment sharpens the third conclusion. The failure is not
+an artifact of bypassing the public abstraction: canonical Paper~4.5 records,
+explicit references, rooted routing, and strong rerankers reach the same
+boundary. Better selectors improve evidence coverage and downstream quality,
+but frozen-selection record realization still regresses on the powered 1.7B
+comparison. Conversely, explicit and rooted references agree exactly, so the
+reference parser and root resolver are not the source of the measured loss.
+The large reduction in order sensitivity is real, but lower sensitivity is
+useful only if subsequent training or composition repair also preserves answer
+quality.
+
 The results therefore falsify the strongest form of the composition hypothesis.
 Post-RoPE K/V is not a freely movable document representation. Later-layer
 states carry causal context from the serialization in which they were formed.
@@ -1176,7 +1327,11 @@ independently encoded resources were not compositionally equivalent to a fresh
 packed prompt. Position rebinding helped; 50\% contextual repair helped more;
 neither restored exact behavior reliably. Partial materialization found one
 apparently promising 75\% point on the first ten questions, but five-seed
-replication rejected it as a quality-preserving fixed policy. The practical
+replication rejected it as a quality-preserving fixed policy. Exercising the
+canonical Paper~4.5 record/resolver path and placing MiniLM or BGE reranking
+inside PRA improves selection but does not overturn that result: records are
+far less order-sensitive and expose non-prefix reuse, yet lose generated-answer
+F1 on the powered comparison. The practical
 architecture is therefore clearer than the final solution: external search can
 freeze strong evidence, PRA can store and reuse exact contiguous native blocks,
 and future work must make changed compositions contextually faithful without

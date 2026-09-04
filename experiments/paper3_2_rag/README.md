@@ -66,6 +66,13 @@ tokens to stable `pra://` URIs, resolves explicit or routed-root references,
 and only then materializes independently cached chunk K/V. The same frozen
 selection is also run as packed text and one contiguous native block.
 
+The records are the shared Paper 4.5 `ContextRecord` objects, not a parallel
+experiment schema. Documents use the canonical generic-document payload and
+policy; chunks use `RAG_CHUNK` children with parent identity and source-relative
+offsets. Ingestion receipts mirror the semantic fields consumed by the Paper
+4.5 storage lifecycle. Model/layout compatibility remains an engine-time
+storage fingerprint rather than persistent source metadata.
+
 The selector matrix places MiniLM or BGE-v2-M3 after a bounded BM25 chunk
 cohort. Every reranker model, revision, input rank, score, output rank, and
 latency is retained in a receipt. The default run also compares packed and

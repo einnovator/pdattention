@@ -93,6 +93,11 @@ The completed next-iteration evidence is organized under
 - `nonprefix_reuse/` contains five seeds of five four-turn changing-selection
   sequences.
 - `scale/` contains the reduced 4B, 8B, and cross-family replications.
+- `native_records/` contains five 30-question Qwen3-1.7B runs through the
+  canonical Paper 4.5 `ContextRecord`/URI/resolver path, their seed aggregate,
+  and reduced Qwen3-4B, Qwen3-8B, and Llama-3.1-8B pilots. Each run keeps
+  candidate, reranker, selection, record-resolution, generation, and reuse
+  receipts separate.
 
 First regenerate the seed-aware aggregates from the five raw manifests. The
 aggregator retains seed summaries and reports deterministic seed-bootstrap
@@ -128,5 +133,9 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
   --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/qwen3_4b_seed11 \
   --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/qwen3_8b_seed11 \
   --scale-composition docs/papers/shared/results/paper3_2_rag/scale_composition/llama3_1_8b_seed11 \
+  --native-record-aggregate docs/papers/shared/results/paper3_2_rag/native_records/five_seed/manifest.json \
+  --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed11 \
+  --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/qwen3_8b_seed11 \
+  --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/llama3_1_8b_seed11 \
   --output-dir docs/papers/shared/results/paper3_2_rag/publication
 ```

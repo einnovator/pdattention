@@ -338,6 +338,103 @@ def _retrieval_plot(summary: dict[str, object], output: Path) -> None:
     plt.close(fig)
 
 
+def _native_record_selector_plot(summary: dict[str, object], output: Path) -> None:
+    """Compare selector gains before and after native-record realization."""
+
+    import matplotlib.pyplot as plt
+
+    canonical = {
+        (row["selector"], row["representation"]): row
+        for row in summary["conditions"]
+        if row["order_name"] == "canonical"
+    }
+    selectors = [name for name in ("bm25", "minilm", "bge") if (name, "PACKED_RAG_TEXT") in canonical]
+    packed = [float(canonical[(name, "PACKED_RAG_TEXT")]["token_f1"]) for name in selectors]
+    records = [float(canonical[(name, "PRA_EXPLICIT_RECORDS")]["token_f1"]) for name in selectors]
+    x = list(range(len(selectors)))
+    width = 0.36
+    fig, axis = plt.subplots(figsize=(7.2, 3.5))
+    axis.bar([value - width / 2 for value in x], packed, width, label="packed selected text", color="#2563eb")
+    axis.bar([value + width / 2 for value in x], records, width, label="independent PRA records", color="#0f766e")
+    axis.set_xticks(x, [name.upper() if name == "bm25" else name for name in selectors])
+    axis.set_ylabel("Token F1")
+    axis.set_ylim(0.0, max(packed + records) * 1.25)
+    axis.grid(axis="y", alpha=0.25)
+    axis.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _native_record_order_plot(summary: dict[str, object], output: Path) -> None:
+    """Show order robustness without hiding the associated quality result."""
+
+    import matplotlib.pyplot as plt
+
+    order = summary["order_sensitivity"]
+    labels = ["packed selected text", "independent PRA records"]
+    js = [
+        float(order["packed_mean_pairwise_js"]["mean"]),
+        float(order["record_mean_pairwise_js"]["mean"]),
+    ]
+    unique = [
+        float(order["packed_unique_outputs"]["mean"]),
+        float(order["record_unique_outputs"]["mean"]),
+    ]
+    fig, (left, right) = plt.subplots(1, 2, figsize=(8.2, 3.4))
+    left.bar(labels, js, color=["#2563eb", "#0f766e"])
+    left.set_ylabel("Mean pairwise first-step JS")
+    right.bar(labels, unique, color=["#2563eb", "#0f766e"])
+    right.set_ylabel("Unique outputs per question")
+    for axis in (left, right):
+        axis.tick_params(axis="x", rotation=18)
+        axis.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _native_record_scale_summary(run_dirs: list[Path]) -> list[dict[str, object]]:
+    result = []
+    for run_dir in run_dirs:
+        manifest = _load(run_dir / "manifest.json")
+        assert manifest is not None
+        canonical = {
+            (row["selector"], row["representation"]): row
+            for row in manifest["condition_summary"]
+            if row["order_name"] == "canonical"
+        }
+        selectors = sorted(
+            {
+                str(row["selector"])
+                for row in manifest["condition_summary"]
+                if row["order_name"] == "canonical"
+            }
+        )
+        if len(selectors) != 1:
+            raise ValueError(f"Scale run must contain one selector: {selectors}")
+        selector = selectors[0]
+        packed = canonical[(selector, "PACKED_RAG_TEXT")]
+        records = canonical[(selector, "PRA_EXPLICIT_RECORDS")]
+        result.append({
+            "model": manifest["model"],
+            "seed": manifest["seed"],
+            "examples": packed["examples"],
+            "selector": selector,
+            "packed_token_f1": packed["token_f1"],
+            "record_token_f1": records["token_f1"],
+            "token_f1_delta": float(records["token_f1"]) - float(packed["token_f1"]),
+            "packed_gold_nll": packed["gold_answer_mean_nll"],
+            "record_gold_nll": records["gold_answer_mean_nll"],
+            "output_agreement": records["exact_output_agreement_with_packed"],
+            "first_step_js": records["first_step_js_vs_packed"],
+            "reuse": manifest["reuse_summary"],
+        })
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--composition-manifest", type=Path)
@@ -348,6 +445,8 @@ def main() -> None:
     parser.add_argument("--scale-run", type=Path, action="append", default=[])
     parser.add_argument("--position-manifest", type=Path)
     parser.add_argument("--scale-composition", type=Path, action="append", default=[])
+    parser.add_argument("--native-record-aggregate", type=Path)
+    parser.add_argument("--native-record-scale-run", type=Path, action="append", default=[])
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -385,6 +484,19 @@ def main() -> None:
         ]
         _scale_composition_plot(
             result["scale_composition"], args.output_dir / "scale_composition_parity"
+        )
+    native_records = _load(args.native_record_aggregate)
+    if native_records is not None:
+        result["native_records"] = native_records
+        _native_record_selector_plot(
+            native_records, args.output_dir / "native_record_selector_quality"
+        )
+        _native_record_order_plot(
+            native_records, args.output_dir / "native_record_order_sensitivity"
+        )
+    if args.native_record_scale_run:
+        result["native_record_scale"] = _native_record_scale_summary(
+            args.native_record_scale_run
         )
     (args.output_dir / "publication_summary.json").write_text(
         json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
