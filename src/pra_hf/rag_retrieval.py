@@ -60,6 +60,19 @@ def _http_json_transport(
     return json.loads(body) if body else {}
 
 
+def _http_ndjson(url: str, lines: Sequence[Mapping[str, object]]) -> Mapping[str, object]:
+    body = "".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines)
+    request = urllib.request.Request(
+        url,
+        data=body.encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/x-ndjson"},
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        payload = response.read()
+    return json.loads(payload) if payload else {}
+
+
 class SentenceTransformerEmbedder:
     """Pinned batched dense embedder for modern local/FAISS retrieval arms."""
 
@@ -482,12 +495,26 @@ def index_elasticsearch_documents(
             }
         },
     )
-    for row in documents:
-        transport(
-            "PUT",
-            f"{endpoint}/{index_name}/_doc/{quote(row.document_id, safe='')}",
-            {"document_id": row.document_id, "title": row.title, "text": row.text},
-        )
+    if transport is _http_json_transport:
+        for first in range(0, len(documents), 250):
+            lines: list[Mapping[str, object]] = []
+            for row in documents[first : first + 250]:
+                lines.extend(
+                    (
+                        {"index": {"_index": index_name, "_id": row.document_id}},
+                        {"document_id": row.document_id, "title": row.title, "text": row.text},
+                    )
+                )
+            response = _http_ndjson(f"{endpoint}/_bulk", lines)
+            if response.get("errors"):
+                raise RuntimeError("Elasticsearch bulk ingestion reported item errors")
+    else:
+        for row in documents:
+            transport(
+                "PUT",
+                f"{endpoint}/{index_name}/_doc/{quote(row.document_id, safe='')}",
+                {"document_id": row.document_id, "title": row.title, "text": row.text},
+            )
     transport("POST", f"{endpoint}/{index_name}/_refresh", None)
 
 
@@ -523,6 +550,10 @@ def index_qdrant_documents(
     if batch_size <= 0:
         raise ValueError("Qdrant ingestion batch size must be positive")
     endpoint = endpoint.rstrip("/")
+    try:
+        transport("DELETE", f"{endpoint}/collections/{collection_name}", None)
+    except Exception:
+        pass
     transport(
         "PUT",
         f"{endpoint}/collections/{collection_name}",
