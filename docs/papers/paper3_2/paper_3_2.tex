@@ -5,6 +5,8 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{graphicx}
+\usepackage{float}
+\usepackage{placeins}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{enumitem}
@@ -28,7 +30,7 @@ Retrieval-augmented generation (RAG) reduces the amount of external information 
 
 This paper studies these issues jointly across multiple RAG and long-context QA datasets.  We compare full documents in context, conventional RAG with lexical, dense, hybrid, reranked, and real vector-database indices, and PRA variants that use full or partial materialization and multiple routing modes.  We then freeze selected evidence and isolate realization and composition: fresh selected-text encoding, contiguous native reuse, independently cached native fragments, RoPE composition-coordinate rebinding, and limited contextual repair.  Finally, we test whether arbitrary document serialization matters by comparing $D_1D_2Q$ with $D_2D_1Q$ and broader resource permutations under multiple positional policies, including source-local, globally packed, resource-adjacent, rank-derived, score-derived, near-band, and randomized geometries.
 
-The experimental program begins with small models for broad causal sweeps and progressively repeats only qualified conditions on 4B, 8B, and larger models.  The central question is not whether PRA replaces mature retrieval infrastructure, but whether external retrieval, selective materialization, persistent native memory, and request-specific composition can form a better quality--context--latency frontier than either full context or conventional RAG alone.
+The experimental program begins with small models for broad causal sweeps and progressively repeats only qualified conditions on 4B, 8B, and larger models.  In an initial five-seed Qwen3-1.7B transport gate, 150 selector-frozen Selected Context/Native Memory pairs produced identical outputs.  Cold native realization was 4.1\% slower in total latency, while exact warm reuse reduced mean time-to-first-token by 63.8\% and total latency by 34.5\%.  This controlled fixture is a mechanism result, not a natural-task quality claim: the generic PRA selector slightly underperformed BM25 and the selection gate remains closed.  The central question is not whether PRA replaces mature retrieval infrastructure, but whether external retrieval, selective materialization, persistent native memory, and request-specific composition can form a better quality--context--latency frontier than either full context or conventional RAG alone.
 \end{abstract}
 
 \section{Introduction}
@@ -91,13 +93,26 @@ deduplicated, evidence, non-evidence, and transferred K/V separately.
 Those experiments provide two constraints for the present study. First,
 whole-parent disclosure is a physical control, not an oracle optimum: in the
 controlled study, exact cores averaged 5.25 K/V tokens and reduced K/V by
-92.9\% relative to whole selected parents. Second, a small global budget is not
+92.9\% relative to whole selected parents. They raised held-out answer margin
+by 4.107 and reached .720 accuracy, compared with a .981 margin gain and .300
+accuracy for whole parents. Equal-size wrong cores instead lowered margin by
+.798. The matched-content intervention shows that the effect cannot be
+attributed to memory size alone; broader disclosure can introduce genuine
+attention competition rather than harmless context. Second, a small global budget is not
 automatically sufficient. Under oracle selection, exact disclosure reduced
 active K/V by 20.9\% on MuSiQue and 44.4\% on 2Wiki relative to whole parents,
 but a common 128-token allocation did not preserve all distributed MuSiQue
 evidence. These are inherited materialization findings, not Paper~3.2 RAG
 results. We reuse the mechanism and causal controls, then remeasure the frontier
 after realistic retrieval rather than oracle selection.
+
+Paper~3.0 also found that consumer-layer placement materially changes the
+effect of disclosed memory, whereas contextual representation change by itself
+did not explain the controlled quality gap. Paper~3.2 therefore treats
+retrieval identity, interval disclosure, position transport, and consumer-layer
+use as separate factors. A RAG chunk containing the right words is not assumed
+to be computationally sufficient, and a compact K/V interval is not assumed to
+be useful merely because its evidence density is high.
 
 \subsection{Paper 3.1: retrieval addresses}
 Paper~3.1 studies compact persistent retrieval indices, especially generated summaries versus lexical, extractive, and native-QK alternatives.  Its conclusion is kept separate.  Paper~3.2 may reuse those indices as routing arms, but the present question is end-to-end RAG composition rather than summary generation.
@@ -236,7 +251,7 @@ The synthetic fixture is deliberately lexical and small, so these numbers
 validate information flow and candidate ceilings; they do not rank production
 retrievers.
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/retrieval_recall.pdf}
 \caption{Five-seed synthetic retrieval and frozen-selection mechanism gate.
@@ -254,7 +269,7 @@ position numbers from different documents are not deduplicated. This gate
 qualifies the experiment machinery only. Model-backed permutation, rebinding,
 and repair results remain pending.
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/position_collisions.pdf}
 \caption{Effective-coordinate overlap by declared composition policy. Numeric
@@ -262,6 +277,66 @@ position overlap is intentional for source-local and adjacent-resource frames;
 logical resource identities remain distinct.}
 \label{fig:mechanism-position-overlap}
 \end{figure}
+
+\FloatBarrier
+
+\subsection{First model-backed transport gate}
+
+We next ran the selector-frozen realization path with Qwen3-1.7B-4bit on an
+Apple M4 Pro. The model revision was pinned to \texttt{3b1b1768}; no PRA
+adaptor was available. Each of five corpus seeds used the same 15 controlled
+questions, while distractor construction varied by seed. We therefore use
+seed, rather than question execution, as the replication unit. The experiment
+produced 450 measured rows and 150 matched Selected Context/Native Memory pairs
+across cold and warm regimes.
+
+All 150 pairs shared the same candidate receipt, selection receipt, selected
+intervals, and token-F1 value, and all 150 generated strings matched exactly.
+Table~\ref{tab:model-smoke} reports means across the five seed summaries. Native
+realization replaced approximately 122 visible evidence tokens with the same
+number of selected native K/V states; the direct visible prompt fell from
+153.6 to 32.0 tokens. Cold native execution remained 3.3\% slower in TTFT and
+4.1\% slower end to end. Once the exact selection was retained, native
+ingestion fell from 60.5 to 0.04~ms, TTFT from 102.2 to 37.0~ms, and total
+latency from 177.8 to 116.5~ms.
+
+\begin{table}[ht]
+\centering
+\caption{Five-seed controlled Qwen3-1.7B transport gate. Values are means of
+15-question seed summaries; parentheses give between-seed standard deviation.}
+\label{tab:model-smoke}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Regime & Realization & F1 & visible & TTFT (ms) & total (ms) \\
+\midrule
+Cold & Selected text & .094 (.010) & 153.6 & 100.6 (1.7) & 176.2 (2.7) \\
+Cold & Native K/V    & .094 (.010) & 32.0  & 103.9 (2.5) & 183.5 (2.7) \\
+Warm & Selected text & .094 (.010) & 153.6 & 102.2 (1.8) & 177.8 (2.5) \\
+Warm & Native K/V    & .094 (.010) & 32.0  & 37.0 (0.4)  & 116.5 (0.5) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/model_smoke/aggregate/model_smoke_transport.pdf}
+\caption{Matched realization cost on the controlled fixture. Error bars are
+between-seed standard deviations. Native reuse is beneficial only in the warm
+regime here; the cold path pays native encoding and is slightly slower.}
+\label{fig:model-smoke-transport}
+\end{figure}
+
+This result closes only the narrow transport gate. Standard BM25 achieved mean
+token F1 .109 and supporting-document coverage .933, while the generic PRA
+selector obtained .094 and .873. The fixture is lexical, small, and repeated
+across seeds; exact match was zero for every arm because the model returned
+sentences rather than the requested short value. Accordingly, the selection
+gate and public-card gate remain closed. The next powered stage must use
+natural held-out cohorts and score answer log-probability or normalized answer
+quality in addition to exact match.
+
+\FloatBarrier
 
 \section{Experimental Questions}
 

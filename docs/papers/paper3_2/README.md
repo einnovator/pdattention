@@ -44,5 +44,22 @@ PYTHONPATH=src python -m pytest tests/test_rag_composition.py \
   tests/test_rag_powered.py -q
 ```
 
-The model-free mechanism smoke and model-backed commands will be added beside
-their immutable result manifests as each gate is implemented.
+Model-free mechanism smoke:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_mechanism_smoke \
+  --output docs/papers/shared/results/paper3_2_rag/mechanism_smoke
+```
+
+The first model-backed gate uses five separately persisted runs of
+`experiments.rag_vs_pra.run_powered_decomposition`, followed by:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.analyze_model_smoke \
+  --input-root docs/papers/shared/results/paper3_2_rag/model_smoke \
+  --output-dir docs/papers/shared/results/paper3_2_rag/model_smoke/aggregate
+```
+
+It is a controlled Qwen3-1.7B-4bit transport smoke over seeds
+`11, 23, 37, 71, 101`. Its 150 selected-text/native pairs are output-exact,
+but it does not qualify the generic selector or establish natural-task quality.
