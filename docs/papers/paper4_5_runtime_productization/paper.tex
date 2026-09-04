@@ -51,16 +51,18 @@ FULL, E0, E2-HOT, and E2-WARM, but E0 sustains 56.3 requests/s versus 45.5 and
 do not yet imply an economic win.
 
 The same evidence discipline applies above the engine. On 50 MultiHop-RAG
-questions, parameter-free PRA raises answer-string availability by
-0.10--0.12 at a 2K-token budget and reduces unique selected tokens by 20.8\%
-over repeated standard-RAG packing. A matched Qwen3-4B precision study finds
-the deployed PRA pipeline progressively closer to baseline from INT4 through
-INT8 to BF16, but it is a ten-question, one-seed result with no qualified
-learned adaptor. The robust product contribution is therefore selective
-logical context with explicit provenance. Native Memory and Native Serving are
-optional, engine- and workload-qualified optimizations; fused serving,
-selector-frozen precision transfer, and production-scale profile calibration
-remain open.
+questions, a powered Qwen3-4B decomposition finds that generic PRA selection
+does not beat a strong conventional reranker, while selector-frozen contiguous
+Native Memory preserves every output. Retaining one 2K selection reduces warm
+total latency from 3.031 to 0.638~s; at 4K it reduces 6.121 to 0.799~s, but
+these comparisons deliberately re-prefill selected text and are not ordinary
+prefix-cache-hit controls. Independently cached chunks avoid 20.8\% of source
+materialization and reduce cumulative runtime by 12.8\%, yet source-local
+positional composition changes outputs. The robust product contribution is
+therefore selective logical context with explicit provenance. Native Memory
+and Native Serving remain engine-, representation-, and workload-qualified
+optimizations; stronger selection, position-aware chunk composition, and
+production-scale profile calibration remain open.
 \end{abstract}
 
 \section{Introduction}
@@ -1596,6 +1598,51 @@ cold and warm measurements are not averaged.}
 \label{fig:powered-rag-ttft}
 \end{figure}
 
+\subsection{Budget boundary and physical chunk reuse}
+
+The secondary powered cell increases both distractor pressure and selected
+width: the same 50 questions use $N=50$ and a 4K budget. Standard BM25, the
+strong conventional reranker, generic PRA, and strong-reranker PRA all obtain
+0.460 official score. Their token F1 values are 0.075, 0.081, 0.080, and
+0.081, respectively. Generic PRA exposes the answer in 0.76 of examples, but
+its 0.080 F1 does not beat the strong control. The point estimates therefore
+converge without opening the selection gate; the bootstrap quality intervals
+also overlap substantially.
+
+Contiguous selector-frozen realization remains exact at 4K. Cold Native
+Memory costs 6.313~s versus 6.109~s for Selected Context, a 3.3\% regression.
+After retaining the exact selection, Native Memory costs 0.799~s versus
+6.121~s, an 86.9\% reduction, while moving 4,084 selected tokens out of the
+visible prompt. The cost is approximately 602~MB of active all-layer K/V.
+Figure~\ref{fig:powered-rag-ttft} and this 4K replication therefore describe
+a repeated-selection benefit, not an unconditional RAG speedup and not a
+comparison with a selected-text prefix-cache hit.
+
+The physical persistent-corpus run changes the reuse unit from a complete
+selection to independently encoded 256-token chunks. Across 50 changing
+questions it reuses 22.0\% of chunk lookups, materializes 80,117 unique native
+tokens rather than about 101,294 selected tokens, and reduces cumulative
+request wall time from 151.19 to 131.78~s (12.8\%). Mean TTFT falls from 2.633
+to 2.163~s. Retained detail reaches 6.38~GB, however, and generated behavior is
+not exact: official score changes from 0.440 to 0.380 while token F1 changes
+from 0.071 to 0.086. This is not a cache-corruption result. Each chunk is
+encoded independently and \texttt{combine\_native\_memories} preserves its
+source-local post-RoPE positions; concatenated Selected Context assigns one
+global sequence of positions. The experiment consequently measures a real
+chunk-resident representation policy, not transport parity. We mark the
+selection, native-parity, and economic decomposition gates
+\texttt{NOT\_APPLICABLE\_PERSISTENT\_CORPUS} and require position-aware chunk
+composition before promoting this policy.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_persistent_n20_2k_50/plots/cumulative_repeated_query_tokens.pdf}
+\caption{Physical persistent-corpus accounting over 50 changing selections.
+Chunk-native residency reduces newly encoded source tokens, but this curve
+must be read with the source-local positional and retained-memory caveats.}
+\label{fig:powered-rag-persistent}
+\end{figure}
+
 \subsection{Stable prefix and session-delta contract}
 
 \begin{figure}[H]
@@ -2932,16 +2979,18 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
-The document-RAG ladder is also incomplete. The 50-question MultiHop-RAG grid
-establishes candidate identity, budget controls, and a selection signal, but its
-answer-availability probe is not generated-answer quality. The ten-question
-Qwen3-4B smoke is too small for a headline quality estimate and closes neither
-the quality nor economic gate. A qualified document adaptor is absent. The next
-stage must add a strong dense or reranked RAG baseline, at least 50--100
-model-backed examples, selector-frozen E0/E2 controls within the same workload,
-and repeated-query physical cache measurements. KILT Natural Questions and
-HotpotQA require the pinned KILT knowledge source; they remain unmeasured rather
-than being approximated from answer provenance.
+The document-RAG ladder remains incomplete, but its main decomposition is now
+measured. Fifty model-backed MultiHop-RAG examples include a strong reranker,
+selector-frozen E0/E2 at 2K and 4K, bootstrap intervals, and physical
+persistent-chunk reuse. Generic selection does not beat the strong control; no
+qualified document adaptor exists. Contiguous native realization is exact,
+whereas independently encoded source-local chunks change generation and cannot
+support a parity claim. The warm benefit is measured against selected-text
+re-prefill, not an ordinary prefix-cache hit. A larger second-model replication,
+position-aware chunk composition, and a matched prefix-cache control remain
+open. KILT Natural Questions and HotpotQA require the pinned KILT knowledge
+source; they remain unmeasured rather than being approximated from answer
+provenance.
 
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
 experiments. They do not by themselves measure physical prefix-cache hits,
@@ -3047,10 +3096,12 @@ primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 remains a negative gate. Companion engine runs establish pinned native
 realizations but still leave portable E2/E3 integration unmeasured. The new
-document-RAG ladder adds auditable same-candidate comparisons and finds a
-budget-sensitive parameter-free selection signal, but its first model-backed
-smoke is negative: context visibility falls sharply while quality does not yet
-hold and native completion costs more. The practical
+document-RAG ladder adds auditable same-candidate comparisons, a strong
+reranker, and powered selector-frozen controls. Generic selection remains
+unqualified, while contiguous native realization is output-exact and sharply
+faster when an identical retained selection replaces re-prefill. Reusable
+source-local chunks reduce physical encoding but change generation, exposing a
+positional-composition requirement rather than a free cache win. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.

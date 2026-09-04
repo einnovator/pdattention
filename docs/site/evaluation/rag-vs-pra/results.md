@@ -25,11 +25,11 @@ At 8K--16K, the selectors converge because most useful chunks fit. The measured 
 
 ![MultiHop-RAG candidate and budget curves](../../assets/results/rag/multihoprag_fixed_candidate_curves.png)
 
-## Reuse diagnostic
+## Logical reuse diagnostic
 
 ![MultiHop-RAG cumulative reuse curve](../../assets/results/rag/multihoprag_reuse_curve.png)
 
-The current persistent-corpus cohort avoids 20.8% of repeated chunk materialization after 50 queries. It does not yet include engine-measured TTFT or physical native-cache residency.
+The accounting cohort avoids 20.8% of repeated chunk materialization after 50 queries. A physical MLX follow-up is reported below.
 
 ## Qwen3-4B MLX generation smoke
 
@@ -76,6 +76,20 @@ Cold Native Memory is 96 ms slower end to end than Selected Context. With retain
 
 ![Powered Qwen3-4B selector-frozen cold and warm TTFT p95](../../assets/results/rag/powered_qwen3_4b_realization_ttft.png)
 
+## Distractor and budget boundary
+
+The secondary powered cell increases the candidate set to `N=50` and the selected-token budget to 4K. All four selectors obtain `0.460` official score. Token F1 is `0.075` for standard BM25, `0.081` for the strong conventional reranker, `0.080` for generic PRA, and `0.081` for strong-reranker PRA. Generic PRA has the highest answer availability (`0.76`), but does not beat the strong control on generated quality; bootstrap intervals overlap.
+
+Selector-frozen Selected Context and Native Memory remain output-exact at 4K. Cold Native Memory costs `6.313 s` versus `6.109 s` for Selected Context. Reusing the retained 4K selection costs `0.799 s` versus `6.121 s` for selected-text re-prefill, an `86.9%` reduction. It moves about `4,084` tokens out of the visible prompt at an active-detail cost of about `602 MB`. This is not a comparison with an ordinary prefix-cache hit.
+
+## Physical persistent chunks
+
+The physical persistent-corpus run caches independently encoded 256-token chunks across 50 changing questions. It records a `22.0%` mean native chunk-hit fraction, materializes `80,117` unique native tokens rather than roughly `101,294` selected tokens, and reduces cumulative request wall time from `151.19 s` to `131.78 s` (`12.8%`). Mean TTFT falls from `2.633 s` to `2.163 s`, while retained detail grows to `6.38 GB`.
+
+The output is not exact: official score changes from `0.440` for Selected Context to `0.380` for Native Memory, while token F1 changes from `0.071` to `0.086`. The cause is representational, not a hidden selector change: independently encoded chunks retain source-local post-RoPE positions, while selected-text concatenation creates one global position sequence. The decomposition gates are therefore `NOT_APPLICABLE_PERSISTENT_CORPUS`; position-aware chunk composition must qualify separately.
+
+![Physical persistent-corpus cumulative source tokens](../../assets/results/rag/powered_qwen3_4b_persistent_tokens.png)
+
 ## Claim boundary
 
-The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The original 10-question smoke remains a negative end-to-end gate. The powered cohort localizes that failure to selection and establishes selector-frozen native parity plus a warm repeated-selection runtime win. It does **not** qualify generic PRA selection, a learned adaptor, or a broad persistent-corpus advantage. Those claims require stronger generated quality and physical reuse across changing, overlapping selections.
+The 50-question curves establish auditable candidate controls and a parameter-free selection signal. The original 10-question smoke remains a negative end-to-end gate. The powered cohorts localize that failure to selection and establish selector-frozen contiguous-native parity plus a warm repeated-selection runtime win at 2K and 4K. They do **not** qualify generic PRA selection or a learned adaptor. Physical changing-selection reuse is promising but position-sensitive, so it is evidence for the next representation design rather than a broad persistent-corpus claim.

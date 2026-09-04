@@ -39,10 +39,13 @@ storage and restart recovery are exact; full int8 COLD K/V is exact in only
 study adds BF16, MLX 8-bit, and MLX 4-bit deployed pipelines. PRA task score is
 preserved in BF16 and 8-bit but loses one or two answers at 4-bit; the cohort
 is too small and its selectors are not frozen independently, so it is not a
-precision-invariance result. MLX provides a working native PRA mechanism and a
-clear model-scale trend. A fused segmented kernel, broader natural cohorts,
-and learned consumer gates remain the decisive steps for an economic and
-profile-sparsity claim.
+precision-invariance result. A separate 50-question, selector-frozen Qwen3-4B
+run preserves every contiguous E0/E2 output at 2K and 4K; retained E2 reduces
+warm total latency by 79.0\% and 86.9\%, respectively, against selected-text
+re-prefill. Chunk-resident source-local K/V is not exact and remains a candidate
+policy. MLX provides a working native PRA mechanism and a clear model-scale
+trend. A fused segmented kernel, broader natural cohorts, and learned consumer
+gates remain the decisive steps for an economic and profile-sparsity claim.
 \end{abstract}
 
 \section{Qualification Snapshot}
@@ -1369,6 +1372,23 @@ about 2.40~s, with unchanged generated output. This qualifies native
 realization for repeated identical selections on the measured MLX path; it
 does not qualify the upstream selector, and it does not establish equivalence
 to a selected-text path backed by an ordinary prefix-cache hit.
+
+The same protocol at $N=50$ and 4K preserves every selector-frozen output.
+Selected Context and Native Memory obtain 0.080 token F1 with generic PRA and
+0.081 with the strong reranker; all compared selectors obtain 0.460 official
+score. Cold native total latency is 6.313~s versus 6.109~s for Selected
+Context. Retaining the exact 4,084-token native selection reduces total latency
+to 0.799~s versus 6.121~s for re-prefill, with approximately 602~MB active
+detail. This extends contiguous realization, not retrieval qualification.
+
+A separate physical run caches independently encoded chunks across 50 changing
+questions. It reuses 22.0\% of chunk lookups, reduces cumulative wall time from
+151.19 to 131.78~s, and retains 6.38~GB of detail. It does not preserve output:
+official score changes from 0.440 for Selected Context to 0.380 for Native
+Memory. Independently encoded chunks retain source-local post-RoPE positions,
+whereas visible concatenation assigns global positions. This policy is therefore
+reported as lifecycle evidence with decomposition gates marked not applicable;
+it is not included in MLX's exact contiguous-realization claim.
 
 An independent FP32 checkpoint, cross-precision adaptor transfer, peak-memory
 capture, and a non-Qwen matched replication remain unmeasured. Casting the
