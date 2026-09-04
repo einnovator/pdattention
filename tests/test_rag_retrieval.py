@@ -11,9 +11,12 @@ from pra_hf.rag_evaluation import (
 )
 from pra_hf.rag_retrieval import (
     BackendStatus,
+    CrossEncoderRerankedRetriever,
+    ElasticsearchBM25Retriever,
     ExactDenseRetriever,
     FaissDenseRetriever,
     HybridRetriever,
+    QdrantDenseRetriever,
     make_backend_candidate_receipt,
     reciprocal_rank_fusion,
     service_backend,
@@ -106,6 +109,78 @@ def test_hybrid_backend_freezes_one_attributed_candidate_receipt() -> None:
     assert receipt.retriever_revision == hybrid.revision
     assert receipt.candidates[0].document_id == "alpha"
     assert receipt.receipt_id == receipt.from_dict(receipt.to_dict()).receipt_id
+
+
+def test_cross_encoder_reranker_preserves_first_stage_identity() -> None:
+    documents = _documents()
+    dense = ExactDenseRetriever(
+        documents, dimensions=3, embedder=_embed, embedder_revision="fixture-v1"
+    )
+
+    def score_pairs(pairs):
+        return [10.0 if "tram" in document else 0.0 for _, document in pairs]
+
+    reranker = CrossEncoderRerankedRetriever(
+        dense,
+        documents,
+        model_id="fixture/reranker",
+        revision="abc123",
+        candidate_count=3,
+        score_pairs=score_pairs,
+    )
+    rows = reranker.retrieve("Lisbon", 2)
+    assert rows[0].document_id == "gamma"
+    assert tuple(row.rank for row in rows) == (1, 2)
+    assert "fixture/reranker@abc123" in reranker.revision
+
+
+def test_elasticsearch_adapter_maps_service_hits_to_corpus_ids() -> None:
+    calls = []
+
+    def transport(method, url, payload):
+        calls.append((method, url, payload))
+        return {
+            "hits": {
+                "hits": [
+                    {"_id": "service-id", "_score": 3.5, "_source": {"document_id": "beta"}}
+                ]
+            }
+        }
+
+    retriever = ElasticsearchBM25Retriever(
+        _documents(),
+        endpoint="http://search:9200",
+        index_name="paper32",
+        index_revision="snapshot-a",
+        transport=transport,
+    )
+    assert retriever.retrieve("Oslo", 1)[0].document_id == "beta"
+    assert calls[0][0] == "POST"
+    assert calls[0][2]["size"] == 1
+
+
+def test_qdrant_adapter_maps_payload_identity_and_scores() -> None:
+    def transport(method, url, payload):
+        return {
+            "result": {
+                "points": [
+                    {"id": "uuid", "score": 0.91, "payload": {"document_id": "alpha"}}
+                ]
+            }
+        }
+
+    retriever = QdrantDenseRetriever(
+        _documents(),
+        endpoint="http://vector:6333",
+        collection_name="paper32",
+        collection_revision="snapshot-b",
+        embedder=_embed,
+        dimensions=3,
+        transport=transport,
+    )
+    result = retriever.retrieve("Lisbon engine", 1)
+    assert result[0].document_id == "alpha"
+    assert result[0].score == pytest.approx(0.91)
 
 
 def test_service_identity_is_explicit_and_derby_remains_unresolved() -> None:
