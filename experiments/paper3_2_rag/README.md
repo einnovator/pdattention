@@ -58,6 +58,35 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.run_nonprefix_reuse \
   --output reports/paper3_2_nonprefix_reuse
 ```
 
+## Native record references and internal reranking
+
+`run_native_record_reranker` exercises the high-level PRA document path. It
+ingests typed document and chunk records, binds lightweight `<REF_n>` prompt
+tokens to stable `pra://` URIs, resolves explicit or routed-root references,
+and only then materializes independently cached chunk K/V. The same frozen
+selection is also run as packed text and one contiguous native block.
+
+The selector matrix places MiniLM or BGE-v2-M3 after a bounded BM25 chunk
+cohort. Every reranker model, revision, input rank, score, output rank, and
+latency is retained in a receipt. The default run also compares packed and
+record-relative order sensitivity and constructs changing-query sequences for
+record-level reuse accounting.
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_native_record_reranker \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --seed 11 \
+  --max-examples 30 \
+  --selectors bm25,minilm,bge \
+  --reranker-device cpu \
+  --output reports/paper3_2_native_records/qwen3_1_7b_seed11
+```
+
+The logical reference prompt is retained for audit, but reference-control
+tokens are consumed by the runtime and are not serialized as evidence text to
+an unadapted base model. This keeps persistent record identity separate from
+the model-visible question and from the materialized native K/V.
+
 ## Retrieval
 
 `run_retrieval_ladder` measures local BM25, BGE dense FAISS, hybrid RRF, the
