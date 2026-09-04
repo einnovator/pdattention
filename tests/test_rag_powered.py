@@ -16,6 +16,7 @@ from experiments.rag_vs_pra.analyze_powered_decomposition import (
     _paper_table,
 )
 from experiments.paper3_2_rag.analyze_model_smoke import _parity
+from experiments.rag_vs_pra.run_powered_decomposition import _parse_selectors
 from pra_hf.rag_evaluation import ContextCondition
 from pra_hf.rag_powered import (
     answer_metrics,
@@ -300,3 +301,13 @@ def test_model_analysis_keeps_logit_and_nll_parity_separate() -> None:
     changed = _parity([selected, native])
     assert changed["all_pairs_transport_equivalent"] is True
     assert changed["all_scored_pairs_logit_nll_equivalent"] is False
+
+
+def test_selector_profile_parser_supports_reduced_scaling_matrix() -> None:
+    assert _parse_selectors("pra_strong_reranker") == ("pra_strong_reranker",)
+    assert _parse_selectors("standard_bm25,pra_generic,standard_bm25") == (
+        "standard_bm25",
+        "pra_generic",
+    )
+    with pytest.raises(Exception):
+        _parse_selectors("unknown")
