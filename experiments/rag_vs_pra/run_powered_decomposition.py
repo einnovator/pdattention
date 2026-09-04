@@ -290,7 +290,14 @@ class PersistentMLXBackend:
             layer.state = state
         return cache
 
-    def _score_gold_answer(self, question: RAGQuestion, query_tokens, cache):
+    def _score_gold_answer(
+        self,
+        question: RAGQuestion,
+        query_tokens,
+        cache,
+        *,
+        include_first_step_logits: bool = False,
+    ):
         """Teacher-force one accepted answer and fingerprint its first-step logits."""
 
         import mlx.core as mx
@@ -332,7 +339,7 @@ class PersistentMLXBackend:
         first = np.asarray(first_logits, dtype="<f4")
         elapsed = (time.perf_counter() - started) * 1000.0
         total_log_probability = float(values.sum())
-        return {
+        result = {
             "gold_answer_text": answer,
             "gold_answer_mean_nll": -total_log_probability / len(answer_tokens),
             "gold_answer_log_probability": total_log_probability,
@@ -342,6 +349,11 @@ class PersistentMLXBackend:
             "first_step_logits_sha256": hashlib.sha256(first.tobytes()).hexdigest(),
             "gold_scoring_ms": elapsed,
         }
+        if include_first_step_logits:
+            # Private diagnostic payload for in-process paired comparisons.
+            # Callers must remove it before serializing experiment rows.
+            result["_first_step_logits_f32"] = first
+        return result
 
     def answer(
         self,

@@ -57,7 +57,12 @@ from pra_hf.rag_mlx_native import (
     make_native_prompt_cache,
     rebind_native_memories_global_packed,
 )
-from pra_hf.rag_materialization import score_prefix_plan
+from pra_hf.rag_materialization import (
+    TokenMaterializationPlan,
+    evidence_oracle_plan,
+    exact_token_plan,
+    wrong_memory_plan,
+)
 from pra_hf.rag_powered import answer_metrics, official_multihop_rag_score
 
 
@@ -84,6 +89,17 @@ def _floats(value: str) -> tuple[float, ...]:
     return values
 
 
+def _repair_modes(value: str) -> tuple[str, ...]:
+    modes = tuple(item.strip() for item in value.split(",") if item.strip())
+    supported = {"even", "prefix", "boundary", "later_prefix"}
+    unknown = set(modes) - supported
+    if not modes or unknown:
+        raise argparse.ArgumentTypeError(
+            f"repair modes must be selected from {sorted(supported)}; got {sorted(unknown)}"
+        )
+    return modes
+
+
 def _token_segments(tokenizer: object, texts: Sequence[str]) -> tuple[tuple[int, ...], ...]:
     """Tokenize independent resource strings whose concatenation is exact."""
 
@@ -103,7 +119,9 @@ def _token_segments(tokenizer: object, texts: Sequence[str]) -> tuple[tuple[int,
     return segments
 
 
-def _execute(backend: PersistentMLXBackend, question, memory) -> tuple[str, dict[str, object]]:
+def _execute(
+    backend: PersistentMLXBackend, question, memory
+) -> tuple[str, dict[str, object], object | None]:
     query_tokens = list(
         backend.tokenizer.encode(backend._query(question), add_special_tokens=False)
     )
@@ -111,8 +129,12 @@ def _execute(backend: PersistentMLXBackend, question, memory) -> tuple[str, dict
         query_tokens, make_native_prompt_cache(backend.model, memory)
     )
     scoring = backend._score_gold_answer(
-        question, query_tokens, make_native_prompt_cache(backend.model, memory)
+        question,
+        query_tokens,
+        make_native_prompt_cache(backend.model, memory),
+        include_first_step_logits=True,
     )
+    first_step_logits = scoring.pop("_first_step_logits_f32", None)
     exact, token_f1 = answer_metrics(prediction, question.answers)
     return prediction, {
         **serving,
@@ -121,6 +143,46 @@ def _execute(backend: PersistentMLXBackend, question, memory) -> tuple[str, dict
         "token_f1": token_f1,
         "official_multihop_rag_score": official_multihop_rag_score(
             prediction, question.answers
+        ),
+    }, first_step_logits
+
+
+def _distribution_diagnostics(reference, candidate) -> dict[str, float | None]:
+    """Compare two first-step distributions without persisting vocabulary logits."""
+
+    if reference is None or candidate is None:
+        return {
+            "first_step_logit_max_abs_delta": None,
+            "first_step_logit_mean_abs_delta": None,
+            "first_step_js_divergence": None,
+            "first_step_kl_reference_to_condition": None,
+        }
+    import numpy as np
+
+    left = np.asarray(reference, dtype=np.float64)
+    right = np.asarray(candidate, dtype=np.float64)
+    delta = np.abs(left - right)
+    left_probability = np.exp(left - left.max())
+    left_probability /= left_probability.sum()
+    right_probability = np.exp(right - right.max())
+    right_probability /= right_probability.sum()
+    middle = 0.5 * (left_probability + right_probability)
+    epsilon = np.finfo(np.float64).tiny
+    left_log = np.log(np.maximum(left_probability, epsilon))
+    right_log = np.log(np.maximum(right_probability, epsilon))
+    middle_log = np.log(np.maximum(middle, epsilon))
+    return {
+        "first_step_logit_max_abs_delta": float(delta.max()),
+        "first_step_logit_mean_abs_delta": float(delta.mean()),
+        "first_step_js_divergence": float(
+            0.5
+            * (
+                np.sum(left_probability * (left_log - middle_log))
+                + np.sum(right_probability * (right_log - middle_log))
+            )
+        ),
+        "first_step_kl_reference_to_condition": float(
+            np.sum(left_probability * (left_log - right_log))
         ),
     }
 
@@ -137,12 +199,42 @@ def _row(
     backend: PersistentMLXBackend,
     encode_ms: float,
     repair_fraction: float | None = None,
+    repair_mode: str | None = None,
+    repaired_token_count: int = 0,
+    repaired_layer_count: int = 0,
     materialization_fraction: float = 1.0,
+    materialization_policy: str = "full",
+    materialization_token_counts: Sequence[int] = (),
+    requested_materialization_tokens: int | None = None,
+    newly_materialized_tokens: int | None = None,
+    reused_native_tokens: int = 0,
     selected_document_ids: Sequence[str] = (),
     composition_receipt=None,
+    reference_first_step_logits=None,
+    retain_first_step_logits: bool = False,
 ) -> dict[str, object]:
-    prediction, metrics = _execute(backend, question, memory)
-    return {
+    try:
+        import mlx.core as mx
+
+        reset_peak = getattr(mx, "reset_peak_memory", None)
+        if reset_peak is not None:
+            reset_peak()
+    except ImportError:
+        mx = None
+    prediction, metrics, first_step_logits = _execute(backend, question, memory)
+    peak_memory = (
+        int(getattr(mx, "get_peak_memory", lambda: 0)()) or None
+        if mx is not None
+        else None
+    )
+    query_tokens = len(
+        backend.tokenizer.encode(backend._query(question), add_special_tokens=False)
+    )
+    support_coverage = (
+        len(set(selected_document_ids).intersection(question.gold_document_ids))
+        / max(len(question.gold_document_ids), 1)
+    )
+    row = {
         "schema_version": SCHEMA_VERSION,
         "example_id": question.example_id,
         "question_type": question.question_type,
@@ -161,20 +253,39 @@ def _row(
         "resource_order": list(order),
         "condition": condition,
         "repair_fraction": repair_fraction,
+        "repair_mode": repair_mode,
+        "repaired_token_count": repaired_token_count,
+        "repaired_layer_count": repaired_layer_count,
         "materialization_fraction": materialization_fraction,
+        "materialization_policy": materialization_policy,
+        "materialization_token_counts": list(materialization_token_counts),
+        "requested_materialization_tokens": requested_materialization_tokens,
         "materialized_document_ids": list(selected_document_ids),
-        "supporting_document_coverage": (
-            len(set(selected_document_ids).intersection(question.gold_document_ids))
-            / max(len(question.gold_document_ids), 1)
+        "supporting_document_coverage": support_coverage,
+        "evidence_density_per_1k_native_tokens": (
+            1000.0 * support_coverage / max(memory.source_tokens, 1)
         ),
         "physical_native_tokens": memory.source_tokens,
+        "newly_materialized_native_tokens": (
+            memory.source_tokens
+            if newly_materialized_tokens is None
+            else newly_materialized_tokens
+        ),
+        "reused_native_tokens": reused_native_tokens,
+        "query_tokens": query_tokens,
+        "active_attended_tokens_at_first_decode": memory.source_tokens + query_tokens,
         "query_position_base": memory.position_base,
         "native_bytes": memory.nbytes,
+        "peak_memory_bytes": peak_memory,
         "encode_or_transform_ms": encode_ms,
         "prediction": prediction,
         "gold_answers": list(question.answers),
+        **_distribution_diagnostics(reference_first_step_logits, first_step_logits),
         **metrics,
     }
+    if retain_first_step_logits:
+        row["_first_step_logits_f32"] = first_step_logits
+    return row
 
 
 def _mean(values: Sequence[float]) -> float | None:
@@ -198,6 +309,32 @@ def _summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                 "token_f1": _mean([float(row["token_f1"]) for row in values]),
                 "gold_answer_mean_nll": _mean(
                     [float(row["gold_answer_mean_nll"]) for row in values]
+                ),
+                "supporting_document_coverage": _mean(
+                    [float(row["supporting_document_coverage"]) for row in values]
+                ),
+                "active_native_tokens": _mean(
+                    [float(row["physical_native_tokens"]) for row in values]
+                ),
+                "newly_materialized_native_tokens": _mean(
+                    [float(row["newly_materialized_native_tokens"]) for row in values]
+                ),
+                "peak_memory_bytes": _mean(
+                    [float(row["peak_memory_bytes"]) for row in values if row["peak_memory_bytes"] is not None]
+                ),
+                "first_step_logit_max_abs_delta": _mean(
+                    [
+                        float(row["first_step_logit_max_abs_delta"])
+                        for row in values
+                        if row["first_step_logit_max_abs_delta"] is not None
+                    ]
+                ),
+                "first_step_js_divergence": _mean(
+                    [
+                        float(row["first_step_js_divergence"])
+                        for row in values
+                        if row["first_step_js_divergence"] is not None
+                    ]
                 ),
                 "ttft_ms": _mean([float(row["ttft_ms"]) for row in values]),
                 "total_latency_ms": _mean(
@@ -231,6 +368,30 @@ def _summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                         float(pair["FRESH_PACKED"]["gold_answer_mean_nll"])
                         - float(pair[condition]["gold_answer_mean_nll"])
                     )
+                    for pair in available
+                ]
+            ),
+            "first_step_logit_max_abs_delta_mean": _mean(
+                [
+                    float(pair[condition]["first_step_logit_max_abs_delta"])
+                    for pair in available
+                ]
+            ),
+            "first_step_logit_mean_abs_delta_mean": _mean(
+                [
+                    float(pair[condition]["first_step_logit_mean_abs_delta"])
+                    for pair in available
+                ]
+            ),
+            "first_step_js_divergence_mean": _mean(
+                [
+                    float(pair[condition]["first_step_js_divergence"])
+                    for pair in available
+                ]
+            ),
+            "first_step_kl_reference_to_condition_mean": _mean(
+                [
+                    float(pair[condition]["first_step_kl_reference_to_condition"])
                     for pair in available
                 ]
             ),
@@ -276,9 +437,16 @@ def main() -> None:
     parser.add_argument("--selector", choices=("bm25", "strong"), default="bm25")
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
-    parser.add_argument("--repair-fractions", type=_floats, default=(0.25, 0.5, 0.75, 1.0))
     parser.add_argument(
-        "--materialization-fractions", type=_floats, default=(0.25, 0.5, 0.75)
+        "--repair-fractions", type=_floats, default=(0.05, 0.1, 0.25, 0.5, 1.0)
+    )
+    parser.add_argument(
+        "--repair-modes",
+        type=_repair_modes,
+        default=("even", "prefix", "boundary", "later_prefix"),
+    )
+    parser.add_argument(
+        "--materialization-fractions", type=_floats, default=(0.125, 0.25, 0.5, 0.75)
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -398,95 +566,134 @@ def main() -> None:
             started_rebind = time.perf_counter()
             rebound = rebind_native_memories_global_packed(backend.model, independent)
             rebind_ms = (time.perf_counter() - started_rebind) * 1000.0
+            resource_token_counts = tuple(len(row) for row in token_segments)
+            fresh_row = _row(
+                question=question, receipt=receipt, selection=selection,
+                order_name=order_name, order=order, condition="FRESH_PACKED",
+                memory=fresh, backend=backend, encode_ms=fresh_ms,
+                materialization_token_counts=resource_token_counts,
+                requested_materialization_tokens=len(packed_tokens),
+                selected_document_ids=document_ids,
+                composition_receipt=global_receipt,
+                retain_first_step_logits=True,
+            )
+            fresh_logits = fresh_row.pop("_first_step_logits_f32")
+            rows.append(fresh_row)
             rows.extend(
-                (
-                    _row(
-                        question=question, receipt=receipt, selection=selection,
-                        order_name=order_name, order=order, condition="FRESH_PACKED",
-                        memory=fresh, backend=backend, encode_ms=fresh_ms,
-                        selected_document_ids=document_ids,
-                        composition_receipt=global_receipt,
-                    ),
-                    _row(
-                        question=question, receipt=receipt, selection=selection,
-                        order_name=order_name, order=order, condition="NATIVE_CONTIGUOUS",
-                        memory=fresh, backend=backend, encode_ms=0.0,
-                        selected_document_ids=document_ids,
-                        composition_receipt=global_receipt,
-                    ),
-                    _row(
-                        question=question, receipt=receipt, selection=selection,
-                        order_name=order_name, order=order, condition="NATIVE_SOURCE_LOCAL",
-                        memory=source_local, backend=backend, encode_ms=independent_ms,
-                        selected_document_ids=document_ids,
-                        composition_receipt=source_receipt,
-                    ),
-                    _row(
-                        question=question, receipt=receipt, selection=selection,
-                        order_name=order_name, order=order, condition="NATIVE_GLOBAL_REBOUND",
-                        memory=rebound, backend=backend, encode_ms=independent_ms + rebind_ms,
-                        selected_document_ids=document_ids,
-                        composition_receipt=global_receipt,
-                    ),
+                _row(
+                    question=question, receipt=receipt, selection=selection,
+                    order_name=order_name, order=order, condition=condition,
+                    memory=memory, backend=backend, encode_ms=encode_ms,
+                    materialization_token_counts=resource_token_counts,
+                    requested_materialization_tokens=len(packed_tokens),
+                    newly_materialized_tokens=newly_materialized,
+                    reused_native_tokens=reused,
+                    selected_document_ids=document_ids,
+                    composition_receipt=composition_receipt,
+                    reference_first_step_logits=fresh_logits,
+                )
+                for condition, memory, encode_ms, newly_materialized, reused, composition_receipt in (
+                    ("NATIVE_CONTIGUOUS", fresh, 0.0, 0, len(packed_tokens), global_receipt),
+                    ("NATIVE_SOURCE_LOCAL", source_local, independent_ms, len(packed_tokens), 0, source_receipt),
+                    ("NATIVE_GLOBAL_REBOUND", rebound, independent_ms + rebind_ms, len(packed_tokens), 0, global_receipt),
                 )
             )
             for fraction in args.repair_fractions:
-                repaired = diagnostic_repair_memory(rebound, fresh, fraction)
-                rows.append(
-                    _row(
-                        question=question, receipt=receipt, selection=selection,
-                        order_name=order_name, order=order,
-                        condition=f"REPAIR_{fraction:g}", memory=repaired,
-                        backend=backend, encode_ms=independent_ms + rebind_ms,
-                        repair_fraction=fraction,
-                        selected_document_ids=document_ids,
-                        composition_receipt=compose_resources(
-                            resources,
-                            selection_receipt_id=selection.receipt_id,
-                            profile=RAGPRAProfile.RAG_PLUS_PRA_REPAIR,
-                            position_policy=PositionPolicy.GLOBAL_PACKED,
-                            near_gap=0,
-                            repair_fraction=fraction,
-                        ),
+                modes = ("even",) if fraction == 1.0 else args.repair_modes
+                for mode in modes:
+                    repaired = diagnostic_repair_memory(
+                        rebound,
+                        fresh,
+                        fraction,
+                        mode=mode,
+                        resource_lengths=tuple(len(row) for row in token_segments),
                     )
-                )
-            if order_index == 0:
-                for fraction in args.materialization_fractions:
-                    plan = score_prefix_plan(
-                        tuple(len(segment) for segment in token_segments), fraction
-                    )
-                    partial_segments = tuple(
-                        token_segments[index] for index in plan.selected_indices
-                    )
-                    partial_tokens = tuple(
-                        token for segment in partial_segments for token in segment
-                    )
-                    started_partial = time.perf_counter()
-                    partial = encode_native_memory(backend.model, partial_tokens)
-                    partial_ms = (time.perf_counter() - started_partial) * 1000.0
-                    partial_documents = tuple(
-                        document_ids[index] for index in plan.selected_indices
-                    )
-                    partial_resources = tuple(
-                        resources[index] for index in plan.selected_indices
-                    )
+                    repaired_tokens = max(1, round(len(packed_tokens) * fraction))
                     rows.append(
                         _row(
                             question=question, receipt=receipt, selection=selection,
                             order_name=order_name, order=order,
-                            condition=f"PARTIAL_TOP_SCORE_{fraction:g}",
-                            memory=partial, backend=backend, encode_ms=partial_ms,
-                            materialization_fraction=plan.materialized_fraction,
-                            selected_document_ids=partial_documents,
+                            condition=f"REPAIR_{mode.upper()}_{fraction:g}",
+                            memory=repaired,
+                            backend=backend, encode_ms=independent_ms + rebind_ms,
+                            repair_fraction=fraction,
+                            repair_mode=mode,
+                            repaired_token_count=repaired_tokens,
+                            repaired_layer_count=len(repaired.layers),
+                            materialization_token_counts=tuple(
+                                len(row) for row in token_segments
+                            ),
+                            requested_materialization_tokens=len(packed_tokens),
+                            selected_document_ids=document_ids,
                             composition_receipt=compose_resources(
-                                partial_resources,
+                                resources,
                                 selection_receipt_id=selection.receipt_id,
-                                profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_CONTIGUOUS,
+                                profile=RAGPRAProfile.RAG_PLUS_PRA_REPAIR,
                                 position_policy=PositionPolicy.GLOBAL_PACKED,
                                 near_gap=0,
+                                repair_fraction=fraction,
                             ),
+                            reference_first_step_logits=fresh_logits,
                         )
                     )
+            if order_index == 0:
+                for fraction in args.materialization_fractions:
+                    counts = tuple(len(segment) for segment in token_segments)
+                    gold_indices = tuple(
+                        index
+                        for index, document_id in enumerate(document_ids)
+                        if document_id in question.gold_document_ids
+                    )
+                    plans: tuple[tuple[str, TokenMaterializationPlan], ...] = (
+                        ("SCORE", exact_token_plan(counts, fraction)),
+                        ("ORACLE", evidence_oracle_plan(counts, gold_indices, fraction)),
+                        ("WRONG", wrong_memory_plan(counts, gold_indices, fraction)),
+                    )
+                    for policy, plan in plans:
+                        partial_segments = tuple(
+                            token_segments[index][:count]
+                            for index, count in enumerate(plan.token_counts)
+                            if count
+                        )
+                        partial_tokens = tuple(
+                            token for segment in partial_segments for token in segment
+                        )
+                        started_partial = time.perf_counter()
+                        partial = encode_native_memory(backend.model, partial_tokens)
+                        partial_ms = (time.perf_counter() - started_partial) * 1000.0
+                        partial_documents = tuple(
+                            document_ids[index] for index in plan.selected_indices
+                        )
+                        partial_resources = tuple(
+                            replace(
+                                resources[index],
+                                source_positions=resources[index].source_positions[
+                                    : plan.token_counts[index]
+                                ],
+                            )
+                            for index in plan.selected_indices
+                        )
+                        rows.append(
+                            _row(
+                                question=question, receipt=receipt, selection=selection,
+                                order_name=order_name, order=order,
+                                condition=f"PARTIAL_{policy}_{fraction:g}",
+                                memory=partial, backend=backend, encode_ms=partial_ms,
+                                materialization_fraction=plan.materialized_fraction,
+                                materialization_policy=policy.lower(),
+                                materialization_token_counts=plan.token_counts,
+                                requested_materialization_tokens=plan.requested_token_budget,
+                                selected_document_ids=partial_documents,
+                                composition_receipt=compose_resources(
+                                    partial_resources,
+                                    selection_receipt_id=selection.receipt_id,
+                                    profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_CONTIGUOUS,
+                                    position_policy=PositionPolicy.GLOBAL_PACKED,
+                                    near_gap=0,
+                                ),
+                                reference_first_step_logits=fresh_logits,
+                            )
+                        )
 
     args.output.mkdir(parents=True, exist_ok=True)
     with gzip.open(args.output / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
@@ -509,6 +716,7 @@ def main() -> None:
         "max_resources": args.max_resources,
         "max_random_orders": args.max_random_orders,
         "repair_fractions": list(args.repair_fractions),
+        "repair_modes": list(args.repair_modes),
         "materialization_fractions": list(args.materialization_fractions),
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),

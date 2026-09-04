@@ -285,10 +285,100 @@ def rebind_native_memories_global_packed(
     )
 
 
+def repair_token_indices(
+    token_count: int,
+    fraction: float,
+    *,
+    mode: str = "even",
+    resource_lengths: Sequence[int] = (),
+) -> tuple[int, ...]:
+    """Choose a deterministic token subset for contextual-repair diagnostics.
+
+    ``boundary`` concentrates repair around joins between independently encoded
+    resources. ``later_prefix`` repairs the prefixes that, in a fresh causal
+    packing, would first absorb preceding-resource context. These policies test
+    mechanism hypotheses; they do not make fresh packed states free to obtain.
+    """
+
+    if token_count <= 0:
+        raise ValueError("repair requires a positive token count")
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("repair fraction must be in [0, 1]")
+    if mode not in {"even", "prefix", "boundary", "later_prefix"}:
+        raise ValueError(f"unsupported repair mode: {mode}")
+    if resource_lengths:
+        if any(length <= 0 for length in resource_lengths):
+            raise ValueError("repair resource lengths must be positive")
+        if sum(resource_lengths) != token_count:
+            raise ValueError("repair resource lengths do not match token count")
+    if fraction == 0.0:
+        return ()
+    repair_count = (
+        token_count
+        if fraction == 1.0
+        else max(1, round(token_count * fraction))
+    )
+    if repair_count == token_count:
+        return tuple(range(token_count))
+    if mode == "prefix":
+        return tuple(range(repair_count))
+    if mode == "even":
+        return tuple(
+            sorted(
+                {
+                    min(token_count - 1, (index * token_count) // repair_count)
+                    for index in range(repair_count)
+                }
+            )
+        )
+
+    boundaries: list[int] = []
+    cursor = 0
+    for length in resource_lengths[:-1]:
+        cursor += length
+        boundaries.append(cursor)
+    if not boundaries:
+        return tuple(range(repair_count))
+
+    candidates: list[int] = []
+    seen: set[int] = set()
+    if mode == "boundary":
+        for radius in range(token_count):
+            for boundary in boundaries:
+                for index in (boundary + radius, boundary - 1 - radius):
+                    if 0 <= index < token_count and index not in seen:
+                        seen.add(index)
+                        candidates.append(index)
+                        if len(candidates) == repair_count:
+                            return tuple(sorted(candidates))
+    else:
+        starts = boundaries
+        lengths = tuple(resource_lengths[1:])
+        for offset in range(max(lengths)):
+            for start, length in zip(starts, lengths):
+                index = start + offset
+                if offset < length and index not in seen:
+                    seen.add(index)
+                    candidates.append(index)
+                    if len(candidates) == repair_count:
+                        return tuple(sorted(candidates))
+
+    for index in range(token_count):
+        if index not in seen:
+            candidates.append(index)
+            if len(candidates) == repair_count:
+                break
+    return tuple(sorted(candidates))
+
+
 def diagnostic_repair_memory(
     rebound: MLXNativeMemory,
     fresh_packed: MLXNativeMemory,
     fraction: float,
+    *,
+    mode: str = "even",
+    resource_lengths: Sequence[int] = (),
+    layer_indices: Sequence[int] | None = None,
 ) -> MLXNativeMemory:
     """Replace a deterministic K/V token subset with fresh packed states.
 
@@ -298,33 +388,46 @@ def diagnostic_repair_memory(
     parity returns, without pretending that the states were free to compute.
     """
 
-    if not 0.0 <= fraction <= 1.0:
-        raise ValueError("repair fraction must be in [0, 1]")
     if len(rebound.layers) != len(fresh_packed.layers):
         raise ValueError("repair memories have incompatible layer counts")
     if rebound.source_tokens != fresh_packed.source_tokens:
         raise ValueError("repair memories have incompatible token counts")
-    if fraction == 0.0:
+    indices = repair_token_indices(
+        rebound.source_tokens,
+        fraction,
+        mode=mode,
+        resource_lengths=resource_lengths,
+    )
+    if not indices:
         return rebound
-    if fraction == 1.0:
+    selected_layers = (
+        set(range(len(rebound.layers)))
+        if layer_indices is None
+        else set(layer_indices)
+    )
+    if any(index < 0 or index >= len(rebound.layers) for index in selected_layers):
+        raise ValueError("repair layer index is outside the native memory")
+    if len(indices) == rebound.source_tokens and len(selected_layers) == len(rebound.layers):
         return fresh_packed
     import mlx.core as mx
 
     token_count = rebound.source_tokens
-    repair_count = max(1, round(token_count * fraction))
-    indices = {
-        min(token_count - 1, (index * token_count) // repair_count)
-        for index in range(repair_count)
-    }
+    selected_tokens = set(indices)
     mask = mx.array(
-        [position in indices for position in range(token_count)], dtype=mx.bool_
+        [position in selected_tokens for position in range(token_count)], dtype=mx.bool_
     )[None, None, :, None]
     layers = tuple(
         MLXNativeLayerKV(
-            mx.where(mask, fresh.keys, source.keys),
-            mx.where(mask, fresh.values, source.values),
+            mx.where(mask, fresh.keys, source.keys)
+            if index in selected_layers
+            else source.keys,
+            mx.where(mask, fresh.values, source.values)
+            if index in selected_layers
+            else source.values,
         )
-        for source, fresh in zip(rebound.layers, fresh_packed.layers)
+        for index, (source, fresh) in enumerate(
+            zip(rebound.layers, fresh_packed.layers)
+        )
     )
     return MLXNativeMemory(
         layers,

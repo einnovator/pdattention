@@ -4,7 +4,11 @@ from dataclasses import replace
 
 import pytest
 
-from pra_hf.rag_mlx_native import MLXNativeLayerKV, MLXNativeMemory
+from pra_hf.rag_mlx_native import (
+    MLXNativeLayerKV,
+    MLXNativeMemory,
+    repair_token_indices,
+)
 
 
 class _Array:
@@ -46,3 +50,20 @@ def test_native_memory_is_immutable() -> None:
     with pytest.raises(Exception):
         memory.source_tokens = 2
     assert replace(memory, source_tokens=2).source_tokens == 2
+
+
+def test_repair_token_indices_supports_mechanistic_policies() -> None:
+    assert repair_token_indices(20, 0.25, mode="prefix") == (0, 1, 2, 3, 4)
+    boundary = repair_token_indices(
+        20, 0.2, mode="boundary", resource_lengths=(10, 10)
+    )
+    assert boundary == (8, 9, 10, 11)
+    later = repair_token_indices(
+        20, 0.2, mode="later_prefix", resource_lengths=(8, 6, 6)
+    )
+    assert later == (8, 9, 14, 15)
+
+
+def test_repair_token_indices_validates_resource_geometry() -> None:
+    with pytest.raises(ValueError, match="do not match"):
+        repair_token_indices(20, 0.5, mode="boundary", resource_lengths=(5, 5))
