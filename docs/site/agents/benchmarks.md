@@ -57,6 +57,27 @@ output tokens, and recorded 607.4 seconds of trajectory time. The observed
 accuracy estimate with the published 500-task `17.8%` result. Its campaign
 status is `BASELINE_ATTEMPTED`; no gateway or PRA treatment was run.
 
+The next run expands the same No-PRA cell before changing transport. A baseline
+cohort must be large enough to show both a nontrivial success rate and stable
+trajectory distributions; `1/2` cannot unlock PRA. The runner now preserves
+cumulative and maximum prompt tokens, a conservative unique-context estimate,
+repeated-context fraction, model and tool calls, trajectory length, patch size,
+model/tool/wall time, termination, and official grader outcome. Endpoint TTFT
+and prefill stay `NOT_MEASURED` unless the engine exports them. The current
+two trajectories contain `50,106` maximum-prompt tokens across tasks versus
+`1,123,772` cumulative prompt tokens. Under R2E-Gym's accumulating trajectory
+semantics, this is a conservative `95.5%` repeated-context estimate and a
+primary later treatment target. Token reduction is meaningful only at a
+matched solved-task rate.
+
+Run the expanded baseline with the same frozen harness settings:
+
+```bash
+COUNT=20 START_IDX=0 RUN_ID=fim7b-q4-no-pra-baseline-20 \
+OUTPUT=$HOME/experiments/paper4_5_agent/fim7b_q4_no_pra_baseline_20 \
+bash experiments/paper4_5_agent/runners/run_fim7b_q4_smoke.sh
+```
+
 Raw trajectories, predictions, the official grader report, the normalized
 receipt, per-task telemetry, and the run manifest are retained under
 `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/fim7b_q4_calibration/`.

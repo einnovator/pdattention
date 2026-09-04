@@ -64,6 +64,17 @@ model-specific calibration has qualified a smaller set. A candidate discovered
 on a smoke cohort remains `CALIBRATION_PENDING`; the SDK does not promote it
 from its name or memory reduction alone.
 
+For RAG and multi-record context, the qualified native mode is narrower than
+the record API itself. A frozen selection serialized and encoded as one
+unchanged contiguous block can be retained and reused with measured semantic
+parity. Independently encoded records may still be addressed, routed, and
+inspected, but recomposing them into a changed order or selection is
+`CALIBRATION_PENDING`. Partial materialization and the current
+query-conditioned repair policy have the same status because five-seed and
+held-out quality gates did not pass. Request an explicit research profile for
+those modes; the runtime must not silently substitute them for contiguous
+qualified execution.
+
 ## Operational requirements
 
 - Pin model, tokenizer, adapter, and source versions.

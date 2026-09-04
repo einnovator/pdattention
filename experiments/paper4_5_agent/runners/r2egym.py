@@ -8,6 +8,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import statistics
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,9 +93,19 @@ def write_task_results(
         steps = trajectory.get("trajectory_steps") or []
         prompt_tokens = sum(int(step.get("token_usage_prompt") or 0) for step in steps)
         output_tokens = sum(int(step.get("token_usage_completion") or 0) for step in steps)
+        prompt_tokens_per_call = [
+            int(step.get("token_usage_prompt") or 0) for step in steps
+        ]
+        # R2E-Gym sends the accumulated trajectory on each call. The largest
+        # observed prompt is therefore a conservative unique-context estimate;
+        # everything else is context processed again across earlier calls.
+        unique_context_tokens = max(prompt_tokens_per_call, default=0)
+        repeated_context_tokens = max(0, prompt_tokens - unique_context_tokens)
         inference_s = sum(float(step.get("llm_exec_time") or 0) for step in steps)
         tool_s = sum(float(step.get("env_exec_time") or 0) for step in steps)
         wall_s = float(steps[-1].get("total_time_traj") or 0) if steps else 0.0
+        model_call_times = [float(step.get("llm_exec_time") or 0) for step in steps]
+        patch = str(trajectory.get("output_patch") or "")
         rows.append({
             "run_id": f"{instance_id}:no-pra",
             "benchmark": "SWE-bench Verified",
@@ -114,13 +125,30 @@ def write_task_results(
             "benchmark_score": 1.0 if instance_id in resolved_ids else 0.0,
             "logical_input_tokens": prompt_tokens,
             "physical_input_tokens": prompt_tokens,
+            "cumulative_prompt_tokens": prompt_tokens,
+            "unique_context_tokens_estimate": unique_context_tokens,
+            "repeated_context_tokens_estimate": repeated_context_tokens,
+            "repeated_context_fraction_estimate": (
+                repeated_context_tokens / prompt_tokens if prompt_tokens else 0.0
+            ),
+            "context_estimate_semantics": "max_prompt_under_accumulating_r2egym_trajectory",
+            "max_prompt_tokens": unique_context_tokens,
             "output_tokens": output_tokens,
             "materialized_tokens": 0,
             "token_saving_fraction": 0.0,
             "request_count": len(steps),
+            "model_call_count": len(steps),
+            "trajectory_length": len(steps),
+            "tool_call_count": sum(
+                _step_tool_call_count(step) for step in steps
+            ),
             "wall_time_s": wall_s,
             "prefill_time_s": None,
+            "ttft_ms": None,
             "decode_time_s": inference_s,
+            "mean_model_call_s": statistics.fmean(model_call_times)
+            if model_call_times else 0.0,
+            "p95_model_call_s": _percentile(model_call_times, 0.95),
             "tool_time_s": tool_s,
             "pra_route_time_s": 0.0,
             "pra_materialize_time_s": 0.0,
@@ -131,6 +159,13 @@ def write_task_results(
             "cost_usd": 0.0,
             "termination_reason": trajectory.get("exit_reason"),
             "error_type": "official_grader_error" if instance_id in error_ids else None,
+            "grader_outcome": (
+                "error" if instance_id in error_ids
+                else "resolved" if instance_id in resolved_ids
+                else "unresolved"
+            ),
+            "patch_bytes": len(patch.encode("utf-8")),
+            "patch_lines": len(patch.splitlines()),
             "trajectory_path": trajectories.as_posix(),
             "patch_path": trajectories.as_posix(),
         })
@@ -138,6 +173,28 @@ def write_task_results(
         "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8"
     )
     return rows
+
+
+def _step_tool_call_count(step: dict[str, Any]) -> int:
+    """Count structured calls, falling back to R2E-Gym's single action field."""
+
+    calls = step.get("tool_calls")
+    if isinstance(calls, list):
+        return len(calls)
+    if step.get("action") not in (None, "", {}):
+        return 1
+    return int(float(step.get("env_exec_time") or 0.0) > 0.0)
+
+
+def _percentile(values: list[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = fraction * (len(ordered) - 1)
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
 def locate_official_report(output: Path, root: Path, run_id: str) -> Path:

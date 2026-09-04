@@ -2871,6 +2871,17 @@ estimate population accuracy: llama.cpp, Q4\_K\_M, two instances, and a
 32,768-token context differ from the published
 vLLM/BF16/500-instance/65,536-token setup. The scheduler therefore assigns
 \texttt{BASELINE\_ATTEMPTED}, and no gateway or PRA cell is admissible yet.
+The next fixed No-PRA cohort must contain enough tasks to estimate a nontrivial
+success rate and stable trajectory costs before any treatment is considered.
+Its receipts retain cumulative and maximum prompt tokens, a conservative
+unique-context estimate, repeated-context fraction, calls, tools, trajectory
+length, patch size, wall and model time, termination, and official grader
+outcome. Retrospective normalization of the two trajectories finds 50,106
+maximum-prompt tokens across tasks versus 1,123,772 cumulative prompt tokens,
+a conservative 95.5\% repeated-context estimate under the accumulating
+R2E-Gym scaffold. This load is a primary future treatment target, but savings
+will count only beside a matched solved-task rate. TTFT and prefill remain
+explicitly unmeasured when the endpoint does not expose them.
 
 Increasing code-model capacity did not close this admission gate. OpenCode with
 Ollama/Qwen3-Coder-30B scored 0/1 on
@@ -3065,19 +3076,22 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
-The document-RAG ladder remains incomplete, but its main decomposition is now
-measured. Fifty model-backed MultiHop-RAG examples include a strong reranker,
-selector-frozen E0/E2 at 2K and 4K, bootstrap intervals, and physical
-persistent-chunk reuse. Generic selection does not beat the strong control; no
-qualified document adaptor exists. Contiguous native realization is exact,
-whereas independently encoded source-local chunks change generation and cannot
-support a parity claim. The warm benefit is measured against selected-text
-re-prefill, not an ordinary prefix-cache hit. Qwen3-8B repeats the native result
-without repairing selection; a second model family, position-aware chunk
-composition, and a matched prefix-cache control remain open. KILT Natural
-Questions and HotpotQA require the pinned KILT knowledge
-source; they remain unmeasured rather than being approximated from answer
-provenance.
+The companion Paper~3.2 study now closes the main document-RAG decomposition.
+Five natural cohorts include strong lexical, dense, hybrid, and learned
+rerankers; selector-frozen text/native transport; ordinary exact-prefix cache;
+position and repair sweeps; changing-query reuse; and Qwen/Llama replication.
+Contiguous native realization remains exact. An exact repeated prefix remains
+faster than PRA, while changed selections expose 28.1\% reusable selected K/V
+where exact-prefix caching reuses no evidence tokens. Independently encoded
+records remain unqualified: the five-seed Qwen3-4B comparison changes token F1
+from .133 to .112 (mean paired delta $-.021$, bootstrap 95\% CI
+$[-.055,.007]$). A held-out query-conditioned repair policy uses 16.0\% fewer
+repaired tokens than the best fixed action at nearly the same output recovery,
+but lowers answer F1 and therefore fails the product-quality gate. Paper 4.5
+consequently qualifies immutable contiguous-block reuse only; changed-record
+composition and reduced materialization remain
+\texttt{CALIBRATION\_PENDING}. KILT Natural Questions and HotpotQA remain
+unmeasured rather than being approximated from answer provenance.
 
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
 experiments. They do not by themselves measure physical prefix-cache hits,
@@ -3186,11 +3200,13 @@ realizations but still leave portable E2/E3 integration unmeasured. The new
 document-RAG ladder adds auditable same-candidate comparisons, a strong
 reranker, and powered selector-frozen controls. Generic selection remains
 unqualified, while contiguous native realization is output-exact and sharply
-faster when an identical retained selection replaces re-prefill. Reusable
-source-local chunks reduce physical encoding but change generation, exposing a
-positional-composition requirement rather than a free cache win. Qwen3-8B
-repeats both the failed selector gate and the successful contiguous-native
-realization gate. The practical
+faster when an identical retained selection replaces re-prefill. Paper~3.2's
+five-seed 4B replication rejects the apparent one-seed record-quality gain, and
+its held-out repair controller improves fidelity per repaired token without
+preserving answer quality. Reusable source-local chunks therefore remain an
+experimental composition mode, not a free cache win. Qwen3-8B and Llama
+replications preserve the successful contiguous-native gate while leaving the
+independent-record gate closed. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
@@ -3487,6 +3503,10 @@ and hard No-PRA reproduction gates\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\
+\path{experiments/paper4_5_agent/summarize_baseline.py} & Wilson uncertainty,
+trajectory distributions, and explicit insufficient-cohort gate\\
+\path{docs/papers/shared/results/paper4_5_runtime_productization/rag/paper3_2_runtime_policy.json}
+& Imported contiguous/independent/partial RAG runtime qualification boundary\\
 \path{src/pra_hf/capability_sdk.py} & Callable and skill-folder ingestion,
 bounded palettes, and exact capability activation\\
 \path{src/pra_hf/typed_context.py} & Type-aware compact views and retrieval

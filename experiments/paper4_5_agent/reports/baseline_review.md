@@ -34,5 +34,9 @@ calls; the unresolved task reached the 40-step limit. Together they made 72
 model calls, consumed 1,123,772 cumulative prompt tokens and 11,878 output
 tokens, and took 607.4 seconds in the agent trajectories. These are useful
 path and workload measurements, not an estimate of population-level accuracy.
+The maximum observed prompt per task sums to 50,106 tokens, so the accumulating
+R2E-Gym trajectory implies a conservative 1,073,666 repeated prompt tokens, or
+95.5% of cumulative prompt processing. This is a future PRA treatment target,
+not a measured saving.
 The campaign records the result as `BASELINE_ATTEMPTED`; PRA interpretation
 remains locked.

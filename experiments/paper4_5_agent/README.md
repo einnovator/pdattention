@@ -29,3 +29,19 @@ python -m experiments.paper4_5_agent.run_campaign \
   --record-cell fim7b-q4-no-pra-smoke \
   --record-result path/to/official_result.json
 ```
+
+The two-task default is only a path smoke. Expand the unchanged No-PRA cohort
+before scheduling any gateway or PRA condition:
+
+```bash
+COUNT=20 START_IDX=0 RUN_ID=fim7b-q4-no-pra-baseline-20 \
+OUTPUT=$HOME/experiments/paper4_5_agent/fim7b_q4_no_pra_baseline_20 \
+bash experiments/paper4_5_agent/runners/run_fim7b_q4_smoke.sh
+```
+
+Per-task rows retain cumulative/max prompt tokens, conservative unique and
+repeated-context estimates, model/tool calls, trajectory length, patch size,
+model/tool/wall time, termination, and official grader outcome. Engine TTFT
+and prefill are `null` unless measured directly. A larger altered-engine cohort
+still remains `BASELINE_ATTEMPTED`; only the exact published cell can unlock
+treatments.

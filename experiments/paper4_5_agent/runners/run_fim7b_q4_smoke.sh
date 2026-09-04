@@ -4,6 +4,9 @@ set -euo pipefail
 R2E_ROOT="${R2E_ROOT:-$HOME/git/rd/R2E-Gym}"
 OUTPUT="${OUTPUT:-$HOME/experiments/paper4_5_agent/fim7b_q4_no_pra_smoke}"
 RUNNER="${RUNNER:-/mnt/c/Users/killu/paper4_5_r2egym.py}"
+COUNT="${COUNT:-2}"
+START_IDX="${START_IDX:-0}"
+RUN_ID="${RUN_ID:-fim7b-q4-no-pra-smoke}"
 
 mkdir -p "$OUTPUT"
 exec "$R2E_ROOT/.venv/bin/python" "$RUNNER" \
@@ -17,8 +20,9 @@ exec "$R2E_ROOT/.venv/bin/python" "$RUNNER" \
   --engine-version docker-inference-build-recorded-in-run-manifest \
   --quantization Q4_K_M \
   --harness-version 0d94c4eb9431cd195c55a7ea3abd54006c9a1735 \
-  --run-id fim7b-q4-no-pra-smoke \
-  --count 2 \
+  --run-id "$RUN_ID" \
+  --start-idx "$START_IDX" \
+  --count "$COUNT" \
   --workers 1 \
   --context-limit 32768 \
   --max-steps 40 \
@@ -26,5 +30,5 @@ exec "$R2E_ROOT/.venv/bin/python" "$RUNNER" \
   --grader-timeout 1200 \
   --configuration-difference engine=llama.cpp-not-vLLM \
   --configuration-difference quantization=Q4_K_M-not-BF16 \
-  --configuration-difference cohort=2-not-500 \
+  --configuration-difference "cohort=${COUNT}-not-500" \
   --configuration-difference context=32768-not-65536

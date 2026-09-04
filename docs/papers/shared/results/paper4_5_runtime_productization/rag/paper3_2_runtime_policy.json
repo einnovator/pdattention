@@ -1,0 +1,42 @@
+{
+  "schema_version": "paper4.5-paper3.2-policy-import-v1",
+  "source": {
+    "branch": "research/paper3-2-rag",
+    "commit": "33fbef3f",
+    "paper": "Paper 3.2: RAG, PRA, and Composable Native Memory"
+  },
+  "qualified": [
+    {
+      "mode": "contiguous_immutable_native_block",
+      "status": "QUALIFIED",
+      "scope": "frozen selected evidence with unchanged serialization and positions",
+      "evidence": "exact output, first-step-logit, and answer-NLL parity across measured Qwen and Llama cohorts"
+    }
+  ],
+  "calibration_pending": [
+    {
+      "mode": "independent_record_composition",
+      "status": "CALIBRATION_PENDING",
+      "reason": "five-seed Qwen3-4B packed/record F1 was 0.1332/0.1124",
+      "paired_f1_delta": -0.020871128871128873,
+      "paired_f1_delta_bootstrap_95_ci": [-0.05528631368631364, 0.007036630036630034]
+    },
+    {
+      "mode": "partial_materialization",
+      "status": "CALIBRATION_PENDING",
+      "reason": "the fixed 75% policy failed five-seed quality and output-parity gates"
+    },
+    {
+      "mode": "query_conditioned_composition_repair",
+      "status": "CALIBRATION_PENDING",
+      "reason": "held-out fidelity improved per repaired token but answer quality did not",
+      "evaluation_examples": 80,
+      "exact_output_recovery": 0.6625,
+      "mean_repaired_tokens": 553.05,
+      "repair_token_savings_vs_best_fixed": 0.15994531784005483,
+      "token_f1": 0.1211309523809524,
+      "fresh_packed_token_f1": 0.14821428571428572
+    }
+  ],
+  "runtime_rule": "Never silently downgrade a contiguous qualified request to independently composed or partially materialized record K/V. Require an explicit research profile for calibration-pending modes."
+}

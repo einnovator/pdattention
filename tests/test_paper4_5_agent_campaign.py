@@ -15,6 +15,7 @@ from experiments.paper4_5_agent.runners.r2egym import (
     trajectories_to_predictions,
     write_task_results,
 )
+from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
 from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
 
@@ -128,11 +129,19 @@ def test_r2egym_task_telemetry_keeps_no_pra_costs_separate(tmp_path: Path) -> No
         "ds": {"instance_id": "repo__project-1"},
         "max_token_limit": 32768,
         "exit_reason": "agent",
-        "output_patch": "diff",
-        "trajectory_steps": [{
-            "token_usage_prompt": 100, "token_usage_completion": 20,
-            "llm_exec_time": 2.0, "env_exec_time": 0.5, "total_time_traj": 2.5,
-        }],
+        "output_patch": "diff\n+line\n",
+        "trajectory_steps": [
+            {
+                "token_usage_prompt": 100, "token_usage_completion": 20,
+                "llm_exec_time": 2.0, "env_exec_time": 0.5,
+                "total_time_traj": 2.5, "action": "read file",
+            },
+            {
+                "token_usage_prompt": 150, "token_usage_completion": 10,
+                "llm_exec_time": 3.0, "env_exec_time": 0.25,
+                "total_time_traj": 5.75, "tool_calls": [{"name": "patch"}],
+            },
+        ],
     }) + "\n", encoding="utf-8")
     report = tmp_path / "report.json"
     report.write_text(json.dumps({
@@ -145,7 +154,16 @@ def test_r2egym_task_telemetry_keeps_no_pra_costs_separate(tmp_path: Path) -> No
         engine_version="version", quantization="Q4_K_M", harness_version="commit",
     )
     assert rows[0]["resolved"] is True
-    assert rows[0]["physical_input_tokens"] == rows[0]["logical_input_tokens"] == 100
+    assert rows[0]["physical_input_tokens"] == rows[0]["logical_input_tokens"] == 250
+    assert rows[0]["unique_context_tokens_estimate"] == 150
+    assert rows[0]["repeated_context_tokens_estimate"] == 100
+    assert rows[0]["repeated_context_fraction_estimate"] == pytest.approx(0.4)
+    assert rows[0]["model_call_count"] == rows[0]["trajectory_length"] == 2
+    assert rows[0]["tool_call_count"] == 2
+    assert rows[0]["p95_model_call_s"] == pytest.approx(2.95)
+    assert rows[0]["patch_bytes"] == 11
+    assert rows[0]["patch_lines"] == 2
+    assert rows[0]["grader_outcome"] == "resolved"
     assert rows[0]["pra_route_time_s"] == rows[0]["pra_memory_bytes"] == 0
     assert rows[0]["prefill_time_s"] is None
 
@@ -165,3 +183,35 @@ def test_distributed_result_import_preserves_attempted_status(tmp_path: Path) ->
     cell = state["cells"]["fim14b-no-pra"]
     assert cell["reproduction_status"] == "BASELINE_ATTEMPTED"
     assert (tmp_path / "campaign/reproduction_report.md").is_file()
+
+
+def test_agent_baseline_summary_keeps_small_cohort_locked() -> None:
+    rows = [
+        {
+            "resolved": resolved,
+            "cumulative_prompt_tokens": 100,
+            "unique_context_tokens_estimate": 25,
+            "repeated_context_tokens_estimate": 75,
+            "output_tokens": 10,
+            "model_call_count": 2,
+            "tool_call_count": 2,
+            "trajectory_length": 2,
+            "patch_bytes": 20,
+            "wall_time_s": 5.0,
+            "decode_time_s": 3.0,
+            "tool_time_s": 1.0,
+            "repeated_context_fraction_estimate": 0.75,
+            "ttft_ms": None,
+            "prefill_time_s": None,
+            "peak_memory_bytes": None,
+            "kv_bytes": None,
+        }
+        for resolved in (True, False)
+    ]
+    result = summarize(rows, minimum_tasks=20)
+    assert result["cohort_status"] == "INSUFFICIENT_COHORT"
+    assert result["pra_treatment_unlocked"] is False
+    assert result["token_totals"]["repeated_context_fraction_estimate"] == 0.75
+    assert result["success_wilson_95_ci"] == pytest.approx(
+        [0.09453120573423074, 0.9054687942657693]
+    )

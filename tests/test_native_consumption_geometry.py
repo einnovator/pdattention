@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -156,6 +159,24 @@ def test_asymmetric_window_and_named_profiles_resolve_to_normal_config() -> None
     config = PRAConfig(materialization_profile="paper8_full_record_diagnostic")
     assert config.materialization_mode == NativeMaterializationMode.FULL_SELECTED_RECORD.value
     assert config.chunk_tokens == 32
+
+
+def test_paper3_2_import_keeps_changed_record_modes_out_of_qualified_set() -> None:
+    policy_path = (
+        Path(__file__).parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization/rag"
+        / "paper3_2_runtime_policy.json"
+    )
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    assert [row["mode"] for row in policy["qualified"]] == [
+        "contiguous_immutable_native_block"
+    ]
+    pending = {row["mode"] for row in policy["calibration_pending"]}
+    assert {
+        "independent_record_composition",
+        "partial_materialization",
+        "query_conditioned_composition_repair",
+    } <= pending
 
 
 def test_evidence_interval_coverage_distinguishes_answer_from_semantic_context() -> None:
