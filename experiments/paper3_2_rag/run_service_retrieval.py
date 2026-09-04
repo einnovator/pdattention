@@ -106,6 +106,15 @@ def main() -> None:
             started = time.perf_counter()
             ranked = retriever.retrieve(question.question, max(top_ks))
             latency_ms = (time.perf_counter() - started) * 1000.0
+            if method == "ELASTICSEARCH_BM25":
+                embedding_ms = 0.0
+                service_ms = elastic.last_service_ms
+            elif method == "QDRANT_BGE_DENSE":
+                embedding_ms = qdrant.last_embedding_ms
+                service_ms = qdrant.last_service_ms
+            else:
+                embedding_ms = qdrant.last_embedding_ms
+                service_ms = elastic.last_service_ms + qdrant.last_service_ms
             for top_k in top_ks:
                 selected = ranked[:top_k]
                 recovered = {row.document_id for row in selected}.intersection(
@@ -120,6 +129,8 @@ def main() -> None:
                         "supporting_document_recall": recall,
                         "all_supporting_documents_recalled": float(recall == 1.0),
                         "latency_ms": latency_ms,
+                        "query_embedding_ms": embedding_ms,
+                        "service_search_ms": service_ms,
                         "selected_document_ids": [row.document_id for row in selected],
                         "gold_document_ids": sorted(question.gold_document_ids),
                     }
@@ -131,6 +142,8 @@ def main() -> None:
                 row for row in rows if row["method"] == method and row["top_k"] == top_k
             ]
             latencies = [float(row["latency_ms"]) for row in values]
+            embedding = [float(row["query_embedding_ms"]) for row in values]
+            service = [float(row["service_search_ms"]) for row in values]
             aggregate.append(
                 {
                     "method": method,
@@ -146,10 +159,16 @@ def main() -> None:
                     "latency_ms_p50": _percentile(latencies, 0.50),
                     "latency_ms_p95": _percentile(latencies, 0.95),
                     "latency_ms_p99": _percentile(latencies, 0.99),
+                    "query_embedding_ms_mean": statistics.fmean(embedding),
+                    "service_search_ms_mean": statistics.fmean(service),
+                    "other_client_ms_mean": statistics.fmean(
+                        total - embed - search
+                        for total, embed, search in zip(latencies, embedding, service)
+                    ),
                 }
             )
     result = {
-        "schema_version": "paper3.2-service-retrieval-v1",
+        "schema_version": "paper3.2-service-retrieval-v2",
         "dataset": "multihoprag",
         "dataset_metadata": dict(metadata),
         "seed": args.seed,

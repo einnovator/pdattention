@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 import urllib.request
 from urllib.parse import quote
 import uuid
@@ -384,6 +385,7 @@ class ElasticsearchBM25Retriever:
         self.index_name = index_name
         self.index_revision = index_revision
         self._transport = transport
+        self.last_service_ms = 0.0
         self.revision = f"elasticsearch_bm25_v1:{index_name}@{index_revision}"
         self.index_sha256 = _stable_digest(
             [(row.document_id, row.fingerprint) for row in documents], self.revision
@@ -392,6 +394,7 @@ class ElasticsearchBM25Retriever:
     def retrieve(self, query: str, top_k: int) -> tuple[CandidateDocument, ...]:
         if top_k <= 0:
             raise ValueError("top_k must be positive")
+        started = time.perf_counter()
         response = self._transport(
             "POST",
             f"{self.endpoint}/{self.index_name}/_search",
@@ -405,6 +408,7 @@ class ElasticsearchBM25Retriever:
                 },
             },
         )
+        self.last_service_ms = (time.perf_counter() - started) * 1000.0
         hits = response.get("hits", {})
         values = hits.get("hits", ()) if isinstance(hits, Mapping) else ()
         result = []
@@ -442,6 +446,8 @@ class QdrantDenseRetriever:
         self._embedder = embedder
         self.dimensions = dimensions
         self._transport = transport
+        self.last_embedding_ms = 0.0
+        self.last_service_ms = 0.0
         self.revision = f"qdrant_cosine_v1:{collection_name}@{collection_revision}:d{dimensions}"
         self.index_sha256 = _stable_digest(
             [(row.document_id, row.fingerprint) for row in documents], self.revision
@@ -451,17 +457,21 @@ class QdrantDenseRetriever:
         if top_k <= 0:
             raise ValueError("top_k must be positive")
         encode_query = getattr(self._embedder, "encode_query", None)
+        started = time.perf_counter()
         vector = np.asarray(
             encode_query(query) if encode_query is not None else self._embedder(query),
             dtype=np.float32,
         )
         if vector.shape != (self.dimensions,):
             raise ValueError("query embedder returned an unexpected vector shape")
+        self.last_embedding_ms = (time.perf_counter() - started) * 1000.0
+        started = time.perf_counter()
         response = self._transport(
             "POST",
             f"{self.endpoint}/collections/{self.collection_name}/points/query",
             {"query": vector.tolist(), "limit": top_k, "with_payload": True},
         )
+        self.last_service_ms = (time.perf_counter() - started) * 1000.0
         result = response.get("result", {})
         values = result.get("points", ()) if isinstance(result, Mapping) else ()
         rows = []
