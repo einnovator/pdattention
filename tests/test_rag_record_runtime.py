@@ -20,6 +20,8 @@ from pra_hf.rag_evaluation import (
 from pra_hf.rag_record_runtime import (
     BM25RerankSelector,
     CrossEncoderCandidateReranker,
+    PRA_CONTEXT_RECORD_SCHEMA,
+    PRA_STORAGE_ENTRY_SCHEMA,
     PRADocumentRecordStore,
     document_record_uri,
     validate_frozen_record_selection,
@@ -78,7 +80,29 @@ def test_record_store_ingests_stable_document_and_chunk_identities() -> None:
     assert store.document_uris["bridge"] == bridge_uri
     assert store.records[bridge_uri].record_type.value == "generic_document"
     assert store.records[bridge_uri].child_ids
+    assert store.records[bridge_uri].payload["type"] == "document"
+    assert store.records[bridge_uri].payload["uri"] == documents[0].uri
+    assert store.records[bridge_uri].payload["chunks"]
+    for child_uri in store.records[bridge_uri].child_ids:
+        assert store.records[child_uri].parent_id == bridge_uri
+        assert store.records[child_uri].version == documents[0].version
     assert store.ingestion_receipt.receipt_id
+    receipt = store.ingestion_receipt.to_dict()
+    assert receipt["record_schema"] == PRA_CONTEXT_RECORD_SCHEMA
+    assert receipt["storage_entry_schema"] == PRA_STORAGE_ENTRY_SCHEMA
+    bridge_receipt = next(
+        row for row in receipt["records"] if row["record_uri"] == bridge_uri
+    )
+    assert bridge_receipt["record_policy"] == {
+        "selection": "adaptive",
+        "authority": "advisory",
+        "atomicity": "chunk",
+        "materialization": "chunked",
+        "initial_view": "full",
+        "selected_view": "full",
+    }
+    assert bridge_receipt["storage_entry"]["logical_key"] == bridge_uri
+    assert bridge_receipt["storage_entry"]["source_reconstructable"] is True
     assert store.resolver.resolve(bridge_uri).text == documents[0].text
 
 

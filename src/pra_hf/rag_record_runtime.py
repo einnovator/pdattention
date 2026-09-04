@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Mapping, Protocol, Sequence
 from urllib.parse import quote
 
@@ -30,8 +30,13 @@ from .rag_evaluation import (
     SelectionReceipt,
     StandardRAGSelector,
     chunk_document,
+    document_to_context_record,
     whitespace_token_count,
 )
+
+
+PRA_CONTEXT_RECORD_SCHEMA = "pra-context-record-v1"
+PRA_STORAGE_ENTRY_SCHEMA = "pra-storage-entry-v1"
 
 
 def _digest(value: object) -> str:
@@ -68,7 +73,9 @@ class RecordIngestionReceipt:
     dataset: str
     records: tuple[Mapping[str, object], ...]
     resolver_revision: str = "in_memory_uri_resolver_v1"
-    schema_version: str = "paper3.2-native-record-ingestion-v1"
+    record_schema: str = PRA_CONTEXT_RECORD_SCHEMA
+    storage_entry_schema: str = PRA_STORAGE_ENTRY_SCHEMA
+    schema_version: str = "paper3.2-native-record-ingestion-v2"
 
     @property
     def receipt_id(self) -> str:
@@ -79,6 +86,8 @@ class RecordIngestionReceipt:
             "schema_version": self.schema_version,
             "dataset": self.dataset,
             "resolver_revision": self.resolver_revision,
+            "record_schema": self.record_schema,
+            "storage_entry_schema": self.storage_entry_schema,
             "records": [dict(row) for row in self.records],
         }
         if include_receipt_id:
@@ -312,20 +321,22 @@ class PRADocumentRecordStore:
             uri = document_record_uri(dataset, document.document_id)
             chunks = chunk_document(document, chunker, token_count=token_count)
             child_uris = tuple(chunk_record_uri(uri, chunk.ordinal) for chunk in chunks)
-            record = ContextRecord(
+            # Use the canonical Paper 4.5 document envelope, then bind its
+            # experiment-independent identity and hierarchy. Request scores
+            # remain in selection receipts and never mutate this record.
+            base_record = document_to_context_record(
+                document,
+                chunks,
+                receipt_id="persistent-record-ingestion",
+            )
+            record = replace(
+                base_record,
                 record_id=uri,
-                record_type=RecordType.GENERIC_DOCUMENT,
-                payload={
-                    "document_id": document.document_id,
-                    "title": document.title,
-                    "text": document.text,
-                    "source": document.source,
-                    "mime": document.mime,
-                    "token_count": sum(chunk.token_count for chunk in chunks),
-                },
                 child_ids=child_uris,
-                version=document.version,
-                source_fingerprint=document.fingerprint,
+                selection_provenance={
+                    "ingestion_receipt": "persistent-record-ingestion",
+                    "document_fingerprint": document.fingerprint,
+                },
             )
             self.records[uri] = record
             self.document_uris[document.document_id] = uri
@@ -339,14 +350,21 @@ class PRADocumentRecordStore:
             }
             resolver_versions[uri] = document.version
             for chunk, child_uri in zip(chunks, child_uris):
-                child = rag_chunk_record(
-                    child_uri,
-                    document_uri=uri,
-                    chunk_id=chunk.chunk_id,
-                    source_offsets=(chunk.start, chunk.end),
-                    retrieval_score=0.0,
-                    text=chunk.text,
-                    metadata={"ordinal": chunk.ordinal, "section_id": chunk.section_id},
+                child = replace(
+                    rag_chunk_record(
+                        child_uri,
+                        document_uri=uri,
+                        chunk_id=chunk.chunk_id,
+                        source_offsets=(chunk.start, chunk.end),
+                        retrieval_score=0.0,
+                        text=chunk.text,
+                        metadata={
+                            "ordinal": chunk.ordinal,
+                            "section_id": chunk.section_id,
+                        },
+                    ),
+                    parent_id=uri,
+                    version=document.version,
                 )
                 self.records[child_uri] = child
                 self.chunks_by_id[chunk.chunk_id] = chunk
@@ -369,6 +387,30 @@ class PRADocumentRecordStore:
                     "source_sha256": document.fingerprint,
                     "token_count": sum(chunk.token_count for chunk in chunks),
                     "chunk_uris": list(child_uris),
+                    "record_schema": PRA_CONTEXT_RECORD_SCHEMA,
+                    "record_version": record.version,
+                    "parent_uri": record.parent_id,
+                    "available_views": sorted(view.value for view in record.views),
+                    "record_policy": {
+                        "selection": record.policy.selection.value,
+                        "authority": record.policy.authority.value,
+                        "atomicity": record.policy.atomicity.value,
+                        "materialization": record.policy.materialization.value,
+                        "initial_view": record.policy.initial_view.value,
+                        "selected_view": record.policy.selected_view.value,
+                    },
+                    # These names intentionally mirror PRAStorageEntry in the
+                    # Paper 4.5 runtime. Physical model/layout compatibility is
+                    # added by the engine when native K/V is first encoded.
+                    "storage_entry": {
+                        "logical_key": uri,
+                        "record_type": record.record_type.value,
+                        "retention_class": "reconstructable",
+                        "resource_version": record.version,
+                        "source_reconstructable": True,
+                        "source_uri": document.uri,
+                        "source_sha256": document.fingerprint,
+                    },
                     "native_cache_identity": _digest(
                         {
                             "record_uri": uri,
