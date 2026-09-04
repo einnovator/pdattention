@@ -4,6 +4,23 @@ These runners keep retrieval, selection, realization, and positional
 composition as separate factors. Every model-backed run pins model revisions
 and writes row-level receipts plus an aggregate manifest.
 
+When multiple worktrees have editable PRA installs, set `PYTHONPATH` to this
+worktree's `src` directory before running experiments.
+
+## Fast mechanism smoke
+
+The dependency-light first gate validates candidate/selection receipts and the
+RAG+PRA position/profile matrix over five synthetic corpus seeds. It does not
+load a language model and therefore makes no answer-quality claim.
+
+```powershell
+$env:PYTHONPATH = (Join-Path $PWD 'src')
+python -m experiments.paper3_2_rag.run_mechanism_smoke
+```
+
+Its canonical artifacts are under
+`docs/papers/shared/results/paper3_2_rag/mechanism_smoke/`.
+
 ## Natural five-seed transport
 
 `run_powered_decomposition` compares selected text, contiguous native K/V, and
