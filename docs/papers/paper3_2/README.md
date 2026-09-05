@@ -102,6 +102,11 @@ The completed next-iteration evidence is organized under
 - `composition_natural/heldout_repair_policy.json` fits a bounded repair
   controller on seeds 11/23/37 and evaluates it without refitting on seeds
   71/101.
+- `prerope_causal/` contains the selector-frozen A/B/C causal decomposition:
+  ordinary packed RAG, packed RAG with cross-document document attention
+  disabled, and independently encoded pre-RoPE records rebound to identical
+  packed offsets. Its layerwise B/C diagnostics are a correctness gate before
+  the mask-interaction ladder is interpreted.
 
 First regenerate the seed-aware aggregates from the five raw manifests. The
 aggregator retains seed summaries and reports deterministic seed-bootstrap

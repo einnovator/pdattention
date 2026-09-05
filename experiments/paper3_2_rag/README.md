@@ -58,6 +58,34 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.run_nonprefix_reuse \
   --output reports/paper3_2_nonprefix_reuse
 ```
 
+## Pre-RoPE causal decomposition
+
+`run_prerope_causal_decomposition` freezes BM25 candidates, BGE-v2-M3
+ranking, selected records, separators, order, and exact packed positions. It
+then compares ordinary packed causal RAG (A), the same packed tokens with
+document-to-document attention blocked (B), and independently encoded
+pre-RoPE records rebound to B's exact request positions (C). B/C layerwise K/V,
+final-logit, NLL, and output diagnostics are correctness gates. The additional
+mask ladder tests previous-document, top-ranked-document, and 8/16/32/64-token
+boundary interaction without changing retrieval.
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_prerope_causal_decomposition \
+  --dataset multihoprag \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --seed 11 \
+  --max-examples 30 \
+  --candidate-count 50 \
+  --token-budget 2048 \
+  --max-resources 4 \
+  --output reports/paper3_2_prerope/qwen3_1_7b_seed11
+```
+
+The pre-RoPE cache stores host-projected keys before rotation plus unchanged
+values and a model/revision/frequency/layout contract. Materialization fails
+if that contract does not match the host. Post-RoPE storage remains the default
+for fixed-position memories.
+
 ## Native record references and internal reranking
 
 `run_native_record_reranker` exercises the high-level PRA document path. It

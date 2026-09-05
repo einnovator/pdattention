@@ -8,9 +8,24 @@ import pytest
 from pra_hf.rag_mlx_native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
+    PositionBindingMode,
     _rope_inverse_frequencies,
+    encode_native_memory,
+    encode_native_memory_with_mask,
+    make_native_prompt_cache,
+    native_memory_diagnostics,
     rebind_native_memories_to_receipt,
     repair_token_indices,
+)
+from pra_hf.rag_causal_decomposition import (
+    DocumentAttentionPolicy,
+    build_document_attention_mask,
+)
+from pra_hf.rag_composition import (
+    PositionPolicy,
+    RAGPRAProfile,
+    SelectedResource,
+    compose_resources,
 )
 
 
@@ -52,7 +67,7 @@ def test_native_memory_is_immutable() -> None:
     memory = MLXNativeMemory((MLXNativeLayerKV(_Array(1), _Array(1)),), 1)
     with pytest.raises(Exception):
         memory.source_tokens = 2
-    assert replace(memory, source_tokens=2).source_tokens == 2
+    assert replace(memory, source_tokens=2, source_positions=(0, 1)).source_tokens == 2
 
 
 def test_repair_token_indices_supports_mechanistic_policies() -> None:
@@ -89,3 +104,101 @@ def test_rope_inverse_frequencies_honor_host_scaled_geometry() -> None:
     rope = SimpleNamespace(_freqs=mx.array([2.0, 4.0], dtype=mx.float32))
     result = _rope_inverse_frequencies(rope, dimensions=4)
     assert pytest.approx(result.tolist()) == [0.5, 0.25]
+
+
+def _tiny_qwen():
+    pytest.importorskip("mlx.core")
+    qwen3 = pytest.importorskip("mlx_lm.models.qwen3")
+    return qwen3.Model(
+        qwen3.ModelArgs(
+            model_type="qwen3",
+            hidden_size=32,
+            num_hidden_layers=2,
+            intermediate_size=64,
+            num_attention_heads=4,
+            rms_norm_eps=1e-6,
+            vocab_size=64,
+            num_key_value_heads=2,
+            max_position_embeddings=128,
+            rope_theta=1_000_000.0,
+            head_dim=8,
+            tie_word_embeddings=True,
+        )
+    )
+
+
+def _packed_receipt(lengths: tuple[int, ...]):
+    resources = tuple(
+        SelectedResource(
+            f"D{index}",
+            f"D{index}:0",
+            str(index) * 64,
+            tuple(range(length)),
+            index,
+            1.0 / index,
+        )
+        for index, length in enumerate(lengths, 1)
+    )
+    return compose_resources(
+        resources,
+        selection_receipt_id="selection-1",
+        profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_REBOUND,
+        position_policy=PositionPolicy.GLOBAL_PACKED,
+        near_gap=0,
+    )
+
+
+def test_prerope_round_trip_matches_postrope_at_identical_positions() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(7)
+    model = _tiny_qwen()
+    tokens = (1, 2, 3, 4)
+    post = encode_native_memory(model, tokens)
+    pre = encode_native_memory(
+        model,
+        tokens,
+        position_binding_mode=PositionBindingMode.PRE_ROPE,
+        model_revision="tiny-qwen-test",
+    )
+    rebound = rebind_native_memories_to_receipt(model, (pre,), _packed_receipt((4,)))
+    diagnostics = native_memory_diagnostics(post, rebound)
+    assert diagnostics["max_key_abs_delta"] < 1e-5
+    assert diagnostics["max_value_abs_delta"] == 0.0
+    assert pre.pre_rope_storage
+    assert pre.rope_contract is not None
+    assert pre.rope_contract.model_revision == "tiny-qwen-test"
+
+
+def test_block_isolated_packed_matches_independent_prerope_records() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(11)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3), (4, 5))
+    packed = tuple(token for segment in segments for token in segment)
+    mask, _ = build_document_attention_mask(
+        tuple(map(len, segments)), policy=DocumentAttentionPolicy.NO_CROSS_DOC
+    )
+    blocked = encode_native_memory_with_mask(model, packed, mask)
+    independent = tuple(
+        encode_native_memory(
+            model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision="tiny-qwen-test",
+        )
+        for segment in segments
+    )
+    rebound = rebind_native_memories_to_receipt(
+        model, independent, _packed_receipt(tuple(map(len, segments)))
+    )
+    diagnostics = native_memory_diagnostics(blocked, rebound)
+    assert diagnostics["max_key_abs_delta"] < 2e-5
+    assert diagnostics["max_value_abs_delta"] < 2e-5
+
+    query = mx.array([[6, 7]], dtype=mx.int32)
+    blocked_logits = model(query, cache=make_native_prompt_cache(model, blocked))
+    rebound_logits = model(query, cache=make_native_prompt_cache(model, rebound))
+    mx.eval(blocked_logits, rebound_logits)
+    assert max(abs(a - b) for a, b in zip(
+        blocked_logits.flatten().tolist(), rebound_logits.flatten().tolist()
+    )) < 2e-5

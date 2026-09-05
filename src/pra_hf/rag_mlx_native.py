@@ -7,13 +7,49 @@ compare a frozen selected-text receipt with the same contiguous native K/V.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
+from enum import Enum
 from typing import Sequence
+
+
+class PositionBindingMode(str, Enum):
+    """Whether stored keys already carry a fixed RoPE phase."""
+
+    POST_ROPE = "POST_ROPE"
+    PRE_ROPE = "PRE_ROPE"
+
+
+@dataclass(frozen=True)
+class MLXRopeContract:
+    """Model-specific geometry required to materialize pre-RoPE keys safely."""
+
+    model_revision: str
+    layer_frequency_digest: str
+    scaling_policy: tuple[str, ...]
+    rope_dims: tuple[int, ...]
+    layout: tuple[str, ...]
+    schema_version: str = "paper3.2-mlx-rope-contract-v1"
+
+    @property
+    def contract_id(self) -> str:
+        value = {
+            "schema_version": self.schema_version,
+            "model_revision": self.model_revision,
+            "layer_frequency_digest": self.layer_frequency_digest,
+            "scaling_policy": self.scaling_policy,
+            "rope_dims": self.rope_dims,
+            "layout": self.layout,
+        }
+        return hashlib.sha256(
+            json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+        ).hexdigest()
 
 
 @dataclass(frozen=True)
 class MLXNativeLayerKV:
-    """One layer's post-position K/V arrays in ``[B, Hkv, T, Dh]`` layout."""
+    """One layer's K/V arrays in ``[B, Hkv, T, Dh]`` layout."""
 
     keys: object
     values: object
@@ -36,12 +72,29 @@ class MLXNativeMemory:
     layers: tuple[MLXNativeLayerKV, ...]
     source_tokens: int
     query_position_base: int | None = None
+    position_binding_mode: PositionBindingMode = PositionBindingMode.POST_ROPE
+    source_positions: tuple[int, ...] = ()
+    rope_contract: MLXRopeContract | None = None
 
     def __post_init__(self) -> None:
         if self.source_tokens <= 0:
             raise ValueError("native memory must contain at least one token")
         if self.query_position_base is not None and self.query_position_base < 0:
             raise ValueError("native query position base cannot be negative")
+        if not self.source_positions:
+            object.__setattr__(self, "source_positions", tuple(range(self.source_tokens)))
+        if len(self.source_positions) != self.source_tokens:
+            raise ValueError("native source positions must match the token dimension")
+        if any(
+            right <= left
+            for left, right in zip(self.source_positions, self.source_positions[1:])
+        ):
+            raise ValueError("native source positions must be strictly increasing")
+        if (
+            self.position_binding_mode is PositionBindingMode.PRE_ROPE
+            and self.rope_contract is None
+        ):
+            raise ValueError("pre-RoPE native memory requires a RoPE contract")
 
     @property
     def position_base(self) -> int:
@@ -54,6 +107,10 @@ class MLXNativeMemory:
     @property
     def nbytes(self) -> int:
         return sum(layer.nbytes for layer in self.layers)
+
+    @property
+    def pre_rope_storage(self) -> bool:
+        return self.position_binding_mode is PositionBindingMode.PRE_ROPE
 
 
 class MLXSelectedKVCache:
@@ -137,11 +194,75 @@ class MLXSelectedKVCache:
         return mx.concatenate((memory, local), axis=1)
 
 
-def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMemory:
-    """Encode one contiguous selection and retain each layer's native K/V."""
+def _memory_from_post_rope_states(
+    model: object,
+    states: Sequence[object],
+    source_tokens: int,
+    *,
+    position_binding_mode: PositionBindingMode,
+    model_revision: str,
+) -> MLXNativeMemory:
+    """Normalize host cache states into an explicit position-binding contract."""
+
+    layers = []
+    for state in states:
+        if not isinstance(state, tuple) or len(state) < 2:
+            raise RuntimeError("the MLX model exposed a non-attention cache layer")
+        layers.append(MLXNativeLayerKV(state[0], state[1]))
+    contract = _rope_contract(model, model_revision=model_revision)
+    if position_binding_mode is PositionBindingMode.PRE_ROPE:
+        positions = tuple(range(source_tokens))
+        model_layers = _model_layers(model)
+        layers = [
+            MLXNativeLayerKV(
+                _rotate_keys_by_position_deltas(
+                    layer.keys,
+                    _layer_rope(model_layer, layer_index),
+                    tuple(-position for position in positions),
+                ),
+                layer.values,
+            )
+            for layer_index, (layer, model_layer) in enumerate(
+                zip(layers, model_layers)
+            )
+        ]
+    return MLXNativeMemory(
+        tuple(layers),
+        source_tokens=source_tokens,
+        position_binding_mode=position_binding_mode,
+        source_positions=tuple(range(source_tokens)),
+        rope_contract=contract,
+    )
+
+
+def encode_native_memory(
+    model: object,
+    token_ids: Sequence[int],
+    *,
+    position_binding_mode: PositionBindingMode = PositionBindingMode.POST_ROPE,
+    model_revision: str = "UNKNOWN",
+) -> MLXNativeMemory:
+    """Encode contiguous evidence and retain post- or pre-RoPE native K/V.
+
+    MLX's public cache exposes post-RoPE keys. ``PRE_ROPE`` applies the exact
+    inverse host transform at each source position before persistence. This is
+    algebraically the raw projected key and avoids a model-specific hook.
+    """
 
     if not token_ids:
         raise ValueError("cannot encode empty evidence as native K/V")
+    if position_binding_mode is PositionBindingMode.PRE_ROPE:
+        causal = tuple(
+            tuple(column <= row for column in range(len(token_ids)))
+            for row in range(len(token_ids))
+        )
+        return encode_native_memory_with_mask(
+            model,
+            token_ids,
+            causal,
+            position_binding_mode=position_binding_mode,
+            model_revision=model_revision,
+        )
     import mlx.core as mx
     from mlx_lm.models.cache import make_prompt_cache
 
@@ -149,12 +270,101 @@ def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMe
     model(mx.array(token_ids, dtype=mx.int32)[None], cache=caches)
     states = [cache.state for cache in caches]
     mx.eval(states)
-    layers = []
-    for state in states:
-        if not isinstance(state, tuple) or len(state) < 2:
-            raise RuntimeError("the MLX model exposed a non-attention cache layer")
-        layers.append(MLXNativeLayerKV(state[0], state[1]))
-    return MLXNativeMemory(tuple(layers), source_tokens=len(token_ids))
+    return _memory_from_post_rope_states(
+        model,
+        states,
+        len(token_ids),
+        position_binding_mode=position_binding_mode,
+        model_revision=model_revision,
+    )
+
+
+def encode_native_memory_with_mask(
+    model: object,
+    token_ids: Sequence[int],
+    attention_mask: Sequence[Sequence[bool]],
+    *,
+    position_binding_mode: PositionBindingMode = PositionBindingMode.POST_ROPE,
+    model_revision: str = "UNKNOWN",
+) -> MLXNativeMemory:
+    """Encode a packed document prefix under an explicit document mask.
+
+    The model's public top-level call constructs its own causal mask. Walking
+    the unchanged host layers is the narrowest available seam for the B arm;
+    projections, RoPE, attention kernels, residuals, and cache objects remain
+    the host implementation.
+    """
+
+    if not token_ids:
+        raise ValueError("cannot encode empty evidence as native K/V")
+    size = len(token_ids)
+    if len(attention_mask) != size or any(len(row) != size for row in attention_mask):
+        raise ValueError("document attention mask must have shape [tokens, tokens]")
+    import mlx.core as mx
+    from mlx_lm.models.base import scaled_dot_product_attention
+
+    host = getattr(model, "model", model)
+    layers = _model_layers(model)
+    hidden = host.embed_tokens(mx.array(token_ids, dtype=mx.int32)[None])
+    mask = mx.array(attention_mask, dtype=mx.bool_)
+    stored_layers: list[MLXNativeLayerKV] = []
+    for layer_index, layer in enumerate(layers):
+        layer_mask = mask
+        if bool(getattr(layer, "use_sliding", False)):
+            window = int(getattr(host, "sliding_window"))
+            positions = mx.arange(size)
+            layer_mask = layer_mask & (
+                positions[:, None] < positions[None, :] + window
+            )
+        residual = hidden
+        normalized = layer.input_layernorm(hidden)
+        attention = layer.self_attn
+        batch, tokens, _ = normalized.shape
+        queries = attention.q_proj(normalized).reshape(
+            batch, tokens, attention.n_heads, -1
+        ).transpose(0, 2, 1, 3)
+        keys_pre = attention.k_proj(normalized).reshape(
+            batch, tokens, attention.n_kv_heads, -1
+        ).transpose(0, 2, 1, 3)
+        values = attention.v_proj(normalized).reshape(
+            batch, tokens, attention.n_kv_heads, -1
+        ).transpose(0, 2, 1, 3)
+        q_norm = getattr(attention, "q_norm", None)
+        k_norm = getattr(attention, "k_norm", None)
+        if q_norm is not None:
+            queries = q_norm(queries.transpose(0, 2, 1, 3)).transpose(0, 2, 1, 3)
+        if k_norm is not None:
+            keys_pre = k_norm(keys_pre.transpose(0, 2, 1, 3)).transpose(0, 2, 1, 3)
+        queries = attention.rope(queries)
+        keys_post = attention.rope(keys_pre)
+        stored_layers.append(
+            MLXNativeLayerKV(
+                keys_pre
+                if position_binding_mode is PositionBindingMode.PRE_ROPE
+                else keys_post,
+                values,
+            )
+        )
+        attended = scaled_dot_product_attention(
+            queries,
+            keys_post,
+            values,
+            cache=None,
+            scale=attention.scale,
+            mask=layer_mask,
+        )
+        attended = attended.transpose(0, 2, 1, 3).reshape(batch, tokens, -1)
+        hidden = residual + attention.o_proj(attended)
+        hidden = hidden + layer.mlp(layer.post_attention_layernorm(hidden))
+    hidden = host.norm(hidden)
+    mx.eval(hidden, [(layer.keys, layer.values) for layer in stored_layers])
+    return MLXNativeMemory(
+        tuple(stored_layers),
+        source_tokens=size,
+        position_binding_mode=position_binding_mode,
+        source_positions=tuple(range(size)),
+        rope_contract=_rope_contract(model, model_revision=model_revision),
+    )
 
 
 def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMemory:
@@ -164,6 +374,11 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
         raise ValueError("at least one native memory is required")
     if len({len(memory.layers) for memory in memories}) != 1:
         raise ValueError("native memories have incompatible layer counts")
+    if any(
+        memory.position_binding_mode is not PositionBindingMode.POST_ROPE
+        for memory in memories
+    ):
+        raise ValueError("pre-RoPE memory must be bound before cache construction")
     if len(memories) == 1:
         return memories[0]
     import mlx.core as mx
@@ -186,6 +401,7 @@ def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMem
         layers,
         source_tokens=sum(memory.source_tokens for memory in memories),
         query_position_base=max(memory.position_base for memory in memories),
+        position_binding_mode=PositionBindingMode.POST_ROPE,
     )
 
 
@@ -205,6 +421,78 @@ def _rope_inverse_frequencies(rope: object, dimensions: int):
         -mx.arange(0, dimensions, 2, dtype=mx.float32)
         * (mx.log(mx.array(base, dtype=mx.float32)) / dimensions)
     )
+
+
+def _model_layers(model: object) -> tuple[object, ...]:
+    layers = tuple(getattr(getattr(model, "model", model), "layers"))
+    if not layers:
+        raise ValueError("model exposes no transformer layers")
+    return layers
+
+
+def _layer_rope(model_layer: object, layer_index: int) -> object:
+    attention = getattr(model_layer, "self_attn", None)
+    rope = getattr(attention, "rope", None)
+    if rope is None:
+        raise ValueError(f"model layer {layer_index} exposes no RoPE module")
+    return rope
+
+
+def _rope_contract(model: object, *, model_revision: str) -> MLXRopeContract:
+    """Fingerprint the exact host frequency/scaling geometry for every layer."""
+
+    descriptors: list[dict[str, object]] = []
+    policies: list[str] = []
+    dimensions: list[int] = []
+    layouts: list[str] = []
+    for layer_index, layer in enumerate(_model_layers(model)):
+        rope = _layer_rope(layer, layer_index)
+        dims = int(getattr(rope, "dims"))
+        dimensions.append(dims)
+        layout = "traditional_interleaved" if bool(
+            getattr(rope, "traditional", False)
+        ) else "half_rotation"
+        layouts.append(layout)
+        configured = getattr(rope, "_freqs", None)
+        if configured is not None:
+            frequencies = [float(value) for value in configured.tolist()]
+            policy = "host_piecewise_frequency_tensor"
+        else:
+            frequencies = []
+            policy = "host_base_frequency"
+        scale = float(getattr(rope, "scale", 1.0))
+        policies.append(f"{policy}:scale={scale:g}")
+        descriptors.append(
+            {
+                "layer": layer_index,
+                "dims": dims,
+                "layout": layout,
+                "scale": scale,
+                "base": float(getattr(rope, "base", 10_000.0)),
+                "configured_frequencies": frequencies,
+            }
+        )
+    frequency_digest = hashlib.sha256(
+        json.dumps(descriptors, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
+    return MLXRopeContract(
+        model_revision=model_revision,
+        layer_frequency_digest=frequency_digest,
+        scaling_policy=tuple(policies),
+        rope_dims=tuple(dimensions),
+        layout=tuple(layouts),
+    )
+
+
+def _validate_rope_contract(model: object, memory: MLXNativeMemory) -> MLXRopeContract:
+    if memory.rope_contract is None:
+        raise ValueError("pre-RoPE memory has no model geometry contract")
+    actual = _rope_contract(
+        model, model_revision=memory.rope_contract.model_revision
+    )
+    if actual.contract_id != memory.rope_contract.contract_id:
+        raise ValueError("pre-RoPE memory does not match the host RoPE contract")
+    return actual
 
 
 def _rotate_keys_by_delta(keys, rope: object, delta: int):
@@ -284,6 +572,18 @@ def _rotate_keys_by_position_deltas(keys, rope: object, deltas: Sequence[int]):
     return mx.concatenate((rebound, tail), axis=-1) if tail.shape[-1] else rebound
 
 
+def _bind_pre_rope_keys(keys, rope: object, positions: Sequence[int]):
+    """Apply host RoPE directly when request positions form one exact interval."""
+
+    if len(positions) != int(keys.shape[2]):
+        raise ValueError("request position count must match pre-RoPE keys")
+    if positions and tuple(positions) == tuple(
+        range(int(positions[0]), int(positions[0]) + len(positions))
+    ):
+        return rope(keys, offset=int(positions[0]))
+    return _rotate_keys_by_position_deltas(keys, rope, positions)
+
+
 def rebind_native_memories_global_packed(
     model: object,
     memories: Sequence[MLXNativeMemory],
@@ -303,9 +603,12 @@ def rebind_native_memories_global_packed(
         raise ValueError("native memories have incompatible layer counts")
     import mlx.core as mx
 
-    model_layers = tuple(getattr(getattr(model, "model", model), "layers"))
+    model_layers = _model_layers(model)
     if len(model_layers) != len(memories[0].layers):
         raise ValueError("native memories do not match the model layer count")
+    for memory in memories:
+        if memory.position_binding_mode is PositionBindingMode.PRE_ROPE:
+            _validate_rope_contract(model, memory)
     starts: list[int] = []
     cursor = 0
     for memory in memories:
@@ -314,12 +617,22 @@ def rebind_native_memories_global_packed(
 
     layers = []
     for layer_index, model_layer in enumerate(model_layers):
-        attention = getattr(model_layer, "self_attn", None)
-        rope = getattr(attention, "rope", None)
-        if rope is None:
-            raise ValueError(f"model layer {layer_index} exposes no RoPE module")
+        rope = _layer_rope(model_layer, layer_index)
         keys = tuple(
-            _rotate_keys_by_delta(memory.layers[layer_index].keys, rope, start)
+            _bind_pre_rope_keys(
+                memory.layers[layer_index].keys,
+                rope,
+                tuple(start + index for index in range(memory.source_tokens)),
+            )
+            if memory.position_binding_mode is PositionBindingMode.PRE_ROPE
+            else _rotate_keys_by_position_deltas(
+                memory.layers[layer_index].keys,
+                rope,
+                tuple(
+                    start + index - source
+                    for index, source in enumerate(memory.source_positions)
+                ),
+            )
             for memory, start in zip(memories, starts)
         )
         values = tuple(
@@ -332,7 +645,22 @@ def rebind_native_memories_global_packed(
             )
         )
     return MLXNativeMemory(
-        tuple(layers), source_tokens=cursor, query_position_base=cursor
+        tuple(layers),
+        source_tokens=cursor,
+        query_position_base=cursor,
+        position_binding_mode=PositionBindingMode.POST_ROPE,
+        source_positions=tuple(range(cursor)),
+        rope_contract=_rope_contract(
+            model,
+            model_revision=next(
+                (
+                    memory.rope_contract.model_revision
+                    for memory in memories
+                    if memory.rope_contract is not None
+                ),
+                "UNKNOWN",
+            ),
+        ),
     )
 
 
@@ -361,26 +689,62 @@ def rebind_native_memories_to_receipt(
 
     import mlx.core as mx
 
-    model_layers = tuple(getattr(getattr(model, "model", model), "layers"))
+    model_layers = _model_layers(model)
     if len(model_layers) != len(memories[0].layers):
         raise ValueError("native memories do not match the model layer count")
+    for memory in memories:
+        if memory.position_binding_mode is PositionBindingMode.PRE_ROPE:
+            _validate_rope_contract(model, memory)
     layers = []
+    effective_positions = tuple(
+        position
+        for placement in placements
+        for position in placement.effective_positions
+    )
+    all_pre_rope = all(
+        memory.position_binding_mode is PositionBindingMode.PRE_ROPE
+        for memory in memories
+    )
+    one_contiguous_frame = effective_positions == tuple(
+        range(effective_positions[0], effective_positions[0] + len(effective_positions))
+    )
     for layer_index, model_layer in enumerate(model_layers):
-        attention = getattr(model_layer, "self_attn", None)
-        rope = getattr(attention, "rope", None)
-        if rope is None:
-            raise ValueError(f"model layer {layer_index} exposes no RoPE module")
+        rope = _layer_rope(model_layer, layer_index)
+        if all_pre_rope and one_contiguous_frame:
+            raw_keys = mx.concatenate(
+                tuple(memory.layers[layer_index].keys for memory in memories), axis=2
+            )
+            layers.append(
+                MLXNativeLayerKV(
+                    rope(raw_keys, offset=effective_positions[0]),
+                    mx.concatenate(
+                        tuple(memory.layers[layer_index].values for memory in memories),
+                        axis=2,
+                    ),
+                )
+            )
+            continue
         keys = []
         values = []
         for memory, placement in zip(memories, placements):
-            deltas = tuple(
-                target - source
-                for source, target in zip(
-                    placement.source_positions, placement.effective_positions
+            deltas = (
+                tuple(placement.effective_positions)
+                if memory.position_binding_mode is PositionBindingMode.PRE_ROPE
+                else tuple(
+                    target - source
+                    for source, target in zip(
+                        placement.source_positions, placement.effective_positions
+                    )
                 )
             )
             keys.append(
-                _rotate_keys_by_position_deltas(
+                _bind_pre_rope_keys(
+                    memory.layers[layer_index].keys,
+                    rope,
+                    tuple(placement.effective_positions),
+                )
+                if memory.position_binding_mode is PositionBindingMode.PRE_ROPE
+                else _rotate_keys_by_position_deltas(
                     memory.layers[layer_index].keys, rope, deltas
                 )
             )
@@ -395,6 +759,19 @@ def rebind_native_memories_to_receipt(
         tuple(layers),
         source_tokens=sum(memory.source_tokens for memory in memories),
         query_position_base=int(getattr(composition_receipt, "query_position")),
+        position_binding_mode=PositionBindingMode.POST_ROPE,
+        source_positions=effective_positions,
+        rope_contract=_rope_contract(
+            model,
+            model_revision=next(
+                (
+                    memory.rope_contract.model_revision
+                    for memory in memories
+                    if memory.rope_contract is not None
+                ),
+                "UNKNOWN",
+            ),
+        ),
     )
 
 
@@ -546,7 +923,50 @@ def diagnostic_repair_memory(
         layers,
         source_tokens=token_count,
         query_position_base=fresh_packed.position_base,
+        position_binding_mode=PositionBindingMode.POST_ROPE,
+        source_positions=fresh_packed.source_positions,
+        rope_contract=fresh_packed.rope_contract,
     )
+
+
+def native_memory_diagnostics(
+    reference: MLXNativeMemory, candidate: MLXNativeMemory
+) -> dict[str, object]:
+    """Return per-layer K/V RMSE and maximum error for matched memories."""
+
+    if len(reference.layers) != len(candidate.layers):
+        raise ValueError("diagnostic memories have incompatible layer counts")
+    if reference.source_tokens != candidate.source_tokens:
+        raise ValueError("diagnostic memories have incompatible token counts")
+    import mlx.core as mx
+    import numpy as np
+
+    rows = []
+    for layer_index, (left, right) in enumerate(
+        zip(reference.layers, candidate.layers)
+    ):
+        left_keys = np.asarray(left.keys.astype(mx.float32))
+        right_keys = np.asarray(right.keys.astype(mx.float32))
+        left_values = np.asarray(left.values.astype(mx.float32))
+        right_values = np.asarray(right.values.astype(mx.float32))
+        key_delta = left_keys - right_keys
+        value_delta = left_values - right_values
+        rows.append(
+            {
+                "layer": layer_index,
+                "key_rmse": float(np.sqrt(np.mean(key_delta * key_delta))),
+                "key_max_abs_delta": float(np.max(np.abs(key_delta))),
+                "value_rmse": float(np.sqrt(np.mean(value_delta * value_delta))),
+                "value_max_abs_delta": float(np.max(np.abs(value_delta))),
+            }
+        )
+    return {
+        "layers": rows,
+        "max_key_rmse": max(row["key_rmse"] for row in rows),
+        "max_value_rmse": max(row["value_rmse"] for row in rows),
+        "max_key_abs_delta": max(row["key_max_abs_delta"] for row in rows),
+        "max_value_abs_delta": max(row["value_max_abs_delta"] for row in rows),
+    }
 
 
 def make_native_prompt_cache(model: object, memory: MLXNativeMemory):
@@ -554,6 +974,8 @@ def make_native_prompt_cache(model: object, memory: MLXNativeMemory):
 
     from mlx_lm.models.cache import make_prompt_cache
 
+    if memory.position_binding_mode is not PositionBindingMode.POST_ROPE:
+        raise ValueError("pre-RoPE memory must be bound to request positions first")
     local = make_prompt_cache(model)
     if len(local) != len(memory.layers):
         raise ValueError("native memory does not match the model layer count")
