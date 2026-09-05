@@ -177,6 +177,9 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                     "boundary_conditioning_edges": _row_mean(
                         selected, "boundary_conditioning_edges"
                     ),
+                    "gist_attention_edges": _row_mean(
+                        selected, "gist_attention_edges"
+                    ),
                     "request_local_native_tokens": _row_mean(
                         selected, "request_local_native_tokens"
                     ),
@@ -243,6 +246,9 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 ),
                 "seed_mean_boundary_conditioning_edges": _row_mean(
                     seed_rows, "boundary_conditioning_edges"
+                ),
+                "seed_mean_gist_attention_edges": _row_mean(
+                    seed_rows, "gist_attention_edges"
                 ),
                 "seed_mean_request_local_native_tokens": _row_mean(
                     seed_rows, "request_local_native_tokens"
@@ -436,6 +442,7 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                 "seed_mean_request_composition_bytes",
                 "seed_mean_request_composition_flops_estimate",
                 "seed_mean_boundary_conditioning_edges",
+                "seed_mean_gist_attention_edges",
                 "seed_mean_request_local_native_tokens",
                 "seed_mean_request_rope_transform_ms",
                 "seed_mean_official_multihop_rag_score",
@@ -480,6 +487,9 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                     ],
                     "seed_mean_boundary_conditioning_edges": row[
                         "seed_mean_boundary_conditioning_edges"
+                    ],
+                    "seed_mean_gist_attention_edges": row[
+                        "seed_mean_gist_attention_edges"
                     ],
                     "seed_mean_request_local_native_tokens": row[
                         "seed_mean_request_local_native_tokens"
@@ -553,6 +563,33 @@ def _write_latex_tables(result: Mapping[str, object], output: Path) -> None:
     (output / "generated_causal_systems_table.tex").write_text(
         "\n".join(systems) + "\n", encoding="utf-8"
     )
+
+    composition_rows = [
+        row
+        for row in rows
+        if str(row["condition"]).startswith(("D_", "E_", "F_"))
+    ]
+    if composition_rows:
+        composition = [
+            "\\begin{tabular}{lrrrrrr}",
+            "\\toprule",
+            "Condition & Gist edges & Boundary edges & Ephemeral tok. & MiB & Comp. ms & GFLOP \\\\",
+            "\\midrule",
+        ]
+        for row in composition_rows:
+            composition.append(
+                f"{_condition_label(row['condition'])} & "
+                f"{float(row['seed_mean_gist_attention_edges']):.0f} & "
+                f"{float(row['seed_mean_boundary_conditioning_edges']):.0f} & "
+                f"{float(row['seed_mean_request_local_native_tokens']):.0f} & "
+                f"{float(row['seed_mean_request_composition_bytes']) / 2**20:.1f} & "
+                f"{float(row['seed_mean_request_composition_ms']):.2f} & "
+                f"{float(row['seed_mean_request_composition_flops_estimate']) / 1e9:.3f} \\\\"
+            )
+        composition.extend(("\\bottomrule", "\\end{tabular}"))
+        (output / "generated_composition_systems_table.tex").write_text(
+            "\n".join(composition) + "\n", encoding="utf-8"
+        )
 
     bc = result["b_minus_c"]  # type: ignore[index]
     fidelity = [
