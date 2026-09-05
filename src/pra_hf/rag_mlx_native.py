@@ -9,9 +9,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
+
+from .crossdoc_composition import (
+    CrossDocumentCompositionConfig,
+    CrossDocumentCompositionMode,
+    CrossDocumentCompositionReceipt,
+    build_gist_attention_mask,
+    memory_identity_digest,
+)
 
 
 class PositionBindingMode(str, Enum):
@@ -773,6 +783,180 @@ def rebind_native_memories_to_receipt(
             ),
         ),
     )
+
+
+def _contextualize_mlx_gists(keys, values, mask, residual_scale: float):
+    """MLX equivalent of parameter-free identity-projection gist attention."""
+
+    import mlx.core as mx
+
+    width = int(keys.shape[-1])
+    scores = mx.matmul(
+        keys.astype(mx.float32), mx.swapaxes(keys.astype(mx.float32), -1, -2)
+    ) / math.sqrt(width)
+    visible = mask[None, None, :, :]
+    scores = mx.where(visible, scores, mx.array(float("-inf"), dtype=scores.dtype))
+    attention = mx.softmax(scores, axis=-1)
+    contextual_keys = keys + residual_scale * mx.matmul(
+        attention.astype(keys.dtype), keys
+    )
+    contextual_values = values + residual_scale * mx.matmul(
+        attention.astype(values.dtype), values
+    )
+    return contextual_keys, contextual_values, attention
+
+
+def compose_cross_document_memory(
+    model: object,
+    memories: Sequence[MLXNativeMemory],
+    composition_receipt: object,
+    *,
+    record_ids: Sequence[str],
+    config: CrossDocumentCompositionConfig,
+    document_ids: Sequence[str] = (),
+) -> tuple[MLXNativeMemory, CrossDocumentCompositionReceipt]:
+    """Append ephemeral contextual gist or boundary K/V beside immutable records.
+
+    Persistent inputs must contain pre-RoPE keys. Their layerwise mean K/V are
+    composed bidirectionally by default. New request-local K/V are then bound
+    into a compact band immediately before the query. Stored record tensors are
+    never replaced or mutated.
+    """
+
+    if not memories or len(memories) != len(record_ids):
+        raise ValueError("record identities must align with native memories")
+    if any(
+        memory.position_binding_mode is not PositionBindingMode.PRE_ROPE
+        for memory in memories
+    ):
+        raise ValueError("cross-document composition requires persistent pre-RoPE memory")
+    if len({len(memory.layers) for memory in memories}) != 1:
+        raise ValueError("cross-document memories have incompatible layer counts")
+    if document_ids and len(document_ids) != len(memories):
+        raise ValueError("document identities must align with native memories")
+
+    import mlx.core as mx
+
+    started = time.perf_counter()
+    rebound = rebind_native_memories_to_receipt(model, memories, composition_receipt)
+    mask_torch = build_gist_attention_mask(
+        len(memories), config.attention_mask, document_ids=document_ids
+    )
+    mask = mx.array(mask_torch.tolist(), dtype=mx.bool_)
+    model_layers = _model_layers(model)
+    output_layers: list[MLXNativeLayerKV] = []
+    local_token_count: int | None = None
+    gist_dim: int | None = None
+    gist_positions: tuple[int, ...] = ()
+
+    for layer_index, model_layer in enumerate(model_layers):
+        key_gists = mx.concatenate(
+            tuple(
+                mx.mean(memory.layers[layer_index].keys, axis=2, keepdims=True)
+                for memory in memories
+            ),
+            axis=2,
+        )
+        value_gists = mx.concatenate(
+            tuple(
+                mx.mean(memory.layers[layer_index].values, axis=2, keepdims=True)
+                for memory in memories
+            ),
+            axis=2,
+        )
+        contextual_keys, contextual_values, _ = _contextualize_mlx_gists(
+            key_gists, value_gists, mask, config.residual_scale
+        )
+        gist_dim = int(contextual_keys.shape[1] * contextual_keys.shape[-1])
+
+        if config.mode is CrossDocumentCompositionMode.GIST_SA_APPEND:
+            local_keys = contextual_keys
+            local_values = contextual_values
+        else:
+            boundary = config.mode.boundary_tokens
+            key_parts = []
+            value_parts = []
+            for record_index, memory in enumerate(memories):
+                count = memory.source_tokens
+                indices = tuple(
+                    sorted(
+                        set(range(min(boundary, count)))
+                        | set(range(max(0, count - boundary), count))
+                    )
+                )
+                index_array = mx.array(indices, dtype=mx.int32)
+                source = memory.layers[layer_index]
+                source_key_gist = key_gists[:, :, record_index : record_index + 1, :]
+                source_value_gist = value_gists[:, :, record_index : record_index + 1, :]
+                delta_key = (
+                    contextual_keys[:, :, record_index : record_index + 1, :]
+                    - source_key_gist
+                )
+                delta_value = (
+                    contextual_values[:, :, record_index : record_index + 1, :]
+                    - source_value_gist
+                )
+                key_parts.append(mx.take(source.keys, index_array, axis=2) + delta_key)
+                value_parts.append(mx.take(source.values, index_array, axis=2) + delta_value)
+            local_keys = mx.concatenate(tuple(key_parts), axis=2)
+            local_values = mx.concatenate(tuple(value_parts), axis=2)
+
+        current_count = int(local_keys.shape[2])
+        if local_token_count is None:
+            local_token_count = current_count
+            gist_positions = tuple(
+                range(rebound.position_base, rebound.position_base + current_count)
+            )
+        elif current_count != local_token_count:
+            raise RuntimeError("composition token count changed across layers")
+        bound_keys = _bind_pre_rope_keys(
+            local_keys, _layer_rope(model_layer, layer_index), gist_positions
+        )
+        output_layers.append(
+            MLXNativeLayerKV(
+                mx.concatenate((rebound.layers[layer_index].keys, bound_keys), axis=2),
+                mx.concatenate((rebound.layers[layer_index].values, local_values), axis=2),
+            )
+        )
+
+    mx.eval([(layer.keys, layer.values) for layer in output_layers])
+    local_tokens = int(local_token_count or 0)
+    composed = MLXNativeMemory(
+        tuple(output_layers),
+        source_tokens=rebound.source_tokens + local_tokens,
+        query_position_base=rebound.position_base + local_tokens,
+        position_binding_mode=PositionBindingMode.POST_ROPE,
+        source_positions=tuple(
+            (*rebound.source_positions, *range(rebound.position_base, rebound.position_base + local_tokens))
+        ),
+        rope_contract=rebound.rope_contract,
+    )
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    boundary_tokens = config.mode.boundary_tokens
+    receipt = CrossDocumentCompositionReceipt(
+        mode=config.mode.value,
+        gist_count=len(memories),
+        gist_dim=int(gist_dim or 0),
+        gist_attention_mask=config.attention_mask.value,
+        gist_attention_edges=int(mask_torch.sum().item()),
+        boundary_tokens_per_record=boundary_tokens,
+        corrected_token_count=local_tokens if boundary_tokens else 0,
+        request_composition_ms=elapsed_ms,
+        request_composition_bytes=composed.nbytes - rebound.nbytes,
+        persistent_native_tokens=rebound.source_tokens,
+        request_local_native_tokens=local_tokens,
+        gist_positions=gist_positions,
+        record_ids=tuple(record_ids),
+        source_memory_digest=memory_identity_digest(
+            record_ids=record_ids,
+            source_tokens=tuple(memory.source_tokens for memory in memories),
+            layer_count=len(model_layers),
+        ),
+        pooling_method=config.pooling_method,
+        normalization_policy=config.normalization_policy,
+        position_policy=config.position_policy,
+    )
+    return composed, receipt
 
 
 def repair_token_indices(

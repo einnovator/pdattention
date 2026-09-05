@@ -86,6 +86,39 @@ values and a model/revision/frequency/layout contract. Materialization fails
 if that contract does not match the host. Post-RoPE storage remains the default
 for fixed-position memories.
 
+The cross-document extension adds three parameter-free request-local arms to
+the same frozen receipt: contextual gist append (`D`), boundary-8 extra K/V
+(`E`), and boundary-32 extra K/V (`F`). Stored record K/V remains immutable.
+The default gist mask is bidirectional all-to-all; rank-causal, top-ranked hub,
+and same-document controls are explicit options. Token-level attention edges
+and gist-level request interactions are reported separately.
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_prerope_causal_decomposition \
+  --dataset multihoprag \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --precision-mode INT4 \
+  --composition-modes append,boundary8,boundary32 \
+  --gist-attention-mask all_to_all \
+  --seed 11 --max-examples 30 \
+  --output reports/paper3_2_crossdoc/qwen3_1_7b_int4_seed11
+```
+
+For an unquantized checkpoint, the runner can force FP16 or FP32 MLX compute
+before any cache capture. INT8/INT4 checkpoint suffixes are validated against
+the requested mode. Every row records weight mode, actual K/V dtype, compute
+dtype, quantizer metadata where exposed, checkpoint revision, engine, and
+kernel backend. Aggregate mixed-precision pilots with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_precision_sweep \
+  --manifest reports/paper3_2_precision/fp32/manifest.json \
+  --manifest reports/paper3_2_precision/fp16/manifest.json \
+  --manifest reports/paper3_2_precision/int8/manifest.json \
+  --manifest reports/paper3_2_precision/int4/manifest.json \
+  --output reports/paper3_2_precision/aggregate
+```
+
 Aggregate the five independently selected cohorts with the seed, rather than
 the individual question, as the replication unit:
 

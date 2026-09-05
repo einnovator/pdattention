@@ -42,6 +42,16 @@ from pra_hf.rag_causal_decomposition import (
     token_sequence_digest,
     validate_matched_abc_receipts,
 )
+from pra_hf.crossdoc_composition import (
+    CrossDocumentCompositionConfig,
+    CrossDocumentCompositionMode,
+    GistAttentionMask,
+)
+from pra_hf.precision_qualification import (
+    PrecisionMode,
+    build_precision_metadata,
+    infer_precision_mode,
+)
 from pra_hf.rag_composition import (
     PositionPolicy,
     RAGPRAProfile,
@@ -60,6 +70,7 @@ from pra_hf.rag_evaluation import (
 )
 from pra_hf.rag_mlx_native import (
     PositionBindingMode,
+    compose_cross_document_memory,
     encode_native_memory,
     encode_native_memory_with_mask,
     native_memory_diagnostics,
@@ -67,7 +78,7 @@ from pra_hf.rag_mlx_native import (
 )
 
 
-SCHEMA_VERSION = "paper3.2-prerope-causal-decomposition-v1"
+SCHEMA_VERSION = "paper3.2-prerope-crossdoc-precision-v2"
 DEFAULT_RERANKER = "BAAI/bge-reranker-v2-m3"
 
 
@@ -105,6 +116,68 @@ def _windows(value: str) -> tuple[int, ...]:
     return windows
 
 
+def _composition_modes(value: str) -> tuple[CrossDocumentCompositionMode, ...]:
+    aliases = {
+        "append": CrossDocumentCompositionMode.GIST_SA_APPEND,
+        "boundary8": CrossDocumentCompositionMode.GIST_SA_BOUNDARY_8,
+        "boundary32": CrossDocumentCompositionMode.GIST_SA_BOUNDARY_32,
+    }
+    try:
+        modes = tuple(
+            aliases[item.strip().casefold()]
+            if item.strip().casefold() in aliases
+            else CrossDocumentCompositionMode(item.strip())
+            for item in value.split(",")
+            if item.strip()
+        )
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+    if not modes or CrossDocumentCompositionMode.INDEPENDENT_PRA in modes:
+        raise argparse.ArgumentTypeError("composition modes must contain C1, C2, or C3")
+    return tuple(dict.fromkeys(modes))
+
+
+def _precision_mode(value: str, model_id: str) -> PrecisionMode:
+    if value == "auto":
+        return infer_precision_mode(model_id)
+    requested = PrecisionMode(value)
+    try:
+        checkpoint_mode = infer_precision_mode(model_id)
+    except ValueError:
+        checkpoint_mode = None
+    if checkpoint_mode in {PrecisionMode.INT4, PrecisionMode.INT8} and requested != checkpoint_mode:
+        raise ValueError(
+            f"checkpoint identity declares {checkpoint_mode.value}, not {requested.value}"
+        )
+    return requested
+
+
+def _mlx_quantization_geometry(model: object) -> tuple[int | None, bool | None]:
+    """Read host quantizer metadata when MLX exposes it; otherwise retain unknown."""
+
+    host = getattr(model, "model", model)
+    for layer in getattr(host, "layers", ()):
+        projection = getattr(getattr(layer, "self_attn", None), "q_proj", None)
+        bits = getattr(projection, "bits", None)
+        group_size = getattr(projection, "group_size", None)
+        if bits is not None or group_size is not None:
+            return int(group_size) if group_size is not None else None, None
+    return None, None
+
+
+def _configure_float_compute(model: object, mode: PrecisionMode) -> None:
+    """Force the unquantized FP32/FP16 kernel path before any cache capture."""
+
+    if mode not in {PrecisionMode.FP32, PrecisionMode.FP16}:
+        return
+    import mlx.core as mx
+
+    setter = getattr(model, "set_dtype", None)
+    if setter is None:
+        raise RuntimeError("MLX model cannot expose the requested floating precision")
+    setter(mx.float32 if mode is PrecisionMode.FP32 else mx.float16)
+
+
 def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
@@ -125,6 +198,8 @@ def _condition_row(
     reference_logits=None,
     reference_condition: str | None = None,
     retain_logits: bool = False,
+    composition_receipt=None,
+    precision_metadata: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     prediction, metrics, logits = _execute(backend, question, memory)
     support = len(
@@ -154,7 +229,41 @@ def _condition_row(
         "cross_document_attention_edges_allowed": (
             mask_receipt.cross_document_attention_edges_allowed
         ),
+        "cross_document_interaction_edges": (
+            composition_receipt.gist_attention_edges
+            if composition_receipt is not None
+            else mask_receipt.cross_document_attention_edges_allowed
+        ),
         "boundary_window_size": mask_receipt.boundary_window_size,
+        "crossdoc_composition_mode": (
+            composition_receipt.mode if composition_receipt is not None else "NONE"
+        ),
+        "gist_count": composition_receipt.gist_count if composition_receipt else 0,
+        "gist_dim": composition_receipt.gist_dim if composition_receipt else 0,
+        "gist_attention_mask": (
+            composition_receipt.gist_attention_mask if composition_receipt else "none"
+        ),
+        "gist_attention_edges": (
+            composition_receipt.gist_attention_edges if composition_receipt else 0
+        ),
+        "boundary_tokens_per_record": (
+            composition_receipt.boundary_tokens_per_record if composition_receipt else 0
+        ),
+        "corrected_token_count": (
+            composition_receipt.corrected_token_count if composition_receipt else 0
+        ),
+        "request_composition_ms": (
+            composition_receipt.request_composition_ms if composition_receipt else 0.0
+        ),
+        "request_composition_bytes": (
+            composition_receipt.request_composition_bytes if composition_receipt else 0
+        ),
+        "request_local_native_tokens": (
+            composition_receipt.request_local_native_tokens if composition_receipt else 0
+        ),
+        "composition_receipt_id": (
+            composition_receipt.receipt_id if composition_receipt else None
+        ),
         "position_binding_mode": decomposition_receipt.position_binding_mode,
         "pre_rope_storage": decomposition_receipt.position_binding_mode == "PRE_ROPE",
         "request_position_policy": "EXACT_PACKED_REQUEST_POSITIONS",
@@ -171,6 +280,11 @@ def _condition_row(
         **_distribution_diagnostics(reference_logits, logits),
         **metrics,
     }
+    if precision_metadata is not None:
+        row.update(
+            {key: value for key, value in precision_metadata.items() if key != "schema_version"}
+        )
+        row["precision_schema_version"] = precision_metadata.get("schema_version")
     row["ttft_with_materialization_ms"] = (
         float(metrics["ttft_ms"]) + encode_ms + transform_ms
     )
@@ -213,6 +327,15 @@ def _summary(
                 "encode_ms": _mean([float(row["encode_ms"]) for row in values]),
                 "request_rope_transform_ms": _mean(
                     [float(row["request_rope_transform_ms"]) for row in values]
+                ),
+                "request_composition_ms": _mean(
+                    [float(row.get("request_composition_ms", 0.0)) for row in values]
+                ),
+                "request_composition_bytes": _mean(
+                    [float(row.get("request_composition_bytes", 0.0)) for row in values]
+                ),
+                "cross_document_interaction_edges": _mean(
+                    [float(row.get("cross_document_interaction_edges", 0)) for row in values]
                 ),
                 "ttft_ms": _mean([float(row["ttft_ms"]) for row in values]),
             }
@@ -343,6 +466,26 @@ def main() -> None:
         ),
     )
     parser.add_argument("--boundary-windows", type=_windows, default=(8, 16, 32, 64))
+    parser.add_argument(
+        "--composition-modes",
+        type=_composition_modes,
+        default=(
+            CrossDocumentCompositionMode.GIST_SA_APPEND,
+            CrossDocumentCompositionMode.GIST_SA_BOUNDARY_8,
+            CrossDocumentCompositionMode.GIST_SA_BOUNDARY_32,
+        ),
+    )
+    parser.add_argument(
+        "--gist-attention-mask",
+        choices=tuple(policy.value for policy in GistAttentionMask),
+        default=GistAttentionMask.ALL_TO_ALL.value,
+    )
+    parser.add_argument("--composition-residual-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--precision-mode",
+        choices=("auto", *[mode.value for mode in PrecisionMode]),
+        default="auto",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -361,10 +504,13 @@ def main() -> None:
         name_prefix="prerope_causal",
     )
     backend = PersistentMLXBackend(args.model, revision, args.max_new_tokens)
+    resolved_precision_mode = _precision_mode(args.precision_mode, args.model)
+    _configure_float_compute(backend.model, resolved_precision_mode)
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     rows: list[dict[str, object]] = []
     bc_diagnostics: list[dict[str, object]] = []
     frozen_receipts: list[dict[str, object]] = []
+    precision_metadata: dict[str, object] | None = None
     started = time.time()
 
     for question_index, question in enumerate(questions, 1):
@@ -465,6 +611,16 @@ def main() -> None:
         a_memory = encode_native_memory(
             backend.model, packed_tokens, model_revision=revision
         )
+        if precision_metadata is None:
+            group_size, symmetric = _mlx_quantization_geometry(backend.model)
+            precision_metadata = build_precision_metadata(
+                model_id=args.model,
+                model_revision=revision,
+                mode=resolved_precision_mode,
+                kv_dtype=str(a_memory.layers[0].keys.dtype),
+                group_size=group_size,
+                symmetric=symmetric,
+            ).to_dict()
         a_encode_ms = (time.perf_counter() - encode_started) * 1000.0
         encode_started = time.perf_counter()
         b_memory = encode_native_memory_with_mask(
@@ -542,6 +698,7 @@ def main() -> None:
             transform_ms=0.0,
             selected_document_ids=document_ids,
             retain_logits=True,
+            precision_metadata=precision_metadata,
         )
         a_logits = a_row.pop("_first_step_logits_f32")
         rows.append(a_row)
@@ -560,6 +717,7 @@ def main() -> None:
             reference_logits=a_logits,
             reference_condition="A_FULL_CAUSAL_RAG",
             retain_logits=True,
+            precision_metadata=precision_metadata,
         )
         b_logits = b_row.pop("_first_step_logits_f32")
         rows.append(b_row)
@@ -578,8 +736,59 @@ def main() -> None:
                 selected_document_ids=document_ids,
                 reference_logits=b_logits,
                 reference_condition="B_NO_CROSS_DOC_RAG",
+                precision_metadata=precision_metadata,
             )
         )
+
+        composition_receipts: dict[str, object] = {}
+        for mode in args.composition_modes:
+            composed_memory, crossdoc_receipt = compose_cross_document_memory(
+                backend.model,
+                independent_pre,
+                composition,
+                record_ids=record_ids,
+                document_ids=document_ids,
+                config=CrossDocumentCompositionConfig(
+                    mode=mode,
+                    attention_mask=GistAttentionMask(args.gist_attention_mask),
+                    residual_scale=args.composition_residual_scale,
+                ),
+            )
+            condition = {
+                CrossDocumentCompositionMode.GIST_SA_APPEND: "D_GIST_SA_APPEND",
+                CrossDocumentCompositionMode.GIST_SA_BOUNDARY_8: "E_GIST_SA_BOUNDARY_8",
+                CrossDocumentCompositionMode.GIST_SA_BOUNDARY_32: "F_GIST_SA_BOUNDARY_32",
+            }[mode]
+            condition_common = dict(common)
+            condition_common["request_positions_digest"] = request_positions_digest(
+                composed_memory.source_positions
+            )
+            condition_decomposition = CausalDecompositionReceipt(
+                **condition_common,
+                attention_mask_receipt_id=blocked_mask_receipt.receipt_id,
+                position_binding_mode="PRE_ROPE_PLUS_REQUEST_LOCAL_GISTS",
+                rope_frequency_digest=rope_digest,
+            )
+            composition_receipts[condition] = crossdoc_receipt.to_dict()
+            rows.append(
+                _condition_row(
+                    condition=condition,
+                    question=question,
+                    backend=backend,
+                    memory=composed_memory,
+                    candidate_receipt_id=candidate.receipt_id,
+                    selection_receipt_id=selection.receipt_id,
+                    decomposition_receipt=condition_decomposition,
+                    mask_receipt=blocked_mask_receipt,
+                    encode_ms=c_encode_ms,
+                    transform_ms=c_transform_ms,
+                    selected_document_ids=document_ids,
+                    reference_logits=a_logits,
+                    reference_condition="A_FULL_CAUSAL_RAG",
+                    composition_receipt=crossdoc_receipt,
+                    precision_metadata=precision_metadata,
+                )
+            )
 
         ladder = [(policy, 0) for policy in args.mask_policies]
         ladder.extend(
@@ -631,6 +840,7 @@ def main() -> None:
                     selected_document_ids=document_ids,
                     reference_logits=a_logits,
                     reference_condition="A_FULL_CAUSAL_RAG",
+                    precision_metadata=precision_metadata,
                 )
             )
 
@@ -644,6 +854,7 @@ def main() -> None:
                     arm: receipt.to_dict() for arm, receipt in receipts.items()
                 },
                 "attention_mask_receipts": mask_receipts,
+                "crossdoc_composition_receipts": composition_receipts,
                 "packed_token_ids": list(packed_tokens),
                 "record_position_bindings": [
                     {
@@ -697,6 +908,10 @@ def main() -> None:
         "question_ids": [question.example_id for question in questions],
         "mask_policies": [policy.value for policy in args.mask_policies],
         "boundary_windows": list(args.boundary_windows),
+        "crossdoc_composition_modes": [mode.value for mode in args.composition_modes],
+        "gist_attention_mask": args.gist_attention_mask,
+        "composition_residual_scale": args.composition_residual_scale,
+        "precision": precision_metadata,
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),

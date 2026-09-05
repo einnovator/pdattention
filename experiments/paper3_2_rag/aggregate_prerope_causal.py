@@ -30,14 +30,17 @@ def _condition_order(condition: str) -> tuple[int, int, str]:
         "A_FULL_CAUSAL_RAG": 0,
         "B_NO_CROSS_DOC_RAG": 1,
         "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": 2,
-        "M_PREVIOUS_DOC_ONLY": 3,
-        "M_TOP_RANKED_TO_ALL": 4,
+        "D_GIST_SA_APPEND": 3,
+        "E_GIST_SA_BOUNDARY_8": 4,
+        "F_GIST_SA_BOUNDARY_32": 5,
+        "M_PREVIOUS_DOC_ONLY": 6,
+        "M_TOP_RANKED_TO_ALL": 7,
     }
     if condition in fixed:
         return fixed[condition], 0, condition
     if condition.startswith("M4_BOUNDARY_ONLY_"):
-        return 5, int(condition.rsplit("_", 1)[1]), condition
-    return 6, 0, condition
+        return 8, int(condition.rsplit("_", 1)[1]), condition
+    return 9, 0, condition
 
 
 def _bootstrap(values: Sequence[float], *, seed: int = 3205) -> list[float] | None:
@@ -106,6 +109,10 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             manifest["reranker_revision"],
             manifest["token_budget"],
             manifest["max_resources"],
+            (manifest.get("precision") or {}).get("precision_mode"),
+            tuple(manifest.get("crossdoc_composition_modes") or ()),
+            manifest.get("gist_attention_mask"),
+            manifest.get("composition_residual_scale"),
         )
         for manifest, _, _ in runs
     }
@@ -144,6 +151,26 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                             float(row["cross_document_attention_edges_allowed"])
                             for row in selected
                         ]
+                    ),
+                    "cross_document_interaction_edges": _mean(
+                        [
+                            float(
+                                row.get(
+                                    "cross_document_interaction_edges",
+                                    row["cross_document_attention_edges_allowed"],
+                                )
+                            )
+                            for row in selected
+                        ]
+                    ),
+                    "request_composition_ms": _row_mean(
+                        selected, "request_composition_ms"
+                    ),
+                    "request_composition_bytes": _row_mean(
+                        selected, "request_composition_bytes"
+                    ),
+                    "request_local_native_tokens": _row_mean(
+                        selected, "request_local_native_tokens"
                     ),
                     "request_rope_transform_ms": _mean(
                         [float(row["request_rope_transform_ms"]) for row in selected]
@@ -192,6 +219,19 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 "seed_mean_cross_document_edges": statistics.fmean(
                     float(row["cross_document_attention_edges_allowed"])
                     for row in seed_rows
+                ),
+                "seed_mean_cross_document_interaction_edges": statistics.fmean(
+                    float(row["cross_document_interaction_edges"])
+                    for row in seed_rows
+                ),
+                "seed_mean_request_composition_ms": _row_mean(
+                    seed_rows, "request_composition_ms"
+                ),
+                "seed_mean_request_composition_bytes": _row_mean(
+                    seed_rows, "request_composition_bytes"
+                ),
+                "seed_mean_request_local_native_tokens": _row_mean(
+                    seed_rows, "request_local_native_tokens"
                 ),
                 "seed_mean_request_rope_transform_ms": statistics.fmean(
                     float(row["request_rope_transform_ms"]) for row in seed_rows
@@ -316,13 +356,18 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
     bc_nll_seed = [float(row["b_minus_c_gold_nll"]) for row in seed_effects]
     first_manifest = runs[0][0]
     return {
-        "schema_version": "paper3.2-prerope-causal-aggregate-v1",
+        "schema_version": "paper3.2-prerope-crossdoc-aggregate-v2",
         "experiment": "prerope_causal_decomposition_five_seed",
         "dataset": first_manifest["dataset"],
         "model": first_manifest["model"],
         "model_revision": first_manifest["model_revision"],
         "reranker": first_manifest["reranker"],
         "reranker_revision": first_manifest["reranker_revision"],
+        "precision": first_manifest.get("precision"),
+        "crossdoc_composition_modes": first_manifest.get(
+            "crossdoc_composition_modes", []
+        ),
+        "gist_attention_mask": first_manifest.get("gist_attention_mask"),
         "seeds": [int(manifest["seed"]) for manifest, _, _ in runs],
         "replication_unit": "seed_cohort",
         "conditions": conditions,
@@ -371,6 +416,10 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                 "nll_ci_high",
                 "seed_mean_first_step_js",
                 "seed_mean_cross_document_edges",
+                "seed_mean_cross_document_interaction_edges",
+                "seed_mean_request_composition_ms",
+                "seed_mean_request_composition_bytes",
+                "seed_mean_request_local_native_tokens",
                 "seed_mean_request_rope_transform_ms",
                 "seed_mean_official_multihop_rag_score",
                 "seed_mean_supporting_document_coverage",
@@ -399,6 +448,18 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                     "seed_mean_first_step_js": row["seed_mean_first_step_js"],
                     "seed_mean_cross_document_edges": row[
                         "seed_mean_cross_document_edges"
+                    ],
+                    "seed_mean_cross_document_interaction_edges": row[
+                        "seed_mean_cross_document_interaction_edges"
+                    ],
+                    "seed_mean_request_composition_ms": row[
+                        "seed_mean_request_composition_ms"
+                    ],
+                    "seed_mean_request_composition_bytes": row[
+                        "seed_mean_request_composition_bytes"
+                    ],
+                    "seed_mean_request_local_native_tokens": row[
+                        "seed_mean_request_local_native_tokens"
                     ],
                     "seed_mean_request_rope_transform_ms": row[
                         "seed_mean_request_rope_transform_ms"
@@ -442,7 +503,7 @@ def _write_latex_tables(result: Mapping[str, object], output: Path) -> None:
             f"{float(row['seed_mean_token_f1']):.3f} & "
             f"{float(row['seed_mean_gold_answer_nll']):.3f} & "
             f"{float(row['seed_mean_official_multihop_rag_score']):.3f} & "
-            f"{float(row['seed_mean_cross_document_edges']):.0f} \\\\" 
+            f"{float(row['seed_mean_cross_document_interaction_edges']):.0f} \\\\"
         )
     quality.extend(("\\bottomrule", "\\end{tabular}"))
     (output / "generated_causal_quality_table.tex").write_text(
@@ -496,6 +557,9 @@ def _condition_label(condition: object) -> str:
         .replace("A_FULL_CAUSAL_RAG", "A full")
         .replace("B_NO_CROSS_DOC_RAG", "B isolated")
         .replace("C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS", "C pre-RoPE")
+        .replace("D_GIST_SA_APPEND", "D gist append")
+        .replace("E_GIST_SA_BOUNDARY_8", "E boundary 8")
+        .replace("F_GIST_SA_BOUNDARY_32", "F boundary 32")
         .replace("M4_BOUNDARY_ONLY_", "boundary ")
         .replace("M_PREVIOUS_DOC_ONLY", "previous")
         .replace("M_TOP_RANKED_TO_ALL", "top-ranked")
@@ -553,15 +617,19 @@ def _plot_interaction_budget(result: Mapping[str, object], output: Path) -> None
         row for row in result["conditions"]  # type: ignore[index]
         if row["condition"] != "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS"
     ]
-    rows.sort(key=lambda row: float(row["seed_mean_cross_document_edges"]))
-    edges = [float(row["seed_mean_cross_document_edges"]) for row in rows]
+    rows.sort(
+        key=lambda row: float(row["seed_mean_cross_document_interaction_edges"])
+    )
+    edges = [
+        float(row["seed_mean_cross_document_interaction_edges"]) for row in rows
+    ]
     values = [float(row["seed_mean_token_f1"]) for row in rows]
     figure, axis = plt.subplots(figsize=(7.2, 4.2))
     axis.plot(edges, values, marker="o", color="#276FBF")
     for edge, value, row in zip(edges, values, rows):
         axis.annotate(_condition_label(row["condition"]), (edge, value), xytext=(4, 4), textcoords="offset points", fontsize=8)
     axis.set_xscale("symlog", linthresh=1.0)
-    axis.set_xlabel("Allowed cross-document attention edges (seed mean)")
+    axis.set_xlabel("Request-specific cross-document interactions (seed mean)")
     axis.set_ylabel("Token F1")
     axis.grid(alpha=0.25)
     figure.tight_layout()

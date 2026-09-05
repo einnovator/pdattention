@@ -10,12 +10,18 @@ from pra_hf.rag_mlx_native import (
     MLXNativeMemory,
     PositionBindingMode,
     _rope_inverse_frequencies,
+    compose_cross_document_memory,
     encode_native_memory,
     encode_native_memory_with_mask,
     make_native_prompt_cache,
     native_memory_diagnostics,
     rebind_native_memories_to_receipt,
     repair_token_indices,
+)
+from pra_hf.crossdoc_composition import (
+    CrossDocumentCompositionConfig,
+    CrossDocumentCompositionMode,
+    GistAttentionMask,
 )
 from pra_hf.rag_causal_decomposition import (
     DocumentAttentionPolicy,
@@ -253,3 +259,63 @@ def test_llama_piecewise_prerope_round_trip_uses_host_frequency_tensor() -> None
         policy.startswith("host_piecewise_frequency_tensor")
         for policy in pre.rope_contract.scaling_policy
     )
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_local"),
+    ((CrossDocumentCompositionMode.GIST_SA_APPEND, 2),
+     (CrossDocumentCompositionMode.GIST_SA_BOUNDARY_8, 5),
+     (CrossDocumentCompositionMode.GIST_SA_BOUNDARY_32, 5)),
+)
+def test_crossdoc_composition_is_request_local_and_deterministic(
+    mode: CrossDocumentCompositionMode, expected_local: int
+) -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(19)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3), (4, 5))
+    persistent = tuple(
+        encode_native_memory(
+            model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision="tiny-qwen-test",
+        )
+        for segment in segments
+    )
+    before = tuple(
+        tuple(layer.keys.tolist() for layer in memory.layers) for memory in persistent
+    )
+    config = CrossDocumentCompositionConfig(
+        mode=mode, attention_mask=GistAttentionMask.ALL_TO_ALL
+    )
+    first, receipt = compose_cross_document_memory(
+        model,
+        persistent,
+        _packed_receipt(tuple(map(len, segments))),
+        record_ids=("D1", "D2"),
+        config=config,
+    )
+    second, second_receipt = compose_cross_document_memory(
+        model,
+        persistent,
+        _packed_receipt(tuple(map(len, segments))),
+        record_ids=("D1", "D2"),
+        config=config,
+    )
+    mx.eval(
+        [(layer.keys, layer.values) for layer in first.layers],
+        [(layer.keys, layer.values) for layer in second.layers],
+    )
+    assert first.source_tokens == 5 + expected_local
+    assert first.position_base == 5 + expected_local
+    assert receipt.request_local_native_tokens == expected_local
+    assert receipt.gist_attention_edges == 4
+    assert receipt.source_memory_digest == second_receipt.source_memory_digest
+    for left, right in zip(first.layers, second.layers):
+        assert left.keys.tolist() == right.keys.tolist()
+        assert left.values.tolist() == right.values.tolist()
+    after = tuple(
+        tuple(layer.keys.tolist() for layer in memory.layers) for memory in persistent
+    )
+    assert before == after
