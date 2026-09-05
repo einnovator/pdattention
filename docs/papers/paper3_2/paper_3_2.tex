@@ -73,6 +73,10 @@ This paper therefore asks five linked but separable questions:
     \item When selected native resources are independently stored, what ordering and positional composition should they use, and how much recomputation is required to recover fresh-context behavior?
     \item Does the production URI/record/resolver path alter that conclusion,
     and can a strong BM25--reranker selector close the remaining gap?
+    \item If packed RAG is denied document-to-document attention, do
+    independently encoded pre-RoPE records rebound to the same request
+    positions reproduce its behavior, and how much sparse interaction is
+    useful?
 \end{enumerate}
 
 The paper deliberately allows the strongest architecture to be complementary:
@@ -86,7 +90,7 @@ The paper deliberately allows the strongest architecture to be complementary:
 PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
 
 \paragraph{Contributions.}
-We make six contributions.
+We make seven contributions.
 \begin{enumerate}[leftmargin=*]
     \item A five-seed natural test showing exact selected-text/native transport under frozen retrieval, with ordinary prefix caching as a separate control.
     \item A retrieval-index comparison spanning BM25, dense FAISS, hybrid RRF, two rerankers, Elasticsearch, and Qdrant with decomposed service latency.
@@ -96,6 +100,9 @@ We make six contributions.
     \item An end-to-end test of canonical PRA document records and root
     references with BM25, MiniLM, and BGE selection, including five-seed order
     and changing-query reuse measurements.
+    \item A selector-frozen causal decomposition that separates
+    cross-document contextualization from pre-RoPE transport, with exact host
+    RoPE contracts, layerwise diagnostics, and a sparse interaction ladder.
 \end{enumerate}
 
 \section{Relationship to Prior PRA Work}
