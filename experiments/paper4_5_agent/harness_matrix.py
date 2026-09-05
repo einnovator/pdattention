@@ -254,6 +254,40 @@ def _persist(
         }, indent=2) + "\n",
         encoding="utf-8",
     )
+    _write_markdown_report(
+        output / "report.md", config=config, manifest=manifest,
+        expected=len(matrix_cells(config, manifest)), summary=summary, gate=gate,
+    )
+
+
+def _write_markdown_report(
+    path: Path, *, config: HarnessMatrixConfig, manifest: BenchmarkManifest,
+    expected: int, summary: Mapping[str, Any], gate: Mapping[str, Any],
+) -> None:
+    """Render a reviewable checkpoint without weakening official-result semantics."""
+
+    lines = [
+        f"# {config.campaign_id}", "",
+        "This is an official-Harbor **No-PRA baseline**. It does not estimate a PRA effect.",
+        "",
+        f"- Frozen manifest: `{manifest.name}` ({len(manifest.task_ids)} tasks)",
+        f"- Completed: `{summary['runs']}/{expected}` trials",
+        f"- Admission: `{gate['status']}` - {gate['reason']}",
+        "", "| Harness | Runs | Success | Input tokens | Output tokens | Model calls | Tool calls | Wall h |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for harness, values in sorted(summary["by_harness"].items()):
+        lines.append(
+            f"| `{harness}` | {values['runs']} | {values['successes']}/{values['runs']} "
+            f"({values['success_rate']:.1%}) | {values['input_tokens']:,} | "
+            f"{values['output_tokens']:,} | {values['model_calls']:,} | "
+            f"{values['tool_calls']:,} | {values['wall_ms'] / 3_600_000:.2f} |"
+        )
+    lines.extend((
+        "", "The admission decision requires the complete preregistered matrix. "
+        "Harness rows are not an agent ranking because prompts, tools, and loop policies differ.", "",
+    ))
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _summarize(rows: list[Any]) -> dict[str, Any]:
