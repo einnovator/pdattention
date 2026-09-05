@@ -99,6 +99,17 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_prerope_causal \
   --output reports/paper3_2_prerope/five_seed
 ```
 
+When the five-seed A/B/C comparison is informative, run the preregistered
+reduced scale check (ten questions each, one seed) serially on the same host:
+
+```bash
+PYTHON_BIN=/path/to/mlx/python \
+  bash experiments/paper3_2_rag/run_prerope_scale_mlx.sh
+```
+
+The scale check retains the full mask ladder. It is a model-family replication,
+not a replacement for the five-seed Qwen3-1.7B estimate.
+
 ## Native record references and internal reranking
 
 `run_native_record_reranker` exercises the high-level PRA document path. It
