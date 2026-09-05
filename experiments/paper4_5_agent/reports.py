@@ -21,6 +21,14 @@ def _success_band(score: float) -> str:
     return "SATURATED"
 
 
+def _next_tier(score: float) -> str:
+    if score < 0.20:
+        return "precision/engine correction or easier slice"
+    if score <= 0.80:
+        return "Easy-50 paired PRA frontier"
+    return "SWE-bench Lite or harder Verified slice"
+
+
 def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) -> None:
     """Write every required report after each state transition."""
 
@@ -82,8 +90,8 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
     calibration = [
         "# Calibration report", "",
         "Official, frozen No-PRA baselines determine whether PRA treatments may run.", "",
-        "| Cell | Tasks | Resolved | Success | Band | Treatment admitted |",
-        "| --- | ---: | ---: | ---: | --- | --- |",
+        "| Cell | Tasks | Resolved | Success | Band | Treatment admitted | Next tier |",
+        "| --- | ---: | ---: | ---: | --- | --- | --- |",
     ]
     for cell in config.cells:
         if cell.mode.value != "native":
@@ -95,9 +103,10 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
         calibration.append(
             f"| `{cell.cell_id}` | {result.get('total', '-')} | "
             f"{result.get('resolved', '-')} | "
-            f"{score:.1%} | {_success_band(score)} | {'yes' if admitted else 'no'} |"
+            f"{score:.1%} | {_success_band(score)} | {'yes' if admitted else 'no'} | "
+            f"{_next_tier(score)} |"
             if score is not None else
-            f"| `{cell.cell_id}` | - | - | - | PENDING | no |"
+            f"| `{cell.cell_id}` | - | - | - | PENDING | no | await calibration |"
         )
     (root / "calibration_report.md").write_text(
         "\n".join(calibration) + "\n", encoding="utf-8"

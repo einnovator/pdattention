@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
-from experiments.paper4_5_agent.reports import _success_band
+from experiments.paper4_5_agent.reports import _next_tier, _success_band
 from experiments.paper4_5_agent.benchmark import (
     load_benchmark_card,
     precision_diagnostic_ids,
@@ -201,6 +201,12 @@ def test_easy20_campaign_is_local_no_pra_calibration() -> None:
 )
 def test_calibration_success_bands(score: float, band: str) -> None:
     assert _success_band(score) == band
+
+
+def test_calibration_next_tier_follows_admission_policy() -> None:
+    assert "correction" in _next_tier(0.15)
+    assert "Easy-50" in _next_tier(0.50)
+    assert "harder" in _next_tier(0.90)
 
 
 def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
