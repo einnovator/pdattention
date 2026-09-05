@@ -236,6 +236,17 @@ def test_stronger_model_matrix_crosses_10_tasks_and_three_harnesses() -> None:
         "mini-swe-agent-2.4.6", "qwen-code-0.23.0", "aider-0.86.2",
     }
     assert len({cell[3] for cell in cells[:15]}) == 5
+    aider = next(row for row in config.harnesses if row.agent == "aider")
+    assert aider.kwargs == {
+        "stream": False, "auto_lint": False, "auto_test": False,
+    }
+
+
+def test_harness_matrix_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.yaml"
+    path.write_text("schema_version: 1\nschema_version: 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate YAML key"):
+        HarnessMatrixConfig.load(path)
 
 
 def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
