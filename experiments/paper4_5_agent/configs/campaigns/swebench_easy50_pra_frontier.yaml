@@ -1,0 +1,112 @@
+schema_version: 1
+campaign_id: paper4-5-swebench-verified-easy50-pra-frontier-v1
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50
+baselines:
+  - baseline_id: qwen3-coder-30b-easy50-local
+    admission_kind: local_calibration
+    source_url: https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified
+    source_revision: c104f840cc67f8b6eec6f759ebc8b2693d585d4a
+    benchmark_revision: c104f840cc67f8b6eec6f759ebc8b2693d585d4a
+    task_ids_sha256: cfbdb8862f1fec72f94b7433f817fefe7c1e2b2e6f3329f03bec5167e713b6be
+    task_ids_path: experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json
+    published_score: null
+    published_resolved: null
+    published_total: 50
+    minimum_admission_score: 0.20
+    maximum_admission_score: 0.80
+    benchmark: SWE-bench Verified Easy-50
+    dataset: princeton-nlp/SWE-bench_Verified
+    split: test
+    harness: mini-swe-agent
+    harness_version: 2.4.6
+    model: qwen3-coder:30b
+    model_revision: 06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca
+    tokenizer_revision: 06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca
+    engine: ollama
+    engine_version: 0.32.7
+    dtype: mixed
+    quantization: Q4_K_M
+    kv_cache_dtype: f16
+    scaffold: swebench_backticks.yaml
+    context_limit: 32768
+    max_steps: 50
+    max_steps_absolute: 50
+    temperature: 0
+    function_calling: false
+    prefix_caching: false
+    tool_configuration: unmodified mini-swe-agent text/backticks bash tool
+    grading: SWE-bench 4.1.0 official Docker harness
+    notes:
+      - Local paired evaluation; it is not a reproduction of the published H100 baseline.
+      - G00 and G10 gateways must target the same frozen Ollama endpoint used by No-PRA.
+cells:
+  - cell_id: easy50-no-pra
+    stage: A
+    mode: native
+    baseline_id: qwen3-coder-30b-easy50-local
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/no_pra, --run-id, easy50-no-pra]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/no_pra/official_result.json, absolute_tolerance: 0, require_exact_cohort: true}
+  - cell_id: easy50-gateway-passthrough
+    stage: B
+    mode: gateway_passthrough
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/gateway_passthrough, --run-id, easy50-gateway-passthrough, --mode, gateway-passthrough, --base-url, http://127.0.0.1:8080/v1]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/gateway_passthrough/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-truncation-50
+    stage: B
+    mode: truncation
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_50, --run-id, easy50-truncation-50, --mode, truncation, --budget-fraction, "0.5"]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_50/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-pra-selected-50
+    stage: B
+    mode: gateway_pra
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_50, --run-id, easy50-pra-selected-50, --mode, gateway-pra, --budget-fraction, "0.5", --base-url, http://127.0.0.1:8081/v1]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_50/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-truncation-25
+    stage: C
+    mode: truncation
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_25, --run-id, easy50-truncation-25, --mode, truncation, --budget-fraction, "0.25"]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_25/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-pra-selected-25
+    stage: C
+    mode: gateway_pra
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_25, --run-id, easy50-pra-selected-25, --mode, gateway-pra, --budget-fraction, "0.25", --base-url, http://127.0.0.1:8081/v1]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_25/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-truncation-12-5
+    stage: D
+    mode: truncation
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_12_5, --run-id, easy50-truncation-12-5, --mode, truncation, --budget-fraction, "0.125"]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/truncation_12_5/official_result.json, require_exact_cohort: true}
+  - cell_id: easy50-pra-selected-12-5
+    stage: D
+    mode: gateway_pra
+    baseline_id: qwen3-coder-30b-easy50-local
+    baseline_cell: easy50-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_12_5, --run-id, easy50-pra-selected-12-5, --mode, gateway-pra, --budget-fraction, "0.125", --base-url, http://127.0.0.1:8081/v1]
+    timeout_seconds: 64800
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_12_5/official_result.json, require_exact_cohort: true}

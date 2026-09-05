@@ -64,6 +64,7 @@ CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
 SWEBENCH_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml"
 EASY20_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_easy20_calibration.yaml"
+EASY50_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_easy50_pra_frontier.yaml"
 FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json"
 EASY20 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json"
 EASY50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json"
@@ -131,6 +132,33 @@ def test_easy20_campaign_is_local_no_pra_calibration() -> None:
 )
 def test_calibration_success_bands(score: float, band: str) -> None:
     assert _success_band(score) == band
+
+
+def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
+    campaign = CampaignConfig.load(EASY50_CONFIG)
+    assert len(campaign.baselines[0].task_ids) == 50
+    assert len(campaign.cells) == 8
+    baseline, *treatments = campaign.cells
+    assert baseline.cell_id == "easy50-no-pra"
+    assert all(cell.baseline_cell == baseline.cell_id for cell in treatments)
+    assert all(cell.minimum_baseline_score == 0.2 for cell in treatments)
+    truncation = {
+        cell.cell_id.rsplit("-", 1)[-1]: cell
+        for cell in treatments if cell.mode.value == "truncation"
+    }
+    selected = {
+        cell.cell_id.rsplit("-", 1)[-1]: cell
+        for cell in treatments if cell.mode.value == "gateway_pra"
+    }
+    assert truncation.keys() == selected.keys() == {"50", "25", "5"}
+    for key in truncation:
+        truncation_budget = truncation[key].command[
+            truncation[key].command.index("--budget-fraction") + 1
+        ]
+        selected_budget = selected[key].command[
+            selected[key].command.index("--budget-fraction") + 1
+        ]
+        assert truncation_budget == selected_budget
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:

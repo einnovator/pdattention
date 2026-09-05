@@ -28,6 +28,23 @@ closes the treatment gate; 30%-70% is the preferred operating regime. Only a
 qualifying frozen baseline permits an Easy-50 pass-through, matched-truncation,
 or PRA Selected Context comparison.
 
+For the admitted frontier, run matched G00 and G10 gateways against the same
+frozen model endpoint before starting the campaign:
+
+```bash
+pra gateway serve --mode passthrough --backend ollama \
+  --backend-url http://192.168.1.102:11435/v1 --host 127.0.0.1 --port 8080
+pra gateway serve --mode selected-context --backend ollama \
+  --backend-url http://192.168.1.102:11435/v1 --host 127.0.0.1 --port 8081
+python -m experiments.paper4_5_agent.run_campaign \
+  --config experiments/paper4_5_agent/configs/campaigns/swebench_easy50_pra_frontier.yaml \
+  --max-hours 18 --resume
+```
+
+Port 8080 preserves the ordinary OpenAI payload. Port 8081 realizes selected
+typed records as visible text through G10. The latter is PRA Selected Context,
+not native attention-level PRA.
+
 ```bash
 python -m experiments.paper4_5_agent.run_campaign \
   --config experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml \
