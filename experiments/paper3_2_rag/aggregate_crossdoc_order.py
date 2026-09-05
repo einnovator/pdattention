@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import gzip
 import itertools
 import json
@@ -138,16 +139,83 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
     }
 
 
+def _label(condition: str) -> str:
+    return {
+        "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": "C independent",
+        "D_GIST_SA_APPEND": "D gist append",
+        "E_GIST_SA_BOUNDARY_8": "E boundary 8",
+        "F_GIST_SA_BOUNDARY_32": "F boundary 32",
+    }.get(condition, condition)
+
+
+def _write_outputs(result: Mapping[str, object], output: Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "manifest.json").write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    fields = (
+        "condition",
+        "matched_examples",
+        "mean_unique_outputs",
+        "output_flip_rate",
+        "mean_pairwise_topk_tail_js",
+        "mean_f1_variance",
+        "mean_nll_variance",
+    )
+    with (output / "order_summary.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        for row in result["conditions"]:  # type: ignore[index]
+            writer.writerow({field: row.get(field) for field in fields})
+    lines = [
+        "\\begin{tabular}{lrrrr}",
+        "\\toprule",
+        "Condition & $n$ & Output flip & Top-$k$+tail JS & NLL variance \\\\",
+        "\\midrule",
+    ]
+    for row in result["conditions"]:  # type: ignore[index]
+        lines.append(
+            f"{_label(str(row['condition']))} & {row['matched_examples']} & "
+            f"{float(row['output_flip_rate']):.3f} & "
+            f"{float(row['mean_pairwise_topk_tail_js']):.6f} & "
+            f"{float(row['mean_nll_variance']):.4f} \\\\"
+        )
+    lines.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_order_table.tex").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+    import matplotlib.pyplot as plt
+
+    rows = list(result["conditions"])  # type: ignore[arg-type]
+    labels = [_label(str(row["condition"])) for row in rows]
+    figure, axes = plt.subplots(1, 2, figsize=(10.2, 3.8))
+    axes[0].bar(labels, [float(row["output_flip_rate"]) for row in rows])
+    axes[0].set_ylabel("Fraction with an output flip")
+    axes[0].set_ylim(0.0, 1.0)
+    axes[1].bar(
+        labels,
+        [float(row["mean_pairwise_topk_tail_js"]) for row in rows],
+    )
+    axes[1].set_ylabel("Pairwise top-k + tail JS")
+    for axis in axes:
+        axis.tick_params(axis="x", rotation=22)
+        axis.grid(axis="y", alpha=0.25)
+    figure.tight_layout()
+    figure.savefig(output / "crossdoc_order_robustness.pdf", bbox_inches="tight")
+    figure.savefig(output / "crossdoc_order_robustness.png", bbox_inches="tight")
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", action="append", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = aggregate(args.manifest)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    _write_outputs(result, args.output)
 
 
 if __name__ == "__main__":
