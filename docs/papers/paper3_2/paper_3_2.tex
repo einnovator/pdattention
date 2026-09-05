@@ -55,12 +55,15 @@ $8.80\times10^{-4}$), indicating that cross-resource contextualization, not
 position assignment alone, is the main conceptual difference. They are not
 numerically identical under the production 4-bit checkpoint: output agreement
 is 101/150 and value-state error grows through the decoder, although a tiny
-unquantized fixture matches within tolerance. Sparse boundary interaction uses
-far fewer cross-document edges and approaches full-packed F1, but no fixed mask
-dominates across F1, official score, and NLL. PRA therefore establishes exact
-contiguous transport and useful non-prefix reuse; changed compositions still
-require a qualified numerical runtime and a selective contextualization
-mechanism.
+unquantized fixture matches within tolerance. A shape-matched control is exact
+at FP32, FP16, INT8, and INT4, localizing the residual to separately shaped
+execution rather than host RoPE rebinding. Parameter-free gist append falls
+from C's .108 F1 to .007, and post-hoc boundary variants reach zero F1, despite
+using only 16--272 request-specific interactions. A token-level boundary mask
+approaches full-packed F1, but no fixed mask dominates across F1, official
+score, and NLL. PRA therefore establishes exact contiguous transport and useful
+non-prefix reuse; changed compositions still require a qualified numerical
+runtime and a trained or otherwise selective contextualization mechanism.
 \end{abstract}
 
 \section{Introduction}
@@ -1292,6 +1295,14 @@ Figure~\ref{fig:crossdoc-precision-layers} shows the associated layerwise
 amplification. The sample is intentionally small; its role is causal
 localization rather than confidence about natural answer quality.
 
+P3 reaches the same negative composition conclusion without relying on INT4.
+On the three matched questions, gist append D has zero token F1 and zero
+official score at FP32, FP16, INT8, and INT4; gold-answer NLL is 9.473, 9.472,
+9.421, and 8.977, respectively. The small cross-precision variation does not
+repair the mechanism. This rejects the explanation that D fails only because
+of deployment quantization, while the larger natural study below establishes
+the task effect with an adequate five-seed cohort.
+
 \begin{figure}[ht]
 \centering
 \includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/crossdoc_precision/aggregate/precision_layerwise_rmse.pdf}
@@ -1724,6 +1735,15 @@ score and NLL; wider windows are non-monotonic. A learned or query-conditioned
 interaction policy remains plausible, but the present fixed policies do not
 pass a quality-preserving promotion gate.
 
+The request-local gist ladder closes an even stronger gate. Parameter-free gist
+append and post-hoc boundary K/V copies add only 4--256 ephemeral tokens and
+16--272 request-specific interactions, but reduce five-seed mean F1 from .108
+for independent pre-RoPE records to .007, .000, and .000. Gist append also
+fails on the same questions at all four tested precisions. Sparse interaction
+is therefore not sufficient by itself: contextual K/V must be calibrated for
+the frozen decoder. We stop before the optional low-rank correction because
+its next credible test requires training and a new held-out cohort.
+
 Partial materialization remains an open adaptive-control problem. The 75\%
 point matches mean F1 on the first seed but not across five cohorts;
 non-monotonic smaller budgets and output flips show that evidence coverage and
@@ -1794,12 +1814,15 @@ paying full reprefill.
 The pre-RoPE causal decomposition narrows that future work. Rebinding independent
 records to exact packed coordinates closely tracks a packed computation whose
 documents are causally isolated, but it does not recreate full packing, and
-4-bit execution does not preserve exact B/C numerics. Sparse boundary exchange
-shows that useful interaction may require only a small fraction of all
-cross-document edges, but the measured quality frontier is non-monotonic. The
-next composition mechanism should therefore learn or verify which interactions
-matter, while treating host RoPE compatibility and quantized-runtime parity as
-explicit, independently tested contracts.
+separately shaped execution does not preserve exact B/C numerics. The
+shape-matched P2 control is exact across FP32, FP16, INT8, and INT4, while the
+parameter-free gist ladder fails at every tested scale of post-hoc interaction.
+Sparse token-level boundary exchange shows that useful interaction may require
+only a small fraction of all cross-document edges, but the measured quality
+frontier is non-monotonic. The next composition mechanism should therefore
+learn or verify which interactions matter, while treating host RoPE
+compatibility and numerical-runtime parity as explicit, independently tested
+contracts.
 
 \bibliographystyle{plain}
 % \bibliography{references}

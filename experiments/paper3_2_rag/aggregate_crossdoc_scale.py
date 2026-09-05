@@ -76,6 +76,16 @@ def _short_model(model: str) -> str:
     return model.rsplit("/", 1)[-1].replace("-4bit", "")
 
 
+def _condition_label(condition: str) -> str:
+    return {
+        "A_FULL_CAUSAL_RAG": "A full",
+        "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": "C pre-RoPE",
+        "D_GIST_SA_APPEND": "D gist append",
+        "E_GIST_SA_BOUNDARY_8": "E boundary 8",
+        "F_GIST_SA_BOUNDARY_32": "F boundary 32",
+    }.get(condition, condition)
+
+
 def _write(result: Mapping[str, object], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     (output / "manifest.json").write_text(
@@ -89,6 +99,26 @@ def _write(result: Mapping[str, object], output: Path) -> None:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
+
+    table = [
+        "\\begin{tabular}{llrrrr}",
+        "\\toprule",
+        "Model & Condition & $n$ & Token F1 & Official & Gold NLL \\\\",
+        "\\midrule",
+    ]
+    for row in rows:
+        table.append(
+            f"{_short_model(str(row['model']))} & "
+            f"{_condition_label(str(row['condition']))} & "
+            f"{int(row['examples'])} & "
+            f"{float(row['token_f1']):.3f} & "
+            f"{float(row['official_score']):.3f} & "
+            f"{float(row['gold_answer_nll']):.3f} \\\\"
+        )
+    table.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_scale_table.tex").write_text(
+        "\n".join(table) + "\n", encoding="utf-8"
+    )
 
     import matplotlib.pyplot as plt
 
@@ -106,7 +136,12 @@ def _write(result: Mapping[str, object], output: Path) -> None:
             for model in models
         ]
         positions = [item + (index - (len(conditions) - 1) / 2) * width for item in range(len(models))]
-        axis.bar(positions, values, width=width, label=condition.split("_", 1)[0])
+        axis.bar(
+            positions,
+            values,
+            width=width,
+            label=_condition_label(condition),
+        )
     axis.set_xticks(range(len(models)), [_short_model(model) for model in models])
     axis.set_ylabel("Token F1")
     axis.grid(axis="y", alpha=0.25)

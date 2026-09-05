@@ -166,9 +166,9 @@ def _write_outputs(result: Mapping[str, object], output: Path) -> None:
         for row in result["conditions"]:  # type: ignore[index]
             writer.writerow({field: row.get(field) for field in fields})
     lines = [
-        "\\begin{tabular}{lrrrr}",
+        "\\begin{tabular}{lrrrrr}",
         "\\toprule",
-        "Condition & $n$ & Output flip & Top-$k$+tail JS & NLL variance \\\\",
+        "Condition & $n$ & Output flip & Top-$k$+tail JS & F1 var. & NLL var. \\\\",
         "\\midrule",
     ]
     for row in result["conditions"]:  # type: ignore[index]
@@ -176,6 +176,7 @@ def _write_outputs(result: Mapping[str, object], output: Path) -> None:
             f"{_label(str(row['condition']))} & {row['matched_examples']} & "
             f"{float(row['output_flip_rate']):.3f} & "
             f"{float(row['mean_pairwise_topk_tail_js']):.6f} & "
+            f"{float(row['mean_f1_variance']):.5f} & "
             f"{float(row['mean_nll_variance']):.4f} \\\\"
         )
     lines.extend(("\\bottomrule", "\\end{tabular}"))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 
-from experiments.paper3_2_rag.aggregate_crossdoc_scale import aggregate
+from experiments.paper3_2_rag.aggregate_crossdoc_scale import _write, aggregate
 
 
 def test_scale_aggregate_keeps_model_and_precision_identity(tmp_path) -> None:
@@ -32,3 +32,7 @@ def test_scale_aggregate_keeps_model_and_precision_identity(tmp_path) -> None:
     assert result["conditions"][0]["model"] == "org/model-4bit"
     assert result["conditions"][0]["precision_mode"] == "INT4"
     assert result["conditions"][0]["request_composition_flops_estimate"] == 1024
+    output = tmp_path / "aggregate"
+    _write(result, output)
+    table = (output / "generated_scale_table.tex").read_text(encoding="utf-8")
+    assert "model & D gist append" in table
