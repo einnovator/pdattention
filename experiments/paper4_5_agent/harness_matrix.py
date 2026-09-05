@@ -163,7 +163,8 @@ def run_matrix(
             _persist(config, manifest, state, output, state_path)
             continue
         cell_dir = output / "cells" / cell_id
-        jobs_dir = cell_dir / "harbor"
+        attempt = int(record.get("attempts", 0)) + 1
+        jobs_dir = cell_dir / "attempts" / f"a{attempt:03d}"
         normalized_dir = cell_dir / "normalized"
         command = harbor_command(
             harbor=harbor, manifest=manifest, model=model, harness=harness_spec,
@@ -173,7 +174,8 @@ def run_matrix(
         record.update(
             state="PENDING" if dry_run else "RUNNING",
             model=model.model_id, task_id=task_id, harness=harness_spec.harness_id,
-            repeat=repeat, pra_enabled=False, command=_redact(command),
+            repeat=repeat, pra_enabled=False, attempts=attempt,
+            active_attempt=f"a{attempt:03d}", command=_redact(command),
         )
         _persist(config, manifest, state, output, state_path)
         if dry_run:

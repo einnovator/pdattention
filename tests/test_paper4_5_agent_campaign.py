@@ -251,6 +251,20 @@ def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
     assert "version=1.18.26" in command
 
 
+def test_harbor_matrix_retry_uses_isolated_attempt_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = yaml.safe_load(MATRIX_CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "matrix")
+    config_path = tmp_path / "matrix.yaml"
+    config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    monkeypatch.delenv("PRA_AGENT_QWEN3_CODER_30B_URL", raising=False)
+    state = run_matrix(config_path, resume=False, dry_run=True, max_cells=1)
+    record = next(iter(state["cells"].values()))
+    assert record["active_attempt"] == "a001"
+    assert "attempts" in record["command"][record["command"].index("--jobs-dir") + 1]
+
+
 def test_harbor_matrix_dry_run_is_pra_locked_and_writes_all_cells(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
