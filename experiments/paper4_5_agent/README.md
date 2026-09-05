@@ -28,6 +28,21 @@ closes the treatment gate; 30%-70% is the preferred operating regime. Only a
 qualifying frozen baseline permits an Easy-50 pass-through, matched-truncation,
 or PRA Selected Context comparison.
 
+Because Easy-20 is an exact ordered prefix of Easy-50, its completed task
+receipts may be promoted without replaying deterministic inference or grading:
+
+```bash
+python -m experiments.paper4_5_agent.promote_nested_baseline \
+  --source-card experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json \
+  --destination-card experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json \
+  --source-output docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy20/no_pra \
+  --destination-output docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/no_pra
+```
+
+The promotion command validates every official chunk receipt and writes an
+explicit provenance manifest. The Easy-50 runner then executes only the 30 new
+suffix tasks.
+
 For the admitted frontier, run matched G00 and G10 gateways against the same
 frozen model endpoint before starting the campaign:
 

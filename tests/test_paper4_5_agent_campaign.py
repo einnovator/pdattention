@@ -21,8 +21,10 @@ from experiments.paper4_5_agent.benchmark import (
 from experiments.paper4_5_agent.build_easy_cohorts import (
     DIFFICULTY,
     build_card,
+    ids_digest,
     select_easy_rows,
 )
+from experiments.paper4_5_agent.promote_nested_baseline import promote
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
@@ -107,6 +109,36 @@ def test_easy_selection_is_deterministic_and_outcome_blind() -> None:
     assert [row["instance_id"] for row in first] == [row["instance_id"] for row in second]
     card = build_card(rows, count=4, eligible_count=7)
     assert "model_outcome" not in json.dumps(card)
+
+
+def test_nested_baseline_promotion_reuses_only_exact_completed_prefix(tmp_path: Path) -> None:
+    source_ids = ["repo__project-1", "repo__project-2"]
+    destination_ids = [*source_ids, "repo__project-3"]
+    source_card = tmp_path / "source.json"
+    destination_card = tmp_path / "destination.json"
+    for path, ids in ((source_card, source_ids), (destination_card, destination_ids)):
+        path.write_text(json.dumps({
+            "expected_count": len(ids),
+            "canonical_ids_sha256": ids_digest(ids),
+            "instance_ids": ids,
+        }), encoding="utf-8")
+    source_output = tmp_path / "source"
+    for index, instance_id in enumerate(source_ids):
+        chunk = source_output / f"chunk_{index:02d}"
+        chunk.mkdir(parents=True)
+        (chunk / "official_chunk_result.json").write_text(json.dumps({
+            "submitted_ids": [instance_id], "resolved_ids": [], "error_ids": [],
+        }), encoding="utf-8")
+    destination_output = tmp_path / "destination"
+
+    manifest = promote(
+        source_card, destination_card, source_output, destination_output,
+    )
+
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["copied_task_ids"] == source_ids
+    assert (destination_output / "chunk_01" / "official_chunk_result.json").is_file()
+    assert not (destination_output / "chunk_02").exists()
 
 
 def test_easy20_campaign_is_local_no_pra_calibration() -> None:
