@@ -330,7 +330,13 @@ def _invalid_trial_reason(row: Any) -> str | None:
         and row.tokens.input_tokens == 0
         and row.tokens.output_tokens == 0
     )
-    if failure and failure != "official_score_below_success" and no_model_activity:
+    pre_inference_failures = {
+        "NonZeroAgentExitCodeError",
+        "AgentSetupTimeoutError",
+        "EnvironmentBuildError",
+        "EnvironmentStartupError",
+    }
+    if failure in pre_inference_failures and no_model_activity:
         return (
             f"Harness/infrastructure failure before model activity: {failure}. "
             "The cell remains retryable and is excluded from admission statistics."

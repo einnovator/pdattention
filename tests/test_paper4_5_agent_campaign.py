@@ -352,3 +352,12 @@ def test_scored_model_failure_remains_admissible() -> None:
         tokens=SimpleNamespace(input_tokens=1200, output_tokens=80),
     )
     assert _invalid_trial_reason(row) is None
+
+
+def test_agent_timeout_without_adapter_telemetry_remains_admissible() -> None:
+    row = SimpleNamespace(
+        outcome=SimpleNamespace(failure_kind="AgentTimeoutError"),
+        behavior=SimpleNamespace(model_calls=0),
+        tokens=SimpleNamespace(input_tokens=0, output_tokens=0),
+    )
+    assert _invalid_trial_reason(row) is None
