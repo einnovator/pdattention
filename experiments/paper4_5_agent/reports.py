@@ -14,7 +14,7 @@ def _success_band(score: float) -> str:
         return "FLOOR"
     if score < 0.20:
         return "MARGINAL"
-    if score < 0.30 or score > 0.70 and score <= 0.80:
+    if score < 0.30 or (0.70 < score <= 0.80):
         return "USEFUL"
     if score <= 0.70:
         return "PREFERRED"
@@ -52,7 +52,7 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
     reproduction = [
         "# Baseline reproduction report", "",
         "PRA and gateway treatments remain locked until the matching no-PRA cell is `BASELINE_REPRODUCED`.", "",
-        "| Cell | Model | Harness | Published | Observed | Status | Notes |",
+        "| Cell | Model | Harness | Target | Observed | Status | Notes |",
         "| --- | --- | --- | ---: | ---: | --- | --- |",
     ]
     baselines = {row.baseline_id: row for row in config.baselines}

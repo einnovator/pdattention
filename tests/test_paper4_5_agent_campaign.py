@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
+from experiments.paper4_5_agent.reports import _success_band
 from experiments.paper4_5_agent.benchmark import (
     load_benchmark_card,
     precision_diagnostic_ids,
@@ -120,6 +121,15 @@ def test_easy20_campaign_is_local_no_pra_calibration() -> None:
         campaign.cells[0].command.index("--max-steps") + 1
     ] == "50"
     assert "--local-calibration" in campaign.cells[0].command
+
+
+@pytest.mark.parametrize(
+    ("score", "band"),
+    [(0.09, "FLOOR"), (0.15, "MARGINAL"), (0.25, "USEFUL"),
+     (0.50, "PREFERRED"), (0.75, "USEFUL"), (0.81, "SATURATED")],
+)
+def test_calibration_success_bands(score: float, band: str) -> None:
+    assert _success_band(score) == band
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
