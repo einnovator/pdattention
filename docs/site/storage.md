@@ -81,7 +81,9 @@ Persistent K/V is `post_rope` by default. That representation is inexpensive
 to materialize and is appropriate when effective token positions are fixed.
 An experimental `pre_rope` representation can retain projected keys before
 rotation so a runtime may assign request-specific positions later. Every such
-entry is fingerprinted with an exact host `rope_contract`:
+entry is fingerprinted with an exact host `rope_contract`. This is
+adapter-emitted compatibility metadata, not a user-selectable storage-profile
+field:
 
 ```yaml
 position_binding:
