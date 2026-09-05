@@ -85,6 +85,9 @@ This paper therefore asks six linked but separable questions:
     independently encoded pre-RoPE records rebound to the same request
     positions reproduce its behavior, and how much sparse interaction is
     useful?
+    \item How much residual B/C drift is attributable to arithmetic precision
+    and shape-dependent kernels, and can request-local gist interaction add
+    cross-document context without mutating persistent records?
 \end{enumerate}
 
 The paper deliberately allows the strongest architecture to be complementary:
@@ -98,7 +101,7 @@ The paper deliberately allows the strongest architecture to be complementary:
 PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
 
 \paragraph{Contributions.}
-We make seven contributions.
+We make eight contributions.
 \begin{enumerate}[leftmargin=*]
     \item A five-seed natural test showing exact selected-text/native transport under frozen retrieval, with ordinary prefix caching as a separate control.
     \item A retrieval-index comparison spanning BM25, dense FAISS, hybrid RRF, two rerankers, Elasticsearch, and Qdrant with decomposed service latency.
@@ -111,6 +114,9 @@ We make seven contributions.
     \item A selector-frozen causal decomposition that separates
     cross-document contextualization from pre-RoPE transport, with exact host
     RoPE contracts, layerwise diagnostics, and a sparse interaction ladder.
+    \item An explicit FP32/FP16/INT8/INT4 qualification with a shape-matched
+    pre-RoPE control, plus parameter-free request-local gist and boundary
+    composition mechanisms whose persistent document K/V remains immutable.
 \end{enumerate}
 
 \section{Relationship to Prior PRA Work}
@@ -822,6 +828,10 @@ three-way decomposition after retrieval and ranking have been frozen:
     \item[C: PRA\_PRE\_ROPE\_EXACT\_PACKED\_OFFSETS] Encode each record
     independently, retain projected keys before RoPE and unchanged values, and
     apply the exact positions used by B at request time.
+    \item[P2: SHAPE\_MATCHED\_PRE\_ROPE\_REBIND] Repeat B's single packed
+    shape, segmentation, mask, and host-layer walk, but retain pre-RoPE keys
+    and apply host RoPE again at request time. This changes only storage and
+    rebinding, not record-wise projection or attention shapes.
 \end{description}
 
 For layer $\ell$, record $r$, and token $t$, C stores
@@ -851,6 +861,23 @@ latter at every layer through K/V RMSE and maximum error, then at the output
 through logits, JS divergence, answer NLL, and generated text. This ordering
 separates coordinate correctness from representation fidelity,
 attention-geometry fidelity, and downstream utility.
+
+To test a smaller request-local composition fabric, let $g_{\ell i}^K$ and
+$g_{\ell i}^V$ be the mean pre-RoPE key and value of selected record $i$ at
+layer $\ell$. The parameter-free baseline uses identity projections:
+\[
+A_\ell=\operatorname{softmax}\!\left(
+G_\ell^K(G_\ell^K)^\top/\sqrt{d_h}\right),\qquad
+\widetilde G_\ell^{K,V}=G_\ell^{K,V}+A_\ell G_\ell^{K,V}.
+\]
+The default mask is bidirectional all-to-all rather than inherited document
+order. D appends one contextual K/V gist per selected record in a compact band
+immediately before the query. E and F instead append request-local copies of
+the first and last 8 or 32 tokens of each record after adding its contextual
+gist delta. These are deliberately parameter-free inference baselines. They
+never overwrite the persistent native K/V and use one host attention softmax
+over persistent, request-local, and query state. Token-level cross-document
+edges and gist-level interactions are accounted separately.
 
 Only after the B/C gate do we vary document interaction. The sparse ladder
 allows the immediately previous document, the top-ranked document, or
@@ -992,6 +1019,16 @@ the pinned BGE-v2-M3 reranker. A/B/C share exact selected records and packed
 positions. The B/C gate is evaluated before the sparse cross-document mask
 ladder; reduced 4B, 8B, and Llama replication is conditional on an informative
 effect rather than automatic model breadth.
+
+\subsection{Phase 12: precision and request-local gist composition}
+The B/C comparison is repeated on a three-question controlled fixture under
+FP32 and FP16 compute casts of one pinned Qwen3-0.6B source checkpoint and
+separately converted 8-bit and 4-bit MLX checkpoints. Source precision,
+runtime weight mode, activation/K/V dtype, quantizer geometry, model revision,
+and kernel backend are retained separately. P2 is run at every precision.
+The natural study then freezes BGE-v2-M3 selections for five 30-question
+Qwen3-1.7B cohorts before evaluating D, E, and F. Controlled precision results
+are mechanism diagnostics and are not presented as natural-task estimates.
 
 \section{Measured Retrieval and Native-Memory Results}
 
@@ -1186,9 +1223,10 @@ all five runs.}
 \input{../shared/results/paper3_2_rag/prerope_causal/five_seed/generated_bc_fidelity_table.tex}
 \end{table}
 
-The source of this distinction is observable. A tiny unquantized Qwen fixture
-matches B/C K/V at every layer and final logits within $2\times10^{-5}$.
-Under the production 4-bit checkpoint, layer-0 mean value RMSE is
+The source of this distinction is observable. A historical tiny unquantized
+Qwen fixture matched B/C within $2\times10^{-5}$ under its original runtime,
+but the explicit sweep below shows that this tolerance is kernel-version and
+shape dependent. Under the production 4-bit checkpoint, layer-0 mean value RMSE is
 $3.10\times10^{-5}$, but mean value RMSE grows to .274 by layer 27.
 Independent and packed projection/attention shapes can take different
 quantized kernel paths; small early differences are amplified through the
@@ -1203,6 +1241,63 @@ maximum. The binding algebra and host-frequency contract pass, while exact
 \caption{Layerwise B/C K/V divergence for 150 paired 4-bit executions. Values
 are measured after request-time rebinding to identical packed positions.}
 \label{fig:prerope-bc-layers}
+\end{figure}
+
+\subsection{Precision qualification separates rebinding from shape effects}
+The new controlled precision sweep uses three matched questions at every
+precision. FP32 here means FP32 execution after casting the pinned BF16 source
+checkpoint; it does not recreate unavailable FP32 source weights. The INT8
+and INT4 rows use separately published groupwise-converted checkpoints from
+the same source family, so differences between those two rows combine weight
+conversion and kernel effects and are not a bitwise quantizer ablation.
+
+\begin{table}[ht]
+\centering
+\caption{Controlled B/C precision qualification on Qwen3-0.6B (three matched
+questions per row). K/V are retained at the runtime activation dtype.}
+\label{tab:crossdoc-precision}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_precision/aggregate/generated_precision_table.tex}}
+\end{table}
+
+The precision ordering is clear in the distributional metric: mean first-step
+JS rises from $3.91\times10^{-6}$ in FP32 to $8.74\times10^{-6}$ in FP16,
+$6.21\times10^{-4}$ in INT8, and $1.08\times10^{-3}$ in INT4. Output agreement
+remains 3/3 in every row, but no B/C logit hash is exact. Worst-layer value
+RMSE rises from .0065 to .0194, .2003, and .2130. NLL and key RMSE are not
+strictly monotonic: INT8 has larger mean absolute NLL drift than INT4 (.0500
+versus .0083), while their worst key RMSE reverses (.1161 versus .1005). We
+therefore accept the narrower hypothesis that lower precision substantially
+amplifies independent-shape drift, not a universal monotonic law for every
+downstream metric.
+
+P2 makes the source of the residual much sharper. Holding the packed shape and
+mask fixed while changing only post-RoPE storage to pre-RoPE storage plus
+request-time host rebinding gives zero K/V error, zero JS, zero NLL error, and
+exact output/logit agreement for all 12 comparisons.
+
+\begin{table}[ht]
+\centering
+\caption{P2 shape-matched storage/rebinding control. The same packed host
+execution is used on both sides; only pre-RoPE persistence and rebinding differ.}
+\label{tab:crossdoc-shape-control}
+\small
+\input{../shared/results/paper3_2_rag/crossdoc_precision/aggregate/generated_shape_path_table.tex}
+\end{table}
+
+Thus the host RoPE transport is exact in the measured path. The nonzero B/C
+residual comes from separately shaped record executions and their accumulated
+finite-precision operation order, not from an incorrect rebinding identity.
+Figure~\ref{fig:crossdoc-precision-layers} shows the associated layerwise
+amplification. The sample is intentionally small; its role is causal
+localization rather than confidence about natural answer quality.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/crossdoc_precision/aggregate/precision_layerwise_rmse.pdf}
+\caption{Layerwise independent-record B/C error under the explicit precision
+ladder. P2 is exactly zero at every layer and is omitted from the log axis.}
+\label{fig:crossdoc-precision-layers}
 \end{figure}
 
 Request-time rotation itself is inexpensive in this implementation:
