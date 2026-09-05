@@ -131,6 +131,24 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.run_crossdoc_precision_campaig
 Each seed freezes selection before evaluating A/B/C, the shape-matched P2
 control, and parameter-free C1/C2/C3. Completed manifests are reused on resume.
 
+Order controls should use separate output roots while retaining the same seed
+and cohort size. `--distribution-top-k 2048` stores a compact probability
+receipt rather than full-vocabulary logits:
+
+```bash
+for order in canonical reverse random; do
+  PYTHONPATH=src python -m experiments.paper3_2_rag.run_crossdoc_precision_campaign \
+    --output reports/paper3_2_crossdoc_order/$order \
+    --record-order $order --distribution-top-k 2048 \
+    --max-examples 10 --seeds 11,23,37,71,101
+done
+```
+
+The order aggregator reports output flips, F1/NLL variance, and pairwise JS on
+the union of retained top-k probabilities plus one collapsed tail bucket. The
+JS estimate is explicitly approximate and is not mixed with full-distribution
+JS elsewhere in the paper.
+
 Aggregate the five independently selected cohorts with the seed, rather than
 the individual question, as the replication unit:
 
