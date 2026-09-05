@@ -12,6 +12,7 @@ import yaml
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
+    _completed_attempt,
     _invalid_trial_reason,
     harbor_command,
     matrix_cells,
@@ -247,6 +248,29 @@ def test_harness_matrix_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
     path.write_text("schema_version: 1\nschema_version: 2\n", encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate YAML key"):
         HarnessMatrixConfig.load(path)
+
+
+def test_completed_attempt_finds_terminal_interrupted_job(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempts/a002/job"
+    attempt.mkdir(parents=True)
+    (attempt / "result.json").write_text(json.dumps({
+        "n_total_trials": 1,
+        "stats": {
+            "n_completed_trials": 1, "n_cancelled_trials": 0,
+            "n_running_trials": 0,
+        },
+    }), encoding="utf-8")
+    assert _completed_attempt(tmp_path) == tmp_path / "attempts/a002"
+
+
+def test_completed_attempt_ignores_running_job(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempts/a001/job"
+    attempt.mkdir(parents=True)
+    (attempt / "result.json").write_text(json.dumps({
+        "n_total_trials": 1,
+        "stats": {"n_completed_trials": 0, "n_running_trials": 1},
+    }), encoding="utf-8")
+    assert _completed_attempt(tmp_path) is None
 
 
 def test_harbor_matrix_command_is_one_task_and_redactable() -> None:

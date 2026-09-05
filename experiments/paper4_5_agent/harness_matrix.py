@@ -187,9 +187,41 @@ def run_matrix(
             _persist(config, manifest, state, output, state_path)
             continue
         cell_dir = output / "cells" / cell_id
+        normalized_dir = cell_dir / "normalized"
+        if resume and not dry_run:
+            recovered = _completed_attempt(cell_dir)
+            if recovered is not None:
+                try:
+                    row = _normalize_attempt(
+                        attempt_dir=recovered, normalized_dir=normalized_dir,
+                        manifest=manifest, model=model, config=config,
+                        task_id=task_id,
+                    )
+                    invalid_reason = _invalid_trial_reason(row)
+                    if invalid_reason:
+                        record.update(
+                            state="INVALID", finished_at=_now(),
+                            reason=invalid_reason, normalized_result=None,
+                        )
+                    else:
+                        record.update(
+                            state="COMPLETED", finished_at=_now(),
+                            success=row.outcome.success,
+                            official_score=row.outcome.official_score,
+                            normalized_result=str(
+                                (normalized_dir / "runs.jsonl").relative_to(output)
+                            ),
+                        )
+                    record["active_attempt"] = recovered.name
+                    record["attempts"] = max(
+                        int(record.get("attempts", 0)), int(recovered.name[1:]),
+                    )
+                    _persist(config, manifest, state, output, state_path)
+                    continue
+                except (OSError, ValueError):
+                    pass
         attempt = int(record.get("attempts", 0)) + 1
         jobs_dir = cell_dir / "attempts" / f"a{attempt:03d}"
-        normalized_dir = cell_dir / "normalized"
         command = harbor_command(
             harbor=harbor, manifest=manifest, model=model, harness=harness_spec,
             task_id=task_id, job_directory=jobs_dir,
@@ -226,18 +258,11 @@ def run_matrix(
             _persist(config, manifest, state, output, state_path)
             continue
         try:
-            rows = import_harbor_job(
-                jobs_dir, manifest, output=normalized_dir,
-                engine=model.engine, engine_version=model.engine_version,
-                host=config.agent_host, hardware=config.hardware,
-                model=model.served_model, model_revision=model.model_revision,
-                quantization=model.quantization, pra_mode=PRAMode.NONE,
-                pra_profile=PRAProfile.NONE, connection="direct",
-                protocol="openai-chat-completions",
+            row = _normalize_attempt(
+                attempt_dir=jobs_dir, normalized_dir=normalized_dir,
+                manifest=manifest, model=model, config=config, task_id=task_id,
             )
-            if len(rows) != 1 or rows[0].identity.task_id != task_id:
-                raise ValueError(f"expected one normalized row for {task_id}, found {len(rows)}")
-            invalid_reason = _invalid_trial_reason(rows[0])
+            invalid_reason = _invalid_trial_reason(row)
             if invalid_reason:
                 record.update(
                     state="INVALID", finished_at=_now(), reason=invalid_reason,
@@ -247,8 +272,8 @@ def run_matrix(
                 continue
             record.update(
                 state="COMPLETED", finished_at=_now(),
-                success=rows[0].outcome.success,
-                official_score=rows[0].outcome.official_score,
+                success=row.outcome.success,
+                official_score=row.outcome.official_score,
                 normalized_result=str((normalized_dir / "runs.jsonl").relative_to(output)),
             )
         except (OSError, ValueError) as exc:
@@ -256,6 +281,44 @@ def run_matrix(
         _persist(config, manifest, state, output, state_path)
     _persist(config, manifest, state, output, state_path)
     return state
+
+
+def _normalize_attempt(
+    *, attempt_dir: Path, normalized_dir: Path, manifest: BenchmarkManifest,
+    model: MatrixModel, config: HarnessMatrixConfig, task_id: str,
+) -> Any:
+    rows = import_harbor_job(
+        attempt_dir, manifest, output=normalized_dir,
+        engine=model.engine, engine_version=model.engine_version,
+        host=config.agent_host, hardware=config.hardware,
+        model=model.served_model, model_revision=model.model_revision,
+        quantization=model.quantization, pra_mode=PRAMode.NONE,
+        pra_profile=PRAProfile.NONE, connection="direct",
+        protocol="openai-chat-completions",
+    )
+    if len(rows) != 1 or rows[0].identity.task_id != task_id:
+        raise ValueError(f"expected one normalized row for {task_id}, found {len(rows)}")
+    return rows[0]
+
+
+def _completed_attempt(cell_dir: Path) -> Path | None:
+    """Find the newest Harbor attempt whose job has reached a terminal state."""
+
+    attempts = cell_dir / "attempts"
+    for attempt in sorted(attempts.glob("a[0-9][0-9][0-9]"), reverse=True):
+        for result_path in sorted(attempt.glob("*/result.json"), reverse=True):
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            stats = payload.get("stats") or {}
+            total = int(payload.get("n_total_trials") or 0)
+            terminal = int(stats.get("n_completed_trials") or 0) + int(
+                stats.get("n_cancelled_trials") or 0
+            )
+            if total > 0 and terminal == total and not stats.get("n_running_trials"):
+                return attempt
+    return None
 
 
 def _invalid_trial_reason(row: Any) -> str | None:
