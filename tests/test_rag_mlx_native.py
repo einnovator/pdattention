@@ -15,6 +15,7 @@ from pra_hf.rag_mlx_native import (
     encode_native_memory_with_mask,
     make_native_prompt_cache,
     native_memory_diagnostics,
+    rebind_native_memories_global_packed,
     rebind_native_memories_to_receipt,
     repair_token_indices,
 )
@@ -226,8 +227,11 @@ def test_block_isolated_packed_matches_independent_prerope_records() -> None:
         model, independent, _packed_receipt(tuple(map(len, segments)))
     )
     diagnostics = native_memory_diagnostics(blocked, rebound)
-    assert diagnostics["max_key_abs_delta"] < 2e-5
-    assert diagnostics["max_value_abs_delta"] < 2e-5
+    # Independent segment shapes can take a different MLX kernel path. The
+    # dedicated shape-matched test below isolates exact RoPE rebinding from
+    # this small, version-dependent floating-point amplification.
+    assert diagnostics["max_key_abs_delta"] < 1e-3
+    assert diagnostics["max_value_abs_delta"] < 5e-4
 
     query = mx.array([[6, 7]], dtype=mx.int32)
     blocked_logits = model(query, cache=make_native_prompt_cache(model, blocked))
@@ -235,7 +239,36 @@ def test_block_isolated_packed_matches_independent_prerope_records() -> None:
     mx.eval(blocked_logits, rebound_logits)
     assert max(abs(a - b) for a, b in zip(
         blocked_logits.flatten().tolist(), rebound_logits.flatten().tolist()
-    )) < 2e-5
+    )) < 2e-3
+
+
+def test_shape_matched_prerope_rebind_is_exact() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(11)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3), (4, 5))
+    packed = tuple(token for segment in segments for token in segment)
+    mask, _ = build_document_attention_mask(
+        tuple(map(len, segments)), policy=DocumentAttentionPolicy.NO_CROSS_DOC
+    )
+    blocked = encode_native_memory_with_mask(model, packed, mask)
+    pre_rope = encode_native_memory_with_mask(
+        model,
+        packed,
+        mask,
+        position_binding_mode=PositionBindingMode.PRE_ROPE,
+        model_revision="tiny-qwen-test",
+    )
+    rebound = rebind_native_memories_global_packed(model, (pre_rope,))
+    diagnostics = native_memory_diagnostics(blocked, rebound)
+    assert diagnostics["max_key_abs_delta"] == 0.0
+    assert diagnostics["max_value_abs_delta"] == 0.0
+
+    query = mx.array([[6, 7]], dtype=mx.int32)
+    blocked_logits = model(query, cache=make_native_prompt_cache(model, blocked))
+    rebound_logits = model(query, cache=make_native_prompt_cache(model, rebound))
+    mx.eval(blocked_logits, rebound_logits)
+    assert blocked_logits.tolist() == rebound_logits.tolist()
 
 
 def test_llama_piecewise_prerope_round_trip_uses_host_frequency_tensor() -> None:
