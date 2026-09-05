@@ -9,6 +9,12 @@ import pytest
 import yaml
 
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
+from experiments.paper4_5_agent.harness_matrix import (
+    HarnessMatrixConfig,
+    harbor_command,
+    matrix_cells,
+    run_matrix,
+)
 from experiments.paper4_5_agent.runners.r2egym import (
     locate_official_report,
     normalize_official_report,
@@ -18,10 +24,12 @@ from experiments.paper4_5_agent.runners.r2egym import (
 from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
 from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
+from experiments.agents.schema import BenchmarkManifest
 
 
 ROOT = Path(__file__).parents[1]
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
+MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
 
 
 def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:
@@ -215,3 +223,47 @@ def test_agent_baseline_summary_keeps_small_cohort_locked() -> None:
     assert result["success_wilson_95_ci"] == pytest.approx(
         [0.09453120573423074, 0.9054687942657693]
     )
+
+
+def test_stronger_model_matrix_crosses_15_tasks_and_three_harnesses() -> None:
+    config = HarnessMatrixConfig.load(MATRIX_CONFIG)
+    manifest = BenchmarkManifest.load(ROOT / config.manifest)
+    cells = matrix_cells(config, manifest)
+    assert len(cells) == 45
+    assert {cell[2].harness_id for cell in cells[:3]} == {
+        "opencode-1.18.26", "pi-0.73.1", "openhands-0.57.0",
+    }
+    assert len({cell[3] for cell in cells[:15]}) == 5
+
+
+def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
+    config = HarnessMatrixConfig.load(MATRIX_CONFIG)
+    manifest = BenchmarkManifest.load(ROOT / config.manifest)
+    _, model, harness, task_id, _ = matrix_cells(config, manifest)[0]
+    command = harbor_command(
+        harbor="harbor", manifest=manifest, model=model, harness=harness,
+        task_id=task_id, job_directory=Path("jobs"),
+        base_url="http://model-host:11435/v1", api_key="secret",
+    )
+    assert command.count("-i") == 1
+    assert f"terminal-bench/{task_id}" in command
+    assert "OPENAI_BASE_URL=http://model-host:11435/v1" in command
+    assert "version=1.18.26" in command
+
+
+def test_harbor_matrix_dry_run_is_pra_locked_and_writes_all_cells(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = yaml.safe_load(MATRIX_CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "matrix")
+    config_path = tmp_path / "matrix.yaml"
+    config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    monkeypatch.delenv("PRA_AGENT_QWEN3_CODER_30B_URL", raising=False)
+    state = run_matrix(config_path, resume=False, dry_run=True)
+    assert state["pra_enabled"] is False
+    assert len(state["cells"]) == 45
+    assert {record["state"] for record in state["cells"].values()} == {"PENDING"}
+    summary = json.loads((tmp_path / "matrix/summary.json").read_text(encoding="utf-8"))
+    assert summary["expected_runs"] == 45
+    assert summary["completed_runs"] == 0
+    assert summary["admission_gate"]["eligible"] is False

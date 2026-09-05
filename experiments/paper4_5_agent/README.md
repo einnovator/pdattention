@@ -45,3 +45,24 @@ model/tool/wall time, termination, and official grader outcome. Engine TTFT
 and prefill are `null` unless measured directly. A larger altered-engine cohort
 still remains `BASELINE_ATTEMPTED`; only the exact published cell can unlock
 treatments.
+
+## Cross-harness qualification
+
+The stronger-model pilot runs the same 15 frozen Terminal-Bench 2.1 tasks with
+Qwen3-Coder-30B through OpenCode, Pi, and OpenHands. It is deliberately No-PRA:
+the matrix must complete all 45 official Harbor trials before its admission
+gate can pass. Each trial has its own Harbor directory and normalized row, so a
+host restart resumes at the first incomplete `(model, task, harness)` cell.
+
+```bash
+export PRA_AGENT_QWEN3_CODER_30B_URL=http://MODEL_HOST:11435/v1
+python -m experiments.paper4_5_agent.harness_matrix \
+  --config experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml \
+  --resume
+```
+
+Use `--max-cells 15` for the first five-task cross-harness checkpoint. The
+matrix stores no API credential, marks `pra_enabled=false` in every receipt,
+and reports task success separately by agent. This comparison qualifies the
+harness/model combinations; it is not an agent leaderboard because prompts,
+tool schemas, and loop policies differ.

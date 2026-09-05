@@ -1,0 +1,37 @@
+schema_version: 1
+campaign_id: paper4-5-qwen3-coder-30b-terminal-bench-pilot-v1
+manifest: experiments/agents/manifests/terminal_bench_pilot.yaml
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_harness_pilot
+agent_host: mac95-docker
+hardware:
+  agent_host: Apple Mac, 16 GiB
+  inference_host: Apple M4 Pro, 48 GiB
+  inference_transport: remote LAN OpenAI-compatible Ollama endpoint
+minimum_runs: 45
+minimum_success_rate: 0.10
+maximum_success_rate: 0.90
+models:
+  - model_id: qwen3-coder-30b-q4km
+    served_model: qwen3-coder:30b
+    model_revision: 06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca
+    engine: ollama
+    engine_version: 0.32.7
+    quantization: Q4_K_M
+    base_url_env: PRA_AGENT_QWEN3_CODER_30B_URL
+harnesses:
+  - harness_id: opencode-1.18.26
+    agent: experiments.agents.harbor_agents:PinnedNodeOpenCode
+    version: 1.18.26
+  - harness_id: pi-0.73.1
+    agent: experiments.agents.harbor_agents:PinnedNodePi
+    version: 0.73.1
+    kwargs:
+      model_api: openai-completions
+      thinking: "off"
+  - harness_id: openhands-0.57.0
+    agent: openhands
+    version: 0.57.0
+    kwargs:
+      python_version: 3.12
+      max_iterations: 20
+      temperature: 0
