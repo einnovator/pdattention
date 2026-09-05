@@ -634,6 +634,35 @@ def _write_latex_tables(result: Mapping[str, object], output: Path) -> None:
         if str(row["condition"]).startswith(("D_", "E_", "F_"))
     ]
     if composition_rows:
+        c_row = next(
+            row
+            for row in rows
+            if row["condition"] == "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS"
+        )
+        comparison_rows = [c_row, *composition_rows]
+        composition_effects = result.get("composition_vs_c", {})
+        quality_composition = [
+            "\\begin{tabular}{lrrrrr}",
+            "\\toprule",
+            "Condition & Token F1 & Official & Gold NLL & $\\Delta$F1 vs C & Interactions \\\\",
+            "\\midrule",
+        ]
+        for row in comparison_rows:
+            effect = composition_effects.get(str(row["condition"]), {})
+            delta = float(effect.get("seed_mean_token_f1_delta", 0.0))
+            quality_composition.append(
+                f"{_condition_label(row['condition'])} & "
+                f"{float(row['seed_mean_token_f1']):.3f} & "
+                f"{float(row['seed_mean_official_multihop_rag_score']):.3f} & "
+                f"{float(row['seed_mean_gold_answer_nll']):.3f} & "
+                f"{delta:+.3f} & "
+                f"{float(row['seed_mean_cross_document_interaction_edges']):.0f} \\\\"
+            )
+        quality_composition.extend(("\\bottomrule", "\\end{tabular}"))
+        (output / "generated_composition_quality_table.tex").write_text(
+            "\n".join(quality_composition) + "\n", encoding="utf-8"
+        )
+
         composition = [
             "\\begin{tabular}{lrrrrrr}",
             "\\toprule",
@@ -761,6 +790,75 @@ def _plot_interaction_budget(result: Mapping[str, object], output: Path) -> None
     plt.close(figure)
 
 
+def _plot_composition_frontier(result: Mapping[str, object], output: Path) -> None:
+    """Plot only independent PRA and the three request-local gist mechanisms."""
+
+    import matplotlib.pyplot as plt
+
+    selected = {
+        "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS",
+        "D_GIST_SA_APPEND",
+        "E_GIST_SA_BOUNDARY_8",
+        "F_GIST_SA_BOUNDARY_32",
+    }
+    rows = [
+        row for row in result["conditions"]  # type: ignore[index]
+        if row["condition"] in selected
+    ]
+    rows.sort(key=lambda row: float(row["seed_mean_cross_document_interaction_edges"]))
+    edges = [float(row["seed_mean_cross_document_interaction_edges"]) for row in rows]
+    labels = [_condition_label(row["condition"]) for row in rows]
+    figure, axes = plt.subplots(1, 2, figsize=(9.6, 3.8), sharex=True)
+    axes[0].plot(
+        edges,
+        [float(row["seed_mean_token_f1"]) for row in rows],
+        marker="o",
+        color="#276FBF",
+    )
+    axes[0].set_ylabel("Token F1")
+    axes[1].plot(
+        edges,
+        [float(row["seed_mean_gold_answer_nll"]) for row in rows],
+        marker="o",
+        color="#C44536",
+    )
+    axes[1].set_ylabel("Gold-answer NLL (lower is better)")
+    for axis in axes:
+        axis.set_xscale("symlog", linthresh=1.0)
+        axis.set_xlabel("Request-specific composition interactions")
+        axis.grid(alpha=0.25)
+        for edge, row, label in zip(edges, rows, labels):
+            value = (
+                float(row["seed_mean_token_f1"])
+                if axis is axes[0]
+                else float(row["seed_mean_gold_answer_nll"])
+            )
+            display_label = label.split()[0]
+            if axis is axes[0] and label == "C pre-RoPE":
+                offset, alignment = (4, -12), "left"
+            elif axis is axes[0] and label == "E boundary 8":
+                offset, alignment = (4, 6), "left"
+            elif axis is axes[0] and label == "F boundary 32":
+                offset, alignment = (-4, 16), "right"
+            elif label == "F boundary 32":
+                offset, alignment = (-4, 7), "right"
+            elif label == "E boundary 8":
+                offset, alignment = (-4, -12), "right"
+            else:
+                offset, alignment = (4, 4), "left"
+            axis.annotate(
+                display_label,
+                (edge, value),
+                xytext=offset,
+                textcoords="offset points",
+                fontsize=8,
+                horizontalalignment=alignment,
+            )
+    figure.tight_layout()
+    figure.savefig(output, bbox_inches="tight")
+    plt.close(figure)
+
+
 def _plot_bc_fidelity(result: Mapping[str, object], output: Path) -> None:
     import matplotlib.pyplot as plt
 
@@ -809,6 +907,8 @@ def main() -> None:
     _plot_quality(result, args.output / "causal_decomposition_quality.png")
     _plot_interaction_budget(result, args.output / "cross_document_budget.pdf")
     _plot_interaction_budget(result, args.output / "cross_document_budget.png")
+    _plot_composition_frontier(result, args.output / "gist_composition_frontier.pdf")
+    _plot_composition_frontier(result, args.output / "gist_composition_frontier.png")
     _plot_bc_fidelity(result, args.output / "bc_layer_fidelity.pdf")
     _plot_bc_fidelity(result, args.output / "bc_layer_fidelity.png")
     print(json.dumps(result, indent=2, sort_keys=True))

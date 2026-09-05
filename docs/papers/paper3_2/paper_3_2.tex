@@ -1300,6 +1300,73 @@ ladder. P2 is exactly zero at every layer and is omitted from the log axis.}
 \label{fig:crossdoc-precision-layers}
 \end{figure}
 
+\subsection{Parameter-free gist composition fails the natural-task gate}
+The main composition test returns to the five predeclared 30-question
+MultiHop-RAG seed cohorts. Retrieval and BGE-v2-M3 ranking are frozen once per
+question; A/B/C, P2, and the three request-local composition arms see the same
+selected records, order, token budget, and query. D appends four contextual
+gist tokens on average. E and F append conditioned copies of each record's
+first and last 8 or 32 tokens, respectively. Persistent record K/V is never
+modified.
+
+\begin{table}[ht]
+\centering
+\caption{Five-seed parameter-free cross-document composition (150 natural
+questions). Interactions combine the 16-edge all-to-all gist graph with
+boundary-conditioned token edges; they are not dense document-attention
+edges.}
+\label{tab:gist-composition-quality}
+\small
+\input{../shared/results/paper3_2_rag/crossdoc_composition/natural/five_seed/generated_composition_quality_table.tex}
+\end{table}
+
+The gate closes decisively. Independent pre-RoPE C reaches .108 F1, .393
+official score, and 3.474 NLL. Gist append D falls to .007 F1 and .020 official
+score while NLL rises to 8.135. Both boundary-copy variants have zero mean F1,
+.007 official score, and NLL above 11. The paired D--C F1 change is $-.1007$
+with a seed-bootstrap 95\% interval $[-.1257,-.0691]$; E--C and F--C are both
+$-.1081$ with interval $[-.1274,-.0838]$. Every seed effect has the same sign;
+with five seeds the exact two-sided sign-flip value is nevertheless bounded at
+$p=.0625$. NLL increases by 4.661, 7.699, and 7.909 for D, E, and F.
+
+The mechanisms are computationally small but semantically wrong. D performs
+16 gist interactions and adds four ephemeral K/V tokens in .44 MiB. E and F
+use 80 and 272 total request interactions, add 64 and 256 ephemeral tokens,
+and occupy 7.0 and 28.0 MiB. Measured composition time is 10.94, 13.09, and
+14.53 ms. These figures include one layerwise identity-projection gist graph
+and boundary realization, but exclude persistent source encoding already
+accounted elsewhere.
+
+\begin{table}[ht]
+\centering
+\caption{Request-local composition cost on the Apple M4 Pro. FLOPs are an
+operation-count estimate; latency and bytes are measured.}
+\label{tab:gist-composition-systems}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/natural/five_seed/generated_composition_systems_table.tex}}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/natural/five_seed/gist_composition_frontier.pdf}
+\caption{Parameter-free composition quality against request-specific
+interaction count. A tiny interaction graph is not useful when its K/V states
+are not calibrated for the frozen decoder.}
+\label{fig:gist-composition-frontier}
+\end{figure}
+
+The failure distinguishes two superficially similar sparse mechanisms. The
+earlier boundary-8 \emph{attention mask} lets document hidden states acquire
+cross-document information while those states are computed and reaches .118
+F1. E instead inserts post-hoc boundary K/V copies conditioned by means that
+the base model was never trained to consume, and reaches zero. The likely
+mechanism is off-manifold K/V plus attention-normalization competition, though
+the experiment identifies the intervention rather than proving that internal
+explanation. Increasing boundary width only worsens NLL. We therefore do not
+implement the optional low-rank correction in this inference-only iteration:
+the next gate requires a trained composition projection with packed-RAG
+distillation and held-out task validation.
+
 Request-time rotation itself is inexpensive in this implementation:
 .69 ms on average. B and C have nearly identical generation-only TTFT
 (68.1 and 68.3 ms) and total generation latency (177.9 and 177.5 ms).
