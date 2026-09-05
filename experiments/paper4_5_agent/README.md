@@ -82,3 +82,12 @@ matrix stores no API credential, marks `pra_enabled=false` in every receipt,
 and reports task success separately by agent. This comparison qualifies the
 harness/model combinations; it is not an agent leaderboard because prompts,
 tool schemas, and loop policies differ.
+
+The completed v3 campaign produced 30/30 official trials: Mini-SWE-agent and
+Qwen Code each solved one task, Aider solved none, and only `fix-git` was solved
+by any harness. Aggregate success was 2/30 (6.7%), below the configured 10%
+promotion floor, so no PRA treatment was launched. The 20 runs whose harnesses
+reported token usage accumulated 6,717,096 input tokens. Normalized evidence
+and the complete compressed Harbor artifact tree are under
+`docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/`
+`qwen3_coder_30b_multi_harness_v3/`.

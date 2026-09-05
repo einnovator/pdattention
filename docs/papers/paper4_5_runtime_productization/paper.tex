@@ -2947,10 +2947,53 @@ OpenHands 0.57.0 & 0/1 & 2/6 & N/R & 489.9 & no solution file \\
 \label{tab:coding-agent-gate}
 \end{table}
 
+We then expanded the stronger-model gate to a preregistered ten-task
+Terminal-Bench 2.1 cohort. Qwen3-Coder-30B Q4\_K\_M served every trial through
+Ollama on a 48~GiB M4 Pro, while Harbor and the official verifiers ran on a
+separate 16~GiB Apple host. Mini-SWE-agent 2.4.6, Qwen Code 0.23.0, and Aider
+0.86.2 each attempted the same ten tasks, for 30 completed No-PRA trials.
+Mini-SWE-agent and Qwen Code each solved \texttt{fix-git}; Aider solved none.
+Thus aggregate success was 2/30, or 6.7\% (Wilson 95\% interval
+1.8--21.3\%), but only one of ten unique tasks was solved by any harness.
+Table~\ref{tab:coding-agent-expanded-gate} reports the observed workload. These
+rows are not an agent ranking because each harness retains its own prompt,
+tools, and loop policy.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Expanded Qwen3-Coder-30B No-PRA admission gate. Token totals cover
+only harness integrations that report usage; N/R means not reported, not zero.}
+\begin{tabular}{lrrrrr}
+\toprule
+Harness & Runs & Success & Input tokens & Tool calls & Wall (h) \\
+\midrule
+Mini-SWE-agent & 10 & 1/10 & 2,562,781 & 271 & 1.14 \\
+Qwen Code & 10 & 1/10 & 4,154,315 & 143 & 1.84 \\
+Aider & 10 & 0/10 & N/R & N/R & 1.04 \\
+\midrule
+Observed total & 30 & 2/30 & 6,717,096$^{\dagger}$ & 414$^{\dagger}$ & 4.02 \\
+\bottomrule
+\end{tabular}
+\par\vspace{2pt}\footnotesize $^{\dagger}$Coverage is 20/30 trials because
+Aider's pinned Harbor adapter does not expose token or turn telemetry.
+\label{tab:coding-agent-expanded-gate}
+\end{table}
+
+Of the 28 unsuccessful trials, 21 completed with an official score below the
+success threshold, six reached the agent timeout after usable model activity,
+and one reached the verifier timeout. Retaining timeouts as outcomes avoids
+silently improving the apparent success rate. The larger model and broader
+harness set therefore establish substantial real coding-agent traffic---the 20
+token-reporting trials alone accumulated 6.72 million input tokens---but not a
+stable enough quality floor for a treatment comparison.
+
 This negative gate matters to the product claim. Token reduction from a model
 that no longer completes coding tasks is not a PRA benefit. A code-capable
 agent/model pairing must first establish nonzero success and enter the
-preregistered 30--80\% admission band. Only then may identical tasks compare
+preregistered 10--90\% admission band. The expanded cohort's 6.7\% result falls
+below that lower boundary, so the scheduler correctly withheld treatment
+launches. Only after admission may identical tasks compare
 No PRA, PRA Selected Context without an adaptor, and Selected Context with the
 immutable Runtime Bundle under
 BALANCED. Table~\ref{tab:agent-canonical-gate} makes the unrun conditions
@@ -2963,11 +3006,11 @@ inference time, resource use, and cost for that subsequent paired analysis.
 \begin{table}[H]
 \centering
 \small
-\caption{Canonical coding-agent admission evidence. The Qwen Selected Context
-conditions were withheld because No-PRA official success was zero. The
-nonzero FIM-7B smoke remains withheld because its engine, precision, cohort,
-and context differ from the published baseline. Deltas remain blocked rather
-than being computed across inadmissible cells.}
+\caption{Canonical coding-agent admission evidence. Qwen treatment conditions
+were withheld because their No-PRA cohorts remained below the configured
+quality floor. The nonzero FIM-7B smoke remains withheld because its engine,
+precision, cohort, and context differ from the published baseline. Deltas
+remain blocked rather than being computed across inadmissible cells.}
 \begin{tabular}{llrrr}
 \toprule
 Cohort & Metric & No PRA & Selected Context & Selected + bundle \\
@@ -2977,9 +3020,13 @@ Qwen3-14B, five tasks & Verifier checks & 7/12 & BLOCKED & BLOCKED \\
 Qwen3-14B, five tasks & Input tokens & 100,883 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, one task & Official success & 0/1 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, one task & Verifier checks & 4/6 & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, 30 trials & Official success & 2/30 & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, 30 trials & Unique tasks solved & 1/10 & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, 30 trials & Input tokens$^{\dagger}$ & 6.72M & BLOCKED & BLOCKED \\
 FIM-7B Q4, two tasks & Official success & 1/2 attempted & BLOCKED & BLOCKED \\
 \bottomrule
 \end{tabular}
+\par\vspace{2pt}\footnotesize $^{\dagger}$Reported by 20/30 trials.
 \label{tab:agent-canonical-gate}
 \end{table}
 

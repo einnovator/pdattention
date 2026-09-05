@@ -81,6 +81,37 @@ The compact cross-agent comparison is in
 The normalized 30B row and all official artifacts are under
 `terminal_bench_opencode_qwen3coder30b_gate/`.
 
+## Larger stronger-model cohort
+
+The preregistered `qwen3_coder_30b_multi_harness_v3` campaign expands the
+stronger-model qualification to ten frozen Terminal-Bench 2.1 tasks and three
+agent harnesses. Ollama/Qwen3-Coder-30B Q4_K_M ran on an Apple M4 Pro with
+48 GiB of unified memory; Harbor 0.22.0 and the official task verifiers ran on
+a separate 16 GiB Apple host. Every cell was No-PRA.
+
+All 30 official trials completed. Mini-SWE-agent 2.4.6 and Qwen Code 0.23.0
+each solved `fix-git`; Aider 0.86.2 solved none. The resulting 2/30 success
+rate is 6.7% (Wilson 95% interval 1.8--21.3%), and only one of ten unique tasks
+was solved by any harness. The configured 10% promotion floor therefore keeps
+all PRA treatments blocked. This is stronger evidence than the earlier
+one-task diagnostic, but it is still an admission result rather than a PRA
+comparison or an agent ranking.
+
+Mini-SWE-agent reported 2,562,781 input and 48,888 output tokens over ten
+trials; Qwen Code reported 4,154,315 input and 38,821 output tokens. Together,
+the 20 token-reporting trials accumulated 6,717,096 input tokens and 87,709
+output tokens. Aider's Harbor integration did not expose token or turn
+telemetry, so those fields are recorded as not reported rather than interpreted
+as zero consumption. Aggregate task wall time was 4.02 hours across the 30
+trials. Six agent timeouts and one verifier timeout are retained as model/harness
+outcomes because usable trajectories preceded them.
+
+The directory contains the normalized `runs.jsonl`, durable matrix state,
+summary, and report. `raw_harbor_artifacts.tar.gz` preserves the complete
+campaign tree, including task receipts, trajectories, logs, and verifier
+outputs. The archive is used because the original Harbor nesting exceeds the
+legacy Windows path limit when checked out file by file.
+
 ## Stage A gateway qualification
 
 On 2026-09-02, Codex CLI 0.147.0, OpenCode 1.18.26, and Pi 0.73.1 each
