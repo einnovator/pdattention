@@ -33,14 +33,15 @@ def _condition_order(condition: str) -> tuple[int, int, str]:
         "D_GIST_SA_APPEND": 3,
         "E_GIST_SA_BOUNDARY_8": 4,
         "F_GIST_SA_BOUNDARY_32": 5,
-        "M_PREVIOUS_DOC_ONLY": 6,
-        "M_TOP_RANKED_TO_ALL": 7,
+        "P2_SHAPE_MATCHED_PRE_ROPE_REBIND": 6,
+        "M_PREVIOUS_DOC_ONLY": 7,
+        "M_TOP_RANKED_TO_ALL": 8,
     }
     if condition in fixed:
         return fixed[condition], 0, condition
     if condition.startswith("M4_BOUNDARY_ONLY_"):
-        return 8, int(condition.rsplit("_", 1)[1]), condition
-    return 9, 0, condition
+        return 9, int(condition.rsplit("_", 1)[1]), condition
+    return 10, 0, condition
 
 
 def _bootstrap(values: Sequence[float], *, seed: int = 3205) -> list[float] | None:

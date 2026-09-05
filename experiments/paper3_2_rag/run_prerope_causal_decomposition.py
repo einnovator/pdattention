@@ -74,11 +74,12 @@ from pra_hf.rag_mlx_native import (
     encode_native_memory,
     encode_native_memory_with_mask,
     native_memory_diagnostics,
+    rebind_native_memories_global_packed,
     rebind_native_memories_to_receipt,
 )
 
 
-SCHEMA_VERSION = "paper3.2-prerope-crossdoc-precision-v2"
+SCHEMA_VERSION = "paper3.2-prerope-crossdoc-precision-v3"
 DEFAULT_RERANKER = "BAAI/bge-reranker-v2-m3"
 
 
@@ -486,6 +487,17 @@ def main() -> None:
         choices=("auto", *[mode.value for mode in PrecisionMode]),
         default="auto",
     )
+    parser.add_argument(
+        "--source-checkpoint",
+        help=(
+            "Unquantized source checkpoint for a converted model. Quantized "
+            "runs record an explicit unknown when this is omitted."
+        ),
+    )
+    parser.add_argument(
+        "--source-weight-dtype",
+        help="Source checkpoint dtype when independently verified.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -509,6 +521,7 @@ def main() -> None:
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     rows: list[dict[str, object]] = []
     bc_diagnostics: list[dict[str, object]] = []
+    shape_path_diagnostics: list[dict[str, object]] = []
     frozen_receipts: list[dict[str, object]] = []
     precision_metadata: dict[str, object] | None = None
     started = time.time()
@@ -618,6 +631,8 @@ def main() -> None:
                 model_revision=revision,
                 mode=resolved_precision_mode,
                 kv_dtype=str(a_memory.layers[0].keys.dtype),
+                source_checkpoint=args.source_checkpoint,
+                source_weight_dtype=args.source_weight_dtype,
                 group_size=group_size,
                 symmetric=symmetric,
             ).to_dict()
@@ -647,6 +662,23 @@ def main() -> None:
         )
         c_transform_ms = (time.perf_counter() - transform_started) * 1000.0
 
+        # P2 retains B's packed shape and mask while changing only storage to
+        # pre-RoPE keys followed by exact host-RoPE request-time rebinding.
+        encode_started = time.perf_counter()
+        shape_pre = encode_native_memory_with_mask(
+            backend.model,
+            packed_tokens,
+            blocked_prefix_mask,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision=revision,
+        )
+        shape_encode_ms = (time.perf_counter() - encode_started) * 1000.0
+        transform_started = time.perf_counter()
+        shape_memory = rebind_native_memories_global_packed(
+            backend.model, (shape_pre,)
+        )
+        shape_transform_ms = (time.perf_counter() - transform_started) * 1000.0
+
         if b_memory.source_positions != c_memory.source_positions:
             raise RuntimeError("B/C effective source positions differ")
         diagnostic = native_memory_diagnostics(b_memory, c_memory)
@@ -657,6 +689,15 @@ def main() -> None:
             }
         )
         bc_diagnostics.append(diagnostic)
+        shape_diagnostic = native_memory_diagnostics(b_memory, shape_memory)
+        shape_diagnostic.update(
+            {
+                "comparison": "B_VS_P2_SHAPE_MATCHED_PRE_ROPE_REBIND",
+                "example_id": question.example_id,
+                "selection_receipt_id": selection.receipt_id,
+            }
+        )
+        shape_path_diagnostics.append(shape_diagnostic)
         rope_digest = c_memory.rope_contract.layer_frequency_digest
         receipts = {
             "A": CausalDecompositionReceipt(
@@ -677,12 +718,21 @@ def main() -> None:
                 position_binding_mode="PRE_ROPE",
                 rope_frequency_digest=rope_digest,
             ),
+            "P2": CausalDecompositionReceipt(
+                **common,
+                attention_mask_receipt_id=blocked_mask_receipt.receipt_id,
+                position_binding_mode="PRE_ROPE_SHAPE_MATCHED",
+                rope_frequency_digest=rope_digest,
+            ),
         }
-        validate_matched_abc_receipts(receipts)
+        validate_matched_abc_receipts(
+            {arm: receipts[arm] for arm in ("A", "B", "C")}
+        )
         mask_receipts = {
             "A_FULL_CAUSAL_RAG": full_mask_receipt.to_dict(),
             "B_NO_CROSS_DOC_RAG": blocked_mask_receipt.to_dict(),
             "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": blocked_mask_receipt.to_dict(),
+            "P2_SHAPE_MATCHED_PRE_ROPE_REBIND": blocked_mask_receipt.to_dict(),
         }
 
         a_row = _condition_row(
@@ -733,6 +783,24 @@ def main() -> None:
                 mask_receipt=blocked_mask_receipt,
                 encode_ms=c_encode_ms,
                 transform_ms=c_transform_ms,
+                selected_document_ids=document_ids,
+                reference_logits=b_logits,
+                reference_condition="B_NO_CROSS_DOC_RAG",
+                precision_metadata=precision_metadata,
+            )
+        )
+        rows.append(
+            _condition_row(
+                condition="P2_SHAPE_MATCHED_PRE_ROPE_REBIND",
+                question=question,
+                backend=backend,
+                memory=shape_memory,
+                candidate_receipt_id=candidate.receipt_id,
+                selection_receipt_id=selection.receipt_id,
+                decomposition_receipt=receipts["P2"],
+                mask_receipt=blocked_mask_receipt,
+                encode_ms=shape_encode_ms,
+                transform_ms=shape_transform_ms,
                 selected_document_ids=document_ids,
                 reference_logits=b_logits,
                 reference_condition="B_NO_CROSS_DOC_RAG",
@@ -888,6 +956,11 @@ def main() -> None:
     with gzip.open(args.output / "bc_layer_diagnostics.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in bc_diagnostics:
             stream.write(json.dumps(row, sort_keys=True) + "\n")
+    with gzip.open(
+        args.output / "shape_path_layer_diagnostics.jsonl.gz", "wt", encoding="utf-8"
+    ) as stream:
+        for row in shape_path_diagnostics:
+            stream.write(json.dumps(row, sort_keys=True) + "\n")
     with gzip.open(args.output / "frozen_receipts.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in frozen_receipts:
             stream.write(json.dumps(row, sort_keys=True) + "\n")
@@ -912,6 +985,7 @@ def main() -> None:
         "gist_attention_mask": args.gist_attention_mask,
         "composition_residual_scale": args.composition_residual_scale,
         "precision": precision_metadata,
+        "shape_path_control": "P2_SHAPE_MATCHED_PRE_ROPE_REBIND",
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),

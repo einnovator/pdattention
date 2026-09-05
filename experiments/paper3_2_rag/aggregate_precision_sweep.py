@@ -23,13 +23,25 @@ def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
-def _load(path: Path) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+def _load(
+    path: Path,
+) -> tuple[
+    dict[str, object],
+    list[dict[str, object]],
+    list[dict[str, object]],
+    list[dict[str, object]],
+]:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     with gzip.open(path.parent / "condition_results.jsonl.gz", "rt", encoding="utf-8") as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
     with gzip.open(path.parent / "bc_layer_diagnostics.jsonl.gz", "rt", encoding="utf-8") as stream:
         diagnostics = [json.loads(line) for line in stream if line.strip()]
-    return manifest, rows, diagnostics
+    shape_path = path.parent / "shape_path_layer_diagnostics.jsonl.gz"
+    shape_diagnostics = []
+    if shape_path.exists():
+        with gzip.open(shape_path, "rt", encoding="utf-8") as stream:
+            shape_diagnostics = [json.loads(line) for line in stream if line.strip()]
+    return manifest, rows, diagnostics, shape_diagnostics
 
 
 def aggregate(paths: Sequence[Path]) -> dict[str, object]:
@@ -37,7 +49,17 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
 
     if not paths:
         raise ValueError("precision aggregation requires at least one manifest")
-    grouped: dict[str, list[tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]]] = {}
+    grouped: dict[
+        str,
+        list[
+            tuple[
+                dict[str, object],
+                list[dict[str, object]],
+                list[dict[str, object]],
+                list[dict[str, object]],
+            ]
+        ],
+    ] = {}
     for path in paths:
         run = _load(path)
         precision = str((run[0].get("precision") or {}).get("precision_mode", "UNKNOWN"))
@@ -49,9 +71,9 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
     composition_rows = []
     for precision in sorted(grouped, key=lambda value: PRECISION_ORDER.get(value, 99)):
         runs = grouped[precision]
-        all_rows = [row for _, rows, _ in runs for row in rows]
+        all_rows = [row for _, rows, _, _ in runs for row in rows]
         by_example: dict[tuple[int, str], dict[str, Mapping[str, object]]] = {}
-        for manifest, rows, _ in runs:
+        for manifest, rows, _, _ in runs:
             seed = int(manifest["seed"])
             for row in rows:
                 by_example.setdefault((seed, str(row["example_id"])), {})[
@@ -62,7 +84,8 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
             if "B_NO_CROSS_DOC_RAG" in pair
             and "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS" in pair
         ]
-        diagnostics = [row for _, _, values in runs for row in values]
+        diagnostics = [row for _, _, values, _ in runs for row in values]
+        shape_diagnostics = [row for _, _, _, values in runs for row in values]
         layer_count = max((len(row.get("layers", ())) for row in diagnostics), default=0)
         layerwise = []
         for layer_index in range(layer_count):
@@ -84,6 +107,29 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
                     ),
                 }
             )
+        shape_layerwise = []
+        shape_layer_count = max(
+            (len(row.get("layers", ())) for row in shape_diagnostics), default=0
+        )
+        for layer_index in range(shape_layer_count):
+            values = [
+                row["layers"][layer_index]
+                for row in shape_diagnostics
+                if len(row.get("layers", ())) > layer_index
+            ]
+            shape_layerwise.append(
+                {
+                    "layer": layer_index,
+                    "key_rmse": _mean([float(row["key_rmse"]) for row in values]),
+                    "value_rmse": _mean([float(row["value_rmse"]) for row in values]),
+                }
+            )
+        shape_pairs = [
+            pair
+            for pair in by_example.values()
+            if "B_NO_CROSS_DOC_RAG" in pair
+            and "P2_SHAPE_MATCHED_PRE_ROPE_REBIND" in pair
+        ]
         precision_rows.append(
             {
                 "precision_mode": precision,
@@ -125,6 +171,31 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
                     (float(row["value_rmse"]) for row in layerwise), default=None
                 ),
                 "layerwise": layerwise,
+                "shape_path_pairs": len(shape_pairs),
+                "shape_path_output_match_rate": _mean([
+                    float(
+                        pair["B_NO_CROSS_DOC_RAG"]["prediction"]
+                        == pair["P2_SHAPE_MATCHED_PRE_ROPE_REBIND"]["prediction"]
+                    )
+                    for pair in shape_pairs
+                ]),
+                "shape_path_mean_first_step_js": _mean([
+                    float(pair["P2_SHAPE_MATCHED_PRE_ROPE_REBIND"]["first_step_js_divergence"])
+                    for pair in shape_pairs
+                ]),
+                "shape_path_mean_gold_nll_abs_delta": _mean([
+                    abs(
+                        float(pair["B_NO_CROSS_DOC_RAG"]["gold_answer_mean_nll"])
+                        - float(pair["P2_SHAPE_MATCHED_PRE_ROPE_REBIND"]["gold_answer_mean_nll"])
+                    )
+                    for pair in shape_pairs
+                ]),
+                "shape_path_max_layer_key_rmse": max(
+                    (float(row["key_rmse"]) for row in shape_layerwise), default=None
+                ),
+                "shape_path_max_layer_value_rmse": max(
+                    (float(row["value_rmse"]) for row in shape_layerwise), default=None
+                ),
                 "metadata": runs[0][0]["precision"],
             }
         )
@@ -170,6 +241,9 @@ def _write_csv(result: Mapping[str, object], path: Path) -> None:
         "first_step_logit_hash_match_rate", "mean_first_step_js",
         "mean_first_step_logit_max_abs_delta", "mean_gold_nll_abs_delta",
         "max_layer_key_rmse", "max_layer_value_rmse",
+        "shape_path_pairs", "shape_path_output_match_rate",
+        "shape_path_mean_first_step_js", "shape_path_mean_gold_nll_abs_delta",
+        "shape_path_max_layer_key_rmse", "shape_path_max_layer_value_rmse",
     )
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -197,6 +271,25 @@ def _write_latex(result: Mapping[str, object], output: Path) -> None:
     lines.extend(("\\bottomrule", "\\end{tabular}"))
     (output / "generated_precision_table.tex").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
+    )
+    shape_lines = [
+        "\\begin{tabular}{lrrrr}",
+        "\\toprule",
+        "Precision & Pairs & Output match & JS & $|\\Delta\\mathrm{NLL}|$ \\\\",
+        "\\midrule",
+    ]
+    for row in result["precision_conditions"]:  # type: ignore[index]
+        if not row["shape_path_pairs"]:
+            continue
+        shape_lines.append(
+            f"{row['precision_mode']} & {row['shape_path_pairs']} & "
+            f"{float(row['shape_path_output_match_rate']):.3f} & "
+            f"{float(row['shape_path_mean_first_step_js']):.8f} & "
+            f"{float(row['shape_path_mean_gold_nll_abs_delta']):.6f} \\\\"
+        )
+    shape_lines.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_shape_path_table.tex").write_text(
+        "\n".join(shape_lines) + "\n", encoding="utf-8"
     )
 
 

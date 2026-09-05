@@ -29,11 +29,13 @@ class PrecisionMetadata:
     kv_dtype: str
     compute_dtype: str
     source_checkpoint: str
+    source_weight_dtype: str
     quantized_checkpoint: str | None
+    weight_conversion: str
     engine: str
     kernel_backend: str
     provenance: str
-    schema_version: str = "paper3.2-precision-metadata-v1"
+    schema_version: str = "paper3.2-precision-metadata-v2"
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -63,6 +65,8 @@ def build_precision_metadata(
     kv_dtype: str,
     activation_dtype: str | None = None,
     compute_dtype: str | None = None,
+    source_checkpoint: str | None = None,
+    source_weight_dtype: str | None = None,
     group_size: int | None = None,
     symmetric: bool | None = None,
 ) -> PrecisionMetadata:
@@ -77,6 +81,14 @@ def build_precision_metadata(
         PrecisionMode.INT8: "int8_groupwise",
         PrecisionMode.INT4: "int4_groupwise",
     }[mode]
+    resolved_source = source_checkpoint or (
+        "NOT_REPORTED_BY_QUANTIZED_CHECKPOINT" if quantized else model_id
+    )
+    conversion = (
+        "mlx_groupwise_quantized_checkpoint"
+        if quantized
+        else "runtime_dtype_cast_from_checkpoint"
+    )
     return PrecisionMetadata(
         precision_mode=mode.value,
         quantization_method="mlx_groupwise" if quantized else "none",
@@ -88,12 +100,17 @@ def build_precision_metadata(
         activation_dtype=activation_dtype or kv_dtype,
         kv_dtype=kv_dtype,
         compute_dtype=compute_dtype or kv_dtype,
-        source_checkpoint=model_id,
+        source_checkpoint=resolved_source,
+        source_weight_dtype=(
+            source_weight_dtype or "checkpoint_declared_or_unknown"
+        ),
         quantized_checkpoint=model_id if quantized else None,
+        weight_conversion=conversion,
         engine="mlx-lm",
         kernel_backend="MLX Metal",
         provenance=(
-            f"checkpoint={model_id}@{model_revision}; mode explicitly recorded; "
+            f"checkpoint={model_id}@{model_revision}; source={resolved_source}; "
+            f"conversion={conversion}; mode explicitly recorded; "
             "group and zero-point details are not inferred when unavailable"
         ),
     )

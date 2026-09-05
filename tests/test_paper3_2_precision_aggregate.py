@@ -43,6 +43,11 @@ def _run(root: Path, mode: str, delta: float) -> Path:
             "layer": 0, "key_rmse": delta, "value_rmse": delta * 2,
             "key_max_abs_delta": delta * 3, "value_max_abs_delta": delta * 4,
         }]}) + "\n")
+    with gzip.open(run / "shape_path_layer_diagnostics.jsonl.gz", "wt", encoding="utf-8") as stream:
+        stream.write(json.dumps({"layers": [{
+            "layer": 0, "key_rmse": delta / 10, "value_rmse": delta / 5,
+            "key_max_abs_delta": delta, "value_max_abs_delta": delta * 2,
+        }]}) + "\n")
     return run / "manifest.json"
 
 
@@ -54,4 +59,5 @@ def test_precision_aggregate_keeps_modes_and_layerwise_errors_separate(tmp_path:
     assert result["precision_conditions"][0]["output_match_rate"] == 1.0
     assert result["precision_conditions"][0]["max_layer_key_rmse"] == 0.001
     assert result["precision_conditions"][1]["mean_gold_nll_abs_delta"] > 0.09
+    assert result["precision_conditions"][0]["shape_path_max_layer_key_rmse"] == 0.0001
     assert len(result["composition_conditions"]) == 2

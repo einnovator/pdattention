@@ -120,6 +120,22 @@ def test_precision_metadata_keeps_weight_and_kv_dtype_separate() -> None:
     assert metadata.weight_dtype == "int8_groupwise"
     assert metadata.kv_dtype == "float16"
     assert metadata.group_size == 64
+    assert metadata.source_checkpoint == "NOT_REPORTED_BY_QUANTIZED_CHECKPOINT"
+    assert metadata.source_weight_dtype == "checkpoint_declared_or_unknown"
+    assert metadata.weight_conversion == "mlx_groupwise_quantized_checkpoint"
+
+
+def test_float_precision_metadata_marks_runtime_cast() -> None:
+    metadata = build_precision_metadata(
+        model_id="Qwen/Qwen3-0.6B",
+        model_revision="b" * 40,
+        mode="FP32",
+        kv_dtype="float32",
+        source_weight_dtype="bfloat16",
+    )
+    assert metadata.weight_dtype == "float32"
+    assert metadata.source_weight_dtype == "bfloat16"
+    assert metadata.weight_conversion == "runtime_dtype_cast_from_checkpoint"
 
 
 def test_runner_parses_composition_aliases_and_rejects_precision_mismatch() -> None:
