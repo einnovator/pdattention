@@ -1,0 +1,25 @@
+schema_version: 1
+name: terminal-bench-2.1-portable-pilot-v1
+benchmark: terminal-bench
+dataset: terminal-bench/terminal-bench-2-1
+revision: "2.1"
+cohort: pilot
+task_ids:
+  - fix-git
+  - polyglot-c-py
+  - configure-git-webserver
+  - query-optimize
+  - polyglot-rust-c
+  - adaptive-rejection-sampler
+  - build-pmars
+  - overfull-hbox
+  - mcmc-sampling-stan
+  - protein-assembly
+repeats: 1
+timeout_seconds: 1800
+environment: harbor-container-amd64-emulated-on-arm64
+official_metric: task_success
+notes:
+  - Frozen before model outcomes were observed on this cohort.
+  - Excludes browser, video, and Windows-specific tasks from the general pilot because their amd64 verifiers are not portable to the ARM Docker host.
+  - The excluded filter-js-from-html host qualification reached the Docker memory ceiling during its Selenium verifier and is not counted as a model outcome.

@@ -225,11 +225,11 @@ def test_agent_baseline_summary_keeps_small_cohort_locked() -> None:
     )
 
 
-def test_stronger_model_matrix_crosses_15_tasks_and_three_harnesses() -> None:
+def test_stronger_model_matrix_crosses_10_tasks_and_three_harnesses() -> None:
     config = HarnessMatrixConfig.load(MATRIX_CONFIG)
     manifest = BenchmarkManifest.load(ROOT / config.manifest)
     cells = matrix_cells(config, manifest)
-    assert len(cells) == 45
+    assert len(cells) == 30
     assert {cell[2].harness_id for cell in cells[:3]} == {
         "opencode-1.18.26", "pi-0.73.1", "openhands-0.57.0",
     }
@@ -275,12 +275,12 @@ def test_harbor_matrix_dry_run_is_pra_locked_and_writes_all_cells(
     monkeypatch.delenv("PRA_AGENT_QWEN3_CODER_30B_URL", raising=False)
     state = run_matrix(config_path, resume=False, dry_run=True)
     assert state["pra_enabled"] is False
-    assert len(state["cells"]) == 45
+    assert len(state["cells"]) == 30
     assert {record["state"] for record in state["cells"].values()} == {"PENDING"}
     summary = json.loads((tmp_path / "matrix/summary.json").read_text(encoding="utf-8"))
-    assert summary["expected_runs"] == 45
+    assert summary["expected_runs"] == 30
     assert summary["completed_runs"] == 0
     assert summary["admission_gate"]["eligible"] is False
     report = (tmp_path / "matrix/report.md").read_text(encoding="utf-8")
     assert "official-Harbor **No-PRA baseline**" in report
-    assert "Completed: `0/45`" in report
+    assert "Completed: `0/30`" in report
