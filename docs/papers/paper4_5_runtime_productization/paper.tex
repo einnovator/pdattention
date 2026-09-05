@@ -521,7 +521,12 @@ cohorts, the same comparison remains close at task level (.108 versus .110 F1;
 mean first-step JS $8.80\times10^{-4}$), but only 101/150 generated outputs
 match and no first-step logit hash is exact. Value-state error grows through the
 decoder, consistent with shape-dependent finite-precision projection and
-attention paths. Pre-RoPE storage therefore remains
+attention paths. Reduced one-seed checks reproduce close B/C behavior at larger
+scale: generated outputs agree in 8/10 Qwen3-4B, 10/10 Qwen3-8B, and 10/10
+Llama-3.1-8B cases. Their numerical residual is architecture-dependent:
+first-step JS is $(3.14\text{--}4.05)\times10^{-4}$ for Qwen and
+$1.41\times10^{-6}$ for Llama, while no exact logit hash matches. Pre-RoPE
+storage therefore remains
 \texttt{CALIBRATION\_PENDING}: an adapter must qualify the host RoPE contract
 and numerical runtime separately, and neither qualification establishes the
 cross-record causal contextualization supplied by fresh packed encoding.
