@@ -17,6 +17,11 @@ from experiments.paper4_5_agent.benchmark import (
     load_benchmark_card,
     precision_diagnostic_ids,
 )
+from experiments.paper4_5_agent.build_easy_cohorts import (
+    DIFFICULTY,
+    build_card,
+    select_easy_rows,
+)
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
@@ -38,7 +43,11 @@ from experiments.paper4_5_agent.runners.r2egym import (
 )
 from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
-from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
+from experiments.paper4_5_agent.schema import (
+    CampaignConfig,
+    PublishedBaseline,
+    ReproductionStatus,
+)
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
     _is_h100_80gb,
@@ -53,7 +62,10 @@ ROOT = Path(__file__).parents[1]
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
 SWEBENCH_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml"
+EASY20_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_easy20_calibration.yaml"
 FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json"
+EASY20 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json"
+EASY50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json"
 
 
 def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:
@@ -64,6 +76,46 @@ def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:
         "20acb5f7e30fb3c854091e47c4214afb7304a5d47f353408a71ffaa418318131"
     )
     assert precision_diagnostic_ids(card) == tuple(card["instance_ids"][:10])
+
+
+def test_easy_cards_are_nested_frozen_and_digest_protected() -> None:
+    easy20 = load_benchmark_card(EASY20)
+    easy50 = load_benchmark_card(EASY50)
+    assert easy20["instance_ids"] == easy50["instance_ids"][:20]
+    assert len(easy20["instance_ids"]) == 20
+    assert len(easy50["instance_ids"]) == 50
+    assert {row["difficulty"] for row in easy50["task_metadata"]} == {DIFFICULTY}
+
+
+def test_easy_selection_is_deterministic_and_outcome_blind() -> None:
+    rows = [
+        {
+            "instance_id": f"repo__project-{index}",
+            "repo": "repo/project",
+            "base_commit": str(index),
+            "version": "1",
+            "difficulty": DIFFICULTY if index != 2 else "1-4 hours",
+            "model_outcome": index % 2,
+        }
+        for index in range(8)
+    ]
+    first = select_easy_rows(rows, limit=4)
+    second = select_easy_rows(reversed(rows), limit=4)
+    assert [row["instance_id"] for row in first] == [row["instance_id"] for row in second]
+    card = build_card(rows, count=4, eligible_count=7)
+    assert "model_outcome" not in json.dumps(card)
+
+
+def test_easy20_campaign_is_local_no_pra_calibration() -> None:
+    campaign = CampaignConfig.load(EASY20_CONFIG)
+    baseline = campaign.baselines[0]
+    assert baseline.admission_kind == "local_calibration"
+    assert baseline.published_score is None
+    assert baseline.minimum_admission_score == 0.2
+    assert len(baseline.task_ids) == 20
+    assert len(campaign.cells) == 1
+    assert campaign.cells[0].mode.value == "native"
+    assert "--local-calibration" in campaign.cells[0].command
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
@@ -153,6 +205,31 @@ def test_fixed50_score_without_execution_identity_does_not_unlock() -> None:
     )
     assert review.status == ReproductionStatus.BASELINE_ATTEMPTED
     assert any("structured execution identity" in reason for reason in review.reasons)
+
+
+def test_local_calibration_admits_only_official_identity_matched_useful_score() -> None:
+    payload = yaml.safe_load(SWEBENCH_CONFIG.read_text(encoding="utf-8"))["baselines"][0]
+    payload.update(
+        admission_kind="local_calibration",
+        published_score=None,
+        minimum_admission_score=0.2,
+        maximum_admission_score=0.8,
+    )
+    baseline = PublishedBaseline.model_validate(payload)
+    identity = _fixed50_execution_identity(baseline)
+    result = OfficialResult(
+        official_grader=True,
+        score=0.4,
+        resolved=20,
+        total=50,
+        task_ids=baseline.task_ids,
+        execution_identity=identity,
+    )
+    review = review_result(
+        baseline, result, absolute_tolerance=0.0, require_exact_cohort=True
+    )
+    assert review.status == ReproductionStatus.BASELINE_REPRODUCED
+    assert review.published_score is None
 
 
 def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:

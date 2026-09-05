@@ -9,6 +9,18 @@ from typing import Any, Mapping
 from .schema import CampaignConfig
 
 
+def _success_band(score: float) -> str:
+    if score < 0.10:
+        return "FLOOR"
+    if score < 0.20:
+        return "MARGINAL"
+    if score < 0.30 or score > 0.70 and score <= 0.80:
+        return "USEFUL"
+    if score <= 0.70:
+        return "PREFERRED"
+    return "SATURATED"
+
+
 def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) -> None:
     """Write every required report after each state transition."""
 
@@ -53,14 +65,63 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
         observed = review.get("observed_score")
         status = review.get("status") or value.get("state", "PLANNED")
         notes = "; ".join(review.get("reasons") or cell.notes or ("Not run",))
+        target = (
+            f"{baseline.published_score:.1%}"
+            if baseline.published_score is not None
+            else f"{baseline.minimum_admission_score:.1%}--{baseline.maximum_admission_score:.1%}"
+        )
         reproduction.append(
             f"| `{cell.cell_id}` | `{baseline.model}` | `{baseline.harness}` | "
-            f"{baseline.published_score:.1%} | {observed:.1%} | {status} | {notes} |"
+            f"{target} | {observed:.1%} | {status} | {notes} |"
             if observed is not None else
             f"| `{cell.cell_id}` | `{baseline.model}` | `{baseline.harness}` | "
-            f"{baseline.published_score:.1%} | - | {status} | {notes} |"
+            f"{target} | - | {status} | {notes} |"
         )
     (root / "reproduction_report.md").write_text("\n".join(reproduction) + "\n", encoding="utf-8")
+
+    calibration = [
+        "# Calibration report", "",
+        "Official, frozen No-PRA baselines determine whether PRA treatments may run.", "",
+        "| Cell | Tasks | Resolved | Success | Band | Treatment admitted |",
+        "| --- | ---: | ---: | ---: | --- | --- |",
+    ]
+    for cell in config.cells:
+        if cell.mode.value != "native":
+            continue
+        value = cells.get(cell.cell_id, {})
+        result = value.get("result") or {}
+        score = result.get("score")
+        admitted = value.get("reproduction_status") == "BASELINE_REPRODUCED"
+        calibration.append(
+            f"| `{cell.cell_id}` | {result.get('total', '-')} | "
+            f"{result.get('resolved', '-')} | "
+            f"{score:.1%} | {_success_band(score)} | {'yes' if admitted else 'no'} |"
+            if score is not None else
+            f"| `{cell.cell_id}` | - | - | - | PENDING | no |"
+        )
+    (root / "calibration_report.md").write_text(
+        "\n".join(calibration) + "\n", encoding="utf-8"
+    )
+
+    baseline_report = [
+        "# Baseline report", "",
+        "This report contains only No-PRA cells graded by the configured benchmark harness.", "",
+        *calibration[4:],
+    ]
+    (root / "baseline_report.md").write_text(
+        "\n".join(baseline_report) + "\n", encoding="utf-8"
+    )
+
+    difficulty = [
+        "# Difficulty analysis", "",
+        "Difficulty cohorts are frozen before inference. Treatment effects by trajectory and "
+        "context-demand bucket are reported only after matched task rows exist.", "",
+        "Current calibration bands:", "",
+        *[f"- `{line}`" for line in calibration[6:]],
+    ]
+    (root / "difficulty_analysis.md").write_text(
+        "\n".join(difficulty) + "\n", encoding="utf-8"
+    )
 
     treatments = [cell for cell in config.cells if cell.mode.value != "native"]
     frontier = [

@@ -8,6 +8,26 @@ The existing `experiments.agents` package remains the shared normalized result
 and official-harness adapter layer. This package adds long-running campaign
 state, external-result provenance, admission, and crash-safe reports.
 
+## Easier capability ladder
+
+Paper 4.5 first calibrates the available local model on deterministic subsets
+of the official SWE-bench Verified `<15 min fix` difficulty stratum. The
+Easy-20 and Easy-50 cards are nested, revision-pinned, digest-protected, and
+created before model execution:
+
+```bash
+python -m experiments.paper4_5_agent.build_easy_cohorts
+python -m experiments.paper4_5_agent.run_campaign \
+  --config experiments/paper4_5_agent/configs/campaigns/swebench_easy20_calibration.yaml \
+  --max-hours 18 --resume
+```
+
+The initial cell is an official No-PRA local calibration. It is not a claimed
+reproduction of the published H100 result. A score below 20% or above 80%
+closes the treatment gate; 30%-70% is the preferred operating regime. Only a
+qualifying frozen baseline permits an Easy-50 pass-through, matched-truncation,
+or PRA Selected Context comparison.
+
 ```bash
 python -m experiments.paper4_5_agent.run_campaign \
   --config experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml \

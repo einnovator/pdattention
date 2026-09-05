@@ -56,9 +56,15 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
     """Capture identity and host compatibility before expensive inference starts."""
 
     versions = package_versions()
+    expected_packages = {
+        "mini-swe-agent": args.harness_version,
+        "swebench": args.grader_version,
+    }
+    if not args.local_calibration and args.engine == "vllm":
+        expected_packages["vllm"] = args.engine_version
     differences = [
-        f"{name}={versions[name]!r}; source requires {expected!r}"
-        for name, expected in EXPECTED_PACKAGES.items()
+        f"{name}={versions[name]!r}; execution requires {expected!r}"
+        for name, expected in expected_packages.items()
         if versions[name] != expected
     ]
     if args.model_revision == "NOT_REPORTED_BY_SOURCE":
@@ -66,7 +72,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
     if args.tokenizer_revision == "NOT_REPORTED_BY_SOURCE":
         differences.append("execution tokenizer revision is not pinned")
     gpu = _nvidia_gpu()
-    if not _is_h100_80gb(gpu):
+    if not args.local_calibration and not _is_h100_80gb(gpu):
         differences.append(f"hardware={gpu or 'no NVIDIA GPU detected'}; source used one H100 80GB")
     current_dataset_revision = _dataset_revision()
     if current_dataset_revision != args.benchmark_revision:
@@ -84,24 +90,29 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "served_model": args.served_model,
         "model_revision": args.model_revision,
         "tokenizer_revision": args.tokenizer_revision,
-        "engine": "vllm",
+        "engine": args.engine,
+        "engine_version": args.engine_version,
         "engine_versions": versions,
         "package_record_sha256": package_record_hashes(),
-        "dtype": "bfloat16",
-        "kv_cache_dtype": "fp8",
-        "context_limit": 16384,
-        "max_steps": 40,
+        "dtype": args.dtype,
+        "quantization": args.quantization,
+        "kv_cache_dtype": args.kv_cache_dtype,
+        "context_limit": args.context_limit,
+        "max_steps": args.max_steps,
         "temperature": 0,
         "campaign_mode": args.mode,
         "context_budget_fraction": args.budget_fraction,
-        "harness_config": "swebench_backticks.yaml",
+        "harness": "mini-swe-agent",
+        "harness_version": args.harness_version,
+        "harness_config": args.scaffold,
         "model_class": "litellm_textbased",
-        "official_grader": "SWE-bench Docker harness",
+        "official_grader": args.grading,
+        "grader_version": args.grader_version,
         "python": sys.version,
         "os": platform.platform(),
         "gpu": gpu,
         "configuration_differences": differences,
-        "source_provenance_limitations": [
+        "source_provenance_limitations": [] if args.local_calibration else [
             "source study did not publish an immutable model revision",
             "source study did not publish an immutable tokenizer revision",
             "source study did not publish package or grader-image hashes",
@@ -167,10 +178,10 @@ def _execute_chunks(
                 sys.executable, "-m", "minisweagent.run.benchmarks.swebench",
                 "--subset", "verified", "--split", "test", "--filter", pattern,
                 "-m", f"openai/{args.served_model}", "--model-class", "litellm_textbased",
-                "-c", "swebench_backticks.yaml",
+                "-c", args.scaffold,
                 "-c", f"model.model_kwargs.api_base={agent_base_url}",
                 "-c", "model.model_kwargs.temperature=0",
-                "-c", "agent.step_limit=40", "-w", str(args.workers), "-o", str(chunk_dir),
+                "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers), "-o", str(chunk_dir),
             ]
             dataset_environment = {"HF_DATASETS_CACHE": str(output / "hf_datasets_cache")}
             _run(
@@ -182,7 +193,7 @@ def _execute_chunks(
                 raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
             grade_command = [
                 sys.executable, "-m", "swebench.harness.run_evaluation",
-                "-d", "princeton-nlp/SWE-bench_Verified", "-s", "test",
+                "-d", card["dataset"], "-s", card["split"],
                 "-p", str(predictions), "--instance_ids", *chunk_ids,
                 "--run_id", f"{args.run_id}_c{chunk_number}",
                 "--max_workers", str(args.grader_workers), "--cache_level", "base",
@@ -217,22 +228,22 @@ def _execute_chunks(
             "cohort_sha256": card["canonical_ids_sha256"],
             "benchmark_revision": args.benchmark_revision,
             "harness": "mini-swe-agent",
-            "harness_version": "2.4.0",
+            "harness_version": args.harness_version,
             "model": args.model,
             "model_revision": args.model_revision,
             "tokenizer_revision": args.tokenizer_revision,
-            "engine": "vllm",
-            "engine_version": "0.22.1",
-            "dtype": "bfloat16",
-            "quantization": None,
-            "kv_cache_dtype": "fp8",
-            "scaffold": "swebench_backticks.yaml",
-            "context_limit": 16384,
-            "max_steps": 40,
+            "engine": args.engine,
+            "engine_version": args.engine_version,
+            "dtype": args.dtype,
+            "quantization": args.quantization,
+            "kv_cache_dtype": args.kv_cache_dtype,
+            "scaffold": args.scaffold,
+            "context_limit": args.context_limit,
+            "max_steps": args.max_steps,
             "temperature": 0.0,
             "function_calling": False,
             "prefix_caching": False,
-            "grading": "SWE-bench 4.1.0 official Docker harness",
+            "grading": args.grading,
         },
     }
     _write_json(output / "official_aggregate.json", {
@@ -337,12 +348,12 @@ def _write_task_rows(
         rows.append({
             "run_id": args.run_id, "benchmark": "SWE-bench Verified",
             "instance_id": instance_id, "harness": "mini-swe-agent",
-            "harness_version": "2.4.0", "model": args.model,
-            "model_revision": args.model_revision, "engine": "vllm",
-            "engine_version": "0.22.1", "quantization": None,
-            "dtype": "bfloat16", "mode": args.mode,
+            "harness_version": args.harness_version, "model": args.model,
+            "model_revision": args.model_revision, "engine": args.engine,
+            "engine_version": args.engine_version, "quantization": args.quantization,
+            "dtype": args.dtype, "mode": args.mode,
             "pra_config_id": "swebench-balanced-v1" if args.mode == "gateway-pra" else None,
-            "context_budget": 16384, "seed": 0, "resolved": instance_id in resolved,
+            "context_budget": args.context_limit, "seed": 0, "resolved": instance_id in resolved,
             "benchmark_score": 1.0 if instance_id in resolved else 0.0,
             "logical_input_tokens": logical_tokens,
             "physical_input_tokens": physical_tokens,
@@ -485,6 +496,17 @@ def main() -> None:
     parser.add_argument("--tokenizer-revision", default="NOT_REPORTED_BY_SOURCE")
     parser.add_argument("--benchmark-revision", default=PINNED_DATASET_REVISION)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
+    parser.add_argument("--engine", default="vllm")
+    parser.add_argument("--engine-version", default=EXPECTED_PACKAGES["vllm"])
+    parser.add_argument("--dtype", default="bfloat16")
+    parser.add_argument("--quantization")
+    parser.add_argument("--kv-cache-dtype", default="fp8")
+    parser.add_argument("--harness-version", default=EXPECTED_PACKAGES["mini-swe-agent"])
+    parser.add_argument("--grader-version", default=EXPECTED_PACKAGES["swebench"])
+    parser.add_argument("--scaffold", default="swebench_backticks.yaml")
+    parser.add_argument("--grading", default="SWE-bench 4.1.0 official Docker harness")
+    parser.add_argument("--context-limit", type=int, default=16384)
+    parser.add_argument("--max-steps", type=int, default=40)
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
         "--mode", choices=("no-pra", *[mode.value for mode in ContextTreatment]),
@@ -497,6 +519,11 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=int, default=21600)
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--allow-partial-reproduction", action="store_true")
+    parser.add_argument(
+        "--local-calibration",
+        action="store_true",
+        help="Validate a pinned local configuration without imposing the H100 source host.",
+    )
     result = run(parser.parse_args())
     print(result)
 

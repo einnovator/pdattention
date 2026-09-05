@@ -13,8 +13,11 @@ def load_benchmark_card(path: str | Path) -> dict[str, Any]:
 
     card = json.loads(Path(path).read_text(encoding="utf-8"))
     ids = card.get("instance_ids") or []
-    if len(ids) != 50 or len(set(ids)) != 50:
-        raise ValueError("fixed SWE-bench cohort must contain exactly 50 unique IDs")
+    expected_count = int(card.get("expected_count", 50))
+    if len(ids) != expected_count or len(set(ids)) != expected_count:
+        raise ValueError(
+            f"fixed SWE-bench cohort must contain exactly {expected_count} unique IDs"
+        )
     source_bytes = ("\n".join(ids) + "\n").encode("utf-8")
     observed = hashlib.sha256(source_bytes).hexdigest()
     expected = str(card.get("canonical_ids_sha256") or "").lower()

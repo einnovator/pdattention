@@ -45,7 +45,7 @@ class OfficialResult(StrictModel):
 class ReproductionReview(StrictModel):
     status: ReproductionStatus
     compatible: bool
-    published_score: float
+    published_score: float | None
     observed_score: float | None = None
     score_delta: float | None = None
     observed_interval_95: tuple[float, float] | None = None
@@ -104,16 +104,31 @@ def review_result(
                     )
 
     interval = _wilson_interval(result.resolved, result.total)
-    score_delta = result.score - baseline.published_score
-    score_compatible = (
-        abs(score_delta) <= absolute_tolerance
-        or interval[0] <= baseline.published_score <= interval[1]
-    )
-    if not score_compatible:
-        reasons.append(
-            f"Observed score {result.score:.3f} is not compatible with published "
-            f"{baseline.published_score:.3f} at tolerance {absolute_tolerance:.3f}."
+    if baseline.admission_kind == "local_calibration":
+        score_delta = None
+        score_compatible = (
+            baseline.minimum_admission_score
+            <= result.score
+            <= baseline.maximum_admission_score
         )
+        if not score_compatible:
+            reasons.append(
+                f"Observed score {result.score:.3f} is outside the local admission band "
+                f"[{baseline.minimum_admission_score:.3f}, "
+                f"{baseline.maximum_admission_score:.3f}]."
+            )
+    else:
+        assert baseline.published_score is not None
+        score_delta = result.score - baseline.published_score
+        score_compatible = (
+            abs(score_delta) <= absolute_tolerance
+            or interval[0] <= baseline.published_score <= interval[1]
+        )
+        if not score_compatible:
+            reasons.append(
+                f"Observed score {result.score:.3f} is not compatible with published "
+                f"{baseline.published_score:.3f} at tolerance {absolute_tolerance:.3f}."
+            )
 
     identity_compatible = not reasons
     if identity_compatible and score_compatible:
@@ -129,7 +144,11 @@ def review_result(
         observed_score=result.score,
         score_delta=score_delta,
         observed_interval_95=interval,
-        reasons=tuple(reasons) or ("Official result matches the pinned baseline contract.",),
+        reasons=tuple(reasons) or (
+            "Official result satisfies the pinned local admission contract."
+            if baseline.admission_kind == "local_calibration"
+            else "Official result matches the pinned baseline contract.",
+        ),
     )
 
 

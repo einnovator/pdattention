@@ -38,13 +38,18 @@ class PublishedBaseline(StrictModel):
     """Externally reported result and all identity fields needed to reproduce it."""
 
     baseline_id: str
+    admission_kind: Literal["published_reproduction", "local_calibration"] = (
+        "published_reproduction"
+    )
     source_url: str
     source_revision: str
     benchmark_revision: str = "NOT_REPORTED_BY_SOURCE"
     task_ids_sha256: str | None = None
-    published_score: float = Field(ge=0, le=1)
+    published_score: float | None = Field(default=None, ge=0, le=1)
     published_resolved: int | None = Field(default=None, ge=0)
     published_total: int = Field(ge=1)
+    minimum_admission_score: float = Field(default=0.0, ge=0, le=1)
+    maximum_admission_score: float = Field(default=1.0, ge=0, le=1)
     benchmark: str
     dataset: str
     split: str
@@ -70,6 +75,14 @@ class PublishedBaseline(StrictModel):
     tool_configuration: str
     grading: str
     notes: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def admission_contract_is_coherent(self) -> "PublishedBaseline":
+        if self.admission_kind == "published_reproduction" and self.published_score is None:
+            raise ValueError("published reproduction requires published_score")
+        if self.minimum_admission_score > self.maximum_admission_score:
+            raise ValueError("minimum_admission_score cannot exceed maximum_admission_score")
+        return self
 
 
 class ResultContract(StrictModel):
