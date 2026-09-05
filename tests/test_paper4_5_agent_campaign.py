@@ -116,6 +116,7 @@ def test_easy20_campaign_is_local_no_pra_calibration() -> None:
     assert len(baseline.task_ids) == 20
     assert len(campaign.cells) == 1
     assert campaign.cells[0].mode.value == "native"
+    assert baseline.context_limit == 32768
     assert baseline.max_steps == 50
     assert campaign.cells[0].command[
         campaign.cells[0].command.index("--max-steps") + 1

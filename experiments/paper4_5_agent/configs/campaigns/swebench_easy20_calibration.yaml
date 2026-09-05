@@ -28,7 +28,7 @@ baselines:
     quantization: Q4_K_M
     kv_cache_dtype: f16
     scaffold: swebench_backticks.yaml
-    context_limit: 16384
+    context_limit: 32768
     max_steps: 50
     max_steps_absolute: 50
     temperature: 0
@@ -38,6 +38,7 @@ baselines:
     grading: SWE-bench 4.1.0 official Docker harness
     notes:
       - Local capability admission, not reproduction of the published H100 baseline.
+      - Context limit matches the dedicated Ollama endpoint's frozen 32768-token allocation.
       - Model inference runs on the Apple M4 Pro endpoint; agent and grader run on the Linux Docker host.
 cells:
   - cell_id: qwen3-coder-30b-easy20-no-pra
@@ -77,7 +78,7 @@ cells:
       - --grader-version
       - 4.1.0
       - --context-limit
-      - "16384"
+      - "32768"
       - --max-steps
       - "50"
       - --chunk-size
