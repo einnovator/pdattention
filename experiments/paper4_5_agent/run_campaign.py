@@ -134,6 +134,12 @@ def _treatment_gate(cell: Any, cells: dict[str, Any]) -> str | None:
             f"Treatment requires {cell.baseline_cell}=BASELINE_REPRODUCED; "
             f"observed {baseline.get('reproduction_status', baseline.get('state', 'PENDING'))}."
         )
+    observed_score = (baseline.get("result") or {}).get("score")
+    if observed_score is None or observed_score < cell.minimum_baseline_score:
+        return (
+            f"Treatment requires baseline score >= {cell.minimum_baseline_score:.3f}; "
+            f"observed {observed_score!r}."
+        )
     return None
 
 

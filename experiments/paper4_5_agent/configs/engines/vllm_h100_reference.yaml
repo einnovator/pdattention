@@ -1,0 +1,21 @@
+engine: vllm
+version: 0.22.1
+hardware: NVIDIA H100 80GB HBM3
+max_model_len: 16384
+gpu_memory_utilization:
+  qwen3_coder_30b_a3b: 0.90
+  gemma4_31b: 0.92
+trust_remote_code: true
+enforce_eager:
+  qwen3_coder_30b_a3b: false
+  gemma4_31b: true
+prefix_caching: source_default_not_explicitly_enabled
+launch_examples:
+  qwen3_coder_30b_a3b: >-
+    vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct --port 8000
+    --max-model-len 16384 --gpu-memory-utilization 0.90 --trust-remote-code
+    --served-model-name Qwen3-Coder-30B-A3B --kv-cache-dtype fp8
+  gemma4_31b: >-
+    vllm serve google/gemma-4-31B-it --port 8000 --max-model-len 16384
+    --gpu-memory-utilization 0.92 --trust-remote-code --served-model-name gemma-4-31B
+    --kv-cache-dtype fp8 --enforce-eager

@@ -1,0 +1,40 @@
+schema_version: 1
+diagnostic_id: swebench-qwen-fixed10-precision-v1
+benchmark_card: experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json
+selection: first_10_ordered_ids
+purpose: quantify deployment degradation before choosing a PRA treatment cell
+reproduction_evidence: false
+fixed:
+  model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+  model_revision: pin_at_execution
+  tokenizer_revision: same_as_model
+  harness: mini-swe-agent
+  harness_version: 2.4.0
+  context_limit: 16384
+  max_steps: 40
+  temperature: 0
+  official_grader: SWE-bench 4.1.0 Docker harness
+ladder:
+  - precision: BF16
+    engine: vllm
+    role: reference
+  - precision: Q8
+    engine: llama.cpp
+  - precision: Q6_K
+    engine: llama.cpp
+  - precision: Q5_K_M
+    engine: llama.cpp
+  - precision: Q4_K_M
+    engine: llama.cpp
+metrics:
+  - resolved
+  - empty_patch
+  - invalid_patch
+  - malformed_tool_call
+  - cumulative_input_tokens
+  - output_tokens
+  - wall_time_s
+stop_conditions:
+  - pathological_tool_call_failure
+  - dominant_empty_or_invalid_patches
+  - clear_collapse_relative_to_higher_precision

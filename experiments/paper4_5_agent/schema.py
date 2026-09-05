@@ -9,6 +9,8 @@ from typing import Literal, Mapping
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .benchmark import load_benchmark_card
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -18,6 +20,7 @@ class CampaignMode(str, Enum):
     """Execution modes ordered from ordinary inference to native PRA."""
 
     NATIVE = "native"
+    TRUNCATION = "truncation"
     GATEWAY_PASSTHROUGH = "gateway_passthrough"
     GATEWAY_PRA = "gateway_pra"
     NATIVE_PRA = "native_pra"
@@ -37,6 +40,8 @@ class PublishedBaseline(StrictModel):
     baseline_id: str
     source_url: str
     source_revision: str
+    benchmark_revision: str = "NOT_REPORTED_BY_SOURCE"
+    task_ids_sha256: str | None = None
     published_score: float = Field(ge=0, le=1)
     published_resolved: int | None = Field(default=None, ge=0)
     published_total: int = Field(ge=1)
@@ -44,6 +49,7 @@ class PublishedBaseline(StrictModel):
     dataset: str
     split: str
     task_ids: tuple[str, ...] = ()
+    task_ids_path: str | None = None
     harness: str
     harness_version: str
     model: str
@@ -85,6 +91,7 @@ class CampaignCell(StrictModel):
     working_directory: str = "."
     environment: Mapping[str, str] = Field(default_factory=dict)
     timeout_seconds: int = Field(default=3600, ge=1)
+    minimum_baseline_score: float = Field(default=0.0, ge=0, le=1)
     result: ResultContract
     enabled: bool = True
     notes: tuple[str, ...] = ()
@@ -130,7 +137,22 @@ class CampaignConfig(StrictModel):
 
     @classmethod
     def load(cls, path: str | Path) -> "CampaignConfig":
-        return cls.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+        config_path = Path(path)
+        payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        for baseline in payload.get("baselines", []):
+            task_ids_path = baseline.get("task_ids_path")
+            if task_ids_path and not baseline.get("task_ids"):
+                root = _find_repository_root(config_path.resolve())
+                card = load_benchmark_card(root / task_ids_path)
+                baseline["task_ids"] = card["instance_ids"]
+        return cls.model_validate(payload)
 
     def baseline(self, baseline_id: str) -> PublishedBaseline:
         return next(row for row in self.baselines if row.baseline_id == baseline_id)
+
+
+def _find_repository_root(path: Path) -> Path:
+    for parent in (path.parent, *path.parents):
+        if (parent / "pyproject.toml").is_file() and (parent / "experiments").is_dir():
+            return parent
+    raise ValueError(f"cannot resolve repository-relative campaign artifacts from {path}")

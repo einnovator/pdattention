@@ -1,0 +1,20 @@
+policy_id: swebench-strongest-validated-balanced-v1
+status: LOCKED_PENDING_BASELINE_REPRODUCTION
+fairness:
+  selector_input: agent-visible trajectory only
+  forbidden:
+    - gold_patch
+    - hidden_tests
+    - FAIL_TO_PASS
+    - grader_metadata
+budgets: [1.0, 0.5, 0.25, 0.125]
+matched_controls:
+  - full_context
+  - truncation
+  - native_harness_compaction
+modes:
+  - gateway_passthrough
+  - gateway_pra
+  - native_pra
+minimum_exploratory_baseline_score: 0.10
+preferred_main_baseline_score: 0.20

@@ -10,6 +10,10 @@ import pytest
 import yaml
 
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
+from experiments.paper4_5_agent.benchmark import (
+    load_benchmark_card,
+    precision_diagnostic_ids,
+)
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
     _completed_attempt,
@@ -27,12 +31,112 @@ from experiments.paper4_5_agent.runners.r2egym import (
 from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
 from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
+from experiments.paper4_5_agent.runners.swebench_verified import (
+    _is_h100_80gb,
+    _normalize_report,
+    package_versions,
+)
 from experiments.agents.schema import BenchmarkManifest
 
 
 ROOT = Path(__file__).parents[1]
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
+SWEBENCH_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml"
+FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json"
+
+
+def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:
+    card = load_benchmark_card(FIXED50)
+    assert len(card["instance_ids"]) == len(set(card["instance_ids"])) == 50
+    assert card["source_revision"] == "8f894c2284b9f73a515024d7c1f32e4d0fb14a04"
+    assert card["canonical_ids_sha256"] == (
+        "20acb5f7e30fb3c854091e47c4214afb7304a5d47f353408a71ffaa418318131"
+    )
+    assert precision_diagnostic_ids(card) == tuple(card["instance_ids"][:10])
+
+
+def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
+    campaign = CampaignConfig.load(SWEBENCH_CONFIG)
+    assert [baseline.published_resolved for baseline in campaign.baselines] == [7, 19]
+    assert all(len(baseline.task_ids) == 50 for baseline in campaign.baselines)
+    assert all(not cell.enabled for cell in campaign.cells)
+    treatments = [cell for cell in campaign.cells if cell.baseline_cell]
+    assert treatments
+    assert all(cell.baseline_cell == "gemma4-31b-no-pra" for cell in treatments)
+    assert all(cell.minimum_baseline_score == 0.20 for cell in treatments)
+
+
+def test_fixed50_campaign_dry_run_cannot_admit_pra(tmp_path: Path) -> None:
+    payload = yaml.safe_load(SWEBENCH_CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "swebench")
+    for cell in payload["cells"]:
+        cell["enabled"] = True
+    config = ROOT / "experiments/paper4_5_agent/configs/campaigns/.tmp_swebench_test.yaml"
+    try:
+        config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        state = run_campaign(config, max_hours=1, resume=False, dry_run=True)
+    finally:
+        config.unlink(missing_ok=True)
+    assert state["cells"]["qwen3-coder-30b-no-pra"]["state"] == "PENDING"
+    assert state["cells"]["gemma4-31b-no-pra"]["state"] == "PENDING"
+    assert state["cells"]["gemma4-pra-50"]["state"] == "BLOCKED"
+
+
+def test_baseline_score_floor_blocks_weak_but_reproduced_cell(tmp_path: Path) -> None:
+    payload = yaml.safe_load(SWEBENCH_CONFIG.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "swebench")
+    treatment = payload["cells"][2]
+    treatment["baseline_id"] = "qwen3-coder-30b-fixed50"
+    treatment["baseline_cell"] = "qwen3-coder-30b-no-pra"
+    payload["cells"] = [payload["cells"][0], treatment]
+    config = ROOT / "experiments/paper4_5_agent/configs/campaigns/.tmp_swebench_gate.yaml"
+    try:
+        config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        loaded = CampaignConfig.load(config)
+        baseline_ids = list(loaded.baselines[0].task_ids)
+        result = tmp_path / "weak.json"
+        result.write_text(json.dumps({
+            "official_grader": True, "score": 0.14, "resolved": 7, "total": 50,
+            "task_ids": baseline_ids, "configuration_differences": [],
+        }), encoding="utf-8")
+        record_result(config, cell_id="qwen3-coder-30b-no-pra", result_path=result)
+        with pytest.raises(ValueError, match="baseline score >= 0.200"):
+            record_result(config, cell_id="gemma4-gateway-passthrough", result_path=result)
+    finally:
+        config.unlink(missing_ok=True)
+
+
+def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({
+        "submitted_ids": ["a", "b"], "resolved_ids": ["b"], "error_ids": [],
+    }), encoding="utf-8")
+    assert _normalize_report(report, ["a", "b"])["resolved_ids"] == ["b"]
+    with pytest.raises(RuntimeError, match="frozen chunk"):
+        _normalize_report(report, ["a", "c"])
+
+
+def test_swebench_package_probe_uses_null_for_missing_distributions() -> None:
+    versions = package_versions()
+    assert set(versions) == {"mini-swe-agent", "swebench", "vllm"}
+    assert all(value is None or isinstance(value, str) for value in versions.values())
+
+
+def test_official_result_rejects_inconsistent_score_and_ids() -> None:
+    with pytest.raises(ValueError, match="score must equal"):
+        OfficialResult(official_grader=True, score=0.5, resolved=1, total=3)
+    with pytest.raises(ValueError, match="task_ids length"):
+        OfficialResult(
+            official_grader=True, score=0.5, resolved=1, total=2,
+            task_ids=("only-one",),
+        )
+
+
+def test_h100_preflight_accepts_nvidia_smi_mib_format() -> None:
+    assert _is_h100_80gb("NVIDIA H100 80GB HBM3, 81559 MiB")
+    assert not _is_h100_80gb("NVIDIA H100 PCIe, 61440 MiB")
+    assert not _is_h100_80gb("NVIDIA RTX 4090, 24564 MiB")
 
 
 def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:
@@ -93,6 +197,9 @@ def test_dry_run_persists_reports_and_blocks_treatments(tmp_path: Path) -> None:
     output = tmp_path / "campaign"
     assert (output / "campaign_state.json").is_file()
     assert (output / "reproduction_report.md").is_file()
+    assert (output / "precision_report.md").is_file()
+    assert (output / "engine_report.md").is_file()
+    assert (output / "pra_frontier_report.md").is_file()
     assert json.loads((output / "summary.json").read_text())["pra_interpretation_allowed"] is False
 
 

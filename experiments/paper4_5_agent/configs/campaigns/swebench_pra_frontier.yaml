@@ -1,0 +1,118 @@
+schema_version: 1
+campaign_id: paper4-5-swebench-fixed50-pra-frontier-v1
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign
+baselines:
+  - &qwen_baseline
+    baseline_id: qwen3-coder-30b-fixed50
+    source_url: https://github.com/serbulent-av/agentic-coding/blob/main/benchmarks/local-llm-coding-benchmark.md
+    source_revision: 8f894c2284b9f73a515024d7c1f32e4d0fb14a04
+    benchmark_revision: NOT_REPORTED_BY_SOURCE
+    task_ids_sha256: 20acb5f7e30fb3c854091e47c4214afb7304a5d47f353408a71ffaa418318131
+    task_ids_path: experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json
+    published_score: 0.14
+    published_resolved: 7
+    published_total: 50
+    benchmark: SWE-bench Verified
+    dataset: princeton-nlp/SWE-bench_Verified
+    split: test
+    harness: mini-swe-agent
+    harness_version: 2.4.0
+    model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    model_revision: NOT_REPORTED_BY_SOURCE
+    tokenizer_revision: NOT_REPORTED_BY_SOURCE
+    engine: vllm
+    engine_version: 0.22.1
+    dtype: bfloat16
+    quantization: null
+    scaffold: swebench_backticks.yaml
+    context_limit: 16384
+    max_steps: 40
+    max_steps_absolute: 40
+    temperature: 0
+    function_calling: false
+    prefix_caching: false
+    tool_configuration: unmodified mini-swe-agent text/backticks bash tool
+    grading: SWE-bench 4.1.0 official Docker harness
+    notes:
+      - FP8 KV cache; source does not report immutable model/tokenizer revisions or image digests.
+  - <<: *qwen_baseline
+    baseline_id: gemma4-31b-fixed50
+    published_score: 0.38
+    published_resolved: 19
+    model: google/gemma-4-31B-it
+    notes:
+      - FP8 KV cache and enforce-eager; preferred main PRA target.
+      - Source does not report immutable model/tokenizer revisions or image digests.
+cells:
+  - &qwen_cell
+    cell_id: qwen3-coder-30b-no-pra
+    stage: A
+    mode: native
+    baseline_id: qwen3-coder-30b-fixed50
+    command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/qwen3_no_pra, --model, Qwen/Qwen3-Coder-30B-A3B-Instruct, --served-model, Qwen3-Coder-30B-A3B, --run-id, qwen3-coder-30b-no-pra]
+    timeout_seconds: 64800
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/qwen3_no_pra/official_result.json
+      absolute_tolerance: 0.04
+      require_exact_cohort: true
+    enabled: false
+    notes:
+      - Requires the exact H100-class source environment; disabled on the current fleet.
+  - <<: *qwen_cell
+    cell_id: gemma4-31b-no-pra
+    baseline_id: gemma4-31b-fixed50
+    command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_no_pra, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --run-id, gemma4-31b-no-pra]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_no_pra/official_result.json
+      absolute_tolerance: 0.10
+      require_exact_cohort: true
+    notes:
+      - Preferred treatment baseline; requires one H100 80GB or equivalent.
+  - &gemma_treatment
+    cell_id: gemma4-gateway-passthrough
+    stage: C
+    mode: gateway_passthrough
+    baseline_id: gemma4-31b-fixed50
+    baseline_cell: gemma4-31b-no-pra
+    minimum_baseline_score: 0.20
+    command: [python, -c, "raise SystemExit('gateway treatment adapter pending admitted baseline')"]
+    timeout_seconds: 64800
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_gateway/official_result.json
+    enabled: false
+  - <<: *gemma_treatment
+    cell_id: gemma4-truncation-50
+    mode: truncation
+    command: [python, -c, "raise SystemExit('matched truncation control pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_50/official_result.json
+  - <<: *gemma_treatment
+    cell_id: gemma4-pra-50
+    mode: gateway_pra
+    command: [python, -c, "raise SystemExit('PRA 50 percent treatment pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_50/official_result.json
+  - <<: *gemma_treatment
+    cell_id: gemma4-truncation-25
+    mode: truncation
+    command: [python, -c, "raise SystemExit('matched truncation control pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_25/official_result.json
+  - <<: *gemma_treatment
+    cell_id: gemma4-pra-25
+    mode: gateway_pra
+    command: [python, -c, "raise SystemExit('PRA 25 percent treatment pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_25/official_result.json
+  - <<: *gemma_treatment
+    cell_id: gemma4-truncation-12-5
+    mode: truncation
+    command: [python, -c, "raise SystemExit('matched truncation control pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_12_5/official_result.json
+  - <<: *gemma_treatment
+    cell_id: gemma4-pra-12-5
+    mode: gateway_pra
+    command: [python, -c, "raise SystemExit('PRA 12.5 percent treatment pending admitted baseline')"]
+    result:
+      path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_12_5/official_result.json

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .schema import PublishedBaseline, ReproductionStatus, StrictModel
 
@@ -20,6 +20,20 @@ class OfficialResult(StrictModel):
     task_ids: tuple[str, ...] = ()
     configuration_differences: tuple[str, ...] = ()
     grader_artifact: str | None = None
+
+    @model_validator(mode="after")
+    def counts_and_score_are_consistent(self) -> "OfficialResult":
+        if self.resolved > self.total:
+            raise ValueError("resolved count cannot exceed total")
+        expected_score = self.resolved / self.total
+        if not math.isclose(self.score, expected_score, rel_tol=0.0, abs_tol=1e-12):
+            raise ValueError("score must equal resolved / total")
+        if self.task_ids:
+            if len(self.task_ids) != self.total:
+                raise ValueError("task_ids length must equal total")
+            if len(set(self.task_ids)) != len(self.task_ids):
+                raise ValueError("task_ids must be unique")
+        return self
 
     @classmethod
     def load(cls, path: str | Path) -> "OfficialResult":

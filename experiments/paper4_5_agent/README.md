@@ -91,3 +91,42 @@ reported token usage accumulated 6,717,096 input tokens. Normalized evidence
 and the complete compressed Harbor artifact tree are under
 `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/`
 `qwen3_coder_30b_multi_harness_v3/`.
+
+## Controlled SWE-bench fixed-50 campaign
+
+The next campaign uses the exact ordered 50-instance cohort from the external
+controlled local-model study. Its machine-readable card, source commit, and
+platform-independent digest are in
+`benchmarks/swebench_verified_fixed50.json`. The source recipe is encoded in
+the model, engine, harness, and PRA YAML files under `configs/`.
+
+Run a cheap host audit before installing or loading any model:
+
+```bash
+python -m experiments.paper4_5_agent.runners.swebench_verified \
+  --benchmark-card experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json \
+  --output /tmp/pra-swebench-preflight \
+  --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
+  --served-model Qwen3-Coder-30B-A3B \
+  --run-id qwen3-preflight --preflight-only
+```
+
+The source-matched run requires mini-swe-agent `2.4.0`, SWE-bench `4.1.0`,
+vLLM `0.22.1`, and one H100 80 GB. The source did not publish immutable model
+or tokenizer revisions, so this omission is explicit in every preflight
+receipt. `--allow-partial-reproduction` permits diagnostics on a changed host,
+but such a receipt carries configuration differences and cannot unlock PRA.
+
+The full resumable scheduler is intentionally disabled until a qualifying host
+and immutable current revisions are entered:
+
+```bash
+python -m experiments.paper4_5_agent.run_campaign \
+  --config experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml \
+  --max-hours 16 --resume
+```
+
+Once enabled, it runs Qwen first, then Gemma, and admits the 50/25/12.5 percent
+frontier only when Gemma is officially reproduced and its observed baseline
+score is at least 20 percent. The Qwen 14 percent target remains a lower-
+capability control and cannot unlock the Gemma treatment cells.

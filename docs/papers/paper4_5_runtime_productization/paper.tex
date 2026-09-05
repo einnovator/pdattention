@@ -3003,6 +3003,30 @@ official score, verifier counts, turns, tool calls, cumulative context, TTFT
 and ITL distributions, decode output tokens/s, model-call requests/s, queue and
 inference time, resource use, and cost for that subsequent paired analysis.
 
+We therefore preregistered a stronger controlled SWE-bench campaign from an
+independent local-model study~\cite{av2026localcoding}. The checked-in benchmark
+card preserves its ordered seed-0 cohort of 50 SWE-bench Verified instances at
+source revision \texttt{8f894c2}; a canonical LF-joined digest
+\texttt{20acb5f7...1818131} prevents accidental resampling. The source used
+mini-swe-agent 2.4.0 with its unmodified text/backticks scaffold, SWE-bench
+4.1.0 Docker grading, vLLM 0.22.1, 16,384 model tokens, 40 steps, temperature
+zero, BF16 weights, and FP8 K/V on one H100 80~GB. Its reported controls are
+7/50 for Qwen3-Coder-30B-A3B-Instruct and 19/50 for Gemma-4-31B-it. These are
+external reproduction targets, not PRA results.
+
+The executable contract keeps both reference cells and all treatments disabled
+until a qualifying host is recorded. The currently reachable local CUDA device
+has 4~GB, and the known 48--64~GB Apple hosts cannot reproduce
+vLLM/H100/BF16. Moreover, the source does not publish immutable
+model/tokenizer revisions, package hashes, or grader-image digests. The runner
+writes these omissions as configuration differences rather than silently
+equating current artifacts with the source. An exact-cohort score on a changed
+artifact remains partial and cannot unlock PRA. After an admitted Gemma result
+of at least 20\%, the scheduler orders gateway pass-through, matched
+truncation, and PRA at 50\%, 25\%, and 12.5\% physical-context budgets. The
+first ten ordered IDs separately define a BF16/Q8/Q6/Q5/Q4 precision
+diagnostic; its result cannot be reported as fixed-50 reproduction evidence.
+
 \begin{table}[H]
 \centering
 \small
@@ -3580,6 +3604,11 @@ pinned agent adapters, official-Harbor normalization, and paired analysis\\
 \path{experiments/paper4_5_agent/} & Published-baseline cards, resumable
 campaign state, distributed result import, official SWE-bench normalization,
 and hard No-PRA reproduction gates\\
+\path{experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json} &
+Digest-protected external seed-0 cohort and source provenance\\
+\path{experiments/paper4_5_agent/runners/swebench_verified.py} & Baseline-only
+mini-swe-agent chunk runner, host preflight, official-grader normalization, and
+null-safe telemetry receipts\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\
