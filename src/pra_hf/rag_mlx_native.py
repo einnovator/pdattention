@@ -933,14 +933,24 @@ def compose_cross_document_memory(
     )
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     boundary_tokens = config.mode.boundary_tokens
+    gist_edges = int(mask_torch.sum().item())
+    boundary_edges = local_tokens if boundary_tokens else 0
+    layer_count = len(model_layers)
+    # Two gist matmuls (QK and AV) plus additive K/V boundary realization.
+    composition_flops = (
+        4 * layer_count * int(gist_dim or 0) * gist_edges
+        + 2 * layer_count * int(gist_dim or 0) * boundary_edges
+    )
     receipt = CrossDocumentCompositionReceipt(
         mode=config.mode.value,
         gist_count=len(memories),
         gist_dim=int(gist_dim or 0),
         gist_attention_mask=config.attention_mask.value,
-        gist_attention_edges=int(mask_torch.sum().item()),
+        gist_attention_edges=gist_edges,
         boundary_tokens_per_record=boundary_tokens,
         corrected_token_count=local_tokens if boundary_tokens else 0,
+        boundary_conditioning_edges=boundary_edges,
+        request_composition_flops_estimate=composition_flops,
         request_composition_ms=elapsed_ms,
         request_composition_bytes=composed.nbytes - rebound.nbytes,
         persistent_native_tokens=rebound.source_tokens,

@@ -68,6 +68,8 @@ class CrossDocumentCompositionReceipt:
     gist_attention_edges: int
     boundary_tokens_per_record: int
     corrected_token_count: int
+    boundary_conditioning_edges: int
+    request_composition_flops_estimate: int
     request_composition_ms: float
     request_composition_bytes: int
     persistent_native_tokens: int
@@ -79,7 +81,7 @@ class CrossDocumentCompositionReceipt:
     normalization_policy: str
     position_policy: str
     kv_correction_rank: int | None = None
-    schema_version: str = "paper3.2-crossdoc-composition-v1"
+    schema_version: str = "paper3.2-crossdoc-composition-v2"
 
     @property
     def receipt_id(self) -> str:

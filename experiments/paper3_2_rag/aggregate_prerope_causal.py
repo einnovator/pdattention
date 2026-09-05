@@ -171,6 +171,12 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                     "request_composition_bytes": _row_mean(
                         selected, "request_composition_bytes"
                     ),
+                    "request_composition_flops_estimate": _row_mean(
+                        selected, "request_composition_flops_estimate"
+                    ),
+                    "boundary_conditioning_edges": _row_mean(
+                        selected, "boundary_conditioning_edges"
+                    ),
                     "request_local_native_tokens": _row_mean(
                         selected, "request_local_native_tokens"
                     ),
@@ -231,6 +237,12 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 ),
                 "seed_mean_request_composition_bytes": _row_mean(
                     seed_rows, "request_composition_bytes"
+                ),
+                "seed_mean_request_composition_flops_estimate": _row_mean(
+                    seed_rows, "request_composition_flops_estimate"
+                ),
+                "seed_mean_boundary_conditioning_edges": _row_mean(
+                    seed_rows, "boundary_conditioning_edges"
                 ),
                 "seed_mean_request_local_native_tokens": _row_mean(
                     seed_rows, "request_local_native_tokens"
@@ -422,6 +434,8 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                 "seed_mean_cross_document_interaction_edges",
                 "seed_mean_request_composition_ms",
                 "seed_mean_request_composition_bytes",
+                "seed_mean_request_composition_flops_estimate",
+                "seed_mean_boundary_conditioning_edges",
                 "seed_mean_request_local_native_tokens",
                 "seed_mean_request_rope_transform_ms",
                 "seed_mean_official_multihop_rag_score",
@@ -460,6 +474,12 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                     ],
                     "seed_mean_request_composition_bytes": row[
                         "seed_mean_request_composition_bytes"
+                    ],
+                    "seed_mean_request_composition_flops_estimate": row[
+                        "seed_mean_request_composition_flops_estimate"
+                    ],
+                    "seed_mean_boundary_conditioning_edges": row[
+                        "seed_mean_boundary_conditioning_edges"
                     ],
                     "seed_mean_request_local_native_tokens": row[
                         "seed_mean_request_local_native_tokens"

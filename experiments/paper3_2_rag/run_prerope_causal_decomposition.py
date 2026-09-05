@@ -278,6 +278,7 @@ def _condition_row(
         ),
         "cross_document_interaction_edges": (
             composition_receipt.gist_attention_edges
+            + composition_receipt.boundary_conditioning_edges
             if composition_receipt is not None
             else mask_receipt.cross_document_attention_edges_allowed
         ),
@@ -298,6 +299,16 @@ def _condition_row(
         ),
         "corrected_token_count": (
             composition_receipt.corrected_token_count if composition_receipt else 0
+        ),
+        "boundary_conditioning_edges": (
+            composition_receipt.boundary_conditioning_edges
+            if composition_receipt
+            else 0
+        ),
+        "request_composition_flops_estimate": (
+            composition_receipt.request_composition_flops_estimate
+            if composition_receipt
+            else 0
         ),
         "request_composition_ms": (
             composition_receipt.request_composition_ms if composition_receipt else 0.0

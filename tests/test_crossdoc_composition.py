@@ -83,6 +83,8 @@ def test_composition_contract_rejects_independent_mode_and_is_reproducible() -> 
         gist_attention_edges=4,
         boundary_tokens_per_record=0,
         corrected_token_count=0,
+        boundary_conditioning_edges=0,
+        request_composition_flops_estimate=4096,
         request_composition_ms=1.0,
         request_composition_bytes=128,
         persistent_native_tokens=17,
@@ -96,6 +98,7 @@ def test_composition_contract_rejects_independent_mode_and_is_reproducible() -> 
     )
     assert receipt.receipt_id == dataclasses.replace(receipt).receipt_id
     assert receipt.to_dict()["receipt_id"] == receipt.receipt_id
+    assert receipt.to_dict()["request_composition_flops_estimate"] == 4096
 
 
 @pytest.mark.parametrize(
