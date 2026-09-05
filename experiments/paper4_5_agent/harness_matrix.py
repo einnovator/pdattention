@@ -254,6 +254,7 @@ def run_matrix(
         except (OSError, ValueError) as exc:
             record.update(state="FAILED", finished_at=_now(), reason=str(exc))
         _persist(config, manifest, state, output, state_path)
+    _persist(config, manifest, state, output, state_path)
     return state
 
 
@@ -322,14 +323,17 @@ def _write_markdown_report(
         f"- Frozen manifest: `{manifest.name}` ({len(manifest.task_ids)} tasks)",
         f"- Completed: `{summary['runs']}/{expected}` trials",
         f"- Admission: `{gate['status']}` - {gate['reason']}",
-        "", "| Harness | Runs | Success | Input tokens | Output tokens | Model calls | Tool calls | Wall h |",
+        f"- Tasks solved by any harness: `{summary['tasks_solved_any']}/"
+        f"{summary['unique_tasks']}`",
+        "", "| Harness | Runs | Success | Reported input tokens | Token coverage | Model calls | Tool calls | Wall h |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for harness, values in sorted(summary["by_harness"].items()):
         lines.append(
             f"| `{harness}` | {values['runs']} | {values['successes']}/{values['runs']} "
             f"({values['success_rate']:.1%}) | {values['input_tokens']:,} | "
-            f"{values['output_tokens']:,} | {values['model_calls']:,} | "
+            f"{values['token_reported_runs']}/{values['runs']} | "
+            f"{values['model_calls']:,} | "
             f"{values['tool_calls']:,} | {values['wall_ms'] / 3_600_000:.2f} |"
         )
     lines.extend((
@@ -347,12 +351,16 @@ def _summarize(rows: list[Any]) -> dict[str, Any]:
         bucket = by_harness.setdefault(
             row.identity.agent,
             {"runs": 0, "successes": 0, "input_tokens": 0, "output_tokens": 0,
-             "model_calls": 0, "tool_calls": 0, "wall_ms": 0.0},
+             "token_reported_runs": 0, "model_calls": 0, "tool_calls": 0,
+             "wall_ms": 0.0},
         )
         bucket["runs"] += 1
         bucket["successes"] += int(row.outcome.success)
         bucket["input_tokens"] += row.tokens.input_tokens
         bucket["output_tokens"] += row.tokens.output_tokens
+        bucket["token_reported_runs"] += int(
+            bool(row.tokens.input_tokens or row.tokens.output_tokens)
+        )
         bucket["model_calls"] += row.behavior.model_calls
         bucket["tool_calls"] += row.behavior.tool_calls
         bucket["wall_ms"] += row.timings.task_wall_ms
@@ -360,9 +368,15 @@ def _summarize(rows: list[Any]) -> dict[str, Any]:
         runs = int(bucket["runs"])
         bucket["success_rate"] = bucket["successes"] / runs if runs else 0.0
     successes = sum(row.outcome.success for row in rows)
+    task_ids = {row.identity.task_id for row in rows}
+    solved_tasks = {row.identity.task_id for row in rows if row.outcome.success}
     return {
         "runs": len(rows), "successes": successes,
         "success_rate": successes / len(rows) if rows else None,
+        "unique_tasks": len(task_ids), "tasks_solved_any": len(solved_tasks),
+        "token_reported_runs": sum(
+            bool(row.tokens.input_tokens or row.tokens.output_tokens) for row in rows
+        ),
         "input_tokens": sum(row.tokens.input_tokens for row in rows),
         "output_tokens": sum(row.tokens.output_tokens for row in rows),
         "by_harness": by_harness,

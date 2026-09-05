@@ -304,6 +304,8 @@ def test_harbor_matrix_dry_run_is_pra_locked_and_writes_all_cells(
     summary = json.loads((tmp_path / "matrix/summary.json").read_text(encoding="utf-8"))
     assert summary["expected_runs"] == 30
     assert summary["completed_runs"] == 0
+    assert summary["summary"]["tasks_solved_any"] == 0
+    assert summary["summary"]["token_reported_runs"] == 0
     assert summary["admission_gate"]["eligible"] is False
     report = (tmp_path / "matrix/report.md").read_text(encoding="utf-8")
     assert "official-Harbor **No-PRA baseline**" in report
