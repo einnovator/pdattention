@@ -513,6 +513,19 @@ it avoids request-time rotation when positions are fixed; pre-RoPE is an
 experimental composition facility, not a claim that rotation alone restores
 the causal history missing from independently encoded records.
 
+Paper~3.2 now measures that distinction directly. In a tiny unquantized Qwen
+fixture, independently encoded pre-RoPE records rebound to packed positions
+match a document-isolated packed computation at every K/V layer and in final
+logits within $2\times10^{-5}$. Across five 30-question Qwen3-1.7B 4-bit
+cohorts, the same comparison remains close at task level (.108 versus .110 F1;
+mean first-step JS $8.80\times10^{-4}$), but only 101/150 generated outputs
+match and no first-step logit hash is exact. Value-state error grows through the
+decoder, consistent with shape-dependent finite-precision projection and
+attention paths. Pre-RoPE storage therefore remains
+\texttt{CALIBRATION\_PENDING}: an adapter must qualify the host RoPE contract
+and numerical runtime separately, and neither qualification establishes the
+cross-record causal contextualization supplied by fresh packed encoding.
+
 \begin{table}[H]
 \centering
 \caption{HF native-reference correctness ladder. E0 is an offline FP32 mechanism
@@ -3216,7 +3229,12 @@ its held-out repair controller improves fidelity per repaired token without
 preserving answer quality. Reusable source-local chunks therefore remain an
 experimental composition mode, not a free cache win. Qwen3-8B and Llama
 replications preserve the successful contiguous-native gate while leaving the
-independent-record gate closed. The practical
+independent-record gate closed. Its newer pre-RoPE decomposition further shows
+that rebinding can closely reproduce a causally isolated packed control, but a
+production 4-bit checkpoint does not provide exact numerical parity and
+rebinding does not restore cross-record contextual history. The runtime thus
+keeps post-RoPE contiguous reuse as the qualified default and exposes pre-RoPE
+only behind explicit compatibility and evidence-tier metadata. The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
