@@ -470,6 +470,25 @@ def _write_latex_tables(result: Mapping[str, object], output: Path) -> None:
         "\n".join(systems) + "\n", encoding="utf-8"
     )
 
+    bc = result["b_minus_c"]  # type: ignore[index]
+    fidelity = [
+        "\\begin{tabular}{lr}",
+        "\\toprule",
+        "B/C diagnostic & Value \\\\",
+        "\\midrule",
+        f"Generated-output agreement & {int(bc['output_matches'])}/{int(bc['pairs'])} \\\\",
+        f"Exact first-step-logit hashes & {int(bc['first_step_logit_hash_matches'])}/{int(bc['pairs'])} \\\\",
+        f"Mean first-step JS & {float(bc['mean_first_step_js_divergence']):.6f} \\\\",
+        f"Mean $|\\Delta\\mathrm{{NLL}}|$ & {float(bc['mean_gold_nll_abs_delta']):.4f} \\\\",
+        f"Worst layer key RMSE & {float(bc['max_layer_key_rmse_across_runs']):.4f} \\\\",
+        f"Worst layer value RMSE & {float(bc['max_layer_value_rmse_across_runs']):.4f} \\\\",
+        "\\bottomrule",
+        "\\end{tabular}",
+    ]
+    (output / "generated_bc_fidelity_table.tex").write_text(
+        "\n".join(fidelity) + "\n", encoding="utf-8"
+    )
+
 
 def _condition_label(condition: object) -> str:
     return (
