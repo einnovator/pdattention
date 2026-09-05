@@ -97,9 +97,11 @@ def test_prerope_aggregate_keeps_seed_as_replication_unit(tmp_path: Path) -> Non
     result = aggregate(manifests)
     assert result["replication_unit"] == "seed_cohort"
     assert result["a_minus_b"]["seed_mean_token_f1_delta"] == pytest.approx(0.15)
+    assert result["a_minus_b"]["exact_two_sided_sign_flip_p_token_f1"] == 0.5
     assert result["b_minus_c"]["output_match_rate"] == 1.0
     assert result["b_minus_c"]["first_step_logit_hash_match_rate"] == 1.0
     assert result["b_minus_c"]["mean_first_step_js_divergence"] == 0.001
+    assert result["b_minus_c"]["seed_mean_token_f1_delta"] == 0.0
     assert result["b_minus_c"]["layerwise"][0]["pairs"] == 2
     assert result["b_minus_c"]["layerwise"][0]["max_key_rmse"] == pytest.approx(
         23e-5

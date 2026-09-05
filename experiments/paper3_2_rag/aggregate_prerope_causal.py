@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import itertools
 import json
 import random
 import statistics
@@ -56,6 +57,21 @@ def _percentile(values: Sequence[float], fraction: float) -> float | None:
     ordered = sorted(values)
     index = round((len(ordered) - 1) * fraction)
     return ordered[index]
+
+
+def _exact_sign_flip_p(values: Sequence[float]) -> float | None:
+    """Exact two-sided paired sign-flip test with the seed as the unit."""
+
+    if not values:
+        return None
+    observed = abs(statistics.fmean(values))
+    exceed = 0
+    total = 0
+    for signs in itertools.product((-1.0, 1.0), repeat=len(values)):
+        total += 1
+        permuted = abs(statistics.fmean(sign * value for sign, value in zip(signs, values)))
+        exceed += permuted >= observed - 1e-15
+    return exceed / total
 
 
 def _load(
@@ -222,6 +238,8 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             ] = row
         ab_f1 = []
         ab_nll = []
+        bc_f1 = []
+        bc_nll = []
         for pair in by_example.values():
             a = pair.get("A_FULL_CAUSAL_RAG")
             b = pair.get("B_NO_CROSS_DOC_RAG")
@@ -233,6 +251,11 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                     - float(b["gold_answer_mean_nll"])
                 )
             if b and c:
+                bc_f1.append(float(b["token_f1"]) - float(c["token_f1"]))
+                bc_nll.append(
+                    float(b["gold_answer_mean_nll"])
+                    - float(c["gold_answer_mean_nll"])
+                )
                 bc_pairs += 1
                 bc_output_matches += int(b["prediction"] == c["prediction"])
                 bc_hash_matches += int(
@@ -250,6 +273,8 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 "seed": int(manifest["seed"]),
                 "a_minus_b_token_f1": _mean(ab_f1),
                 "a_minus_b_gold_nll": _mean(ab_nll),
+                "b_minus_c_token_f1": _mean(bc_f1),
+                "b_minus_c_gold_nll": _mean(bc_nll),
             }
         )
         bc_summary = manifest["summary"]["b_minus_c"]
@@ -287,6 +312,8 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
 
     ab_f1_seed = [float(row["a_minus_b_token_f1"]) for row in seed_effects]
     ab_nll_seed = [float(row["a_minus_b_gold_nll"]) for row in seed_effects]
+    bc_f1_seed = [float(row["b_minus_c_token_f1"]) for row in seed_effects]
+    bc_nll_seed = [float(row["b_minus_c_gold_nll"]) for row in seed_effects]
     first_manifest = runs[0][0]
     return {
         "schema_version": "paper3.2-prerope-causal-aggregate-v1",
@@ -303,8 +330,10 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             "seed_effects": seed_effects,
             "seed_mean_token_f1_delta": statistics.fmean(ab_f1_seed),
             "seed_bootstrap_token_f1_delta_95_ci": _bootstrap(ab_f1_seed),
+            "exact_two_sided_sign_flip_p_token_f1": _exact_sign_flip_p(ab_f1_seed),
             "seed_mean_gold_nll_delta": statistics.fmean(ab_nll_seed),
             "seed_bootstrap_gold_nll_delta_95_ci": _bootstrap(ab_nll_seed),
+            "exact_two_sided_sign_flip_p_gold_nll": _exact_sign_flip_p(ab_nll_seed),
         },
         "b_minus_c": {
             "pairs": bc_pairs,
@@ -314,6 +343,12 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             "first_step_logit_hash_match_rate": bc_hash_matches / bc_pairs,
             "mean_first_step_js_divergence": statistics.fmean(bc_js_values),
             "mean_gold_nll_abs_delta": statistics.fmean(bc_nll_deltas),
+            "seed_mean_token_f1_delta": statistics.fmean(bc_f1_seed),
+            "seed_bootstrap_token_f1_delta_95_ci": _bootstrap(bc_f1_seed),
+            "exact_two_sided_sign_flip_p_token_f1": _exact_sign_flip_p(bc_f1_seed),
+            "seed_mean_gold_nll_delta": statistics.fmean(bc_nll_seed),
+            "seed_bootstrap_gold_nll_delta_95_ci": _bootstrap(bc_nll_seed),
+            "exact_two_sided_sign_flip_p_gold_nll": _exact_sign_flip_p(bc_nll_seed),
             "max_layer_key_rmse_across_runs": max(layer_key_rmse),
             "max_layer_value_rmse_across_runs": max(layer_value_rmse),
             "layerwise": layerwise,
