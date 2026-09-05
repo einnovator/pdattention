@@ -202,6 +202,7 @@ def _execute_chunks(
             _run(
                 grade_command, output / f"chunk_{chunk_number:02d}.grader.log",
                 args.timeout_seconds, extra_environment=dataset_environment,
+                cwd=chunk_dir,
             )
             raw_report = _find_report(chunk_dir, f"{args.run_id}_c{chunk_number}")
             chunk_result = _normalize_report(raw_report, chunk_ids)
@@ -288,6 +289,7 @@ def _is_h100_80gb(gpu: str | None) -> bool:
 def _run(
     command: list[str], log: Path, timeout_seconds: int,
     *, extra_environment: dict[str, str] | None = None,
+    cwd: Path | None = None,
 ) -> None:
     environment = os.environ.copy()
     environment.setdefault("OPENAI_API_KEY", "dummy")
@@ -296,7 +298,7 @@ def _run(
     environment.update(extra_environment or {})
     completed = subprocess.run(
         command, capture_output=True, text=True, env=environment,
-        timeout=timeout_seconds, check=False,
+        cwd=cwd, timeout=timeout_seconds, check=False,
     )
     log.write_text(completed.stdout + "\n--- STDERR ---\n" + completed.stderr, encoding="utf-8")
     if completed.returncode:
