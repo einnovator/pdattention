@@ -48,11 +48,20 @@ packed F1 from .093 to .134, but independently encoded records remain lower at
 $[-.076,-.035]$). Record-relative execution reduces mean pairwise order JS by
 98.6\%, while reusing 327.7 native token states per changed query versus 19.1
 exact-prefix tokens, but this stability and reuse do not yet preserve quality.
-These results establish contiguous native
-transport and non-prefix reuse while locating the remaining bottleneck in
-cross-resource contextualization, not positional transport alone. Reduced 4B
-and 8B Qwen and Llama replications preserve contiguous transport exactly;
-50\% repair recovers 50--80\% of outputs, but does not establish parity.
+These results establish contiguous native transport and non-prefix reuse while
+locating the remaining bottleneck in cross-resource contextualization, not
+positional transport alone. A selector-frozen causal decomposition over 150
+questions further separates this bottleneck. Removing document-to-document
+attention changes answer behavior, while independently encoded pre-RoPE records
+rebound to the same packed coordinates remain close to that blocked control
+(.108 versus .110 F1; mean first-step JS $8.80\times10^{-4}$). They are not
+numerically identical under the production 4-bit checkpoint: output agreement
+is 101/150 and value-state error grows through the decoder. A tiny unquantized
+fixture is exact within tolerance. Sparse boundary interaction recovers much of
+the full-packed F1 with very few cross-document edges, but no tested fixed mask
+dominates across F1, official score, and NLL. Reduced 4B and 8B Qwen and Llama
+replications preserve contiguous transport exactly; 50\% repair recovers
+50--80\% of outputs, but does not establish parity.
 \end{abstract}
 
 \section{Introduction}
@@ -65,7 +74,7 @@ D_1\,D_2\,D_3\,Q
 \]
 imposes a total order and a precise metric distance among documents even when $D_1,D_2,D_3$ are logically independent sources.  If these resources are encoded separately and reused later, their original positional coordinates and contextual histories are no longer automatically equivalent to the newly serialized RAG sequence.
 
-This paper therefore asks five linked but separable questions:
+This paper therefore asks six linked but separable questions:
 \begin{enumerate}[leftmargin=*]
     \item Which external retrieval/index strategies provide the strongest candidate evidence?
     \item Given the same candidates, how do conventional RAG and PRA routing compare?
@@ -1127,6 +1136,120 @@ Llama-3.1-8B & .173/.162 & $-.011$ & .961/1.679 & .130 \\
 \end{tabular}
 \end{table}
 
+\subsection{Pre-RoPE rebinding localizes, but does not erase, the record gap}
+\label{sec:prerope-causal-results}
+
+The final causal decomposition contains 150 MultiHop-RAG questions: 30 in
+each of five independently selected seed cohorts. Candidate generation,
+BGE-v2-M3 ranking, selected identities, separators, packed token order, and
+request positions are frozen within each A/B/C triple. The mean selected
+prefix contains 1330 token states and occupies 145.4 MiB across the model's
+native K/V layers.
+
+Table~\ref{tab:prerope-causal-quality} gives the task results. Full causal
+packing (A) reaches .119 token F1 and .467 official score, compared with .110
+and .400 when document-to-document attention is removed (B). The seed-level
+A--B F1 difference is $+.0084$ with a bootstrap 95\% interval
+$[-.0171,.0292]$ and exact two-sided sign-flip $p=.50$. Gold-answer NLL points
+in the opposite direction: A is worse than B by 2.455, with interval
+$[1.802,3.067]$. All five NLL effects have the same sign, but five seeds give
+the minimum exact two-sided $p=.0625$. Cross-document contextualization
+therefore changes model behavior materially, but this cohort does not support
+the simpler claim that it improves every answer metric.
+
+\begin{table}[ht]
+\centering
+\caption{Five-seed pre-RoPE causal decomposition (150 questions). All
+conditions share frozen retrieval and packed positions. Official is the
+MultiHop-RAG token-intersection score. Edges count allowed
+document-to-document attention pairs; query visibility is unchanged.}
+\label{tab:prerope-causal-quality}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/prerope_causal/five_seed/generated_causal_quality_table.tex}}
+\end{table}
+
+B and C are much closer at task level. Pre-RoPE records at exact packed
+positions (C) reach .108 F1 and 3.474 NLL, versus .110 and 3.486 for blocked
+packing. The seed-level B--C F1 difference is $+.0022$
+($[-.0019,.0063]$, $p=.4375$); signed NLL differs by $+.0119$
+($[.0052,.0200]$, $p=.0625$), and mean absolute NLL error is .0701.
+Generated outputs agree in 101/150 cases and mean first-step JS is
+$8.80\times10^{-4}$. These measurements support close downstream agreement,
+not numerical equivalence: no first-step logit hash matches exactly.
+
+\begin{table}[ht]
+\centering
+\caption{Blocked packed encoding (B) versus independently encoded pre-RoPE
+records rebound to B's coordinates (C). Worst-layer values are maxima over
+all five runs.}
+\label{tab:prerope-bc-fidelity}
+\small
+\input{../shared/results/paper3_2_rag/prerope_causal/five_seed/generated_bc_fidelity_table.tex}
+\end{table}
+
+The source of this distinction is observable. A tiny unquantized Qwen fixture
+matches B/C K/V at every layer and final logits within $2\times10^{-5}$.
+Under the production 4-bit checkpoint, layer-0 mean value RMSE is
+$3.10\times10^{-5}$, but mean value RMSE grows to .274 by layer 27.
+Independent and packed projection/attention shapes can take different
+quantized kernel paths; small early differences are amplified through the
+decoder. Figure~\ref{fig:prerope-bc-layers} reports mean and p95 rather than
+hiding this behavior behind either an exact tiny fixture or one worst-case
+maximum. The binding algebra and host-frequency contract pass, while exact
+4-bit numerical parity remains an open runtime qualification gate.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/prerope_causal/five_seed/bc_layer_fidelity.pdf}
+\caption{Layerwise B/C K/V divergence for 150 paired 4-bit executions. Values
+are measured after request-time rebinding to identical packed positions.}
+\label{fig:prerope-bc-layers}
+\end{figure}
+
+Request-time rotation itself is inexpensive in this implementation:
+.69 ms on average. B and C have nearly identical generation-only TTFT
+(68.1 and 68.3 ms) and total generation latency (177.9 and 177.5 ms).
+Independent source encoding is still paid during the cold path and is not
+claimed as free; Table~\ref{tab:prerope-causal-systems} keeps encode, binding,
+and serving time separate.
+
+\begin{table}[ht]
+\centering
+\caption{Mean Apple M4 Pro mechanism timings. Encode is cold source encoding;
+TTFT and total are measured after native memory is available.}
+\label{tab:prerope-causal-systems}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/prerope_causal/five_seed/generated_causal_systems_table.tex}}
+\end{table}
+
+The sparse interaction ladder does not yield a monotonic quality law.
+An eight-token boundary window permits only 192 cross-document edges on
+average, 99.97\% fewer than A's 665,894, while reaching .118 F1 versus A's
+.119. Yet its official score is lower (.447 versus .467) and its NLL is worse
+(6.144 versus 5.940). The top-ranked-to-all policy slightly exceeds A on the
+official score (.473) but is lower on F1 and worse on NLL. Confidence
+intervals overlap broadly. Figure~\ref{fig:prerope-causal-quality} shows task
+quality and NLL together; Figure~\ref{fig:cross-document-budget} makes the
+absence of a smooth interaction-budget frontier visible. Boundary interaction
+is a promising composition primitive, but no tested fixed mask is qualified
+as a replacement for full packing.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_2_rag/prerope_causal/five_seed/causal_decomposition_quality.pdf}
+\caption{Task F1 and gold-answer NLL for A/B/C and the sparse mask ladder.
+Intervals bootstrap five seed-cohort means.}
+\label{fig:prerope-causal-quality}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/prerope_causal/five_seed/cross_document_budget.pdf}
+\caption{Token F1 against allowed document-to-document attention edges. More
+interaction is not monotonically better on the measured cohort.}
+\label{fig:cross-document-budget}
+\end{figure}
+
 \subsection{Natural composition and contextual repair}
 We next freeze the historical cross-encoder's selection for five independently
 sampled cohorts of ten natural questions, using four resource orders per
@@ -1370,6 +1493,17 @@ measurable where exact-prefix reuse is zero. Third, useful composition is not
 yet established: RoPE rebinding removes only part of the error, and the tested
 bounded repair policies do not recover fresh behavior reliably.
 
+The A/B/C decomposition identifies two separable causes. Denying packed
+documents cross-document attention changes the answer distribution, although
+its direction is metric-dependent on this cohort. Once that interaction is
+removed, exact packed-position pre-RoPE rebinding closely approximates the
+blocked computation at task level. This localizes most of the conceptual gap in
+cross-resource contextualization. It does not certify bitwise transport through
+a quantized runtime: B/C output agreement is 67.3\%, and small early-layer
+differences grow through the 4-bit decoder even though the same implementation
+passes an unquantized all-layer fixture. Rebinding and numerical-runtime
+qualification are therefore separate gates.
+
 The native-record experiment sharpens the third conclusion. The failure is not
 an artifact of bypassing the public abstraction: canonical Paper~4.5 records,
 explicit references, rooted routing, and strong rerankers reach the same
@@ -1387,6 +1521,13 @@ states carry causal context from the serialization in which they were formed.
 This does not invalidate persistent native memory, but it narrows its present
 safe use to contiguous blocks, unchanged selections, or explicitly repaired
 fragments.
+
+The sparse-mask ladder also rejects a simple ``more interaction is better''
+account. An eight-token boundary window uses 99.97\% fewer document-to-document
+edges than full packing and nearly matches its mean F1, yet loses on official
+score and NLL; wider windows are non-monotonic. A learned or query-conditioned
+interaction policy remains plausible, but the present fixed policies do not
+pass a quality-preserving promotion gate.
 
 Partial materialization remains an open adaptive-control problem. The 75\%
 point matches mean F1 on the first seed but not across five cohorts;
@@ -1422,6 +1563,15 @@ the contextual history of packed encoding. Resource-relative geometries should
 therefore be evaluated as explicit alternatives, not described as equivalent
 coordinate changes.
 
+Pre-RoPE storage makes the boundary more precise. It removes position from the
+stored representation and lets a request apply the host model's exact rotary
+contract at materialization time. In an unquantized fixture this reproduces the
+corresponding blocked packed computation. In a production 4-bit model it remains
+only approximately equivalent because independently shaped projection and
+attention calls follow different finite-precision paths. More importantly,
+neither case reconstructs cross-document hidden-state history. Storage format,
+runtime arithmetic, and causal composition are three distinct concerns.
+
 \section{Conclusion}
 
 Paper~3.2 evaluates PRA beneath a conventional RAG stack rather than requiring
@@ -1446,6 +1596,16 @@ freeze strong evidence, PRA can store and reuse exact contiguous native blocks,
 and future work must make changed compositions contextually faithful without
 paying full reprefill.
 
+The pre-RoPE causal decomposition narrows that future work. Rebinding independent
+records to exact packed coordinates closely tracks a packed computation whose
+documents are causally isolated, but it does not recreate full packing, and
+4-bit execution does not preserve exact B/C numerics. Sparse boundary exchange
+shows that useful interaction may require only a small fraction of all
+cross-document edges, but the measured quality frontier is non-monotonic. The
+next composition mechanism should therefore learn or verify which interactions
+matter, while treating host RoPE compatibility and quantized-runtime parity as
+explicit, independently tested contracts.
+
 \bibliographystyle{plain}
 % \bibliography{references}
 
@@ -1457,6 +1617,12 @@ five-seed matched realization, partial materialization, independent
 composition, repair curves, permutation receipts, and changing-selection
 reuse. Each group retains raw rows or compressed raw rows plus a manifest.
 Cross-model scale and full positional-policy artifacts use the same schema.
+The pre-RoPE causal group additionally records the immutable RoPE contract,
+source and request positions, document spans, condition-specific masks,
+cross-document edge counts, per-layer K/V errors, first-step logit diagnostics,
+cold encode time, request-time binding time, and generation-only timings. Seed
+is the replication unit; confidence intervals and sign-flip tests are computed
+over seed-cohort means rather than treating questions as independent runs.
 
 \section{Initial Service Matrix}
 \begin{table}[h]

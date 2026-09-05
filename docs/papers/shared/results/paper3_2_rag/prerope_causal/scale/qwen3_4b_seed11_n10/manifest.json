@@ -1,0 +1,194 @@
+{
+  "boundary_windows": [
+    8,
+    16,
+    32,
+    64
+  ],
+  "candidate_count": 50,
+  "completed_unix": 1788578394.6149042,
+  "dataset": "multihoprag",
+  "dataset_metadata": {
+    "corpus_revision": "bb98345ef3921312aad05fd117b5a3e39888de2c",
+    "corpus_sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f",
+    "dataset_revision": "fcb9efe65c7730dd4126a42afb6c2c7e45721ebb",
+    "license": "ODC-BY-1.0",
+    "questions_sha256": "03cfb4926461f868684903aadc8024447bdda5bb3f6804741424cce338515bff",
+    "upstream_revision": "cde8e844af14b3012f20158abc2854fe8458212a"
+  },
+  "experiment": "prerope_causal_decomposition",
+  "git_commit": "f34ef1949a0a21b52ac2ec86c27f09ae9eb2c82f",
+  "hardware": {
+    "chip": "Apple M4 Pro",
+    "machine": "arm64",
+    "memory_bytes": 51539607552,
+    "model_identifier": "Mac16,7",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "processor": "arm"
+  },
+  "mask_policies": [
+    "PREVIOUS_DOC_ONLY",
+    "TOP_RANKED_TO_ALL"
+  ],
+  "max_resources": 4,
+  "model": "mlx-community/Qwen3-4B-4bit",
+  "model_revision": "4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25",
+  "question_ids": [
+    "multihoprag:0756",
+    "multihoprag:0777",
+    "multihoprag:1850",
+    "multihoprag:1852",
+    "multihoprag:1907",
+    "multihoprag:1948",
+    "multihoprag:2080",
+    "multihoprag:2096",
+    "multihoprag:2292",
+    "multihoprag:2405"
+  ],
+  "reranker": "BAAI/bge-reranker-v2-m3",
+  "reranker_revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+  "rows": 90,
+  "runtime_versions": {
+    "huggingface-hub": "1.30.0",
+    "mlx": "0.32.2",
+    "mlx-lm": "0.31.3",
+    "python": "3.10.20",
+    "torch": "2.14.0",
+    "transformers": "5.16.1"
+  },
+  "schema_version": "paper3.2-prerope-causal-decomposition-v1",
+  "seed": 11,
+  "selector": "prerope_causal_cross_encoder:BAAI/bge-reranker-v2-m3@953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+  "started_unix": 1788577703.064439,
+  "summary": {
+    "a_minus_b": {
+      "mean_gold_nll_delta": -0.17625,
+      "mean_token_f1_delta": 0.00015651015651015898,
+      "pairs": 10
+    },
+    "b_minus_c": {
+      "first_step_js_divergence_mean": 0.00040529587629302953,
+      "first_step_logit_hash_matches": 0,
+      "first_step_logit_max_abs_delta_mean": 0.37064971923828127,
+      "max_key_abs_delta": 17.8125,
+      "max_layer_key_rmse": 0.03931165114045143,
+      "max_layer_value_rmse": 0.16775812208652496,
+      "max_value_abs_delta": 18.125,
+      "mean_gold_nll_abs_delta": 0.03125,
+      "mean_token_f1_delta": 0.0010989010989010978,
+      "output_matches": 8,
+      "pairs": 10
+    },
+    "conditions": [
+      {
+        "condition": "A_FULL_CAUSAL_RAG",
+        "encode_ms": 1532.5253792048898,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": null,
+        "gold_answer_mean_nll": 1.3125,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.1826739926739927,
+        "ttft_ms": 187.16289140866138
+      },
+      {
+        "condition": "B_NO_CROSS_DOC_RAG",
+        "encode_ms": 1659.2043874959927,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.08535846843836274,
+        "gold_answer_mean_nll": 1.48875,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.18251748251748254,
+        "ttft_ms": 156.5383082081098
+      },
+      {
+        "condition": "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS",
+        "encode_ms": 1622.5543165986892,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.00040529587629302953,
+        "gold_answer_mean_nll": 1.52,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.8826001023408026,
+        "token_f1": 0.18141858141858141,
+        "ttft_ms": 156.78705821046606
+      },
+      {
+        "condition": "M4_BOUNDARY_ONLY_16",
+        "encode_ms": 1656.7909375065938,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.022289453486186033,
+        "gold_answer_mean_nll": 1.25,
+        "official_multihop_rag_score": 0.6,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.1751914751914752,
+        "ttft_ms": 171.93929571076296
+      },
+      {
+        "condition": "M4_BOUNDARY_ONLY_32",
+        "encode_ms": 1659.751116501866,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.02261563521597852,
+        "gold_answer_mean_nll": 1.24375,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.17775557775557776,
+        "ttft_ms": 169.8918499983847
+      },
+      {
+        "condition": "M4_BOUNDARY_ONLY_64",
+        "encode_ms": 1651.9486416946165,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.018359569291630108,
+        "gold_answer_mean_nll": 1.25625,
+        "official_multihop_rag_score": 0.6,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.18013653013653014,
+        "ttft_ms": 171.02402090094984
+      },
+      {
+        "condition": "M4_BOUNDARY_ONLY_8",
+        "encode_ms": 1664.6255917090457,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.020777058859481414,
+        "gold_answer_mean_nll": 1.275,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.1751914751914752,
+        "ttft_ms": 169.23663330380805
+      },
+      {
+        "condition": "M_PREVIOUS_DOC_ONLY",
+        "encode_ms": 1667.7189291105606,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.017259605693971048,
+        "gold_answer_mean_nll": 1.25625,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.17990342990342992,
+        "ttft_ms": 171.2247582967393
+      },
+      {
+        "condition": "M_TOP_RANKED_TO_ALL",
+        "encode_ms": 1677.0049541897606,
+        "exact_match": 0.0,
+        "examples": 10,
+        "first_step_js_from_declared_reference": 0.0032606459468685033,
+        "gold_answer_mean_nll": 1.2875,
+        "official_multihop_rag_score": 0.5,
+        "request_rope_transform_ms": 0.0,
+        "token_f1": 0.17124542124542125,
+        "ttft_ms": 167.61674591107294
+      }
+    ]
+  },
+  "token_budget": 2048
+}
