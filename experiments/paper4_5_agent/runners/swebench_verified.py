@@ -11,6 +11,7 @@ import platform
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -199,13 +200,14 @@ def _execute_chunks(
                 "--max_workers", str(args.grader_workers), "--cache_level", "base",
                 "--clean", "True", "--report_dir", str(chunk_dir),
             ]
-            _run(
+            grader_wall_time_s = _run(
                 grade_command, output / f"chunk_{chunk_number:02d}.grader.log",
                 args.timeout_seconds, extra_environment=dataset_environment,
                 cwd=chunk_dir,
             )
             raw_report = _find_report(chunk_dir, f"{args.run_id}_c{chunk_number}")
             chunk_result = _normalize_report(raw_report, chunk_ids)
+            chunk_result["grader_wall_time_s"] = grader_wall_time_s
             _write_json(report_receipt, chunk_result)
         submitted.update(chunk_result["submitted_ids"])
         resolved.update(chunk_result["resolved_ids"])
@@ -290,19 +292,22 @@ def _run(
     command: list[str], log: Path, timeout_seconds: int,
     *, extra_environment: dict[str, str] | None = None,
     cwd: Path | None = None,
-) -> None:
+) -> float:
     environment = os.environ.copy()
     environment.setdefault("OPENAI_API_KEY", "dummy")
     environment.setdefault("MSWEA_COST_TRACKING", "ignore_errors")
     environment.setdefault("TOKENIZERS_PARALLELISM", "false")
     environment.update(extra_environment or {})
+    started = time.perf_counter()
     completed = subprocess.run(
         command, capture_output=True, text=True, env=environment,
         cwd=cwd, timeout=timeout_seconds, check=False,
     )
+    elapsed = time.perf_counter() - started
     log.write_text(completed.stdout + "\n--- STDERR ---\n" + completed.stderr, encoding="utf-8")
     if completed.returncode:
         raise RuntimeError(f"command exited {completed.returncode}; see {log}")
+    return elapsed
 
 
 def _find_report(directory: Path, run_id: str) -> Path:
@@ -338,9 +343,14 @@ def _write_task_rows(
         "peak_memory_bytes": None, "kv_bytes": None, "pra_memory_bytes": None,
     }
     rows = []
-    for instance_id in instance_ids:
+    for task_index, instance_id in enumerate(instance_ids):
         trajectory_path = _find_trajectory(output, instance_id)
         trajectory = _trajectory_metrics(trajectory_path) if trajectory_path else {}
+        chunk_number = task_index // args.chunk_size
+        chunk_receipt = _read_json(output / f"chunk_{chunk_number:02d}" / "official_chunk_result.json")
+        grader_error_type = _grader_error_type(
+            output / f"chunk_{chunk_number:02d}.grader.log", instance_id
+        ) if instance_id in errors else None
         task_traces = traces_by_session.get(trajectory.get("session_id"), [])
         trace = _aggregate_traces(task_traces)
         prompt_tokens = trajectory.get("cumulative_prompt_tokens")
@@ -380,19 +390,25 @@ def _write_task_rows(
             "step_count": trajectory.get("model_call_count"),
             "trajectory_length": trajectory.get("model_call_count"),
             "tool_call_count": trajectory.get("tool_call_count"),
+            "commands_executed": trajectory.get("commands_executed"),
+            "files_inspected": trajectory.get("files_inspected"),
+            "unique_files_inspected": trajectory.get("unique_files_inspected"),
+            "files_modified": trajectory.get("files_modified"),
+            "modified_file_paths": trajectory.get("modified_file_paths"),
             **unavailable,
             "wall_time_s": trajectory.get("wall_time_s"),
             "tool_time_s": trajectory.get("tool_time_s"),
+            "grader_time_s": chunk_receipt.get("grader_wall_time_s"),
             "pra_route_time_s": trace.get("route_time_s"),
             "termination_reason": trajectory.get("termination_reason"),
-            "error_type": "official_grader_error" if instance_id in errors else None,
+            "error_type": grader_error_type,
             "grader_outcome": (
                 "error" if instance_id in errors
                 else "resolved" if instance_id in resolved
                 else "unresolved"
             ),
             "empty_patch": not bool(patch.strip()) if trajectory_path else None,
-            "invalid_patch": None,
+            "invalid_patch": grader_error_type == "patch_apply_failed",
             "patch_bytes": len(patch.encode("utf-8")) if trajectory_path else None,
             "patch_lines": len(patch.splitlines()) if trajectory_path else None,
             "trajectory_path": trajectory_path.as_posix() if trajectory_path else None,
@@ -440,6 +456,18 @@ def _trajectory_metrics(path: Path) -> dict[str, Any]:
             tool_time += max(0.0, float(stamp) - previous_assistant_time)
             previous_assistant_time = None
     task_messages = [row for row in messages if row.get("role") != "exit"]
+    commands = [
+        str(action.get("command") or "")
+        for row in calls for action in ((row.get("extra") or {}).get("actions") or ())
+    ]
+    mentioned_paths = sorted({
+        match.group(0).lstrip("./")
+        for command in commands
+        for match in re.finditer(r"(?:\.?\.?/)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+", command)
+        if match.group(0) != "patch.txt"
+    })
+    patch = str((payload.get("info") or {}).get("submission") or "")
+    modified_paths = sorted(set(re.findall(r"^\+\+\+ b/(.+)$", patch, re.MULTILINE)))
     return {
         "session_id": session_id_for_messages(task_messages) if task_messages else None,
         "cumulative_prompt_tokens": cumulative,
@@ -449,10 +477,15 @@ def _trajectory_metrics(path: Path) -> dict[str, Any]:
         "output_tokens": output_tokens,
         "model_call_count": len(calls),
         "tool_call_count": sum(len(((row.get("extra") or {}).get("actions") or ())) for row in calls),
+        "commands_executed": len(commands),
+        "files_inspected": len(mentioned_paths),
+        "unique_files_inspected": mentioned_paths,
+        "files_modified": len(modified_paths),
+        "modified_file_paths": modified_paths,
         "wall_time_s": max(timestamps) - min(timestamps) if len(timestamps) > 1 else None,
         "tool_time_s": tool_time if timestamps else None,
         "termination_reason": (payload.get("info") or {}).get("exit_status"),
-        "patch": (payload.get("info") or {}).get("submission") or "",
+        "patch": patch,
     }
 
 
@@ -486,6 +519,17 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def _grader_error_type(log: Path, instance_id: str) -> str:
+    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+    if instance_id in text and "Patch Apply Failed" in text:
+        return "patch_apply_failed"
+    return "official_grader_error"
 
 
 def main() -> None:

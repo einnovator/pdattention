@@ -51,6 +51,7 @@ from experiments.paper4_5_agent.schema import (
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
+    _grader_error_type,
     _is_h100_80gb,
     _normalize_report,
     _trajectory_metrics,
@@ -283,6 +284,16 @@ def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:
     assert _normalize_report(report, ["a", "b"])["resolved_ids"] == ["b"]
     with pytest.raises(RuntimeError, match="frozen chunk"):
         _normalize_report(report, ["a", "c"])
+
+
+def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Path) -> None:
+    log = tmp_path / "grader.log"
+    log.write_text(
+        "sympy__sympy-21847: >>>>> Patch Apply Failed: only garbage found",
+        encoding="utf-8",
+    )
+    assert _grader_error_type(log, "sympy__sympy-21847") == "patch_apply_failed"
+    assert _grader_error_type(log, "another__task-1") == "official_grader_error"
 
 
 def test_swebench_package_probe_uses_null_for_missing_distributions() -> None:
