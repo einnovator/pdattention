@@ -26,42 +26,41 @@
 \maketitle
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) reduces the amount of external information presented to a language model, while Progressive Retrieval Attention (PRA) additionally allows selected evidence to be represented, stored, and reused as model-native memory.  Earlier PRA work separated retrieval from native K/V materialization, suggesting a practically important regime: a strong conventional RAG retriever or reranker can choose the evidence while PRA reuses the resulting selected context as persistent native memory.  When exactly the same selected block is reused, Qwen3 and Llama measurements at 1.7B--8B scale show exact generated-output preservation together with large reductions in warm time-to-first-token.  However, recomposing independently cached chunks across changing selections produces a quality regression, exposing a second problem: separately stored resources have source-local positional and contextual histories that need not match the positions and causal context induced when ordinary RAG serializes them into a new prompt.
+Retrieval-augmented generation (RAG) selects external evidence and serializes it
+into each prompt. Progressive Retrieval Attention (PRA) can instead retain a
+frozen selection as model-native K/V and reuse it across requests. This paper
+separates retrieval from that realization step, then asks when independently
+stored resources can be composed without recreating the packed RAG prompt. We
+compare lexical, dense, hybrid, reranked, and service-backed retrieval; freeze
+selected evidence; and test selected text, contiguous native reuse, independent
+records, RoPE rebinding, partial materialization, and bounded contextual repair.
 
-This paper studies these issues jointly across multiple RAG and long-context QA datasets.  We compare full documents in context, conventional RAG with lexical, dense, hybrid, reranked, and real vector-database indices, and PRA variants that use full or partial materialization and multiple routing modes.  We then freeze selected evidence and isolate realization and composition: fresh selected-text encoding, contiguous native reuse, independently cached native fragments, RoPE composition-coordinate rebinding, and limited contextual repair.  Finally, we test whether arbitrary document serialization matters by comparing $D_1D_2Q$ with $D_2D_1Q$ and broader resource permutations under multiple positional policies, including source-local, globally packed, resource-adjacent, rank-derived, score-derived, near-band, and randomized geometries.
+Across five natural MultiHop-RAG cohorts, all 600 selector-frozen contiguous
+text/native comparisons preserve output, first-step logits, and answer NLL.
+Warm native reuse reduces TTFT by 92.3\% and total latency by 81.5\% relative to
+re-prefilling the same text, although an exact ordinary prefix-cache hit remains
+faster. When selections change, exact prefix reuse falls to zero while PRA
+reuses 28.1\% of selected K/V. That saving is not free composition:
+independently encoded resources preserve only 8.5--10.5\% of outputs, and 50\%
+contextual repair recovers 61.5\%. Partial materialization removes 25\% of
+active K/V but lowers mean F1 from .234 to .181. BGE reranking improves packed
+F1 to .134, yet canonical URI-addressed records reach .080; reduced order
+sensitivity and non-prefix reuse do not by themselves preserve quality.
 
-On five natural MultiHop-RAG cohorts (five seeds, 30 questions each), all 600
-selector-frozen text/native comparisons preserved generated output and
-first-step logits exactly, with zero gold-answer NLL difference. Contiguous
-native reuse reduced warm TTFT by 92.3\% and warm total latency by 81.5\%
-relative to re-prefilling the same selected text, but an exact ordinary prefix
-cache remained faster. Five 20-turn changing-selection cohorts produced no
-reusable exact text prefix; resource-addressed PRA reused 28.1\% of selected
-K/V entries. That saving did not imply free composition: independently encoded
-resources preserved only 8.5--10.5\% of outputs, and even 50\% contextual
-repair recovered 61.5\% across five natural cohorts. Partial materialization
-reduced active K/V by 25\%, but mean token F1 fell from .234 to .181 and output
-parity to 38\%. A final five-seed test exercises the intended URI-addressed
-record path with BM25, MiniLM, and BGE reranking. Learned reranking raises
-packed F1 from .093 to .134, but independently encoded records remain lower at
-.080; the BGE paired F1 delta is $-.055$ (seed-bootstrap 95\% CI
-$[-.076,-.035]$). Record-relative execution reduces mean pairwise order JS by
-98.6\%, while reusing 327.7 native token states per changed query versus 19.1
-exact-prefix tokens, but this stability and reuse do not yet preserve quality.
-These results establish contiguous native transport and non-prefix reuse while
-locating the remaining bottleneck in cross-resource contextualization, not
-positional transport alone. A selector-frozen causal decomposition over 150
-questions further separates this bottleneck. Removing document-to-document
-attention changes answer behavior, while independently encoded pre-RoPE records
-rebound to the same packed coordinates remain close to that blocked control
-(.108 versus .110 F1; mean first-step JS $8.80\times10^{-4}$). They are not
+A selector-frozen causal decomposition over 150 questions localizes this gap.
+Removing document-to-document attention changes model behavior. Independently
+encoded pre-RoPE records rebound to the same packed coordinates closely track
+that blocked control (.108 versus .110 F1; first-step JS
+$8.80\times10^{-4}$), indicating that cross-resource contextualization, not
+position assignment alone, is the main conceptual difference. They are not
 numerically identical under the production 4-bit checkpoint: output agreement
-is 101/150 and value-state error grows through the decoder. A tiny unquantized
-fixture is exact within tolerance. Sparse boundary interaction recovers much of
-the full-packed F1 with very few cross-document edges, but no tested fixed mask
-dominates across F1, official score, and NLL. Reduced 4B and 8B Qwen and Llama
-replications preserve contiguous transport exactly; 50\% repair recovers
-50--80\% of outputs, but does not establish parity.
+is 101/150 and value-state error grows through the decoder, although a tiny
+unquantized fixture matches within tolerance. Sparse boundary interaction uses
+far fewer cross-document edges and approaches full-packed F1, but no fixed mask
+dominates across F1, official score, and NLL. PRA therefore establishes exact
+contiguous transport and useful non-prefix reuse; changed compositions still
+require a qualified numerical runtime and a selective contextualization
+mechanism.
 \end{abstract}
 
 \section{Introduction}
