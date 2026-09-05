@@ -99,9 +99,21 @@ def test_prerope_storage_fingerprint_requires_exact_host_geometry():
         position_binding_mode=PRAPositionBindingMode.PRE_ROPE,
         rope_contract=contract,
     )
+    pre_from_mapping = PRAStorageFingerprint(
+        **values,
+        position_binding_mode="pre_rope",
+        rope_contract={
+            "model_revision": "model-revision-1",
+            "layer_frequency_digest": "f" * 64,
+            "scaling_policy": ["host_piecewise_frequency_tensor"] * 2,
+            "rope_dims": [128, 128],
+            "layout": ["half_rotation", "half_rotation"],
+        },
+    )
 
     assert post.position_binding_mode is PRAPositionBindingMode.POST_ROPE
     assert pre.digest() != post.digest()
+    assert pre_from_mapping.digest() == pre.digest()
     assert len(contract.digest()) == 64
     with pytest.raises(ValueError, match="exact host RoPE contract"):
         PRAStorageFingerprint(

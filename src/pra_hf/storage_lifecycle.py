@@ -339,6 +339,11 @@ class PRARopeContract:
     layout: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "scaling_policy", tuple(str(value) for value in self.scaling_policy)
+        )
+        object.__setattr__(self, "rope_dims", tuple(int(value) for value in self.rope_dims))
+        object.__setattr__(self, "layout", tuple(str(value) for value in self.layout))
         layers = len(self.rope_dims)
         if not self.model_revision or not self.layer_frequency_digest:
             raise ValueError("RoPE contracts require model and frequency identity.")
