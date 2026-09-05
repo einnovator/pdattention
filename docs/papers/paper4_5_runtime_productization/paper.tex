@@ -503,6 +503,16 @@ plan active through prefill and every decode call. Compact telemetry records
 query width, local-cache width, and active native width without retaining
 attention tensors.
 
+The storage fingerprint now distinguishes fixed 	exttt{post_rope} keys from
+optional 	exttt{pre_rope} keys. A pre-RoPE entry carries a contract over the
+model revision, every layer's exact frequency tensor and scaling policy, RoPE
+dimensions, and rotation layout. At request time an adapter may apply the
+selected packed positions before exposing the entry to attention. Contract
+mismatch invalidates the derived cache. Post-RoPE remains the default because
+it avoids request-time rotation when positions are fixed; pre-RoPE is an
+experimental composition facility, not a claim that rotation alone restores
+the causal history missing from independently encoded records.
+
 \begin{table}[H]
 \centering
 \caption{HF native-reference correctness ladder. E0 is an offline FP32 mechanism

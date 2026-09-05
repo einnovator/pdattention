@@ -75,6 +75,31 @@ Paths default below `PRA_HOME`. Compression and K/V quantization are separate:
 compression changes byte transport without changing values; quantization can
 change values and therefore requires a model/profile quality gate.
 
+## Position binding
+
+Persistent K/V is `post_rope` by default. That representation is inexpensive
+to materialize and is appropriate when effective token positions are fixed.
+An experimental `pre_rope` representation can retain projected keys before
+rotation so a runtime may assign request-specific positions later. Every such
+entry is fingerprinted with an exact host `rope_contract`:
+
+```yaml
+position_binding:
+  mode: pre_rope
+rope_contract:
+  model_revision: 3b1b1768...
+  layer_frequency_digest: 8da62d6c...
+  scaling_policy: [host_base_frequency, host_base_frequency]
+  rope_dims: [128, 128]
+  layout: [half_rotation, half_rotation]
+```
+
+The contract is layer-specific and includes the model revision, frequency
+tensor digest, scaling policy, rotated dimensions, and layout. A mismatch must
+invalidate the derived cache. Pre-RoPE binding provides positional flexibility;
+it does not recreate cross-record causal contextualization and is not a default
+product profile until model/workload qualification passes.
+
 ## Lifecycle behavior
 
 Newly encoded detail stays `HOT` during a persistence grace period. This avoids

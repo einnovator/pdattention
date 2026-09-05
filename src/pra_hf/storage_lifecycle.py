@@ -61,6 +61,13 @@ class PRAStorageEvictionPolicy(str, Enum):
     WEIGHTED_LRU = "weighted_lru"
 
 
+class PRAPositionBindingMode(str, Enum):
+    """Whether persistent keys already contain a fixed RoPE phase."""
+
+    POST_ROPE = "post_rope"
+    PRE_ROPE = "pre_rope"
+
+
 _BYTE_UNITS = {
     "b": 1,
     "kb": 1000,
@@ -322,6 +329,31 @@ class PRAStoragePolicy:
 
 
 @dataclass(frozen=True)
+class PRARopeContract:
+    """Host geometry required to turn pre-RoPE keys into request K/V."""
+
+    model_revision: str
+    layer_frequency_digest: str
+    scaling_policy: tuple[str, ...]
+    rope_dims: tuple[int, ...]
+    layout: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        layers = len(self.rope_dims)
+        if not self.model_revision or not self.layer_frequency_digest:
+            raise ValueError("RoPE contracts require model and frequency identity.")
+        if layers == 0 or len(self.scaling_policy) != layers or len(self.layout) != layers:
+            raise ValueError("RoPE contract fields must describe the same nonzero layer count.")
+        if any(dimension <= 0 or dimension % 2 for dimension in self.rope_dims):
+            raise ValueError("RoPE dimensions must be positive and even.")
+
+    def digest(self) -> str:
+        return hashlib.sha256(
+            json.dumps(asdict(self), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+
+@dataclass(frozen=True)
 class PRAStorageFingerprint:
     """Compatibility identity for persisted native K/V payloads."""
 
@@ -336,6 +368,22 @@ class PRAStorageFingerprint:
     resource_version: str
     compression: str = "none"
     quantization: str = "none"
+    position_binding_mode: PRAPositionBindingMode | str = PRAPositionBindingMode.POST_ROPE
+    rope_contract: PRARopeContract | Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "position_binding_mode",
+            PRAPositionBindingMode(self.position_binding_mode),
+        )
+        if isinstance(self.rope_contract, Mapping):
+            object.__setattr__(self, "rope_contract", PRARopeContract(**self.rope_contract))
+        if (
+            self.position_binding_mode is PRAPositionBindingMode.PRE_ROPE
+            and self.rope_contract is None
+        ):
+            raise ValueError("Pre-RoPE storage requires an exact host RoPE contract.")
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode("utf-8")).hexdigest()

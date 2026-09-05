@@ -17,6 +17,8 @@ from pra_hf.storage_lifecycle import (
     MemoryKVStore,
     MemoryMappedKVStore,
     PRARetentionClass,
+    PRAPositionBindingMode,
+    PRARopeContract,
     PRAStorageEntry,
     PRAStorageEvictionPolicy,
     PRAStorageManager,
@@ -68,6 +70,43 @@ def test_human_sizes_durations_and_named_profiles(tmp_path):
     assert policy.warm.max_bytes == 4 * 1024**3
     assert policy.cold.compression == "gzip"
     assert Path(PRAStoragePolicy().warm.path).is_absolute()
+
+
+def test_prerope_storage_fingerprint_requires_exact_host_geometry():
+    from pra_hf.storage_lifecycle import PRAStorageFingerprint
+
+    contract = PRARopeContract(
+        model_revision="model-revision-1",
+        layer_frequency_digest="f" * 64,
+        scaling_policy=("host_piecewise_frequency_tensor",) * 2,
+        rope_dims=(128, 128),
+        layout=("half_rotation", "half_rotation"),
+    )
+    values = dict(
+        model_id="org/model",
+        model_revision="model-revision-1",
+        tokenizer_revision="tokenizer-revision-1",
+        topology="gqa:8:2:128",
+        dtype="bfloat16",
+        layout="layer_major",
+        position_policy="exact_packed_request_positions",
+        consumer_profile="all_layers",
+        resource_version="resource-v1",
+    )
+    post = PRAStorageFingerprint(**values)
+    pre = PRAStorageFingerprint(
+        **values,
+        position_binding_mode=PRAPositionBindingMode.PRE_ROPE,
+        rope_contract=contract,
+    )
+
+    assert post.position_binding_mode is PRAPositionBindingMode.POST_ROPE
+    assert pre.digest() != post.digest()
+    assert len(contract.digest()) == 64
+    with pytest.raises(ValueError, match="exact host RoPE contract"):
+        PRAStorageFingerprint(
+            **values, position_binding_mode=PRAPositionBindingMode.PRE_ROPE
+        )
 
 
 def test_storage_manager_publishes_empty_tier_gauges_at_startup(tmp_path):

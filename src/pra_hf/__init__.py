@@ -268,6 +268,8 @@ from .storage_lifecycle import (
     MemoryKVStore,
     MemoryMappedKVStore,
     PRARetentionClass,
+    PRAPositionBindingMode,
+    PRARopeContract,
     PRAStorageEntry,
     PRAStorageEvictionPolicy,
     PRAStorageFingerprint,
