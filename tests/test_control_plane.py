@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from pra_control.app import COOKIE, ControlRuntime, create_app
 from pra_control.auth import AuthService, Identity
-from pra_control.clients import AsyncServiceClient
+from pra_control.clients import AsyncServiceClient, RegistryClient, ServiceClientError
 from pra_control.config import (
     ControlAuthConfig,
     ControlAuthProfile,
@@ -234,6 +234,56 @@ def test_fleet_aggregates_two_engines_against_one_registry(control):
     assert [row["status"] for row in result["items"]] == ["IN_SYNC", "DRIFT"]
 
 
+def test_fleet_keeps_reachable_engines_when_registry_is_unavailable(control):
+    _, runtime = control
+
+    def unavailable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("registry unavailable", request=request)
+
+    class Engine:
+        def __init__(self, *_):
+            pass
+
+        async def snapshot(self):
+            return {
+                "info": {"engine": "mlx", "health": "healthy"},
+                "models": {"items": [{"runtime_model_id": "qwen", "model_id": "qwen-4b"}]},
+                "storage": {"metrics": {}},
+            }
+
+        async def close(self):
+            pass
+
+    config = runtime.config.model_copy(update={"fleet": FleetConfig(
+        discovery_mode="static",
+        engines=[EngineTargetConfig(name="mlx-01", management_url="http://mlx")],
+    )})
+    registry = RegistryClient(
+        "https://registry.test", transport=httpx.MockTransport(unavailable),
+    )
+    service = FleetService(
+        config, runtime.store, engine_factory=Engine, registry_client=registry,
+    )
+    manager = ControlManager.build(config, runtime.store, service)
+
+    async def inspect():
+        try:
+            identity = Identity("test:viewer", "Viewer", None, Role.VIEWER, "test", "csrf")
+            return (await manager.fleet.list(
+                identity.caller(transport="test"),
+            )).model_dump(mode="json")
+        finally:
+            await service.close()
+
+    import asyncio
+    result = asyncio.run(inspect())
+    assert result["summary"] == {
+        "total": 1, "healthy": 0, "drift": 0, "offline": 0, "unknown": 1,
+    }
+    assert result["items"][0]["status"] == "UNKNOWN"
+    assert result["items"][0]["health"] == "healthy"
+
+
 def test_service_token_is_backend_header_not_payload():
     captured = {}
 
@@ -252,6 +302,28 @@ def test_service_token_is_backend_header_not_payload():
     import asyncio
     asyncio.run(exercise())
     assert captured == {"authorization": "Bearer backend-secret", "body": {"resource": "r1"}}
+
+
+def test_service_transport_failure_is_normalized_for_resilient_discovery():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("registry unavailable", request=request)
+
+    async def exercise():
+        client = AsyncServiceClient(
+            "registry", "https://registry.test", transport=httpx.MockTransport(handler),
+        )
+        try:
+            with pytest.raises(ServiceClientError) as captured:
+                await client.request("GET", "/v1/deployments")
+            return captured.value
+        finally:
+            await client.close()
+
+    import asyncio
+    error = asyncio.run(exercise())
+    assert error.service == "registry"
+    assert error.status_code == 503
+    assert "registry unavailable" in error.detail
 
 
 def test_oauth_transaction_rejects_changed_state(monkeypatch):

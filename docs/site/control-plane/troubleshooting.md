@@ -17,6 +17,12 @@ trust. The token's value belongs only in the named backend environment variable.
 Confirm the Registry URL and token, then inspect deployment environment and
 cluster fields. They must match the engine's Control Plane metadata.
 
+Registry loss does not make reachable engines offline. Static and manually
+configured engines remain visible with their live engine state, while desired
+state becomes `UNKNOWN` until Registry access returns. If the Fleet view stays
+in its loading state instead, verify that the browser can reach `/api/fleet`;
+that endpoint should return a valid response even while Registry is unavailable.
+
 ## SSO loops or rejects callback
 
 Compare `public_url`, provider callback registration, reverse-proxy scheme, and

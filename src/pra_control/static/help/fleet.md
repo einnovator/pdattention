@@ -2,6 +2,8 @@
 
 Fleet joins live engine observations with desired Registry state. **Engine state** reports current reachability, while **Desired state** reports whether observed deployment matches Registry intent. A reachable engine can therefore have an unknown desired state without being unhealthy.
 
+If Registry access is interrupted, statically or manually configured engines remain usable and keep their observed engine state. Their desired state is shown as **UNKNOWN** until Registry access returns; Fleet loading and PRA Agent connectivity do not wait for that recovery.
+
 ## Find an engine
 
 Open Fleet from the fixed navigation rail. Search by text or filter by engine type, model, and desired state. Select a column heading to sort; the active order remains visible. Selecting an engine opens one reusable detail tab and focuses it if it is already open.

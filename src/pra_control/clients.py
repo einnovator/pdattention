@@ -27,7 +27,12 @@ class AsyncServiceClient:
         headers = {"Accept": "application/json", "User-Agent": "pra-control/1"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        response = await self.client.request(method, path, json=body, headers=headers)
+        try:
+            response = await self.client.request(method, path, json=body, headers=headers)
+        except httpx.HTTPError as error:
+            # Normalize network failures so fleet discovery can degrade without
+            # taking the Control Plane UI and agent model picker down with it.
+            raise ServiceClientError(self.name, 503, str(error)) from error
         if response.status_code >= 400:
             try:
                 payload = response.json()
