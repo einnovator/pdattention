@@ -205,6 +205,29 @@ def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _distribution_snapshot(logits, top_k: int) -> dict[str, object] | None:
+    """Persist a compact top-k plus tail-mass view for order diagnostics."""
+
+    if top_k <= 0:
+        return None
+    import numpy as np
+
+    values = np.asarray(logits, dtype=np.float64).reshape(-1)
+    probabilities = np.exp(values - values.max())
+    probabilities /= probabilities.sum()
+    count = min(top_k, probabilities.size)
+    indices = np.argpartition(probabilities, -count)[-count:]
+    indices = indices[np.argsort(probabilities[indices])[::-1]]
+    selected = probabilities[indices]
+    return {
+        "schema_version": "paper3.2-topk-tail-distribution-v1",
+        "top_k": count,
+        "token_ids": [int(index) for index in indices],
+        "probabilities": [float(value) for value in selected],
+        "tail_probability": max(0.0, float(1.0 - selected.sum())),
+    }
+
+
 def _condition_row(
     *,
     condition: str,
@@ -223,6 +246,7 @@ def _condition_row(
     retain_logits: bool = False,
     composition_receipt=None,
     precision_metadata: Mapping[str, object] | None = None,
+    distribution_top_k: int = 0,
 ) -> dict[str, object]:
     prediction, metrics, logits = _execute(backend, question, memory)
     support = len(
@@ -308,6 +332,9 @@ def _condition_row(
             {key: value for key, value in precision_metadata.items() if key != "schema_version"}
         )
         row["precision_schema_version"] = precision_metadata.get("schema_version")
+    snapshot = _distribution_snapshot(logits, distribution_top_k)
+    if snapshot is not None:
+        row["first_step_distribution_topk"] = snapshot
     row["ttft_with_materialization_ms"] = (
         float(metrics["ttft_ms"]) + encode_ms + transform_ms
     )
@@ -524,6 +551,12 @@ def main() -> None:
     parser.add_argument(
         "--source-weight-dtype",
         help="Source checkpoint dtype when independently verified.",
+    )
+    parser.add_argument(
+        "--distribution-top-k",
+        type=int,
+        default=0,
+        help="Persist top-k probabilities plus tail mass for order diagnostics.",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -782,6 +815,7 @@ def main() -> None:
             selected_document_ids=document_ids,
             retain_logits=True,
             precision_metadata=precision_metadata,
+            distribution_top_k=args.distribution_top_k,
         )
         a_logits = a_row.pop("_first_step_logits_f32")
         rows.append(a_row)
@@ -801,6 +835,7 @@ def main() -> None:
             reference_condition="A_FULL_CAUSAL_RAG",
             retain_logits=True,
             precision_metadata=precision_metadata,
+            distribution_top_k=args.distribution_top_k,
         )
         b_logits = b_row.pop("_first_step_logits_f32")
         rows.append(b_row)
@@ -820,6 +855,7 @@ def main() -> None:
                 reference_logits=b_logits,
                 reference_condition="B_NO_CROSS_DOC_RAG",
                 precision_metadata=precision_metadata,
+                distribution_top_k=args.distribution_top_k,
             )
         )
         rows.append(
@@ -838,6 +874,7 @@ def main() -> None:
                 reference_logits=b_logits,
                 reference_condition="B_NO_CROSS_DOC_RAG",
                 precision_metadata=precision_metadata,
+                distribution_top_k=args.distribution_top_k,
             )
         )
 
@@ -888,6 +925,7 @@ def main() -> None:
                     reference_condition="A_FULL_CAUSAL_RAG",
                     composition_receipt=crossdoc_receipt,
                     precision_metadata=precision_metadata,
+                    distribution_top_k=args.distribution_top_k,
                 )
             )
 
@@ -942,6 +980,7 @@ def main() -> None:
                     reference_logits=a_logits,
                     reference_condition="A_FULL_CAUSAL_RAG",
                     precision_metadata=precision_metadata,
+                    distribution_top_k=args.distribution_top_k,
                 )
             )
 
@@ -1020,6 +1059,7 @@ def main() -> None:
         "composition_residual_scale": args.composition_residual_scale,
         "precision": precision_metadata,
         "shape_path_control": "P2_SHAPE_MATCHED_PRE_ROPE_REBIND",
+        "distribution_top_k": args.distribution_top_k,
         "hardware": _hardware(),
         "runtime_versions": _runtime_versions(),
         "git_commit": _git_commit(),

@@ -44,6 +44,7 @@ def main() -> None:
         default="canonical",
     )
     parser.add_argument("--composition-residual-scale", type=float, default=1.0)
+    parser.add_argument("--distribution-top-k", type=int, default=0)
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -58,6 +59,7 @@ def main() -> None:
         "max_resources": args.max_resources,
         "composition_residual_scale": args.composition_residual_scale,
         "record_order": args.record_order,
+        "distribution_top_k": args.distribution_top_k,
         "started_unix": time.time(),
         "runs": [],
     }
@@ -100,6 +102,8 @@ def main() -> None:
             str(args.max_new_tokens),
             "--record-order",
             args.record_order,
+            "--distribution-top-k",
+            str(args.distribution_top_k),
             "--mask-policies",
             "PREVIOUS_DOC_ONLY",
             "--boundary-windows",
