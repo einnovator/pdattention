@@ -289,6 +289,14 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
     layer_key_rmse = []
     layer_value_rmse = []
     all_layer_diagnostics: list[Mapping[str, object]] = []
+    composition_seed_effects: dict[str, list[dict[str, float | int]]] = {
+        condition: []
+        for condition in (
+            "D_GIST_SA_APPEND",
+            "E_GIST_SA_BOUNDARY_8",
+            "F_GIST_SA_BOUNDARY_32",
+        )
+    }
     for manifest, rows, diagnostics in runs:
         all_layer_diagnostics.extend(diagnostics)
         by_example: dict[str, dict[str, Mapping[str, object]]] = {}
@@ -337,6 +345,34 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 "b_minus_c_gold_nll": _mean(bc_nll),
             }
         )
+        for condition, effects in composition_seed_effects.items():
+            paired_rows = [
+                (pair[condition], pair["C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS"])
+                for pair in by_example.values()
+                if condition in pair
+                and "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS" in pair
+            ]
+            if paired_rows:
+                effects.append(
+                    {
+                        "seed": int(manifest["seed"]),
+                        "token_f1_delta": statistics.fmean(
+                            float(candidate["token_f1"])
+                            - float(reference["token_f1"])
+                            for candidate, reference in paired_rows
+                        ),
+                        "official_score_delta": statistics.fmean(
+                            float(candidate["official_multihop_rag_score"])
+                            - float(reference["official_multihop_rag_score"])
+                            for candidate, reference in paired_rows
+                        ),
+                        "gold_nll_delta": statistics.fmean(
+                            float(candidate["gold_answer_mean_nll"])
+                            - float(reference["gold_answer_mean_nll"])
+                            for candidate, reference in paired_rows
+                        ),
+                    }
+                )
         bc_summary = manifest["summary"]["b_minus_c"]
         layer_key_rmse.append(float(bc_summary["max_layer_key_rmse"]))
         layer_value_rmse.append(float(bc_summary["max_layer_value_rmse"]))
@@ -418,6 +454,34 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             "max_layer_key_rmse_across_runs": max(layer_key_rmse),
             "max_layer_value_rmse_across_runs": max(layer_value_rmse),
             "layerwise": layerwise,
+        },
+        "composition_vs_c": {
+            condition: {
+                "seed_effects": effects,
+                "seed_mean_token_f1_delta": _mean(
+                    [float(row["token_f1_delta"]) for row in effects]
+                ),
+                "seed_bootstrap_token_f1_delta_95_ci": _bootstrap(
+                    [float(row["token_f1_delta"]) for row in effects]
+                ),
+                "exact_two_sided_sign_flip_p_token_f1": _exact_sign_flip_p(
+                    [float(row["token_f1_delta"]) for row in effects]
+                ),
+                "seed_mean_official_score_delta": _mean(
+                    [float(row["official_score_delta"]) for row in effects]
+                ),
+                "seed_bootstrap_official_score_delta_95_ci": _bootstrap(
+                    [float(row["official_score_delta"]) for row in effects]
+                ),
+                "seed_mean_gold_nll_delta": _mean(
+                    [float(row["gold_nll_delta"]) for row in effects]
+                ),
+                "seed_bootstrap_gold_nll_delta_95_ci": _bootstrap(
+                    [float(row["gold_nll_delta"]) for row in effects]
+                ),
+            }
+            for condition, effects in composition_seed_effects.items()
+            if effects
         },
         "source_manifests": [str(path) for path in manifest_paths],
     }

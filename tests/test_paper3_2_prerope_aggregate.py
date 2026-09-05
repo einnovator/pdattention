@@ -65,6 +65,15 @@ def _write_run(root: Path, seed: int, a_f1: float, b_f1: float) -> Path:
             "first_step_js_divergence": 0.001,
             "request_rope_transform_ms": 1.5,
         },
+        {
+            **common,
+            "condition": "D_GIST_SA_APPEND",
+            "token_f1": b_f1 - 0.1,
+            "gold_answer_mean_nll": 3.2,
+            "prediction": "gist",
+            "first_step_logits_sha256": "d",
+            "first_step_js_divergence": 0.2,
+        },
     ]
     with gzip.open(run / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in rows:
@@ -106,6 +115,9 @@ def test_prerope_aggregate_keeps_seed_as_replication_unit(tmp_path: Path) -> Non
     assert result["b_minus_c"]["layerwise"][0]["max_key_rmse"] == pytest.approx(
         23e-5
     )
+    gist = result["composition_vs_c"]["D_GIST_SA_APPEND"]
+    assert gist["seed_mean_token_f1_delta"] == pytest.approx(-0.1)
+    assert gist["seed_mean_gold_nll_delta"] == pytest.approx(1.0)
 
 
 def test_prerope_aggregate_rejects_mixed_protocols(tmp_path: Path) -> None:
