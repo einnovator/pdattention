@@ -213,6 +213,14 @@ def run_matrix(
             )
             if len(rows) != 1 or rows[0].identity.task_id != task_id:
                 raise ValueError(f"expected one normalized row for {task_id}, found {len(rows)}")
+            invalid_reason = _invalid_trial_reason(rows[0])
+            if invalid_reason:
+                record.update(
+                    state="INVALID", finished_at=_now(), reason=invalid_reason,
+                    normalized_result=None,
+                )
+                _persist(config, manifest, state, output, state_path)
+                continue
             record.update(
                 state="COMPLETED", finished_at=_now(),
                 success=rows[0].outcome.success,
@@ -223,6 +231,23 @@ def run_matrix(
             record.update(state="FAILED", finished_at=_now(), reason=str(exc))
         _persist(config, manifest, state, output, state_path)
     return state
+
+
+def _invalid_trial_reason(row: Any) -> str | None:
+    """Reject pre-inference adapter failures from model-quality statistics."""
+
+    failure = row.outcome.failure_kind
+    no_model_activity = (
+        row.behavior.model_calls == 0
+        and row.tokens.input_tokens == 0
+        and row.tokens.output_tokens == 0
+    )
+    if failure and failure != "official_score_below_success" and no_model_activity:
+        return (
+            f"Harness/infrastructure failure before model activity: {failure}. "
+            "The cell remains retryable and is excluded from admission statistics."
+        )
+    return None
 
 
 def _persist(

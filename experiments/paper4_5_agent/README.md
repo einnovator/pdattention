@@ -49,7 +49,7 @@ treatments.
 ## Cross-harness qualification
 
 The stronger-model pilot runs the same 10 frozen Terminal-Bench 2.1 tasks with
-Qwen3-Coder-30B through Mini-SWE-agent, SWE-agent, and OpenHands. It is
+Qwen3-Coder-30B through Mini-SWE-agent, Qwen Code, and Aider. It is
 deliberately No-PRA:
 the matrix must complete all 30 official Harbor trials before its admission
 gate can pass. Each trial has its own Harbor directory and normalized row, so a
@@ -64,6 +64,11 @@ a host limitation and is not counted as a model outcome.
 OpenCode and Pi remain represented by the earlier WSL-hosted mechanism gates.
 Their Node processes did not terminate after final output under Rosetta, so
 those harnesses are not silently mixed into this ARM-host cohort.
+SWE-agent 1.1.0 and OpenHands 0.57.0 also failed host qualification before a
+usable model trajectory: Harbor passed SWE-agent a literal `$(pwd)` repository
+path, while OpenHands exhausted its API retry loop. The matrix marks such
+zero-call failures `INVALID`, keeps them retryable, and excludes them from
+quality and admission statistics.
 
 ```bash
 export PRA_AGENT_QWEN3_CODER_30B_URL=http://MODEL_HOST:11435/v1

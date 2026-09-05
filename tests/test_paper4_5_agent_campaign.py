@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -11,6 +12,7 @@ import yaml
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
+    _invalid_trial_reason,
     harbor_command,
     matrix_cells,
     run_matrix,
@@ -231,7 +233,7 @@ def test_stronger_model_matrix_crosses_10_tasks_and_three_harnesses() -> None:
     cells = matrix_cells(config, manifest)
     assert len(cells) == 30
     assert {cell[2].harness_id for cell in cells[:3]} == {
-        "mini-swe-agent-2.4.6", "swe-agent-1.1.0", "openhands-0.57.0",
+        "mini-swe-agent-2.4.6", "qwen-code-0.23.0", "aider-0.86.2",
     }
     assert len({cell[3] for cell in cells[:15]}) == 5
 
@@ -285,3 +287,21 @@ def test_harbor_matrix_dry_run_is_pra_locked_and_writes_all_cells(
     report = (tmp_path / "matrix/report.md").read_text(encoding="utf-8")
     assert "official-Harbor **No-PRA baseline**" in report
     assert "Completed: `0/30`" in report
+
+
+def test_pre_inference_harness_failure_is_not_quality_evidence() -> None:
+    row = SimpleNamespace(
+        outcome=SimpleNamespace(failure_kind="NonZeroAgentExitCodeError"),
+        behavior=SimpleNamespace(model_calls=0),
+        tokens=SimpleNamespace(input_tokens=0, output_tokens=0),
+    )
+    assert "excluded" in (_invalid_trial_reason(row) or "")
+
+
+def test_scored_model_failure_remains_admissible() -> None:
+    row = SimpleNamespace(
+        outcome=SimpleNamespace(failure_kind="official_score_below_success"),
+        behavior=SimpleNamespace(model_calls=4),
+        tokens=SimpleNamespace(input_tokens=1200, output_tokens=80),
+    )
+    assert _invalid_trial_reason(row) is None

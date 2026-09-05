@@ -1,7 +1,7 @@
 schema_version: 1
-campaign_id: paper4-5-qwen3-coder-30b-terminal-bench-pilot-v1
+campaign_id: paper4-5-qwen3-coder-30b-terminal-bench-pilot-v2
 manifest: experiments/agents/manifests/terminal_bench_portable_pilot.yaml
-output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_python_harness_pilot
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_multi_harness_pilot
 agent_host: mac95-docker
 hardware:
   agent_host: Apple Mac, 16 GiB
@@ -24,12 +24,16 @@ harnesses:
     version: 2.4.6
     kwargs:
       max_tokens: 8192
-  - harness_id: swe-agent-1.1.0
-    agent: swe-agent
-    version: v1.1.0
-  - harness_id: openhands-0.57.0
-    agent: openhands
-    version: 0.57.0
+  - harness_id: qwen-code-0.23.0
+    agent: qwen-coder
+    version: 0.23.0
+  - harness_id: aider-0.86.2
+    agent: aider
+    version: 0.86.2
+    kwargs:
+      stream: false
+      auto_lint: false
+      auto_test: false
     kwargs:
       python_version: 3.12
       max_iterations: 20
