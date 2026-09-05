@@ -59,6 +59,7 @@ class PublishedBaseline(StrictModel):
     engine_version: str
     dtype: str
     quantization: str | None = None
+    kv_cache_dtype: str | None = None
     scaffold: str
     context_limit: int = Field(ge=1)
     max_steps: int = Field(ge=1)

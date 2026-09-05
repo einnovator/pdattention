@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import threading
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +16,11 @@ from experiments.paper4_5_agent.reproduction import OfficialResult, review_resul
 from experiments.paper4_5_agent.benchmark import (
     load_benchmark_card,
     precision_diagnostic_ids,
+)
+from experiments.paper4_5_agent.context_treatment import (
+    ContextTreatment,
+    TreatmentProxy,
+    transform_chat_payload,
 )
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
@@ -32,8 +40,10 @@ from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
 from experiments.paper4_5_agent.schema import CampaignConfig, ReproductionStatus
 from experiments.paper4_5_agent.runners.swebench_verified import (
+    _aggregate_traces,
     _is_h100_80gb,
     _normalize_report,
+    _trajectory_metrics,
     package_versions,
 )
 from experiments.agents.schema import BenchmarkManifest
@@ -65,6 +75,7 @@ def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
     assert treatments
     assert all(cell.baseline_cell == "gemma4-31b-no-pra" for cell in treatments)
     assert all(cell.minimum_baseline_score == 0.20 for cell in treatments)
+    assert all("raise SystemExit" not in " ".join(cell.command) for cell in treatments)
 
 
 def test_fixed50_campaign_dry_run_cannot_admit_pra(tmp_path: Path) -> None:
@@ -83,6 +94,28 @@ def test_fixed50_campaign_dry_run_cannot_admit_pra(tmp_path: Path) -> None:
     assert state["cells"]["gemma4-pra-50"]["state"] == "BLOCKED"
 
 
+def _fixed50_execution_identity(baseline: object) -> dict[str, object]:
+    return {
+        "cohort_sha256": baseline.task_ids_sha256,
+        "benchmark_revision": baseline.benchmark_revision,
+        "harness": baseline.harness,
+        "harness_version": baseline.harness_version,
+        "model": baseline.model,
+        "engine": baseline.engine,
+        "engine_version": baseline.engine_version,
+        "dtype": baseline.dtype,
+        "quantization": baseline.quantization,
+        "kv_cache_dtype": baseline.kv_cache_dtype,
+        "scaffold": baseline.scaffold,
+        "context_limit": baseline.context_limit,
+        "max_steps": baseline.max_steps,
+        "temperature": baseline.temperature,
+        "function_calling": baseline.function_calling,
+        "prefix_caching": baseline.prefix_caching,
+        "grading": baseline.grading,
+    }
+
+
 def test_baseline_score_floor_blocks_weak_but_reproduced_cell(tmp_path: Path) -> None:
     payload = yaml.safe_load(SWEBENCH_CONFIG.read_text(encoding="utf-8"))
     payload["output_directory"] = str(tmp_path / "swebench")
@@ -99,12 +132,27 @@ def test_baseline_score_floor_blocks_weak_but_reproduced_cell(tmp_path: Path) ->
         result.write_text(json.dumps({
             "official_grader": True, "score": 0.14, "resolved": 7, "total": 50,
             "task_ids": baseline_ids, "configuration_differences": [],
+            "execution_identity": _fixed50_execution_identity(loaded.baselines[0]),
         }), encoding="utf-8")
         record_result(config, cell_id="qwen3-coder-30b-no-pra", result_path=result)
         with pytest.raises(ValueError, match="baseline score >= 0.200"):
             record_result(config, cell_id="gemma4-gateway-passthrough", result_path=result)
     finally:
         config.unlink(missing_ok=True)
+
+
+def test_fixed50_score_without_execution_identity_does_not_unlock() -> None:
+    campaign = CampaignConfig.load(SWEBENCH_CONFIG)
+    baseline = campaign.baselines[1]
+    result = OfficialResult(
+        official_grader=True, score=0.38, resolved=19, total=50,
+        task_ids=baseline.task_ids,
+    )
+    review = review_result(
+        baseline, result, absolute_tolerance=0.10, require_exact_cohort=True,
+    )
+    assert review.status == ReproductionStatus.BASELINE_ATTEMPTED
+    assert any("structured execution identity" in reason for reason in review.reasons)
 
 
 def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:
@@ -137,6 +185,169 @@ def test_h100_preflight_accepts_nvidia_smi_mib_format() -> None:
     assert _is_h100_80gb("NVIDIA H100 80GB HBM3, 81559 MiB")
     assert not _is_h100_80gb("NVIDIA H100 PCIe, 61440 MiB")
     assert not _is_h100_80gb("NVIDIA RTX 4090, 24564 MiB")
+
+
+def test_context_treatments_share_budget_and_keep_mandatory_messages() -> None:
+    payload = {
+        "model": "model",
+        "messages": [
+            {"role": "system", "content": "work carefully"},
+            {"role": "user", "content": "repository task statement"},
+            {"role": "assistant", "content": "I inspected alpha module ordinary details"},
+            {"role": "user", "content": "tool output needle_value appears in alpha.py"},
+            {"role": "assistant", "content": "more unrelated trajectory words here"},
+            {"role": "user", "content": "where is needle_value defined"},
+        ],
+    }
+    truncated, truncation = transform_chat_payload(
+        payload, mode=ContextTreatment.TRUNCATION, budget_fraction=0.5,
+    )
+    selected, pra = transform_chat_payload(
+        payload, mode=ContextTreatment.PRA_SELECTED_CONTEXT, budget_fraction=0.5,
+    )
+    assert truncated["messages"][0] == payload["messages"][0]
+    assert truncated["messages"][-1] == payload["messages"][-1]
+    assert selected["messages"] == [payload["messages"][0], payload["messages"][-1]]
+    assert any("needle_value" in row["text"] for row in selected["pra"]["resources"])
+    assert truncation.logical_input_tokens_estimate == pra.logical_input_tokens_estimate
+    assert truncation.session_id == pra.session_id == selected["pra"]["session_id"]
+    assert truncation.mandatory_tokens_estimate == pra.mandatory_tokens_estimate
+    assert truncation.physical_input_tokens_estimate <= truncation.logical_input_tokens_estimate
+    assert pra.physical_input_tokens_estimate <= pra.logical_input_tokens_estimate
+
+
+def test_passthrough_does_not_rewrite_openai_payload() -> None:
+    payload = {"model": "m", "messages": [{"role": "user", "content": "hello world"}]}
+    transformed, trace = transform_chat_payload(
+        payload, mode=ContextTreatment.PASSTHROUGH, budget_fraction=1.0,
+    )
+    assert transformed == payload
+    assert trace.tokens_avoided_estimate == 0
+    assert trace.selected_tokens_estimate == 0
+
+
+def test_minisweagent_trajectory_metrics_preserve_exact_usage(tmp_path: Path) -> None:
+    path = tmp_path / "repo__project-1.traj.json"
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "task statement"},
+        {
+            "role": "assistant", "content": "inspect",
+            "extra": {
+                "timestamp": 10.0, "actions": [{"command": "cat file"}],
+                "response": {"usage": {"prompt_tokens": 100, "completion_tokens": 20}},
+            },
+        },
+        {"role": "user", "content": "output", "extra": {"timestamp": 11.5}},
+        {
+            "role": "assistant", "content": "finish",
+            "extra": {
+                "timestamp": 15.0, "actions": [{"command": "patch"}],
+                "response": {"usage": {"prompt_tokens": 180, "completion_tokens": 30}},
+            },
+        },
+        {"role": "exit", "content": "done", "extra": {"timestamp": 16.0}},
+    ]
+    path.write_text(json.dumps({
+        "messages": messages,
+        "info": {"exit_status": "Submitted", "submission": "diff\n+line\n"},
+    }), encoding="utf-8")
+
+    metrics = _trajectory_metrics(path)
+
+    assert metrics["cumulative_prompt_tokens"] == 280
+    assert metrics["max_prompt_tokens"] == 180
+    assert metrics["repeated_context_tokens_estimate"] == 100
+    assert metrics["repeated_context_fraction_estimate"] == pytest.approx(100 / 280)
+    assert metrics["output_tokens"] == 50
+    assert metrics["model_call_count"] == metrics["tool_call_count"] == 2
+    assert metrics["wall_time_s"] == 6.0
+    assert metrics["tool_time_s"] == 1.5
+    assert metrics["termination_reason"] == "Submitted"
+    assert metrics["patch"] == "diff\n+line\n"
+
+
+def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
+    rows = [
+        {
+            "logical_input_tokens_estimate": 100,
+            "physical_input_tokens_estimate": 60,
+            "selected_tokens_estimate": 30,
+            "route_time_s": 0.1,
+            "token_estimator": "whitespace_v1",
+        },
+        {
+            "logical_input_tokens_estimate": 200,
+            "physical_input_tokens_estimate": 100,
+            "selected_tokens_estimate": 50,
+            "route_time_s": 0.2,
+            "token_estimator": "whitespace_v1",
+        },
+    ]
+
+    aggregate = _aggregate_traces(rows)
+
+    assert aggregate["logical_input_tokens_estimate"] == 300
+    assert aggregate["physical_input_tokens_estimate"] == 160
+    assert aggregate["selected_tokens_estimate"] == 80
+    assert aggregate["tokens_avoided_estimate"] == 140
+    assert aggregate["token_saving_fraction_estimate"] == pytest.approx(140 / 300)
+    assert aggregate["route_time_s"] == pytest.approx(0.3)
+
+
+def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Path) -> None:
+    observed: dict[str, object] = {}
+
+    class Target(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            observed.update(json.loads(self.rfile.read(length)))
+            body = b'{"choices":[{"message":{"content":"ok"}}]}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+    target_thread = threading.Thread(target=target.serve_forever, daemon=True)
+    target_thread.start()
+    trace_path = tmp_path / "request_telemetry.jsonl"
+    proxy = TreatmentProxy(
+        f"http://127.0.0.1:{target.server_port}/v1",
+        mode=ContextTreatment.PRA_SELECTED_CONTEXT,
+        budget_fraction=0.5,
+        trace_path=trace_path,
+    )
+    proxy_url = proxy.start()
+    try:
+        payload = json.dumps({
+            "model": "model",
+            "messages": [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "task alpha"},
+                {"role": "assistant", "content": "alpha evidence details"},
+                {"role": "user", "content": "find alpha"},
+            ],
+        }).encode()
+        request = urllib.request.Request(
+            f"{proxy_url}/chat/completions", data=payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert json.loads(response.read())["choices"][0]["message"]["content"] == "ok"
+    finally:
+        proxy.close()
+        target.shutdown()
+        target.server_close()
+        target_thread.join(timeout=5)
+    assert observed["pra"]["metadata"]["benchmark_fairness"] == "agent-visible-messages-only"
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    assert trace["mode"] == "gateway-pra"
+    assert trace["physical_input_tokens_estimate"] <= trace["logical_input_tokens_estimate"]
 
 
 def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:

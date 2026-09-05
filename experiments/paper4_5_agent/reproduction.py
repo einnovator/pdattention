@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Any, Mapping
 
 from pydantic import Field, model_validator
 
@@ -20,6 +21,7 @@ class OfficialResult(StrictModel):
     task_ids: tuple[str, ...] = ()
     configuration_differences: tuple[str, ...] = ()
     grader_artifact: str | None = None
+    execution_identity: Mapping[str, Any] | None = None
 
     @model_validator(mode="after")
     def counts_and_score_are_consistent(self) -> "OfficialResult":
@@ -70,6 +72,36 @@ def review_result(
         )
     if baseline.task_ids and tuple(result.task_ids) != tuple(baseline.task_ids):
         reasons.append("Frozen task IDs or their order differ from the published cohort.")
+    if baseline.task_ids_sha256:
+        if result.execution_identity is None:
+            reasons.append("Fixed-cohort result is missing its structured execution identity.")
+        else:
+            expected_identity = {
+                "cohort_sha256": baseline.task_ids_sha256,
+                "benchmark_revision": baseline.benchmark_revision,
+                "harness": baseline.harness,
+                "harness_version": baseline.harness_version,
+                "model": baseline.model,
+                "engine": baseline.engine,
+                "engine_version": baseline.engine_version,
+                "dtype": baseline.dtype,
+                "quantization": baseline.quantization,
+                "kv_cache_dtype": baseline.kv_cache_dtype,
+                "scaffold": baseline.scaffold,
+                "context_limit": baseline.context_limit,
+                "max_steps": baseline.max_steps,
+                "temperature": baseline.temperature,
+                "function_calling": baseline.function_calling,
+                "prefix_caching": baseline.prefix_caching,
+                "grading": baseline.grading,
+            }
+            for key, expected in expected_identity.items():
+                observed = result.execution_identity.get(key)
+                if observed != expected:
+                    reasons.append(
+                        f"Execution identity differs for {key}: observed {observed!r}, "
+                        f"expected {expected!r}."
+                    )
 
     interval = _wilson_interval(result.resolved, result.total)
     score_delta = result.score - baseline.published_score

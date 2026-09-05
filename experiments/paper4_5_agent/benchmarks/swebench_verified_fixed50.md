@@ -14,6 +14,10 @@ The machine-readable card preserves the source order and contains 50 unique
 SWE-bench Verified test IDs from seven repositories. Do not regenerate or
 shuffle it. The first ten ordered IDs form the frozen precision diagnostic;
 that diagnostic is not a reproduction of the fixed-50 score.
+New executions pin dataset revision
+`c104f840cc67f8b6eec6f759ebc8b2693d585d4a` in a dedicated cache. The source
+study did not report its dataset revision, so historical binary identity
+remains unknown even though the instance IDs are exact.
 
 ## Published setup
 
@@ -36,10 +40,11 @@ that diagnostic is not a reproduction of the fixed-50 score.
 ## Reproduction boundary
 
 The source does not publish immutable model/tokenizer revisions, package-file
-hashes, Docker image digests, or every retry identity. Those omissions must be
-recorded in a local run manifest. A run with current pinned revisions can be a
-score-compatible partial reproduction, but it cannot claim exact artifact
-identity without additional provenance from the source authors.
+hashes, Docker image digests, or every retry identity. Those omissions are
+recorded separately from local configuration deviations. A run may reproduce
+the complete reported configuration and score while pinning its own immutable
+revisions, but it cannot claim binary artifact identity with the historical
+run without additional provenance from the source authors.
 
 PRA remains locked until the no-PRA baseline has official grading, exact cohort
 identity, an accepted score, and no unresolved configuration differences. No

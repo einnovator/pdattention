@@ -3019,13 +3019,33 @@ until a qualifying host is recorded. The currently reachable local CUDA device
 has 4~GB, and the known 48--64~GB Apple hosts cannot reproduce
 vLLM/H100/BF16. Moreover, the source does not publish immutable
 model/tokenizer revisions, package hashes, or grader-image digests. The runner
-writes these omissions as configuration differences rather than silently
-equating current artifacts with the source. An exact-cohort score on a changed
-artifact remains partial and cannot unlock PRA. After an admitted Gemma result
-of at least 20\%, the scheduler orders gateway pass-through, matched
+records these as source-provenance limitations, separately from actual local
+configuration deviations. Current Qwen and Gemma HF revisions are pinned for
+the new run, as are installed package-manifest digests. The campaign can test
+reproduction of every reported setting and score, but it cannot claim binary
+identity with the historical artifacts. Any actual configuration deviation
+still leaves the cell partial and locked. After an admitted Gemma result of at
+least 20\%, the scheduler orders gateway pass-through, matched
 truncation, and PRA at 50\%, 25\%, and 12.5\% physical-context budgets. The
 first ten ordered IDs separately define a BF16/Q8/Q6/Q5/Q4 precision
 diagnostic; its result cannot be reported as fixed-50 reproduction evidence.
+The treatment path is nevertheless executable rather than a placeholder. A
+small OpenAI-compatible proxy leaves B1 payloads unchanged. For matched
+truncation and B2 it keeps system messages and the current user observation
+mandatory, then allocates the same residual budget to prior agent-visible
+history. Truncation keeps the recent suffix; B2 divides earlier messages into
+bounded records, ranks them with typed, BM25, and deterministic embedding
+channels under reciprocal-rank fusion, and sends the selected records through
+the gateway's G10 text-realization path. A recency fallback fills only unused
+budget. Request receipts separate logical, selected, physically visible, and
+avoided whitespace-token estimates from engine-reported tokenizer counts and
+timings. The normalizer also reads mini-swe-agent's agent-visible trajectory
+files: it records exact cumulative prompt and completion tokens, maximum prompt
+tokens, a conservative repeated-context estimate, model and tool calls,
+trajectory duration, termination, and patch size. Stable task hashes join these
+rows to request traces without benchmark labels. TTFT and prefill remain null
+when the endpoint does not expose them. This implementation readiness is not
+treatment evidence while the baseline gate is closed.
 
 \begin{table}[H]
 \centering
@@ -3606,9 +3626,11 @@ campaign state, distributed result import, official SWE-bench normalization,
 and hard No-PRA reproduction gates\\
 \path{experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json} &
 Digest-protected external seed-0 cohort and source provenance\\
-\path{experiments/paper4_5_agent/runners/swebench_verified.py} & Baseline-only
-mini-swe-agent chunk runner, host preflight, official-grader normalization, and
-null-safe telemetry receipts\\
+\path{experiments/paper4_5_agent/runners/swebench_verified.py} & Gated
+mini-swe-agent baseline/treatment chunk runner, host preflight, official-grader
+normalization, and agent-visible trajectory telemetry\\
+\path{experiments/paper4_5_agent/context_treatment.py} & Matched truncation and
+agent-visible Selected Context proxy with per-request budget telemetry\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\

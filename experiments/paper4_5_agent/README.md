@@ -108,17 +108,24 @@ python -m experiments.paper4_5_agent.runners.swebench_verified \
   --output /tmp/pra-swebench-preflight \
   --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
   --served-model Qwen3-Coder-30B-A3B \
+  --model-revision b2cff646eb4bb1d68355c01b18ae02e7cf42d120 \
+  --tokenizer-revision b2cff646eb4bb1d68355c01b18ae02e7cf42d120 \
   --run-id qwen3-preflight --preflight-only
 ```
 
 The source-matched run requires mini-swe-agent `2.4.0`, SWE-bench `4.1.0`,
 vLLM `0.22.1`, and one H100 80 GB. The source did not publish immutable model
-or tokenizer revisions, so this omission is explicit in every preflight
-receipt. `--allow-partial-reproduction` permits diagnostics on a changed host,
-but such a receipt carries configuration differences and cannot unlock PRA.
+or tokenizer revisions, so these source limitations remain explicit in every
+preflight receipt. The execution configurations pin current immutable HF
+revisions and installed package `RECORD` digests. `--allow-partial-reproduction`
+permits diagnostics on a changed host, but any actual configuration difference
+prevents that receipt from unlocking PRA.
+The runner also verifies the pinned SWE-bench dataset revision and uses a
+campaign-local datasets cache so an older shared cache cannot silently satisfy
+the run.
 
 The full resumable scheduler is intentionally disabled until a qualifying host
-and immutable current revisions are entered:
+is available:
 
 ```bash
 python -m experiments.paper4_5_agent.run_campaign \
@@ -130,3 +137,33 @@ Once enabled, it runs Qwen first, then Gemma, and admits the 50/25/12.5 percent
 frontier only when Gemma is officially reproduced and its observed baseline
 score is at least 20 percent. The Qwen 14 percent target remains a lower-
 capability control and cannot unlock the Gemma treatment cells.
+
+The treatment runner no longer contains placeholder commands. Start the pinned
+vLLM model on port `8000`, then expose two separately identified gateway modes:
+
+```bash
+pra gateway serve --mode passthrough --backend vllm \
+  --backend-url http://127.0.0.1:8000/v1 --model google/gemma-4-31B-it \
+  --pra-bundle none --port 8080
+pra gateway serve --mode selected-context --backend vllm \
+  --backend-url http://127.0.0.1:8000/v1 --model google/gemma-4-31B-it \
+  --pra-bundle none --port 8081
+```
+
+For every mini-swe-agent request, the treatment proxy keeps all system messages
+and the current user observation mandatory. Matched truncation fills the
+remaining budget from recent history. Selected Context segments only earlier
+agent-visible messages, ranks them with the runtime's typed/BM25/hashed-
+embedding RRF index, and uses recency only to fill an unused budget. It sends
+the selected segments as typed resources to G10 and records a
+`request_telemetry.jsonl` row with logical, selected, visible, avoided-token,
+and routing-time estimates. These estimates use a declared whitespace counter;
+engine-reported tokenizer and timing metrics remain separate when available.
+
+After official grading, the runner joins each task to its mini-swe-agent
+`*.traj.json` by instance ID. It records exact backend prompt/completion usage,
+model and tool calls, maximum prompt size, conservative repeated-context load,
+trajectory duration, termination, and patch size. A stable hash of the first
+agent-visible task message joins treatment requests to the task row. Endpoint
+timings such as TTFT and prefill remain null unless the serving layer reports
+them; the normalizer does not infer those measurements from wall time.
