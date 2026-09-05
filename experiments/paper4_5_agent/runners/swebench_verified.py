@@ -364,6 +364,7 @@ def _write_task_rows(
             "model_revision": args.model_revision, "engine": args.engine,
             "engine_version": args.engine_version, "quantization": args.quantization,
             "dtype": args.dtype, "mode": args.mode,
+            "context_budget_fraction": args.budget_fraction,
             "pra_config_id": "swebench-balanced-v1" if args.mode == "gateway-pra" else None,
             "context_budget": args.context_limit, "seed": 0, "resolved": instance_id in resolved,
             "benchmark_score": 1.0 if instance_id in resolved else 0.0,

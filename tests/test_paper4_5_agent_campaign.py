@@ -25,6 +25,7 @@ from experiments.paper4_5_agent.build_easy_cohorts import (
     select_easy_rows,
 )
 from experiments.paper4_5_agent.promote_nested_baseline import promote
+from experiments.paper4_5_agent.analyze_easy_frontier import summarize as summarize_frontier
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
@@ -139,6 +140,41 @@ def test_nested_baseline_promotion_reuses_only_exact_completed_prefix(tmp_path: 
     assert payload["copied_task_ids"] == source_ids
     assert (destination_output / "chunk_01" / "official_chunk_result.json").is_file()
     assert not (destination_output / "chunk_02").exists()
+
+
+def test_easy_frontier_summary_preserves_paired_outcomes_and_missing_metrics(tmp_path: Path) -> None:
+    baseline = tmp_path / "no_pra"
+    treatment = tmp_path / "truncation_50"
+    baseline.mkdir()
+    treatment.mkdir()
+    rows = [
+        {"instance_id": "a", "resolved": True, "mode": "no-pra",
+         "context_budget_fraction": 1.0, "physical_input_tokens": 100,
+         "logical_input_tokens": 100, "cumulative_prompt_tokens": 100},
+        {"instance_id": "b", "resolved": False, "mode": "no-pra",
+         "context_budget_fraction": 1.0, "physical_input_tokens": 200,
+         "logical_input_tokens": 200, "cumulative_prompt_tokens": 200},
+    ]
+    (baseline / "results.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+    )
+    treated = [
+        {**rows[0], "resolved": False, "mode": "truncation",
+         "context_budget_fraction": 0.5, "physical_input_tokens": 50},
+        {**rows[1], "resolved": True, "mode": "truncation",
+         "context_budget_fraction": 0.5, "physical_input_tokens": 100},
+    ]
+    (treatment / "results.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in treated) + "\n", encoding="utf-8"
+    )
+
+    summary = summarize_frontier(tmp_path)
+
+    conditions = {row["condition"]: row for row in summary["conditions"]}
+    assert conditions["no_pra"]["physical_input_tokens"] == 300
+    assert conditions["no_pra"]["wall_time_s"] is None
+    assert conditions["truncation_50"]["token_saving_fraction"] == 0.5
+    assert {row["outcome"] for row in summary["paired"]} == {"regressed", "recovered"}
 
 
 def test_easy20_campaign_is_local_no_pra_calibration() -> None:
