@@ -1249,6 +1249,40 @@ interaction is not monotonically better on the measured cohort.}
 \label{fig:cross-document-budget}
 \end{figure}
 
+\FloatBarrier
+
+\subsection{Reduced model and family replication}
+
+Table~\ref{tab:prerope-scale} adds preregistered ten-question checks at 4B and
+8B scale. These are mechanism replications, not powered substitutes for the
+five-seed 1.7B result. B and C remain behaviorally close in every row. Their F1
+is identical for Qwen3-8B and Llama-3.1-8B; generated outputs agree in 8/10,
+10/10, and 10/10 cases for Qwen3-4B, Qwen3-8B, and Llama-3.1-8B, respectively.
+No row has an exact first-step-logit hash match, so the table does not relabel
+behavioral agreement as numerical identity.
+
+\begin{table}[ht]
+\centering
+\caption{Pre-RoPE reduced scale and family check. A/B/C denote full packed,
+document-isolated packed, and independently encoded pre-RoPE records at exact
+packed positions. Only Qwen3-1.7B uses five independent seed cohorts.}
+\label{tab:prerope-scale}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/prerope_causal/scale/generated_prerope_scale_table.tex}}
+\end{table}
+
+The numerical residual is architecture-dependent. Qwen's worst-layer value
+RMSE falls from .168 at 4B to .134 at 8B, whereas Llama's is .0014 and its
+first-step JS is $1.41\times10^{-6}$. This is useful cross-family evidence for
+the exact host-frequency implementation, including Llama's piecewise RoPE, but
+three one-seed pilots do not define a model-size scaling law. Full causal
+packing is also not uniformly better: A exceeds B on Qwen3-8B F1, is nearly
+tied at 4B, and is lower on this small Llama cohort. Request-time key binding
+costs below 1 ms for both Qwen pilots and 3.75 ms for Llama. The safe conclusion
+is therefore narrow: pre-RoPE C closely tracks its causally isolated B target
+across two model families, while the remaining finite-precision residual and
+the utility of A's cross-document interaction depend on model and cohort.
+
 \subsection{Natural composition and contextual repair}
 We next freeze the historical cross-encoder's selection for five independently
 sampled cohorts of ten natural questions, using four resource orders per

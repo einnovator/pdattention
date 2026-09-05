@@ -1,0 +1,65 @@
+{
+  "experiment": "prerope_causal_decomposition_scale_summary",
+  "schema_version": "paper3.2-prerope-causal-scale-v1",
+  "replication_note": "Qwen3-1.7B is the powered five-seed result; other rows are reduced one-seed model/family checks.",
+  "rows": [
+    {
+      "model": "mlx-community/Qwen3-1.7B-4bit",
+      "cohort": "5x30",
+      "a_token_f1": 0.118684,
+      "b_token_f1": 0.110307,
+      "c_token_f1": 0.108140,
+      "bc_output_matches": 101,
+      "bc_pairs": 150,
+      "bc_first_step_js": 0.000880168,
+      "bc_mean_gold_nll_abs_delta": 0.070139,
+      "bc_worst_layer_value_rmse": 0.560778,
+      "request_rope_transform_ms": 0.687
+    },
+    {
+      "model": "mlx-community/Qwen3-4B-4bit",
+      "cohort": "1x10",
+      "a_token_f1": 0.1826739926739927,
+      "b_token_f1": 0.18251748251748254,
+      "c_token_f1": 0.18141858141858141,
+      "bc_output_matches": 8,
+      "bc_pairs": 10,
+      "bc_first_step_js": 0.00040529587629302953,
+      "bc_mean_gold_nll_abs_delta": 0.03125,
+      "bc_worst_layer_value_rmse": 0.16775812208652496,
+      "request_rope_transform_ms": 0.8826001023408026
+    },
+    {
+      "model": "mlx-community/Qwen3-8B-4bit",
+      "cohort": "1x10",
+      "a_token_f1": 0.18724608724608724,
+      "b_token_f1": 0.16901098901098904,
+      "c_token_f1": 0.16901098901098904,
+      "bc_output_matches": 10,
+      "bc_pairs": 10,
+      "bc_first_step_js": 0.00031393646108116545,
+      "bc_mean_gold_nll_abs_delta": 0.04375,
+      "bc_worst_layer_value_rmse": 0.13399115204811096,
+      "request_rope_transform_ms": 0.8699376019649208
+    },
+    {
+      "model": "mlx-community/Llama-3.1-8B-Instruct-4bit",
+      "cohort": "1x10",
+      "a_token_f1": 0.19569208569208568,
+      "b_token_f1": 0.29333333333333333,
+      "c_token_f1": 0.29333333333333333,
+      "bc_output_matches": 10,
+      "bc_pairs": 10,
+      "bc_first_step_js": 0.000001411627795965537,
+      "bc_mean_gold_nll_abs_delta": 0.001171875,
+      "bc_worst_layer_value_rmse": 0.001446939306333661,
+      "request_rope_transform_ms": 3.7456250051036477
+    }
+  ],
+  "source_manifests": [
+    "../five_seed/manifest.json",
+    "qwen3_4b_seed11_n10/manifest.json",
+    "qwen3_8b_seed11_n10/manifest.json",
+    "llama3_1_8b_seed11_n10/manifest.json"
+  ]
+}
