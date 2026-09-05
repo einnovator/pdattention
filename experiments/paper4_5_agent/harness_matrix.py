@@ -13,7 +13,6 @@ from typing import Any, Mapping
 import yaml
 from pydantic import Field, model_validator
 
-from experiments.agents.analysis import baseline_promotion_gate, summarize
 from experiments.agents.runner import import_harbor_job, load_runs
 from experiments.agents.schema import (
     BenchmarkManifest,
@@ -240,21 +239,8 @@ def _persist(
             rows.extend(load_runs(output / relative))
     aggregate = output / "runs.jsonl"
     aggregate.write_text("".join(row.json_line() + "\n" for row in rows), encoding="utf-8")
-    summary = summarize(rows)
-    gate = (
-        baseline_promotion_gate(
-            rows,
-            minimum_success_rate=config.minimum_success_rate,
-            maximum_success_rate=config.maximum_success_rate,
-            minimum_runs=config.minimum_runs,
-        )
-        if rows else {
-            "status": "BLOCKED", "eligible": False, "runs": 0,
-            "successes": 0, "official_success_rate": None,
-            "target_range": [config.minimum_success_rate, config.maximum_success_rate],
-            "reason": "No completed official no-PRA runs.",
-        }
-    )
+    summary = _summarize(rows)
+    gate = _admission_gate(config, rows)
     (output / "summary.json").write_text(
         json.dumps({
             "campaign_id": config.campaign_id,
@@ -266,6 +252,64 @@ def _persist(
         }, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _summarize(rows: list[Any]) -> dict[str, Any]:
+    """Summarize official rows without importing the PRA runtime package."""
+
+    by_harness: dict[str, dict[str, int | float]] = {}
+    for row in rows:
+        bucket = by_harness.setdefault(
+            row.identity.agent,
+            {"runs": 0, "successes": 0, "input_tokens": 0, "output_tokens": 0,
+             "model_calls": 0, "tool_calls": 0, "wall_ms": 0.0},
+        )
+        bucket["runs"] += 1
+        bucket["successes"] += int(row.outcome.success)
+        bucket["input_tokens"] += row.tokens.input_tokens
+        bucket["output_tokens"] += row.tokens.output_tokens
+        bucket["model_calls"] += row.behavior.model_calls
+        bucket["tool_calls"] += row.behavior.tool_calls
+        bucket["wall_ms"] += row.timings.task_wall_ms
+    for bucket in by_harness.values():
+        runs = int(bucket["runs"])
+        bucket["success_rate"] = bucket["successes"] / runs if runs else 0.0
+    successes = sum(row.outcome.success for row in rows)
+    return {
+        "runs": len(rows), "successes": successes,
+        "success_rate": successes / len(rows) if rows else None,
+        "input_tokens": sum(row.tokens.input_tokens for row in rows),
+        "output_tokens": sum(row.tokens.output_tokens for row in rows),
+        "by_harness": by_harness,
+    }
+
+
+def _admission_gate(config: HarnessMatrixConfig, rows: list[Any]) -> dict[str, Any]:
+    """Apply the preregistered floor, ceiling, and full-matrix requirements."""
+
+    successes = sum(row.outcome.success for row in rows)
+    rate = successes / len(rows) if rows else None
+    if len(rows) < config.minimum_runs:
+        status = "BLOCKED"
+        reason = f"Only {len(rows)} completed runs; all {config.minimum_runs} are required."
+    elif successes == 0:
+        status = "BLOCKED"
+        reason = "No-PRA official success is zero; PRA efficacy comparisons are floor-confounded."
+    elif rate is not None and rate < config.minimum_success_rate:
+        status = "BLOCKED"
+        reason = f"No-PRA success {rate:.1%} is below the promotion floor."
+    elif rate is not None and rate > config.maximum_success_rate:
+        status = "BLOCKED"
+        reason = f"No-PRA success {rate:.1%} exceeds the promotion ceiling."
+    else:
+        status = "ELIGIBLE"
+        reason = "The complete no-PRA matrix is inside the preregistered comparison band."
+    return {
+        "status": status, "eligible": status == "ELIGIBLE", "runs": len(rows),
+        "successes": successes, "official_success_rate": rate,
+        "target_range": [config.minimum_success_rate, config.maximum_success_rate],
+        "reason": reason,
+    }
 
 
 def _endpoint_host(url: str) -> str:
