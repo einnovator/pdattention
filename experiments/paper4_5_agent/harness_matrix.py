@@ -42,6 +42,7 @@ class MatrixHarness(StrictModel):
     harness_id: str
     agent: str
     version: str
+    model_name: str | None = None
     kwargs: Mapping[str, str | int | float | bool] = Field(default_factory=dict)
     enabled: bool = True
 
@@ -109,7 +110,7 @@ def harbor_command(
     qualified_task = task_id if task_id.startswith("terminal-bench/") else f"terminal-bench/{task_id}"
     command = [
         harbor, "run", "-d", manifest.dataset, "-a", harness.agent,
-        "-m", f"openai/{model.served_model}",
+        "-m", harness.model_name or f"openai/{model.served_model}",
     ]
     kwargs = {"version": harness.version, **harness.kwargs}
     for name, value in kwargs.items():

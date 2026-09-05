@@ -253,6 +253,16 @@ def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
     assert "version=2.4.6" in command
     assert "max_tokens=8192" in command
 
+    aider = next(row for row in config.harnesses if row.agent == "aider")
+    aider_command = harbor_command(
+        harbor="harbor", manifest=manifest, model=model, harness=aider,
+        task_id=task_id, job_directory=Path("jobs"),
+        base_url="http://model-host:11435/v1", api_key="secret",
+    )
+    assert aider_command[aider_command.index("-m") + 1] == (
+        "openai/openai/qwen3-coder:30b"
+    )
+
 
 def test_harbor_matrix_retry_uses_isolated_attempt_directories(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
