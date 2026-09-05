@@ -86,6 +86,19 @@ values and a model/revision/frequency/layout contract. Materialization fails
 if that contract does not match the host. Post-RoPE storage remains the default
 for fixed-position memories.
 
+Aggregate the five independently selected cohorts with the seed, rather than
+the individual question, as the replication unit:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_prerope_causal \
+  --manifest reports/paper3_2_prerope/qwen3_1_7b_seed11/manifest.json \
+  --manifest reports/paper3_2_prerope/qwen3_1_7b_seed23/manifest.json \
+  --manifest reports/paper3_2_prerope/qwen3_1_7b_seed37/manifest.json \
+  --manifest reports/paper3_2_prerope/qwen3_1_7b_seed71/manifest.json \
+  --manifest reports/paper3_2_prerope/qwen3_1_7b_seed101/manifest.json \
+  --output reports/paper3_2_prerope/five_seed
+```
+
 ## Native record references and internal reranking
 
 `run_native_record_reranker` exercises the high-level PRA document path. It

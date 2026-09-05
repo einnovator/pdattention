@@ -18,6 +18,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Mapping, Sequence
+from urllib.parse import quote
 
 from experiments.paper3_2_rag.run_composition_fidelity import (
     _distribution_diagnostics,
@@ -363,6 +364,7 @@ def main() -> None:
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     rows: list[dict[str, object]] = []
     bc_diagnostics: list[dict[str, object]] = []
+    frozen_receipts: list[dict[str, object]] = []
     started = time.time()
 
     for question_index, question in enumerate(questions, 1):
@@ -521,6 +523,11 @@ def main() -> None:
             ),
         }
         validate_matched_abc_receipts(receipts)
+        mask_receipts = {
+            "A_FULL_CAUSAL_RAG": full_mask_receipt.to_dict(),
+            "B_NO_CROSS_DOC_RAG": blocked_mask_receipt.to_dict(),
+            "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": blocked_mask_receipt.to_dict(),
+        }
 
         a_row = _condition_row(
             condition="A_FULL_CAUSAL_RAG",
@@ -608,6 +615,7 @@ def main() -> None:
                 position_binding_mode="POST_ROPE",
                 rope_frequency_digest=rope_digest,
             )
+            mask_receipts[condition] = policy_receipt.to_dict()
             rows.append(
                 _condition_row(
                     condition=condition,
@@ -626,12 +634,51 @@ def main() -> None:
                 )
             )
 
+        frozen_receipts.append(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "example_id": question.example_id,
+                "candidate_receipt": candidate.to_dict(),
+                "selection_receipt": selection.to_dict(),
+                "decomposition_receipts": {
+                    arm: receipt.to_dict() for arm, receipt in receipts.items()
+                },
+                "attention_mask_receipts": mask_receipts,
+                "packed_token_ids": list(packed_tokens),
+                "record_position_bindings": [
+                    {
+                        "record_uri": (
+                            "pra://multihoprag/chunk/" + quote(record_id, safe="")
+                        ),
+                        "record_id": record_id,
+                        "token_index": list(range(length)),
+                        "local_position": list(range(length)),
+                        "packed_request_position": list(
+                            range(boundary.start, boundary.end)
+                        ),
+                        "applied_position": list(range(boundary.start, boundary.end)),
+                        "phase_metadata": {
+                            "position_binding_mode": "PRE_ROPE",
+                            "request_position_policy": "EXACT_PACKED_REQUEST_POSITIONS",
+                            "rope_frequency_digest": rope_digest,
+                        },
+                    }
+                    for record_id, length, boundary in zip(
+                        record_ids, lengths, blocked_mask_receipt.document_token_boundaries
+                    )
+                ],
+            }
+        )
+
     args.output.mkdir(parents=True, exist_ok=True)
     with gzip.open(args.output / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in rows:
             stream.write(json.dumps(row, sort_keys=True) + "\n")
     with gzip.open(args.output / "bc_layer_diagnostics.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in bc_diagnostics:
+            stream.write(json.dumps(row, sort_keys=True) + "\n")
+    with gzip.open(args.output / "frozen_receipts.jsonl.gz", "wt", encoding="utf-8") as stream:
+        for row in frozen_receipts:
             stream.write(json.dumps(row, sort_keys=True) + "\n")
     manifest = {
         "schema_version": SCHEMA_VERSION,
