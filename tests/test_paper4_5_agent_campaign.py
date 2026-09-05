@@ -231,7 +231,7 @@ def test_stronger_model_matrix_crosses_10_tasks_and_three_harnesses() -> None:
     cells = matrix_cells(config, manifest)
     assert len(cells) == 30
     assert {cell[2].harness_id for cell in cells[:3]} == {
-        "opencode-1.18.26", "pi-0.73.1", "openhands-0.57.0",
+        "mini-swe-agent-2.4.6", "swe-agent-1.1.0", "openhands-0.57.0",
     }
     assert len({cell[3] for cell in cells[:15]}) == 5
 
@@ -248,7 +248,8 @@ def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
     assert command.count("-i") == 1
     assert f"terminal-bench/{task_id}" in command
     assert "OPENAI_BASE_URL=http://model-host:11435/v1" in command
-    assert "version=1.18.26" in command
+    assert "version=2.4.6" in command
+    assert "max_tokens=8192" in command
 
 
 def test_harbor_matrix_retry_uses_isolated_attempt_directories(

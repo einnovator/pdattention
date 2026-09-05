@@ -1,7 +1,7 @@
 schema_version: 1
 campaign_id: paper4-5-qwen3-coder-30b-terminal-bench-pilot-v1
 manifest: experiments/agents/manifests/terminal_bench_portable_pilot.yaml
-output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_portable_pilot
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_python_harness_pilot
 agent_host: mac95-docker
 hardware:
   agent_host: Apple Mac, 16 GiB
@@ -19,15 +19,14 @@ models:
     quantization: Q4_K_M
     base_url_env: PRA_AGENT_QWEN3_CODER_30B_URL
 harnesses:
-  - harness_id: opencode-1.18.26
-    agent: experiments.agents.harbor_agents:PinnedNodeOpenCode
-    version: 1.18.26
-  - harness_id: pi-0.73.1
-    agent: experiments.agents.harbor_agents:PinnedNodePi
-    version: 0.73.1
+  - harness_id: mini-swe-agent-2.4.6
+    agent: mini-swe-agent
+    version: 2.4.6
     kwargs:
-      model_api: openai-completions
-      thinking: "off"
+      max_tokens: 8192
+  - harness_id: swe-agent-1.1.0
+    agent: swe-agent
+    version: v1.1.0
   - harness_id: openhands-0.57.0
     agent: openhands
     version: 0.57.0

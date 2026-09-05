@@ -49,7 +49,8 @@ treatments.
 ## Cross-harness qualification
 
 The stronger-model pilot runs the same 10 frozen Terminal-Bench 2.1 tasks with
-Qwen3-Coder-30B through OpenCode, Pi, and OpenHands. It is deliberately No-PRA:
+Qwen3-Coder-30B through Mini-SWE-agent, SWE-agent, and OpenHands. It is
+deliberately No-PRA:
 the matrix must complete all 30 official Harbor trials before its admission
 gate can pass. Each trial has its own Harbor directory and normalized row, so a
 host restart resumes at the first incomplete `(model, task, harness)` cell.
@@ -59,6 +60,10 @@ During host qualification, the amd64 Selenium verifier for
 `filter-js-from-html` reached 92% of the ARM Docker host's memory limit and
 roughly 1,900 emulated processes without completing. Its receipt is retained as
 a host limitation and is not counted as a model outcome.
+
+OpenCode and Pi remain represented by the earlier WSL-hosted mechanism gates.
+Their Node processes did not terminate after final output under Rosetta, so
+those harnesses are not silently mixed into this ARM-host cohort.
 
 ```bash
 export PRA_AGENT_QWEN3_CODER_30B_URL=http://MODEL_HOST:11435/v1
