@@ -107,6 +107,14 @@ The completed next-iteration evidence is organized under
   disabled, and independently encoded pre-RoPE records rebound to identical
   packed offsets. Its layerwise B/C diagnostics are a correctness gate before
   the mask-interaction ladder is interpreted.
+- `crossdoc_precision/` separates true precision drift from shape-path drift
+  with FP32, FP16, INT8, and INT4 B/C and P2 controls.
+- `crossdoc_composition/natural/` contains the powered five-seed request-local
+  gist and boundary K/V study; `order/` repeats 50 matched questions under
+  canonical, reverse, and seeded-random record order.
+- `crossdoc_composition/scale/` contains three-question Qwen3-4B, Qwen3-8B,
+  and Llama-3.1-8B mechanism pilots. These runs are cross-model diagnostics,
+  not powered quality estimates.
 
 First regenerate the seed-aware aggregates from the five raw manifests. The
 aggregator retains seed summaries and reports deterministic seed-bootstrap
@@ -137,6 +145,16 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_native_records \
   --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed71/manifest.json \
   --manifest docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_seed101/manifest.json \
   --output docs/papers/shared/results/paper3_2_rag/native_records/qwen3_4b_five_seed/manifest.json
+```
+
+Regenerate the reduced cross-document composition table and plot with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_crossdoc_scale \
+  --manifest docs/papers/shared/results/paper3_2_rag/crossdoc_composition/scale/qwen3_4b_seed11/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/crossdoc_composition/scale/qwen3_8b_seed11/manifest.json \
+  --manifest docs/papers/shared/results/paper3_2_rag/crossdoc_composition/scale/llama3_1_8b_seed11/manifest.json \
+  --output docs/papers/shared/results/paper3_2_rag/crossdoc_composition/scale/aggregate
 ```
 
 Regenerate the compact publication plots and scale summary with:

@@ -59,7 +59,9 @@ unquantized fixture matches within tolerance. A shape-matched control is exact
 at FP32, FP16, INT8, and INT4, localizing the residual to separately shaped
 execution rather than host RoPE rebinding. Parameter-free gist append falls
 from C's .108 F1 to .007, and post-hoc boundary variants reach zero F1, despite
-using only 16--272 request-specific interactions. A token-level boundary mask
+using only 16--272 request-specific interactions. Three-question pilots at
+Qwen3-4B, Qwen3-8B, and Llama-3.1-8B likewise find no post-hoc arm that
+improves both F1 and NLL over independent K/V. A token-level boundary mask
 approaches full-packed F1, but no fixed mask dominates across F1, official
 score, and NLL. PRA therefore establishes exact contiguous transport and useful
 non-prefix reuse; changed compositions still require a qualified numerical
@@ -76,7 +78,7 @@ D_1\,D_2\,D_3\,Q
 \]
 imposes a total order and a precise metric distance among documents even when $D_1,D_2,D_3$ are logically independent sources.  If these resources are encoded separately and reused later, their original positional coordinates and contextual histories are no longer automatically equivalent to the newly serialized RAG sequence.
 
-This paper therefore asks six linked but separable questions:
+This paper therefore asks seven linked but separable questions:
 \begin{enumerate}[leftmargin=*]
     \item Which external retrieval/index strategies provide the strongest candidate evidence?
     \item Given the same candidates, how do conventional RAG and PRA routing compare?
@@ -1493,6 +1495,39 @@ is therefore narrow: pre-RoPE C closely tracks its causally isolated B target
 across two model families, while the remaining finite-precision residual and
 the utility of A's cross-document interaction depend on model and cohort.
 
+The request-local composition result also survives this reduced model and
+family check. Table~\ref{tab:gist-composition-scale} repeats A, C, and D--F on
+three matched MultiHop-RAG questions per model. These one-seed, three-question
+runs are mechanism pilots, not estimates of population quality. No post-hoc
+composition arm exceeds C on both token F1 and gold-answer NLL. On Qwen3-4B,
+C reaches .219 F1 while D--F reach .000, .067, and .000. On Qwen3-8B, C
+reaches .203 and the strongest post-hoc arm, boundary-32, reaches .167 with
+substantially worse NLL. Llama-3.1-8B is less brittle: D and E improve the
+coarse three-case official score from .667 to 1.000, but reduce C's .533 F1 to
+.277 and .249; boundary-32 reaches .361. This disagreement is exactly why the
+small official score is not used alone to promote a mechanism. The pilot
+supports training a bounded, model-specific composition adapter; it does not
+establish a model-size law.
+
+\begin{table}[ht]
+\centering
+\caption{Reduced request-local composition pilots on three matched questions
+per model. All checkpoints use 4-bit weights. C is independently encoded
+pre-RoPE K/V; D--F are untrained post-hoc composition mechanisms.}
+\label{tab:gist-composition-scale}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/scale/aggregate/generated_scale_table.tex}}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/scale/aggregate/crossdoc_scale_quality.pdf}
+\caption{Token F1 in the reduced cross-model mechanism pilots. The Llama
+cohort shows less severe degradation, but no parameter-free composition arm
+improves on independent pre-RoPE K/V.}
+\label{fig:gist-composition-scale}
+\end{figure}
+
 \subsection{Natural composition and contextual repair}
 We next freeze the historical cross-encoder's selection for five independently
 sampled cohorts of ten natural questions, using four resource orders per
@@ -1776,7 +1811,9 @@ The request-local gist ladder closes an even stronger gate. Parameter-free gist
 append and post-hoc boundary K/V copies add only 4--256 ephemeral tokens and
 16--272 request-specific interactions, but reduce five-seed mean F1 from .108
 for independent pre-RoPE records to .007, .000, and .000. Gist append also
-fails on the same questions at all four tested precisions. Sparse interaction
+fails on the same questions at all four tested precisions, and reduced 4B/8B
+pilots across Qwen and Llama find no post-hoc arm that improves both F1 and NLL
+over independent K/V. Sparse interaction
 is therefore not sufficient by itself: contextual K/V must be calibrated for
 the frozen decoder. We stop before the optional low-rank correction because
 its next credible test requires training and a new held-out cohort.
@@ -1853,11 +1890,15 @@ records to exact packed coordinates closely tracks a packed computation whose
 documents are causally isolated, but it does not recreate full packing, and
 separately shaped execution does not preserve exact B/C numerics. The
 shape-matched P2 control is exact across FP32, FP16, INT8, and INT4, while the
-parameter-free gist ladder fails at every tested scale of post-hoc interaction.
+parameter-free gist ladder fails its quality-preserving gate across the powered
+1.7B study and reduced Qwen-4B, Qwen-8B, and Llama-8B pilots.
 Sparse token-level boundary exchange shows that useful interaction may require
 only a small fraction of all cross-document edges, but the measured quality
 frontier is non-monotonic. The next composition mechanism should therefore
-learn or verify which interactions matter, while treating host RoPE
+learn or verify which interactions matter. A bounded request-local adapter,
+trained against packed-RAG distributions while leaving persistent records and
+the base model frozen, is the next warranted experiment; sparse boundary
+re-encoding remains the nonparametric alternative. Both must continue treating host RoPE
 compatibility and numerical-runtime parity as explicit, independently tested
 contracts.
 

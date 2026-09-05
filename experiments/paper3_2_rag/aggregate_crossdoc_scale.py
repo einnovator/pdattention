@@ -73,7 +73,11 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
 
 
 def _short_model(model: str) -> str:
-    return model.rsplit("/", 1)[-1].replace("-4bit", "")
+    return (
+        model.rsplit("/", 1)[-1]
+        .replace("-Instruct", "")
+        .replace("-4bit", "")
+    )
 
 
 def _condition_label(condition: str) -> str:
@@ -81,8 +85,8 @@ def _condition_label(condition: str) -> str:
         "A_FULL_CAUSAL_RAG": "A full",
         "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": "C pre-RoPE",
         "D_GIST_SA_APPEND": "D gist append",
-        "E_GIST_SA_BOUNDARY_8": "E boundary 8",
-        "F_GIST_SA_BOUNDARY_32": "F boundary 32",
+        "E_GIST_SA_BOUNDARY_8": "E boundary-8",
+        "F_GIST_SA_BOUNDARY_32": "F boundary-32",
     }.get(condition, condition)
 
 
