@@ -77,7 +77,7 @@ def main() -> None:
             "-m",
             "experiments.paper3_2_rag.run_prerope_causal_decomposition",
             "--dataset",
-            "multihop_rag",
+            "multihoprag",
             "--model",
             args.model,
             "--revision",
