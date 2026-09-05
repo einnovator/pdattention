@@ -119,6 +119,18 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.aggregate_precision_sweep \
   --output reports/paper3_2_precision/aggregate
 ```
 
+Natural cross-document composition campaigns are resumable by seed:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_2_rag.run_crossdoc_precision_campaign \
+  --output reports/paper3_2_crossdoc_natural \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --precision-mode INT4 --seeds 11,23,37,71,101
+```
+
+Each seed freezes selection before evaluating A/B/C, the shape-matched P2
+control, and parameter-free C1/C2/C3. Completed manifests are reused on resume.
+
 Aggregate the five independently selected cohorts with the seed, rather than
 the individual question, as the replication unit:
 
