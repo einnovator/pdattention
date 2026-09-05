@@ -393,6 +393,49 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
             )
 
 
+def _write_latex_tables(result: Mapping[str, object], output: Path) -> None:
+    rows = list(result["conditions"])  # type: ignore[arg-type]
+    quality = [
+        "\\begin{tabular}{lrrrr}",
+        "\\toprule",
+        "Condition & Token F1 & Gold NLL & Official & Cross-doc edges \\\\",
+        "\\midrule",
+    ]
+    for row in rows:
+        quality.append(
+            f"{_condition_label(row['condition'])} & "
+            f"{float(row['seed_mean_token_f1']):.3f} & "
+            f"{float(row['seed_mean_gold_answer_nll']):.3f} & "
+            f"{float(row['seed_mean_official_multihop_rag_score']):.3f} & "
+            f"{float(row['seed_mean_cross_document_edges']):.0f} \\\\" 
+        )
+    quality.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_causal_quality_table.tex").write_text(
+        "\n".join(quality) + "\n", encoding="utf-8"
+    )
+
+    systems = [
+        "\\begin{tabular}{lrrrrrr}",
+        "\\toprule",
+        "Condition & Native tok. & MiB & Encode ms & Bind ms & TTFT ms & Total ms \\\\",
+        "\\midrule",
+    ]
+    for row in rows[:3]:
+        systems.append(
+            f"{_condition_label(row['condition'])} & "
+            f"{float(row['seed_mean_physical_native_tokens']):.0f} & "
+            f"{float(row['seed_mean_native_bytes']) / 2**20:.1f} & "
+            f"{float(row['seed_mean_encode_ms']):.1f} & "
+            f"{float(row['seed_mean_request_rope_transform_ms']):.2f} & "
+            f"{float(row['seed_mean_ttft_ms']):.1f} & "
+            f"{float(row['seed_mean_total_latency_ms']):.1f} \\\\" 
+        )
+    systems.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_causal_systems_table.tex").write_text(
+        "\n".join(systems) + "\n", encoding="utf-8"
+    )
+
+
 def _condition_label(condition: object) -> str:
     return (
         str(condition)
@@ -515,6 +558,7 @@ def main() -> None:
         json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     _write_table(result, args.output / "condition_summary.csv")
+    _write_latex_tables(result, args.output)
     _plot_quality(result, args.output / "causal_decomposition_quality.pdf")
     _plot_quality(result, args.output / "causal_decomposition_quality.png")
     _plot_interaction_budget(result, args.output / "cross_document_budget.pdf")
