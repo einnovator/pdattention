@@ -114,6 +114,7 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             tuple(manifest.get("crossdoc_composition_modes") or ()),
             manifest.get("gist_attention_mask"),
             manifest.get("composition_residual_scale"),
+            manifest.get("record_order", "canonical"),
         )
         for manifest, _, _ in runs
     }
@@ -369,6 +370,7 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             "crossdoc_composition_modes", []
         ),
         "gist_attention_mask": first_manifest.get("gist_attention_mask"),
+        "record_order": first_manifest.get("record_order", "canonical"),
         "seeds": [int(manifest["seed"]) for manifest, _, _ in runs],
         "replication_unit": "seed_cohort",
         "conditions": conditions,

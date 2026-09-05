@@ -12,6 +12,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import random
 import statistics
 import subprocess
 import time
@@ -151,6 +152,27 @@ def _precision_mode(value: str, model_id: str) -> PrecisionMode:
             f"checkpoint identity declares {checkpoint_mode.value}, not {requested.value}"
         )
     return requested
+
+
+def _ordered_records(
+    selected: Sequence[object],
+    order: str,
+    *,
+    seed: int,
+    example_id: str,
+) -> tuple[object, ...]:
+    """Apply one auditable record order after the selection receipt is frozen."""
+
+    records = tuple(selected)
+    if order == "canonical":
+        return records
+    if order == "reverse":
+        return tuple(reversed(records))
+    if order == "random":
+        shuffled = list(records)
+        random.Random(f"paper3.2:{seed}:{example_id}").shuffle(shuffled)
+        return tuple(shuffled)
+    raise ValueError(f"unsupported record order: {order}")
 
 
 def _mlx_quantization_geometry(model: object) -> tuple[int | None, bool | None]:
@@ -456,6 +478,11 @@ def main() -> None:
     parser.add_argument("--max-resources", type=int, default=4)
     parser.add_argument("--seed", type=int, default=11)
     parser.add_argument("--max-new-tokens", type=int, default=16)
+    parser.add_argument(
+        "--record-order",
+        choices=("canonical", "reverse", "random"),
+        default="canonical",
+    )
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
     parser.add_argument(
@@ -568,6 +595,12 @@ def main() -> None:
             example_id=question.example_id,
             context=context,
             selector_revision=selector.name,
+        )
+        selected = _ordered_records(
+            selected,
+            args.record_order,
+            seed=args.seed,
+            example_id=question.example_id,
         )
         texts = tuple(row.chunk.text for row in selected)
         document_ids = tuple(row.chunk.document_id for row in selected)
@@ -978,6 +1011,7 @@ def main() -> None:
         "token_budget": args.token_budget,
         "max_resources": args.max_resources,
         "seed": args.seed,
+        "record_order": args.record_order,
         "question_ids": [question.example_id for question in questions],
         "mask_policies": [policy.value for policy in args.mask_policies],
         "boundary_windows": list(args.boundary_windows),

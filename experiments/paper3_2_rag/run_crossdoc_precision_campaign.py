@@ -38,6 +38,11 @@ def main() -> None:
     parser.add_argument("--token-budget", type=int, default=2048)
     parser.add_argument("--max-resources", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=16)
+    parser.add_argument(
+        "--record-order",
+        choices=("canonical", "reverse", "random"),
+        default="canonical",
+    )
     parser.add_argument("--composition-residual-scale", type=float, default=1.0)
     args = parser.parse_args()
 
@@ -52,6 +57,7 @@ def main() -> None:
         "token_budget": args.token_budget,
         "max_resources": args.max_resources,
         "composition_residual_scale": args.composition_residual_scale,
+        "record_order": args.record_order,
         "started_unix": time.time(),
         "runs": [],
     }
@@ -92,6 +98,8 @@ def main() -> None:
             str(args.max_resources),
             "--max-new-tokens",
             str(args.max_new_tokens),
+            "--record-order",
+            args.record_order,
             "--mask-policies",
             "PREVIOUS_DOC_ONLY",
             "--boundary-windows",

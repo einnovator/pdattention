@@ -21,6 +21,7 @@ from pra_hf.precision_qualification import (
 )
 from experiments.paper3_2_rag.run_prerope_causal_decomposition import (
     _composition_modes,
+    _ordered_records,
     _precision_mode,
 )
 
@@ -147,3 +148,12 @@ def test_runner_parses_composition_aliases_and_rejects_precision_mismatch() -> N
     assert _precision_mode("auto", "org/model-8bit") is PrecisionMode.INT8
     with pytest.raises(ValueError, match="declares INT4"):
         _precision_mode("FP16", "org/model-4bit")
+
+
+def test_record_order_is_explicit_and_seeded() -> None:
+    records = ("a", "b", "c", "d")
+    assert _ordered_records(records, "canonical", seed=11, example_id="q") == records
+    assert _ordered_records(records, "reverse", seed=11, example_id="q") == records[::-1]
+    first = _ordered_records(records, "random", seed=11, example_id="q")
+    assert first == _ordered_records(records, "random", seed=11, example_id="q")
+    assert sorted(first) == sorted(records)
