@@ -16,6 +16,21 @@ def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _condition_order(condition: str) -> tuple[int, int, str]:
+    fixed = {
+        "A_FULL_CAUSAL_RAG": 0,
+        "B_NO_CROSS_DOC_RAG": 1,
+        "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS": 2,
+        "M_PREVIOUS_DOC_ONLY": 3,
+        "M_TOP_RANKED_TO_ALL": 4,
+    }
+    if condition in fixed:
+        return fixed[condition], 0, condition
+    if condition.startswith("M4_BOUNDARY_ONLY_"):
+        return 5, int(condition.rsplit("_", 1)[1]), condition
+    return 6, 0, condition
+
+
 def _bootstrap(values: Sequence[float], *, seed: int = 3205) -> list[float] | None:
     if not values:
         return None
@@ -55,7 +70,8 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
         raise ValueError("seed manifests do not share one frozen protocol")
 
     condition_names = sorted(
-        {str(row["condition"]) for _, rows in runs for row in rows}
+        {str(row["condition"]) for _, rows in runs for row in rows},
+        key=_condition_order,
     )
     conditions = []
     for condition in condition_names:
@@ -303,4 +319,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -127,6 +127,34 @@ def _tiny_qwen():
     )
 
 
+def _tiny_llama3():
+    pytest.importorskip("mlx.core")
+    llama = pytest.importorskip("mlx_lm.models.llama")
+    return llama.Model(
+        llama.ModelArgs(
+            model_type="llama",
+            hidden_size=32,
+            num_hidden_layers=2,
+            intermediate_size=64,
+            num_attention_heads=4,
+            rms_norm_eps=1e-6,
+            vocab_size=64,
+            num_key_value_heads=2,
+            max_position_embeddings=128,
+            rope_theta=500_000.0,
+            head_dim=8,
+            tie_word_embeddings=True,
+            rope_scaling={
+                "factor": 8.0,
+                "low_freq_factor": 1.0,
+                "high_freq_factor": 4.0,
+                "original_max_position_embeddings": 64,
+                "rope_type": "llama3",
+            },
+        )
+    )
+
+
 def _packed_receipt(lengths: tuple[int, ...]):
     resources = tuple(
         SelectedResource(
@@ -202,3 +230,26 @@ def test_block_isolated_packed_matches_independent_prerope_records() -> None:
     assert max(abs(a - b) for a, b in zip(
         blocked_logits.flatten().tolist(), rebound_logits.flatten().tolist()
     )) < 2e-5
+
+
+def test_llama_piecewise_prerope_round_trip_uses_host_frequency_tensor() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(13)
+    model = _tiny_llama3()
+    tokens = (2, 3, 5, 7, 11)
+    post = encode_native_memory(model, tokens)
+    pre = encode_native_memory(
+        model,
+        tokens,
+        position_binding_mode=PositionBindingMode.PRE_ROPE,
+        model_revision="tiny-llama3-test",
+    )
+    rebound = rebind_native_memories_to_receipt(model, (pre,), _packed_receipt((5,)))
+    diagnostics = native_memory_diagnostics(post, rebound)
+    assert diagnostics["max_key_abs_delta"] < 1e-5
+    assert diagnostics["max_value_abs_delta"] == 0.0
+    assert pre.rope_contract is not None
+    assert all(
+        policy.startswith("host_piecewise_frequency_tensor")
+        for policy in pre.rope_contract.scaling_policy
+    )

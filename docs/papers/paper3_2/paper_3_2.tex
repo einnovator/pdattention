@@ -791,6 +791,60 @@ R_{\mathrm{pos}}
 \]
 The residual gap is not automatically purely contextual, but it directly bounds what positional phase correction alone can achieve.
 
+\subsection{Is the record gap positional or contextual?}
+\label{sec:prerope-causal}
+
+The earlier comparison still changes positional treatment, document
+contextualization, and cache realization together. We therefore add a causal
+three-way decomposition after retrieval and ranking have been frozen:
+\begin{description}[leftmargin=2.5em,style=nextline]
+    \item[A: FULL\_CAUSAL\_RAG] Encode the ordinary packed sequence
+    $[D_1\,D_2\,\ldots\,D_n]$ with its standard causal mask.
+    \item[B: NO\_CROSS\_DOC\_RAG] Keep the identical token sequence,
+    separators, order, and RoPE positions, but let a document token attend
+    only to causal tokens in the same document. Query tokens can still attend
+    every document and earlier query token.
+    \item[C: PRA\_PRE\_ROPE\_EXACT\_PACKED\_OFFSETS] Encode each record
+    independently, retain projected keys before RoPE and unchanged values, and
+    apply the exact positions used by B at request time.
+\end{description}
+
+For layer $\ell$, record $r$, and token $t$, C stores
+$(K^{\mathrm{pre}}_{\ell rt},V_{\ell rt})$ and materializes
+\[
+K^{\mathrm{request}}_{\ell rt}
+=R_\ell(p^{\mathrm{packed}}_{rt})K^{\mathrm{pre}}_{\ell rt}.
+\]
+The runtime fingerprints the host model revision, layer frequencies, scaling
+policy, RoPE dimensions, and rotation layout. It refuses materialization under
+a different contract. The direct implementation captures Qwen's normalized
+projected key before rotation; it does not infer a raw key by numerically
+undoing a quantized post-RoPE value.
+
+Let $M$ denote the packed attention mask. For $i\in D_k$,
+\[
+M_{ij}=1 \iff j\leq i\ \land\ j\in D_k,
+\]
+whereas for $i\in Q$,
+\[
+M_{ij}=1 \iff j\in\bigcup_kD_k
+\quad\text{or}\quad(j\in Q\land j\leq i).
+\]
+Thus $A-B$ estimates the effect of cross-document causal contextualization,
+while $B-C$ is the transport and request-time rebinding check. We test the
+latter at every layer through K/V RMSE and maximum error, then at the output
+through logits, JS divergence, answer NLL, and generated text. This ordering
+separates coordinate correctness from representation fidelity,
+attention-geometry fidelity, and downstream utility.
+
+Only after the B/C gate do we vary document interaction. The sparse ladder
+allows the immediately previous document, the top-ranked document, or
+adjacent boundary windows of 8, 16, 32, and 64 tokens. In the boundary arm,
+the first $w$ tokens of $D_k$ may attend to the last $w$ tokens of $D_{k-1}$;
+later tokens can receive that information through ordinary within-document
+causality. All arms share the same candidate receipt, BGE-v2-M3 ranking,
+selected identities, and packed coordinates.
+
 \section{Selective Contextual Repair}
 
 If C2 remains measurably different from fresh encoding, we test a deliberately simple repair ladder:
@@ -916,6 +970,13 @@ Paper~4.5 record envelope, resolves explicit leaves or a routed root, and
 materializes frozen chunk selections. Qwen3-1.7B runs BM25, historical MiniLM,
 and BGE-v2-M3 selectors on five seeds of 30 questions. Qwen3-4B, Qwen3-8B, and
 Llama-3.1-8B repeat the MiniLM comparison on one ten-question pilot each.
+
+\subsection{Phase 11: pre-RoPE causal decomposition}
+Five 30-question Qwen3-1.7B cohorts use BM25 candidate generation followed by
+the pinned BGE-v2-M3 reranker. A/B/C share exact selected records and packed
+positions. The B/C gate is evaluated before the sparse cross-document mask
+ladder; reduced 4B, 8B, and Llama replication is conditional on an informative
+effect rather than automatic model breadth.
 
 \section{Measured Retrieval and Native-Memory Results}
 
