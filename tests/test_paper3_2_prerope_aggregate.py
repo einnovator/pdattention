@@ -69,6 +69,23 @@ def _write_run(root: Path, seed: int, a_f1: float, b_f1: float) -> Path:
     with gzip.open(run / "condition_results.jsonl.gz", "wt", encoding="utf-8") as stream:
         for row in rows:
             stream.write(json.dumps(row) + "\n")
+    with gzip.open(run / "bc_layer_diagnostics.jsonl.gz", "wt", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "layers": [
+                        {
+                            "layer": 0,
+                            "key_rmse": 1e-5 * seed,
+                            "key_max_abs_delta": 2e-5 * seed,
+                            "value_rmse": 2e-5 * seed,
+                            "value_max_abs_delta": 3e-5 * seed,
+                        }
+                    ]
+                }
+            )
+            + "\n"
+        )
     return run / "manifest.json"
 
 
@@ -83,6 +100,10 @@ def test_prerope_aggregate_keeps_seed_as_replication_unit(tmp_path: Path) -> Non
     assert result["b_minus_c"]["output_match_rate"] == 1.0
     assert result["b_minus_c"]["first_step_logit_hash_match_rate"] == 1.0
     assert result["b_minus_c"]["mean_first_step_js_divergence"] == 0.001
+    assert result["b_minus_c"]["layerwise"][0]["pairs"] == 2
+    assert result["b_minus_c"]["layerwise"][0]["max_key_rmse"] == pytest.approx(
+        23e-5
+    )
 
 
 def test_prerope_aggregate_rejects_mixed_protocols(tmp_path: Path) -> None:
@@ -93,4 +114,3 @@ def test_prerope_aggregate_rejects_mixed_protocols(tmp_path: Path) -> None:
     second.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(ValueError, match="frozen protocol"):
         aggregate((first, second))
-

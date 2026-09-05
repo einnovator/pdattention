@@ -50,12 +50,31 @@ def _bootstrap(values: Sequence[float], *, seed: int = 3205) -> list[float] | No
     return [samples[249], samples[9749]]
 
 
-def _load(manifest_path: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
+def _percentile(values: Sequence[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = round((len(ordered) - 1) * fraction)
+    return ordered[index]
+
+
+def _load(
+    manifest_path: Path,
+) -> tuple[
+    dict[str, object],
+    list[dict[str, object]],
+    list[dict[str, object]],
+]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     rows_path = manifest_path.parent / "condition_results.jsonl.gz"
     with gzip.open(rows_path, "rt", encoding="utf-8") as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
-    return manifest, rows
+    diagnostics_path = manifest_path.parent / "bc_layer_diagnostics.jsonl.gz"
+    diagnostics = []
+    if diagnostics_path.exists():
+        with gzip.open(diagnostics_path, "rt", encoding="utf-8") as stream:
+            diagnostics = [json.loads(line) for line in stream if line.strip()]
+    return manifest, rows, diagnostics
 
 
 def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
@@ -72,19 +91,19 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             manifest["token_budget"],
             manifest["max_resources"],
         )
-        for manifest, _ in runs
+        for manifest, _, _ in runs
     }
     if len(identities) != 1:
         raise ValueError("seed manifests do not share one frozen protocol")
 
     condition_names = sorted(
-        {str(row["condition"]) for _, rows in runs for row in rows},
+        {str(row["condition"]) for _, rows, _ in runs for row in rows},
         key=_condition_order,
     )
     conditions = []
     for condition in condition_names:
         seed_rows = []
-        for manifest, rows in runs:
+        for manifest, rows, _ in runs:
             selected = [row for row in rows if row["condition"] == condition]
             seed_rows.append(
                 {
@@ -193,7 +212,9 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
     bc_nll_deltas = []
     layer_key_rmse = []
     layer_value_rmse = []
-    for manifest, rows in runs:
+    all_layer_diagnostics: list[Mapping[str, object]] = []
+    for manifest, rows, diagnostics in runs:
+        all_layer_diagnostics.extend(diagnostics)
         by_example: dict[str, dict[str, Mapping[str, object]]] = {}
         for row in rows:
             by_example.setdefault(str(row["example_id"]), {})[
@@ -235,6 +256,35 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
         layer_key_rmse.append(float(bc_summary["max_layer_key_rmse"]))
         layer_value_rmse.append(float(bc_summary["max_layer_value_rmse"]))
 
+    layer_count = max(
+        (
+            len(diagnostic.get("layers", []))
+            for diagnostic in all_layer_diagnostics
+        ),
+        default=0,
+    )
+    layerwise = []
+    for layer_index in range(layer_count):
+        layer_rows = [
+            diagnostic["layers"][layer_index]
+            for diagnostic in all_layer_diagnostics
+            if len(diagnostic.get("layers", [])) > layer_index
+        ]
+        key_values = [float(row["key_rmse"]) for row in layer_rows]
+        value_values = [float(row["value_rmse"]) for row in layer_rows]
+        layerwise.append(
+            {
+                "layer": layer_index,
+                "pairs": len(layer_rows),
+                "mean_key_rmse": _mean(key_values),
+                "p95_key_rmse": _percentile(key_values, 0.95),
+                "max_key_rmse": max(key_values, default=None),
+                "mean_value_rmse": _mean(value_values),
+                "p95_value_rmse": _percentile(value_values, 0.95),
+                "max_value_rmse": max(value_values, default=None),
+            }
+        )
+
     ab_f1_seed = [float(row["a_minus_b_token_f1"]) for row in seed_effects]
     ab_nll_seed = [float(row["a_minus_b_gold_nll"]) for row in seed_effects]
     first_manifest = runs[0][0]
@@ -246,7 +296,7 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
         "model_revision": first_manifest["model_revision"],
         "reranker": first_manifest["reranker"],
         "reranker_revision": first_manifest["reranker_revision"],
-        "seeds": [int(manifest["seed"]) for manifest, _ in runs],
+        "seeds": [int(manifest["seed"]) for manifest, _, _ in runs],
         "replication_unit": "seed_cohort",
         "conditions": conditions,
         "a_minus_b": {
@@ -266,6 +316,7 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
             "mean_gold_nll_abs_delta": statistics.fmean(bc_nll_deltas),
             "max_layer_key_rmse_across_runs": max(layer_key_rmse),
             "max_layer_value_rmse_across_runs": max(layer_value_rmse),
+            "layerwise": layerwise,
         },
         "source_manifests": [str(path) for path in manifest_paths],
     }
