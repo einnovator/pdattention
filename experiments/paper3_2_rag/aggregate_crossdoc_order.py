@@ -31,19 +31,15 @@ def _load(path: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
 def _js_topk_tail(
     left: Mapping[str, object], right: Mapping[str, object]
 ) -> float:
-    """Approximate JS on the union of retained tokens plus one tail bucket."""
+    """Lower-bound JS on shared retained tokens plus one remainder bucket."""
 
     left_map = dict(zip(left["token_ids"], left["probabilities"]))
     right_map = dict(zip(right["token_ids"], right["probabilities"]))
-    support = sorted(set(left_map) | set(right_map))
-    left_values = [float(left_map.get(token, 0.0)) for token in support]
-    right_values = [float(right_map.get(token, 0.0)) for token in support]
-    left_values.append(float(left["tail_probability"]))
-    right_values.append(float(right["tail_probability"]))
-    total_left = sum(left_values)
-    total_right = sum(right_values)
-    left_values = [value / total_left for value in left_values]
-    right_values = [value / total_right for value in right_values]
+    support = sorted(set(left_map) & set(right_map))
+    left_values = [float(left_map[token]) for token in support]
+    right_values = [float(right_map[token]) for token in support]
+    left_values.append(max(0.0, 1.0 - sum(left_values)))
+    right_values.append(max(0.0, 1.0 - sum(right_values)))
     middle = [(a + b) / 2.0 for a, b in zip(left_values, right_values)]
 
     def kl(values: Sequence[float]) -> float:
@@ -135,7 +131,7 @@ def aggregate(paths: Sequence[Path]) -> dict[str, object]:
         "orders": sorted(orders),
         "conditions": summaries,
         "source_manifests": [str(path) for path in paths],
-        "js_estimator": "union_topk_plus_collapsed_tail_bucket",
+        "js_estimator": "shared_topk_plus_collapsed_remainder_lower_bound",
     }
 
 

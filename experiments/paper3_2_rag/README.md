@@ -144,9 +144,9 @@ for order in canonical reverse random; do
 done
 ```
 
-The order aggregator reports output flips, F1/NLL variance, and pairwise JS on
-the union of retained top-k probabilities plus one collapsed tail bucket. The
-JS estimate is explicitly approximate and is not mixed with full-distribution
+The order aggregator reports output flips, F1/NLL variance, and a coarse-grained
+pairwise JS lower bound over tokens retained by both top-k receipts plus one
+collapsed remainder bucket. This estimate is not mixed with full-distribution
 JS elsewhere in the paper.
 
 Aggregate the five independently selected cohorts with the seed, rather than
