@@ -1386,6 +1386,35 @@ implement the optional low-rank correction in this inference-only iteration:
 the next gate requires a trained composition projection with packed-RAG
 distillation and held-out task validation.
 
+\paragraph{Order robustness.}
+The same frozen selections were run in canonical, reverse, and seeded-random
+record order for 50 matched questions. Table~\ref{tab:gist-composition-order}
+reports a coarse-grained JS lower bound over the shared top-2048 token support
+plus one collapsed remainder bucket; it is not mixed with the full-distribution
+JS measurements above. Independent C changes output on 74\% of questions.
+Gist append D increases that rate to 98\%, boundary-8 E to 100\%, and
+boundary-32 F to 98\%. Mean pairwise divergence and NLL variance also increase.
+The zero F1 variance for D/E/F is a floor effect---their answer F1 is almost
+always zero---rather than evidence of useful invariance.
+
+\begin{table}[ht]
+\centering
+\caption{Canonical/reverse/random order robustness over 50 matched questions.
+F1 and NLL variance are within-question population variances over three
+orders.}
+\label{tab:gist-composition-order}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/order/aggregate/generated_order_table.tex}}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/order/aggregate/crossdoc_order_robustness.pdf}
+\caption{Post-hoc parameter-free gist K/V increases, rather than reduces,
+record-order sensitivity.}
+\label{fig:gist-composition-order}
+\end{figure}
+
 Request-time rotation itself is inexpensive in this implementation:
 .69 ms on average. B and C have nearly identical generation-only TTFT
 (68.1 and 68.3 ms) and total generation latency (177.9 and 177.5 ms).
