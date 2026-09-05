@@ -16,6 +16,14 @@ def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _row_mean(rows: Sequence[Mapping[str, object]], field: str) -> float | None:
+    """Average one optional numeric artifact field without inventing zeros."""
+
+    return _mean(
+        [float(row[field]) for row in rows if row.get(field) is not None]
+    )
+
+
 def _condition_order(condition: str) -> tuple[int, int, str]:
     fixed = {
         "A_FULL_CAUSAL_RAG": 0,
@@ -105,6 +113,25 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                     "request_rope_transform_ms": _mean(
                         [float(row["request_rope_transform_ms"]) for row in selected]
                     ),
+                    "official_multihop_rag_score": _row_mean(
+                        selected, "official_multihop_rag_score"
+                    ),
+                    "supporting_document_coverage": _row_mean(
+                        selected, "supporting_document_coverage"
+                    ),
+                    "physical_native_tokens": _row_mean(
+                        selected, "physical_native_tokens"
+                    ),
+                    "native_bytes": _row_mean(selected, "native_bytes"),
+                    "encode_ms": _row_mean(selected, "encode_ms"),
+                    "ttft_ms": _row_mean(selected, "ttft_ms"),
+                    "ttft_with_materialization_ms": _row_mean(
+                        selected, "ttft_with_materialization_ms"
+                    ),
+                    "total_latency_ms": _row_mean(selected, "total_latency_ms"),
+                    "total_with_materialization_ms": _row_mean(
+                        selected, "total_with_materialization_ms"
+                    ),
                 }
             )
         f1 = [float(row["token_f1"]) for row in seed_rows]
@@ -133,6 +160,27 @@ def aggregate(manifest_paths: Sequence[Path]) -> dict[str, object]:
                 ),
                 "seed_mean_request_rope_transform_ms": statistics.fmean(
                     float(row["request_rope_transform_ms"]) for row in seed_rows
+                ),
+                "seed_mean_official_multihop_rag_score": _row_mean(
+                    seed_rows, "official_multihop_rag_score"
+                ),
+                "seed_mean_supporting_document_coverage": _row_mean(
+                    seed_rows, "supporting_document_coverage"
+                ),
+                "seed_mean_physical_native_tokens": _row_mean(
+                    seed_rows, "physical_native_tokens"
+                ),
+                "seed_mean_native_bytes": _row_mean(seed_rows, "native_bytes"),
+                "seed_mean_encode_ms": _row_mean(seed_rows, "encode_ms"),
+                "seed_mean_ttft_ms": _row_mean(seed_rows, "ttft_ms"),
+                "seed_mean_ttft_with_materialization_ms": _row_mean(
+                    seed_rows, "ttft_with_materialization_ms"
+                ),
+                "seed_mean_total_latency_ms": _row_mean(
+                    seed_rows, "total_latency_ms"
+                ),
+                "seed_mean_total_with_materialization_ms": _row_mean(
+                    seed_rows, "total_with_materialization_ms"
                 ),
             }
         )
@@ -238,6 +286,15 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                 "seed_mean_first_step_js",
                 "seed_mean_cross_document_edges",
                 "seed_mean_request_rope_transform_ms",
+                "seed_mean_official_multihop_rag_score",
+                "seed_mean_supporting_document_coverage",
+                "seed_mean_physical_native_tokens",
+                "seed_mean_native_bytes",
+                "seed_mean_encode_ms",
+                "seed_mean_ttft_ms",
+                "seed_mean_ttft_with_materialization_ms",
+                "seed_mean_total_latency_ms",
+                "seed_mean_total_with_materialization_ms",
             ),
         )
         writer.writeheader()
@@ -260,24 +317,48 @@ def _write_table(result: Mapping[str, object], path: Path) -> None:
                     "seed_mean_request_rope_transform_ms": row[
                         "seed_mean_request_rope_transform_ms"
                     ],
+                    "seed_mean_official_multihop_rag_score": row[
+                        "seed_mean_official_multihop_rag_score"
+                    ],
+                    "seed_mean_supporting_document_coverage": row[
+                        "seed_mean_supporting_document_coverage"
+                    ],
+                    "seed_mean_physical_native_tokens": row[
+                        "seed_mean_physical_native_tokens"
+                    ],
+                    "seed_mean_native_bytes": row["seed_mean_native_bytes"],
+                    "seed_mean_encode_ms": row["seed_mean_encode_ms"],
+                    "seed_mean_ttft_ms": row["seed_mean_ttft_ms"],
+                    "seed_mean_ttft_with_materialization_ms": row[
+                        "seed_mean_ttft_with_materialization_ms"
+                    ],
+                    "seed_mean_total_latency_ms": row[
+                        "seed_mean_total_latency_ms"
+                    ],
+                    "seed_mean_total_with_materialization_ms": row[
+                        "seed_mean_total_with_materialization_ms"
+                    ],
                 }
             )
 
 
-def _plot(result: Mapping[str, object], output: Path) -> None:
-    import matplotlib.pyplot as plt
-
-    rows = list(result["conditions"])  # type: ignore[arg-type]
-    names = [
-        str(row["condition"])
+def _condition_label(condition: object) -> str:
+    return (
+        str(condition)
         .replace("A_FULL_CAUSAL_RAG", "A full")
         .replace("B_NO_CROSS_DOC_RAG", "B isolated")
         .replace("C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS", "C pre-RoPE")
         .replace("M4_BOUNDARY_ONLY_", "boundary ")
         .replace("M_PREVIOUS_DOC_ONLY", "previous")
         .replace("M_TOP_RANKED_TO_ALL", "top-ranked")
-        for row in rows
-    ]
+    )
+
+
+def _plot_quality(result: Mapping[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    rows = list(result["conditions"])  # type: ignore[arg-type]
+    names = [_condition_label(row["condition"]) for row in rows]
     values = [float(row["seed_mean_token_f1"]) for row in rows]
     lower = [
         value - float(row["seed_bootstrap_token_f1_95_ci"][0])
@@ -287,15 +368,54 @@ def _plot(result: Mapping[str, object], output: Path) -> None:
         float(row["seed_bootstrap_token_f1_95_ci"][1]) - value
         for value, row in zip(values, rows)
     ]
-    figure, axis = plt.subplots(figsize=(8.2, 4.4))
+    nll = [float(row["seed_mean_gold_answer_nll"]) for row in rows]
+    nll_lower = [
+        value - float(row["seed_bootstrap_gold_answer_nll_95_ci"][0])
+        for value, row in zip(nll, rows)
+    ]
+    nll_upper = [
+        float(row["seed_bootstrap_gold_answer_nll_95_ci"][1]) - value
+        for value, row in zip(nll, rows)
+    ]
+    figure, axes = plt.subplots(1, 2, figsize=(11.2, 4.4))
     colors = ["#276FBF", "#C44536", "#2A9D8F"] + ["#6C757D"] * max(0, len(rows) - 3)
-    axis.bar(range(len(rows)), values, color=colors[: len(rows)], width=0.72)
-    axis.errorbar(
+    axes[0].bar(range(len(rows)), values, color=colors[: len(rows)], width=0.72)
+    axes[0].errorbar(
         range(len(rows)), values, yerr=(lower, upper), fmt="none", color="#202020", capsize=3
     )
+    axes[0].set_ylabel("Token F1")
+    axes[0].set_xticks(range(len(rows)), names, rotation=35, ha="right")
+    axes[0].grid(axis="y", alpha=0.25)
+    axes[1].bar(range(len(rows)), nll, color=colors[: len(rows)], width=0.72)
+    axes[1].errorbar(
+        range(len(rows)), nll, yerr=(nll_lower, nll_upper), fmt="none", color="#202020", capsize=3
+    )
+    axes[1].set_ylabel("Gold-answer NLL (lower is better)")
+    axes[1].set_xticks(range(len(rows)), names, rotation=35, ha="right")
+    axes[1].grid(axis="y", alpha=0.25)
+    figure.tight_layout()
+    figure.savefig(output, bbox_inches="tight")
+    plt.close(figure)
+
+
+def _plot_interaction_budget(result: Mapping[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    rows = [
+        row for row in result["conditions"]  # type: ignore[index]
+        if row["condition"] != "C_PRA_PRE_ROPE_EXACT_PACKED_OFFSETS"
+    ]
+    rows.sort(key=lambda row: float(row["seed_mean_cross_document_edges"]))
+    edges = [float(row["seed_mean_cross_document_edges"]) for row in rows]
+    values = [float(row["seed_mean_token_f1"]) for row in rows]
+    figure, axis = plt.subplots(figsize=(7.2, 4.2))
+    axis.plot(edges, values, marker="o", color="#276FBF")
+    for edge, value, row in zip(edges, values, rows):
+        axis.annotate(_condition_label(row["condition"]), (edge, value), xytext=(4, 4), textcoords="offset points", fontsize=8)
+    axis.set_xscale("symlog", linthresh=1.0)
+    axis.set_xlabel("Allowed cross-document attention edges (seed mean)")
     axis.set_ylabel("Token F1")
-    axis.set_xticks(range(len(rows)), names, rotation=35, ha="right")
-    axis.grid(axis="y", alpha=0.25)
+    axis.grid(alpha=0.25)
     figure.tight_layout()
     figure.savefig(output, bbox_inches="tight")
     plt.close(figure)
@@ -312,8 +432,10 @@ def main() -> None:
         json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     _write_table(result, args.output / "condition_summary.csv")
-    _plot(result, args.output / "causal_decomposition_f1.pdf")
-    _plot(result, args.output / "causal_decomposition_f1.png")
+    _plot_quality(result, args.output / "causal_decomposition_quality.pdf")
+    _plot_quality(result, args.output / "causal_decomposition_quality.png")
+    _plot_interaction_budget(result, args.output / "cross_document_budget.pdf")
+    _plot_interaction_budget(result, args.output / "cross_document_budget.png")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
