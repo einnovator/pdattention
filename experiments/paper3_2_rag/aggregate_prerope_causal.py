@@ -472,6 +472,38 @@ def _plot_interaction_budget(result: Mapping[str, object], output: Path) -> None
     plt.close(figure)
 
 
+def _plot_bc_fidelity(result: Mapping[str, object], output: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    summary = result["b_minus_c"]  # type: ignore[index]
+    rows = list(summary["layerwise"])
+    if not rows:
+        return
+    layers = [int(row["layer"]) for row in rows]
+    figure, axes = plt.subplots(1, 2, figsize=(9.2, 3.8), sharex=True)
+    for axis, prefix, title in (
+        (axes[0], "key", "Key"),
+        (axes[1], "value", "Value"),
+    ):
+        mean = [max(float(row[f"mean_{prefix}_rmse"]), 1e-8) for row in rows]
+        p95 = [max(float(row[f"p95_{prefix}_rmse"]), 1e-8) for row in rows]
+        axis.plot(layers, mean, label="mean", color="#276FBF")
+        axis.plot(layers, p95, label="p95", color="#C44536", linestyle="--")
+        axis.set_yscale("log")
+        axis.set_xlabel("Decoder layer")
+        axis.set_ylabel(f"{title} RMSE")
+        axis.grid(alpha=0.25)
+        axis.legend(frameon=False)
+    figure.suptitle(
+        "B/C output match "
+        f"{float(summary['output_match_rate']):.1%}; "
+        f"first-step JS {float(summary['mean_first_step_js_divergence']):.2e}"
+    )
+    figure.tight_layout()
+    figure.savefig(output, bbox_inches="tight")
+    plt.close(figure)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", action="append", type=Path, required=True)
@@ -487,6 +519,8 @@ def main() -> None:
     _plot_quality(result, args.output / "causal_decomposition_quality.png")
     _plot_interaction_budget(result, args.output / "cross_document_budget.pdf")
     _plot_interaction_budget(result, args.output / "cross_document_budget.png")
+    _plot_bc_fidelity(result, args.output / "bc_layer_fidelity.pdf")
+    _plot_bc_fidelity(result, args.output / "bc_layer_fidelity.png")
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
