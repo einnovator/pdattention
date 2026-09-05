@@ -4,7 +4,7 @@ import gzip
 import json
 from pathlib import Path
 
-from experiments.paper3_2_rag.aggregate_precision_sweep import aggregate
+from experiments.paper3_2_rag.aggregate_precision_sweep import _write_latex, aggregate
 
 
 def _run(root: Path, mode: str, delta: float) -> Path:
@@ -61,3 +61,10 @@ def test_precision_aggregate_keeps_modes_and_layerwise_errors_separate(tmp_path:
     assert result["precision_conditions"][1]["mean_gold_nll_abs_delta"] > 0.09
     assert result["precision_conditions"][0]["shape_path_max_layer_key_rmse"] == 0.0001
     assert len(result["composition_conditions"]) == 2
+    output = tmp_path / "aggregate"
+    output.mkdir()
+    _write_latex(result, output)
+    composition = (
+        output / "generated_composition_precision_table.tex"
+    ).read_text(encoding="utf-8")
+    assert "FP16 & D gist append" in composition

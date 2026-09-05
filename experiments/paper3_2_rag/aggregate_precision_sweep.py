@@ -291,6 +291,28 @@ def _write_latex(result: Mapping[str, object], output: Path) -> None:
     (output / "generated_shape_path_table.tex").write_text(
         "\n".join(shape_lines) + "\n", encoding="utf-8"
     )
+    composition_lines = [
+        "\\begin{tabular}{llrrrr}",
+        "\\toprule",
+        "Precision & Condition & $n$ & Token F1 & Official & Gold NLL \\\\",
+        "\\midrule",
+    ]
+    for row in result["composition_conditions"]:  # type: ignore[index]
+        label = {
+            "D_GIST_SA_APPEND": "D gist append",
+            "E_GIST_SA_BOUNDARY_8": "E boundary 8",
+            "F_GIST_SA_BOUNDARY_32": "F boundary 32",
+        }.get(str(row["condition"]), str(row["condition"]))
+        composition_lines.append(
+            f"{row['precision_mode']} & {label} & {row['examples']} & "
+            f"{float(row['token_f1']):.3f} & "
+            f"{float(row['official_score']):.3f} & "
+            f"{float(row['gold_answer_nll']):.3f} \\\\"
+        )
+    composition_lines.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_composition_precision_table.tex").write_text(
+        "\n".join(composition_lines) + "\n", encoding="utf-8"
+    )
 
 
 def _plot_layers(result: Mapping[str, object], output: Path) -> None:
