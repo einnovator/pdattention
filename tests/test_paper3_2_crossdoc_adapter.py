@@ -36,12 +36,14 @@ def test_adapter_summary_uses_seed_level_variation() -> None:
                     "example_id": f"q{seed}-{index}",
                     "exact_match": float(score == 1.0),
                     "token_f1": score,
+                    "official_multihop_rag_score": float(score >= 0.5),
                     "gold_answer_mean_nll": 2.0 - score,
                     "first_step_js_divergence": 0.1,
                     "output_matches_packed": index == 0,
                     "kv_rmse": 0.2,
                     "value_rmse": 0.3,
                     "reencoded_tokens": 0,
+                    "physical_native_tokens": 256,
                     "request_transform_ms": 4.0,
                     "adapter_parameters": 128,
                 }
@@ -50,6 +52,8 @@ def test_adapter_summary_uses_seed_level_variation() -> None:
     assert result["token_f1"] == pytest.approx(0.5)
     assert result["seed_token_f1_std"] == pytest.approx(0.25)
     assert result["output_match_rate"] == pytest.approx(0.5)
+    assert result["official_multihop_rag_score"] == pytest.approx(0.75)
+    assert result["physical_native_tokens"] == pytest.approx(256)
     assert result["adapter_parameters"] == 128
 
 

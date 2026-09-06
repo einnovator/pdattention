@@ -198,6 +198,14 @@ single-model experiment. Training state is checkpointed before evaluation and
 each completed evaluation example is written atomically, so `--resume` can
 recover a disconnected remote run without mixing changed settings.
 
+The completed five-seed Qwen3-1.7B run is under
+`docs/papers/shared/results/paper3_2_rag/crossdoc_adapter/`. The trained residual
+improves independent-PRA F1 from `0.1352` to `0.1535` and reduces first-step JS
+from `0.1509` to `0.0907`, but the paired F1 interval crosses zero and NLL
+worsens. Boundary windows re-encode only `20`, `40`, or `80` of `988.5` mean
+native tokens; they reduce JS without a reliable task-quality gain. These are
+partial-repair results, not qualification of either mechanism as a default.
+
 When the five-seed A/B/C comparison is informative, run the preregistered
 reduced scale check (ten questions each, one seed) serially on the same host:
 

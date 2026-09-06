@@ -538,6 +538,9 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                 "seeds": len(seed_groups),
                 "exact_match": _mean([float(row["exact_match"]) for row in values]),
                 "token_f1": _mean([float(row["token_f1"]) for row in values]),
+                "official_multihop_rag_score": _mean(
+                    [float(row["official_multihop_rag_score"]) for row in values]
+                ),
                 "seed_token_f1_std": statistics.pstdev(seed_f1) if len(seed_f1) > 1 else 0.0,
                 "seed_token_f1_ci95": list(f1_interval),
                 "gold_answer_mean_nll": _mean(
@@ -553,6 +556,9 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                 "value_rmse": _mean([float(row["value_rmse"]) for row in values]),
                 "reencoded_tokens": _mean(
                     [float(row["reencoded_tokens"]) for row in values]
+                ),
+                "physical_native_tokens": _mean(
+                    [float(row["physical_native_tokens"]) for row in values]
                 ),
                 "request_transform_ms": _mean(
                     [float(row["request_transform_ms"]) for row in values]
@@ -650,13 +656,32 @@ def _write_outputs(
     table = [
         r"\begin{tabular}{lrrrrrr}",
         r"\toprule",
-        r"Condition & F1 & EM & NLL & JS & Re-enc. & Params \\",
+        r"Condition & F1 & Official & NLL & JS & Re-enc. & Params \\",
         r"\midrule",
     ]
-    for row in summary["conditions"]:
+    condition_order = {
+        name: index
+        for index, name in enumerate(
+            (
+                "A_FULL_CAUSAL_RAG",
+                "C_INDEPENDENT_PRA",
+                "Z_ZERO_INIT_RESIDUAL",
+                "R_TRAINED_RESIDUAL",
+                "S_BOUNDARY_REENCODE_8",
+                "S_BOUNDARY_REENCODE_16",
+                "S_BOUNDARY_REENCODE_32",
+            )
+        )
+    }
+    condition_rows = sorted(
+        summary["conditions"],
+        key=lambda row: condition_order.get(str(row["condition"]), len(condition_order)),
+    )
+    for row in condition_rows:
         label = labels.get(row["condition"], row["condition"].replace("_", r"\_"))
         table.append(
-            f"{label} & {row['token_f1']:.3f} & {row['exact_match']:.3f} & "
+            f"{label} & {row['token_f1']:.3f} & "
+            f"{row['official_multihop_rag_score']:.3f} & "
             f"{row['gold_answer_mean_nll']:.3f} & {row['first_step_js_divergence']:.4f} & "
             f"{row['reencoded_tokens']:.1f} & {row['adapter_parameters']:,} \\\\"
         )
@@ -669,7 +694,6 @@ def _write_outputs(
         import matplotlib.pyplot as plt
     except ImportError:
         return
-    condition_rows = summary["conditions"]
     names = [labels.get(row["condition"], row["condition"]) for row in condition_rows]
     f1 = [row["token_f1"] for row in condition_rows]
     nll = [row["gold_answer_mean_nll"] for row in condition_rows]

@@ -63,9 +63,14 @@ using only 16--272 request-specific interactions. Three-question pilots at
 Qwen3-4B, Qwen3-8B, and Llama-3.1-8B likewise find no post-hoc arm that
 improves both F1 and NLL over independent K/V. A token-level boundary mask
 approaches full-packed F1, but no fixed mask dominates across F1, official
-score, and NLL. PRA therefore establishes exact contiguous transport and useful
-non-prefix reuse; changed compositions still require a qualified numerical
-runtime and a trained or otherwise selective contextualization mechanism.
+score, and NLL. A 1.38M-parameter rank-8 residual trained on 12 disjoint
+questions raises held-out independent-PRA F1 from .135 to .154 and official
+score from .433 to .533 while reducing first-step JS from .151 to .091. The
+five-seed F1 interval includes zero, however, and packed RAG remains at .199
+F1/.700 official score. Selective boundary re-encoding recomputes only
+20--80 of 989 native tokens and also reduces JS, but does not reliably improve
+F1 and sharply worsens answer NLL. Changed compositions therefore remain an
+open adaptation problem rather than a solved transport detail.
 \end{abstract}
 
 \section{Introduction}
@@ -1420,10 +1425,71 @@ F1. E instead inserts post-hoc boundary K/V copies conditioned by means that
 the base model was never trained to consume, and reaches zero. The likely
 mechanism is off-manifold K/V plus attention-normalization competition, though
 the experiment identifies the intervention rather than proving that internal
-explanation. Increasing boundary width only worsens NLL. We therefore do not
-implement the optional low-rank correction in this inference-only iteration:
-the next gate requires a trained composition projection with packed-RAG
-distillation and held-out task validation.
+explanation. Increasing boundary width only worsens NLL. This closes the
+parameter-free append gate and motivates the trained, identity-initialized
+repair evaluated next.
+
+\subsection{A bounded learned repair recovers part of the gap}
+We train the rank-8 residual defined above on 12 MultiHop-RAG calibration
+questions drawn from seeds 11, 23, and 37. The evaluation uses 30 disjoint
+questions in five fresh seed cohorts (131, 151, 181, 211, and 223). Candidate
+retrieval, BGE-v2-M3 ranking, four selected records, their order, and the
+1,024-token budget are frozen before any condition runs. The Qwen3-1.7B 4-bit
+host remains frozen. One hundred AdamW steps at learning rate
+$2\times10^{-4}$ reduce the mean combined calibration objective from 2.367 to
+.501; checkpoint selection chooses step 100. The adapter contains 1,376,256
+parameters. The nonparametric controls re-encode boundary prefixes with
+$w\in\{8,16,32\}$ under the same receipts.
+
+\begin{table}[ht]
+\centering
+\caption{Held-out cross-document repair on 30 MultiHop-RAG questions in five
+seed cohorts. ``Official'' is the dataset's answer-containment score. JS is
+first-step divergence from packed RAG; re-encoding counts request-local source
+tokens. Lower NLL and JS are better.}
+\label{tab:crossdoc-adapter}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_adapter/qwen3_1_7b_rank8_five_seed/generated_adapter_table.tex}}
+\end{table}
+
+The residual is the strongest balanced repair, but not a closed result. It
+raises F1 from .1352 for independent PRA to .1535 and official score from .433
+to .533, while reducing first-step JS from .1509 to .0907. Those changes recover
+28.9\% of the independent-to-packed F1 gap, 37.5\% of the official-score gap,
+and 39.9\% of the JS gap. The paired F1 change is $+.0183$, with a seed-bootstrap
+95\% interval $[-.0136,.0558]$ and exact two-sided sign-flip $p=.5$. Packed RAG
+still reaches .1986 F1 and .700 official score. Moreover, residual answer NLL
+rises from 2.929 to 3.330. The lower independent-PRA NLL than packed RAG's
+4.467, despite its worse generated-answer scores, shows why teacher-forced NLL
+cannot stand alone as a composition-parity criterion.
+
+The adapter adds no source re-encoding and its measured request transform is
+1.48 ms, but it is model-specific and touches every selected K/V state. The
+zero-initialized control remains close to independent PRA (.1361 versus .1352
+F1 and .1514 versus .1509 JS) rather than bit-identical because the separately
+shaped INT4 execution takes a different finite-precision path. Training reduces
+answer-distribution divergence without reducing held-out global K/V RMSE
+(.6124 versus .6095), indicating a decoder-facing correction rather than a
+reconstruction of packed hidden states.
+
+Selective boundary re-encoding reaches .1375, .1525, and .1424 F1 for windows
+8, 16, and 32. Their paired F1 intervals all cross zero. They recompute only
+20, 40, and 80 tokens on average out of 988.5 selected native tokens
+(2.0\%, 4.0\%, and 8.1\%), and reduce JS to .0927, .0876, and .0795. Yet all
+three raise NLL above 5.07, more than 2.14 above independent PRA, and cost
+148--191 ms of request-local transformation. The nonparametric method therefore
+approaches the teacher distribution at the first step without preserving
+task-level behavior.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper3_2_rag/crossdoc_adapter/qwen3_1_7b_rank8_five_seed/crossdoc_adapter_quality.pdf}
+\caption{Task F1 and gold-answer NLL for packed RAG, independent PRA, the
+identity and trained residuals, and selective boundary re-encoding. Neither a
+smaller first-step JS nor more boundary recomputation guarantees better
+teacher-forced answer likelihood.}
+\label{fig:crossdoc-adapter}
+\end{figure}
 
 \paragraph{Order robustness.}
 The same frozen selections were run in canonical, reverse, and seeded-random
@@ -1898,6 +1964,15 @@ attention calls follow different finite-precision paths. More importantly,
 neither case reconstructs cross-document hidden-state history. Storage format,
 runtime arithmetic, and causal composition are three distinct concerns.
 
+The learned follow-up sharpens that distinction. A small zero-initialized
+residual can move a frozen decoder toward packed behavior and improve held-out
+answer scores without changing stored records, but this run recovers only part
+of the gap and does not improve answer NLL. Selective boundary re-encoding is
+parameter-free and recomputes at most 8.1\% of selected tokens, yet its stronger
+first-step distribution match does not translate into reliable answer gains.
+Composition adaptation must therefore be qualified on generation, likelihood,
+and causal controls together; state-space proximity alone is insufficient.
+
 \section{Conclusion}
 
 Paper~3.2 evaluates PRA beneath a conventional RAG stack rather than requiring
@@ -1928,16 +2003,16 @@ documents are causally isolated, but it does not recreate full packing, and
 separately shaped execution does not preserve exact B/C numerics. The
 shape-matched P2 control is exact across FP32, FP16, INT8, and INT4, while the
 parameter-free gist ladder fails its quality-preserving gate across the powered
-1.7B study and reduced Qwen-4B, Qwen-8B, and Llama-8B pilots.
-Sparse token-level boundary exchange shows that useful interaction may require
-only a small fraction of all cross-document edges, but the measured quality
-frontier is non-monotonic. The next composition mechanism should therefore
-learn or verify which interactions matter. A bounded request-local adapter,
-trained against packed-RAG distributions while leaving persistent records and
-the base model frozen, is the next warranted experiment; sparse boundary
-re-encoding remains the nonparametric alternative. Both must continue treating host RoPE
-compatibility and numerical-runtime parity as explicit, independently tested
-contracts.
+1.7B study and reduced Qwen-4B, Qwen-8B, and Llama-8B pilots. The trained
+rank-8 residual then recovers 28.9\% of the held-out F1 gap and 39.9\% of the
+first-step JS gap without changing persistent records, but its five-seed F1
+interval crosses zero and its NLL worsens. Sparse boundary re-encoding likewise
+shows that 2.0--8.1\% request-local recomputation can alter the right
+distributional quantities, but not yet preserve answer quality. The next gate
+is therefore not a larger unqualified adapter: it is replicated, model-family
+validation of selective learned interaction under joint generation and
+likelihood criteria. Host RoPE compatibility and numerical-runtime parity
+remain explicit, independently tested contracts.
 
 \bibliographystyle{plain}
 % \bibliography{references}
