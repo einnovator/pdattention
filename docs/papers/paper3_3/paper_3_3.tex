@@ -53,8 +53,11 @@ selector. On a ten-question mechanism cohort, 0.1\% of physical edges reached
 0.0059 packed--independent gap is small and the cohort's packed official score
 was only .600. Larger edge and cumulative-mass budgets were non-monotonic. The
 prespecified .19/.67 gate therefore remains closed and no selector is trained.
-The result shows promising sparse headroom while rejecting raw attention mass
-as a sufficient utility signal.
+A disjoint ten-question validation study compares raw attention with
+document-pair and layer leave-one-group-out NLL and first-step JS rankings. Its
+packed--independent direction reverses and every frontier remains non-monotonic.
+The result shows possible sparse headroom while rejecting both raw attention
+mass and these coarse causal proxies as sufficient utility signals.
 \end{abstract}
 
 \section{Introduction}
@@ -615,15 +618,88 @@ dominates.}
 \label{fig:layer-localization}
 \end{figure}
 
+\subsection{Interventional validation}
+
+We next ran the six ranking targets on ten frozen validation questions, using
+the same model, selector, 512-token budget, and physical-edge replay. The BGE
+reranker ran on MPS; this execution device is part of the run configuration and
+receipt. All ten ordinary/instrumented host comparisons and all ten 100\%
+replay checks passed exactly.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Frozen validation target selection. Each oracle row reports its
+highest-F1 budget at or below 1\%; it is not a test-set estimate.}
+\label{tab:interventional-validation}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & Edges & F1 & Official & Gold NLL \\
+\midrule
+Packed teacher & 100\% & .1094 & .600 & 5.911 \\
+Independent PRA & 0\% & .1673 & .500 & 3.211 \\
+Raw attention & .1\% & .1706 & .500 & 3.697 \\
+Pair NLL & 1\% & .1659 & .600 & 3.929 \\
+Pair JS & .5\% & \textbf{.1727} & .600 & 3.666 \\
+Pair NLL $\times$ attention & .1\% & .1379 & .400 & 3.861 \\
+Layer NLL & .01\% & .1540 & .400 & 3.204 \\
+Layer JS & .5\% & .1525 & .500 & 3.739 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This cohort reverses the inception endpoint: independent PRA exceeds packed
+F1 by .0579, although packed retains .100 more official score. It therefore
+does not define a packed advantage that sparse edges can meaningfully recover.
+The apparent improvements are also uncertain. Relative to the packed teacher,
+pair-JS at .5\% changes F1 by $+.0633$ (paired bootstrap 95\% interval
+$[-.0067,.1618]$) with zero mean official-score change; raw attention at .1\%
+changes F1 by $+.0613$ ($[-.0275,.1604]$) while changing official score by
+$-.100$. Both intervals include zero. Gold NLL ranks conditions differently
+from generated-answer metrics, so lower teacher-forced loss is not treated as
+proof of better task behavior.
+
+No ranking has a non-decreasing F1 frontier through 1\%. The result therefore
+strengthens, rather than resolves, the inception warning: raw magnitude is not
+a causal utility signal, and coarse leave-one-group-out NLL or first-step JS is
+not sufficient by itself. The powered test carries raw attention, pair NLL,
+pair JS, and pair-NLL-times-attention forward. Layer-only policies are dropped
+after validation because they do not improve the quality frontier.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_validation_n10/ranking_target_frontiers.pdf}
+\caption{Validation F1 frontiers for observational and interventional rankings.
+All curves are non-monotonic; lines aid reading and do not imply interpolation.}
+\label{fig:validation-frontiers}
+\end{figure}
+
+The .1\% plans also reveal different geometries. Raw attention allocates 32.4\%
+of selected edges to layers 23--25 and 27, while pair NLL concentrates more in
+early layers and assigns 70.8\% to record-index pairs $(1,2)$ and $(0,1)$.
+Pair JS assigns 79.6\% to pair $(0,1)$ but remains distributed across layers;
+the combined proxy again leans late. These are policy-induced concentrations,
+not discovered universal heads. They nevertheless show that the ranking target
+changes the proposed sparse computation substantially.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_validation_n10/selected_edge_layer_head.pdf}
+\caption{Layer--head allocation of each validation .1\% plan, aggregated over
+ten frozen validation questions. Color is selected-edge share within a policy.}
+\label{fig:selected-edge-localization}
+\end{figure}
+
 \subsection{Go/no-go decision}
 
 The inception gate is \textbf{not passed}. The 0.1\% oracle is close to this
 cohort's packed F1, but neither condition reaches the prespecified absolute
 thresholds of .19 F1 and .67 official score. With one ten-question cohort we
 also cannot establish statistical equivalence. Learned-selector training
-therefore remains locked. The appropriate next experiment is a powered oracle
-replication on the frozen test protocol, followed by a task-aware or
-ablation-aware edge oracle if raw attention ranking remains non-monotonic.
+therefore remains locked. The validation experiment also finds no monotonic
+attention-, pair-, or layer-ranked frontier. A 150-question frozen-test oracle
+is consequently the next decision point; selector learning remains disabled
+while that preregistered confirmation runs.
 
 The reported encoding times, roughly 0.5--0.9 seconds per condition, execute a
 dense host attention kernel under a sparse mask. Edge fraction is therefore a
@@ -718,9 +794,11 @@ Paper~3.3 targets that remaining computation directly. Exact endpoint checks
 show that the new observer and physical-edge masks isolate this variable. The
 ten-question smoke finds a promising 0.1\% point but also a sharply
 non-monotonic frontier, so attention mass alone is not a reliable selector
-target. The prespecified oracle gate remains closed. A powered oracle and a
-task-aware importance signal are required before learned selection or sparse
-runtime economics can be claimed.
+target. A disjoint validation cohort reverses the packed--independent endpoint
+and finds that pair-NLL, pair-JS, and layer ablations also remain non-monotonic.
+The prespecified oracle gate remains closed. A powered frozen-test oracle and a
+more faithful task-aware importance signal are required before learned
+selection or sparse runtime economics can be claimed.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

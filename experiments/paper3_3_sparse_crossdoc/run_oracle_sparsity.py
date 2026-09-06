@@ -843,13 +843,16 @@ def _plot(
             )
             + 1
         )
+        columns = 2 if len(selected_targets) > 1 else 1
+        row_count = math.ceil(len(selected_targets) / columns)
         figure, axes = plt.subplots(
-            len(selected_targets),
-            1,
-            figsize=(8.5, max(2.8 * len(selected_targets), 3.2)),
+            row_count,
+            columns,
+            figsize=(8.8, max(2.7 * row_count, 3.2)),
             squeeze=False,
         )
-        for axis, target in zip(axes[:, 0], selected_targets):
+        flat_axes = axes.reshape(-1)
+        for axis, target in zip(flat_axes, selected_targets):
             counts = np.zeros((layer_count, head_count), dtype=float)
             for item in selected_localization:
                 if item["ranking_target"] != target:
@@ -870,6 +873,8 @@ def _plot(
             axis.set_xlabel("Decoder layer")
             axis.set_ylabel("Query head")
             figure.colorbar(image, ax=axis, label="Selected-edge share")
+        for axis in flat_axes[len(selected_targets) :]:
+            axis.set_visible(False)
         figure.tight_layout()
         figure.savefig(output / "selected_edge_layer_head.pdf", bbox_inches="tight")
         figure.savefig(

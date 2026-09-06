@@ -11,8 +11,8 @@ history.
 - `ESTABLISHED_INHERITED`: Paper 3.2 packed, independent PRA, and rank-8
   residual endpoints, cited with their original provenance.
 - `MEASURED_SMOKE`: Paper 3.3 host-observer parity, 0%/100% mask endpoints,
-  oracle edge/mass sweeps, and interaction localization on the inception
-  cohort.
+  oracle edge/mass sweeps, interaction localization on the inception cohort,
+  and interventional target selection on ten frozen validation questions.
 - `DESIGN_ONLY`: the query-conditioned learned pair selector. Training remains
   locked unless the oracle gate passes.
 
@@ -36,6 +36,17 @@ prespecified `0.19/0.67` gate was not met and one ten-question cohort cannot
 establish equivalence. Larger budgets were non-monotonic. Learned-selector
 training therefore remains locked pending a powered oracle and a task-aware or
 ablation-aware importance target.
+
+## Interventional Validation
+
+The frozen validation diagnostic compares raw attention with document-pair and
+layer leave-one-group-out answer-NLL and first-step-JS rankings. Independent PRA
+reversed the inception endpoint and exceeded packed F1 (`0.1673` versus
+`0.1094`), while packed retained higher official score (`0.600` versus `0.500`).
+No ranking was monotonic through 1%. Pair-JS at 0.5% had the highest validation
+F1 (`0.1727`), but its paired F1 interval versus packed included zero. This is a
+target-selection result, not a test claim. Raw attention and all three pair
+targets proceed to the frozen 150-question test; layer-only targets do not.
 
 ## Reproduce
 
