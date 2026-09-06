@@ -133,6 +133,20 @@ def _ranking_targets(value: str) -> tuple[str, ...]:
     return targets
 
 
+def _resolve_reranker_device(requested: str) -> str:
+    """Resolve accelerator preference once and persist it in run provenance."""
+
+    if requested != "auto":
+        return requested
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def _atomic_json(path: Path, value: object) -> None:
     """Write resumable experiment state without exposing a partial JSON file."""
 
@@ -814,6 +828,7 @@ def main() -> None:
     parser.add_argument("--revision", default="main")
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
+    parser.add_argument("--reranker-device", default="auto")
     parser.add_argument("--candidate-count", type=int, default=20)
     parser.add_argument("--token-budget", type=int, default=512)
     parser.add_argument("--chunk-tokens", type=int, default=128)
@@ -861,9 +876,11 @@ def main() -> None:
     retriever = FirstStageBM25(documents)
     revision = _resolve_hf_revision(args.model, args.revision)
     reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
+    reranker_device = _resolve_reranker_device(args.reranker_device)
     selector = CrossEncoderRAGSelector(
         model_id=args.reranker,
         revision=reranker_revision,
+        device=reranker_device,
         name_prefix="paper3_3_oracle",
     )
     backend = PersistentMLXBackend(args.model, revision, args.max_new_tokens)
@@ -880,6 +897,7 @@ def main() -> None:
         "model_revision": revision,
         "reranker": args.reranker,
         "reranker_revision": reranker_revision,
+        "reranker_device": reranker_device,
         "seed": args.seed,
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
@@ -1341,6 +1359,7 @@ def main() -> None:
         "model_revision": revision,
         "reranker": args.reranker,
         "reranker_revision": reranker_revision,
+        "reranker_device": reranker_device,
         "seed": args.seed,
         "questions": len({str(row["example_id"]) for row in rows}),
         "candidate_count": args.candidate_count,
