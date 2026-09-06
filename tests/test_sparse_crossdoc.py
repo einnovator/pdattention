@@ -11,7 +11,12 @@ from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     CrossDocumentOracleGraph,
     cumulative_attention_mass_plan,
+    interaction_group_ablation_plan,
+    interaction_group_keys,
     interaction_localization,
+    ranked_edge_plan,
+    ranked_physical_indices_by_group_utility,
+    selected_interaction_localization,
     top_attention_edge_plan,
 )
 
@@ -106,3 +111,54 @@ def test_plan_validates_budget_bounds() -> None:
         top_attention_edge_plan(graph, 1.01)
     with pytest.raises(ValueError, match="fraction"):
         cumulative_attention_mass_plan(graph, -0.01)
+
+
+def test_group_ablation_removes_only_the_requested_layer() -> None:
+    graph = _graph()
+    assert interaction_group_keys(graph, "layer") == ((0,), (1,))
+    plan = interaction_group_ablation_plan(graph, "layer", (1,))
+    assert plan.selected_mask[0].all()
+    assert not plan.selected_mask[1].any()
+    assert plan.selected_physical_edge_fraction == pytest.approx(0.5)
+
+
+def test_causal_group_ranking_refines_with_attention() -> None:
+    graph = _graph()
+    ranked = ranked_physical_indices_by_group_utility(
+        graph,
+        "layer",
+        {(0,): 0.1, (1,): 0.9},
+    )
+    plan = ranked_edge_plan(graph, 0.5, ranked=ranked, mode="LAYER_NLL")
+    assert plan.selected_mask[1].all()
+    assert not plan.selected_mask[0].any()
+
+    weighted = ranked_physical_indices_by_group_utility(
+        graph,
+        "layer",
+        {(0,): 2.0, (1,): 0.0},
+        combination="utility_x_attention",
+    )
+    weighted_plan = ranked_edge_plan(
+        graph, 0.25, ranked=weighted, mode="LAYER_NLL_X_ATTENTION"
+    )
+    assert weighted_plan.selected_mask[0].sum() == 4
+    assert not weighted_plan.selected_mask[1].any()
+
+
+def test_selected_interaction_localization_accounts_for_budget() -> None:
+    graph = _graph()
+    plan = top_attention_edge_plan(graph, 0.25)
+    result = selected_interaction_localization(graph, plan)
+    assert result["selected_physical_head_edges"] == 4
+    assert (
+        sum(row["selected_physical_head_edges"] for row in result["record_pairs"]) == 4
+    )
+    assert result["top_layers"][0]["layer"] == 0
+
+
+def test_ranked_plan_rejects_non_permutation() -> None:
+    graph = _graph()
+    ranked = np.zeros(graph.physical_edge_count, dtype=np.int64)
+    with pytest.raises(ValueError, match="permutation"):
+        ranked_edge_plan(graph, 0.1, ranked=ranked, mode="INVALID")

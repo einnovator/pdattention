@@ -44,6 +44,33 @@ Each output contains immutable candidate and selection receipts, canonical
 host-path parity diagnostics, rows, summaries, localization, and the
 prespecified gate decision.
 
+Run the interventional diagnostic on the frozen test split:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity \
+  --dataset multihoprag --max-examples 10 --token-budget 512 \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --ranking-targets attention,pair_nll,pair_js,pair_nll_x_attention,layer_nll,layer_js \
+  --edge-percentages 0,0.01,0.05,0.1,0.5,1,100 \
+  --skip-mass-frontier --resume \
+  --output docs/papers/shared/results/paper3_3_sparse_crossdoc/interventional_n10
+```
+
+The document-pair and layer rankings use leave-one-group-out interventions.
+`pair_nll_x_attention` multiplies the finite-difference NLL effect by teacher
+attention within the pair; it is not an autograd attribution. `layer_head_nll`
+and `layer_head_js` are available for targeted diagnostics but are intentionally
+excluded from the default command because a full layer/head ablation is much
+more expensive.
+
+For the powered gate, use the same command with `--max-examples 100` and omit
+the two layer targets after the ten-question localization run identifies the
+useful hierarchy. The runner samples only from the frozen `test_ids` in
+`splits.json`, writes one atomic checkpoint per question, and rejects resume
+when the run configuration differs. The learned selector remains locked unless
+a powered interventional frontier reaches the absolute quality gate and is
+monotonic in token F1.
+
 ## Learned Pair Selector, Conditional Design
 
 Training remains locked unless the oracle reaches the inception gate. If it

@@ -1,9 +1,9 @@
 """Auditable oracle plans for sparse cross-document contextualization.
 
-The initial Paper 3.3 oracle deliberately selects layer/token-pair edges while
-retaining all attention heads for each selected pair. This is coarser than the
-eventual learned policy, but it establishes whether sparse, on-manifold host
-attention has enough task headroom before training a selector.
+Paper 3.3 represents each physical interaction as a
+``[layer, query-head, target-token, source-token]`` edge. Plans may rank those
+edges observationally by teacher attention or hierarchically by measured
+document-pair, layer, or layer/head intervention utility.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Literal, Mapping, Sequence
 
 import numpy as np
 
@@ -58,10 +58,14 @@ def _cross_document_token_pairs(
             targets.append(np.repeat(target_tokens, source_tokens.size))
             sources.append(np.tile(source_tokens, target_tokens.size))
             target_records.append(
-                np.full(target_tokens.size * source_tokens.size, target_record, np.int16)
+                np.full(
+                    target_tokens.size * source_tokens.size, target_record, np.int16
+                )
             )
             source_records.append(
-                np.full(target_tokens.size * source_tokens.size, source_record, np.int16)
+                np.full(
+                    target_tokens.size * source_tokens.size, source_record, np.int16
+                )
             )
     return (
         np.concatenate(sources),
@@ -161,8 +165,7 @@ class CrossDocumentOracleGraph:
             "model_revision": self.model_revision,
             "record_ids": list(self.record_ids),
             "document_boundaries": [
-                {"start": row.start, "end": row.end}
-                for row in self.document_boundaries
+                {"start": row.start, "end": row.end} for row in self.document_boundaries
             ],
             "layers": self.layer_count,
             "heads": self.head_count,
@@ -180,8 +183,7 @@ class CrossDocumentOracleGraph:
             "schema_version": self.schema_version,
             "record_ids": list(self.record_ids),
             "document_boundaries": [
-                {"start": row.start, "end": row.end}
-                for row in self.document_boundaries
+                {"start": row.start, "end": row.end} for row in self.document_boundaries
             ],
             "selection_receipt_id": self.selection_receipt_id,
             "model_revision": self.model_revision,
@@ -315,7 +317,9 @@ class SparseInteractionPlan:
     @property
     def plan_digest(self) -> str:
         return _digest_bytes(
-            json.dumps(self.to_dict(include_digest=False), sort_keys=True).encode("ascii"),
+            json.dumps(self.to_dict(include_digest=False), sort_keys=True).encode(
+                "ascii"
+            ),
             np.ascontiguousarray(self.selected_mask).tobytes(),
         )
 
@@ -378,7 +382,11 @@ def _plan(
 ) -> SparseInteractionPlan:
     scores = graph.edge_scores.reshape(-1).astype(np.float64)
     total_mass = float(scores.sum())
-    retained = float(scores[selected].sum() / total_mass) if total_mass and selected.size else 0.0
+    retained = (
+        float(scores[selected].sum() / total_mass)
+        if total_mass and selected.size
+        else 0.0
+    )
     selected_mask = np.zeros(scores.size, dtype=np.bool_)
     selected_mask[selected] = True
     return SparseInteractionPlan(
@@ -405,7 +413,9 @@ def top_attention_edge_plan(
     if not 0.0 <= fraction <= 1.0:
         raise ValueError("edge fraction must be in [0, 1]")
     count = int(math.ceil(graph.physical_edge_count * fraction))
-    selected = (ranked if ranked is not None else ranked_physical_indices(graph))[:count]
+    selected = (ranked if ranked is not None else ranked_physical_indices(graph))[
+        :count
+    ]
     return _plan(graph, mode="TOP_ATTENTION", target=fraction, selected=selected)
 
 
@@ -442,7 +452,9 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
     pair_rows = []
     for target in range(len(graph.record_ids)):
         for source in range(target):
-            edge_mask = (graph.source_records == source) & (graph.target_records == target)
+            edge_mask = (graph.source_records == source) & (
+                graph.target_records == target
+            )
             mass = float(graph.edge_scores[:, :, edge_mask].astype(np.float64).sum())
             pair_rows.append(
                 {
@@ -454,9 +466,15 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
                     "attention_mass_fraction": mass / total,
                 }
             )
-    pair_rows.sort(key=lambda row: (-float(row["attention_mass"]), str(row["source_record_id"])))
+    pair_rows.sort(
+        key=lambda row: (-float(row["attention_mass"]), str(row["source_record_id"]))
+    )
     layer_rows = [
-        {"layer": index, "attention_mass": float(value), "attention_mass_fraction": float(value / total)}
+        {
+            "layer": index,
+            "attention_mass": float(value),
+            "attention_mass_fraction": float(value / total),
+        }
         for index, value in enumerate(layer_mass)
     ]
     head_rows = [
@@ -469,7 +487,13 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
         for layer in range(graph.layer_count)
         for head in range(graph.head_count)
     ]
-    head_rows.sort(key=lambda row: (-float(row["attention_mass"]), int(row["layer"]), int(row["head"])))
+    head_rows.sort(
+        key=lambda row: (
+            -float(row["attention_mass"]),
+            int(row["layer"]),
+            int(row["head"]),
+        )
+    )
     return {
         "schema_version": "paper3.3-interaction-localization-v1",
         "graph_digest": graph.graph_digest,
@@ -477,4 +501,225 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
         "layers": layer_rows,
         "top_layer_heads": head_rows[: min(32, len(head_rows))],
         "record_pairs": pair_rows,
+    }
+
+
+InteractionGroupKind = Literal["document_pair", "layer", "layer_head"]
+InteractionGroupKey = tuple[int, ...]
+
+
+def interaction_group_keys(
+    graph: CrossDocumentOracleGraph,
+    kind: InteractionGroupKind,
+) -> tuple[InteractionGroupKey, ...]:
+    """Enumerate causal groups from coarse record pairs to physical heads."""
+
+    if kind == "document_pair":
+        return tuple(
+            (source, target)
+            for target in range(len(graph.record_ids))
+            for source in range(target)
+        )
+    if kind == "layer":
+        return tuple((layer,) for layer in range(graph.layer_count))
+    if kind == "layer_head":
+        return tuple(
+            (layer, head)
+            for layer in range(graph.layer_count)
+            for head in range(graph.head_count)
+        )
+    raise ValueError(f"unsupported interaction group kind: {kind}")
+
+
+def interaction_group_mask(
+    graph: CrossDocumentOracleGraph,
+    kind: InteractionGroupKind,
+    key: InteractionGroupKey,
+) -> np.ndarray:
+    """Return the physical ``[L,H,E]`` mask belonging to one group."""
+
+    mask = np.zeros(graph.edge_scores.shape, dtype=np.bool_)
+    if kind == "document_pair":
+        if len(key) != 2:
+            raise ValueError("document-pair keys require source and target indices")
+        source, target = key
+        pairs = (graph.source_records == source) & (graph.target_records == target)
+        mask[:, :, pairs] = True
+    elif kind == "layer":
+        if len(key) != 1 or not 0 <= key[0] < graph.layer_count:
+            raise ValueError("layer key is outside the graph")
+        mask[key[0], :, :] = True
+    elif kind == "layer_head":
+        if (
+            len(key) != 2
+            or not 0 <= key[0] < graph.layer_count
+            or not 0 <= key[1] < graph.head_count
+        ):
+            raise ValueError("layer/head key is outside the graph")
+        mask[key[0], key[1], :] = True
+    else:
+        raise ValueError(f"unsupported interaction group kind: {kind}")
+    if not mask.any():
+        raise ValueError(f"interaction group {kind}:{key} contains no physical edges")
+    return mask
+
+
+def interaction_group_ablation_plan(
+    graph: CrossDocumentOracleGraph,
+    kind: InteractionGroupKind,
+    key: InteractionGroupKey,
+) -> SparseInteractionPlan:
+    """Keep the packed teacher graph except for one causally tested group."""
+
+    removed = interaction_group_mask(graph, kind, key).reshape(-1)
+    selected = np.flatnonzero(~removed)
+    return _plan(
+        graph,
+        mode=f"ABLATE_{kind.upper()}",
+        target=float(removed.mean()),
+        selected=selected,
+    )
+
+
+def ranked_physical_indices_by_group_utility(
+    graph: CrossDocumentOracleGraph,
+    kind: InteractionGroupKind,
+    utilities: Mapping[InteractionGroupKey, float],
+    *,
+    combination: Literal["lexicographic", "utility_x_attention"] = "lexicographic",
+) -> np.ndarray:
+    """Rank physical edges by causal group utility with attention as refinement.
+
+    ``lexicographic`` first orders groups by utility, then edges within each
+    group by teacher attention. ``utility_x_attention`` assigns each edge the
+    non-negative group utility multiplied by its teacher attention. The latter
+    is a finite-difference-times-attention proxy, not an autograd claim.
+    """
+
+    keys = interaction_group_keys(graph, kind)
+    missing = [key for key in keys if key not in utilities]
+    if missing:
+        raise ValueError(f"missing intervention utilities for {kind}: {missing[:4]}")
+    scores = graph.edge_scores.reshape(-1)
+    if combination == "lexicographic":
+        ranked_groups = sorted(keys, key=lambda key: (-float(utilities[key]), key))
+        ranked: list[np.ndarray] = []
+        for key in ranked_groups:
+            indices = np.flatnonzero(
+                interaction_group_mask(graph, kind, key).reshape(-1)
+            )
+            order = np.argsort(-scores[indices], kind="stable")
+            ranked.append(indices[order])
+        return np.concatenate(ranked).astype(np.int64, copy=False)
+    if combination == "utility_x_attention":
+        combined = np.empty(scores.shape, dtype=np.float32)
+        for key in keys:
+            indices = np.flatnonzero(
+                interaction_group_mask(graph, kind, key).reshape(-1)
+            )
+            combined[indices] = max(0.0, float(utilities[key])) * scores[indices]
+        if not np.any(combined > 0):
+            return ranked_physical_indices(graph)
+        return np.argsort(-combined, kind="stable")
+    raise ValueError(f"unsupported utility/attention combination: {combination}")
+
+
+def ranked_edge_plan(
+    graph: CrossDocumentOracleGraph,
+    fraction: float,
+    *,
+    ranked: np.ndarray,
+    mode: str,
+) -> SparseInteractionPlan:
+    """Materialize a physical-edge budget from an externally defined ranking."""
+
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("edge fraction must be in [0, 1]")
+    if ranked.ndim != 1 or ranked.size != graph.physical_edge_count:
+        raise ValueError("ranked physical edge indices do not cover the graph")
+    if (
+        np.any(ranked < 0)
+        or np.any(ranked >= graph.physical_edge_count)
+        or np.unique(ranked).size != graph.physical_edge_count
+    ):
+        raise ValueError("ranked physical edge indices must be a permutation")
+    count = int(math.ceil(graph.physical_edge_count * fraction))
+    return _plan(graph, mode=mode, target=fraction, selected=ranked[:count])
+
+
+def selected_interaction_localization(
+    graph: CrossDocumentOracleGraph,
+    plan: SparseInteractionPlan,
+) -> dict[str, object]:
+    """Describe where a sparse plan spends its physical interaction budget."""
+
+    if plan.graph_digest != graph.graph_digest:
+        raise ValueError("plan and graph identities differ")
+    selected = plan.selected_mask
+    total = max(plan.selected_physical_head_edges, 1)
+    layer_counts = selected.sum(axis=(1, 2), dtype=np.int64)
+    head_counts = selected.sum(axis=2, dtype=np.int64)
+    layers = [
+        {
+            "layer": layer,
+            "selected_physical_head_edges": int(count),
+            "selected_fraction": float(count / total),
+        }
+        for layer, count in enumerate(layer_counts)
+        if count
+    ]
+    layer_heads = [
+        {
+            "layer": layer,
+            "head": head,
+            "selected_physical_head_edges": int(head_counts[layer, head]),
+            "selected_fraction": float(head_counts[layer, head] / total),
+        }
+        for layer in range(graph.layer_count)
+        for head in range(graph.head_count)
+        if head_counts[layer, head]
+    ]
+    pairs = []
+    for source, target in interaction_group_keys(graph, "document_pair"):
+        edge_mask = (graph.source_records == source) & (graph.target_records == target)
+        count = int(selected[:, :, edge_mask].sum())
+        if count:
+            pairs.append(
+                {
+                    "source_record_index": source,
+                    "target_record_index": target,
+                    "source_record_id": graph.record_ids[source],
+                    "target_record_id": graph.record_ids[target],
+                    "selected_physical_head_edges": count,
+                    "selected_fraction": float(count / total),
+                }
+            )
+    layers.sort(
+        key=lambda row: (-int(row["selected_physical_head_edges"]), int(row["layer"]))
+    )
+    layer_heads.sort(
+        key=lambda row: (
+            -int(row["selected_physical_head_edges"]),
+            int(row["layer"]),
+            int(row["head"]),
+        )
+    )
+    pairs.sort(
+        key=lambda row: (
+            -int(row["selected_physical_head_edges"]),
+            int(row["source_record_index"]),
+            int(row["target_record_index"]),
+        )
+    )
+    return {
+        "schema_version": "paper3.3-selected-interaction-localization-v1",
+        "graph_digest": graph.graph_digest,
+        "plan_digest": plan.plan_digest,
+        "mode": plan.mode,
+        "target_percentage": 100.0 * plan.target,
+        "selected_physical_head_edges": plan.selected_physical_head_edges,
+        "top_layers": layers[: min(16, len(layers))],
+        "layer_heads": layer_heads,
+        "top_layer_heads": layer_heads[: min(32, len(layer_heads))],
+        "record_pairs": pairs,
     }
