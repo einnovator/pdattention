@@ -26,6 +26,10 @@ from experiments.paper4_5_agent.build_easy_cohorts import (
     ids_digest,
     select_easy_rows,
 )
+from experiments.paper4_5_agent.build_swebench_lite_cohort import (
+    build_card as build_lite_card,
+    select_rows as select_lite_rows,
+)
 from experiments.paper4_5_agent.promote_nested_baseline import promote
 from experiments.paper4_5_agent.analyze_easy_frontier import (
     _bucket_effects,
@@ -82,6 +86,7 @@ EASY50_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_ea
 FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json"
 EASY20 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json"
 EASY50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json"
+LITE50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_lite50.json"
 
 
 def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:
@@ -101,6 +106,24 @@ def test_easy_cards_are_nested_frozen_and_digest_protected() -> None:
     assert len(easy20["instance_ids"]) == 20
     assert len(easy50["instance_ids"]) == 50
     assert {row["difficulty"] for row in easy50["task_metadata"]} == {DIFFICULTY}
+
+
+def test_lite50_card_is_frozen_and_outcome_blind() -> None:
+    card = load_benchmark_card(LITE50)
+    assert len(card["instance_ids"]) == 50
+    assert card["source_revision"] == "b0dde1093fe417d83b7184254edf8199c1f0dff5"
+    assert card["canonical_ids_sha256"] == (
+        "3dab12f2b8e1fe3cbddeb20cc7522991ad76f25eba9dbd147223297e555ab93d"
+    )
+    rows = [
+        {
+            "instance_id": f"repo__project-{index}", "repo": "repo/project",
+            "base_commit": str(index), "version": "1", "model_outcome": index % 2,
+        }
+        for index in range(60)
+    ]
+    assert select_lite_rows(rows, limit=10) == select_lite_rows(reversed(rows), limit=10)
+    assert "model_outcome" not in json.dumps(build_lite_card(rows, count=10))
 
 
 def test_easy_selection_is_deterministic_and_outcome_blind() -> None:
