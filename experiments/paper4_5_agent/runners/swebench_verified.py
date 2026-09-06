@@ -150,14 +150,18 @@ def run(args: argparse.Namespace) -> Path:
         )
         agent_base_url = proxy.start()
     try:
-        return _execute_chunks(args, card, output, agent_base_url)
+        return _execute_chunks(args, card, output, agent_base_url, receipt)
     finally:
         if proxy is not None:
             proxy.close()
 
 
 def _execute_chunks(
-    args: argparse.Namespace, card: dict[str, Any], output: Path, agent_base_url: str,
+    args: argparse.Namespace,
+    card: dict[str, Any],
+    output: Path,
+    agent_base_url: str,
+    receipt: dict[str, Any],
 ) -> Path:
     """Run resumable agent/grader chunks against the direct endpoint or treatment proxy."""
 

@@ -54,6 +54,7 @@ from experiments.paper4_5_agent.schema import (
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
+    _execute_chunks,
     _grader_error_type,
     _is_h100_80gb,
     _normalize_report,
@@ -358,6 +359,44 @@ def test_swebench_chunk_report_requires_exact_ids(tmp_path: Path) -> None:
     assert _normalize_report(report, ["a", "b"])["resolved_ids"] == ["b"]
     with pytest.raises(RuntimeError, match="frozen chunk"):
         _normalize_report(report, ["a", "c"])
+
+
+def test_swebench_completed_chunks_reach_final_aggregation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for index, instance_id in enumerate(("repo__project-1", "repo__project-2")):
+        chunk = tmp_path / f"chunk_{index:02d}"
+        chunk.mkdir()
+        (chunk / "official_chunk_result.json").write_text(json.dumps({
+            "submitted_ids": [instance_id],
+            "resolved_ids": [instance_id] if index == 0 else [],
+            "error_ids": [],
+        }), encoding="utf-8")
+    monkeypatch.setattr(
+        "experiments.paper4_5_agent.runners.swebench_verified._write_task_rows",
+        lambda *args, **kwargs: None,
+    )
+    args = SimpleNamespace(
+        chunk_size=1, model="model", model_revision="model-revision",
+        tokenizer_revision="tokenizer-revision", engine="ollama",
+        engine_version="1", dtype="mixed", quantization="Q4_K_M",
+        kv_cache_dtype="f16", scaffold="swebench_backticks.yaml",
+        context_limit=32768, max_steps=50, grading="official",
+        benchmark_revision="revision", harness_version="2.4.6",
+    )
+    card = {
+        "instance_ids": ["repo__project-1", "repo__project-2"],
+        "canonical_ids_sha256": "digest", "source_revision": "revision",
+    }
+
+    result_path = _execute_chunks(
+        args, card, tmp_path, "http://unused", {"configuration_differences": []},
+    )
+
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["score"] == 0.5
+    assert result["resolved"] == 1
+    assert result["configuration_differences"] == []
 
 
 def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Path) -> None:
