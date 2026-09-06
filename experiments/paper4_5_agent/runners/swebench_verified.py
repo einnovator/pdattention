@@ -168,6 +168,7 @@ def _execute_chunks(
     submitted: set[str] = set()
     resolved: set[str] = set()
     errors: set[str] = set()
+    timeouts: set[str] = set()
     instance_ids = card["instance_ids"]
     for chunk_index in range(0, len(instance_ids), args.chunk_size):
         chunk_ids = instance_ids[chunk_index:chunk_index + args.chunk_size]
@@ -179,6 +180,7 @@ def _execute_chunks(
         else:
             chunk_dir.mkdir(parents=True, exist_ok=True)
             pattern = "(" + "|".join(re.escape(item) for item in chunk_ids) + ")"
+            predictions = chunk_dir / "preds.json"
             agent_command = [
                 sys.executable, "-m", "minisweagent.run.benchmarks.swebench",
                 "--subset", "verified", "--split", "test", "--filter", pattern,
@@ -189,13 +191,27 @@ def _execute_chunks(
                 "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers), "-o", str(chunk_dir),
             ]
             dataset_environment = {"HF_DATASETS_CACHE": str(output / "hf_datasets_cache")}
-            _run(
-                agent_command, output / f"chunk_{chunk_number:02d}.agent.log",
-                args.timeout_seconds, extra_environment=dataset_environment,
-            )
-            predictions = chunk_dir / "preds.json"
+            timed_out = False
+            if getattr(args, "recover_timeout_chunk", None) == chunk_number:
+                _write_empty_predictions(predictions, chunk_ids, args.served_model)
+                timed_out = True
+            else:
+                try:
+                    _run(
+                        agent_command, output / f"chunk_{chunk_number:02d}.agent.log",
+                        args.timeout_seconds, extra_environment=dataset_environment,
+                    )
+                except subprocess.TimeoutExpired:
+                    _write_empty_predictions(predictions, chunk_ids, args.served_model)
+                    timed_out = True
             if not predictions.is_file():
                 raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
+            if timed_out:
+                _write_json(chunk_dir / "agent_timeout_receipt.json", {
+                    "instance_ids": chunk_ids,
+                    "timeout_seconds": args.timeout_seconds,
+                    "normalization": "empty patch submitted to official grader",
+                })
             grade_command = [
                 sys.executable, "-m", "swebench.harness.run_evaluation",
                 "-d", card["dataset"], "-s", card["split"],
@@ -212,10 +228,12 @@ def _execute_chunks(
             raw_report = _find_report(chunk_dir, f"{args.run_id}_c{chunk_number}")
             chunk_result = _normalize_report(raw_report, chunk_ids)
             chunk_result["grader_wall_time_s"] = grader_wall_time_s
+            chunk_result["agent_timeout_ids"] = chunk_ids if timed_out else []
             _write_json(report_receipt, chunk_result)
         submitted.update(chunk_result["submitted_ids"])
         resolved.update(chunk_result["resolved_ids"])
         errors.update(chunk_result["error_ids"])
+        timeouts.update(chunk_result.get("agent_timeout_ids") or ())
 
     expected = set(instance_ids)
     if submitted != expected:
@@ -228,6 +246,7 @@ def _execute_chunks(
         "score": len(ordered_resolved) / len(instance_ids),
         "resolved": len(ordered_resolved),
         "total": len(instance_ids),
+        "timeouts": len(timeouts),
         "task_ids": instance_ids,
         "configuration_differences": receipt["configuration_differences"],
         "grader_artifact": str(output / "official_aggregate.json"),
@@ -257,9 +276,12 @@ def _execute_chunks(
         "submitted_ids": instance_ids,
         "resolved_ids": ordered_resolved,
         "error_ids": [item for item in instance_ids if item in errors],
+        "timeout_ids": [item for item in instance_ids if item in timeouts],
     })
     _write_json(output / "official_result.json", result)
-    _write_task_rows(output / "results.jsonl", output, args, instance_ids, resolved, errors)
+    _write_task_rows(
+        output / "results.jsonl", output, args, instance_ids, resolved, errors, timeouts,
+    )
     return output / "official_result.json"
 
 
@@ -303,15 +325,46 @@ def _run(
     environment.setdefault("TOKENIZERS_PARALLELISM", "false")
     environment.update(extra_environment or {})
     started = time.perf_counter()
-    completed = subprocess.run(
-        command, capture_output=True, text=True, env=environment,
-        cwd=cwd, timeout=timeout_seconds, check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command, capture_output=True, text=True, env=environment,
+            cwd=cwd, timeout=timeout_seconds, check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _timeout_text(exc.stdout)
+        stderr = _timeout_text(exc.stderr)
+        log.write_text(
+            stdout + "\n--- STDERR ---\n" + stderr + "\n--- TIMEOUT ---\n",
+            encoding="utf-8",
+        )
+        raise
     elapsed = time.perf_counter() - started
     log.write_text(completed.stdout + "\n--- STDERR ---\n" + completed.stderr, encoding="utf-8")
     if completed.returncode:
         raise RuntimeError(f"command exited {completed.returncode}; see {log}")
     return elapsed
+
+
+def _timeout_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+
+
+def _write_empty_predictions(
+    destination: Path, instance_ids: list[str], served_model: str,
+) -> None:
+    """Represent an agent timeout as an empty patch for canonical grading."""
+
+    payload = {
+        instance_id: {
+            "model_name_or_path": f"openai/{served_model}",
+            "instance_id": instance_id,
+            "model_patch": "",
+        }
+        for instance_id in instance_ids
+    }
+    _write_json(destination, payload)
 
 
 def _find_report(directory: Path, run_id: str) -> Path:
@@ -335,7 +388,7 @@ def _normalize_report(path: Path, expected_ids: list[str]) -> dict[str, Any]:
 
 def _write_task_rows(
     destination: Path, output: Path, args: argparse.Namespace, instance_ids: list[str],
-    resolved: set[str], errors: set[str],
+    resolved: set[str], errors: set[str], timeouts: set[str],
 ) -> None:
     """Join agent-visible trajectories and proxy traces with official outcomes."""
 
@@ -406,6 +459,7 @@ def _write_task_rows(
             "grader_time_s": chunk_receipt.get("grader_wall_time_s"),
             "pra_route_time_s": trace.get("route_time_s"),
             "termination_reason": trajectory.get("termination_reason"),
+            "timed_out": instance_id in timeouts,
             "error_type": grader_error_type,
             "grader_outcome": (
                 "error" if instance_id in errors
@@ -568,6 +622,10 @@ def main() -> None:
     parser.add_argument("--grader-workers", type=int, default=4)
     parser.add_argument("--chunk-size", type=int, default=10)
     parser.add_argument("--timeout-seconds", type=int, default=21600)
+    parser.add_argument(
+        "--recover-timeout-chunk", type=int,
+        help="Normalize a previously observed timed-out chunk without rerunning its agent.",
+    )
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--allow-partial-reproduction", action="store_true")
     parser.add_argument(

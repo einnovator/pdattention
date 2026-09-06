@@ -32,6 +32,7 @@ def main() -> None:
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--recover-timeout-chunk", type=int)
     options = parser.parse_args()
     args = argparse.Namespace(
         benchmark_card=options.benchmark_card,
@@ -63,6 +64,7 @@ def main() -> None:
         preflight_only=options.preflight_only,
         allow_partial_reproduction=False,
         local_calibration=True,
+        recover_timeout_chunk=options.recover_timeout_chunk,
     )
     print(run(args))
 

@@ -72,6 +72,7 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _is_h100_80gb,
     _normalize_report,
     _trajectory_metrics,
+    _write_empty_predictions,
     package_versions,
 )
 from experiments.agents.schema import BenchmarkManifest
@@ -465,7 +466,20 @@ def test_swebench_completed_chunks_reach_final_aggregation(
     result = json.loads(result_path.read_text(encoding="utf-8"))
     assert result["score"] == 0.5
     assert result["resolved"] == 1
+    assert result["timeouts"] == 0
     assert result["configuration_differences"] == []
+
+
+def test_timed_out_agent_becomes_an_empty_official_prediction(tmp_path: Path) -> None:
+    destination = tmp_path / "preds.json"
+    _write_empty_predictions(destination, ["repo__project-1"], "model")
+    assert json.loads(destination.read_text(encoding="utf-8")) == {
+        "repo__project-1": {
+            "model_name_or_path": "openai/model",
+            "instance_id": "repo__project-1",
+            "model_patch": "",
+        }
+    }
 
 
 def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Path) -> None:
