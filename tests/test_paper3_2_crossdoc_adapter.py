@@ -32,6 +32,7 @@ def test_adapter_summary_uses_seed_level_variation() -> None:
                 {
                     "condition": "R_TRAINED_RESIDUAL",
                     "seed": seed,
+                    "example_id": f"q{seed}-{index}",
                     "exact_match": float(score == 1.0),
                     "token_f1": score,
                     "gold_answer_mean_nll": 2.0 - score,

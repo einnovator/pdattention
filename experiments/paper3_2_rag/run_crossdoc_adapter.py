@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import itertools
 import json
 import random
 import statistics
@@ -329,10 +330,12 @@ def _train(
     learning_rate: float,
     temperature: float,
     seed: int,
-) -> list[dict[str, object]]:
+    checkpoint_every: int,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
     import mlx.core as mx
     import mlx.nn as nn
     import mlx.optimizers as optim
+    from mlx.utils import tree_map
 
     if not examples:
         raise ValueError("adapter training requires calibration examples")
@@ -340,6 +343,22 @@ def _train(
     order = list(range(len(examples)))
     randomizer = random.Random(seed)
     history: list[dict[str, object]] = []
+
+    def calibration_loss() -> float:
+        values = [
+            _loss_components(adapter, example, model, config, temperature)[0]
+            for example in examples
+        ]
+        mx.eval(values)
+        return statistics.fmean(float(value.item()) for value in values)
+
+    initial_calibration_loss = calibration_loss()
+    best_loss = initial_calibration_loss
+    best_step = 0
+    best_parameters = tree_map(
+        lambda value: value + mx.zeros_like(value), adapter.trainable_parameters()
+    )
+    mx.eval(best_parameters)
     for step in range(steps):
         if step % len(order) == 0:
             randomizer.shuffle(order)
@@ -368,7 +387,19 @@ def _train(
             "response_distillation_loss": float(response_loss.item()),
             "task_loss": float(task_loss.item()),
             "step_ms": (time.perf_counter() - started) * 1000.0,
+            "calibration_mean_loss": None,
         }
+        if (step + 1) % checkpoint_every == 0 or step + 1 == steps:
+            current_calibration_loss = calibration_loss()
+            row["calibration_mean_loss"] = current_calibration_loss
+            if current_calibration_loss < best_loss:
+                best_loss = current_calibration_loss
+                best_step = step + 1
+                best_parameters = tree_map(
+                    lambda value: value + mx.zeros_like(value),
+                    adapter.trainable_parameters(),
+                )
+                mx.eval(best_parameters)
         history.append(row)
         if step == 0 or (step + 1) % 10 == 0 or step + 1 == steps:
             print(
@@ -378,7 +409,17 @@ def _train(
                 f"task={row['task_loss']:.4f}",
                 flush=True,
             )
-    return history
+    final_calibration_loss = calibration_loss()
+    adapter.update(best_parameters)
+    mx.eval(adapter.parameters())
+    return history, {
+        "selection_metric": "mean combined calibration objective",
+        "initial_calibration_loss": initial_calibration_loss,
+        "final_step_calibration_loss": final_calibration_loss,
+        "selected_calibration_loss": best_loss,
+        "selected_step": best_step,
+        "checkpoint_every": checkpoint_every,
+    }
 
 
 def _evaluate_condition(
@@ -440,6 +481,38 @@ def _mean(values: Sequence[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _bootstrap_mean_interval(
+    values: Sequence[float], *, seed: int, draws: int = 10_000
+) -> tuple[float, float]:
+    """Deterministic percentile interval over seed-level means."""
+
+    values = tuple(float(value) for value in values)
+    if not values:
+        raise ValueError("bootstrap interval requires values")
+    if len(values) == 1:
+        return values[0], values[0]
+    randomizer = random.Random(seed)
+    estimates = sorted(
+        statistics.fmean(randomizer.choice(values) for _ in values)
+        for _ in range(draws)
+    )
+    return estimates[int(0.025 * draws)], estimates[int(0.975 * draws) - 1]
+
+
+def _exact_sign_flip_p(values: Sequence[float]) -> float:
+    """Exact two-sided sign-flip test over seed-level paired effects."""
+
+    values = tuple(float(value) for value in values)
+    if not values:
+        raise ValueError("sign-flip test requires values")
+    observed = abs(statistics.fmean(values))
+    outcomes = tuple(
+        abs(statistics.fmean(sign * value for sign, value in zip(signs, values)))
+        for signs in itertools.product((-1.0, 1.0), repeat=len(values))
+    )
+    return sum(value >= observed - 1e-12 for value in outcomes) / len(outcomes)
+
+
 def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Aggregate quality and composition cost with seeds as replication units."""
 
@@ -455,6 +528,9 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
             statistics.fmean(float(row["token_f1"]) for row in seed_rows)
             for seed_rows in seed_groups.values()
         ]
+        f1_interval = _bootstrap_mean_interval(
+            seed_f1, seed=3200 + sum(ord(character) for character in condition)
+        )
         conditions.append(
             {
                 "condition": condition,
@@ -463,6 +539,7 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                 "exact_match": _mean([float(row["exact_match"]) for row in values]),
                 "token_f1": _mean([float(row["token_f1"]) for row in values]),
                 "seed_token_f1_std": statistics.pstdev(seed_f1) if len(seed_f1) > 1 else 0.0,
+                "seed_token_f1_ci95": list(f1_interval),
                 "gold_answer_mean_nll": _mean(
                     [float(row["gold_answer_mean_nll"]) for row in values]
                 ),
@@ -483,7 +560,63 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
                 "adapter_parameters": max(int(row["adapter_parameters"]) for row in values),
             }
         )
-    return {"schema_version": SCHEMA_VERSION, "conditions": conditions}
+    by_example: dict[str, dict[str, Mapping[str, object]]] = {}
+    for row in rows:
+        by_example.setdefault(str(row["example_id"]), {})[str(row["condition"])] = row
+    paired = []
+    for condition in sorted(grouped):
+        if condition == "C_INDEPENDENT_PRA":
+            continue
+        seed_deltas: dict[int, list[tuple[float, float, float]]] = {}
+        for conditions_by_name in by_example.values():
+            if condition not in conditions_by_name or "C_INDEPENDENT_PRA" not in conditions_by_name:
+                continue
+            candidate = conditions_by_name[condition]
+            baseline = conditions_by_name["C_INDEPENDENT_PRA"]
+            seed_deltas.setdefault(int(candidate["seed"]), []).append(
+                (
+                    float(candidate["token_f1"]) - float(baseline["token_f1"]),
+                    float(candidate["gold_answer_mean_nll"])
+                    - float(baseline["gold_answer_mean_nll"]),
+                    float(candidate["first_step_js_divergence"])
+                    - float(baseline["first_step_js_divergence"]),
+                )
+            )
+        if not seed_deltas:
+            continue
+        seed_f1_deltas = [
+            statistics.fmean(value[0] for value in values)
+            for values in seed_deltas.values()
+        ]
+        seed_nll_deltas = [
+            statistics.fmean(value[1] for value in values)
+            for values in seed_deltas.values()
+        ]
+        seed_js_deltas = [
+            statistics.fmean(value[2] for value in values)
+            for values in seed_deltas.values()
+        ]
+        f1_interval = _bootstrap_mean_interval(
+            seed_f1_deltas,
+            seed=6400 + sum(ord(character) for character in condition),
+        )
+        paired.append(
+            {
+                "condition": condition,
+                "baseline": "C_INDEPENDENT_PRA",
+                "seeds": len(seed_deltas),
+                "token_f1_delta": statistics.fmean(seed_f1_deltas),
+                "token_f1_delta_ci95": list(f1_interval),
+                "token_f1_sign_flip_p": _exact_sign_flip_p(seed_f1_deltas),
+                "gold_answer_mean_nll_delta": statistics.fmean(seed_nll_deltas),
+                "first_step_js_divergence_delta": statistics.fmean(seed_js_deltas),
+            }
+        )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "conditions": conditions,
+        "paired_vs_independent": paired,
+    }
 
 
 def _write_outputs(
@@ -590,6 +723,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=80)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--temperature", type=float, default=2.0)
+    parser.add_argument("--checkpoint-every", type=int, default=10)
     parser.add_argument("--kv-weight", type=float, default=1.0)
     parser.add_argument("--response-weight", type=float, default=0.25)
     parser.add_argument("--task-weight", type=float, default=0.25)
@@ -597,8 +731,13 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=202)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if args.steps <= 0 or args.learning_rate <= 0 or args.temperature <= 0:
-        parser.error("steps, learning rate, and temperature must be positive")
+    if (
+        args.steps <= 0
+        or args.learning_rate <= 0
+        or args.temperature <= 0
+        or args.checkpoint_every <= 0
+    ):
+        parser.error("steps, learning rate, temperature, and checkpoint cadence must be positive")
 
     started = time.time()
     documents, questions, dataset_metadata = load_multihop_rag(args.cache_dir)
@@ -671,7 +810,7 @@ def main() -> None:
         widths, adapter_config, seed=args.seed
     )
     parameter_count = mlx_adapter_parameter_count(adapter)
-    history = _train(
+    history, checkpoint_selection = _train(
         adapter,
         training_examples,
         backend.model,
@@ -680,6 +819,7 @@ def main() -> None:
         learning_rate=args.learning_rate,
         temperature=args.temperature,
         seed=args.seed,
+        checkpoint_every=args.checkpoint_every,
     )
     args.output.mkdir(parents=True, exist_ok=True)
     adapter.save_weights(str(args.output / "crossdoc_residual_adapter.safetensors"))
@@ -817,6 +957,7 @@ def main() -> None:
             "learning_rate": args.learning_rate,
             "temperature": args.temperature,
         },
+        "checkpoint_selection": checkpoint_selection,
         "boundary_windows": list(args.boundary_windows),
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
