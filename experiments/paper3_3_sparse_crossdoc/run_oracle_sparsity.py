@@ -1402,19 +1402,20 @@ def main() -> None:
     gate = oracle_gate(summary)
     frontier_diagnostics = ranking_frontier_diagnostics(summary)
     causal_gate = interventional_oracle_gate(summary, frontier_diagnostics)
+    observed_questions = len({str(row["example_id"]) for row in rows})
     result = {
         "schema_version": SCHEMA_VERSION,
         "experiment": "paper3.3_oracle_cross_document_sparsity",
         "scope": (
             "powered_natural_interventional_gate"
-            if args.dataset == "multihoprag" and len(questions) >= 100
+            if args.dataset == "multihoprag" and observed_questions >= 100
             else "small_natural_mechanism_gate"
             if args.dataset == "multihoprag"
             else "fixture_smoke"
         ),
         "evidence_tier": (
             "MEASURED_POWERED"
-            if args.dataset == "multihoprag" and len(questions) >= 100
+            if args.dataset == "multihoprag" and observed_questions >= 100
             else "MEASURED_SMOKE"
         ),
         "dataset": dataset_metadata,
@@ -1424,7 +1425,7 @@ def main() -> None:
         "reranker_revision": reranker_revision,
         "reranker_device": reranker_device,
         "seed": args.seed,
-        "questions": len({str(row["example_id"]) for row in rows}),
+        "questions": observed_questions,
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
         "max_resources": args.max_resources,
