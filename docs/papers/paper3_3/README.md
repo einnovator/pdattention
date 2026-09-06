@@ -13,6 +13,8 @@ history.
 - `MEASURED_SMOKE`: Paper 3.3 host-observer parity, 0%/100% mask endpoints,
   oracle edge/mass sweeps, interaction localization on the inception cohort,
   and interventional target selection on ten frozen validation questions.
+- `MEASURED_POWERED`: the 150-question frozen-test comparison of raw attention,
+  pair-NLL, pair-JS, and pair-NLL-times-attention rankings.
 - `DESIGN_ONLY`: the query-conditioned learned pair selector. Training remains
   locked unless the oracle gate passes.
 
@@ -34,8 +36,7 @@ The ten-question Qwen3-1.7B-4bit mechanism cohort found:
 The sparse point recovered 97.3% of the small F1 gap, but the absolute
 prespecified `0.19/0.67` gate was not met and one ten-question cohort cannot
 establish equivalence. Larger budgets were non-monotonic. Learned-selector
-training therefore remains locked pending a powered oracle and a task-aware or
-ablation-aware importance target.
+training therefore remained locked pending the powered oracle reported below.
 
 ## Interventional Validation
 
@@ -46,7 +47,30 @@ reversed the inception endpoint and exceeded packed F1 (`0.1673` versus
 No ranking was monotonic through 1%. Pair-JS at 0.5% had the highest validation
 F1 (`0.1727`), but its paired F1 interval versus packed included zero. This is a
 target-selection result, not a test claim. Raw attention and all three pair
-targets proceed to the frozen 150-question test; layer-only targets do not.
+targets proceeded to the frozen 150-question test; layer-only targets did not.
+
+## Powered Test Decision
+
+The complete frozen test passed 150/150 ordinary/instrumented host checks and
+150/150 full-replay checks. Best sparse points at or below 1% physical edges
+were:
+
+| Condition | Edges | F1 | Official |
+| --- | ---: | ---: | ---: |
+| Packed RAG | 100% | 0.1119 | 0.3333 |
+| Independent PRA | 0% | 0.1129 | 0.3667 |
+| Raw attention | 0.05% | 0.1148 | 0.3867 |
+| Pair JS | 1% | 0.1205 | 0.3800 |
+| Pair NLL | 1% | **0.1243** | 0.3933 |
+| Pair NLL x attention | 0.1% | 0.1215 | **0.4000** |
+
+Pair NLL improved mean F1 by 0.0124 over packed, but its paired 95% interval
+was `[-0.0055, 0.0315]`. Every sparse frontier remained non-monotonic and the
+absolute `0.19/0.67` gate was missed. Learned-selector training remains locked.
+The canonical compact artifact is
+`../shared/results/paper3_3_sparse_crossdoc/interventional_test_n150/publication_summary.json`;
+it is hash-linked to the full 60 MB per-question manifest retained on the
+experiment host.
 
 ## Reproduce
 
@@ -67,7 +91,8 @@ Build the paper from this directory:
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper_3_3.tex
 ```
 
-Compressed physical teacher graphs are reproducible local artifacts and are
-excluded from Git. The tracked manifest preserves source and selection
-receipts, graph and plan digests, full condition rows, endpoint parity,
-localization summaries, runtime metadata, and plot inputs.
+Compressed physical teacher graphs and the full per-question manifest are
+reproducible experiment-host artifacts and are excluded from Git. The tracked
+publication summary preserves provenance, aggregate conditions, endpoint
+parity, localization summaries, paired intervals, runtime metadata, and the
+full-manifest digest.

@@ -49,15 +49,17 @@ The inception experiment evaluates edge-count budgets from 0 to 100\% and
 cumulative teacher-mass targets from 50 to 99\% on MultiHop-RAG. It also freezes
 disjoint 2,000/150/150 train/validation/test identities for a possible learned
 selector. On a ten-question mechanism cohort, 0.1\% of physical edges reached
-.1488 F1 versus .1490 for packed RAG and .1431 for independent PRA, but the
-0.0059 packed--independent gap is small and the cohort's packed official score
-was only .600. Larger edge and cumulative-mass budgets were non-monotonic. The
-prespecified .19/.67 gate therefore remains closed and no selector is trained.
-A disjoint ten-question validation study compares raw attention with
-document-pair and layer leave-one-group-out NLL and first-step JS rankings. Its
-packed--independent direction reverses and every frontier remains non-monotonic.
-The result shows possible sparse headroom while rejecting both raw attention
-mass and these coarse causal proxies as sufficient utility signals.
+.1488 F1 versus .1490 for packed RAG and .1431 for independent PRA, but this is
+97.3\% recovery of a small 0.0059 gap and the cohort's packed official score was
+only .600. We therefore run a powered 150-question frozen test comparing raw
+attention with document-pair leave-one-group-out NLL, first-step JS, and a
+finite-difference NLL-times-attention proxy. Pair NLL at 1\% obtains .1243 F1
+and .3933 official score versus .1119 and .3333 for packed RAG; paired
+differences are $+.0124$ F1 and $+.0600$ official, but both 95\% intervals
+include zero. Every frontier remains non-monotonic and the absolute .19/.67
+gate is missed. The result supports sparse causal headroom and shows that
+task-aware rankings improve on raw magnitude, but it does not justify learned
+selector training.
 \end{abstract}
 
 \section{Introduction}
@@ -666,40 +668,90 @@ not sufficient by itself. The powered test carries raw attention, pair NLL,
 pair JS, and pair-NLL-times-attention forward. Layer-only policies are dropped
 after validation because they do not improve the quality frontier.
 
+\subsection{Powered frozen-test confirmation}
+
+We then evaluate all 150 previously untouched test identities. The model is
+Qwen3-1.7B-4bit on an Apple M5 with 16~GiB unified memory; the BGE reranker runs
+on MPS. All 150 ordinary/instrumented comparisons and all 150 full-replay
+comparisons pass exactly. The run takes 18,486 seconds and records 4,800
+condition rows. Table~\ref{tab:powered-oracle} reports the highest-F1 point at
+or below 1\% for each ranking. These are test-set summaries selected over a
+small prespecified budget grid, not independently tuned deployment settings.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Powered 150-question frozen test. Oracle rows show the best F1 budget
+at or below 1\% physical cross-document edges.}
+\label{tab:powered-oracle}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & Edges & F1 & Official & Gold NLL \\
+\midrule
+Packed teacher & 100\% & .1119 & .3333 & 5.526 \\
+No-cross-document packed & 0\% & .1105 & .3600 & 3.097 \\
+Independent PRA & 0\% & .1129 & .3667 & 3.114 \\
+Raw attention & .05\% & .1148 & .3867 & 3.100 \\
+Pair JS & 1\% & .1205 & .3800 & 3.817 \\
+Pair NLL & 1\% & \textbf{.1243} & .3933 & 3.675 \\
+Pair NLL $\times$ attention & .1\% & .1215 & \textbf{.4000} & 3.319 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pair NLL at 1\% changes F1 by $+.0124$ relative to packed RAG (paired bootstrap
+95\% interval $[-.0055,.0315]$) and official score by $+.0600$
+($[-.0133,.1333]$). The combined proxy at .1\% changes F1 by $+.0096$
+($[-.0078,.0289]$) and official score by $+.0667$
+($[-.0067,.1400]$). Pair JS at 1\% and raw attention at .05\% also have intervals
+spanning zero. The powered result therefore distinguishes mean frontier shape
+from established superiority: causal grouping produces the better sparse
+means, but no task-quality effect is conclusive.
+
+The endpoint ordering is itself informative. Packed F1 differs from independent
+PRA by only $-.0010$, and its paired interval includes zero. Gold NLL strongly
+prefers the blocked and independent conditions, so NLL divergence from packed
+does not translate monotonically into generated-answer quality. This cohort
+cannot support a claim that dense packed contextualization is a better task
+endpoint than a sparse oracle merely needs to recover.
+
 \begin{figure}[ht]
 \centering
-\includegraphics[width=.88\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_validation_n10/ranking_target_frontiers.pdf}
-\caption{Validation F1 frontiers for observational and interventional rankings.
-All curves are non-monotonic; lines aid reading and do not imply interpolation.}
-\label{fig:validation-frontiers}
+\includegraphics[width=.88\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_test_n150/ranking_target_frontiers.pdf}
+\caption{Powered-test F1 frontiers for observational and interventional
+rankings. Causal pair rankings improve the mean sparse frontier, but all curves
+remain non-monotonic; lines aid reading and do not imply interpolation.}
+\label{fig:powered-frontiers}
 \end{figure}
 
-The .1\% plans also reveal different geometries. Raw attention allocates 32.4\%
-of selected edges to layers 23--25 and 27, while pair NLL concentrates more in
-early layers and assigns 70.8\% to record-index pairs $(1,2)$ and $(0,1)$.
-Pair JS assigns 79.6\% to pair $(0,1)$ but remains distributed across layers;
-the combined proxy again leans late. These are policy-induced concentrations,
-not discovered universal heads. They nevertheless show that the ranking target
-changes the proposed sparse computation substantially.
+The powered .1\% plans also reveal different geometries. Raw attention assigns
+32.6\% of edges to layers 23--25 and 27 and 94.3\% to pairs $(0,1)$ and $(0,2)$.
+Pair NLL spreads 84.8\% across $(0,2)$, $(1,2)$, and $(0,1)$ and emphasizes
+early layers 1--2 alongside distributed later layers. Pair JS assigns 86.7\%
+to $(0,1)$, while the combined proxy assigns 91.7\% across the first three
+pairs and leans later. No leading layer--head cell receives more than .86\% of
+a policy's selected edges. These are policy-induced concentrations, not
+universal heads, but they show that the causal target materially changes the
+proposed sparse computation.
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=.92\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_validation_n10/selected_edge_layer_head.pdf}
-\caption{Layer--head allocation of each validation .1\% plan, aggregated over
-ten frozen validation questions. Color is selected-edge share within a policy.}
+\includegraphics[width=.92\linewidth]{../shared/results/paper3_3_sparse_crossdoc/interventional_test_n150/selected_edge_layer_head.pdf}
+\caption{Layer--head allocation of each .1\% plan over 150 frozen test
+questions. Color is selected-edge share within a policy.}
 \label{fig:selected-edge-localization}
 \end{figure}
+\FloatBarrier
 
 \subsection{Go/no-go decision}
 
-The inception gate is \textbf{not passed}. The 0.1\% oracle is close to this
-cohort's packed F1, but neither condition reaches the prespecified absolute
-thresholds of .19 F1 and .67 official score. With one ten-question cohort we
-also cannot establish statistical equivalence. Learned-selector training
-therefore remains locked. The validation experiment also finds no monotonic
-attention-, pair-, or layer-ranked frontier. A 150-question frozen-test oracle
-is consequently the next decision point; selector learning remains disabled
-while that preregistered confirmation runs.
+The powered gate is \textbf{locked}. The cohort-size requirement is met, but no
+condition reaches .19 F1 and .67 official score, no frontier is non-decreasing
+through 1\%, and the paired task-quality intervals include zero. Learned
+selector training therefore remains disabled. The next useful selector target
+must improve causal localization beyond one scalar utility per document pair;
+training the current target would turn an unresolved oracle into a learned
+approximation of an unstable policy.
 
 The reported encoding times, roughly 0.5--0.9 seconds per condition, execute a
 dense host attention kernel under a sparse mask. Edge fraction is therefore a
@@ -720,10 +772,12 @@ or statistical indistinguishability from packed RAG, while using no more than
 gap recovery remains a useful descriptive quantity, but does not replace these
 absolute thresholds.
 
-The ten-question smoke does not meet these absolute criteria. Its 0.1\% point
-meets the relative F1-recovery target only because the cohort's packed and
-independent endpoints are close. We do not substitute that post-hoc relative
-observation for the prespecified gate.
+Neither the ten-question smoke nor the 150-question frozen test meets these
+absolute criteria. The smoke's 0.1\% point meets the relative F1-recovery target
+only because its packed and independent endpoints are close. On the powered
+test, causal rankings improve sparse mean quality but do not establish a
+monotonic frontier or a nonzero paired task-quality effect. We do not substitute
+either post-hoc observation for the prespecified gate.
 
 A stronger result matches packed RAG within uncertainty while preserving:
 \begin{itemize}[leftmargin=*]
@@ -791,14 +845,17 @@ recover cheaply after independent encoding.
 Paper~3.2 established that position transport and persistent native memory can
 be separated from the cross-document causal computation induced by packed RAG.
 Paper~3.3 targets that remaining computation directly. Exact endpoint checks
-show that the new observer and physical-edge masks isolate this variable. The
+show that the observer and physical-edge masks isolate this variable. The
 ten-question smoke finds a promising 0.1\% point but also a sharply
 non-monotonic frontier, so attention mass alone is not a reliable selector
-target. A disjoint validation cohort reverses the packed--independent endpoint
-and finds that pair-NLL, pair-JS, and layer ablations also remain non-monotonic.
-The prespecified oracle gate remains closed. A powered frozen-test oracle and a
-more faithful task-aware importance signal are required before learned
-selection or sparse runtime economics can be claimed.
+target. The 150-question frozen test confirms all endpoints and finds that
+document-pair causal rankings improve mean sparse quality over raw magnitude:
+pair NLL reaches .1243 F1 at 1\% edges versus .1119 packed. The paired F1
+interval nevertheless includes zero, the packed endpoint is not stronger than
+independent PRA, every frontier remains non-monotonic, and the absolute gate is
+missed. Sparse causal headroom is credible; a qualified selector is not.
+Learned-selector training remains locked until a finer task-aware utility signal
+produces a stable frontier.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
@@ -863,11 +920,11 @@ retrieval and oracle sweep is in
 generation is in the adjacent \url{freeze_splits.py}. Exact commands and
 evidence labels appear in the experiment and paper README files.
 
-The publication manifest named in the README contains row metrics, receipts,
-group interventions, selected-edge localization, monotonicity diagnostics,
-paired intervals, runtime metadata, and plot inputs. Regenerable teacher graphs
-and per-question recovery checkpoints are excluded from Git; graph content
-digests and checkpoint-bound configuration digests remain in the final
-manifest.
+The tracked publication summary named in the README contains aggregate metrics,
+parity counts, monotonicity diagnostics, paired intervals, runtime metadata,
+localization summaries, and a SHA-256 digest of the full run manifest. The
+larger per-question manifest, regenerable teacher graphs, and recovery
+checkpoints remain on the experiment host rather than in Git. Group
+interventions and publication figures are tracked separately.
 
 \end{document}

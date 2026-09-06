@@ -64,13 +64,15 @@ and `layer_head_js` are available for targeted diagnostics but are intentionally
 excluded from the default command because a full layer/head ablation is much
 more expensive.
 
-For the powered gate, use the same command with `--split-name test`,
-`--max-examples 100`, and omit the two layer targets after the ten-question
+For the reported powered gate, use the same command with `--split-name test`,
+`--max-examples 150`, and omit the two layer targets after the ten-question
 validation localization identifies the useful hierarchy. The runner restricts
 sampling to the named frozen split in `splits.json`, writes one atomic
 checkpoint per question, and rejects resume when the run configuration differs.
-The learned selector remains locked unless a powered test frontier reaches the
-absolute quality gate and is monotonic in token F1.
+It writes both the complete per-question `manifest.json` and a compact,
+hash-linked `publication_summary.json`; only the latter needs to be tracked with
+the paper figures. The learned selector remains locked unless a powered test
+frontier reaches the absolute quality gate and is monotonic in token F1.
 
 ## Learned Pair Selector, Conditional Design
 
