@@ -305,8 +305,9 @@ def encode_native_memory_with_mask(
     the unchanged host layers is the narrowest available seam for the B arm;
     projections, RoPE, residuals, and cache objects remain the host
     implementation. Paper 3.3 optionally observes probabilities or supplies a
-    per-layer ``[H,T,T]`` sparse mask. Those diagnostic paths expand GQA K/V
-    heads and evaluate the same scaled dot-product attention explicitly.
+    per-layer ``[H,T,T]`` sparse mask. Probability observation is computed on a
+    side path; the state-producing attention remains the host MLX kernel so
+    instrumentation cannot silently change the packed-teacher baseline.
     """
 
     if not token_ids:
@@ -366,16 +367,7 @@ def encode_native_memory_with_mask(
                 values,
             )
         )
-        if attention_observer is None and sparse_mask_provider is None:
-            attended = scaled_dot_product_attention(
-                queries,
-                keys_post,
-                values,
-                cache=None,
-                scale=attention.scale,
-                mask=layer_mask,
-            )
-        else:
+        if attention_observer is not None:
             query_heads = int(queries.shape[1])
             kv_heads = int(keys_post.shape[1])
             if query_heads % kv_heads:
@@ -383,9 +375,6 @@ def encode_native_memory_with_mask(
             repeats = query_heads // kv_heads
             expanded_keys = (
                 mx.repeat(keys_post, repeats, axis=1) if repeats > 1 else keys_post
-            )
-            expanded_values = (
-                mx.repeat(values, repeats, axis=1) if repeats > 1 else values
             )
             scores = mx.matmul(
                 queries,
@@ -404,12 +393,16 @@ def encode_native_memory_with_mask(
                 mx.array(float("-inf"), dtype=scores.dtype),
             )
             probabilities = mx.softmax(scores.astype(mx.float32), axis=-1)
-            if attention_observer is not None:
-                mx.eval(probabilities)
-                attention_observer(layer_index, probabilities)
-            attended = mx.matmul(
-                probabilities.astype(expanded_values.dtype), expanded_values
-            )
+            mx.eval(probabilities)
+            attention_observer(layer_index, probabilities)
+        attended = scaled_dot_product_attention(
+            queries,
+            keys_post,
+            values,
+            cache=None,
+            scale=attention.scale,
+            mask=layer_mask,
+        )
         attended = attended.transpose(0, 2, 1, 3).reshape(batch, tokens, -1)
         hidden = residual + attention.o_proj(attended)
         hidden = hidden + layer.mlp(layer.post_attention_layernorm(hidden))
