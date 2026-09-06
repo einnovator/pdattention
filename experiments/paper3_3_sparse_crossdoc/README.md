@@ -6,11 +6,11 @@ Retrieval, reranking, record order, token budget, prompt text, model revision,
 and generation settings are frozen. Only causal document-to-document edges are
 changed.
 
-The implementation stores one score per `(layer, target token, source token)`
-and a separate layer/head mass summary. A selected token pair is replayed on all
-heads with the frozen host model. This avoids persisting the much larger dense
-`[layer, head, token, token]` tensor and makes the initial oracle conservative:
-it can establish headroom, but does not yet claim head-level sparsity.
+The implementation stores one score per physical
+`(layer, head, target token, source token)` edge, restricted to causal
+cross-record pairs. It therefore avoids the irrelevant within-record part of
+the dense `[layer, head, token, token]` tensor while preserving the exact
+head-level oracle unit required by the study.
 
 ## Commands
 

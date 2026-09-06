@@ -69,6 +69,7 @@ from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     cumulative_attention_mass_plan,
     interaction_localization,
+    ranked_physical_indices,
     top_attention_edge_plan,
 )
 
@@ -123,6 +124,9 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
                 ),
                 "selected_logical_edge_fraction": _mean(
                     values, "selected_logical_edge_fraction"
+                ),
+                "selected_physical_edge_fraction": _mean(
+                    values, "selected_physical_edge_fraction"
                 ),
                 "retained_attention_mass": _mean(values, "retained_attention_mass"),
                 "selected_physical_head_edges": _mean(
@@ -433,6 +437,7 @@ def main() -> None:
         graph_summary = graph.summary()
         graph_summary.update({"example_id": question.example_id, "path": str(graph_path.relative_to(args.output))})
         graph_summaries.append(graph_summary)
+        ranked_edges = ranked_physical_indices(graph)
 
         encode_started = time.perf_counter()
         packed = encode_native_memory(backend.model, packed_tokens, model_revision=revision)
@@ -514,7 +519,9 @@ def main() -> None:
 
         full_oracle_diagnostic: dict[str, object] | None = None
         for percentage in args.edge_percentages:
-            plan = top_attention_edge_plan(graph, percentage / 100.0)
+            plan = top_attention_edge_plan(
+                graph, percentage / 100.0, ranked=ranked_edges
+            )
             encode_started = time.perf_counter()
             memory = encode_native_memory_with_mask(
                 backend.model,
@@ -547,7 +554,9 @@ def main() -> None:
                 )
             )
         for percentage in args.mass_percentages:
-            plan = cumulative_attention_mass_plan(graph, percentage / 100.0)
+            plan = cumulative_attention_mass_plan(
+                graph, percentage / 100.0, ranked=ranked_edges
+            )
             encode_started = time.perf_counter()
             memory = encode_native_memory_with_mask(
                 backend.model,
@@ -627,7 +636,7 @@ def main() -> None:
         "edge_percentages": list(args.edge_percentages),
         "mass_percentages": list(args.mass_percentages),
         "selector_frozen": True,
-        "oracle_granularity": "layer_token_pair_all_heads",
+        "oracle_granularity": "layer_head_token_pair",
         "base_model_weights_frozen": True,
         "persistent_records_mutated": False,
         "git_commit": _git_commit(),

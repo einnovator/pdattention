@@ -75,10 +75,10 @@ def _cross_document_token_pairs(
 class CrossDocumentOracleGraph:
     """Compressed teacher graph over causal cross-record token pairs.
 
-    ``layer_scores`` has shape ``[L, E]``. Each score is attention probability
-    summed across heads for one causal source/target token pair. ``head_mass``
-    has shape ``[L, H]`` and supports head localization without retaining the
-    prohibitive dense tensor ``[L, H, T, T]``.
+    ``edge_scores`` has shape ``[L,H,E]``. Each score is the attention
+    probability of one physical layer/head/source/target edge. Only causal
+    cross-record token pairs are retained, rather than the full dense tensor
+    ``[L,H,T,T]``.
     """
 
     record_ids: tuple[str, ...]
@@ -87,8 +87,7 @@ class CrossDocumentOracleGraph:
     target_tokens: np.ndarray
     source_records: np.ndarray
     target_records: np.ndarray
-    layer_scores: np.ndarray
-    head_mass: np.ndarray
+    edge_scores: np.ndarray
     selection_receipt_id: str
     model_revision: str
     schema_version: str = "paper3.3-crossdoc-oracle-graph-v1"
@@ -102,20 +101,18 @@ class CrossDocumentOracleGraph:
         )
         if edge_count <= 0 or any(int(array.size) != edge_count for array in arrays):
             raise ValueError("oracle graph token-pair arrays are inconsistent")
-        if self.layer_scores.ndim != 2 or self.layer_scores.shape[1] != edge_count:
-            raise ValueError("layer scores must have shape [layers, token-pair edges]")
-        if self.head_mass.ndim != 2 or self.head_mass.shape[0] != self.layer_count:
-            raise ValueError("head mass must have shape [layers, heads]")
+        if self.edge_scores.ndim != 3 or self.edge_scores.shape[2] != edge_count:
+            raise ValueError("edge scores must have shape [layers, heads, token pairs]")
         if len(self.record_ids) != len(self.document_boundaries):
             raise ValueError("record identities do not match document boundaries")
 
     @property
     def layer_count(self) -> int:
-        return int(self.layer_scores.shape[0])
+        return int(self.edge_scores.shape[0])
 
     @property
     def head_count(self) -> int:
-        return int(self.head_mass.shape[1])
+        return int(self.edge_scores.shape[1])
 
     @property
     def token_pair_count(self) -> int:
@@ -131,7 +128,7 @@ class CrossDocumentOracleGraph:
 
     @property
     def attention_mass(self) -> float:
-        return float(self.layer_scores.astype(np.float64).sum())
+        return float(self.edge_scores.astype(np.float64).sum())
 
     @property
     def graph_digest(self) -> str:
@@ -153,8 +150,7 @@ class CrossDocumentOracleGraph:
             metadata,
             np.ascontiguousarray(self.source_tokens).tobytes(),
             np.ascontiguousarray(self.target_tokens).tobytes(),
-            np.ascontiguousarray(self.layer_scores).tobytes(),
-            np.ascontiguousarray(self.head_mass).tobytes(),
+            np.ascontiguousarray(self.edge_scores).tobytes(),
         )
 
     def summary(self) -> dict[str, object]:
@@ -197,8 +193,7 @@ class CrossDocumentOracleGraph:
             target_tokens=self.target_tokens,
             source_records=self.source_records,
             target_records=self.target_records,
-            layer_scores=self.layer_scores,
-            head_mass=self.head_mass,
+            edge_scores=self.edge_scores,
         )
 
     @classmethod
@@ -215,8 +210,7 @@ class CrossDocumentOracleGraph:
                 target_tokens=payload["target_tokens"].copy(),
                 source_records=payload["source_records"].copy(),
                 target_records=payload["target_records"].copy(),
-                layer_scores=payload["layer_scores"].copy(),
-                head_mass=payload["head_mass"].copy(),
+                edge_scores=payload["edge_scores"].copy(),
                 selection_receipt_id=str(metadata["selection_receipt_id"]),
                 model_revision=str(metadata["model_revision"]),
                 schema_version=str(metadata["schema_version"]),
@@ -247,7 +241,6 @@ class CrossDocumentAttentionCollector:
         self.selection_receipt_id = selection_receipt_id
         self.model_revision = model_revision
         self._layer_scores: list[np.ndarray] = []
-        self._head_mass: list[np.ndarray] = []
 
     def observe(self, layer_index: int, attention_probabilities: object) -> None:
         """Consume one ``[B,H,T,T]`` or ``[H,T,T]`` host attention tensor."""
@@ -263,8 +256,7 @@ class CrossDocumentAttentionCollector:
         if layer_index != len(self._layer_scores):
             raise ValueError("attention layers must be observed in execution order")
         selected = probabilities[:, self.target_tokens, self.source_tokens]
-        self._layer_scores.append(selected.sum(axis=0, dtype=np.float32))
-        self._head_mass.append(selected.sum(axis=1, dtype=np.float64))
+        self._layer_scores.append(selected.astype(np.float32))
 
     def finalize(self) -> CrossDocumentOracleGraph:
         if not self._layer_scores:
@@ -276,8 +268,7 @@ class CrossDocumentAttentionCollector:
             target_tokens=self.target_tokens,
             source_records=self.source_records,
             target_records=self.target_records,
-            layer_scores=np.stack(self._layer_scores).astype(np.float32),
-            head_mass=np.stack(self._head_mass).astype(np.float64),
+            edge_scores=np.stack(self._layer_scores).astype(np.float32),
             selection_receipt_id=self.selection_receipt_id,
             model_revision=self.model_revision,
         )
@@ -285,32 +276,47 @@ class CrossDocumentAttentionCollector:
 
 @dataclass(frozen=True)
 class SparseInteractionPlan:
-    """Request-local layer/token-pair oracle plan replayed across all heads."""
+    """Request-local mask over physical layer/head/token-pair edges."""
 
     graph_digest: str
     selection_receipt_id: str
     mode: str
     target: float
-    selected_flat_indices: tuple[int, ...]
+    selected_mask: np.ndarray
     token_pair_count: int
     layer_count: int
     head_count: int
     retained_attention_mass: float
-    selected_logical_edge_fraction: float
     schema_version: str = "paper3.3-sparse-interaction-plan-v1"
+
+    def __post_init__(self) -> None:
+        expected = (self.layer_count, self.head_count, self.token_pair_count)
+        if self.selected_mask.shape != expected or self.selected_mask.dtype != np.bool_:
+            raise ValueError(f"selected mask must be bool with shape {expected}")
 
     @property
     def selected_logical_edges(self) -> int:
-        return len(self.selected_flat_indices)
+        return int(np.any(self.selected_mask, axis=1).sum())
 
     @property
     def selected_physical_head_edges(self) -> int:
-        return self.selected_logical_edges * self.head_count
+        return int(self.selected_mask.sum())
+
+    @property
+    def selected_logical_edge_fraction(self) -> float:
+        denominator = self.layer_count * self.token_pair_count
+        return float(self.selected_logical_edges / denominator)
+
+    @property
+    def selected_physical_edge_fraction(self) -> float:
+        denominator = self.layer_count * self.head_count * self.token_pair_count
+        return float(self.selected_physical_head_edges / denominator)
 
     @property
     def plan_digest(self) -> str:
         return _digest_bytes(
-            json.dumps(self.to_dict(include_digest=False), sort_keys=True).encode("ascii")
+            json.dumps(self.to_dict(include_digest=False), sort_keys=True).encode("ascii"),
+            np.ascontiguousarray(self.selected_mask).tobytes(),
         )
 
     def to_dict(self, *, include_digest: bool = True) -> dict[str, object]:
@@ -320,10 +326,11 @@ class SparseInteractionPlan:
             "selection_receipt_id": self.selection_receipt_id,
             "mode": self.mode,
             "target": self.target,
-            "granularity": "layer_token_pair_all_heads",
+            "granularity": "layer_head_token_pair",
             "selected_logical_edges": self.selected_logical_edges,
             "selected_physical_head_edges": self.selected_physical_head_edges,
             "selected_logical_edge_fraction": self.selected_logical_edge_fraction,
+            "selected_physical_edge_fraction": self.selected_physical_edge_fraction,
             "retained_attention_mass": self.retained_attention_mass,
             "layer_count": self.layer_count,
             "head_count": self.head_count,
@@ -349,21 +356,17 @@ class SparseInteractionPlan:
         if layer_index < 0 or layer_index >= self.layer_count:
             raise ValueError("layer index is outside the interaction plan")
         mask = np.broadcast_to(base, (self.head_count, *base.shape)).copy()
-        start = layer_index * self.token_pair_count
-        stop = start + self.token_pair_count
-        local = np.asarray(
-            [index - start for index in self.selected_flat_indices if start <= index < stop],
-            dtype=np.int64,
-        )
-        if local.size:
-            mask[:, target_tokens[local], source_tokens[local]] = True
+        heads, pairs = np.nonzero(self.selected_mask[layer_index])
+        if pairs.size:
+            mask[heads, target_tokens[pairs], source_tokens[pairs]] = True
         return mask
 
 
-def _ranked_flat_indices(graph: CrossDocumentOracleGraph) -> np.ndarray:
-    scores = graph.layer_scores.reshape(-1).astype(np.float64)
-    indices = np.arange(scores.size, dtype=np.int64)
-    return np.lexsort((indices, -scores))
+def ranked_physical_indices(graph: CrossDocumentOracleGraph) -> np.ndarray:
+    """Rank all physical edges once using stable teacher-attention order."""
+
+    scores = graph.edge_scores.reshape(-1)
+    return np.argsort(-scores, kind="stable")
 
 
 def _plan(
@@ -373,37 +376,44 @@ def _plan(
     target: float,
     selected: np.ndarray,
 ) -> SparseInteractionPlan:
-    scores = graph.layer_scores.reshape(-1).astype(np.float64)
+    scores = graph.edge_scores.reshape(-1).astype(np.float64)
     total_mass = float(scores.sum())
     retained = float(scores[selected].sum() / total_mass) if total_mass and selected.size else 0.0
+    selected_mask = np.zeros(scores.size, dtype=np.bool_)
+    selected_mask[selected] = True
     return SparseInteractionPlan(
         graph_digest=graph.graph_digest,
         selection_receipt_id=graph.selection_receipt_id,
         mode=mode,
         target=float(target),
-        selected_flat_indices=tuple(int(value) for value in np.sort(selected)),
+        selected_mask=selected_mask.reshape(graph.edge_scores.shape),
         token_pair_count=graph.token_pair_count,
         layer_count=graph.layer_count,
         head_count=graph.head_count,
         retained_attention_mass=retained,
-        selected_logical_edge_fraction=float(selected.size / graph.logical_edge_count),
     )
 
 
 def top_attention_edge_plan(
-    graph: CrossDocumentOracleGraph, fraction: float
+    graph: CrossDocumentOracleGraph,
+    fraction: float,
+    *,
+    ranked: np.ndarray | None = None,
 ) -> SparseInteractionPlan:
-    """Keep the highest teacher-attention layer/token-pair edges."""
+    """Keep the highest teacher-attention physical edges."""
 
     if not 0.0 <= fraction <= 1.0:
         raise ValueError("edge fraction must be in [0, 1]")
-    count = int(math.ceil(graph.logical_edge_count * fraction))
-    selected = _ranked_flat_indices(graph)[:count]
+    count = int(math.ceil(graph.physical_edge_count * fraction))
+    selected = (ranked if ranked is not None else ranked_physical_indices(graph))[:count]
     return _plan(graph, mode="TOP_ATTENTION", target=fraction, selected=selected)
 
 
 def cumulative_attention_mass_plan(
-    graph: CrossDocumentOracleGraph, mass_fraction: float
+    graph: CrossDocumentOracleGraph,
+    mass_fraction: float,
+    *,
+    ranked: np.ndarray | None = None,
 ) -> SparseInteractionPlan:
     """Keep the smallest ranked edge set reaching a teacher-mass target."""
 
@@ -412,12 +422,12 @@ def cumulative_attention_mass_plan(
     if mass_fraction == 0.0:
         selected = np.asarray([], dtype=np.int64)
     else:
-        ranked = _ranked_flat_indices(graph)
-        scores = graph.layer_scores.reshape(-1).astype(np.float64)
-        cumulative = np.cumsum(scores[ranked])
+        edge_order = ranked if ranked is not None else ranked_physical_indices(graph)
+        scores = graph.edge_scores.reshape(-1).astype(np.float64)
+        cumulative = np.cumsum(scores[edge_order])
         threshold = float(scores.sum()) * mass_fraction
         count = int(np.searchsorted(cumulative, threshold, side="left") + 1)
-        selected = ranked[:count]
+        selected = edge_order[:count]
     return _plan(
         graph, mode="CUMULATIVE_ATTENTION_MASS", target=mass_fraction, selected=selected
     )
@@ -427,13 +437,13 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
     """Summarize where teacher cross-record mass occurs without causal claims."""
 
     total = max(graph.attention_mass, np.finfo(np.float64).tiny)
-    layer_mass = graph.layer_scores.astype(np.float64).sum(axis=1)
-    head_mass = graph.head_mass.astype(np.float64)
+    layer_mass = graph.edge_scores.astype(np.float64).sum(axis=(1, 2))
+    head_mass = graph.edge_scores.astype(np.float64).sum(axis=2)
     pair_rows = []
     for target in range(len(graph.record_ids)):
         for source in range(target):
             edge_mask = (graph.source_records == source) & (graph.target_records == target)
-            mass = float(graph.layer_scores[:, edge_mask].astype(np.float64).sum())
+            mass = float(graph.edge_scores[:, :, edge_mask].astype(np.float64).sum())
             pair_rows.append(
                 {
                     "source_record_index": source,

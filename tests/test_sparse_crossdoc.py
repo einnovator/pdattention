@@ -40,8 +40,7 @@ def _graph() -> CrossDocumentOracleGraph:
 
 def test_collector_compresses_cross_document_edges_and_localizes_mass() -> None:
     graph = _graph()
-    assert graph.layer_scores.shape == (2, 4)
-    assert graph.head_mass.shape == (2, 2)
+    assert graph.edge_scores.shape == (2, 2, 4)
     assert graph.logical_edge_count == 8
     assert graph.physical_edge_count == 16
     assert graph.attention_mass == pytest.approx(1.75)
@@ -57,6 +56,7 @@ def test_top_attention_plan_uses_real_budget_and_replays_selected_edges() -> Non
     assert plan.selected_logical_edges == 2
     assert plan.selected_physical_head_edges == 4
     assert plan.selected_logical_edge_fraction == pytest.approx(0.25)
+    assert plan.selected_physical_edge_fraction == pytest.approx(0.25)
     assert plan.retained_attention_mass == pytest.approx(1.0 / 1.75)
 
     blocked, _ = build_document_attention_mask(
