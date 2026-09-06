@@ -96,6 +96,124 @@ class CrossDocumentCompositionReceipt:
         return payload
 
 
+@dataclass(frozen=True)
+class CrossDocumentResidualAdapterConfig:
+    """Architecture and objective for request-local cross-document K/V repair.
+
+    The adapter sees one token's native K/V and a pooled summary of preceding
+    records at the same layer.  Its output projection is initialized to zero,
+    so an untrained adapter is exactly the independent-PRA baseline.
+    """
+
+    rank: int = 16
+    activation: str = "tanh"
+    kv_distillation_weight: float = 1.0
+    response_distillation_weight: float = 0.25
+    task_loss_weight: float = 0.25
+
+    def __post_init__(self) -> None:
+        if self.rank <= 0:
+            raise ValueError("cross-document adapter rank must be positive")
+        if self.activation not in {"tanh", "silu"}:
+            raise ValueError("cross-document adapter activation must be tanh or silu")
+        weights = (
+            self.kv_distillation_weight,
+            self.response_distillation_weight,
+            self.task_loss_weight,
+        )
+        if any(not math.isfinite(weight) or weight < 0 for weight in weights):
+            raise ValueError("cross-document adapter loss weights must be finite and non-negative")
+        if not any(weights):
+            raise ValueError("cross-document adapter requires at least one positive loss weight")
+
+
+@dataclass(frozen=True)
+class BoundaryReencodeSpan:
+    """One local bridge around a packed-document boundary.
+
+    ``left_*`` identifies immutable native K/V exposed as context. ``right_*``
+    identifies the later-document prefix that is actually re-encoded.
+    Coordinates are offsets in the frozen packed selection.
+    """
+
+    boundary_index: int
+    left_start: int
+    left_end: int
+    right_start: int
+    right_end: int
+
+    @property
+    def context_tokens(self) -> int:
+        return self.left_end - self.left_start
+
+    @property
+    def reencoded_tokens(self) -> int:
+        return self.right_end - self.right_start
+
+
+@dataclass(frozen=True)
+class SelectiveBoundaryReencodeReceipt:
+    """Auditable cost and geometry for parameter-free boundary re-encoding."""
+
+    boundary_tokens: int
+    boundary_count: int
+    context_native_tokens: int
+    reencoded_tokens: int
+    request_reencode_ms: float
+    persistent_native_tokens: int
+    record_ids: tuple[str, ...]
+    spans: tuple[BoundaryReencodeSpan, ...]
+    source_memory_digest: str
+    schema_version: str = "paper3.2-selective-boundary-reencode-v1"
+
+    @property
+    def receipt_id(self) -> str:
+        payload = asdict(self)
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("ascii")
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = asdict(self)
+        payload["receipt_id"] = self.receipt_id
+        return payload
+
+
+def boundary_reencode_spans(
+    resource_lengths: Sequence[int], boundary_tokens: int
+) -> tuple[BoundaryReencodeSpan, ...]:
+    """Plan local tail-to-prefix bridges without inspecting task labels.
+
+    At each join, at most ``boundary_tokens`` from the preceding record are
+    exposed as immutable native context and at most the same number from the
+    next record are recomputed.  The first record is never recomputed.
+    """
+
+    lengths = tuple(int(length) for length in resource_lengths)
+    if len(lengths) < 2:
+        raise ValueError("boundary re-encoding requires at least two records")
+    if any(length <= 0 for length in lengths):
+        raise ValueError("boundary re-encoding requires positive record lengths")
+    if boundary_tokens <= 0:
+        raise ValueError("boundary re-encoding window must be positive")
+    spans: list[BoundaryReencodeSpan] = []
+    cursor = lengths[0]
+    previous_start = 0
+    for boundary_index, current_length in enumerate(lengths[1:]):
+        spans.append(
+            BoundaryReencodeSpan(
+                boundary_index=boundary_index,
+                left_start=max(previous_start, cursor - boundary_tokens),
+                left_end=cursor,
+                right_start=cursor,
+                right_end=cursor + min(boundary_tokens, current_length),
+            )
+        )
+        previous_start = cursor
+        cursor += current_length
+    return tuple(spans)
+
+
 def build_gist_attention_mask(
     count: int,
     policy: GistAttentionMask | str,

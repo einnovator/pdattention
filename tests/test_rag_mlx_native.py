@@ -22,7 +22,14 @@ from pra_hf.rag_mlx_native import (
 from pra_hf.crossdoc_composition import (
     CrossDocumentCompositionConfig,
     CrossDocumentCompositionMode,
+    CrossDocumentResidualAdapterConfig,
     GistAttentionMask,
+)
+from pra_hf.crossdoc_mlx_adapter import (
+    adapted_crossdoc_memory,
+    create_mlx_crossdoc_residual_adapter,
+    mlx_adapter_parameter_count,
+    selective_boundary_reencode_memory,
 )
 from pra_hf.rag_causal_decomposition import (
     DocumentAttentionPolicy,
@@ -240,6 +247,70 @@ def test_block_isolated_packed_matches_independent_prerope_records() -> None:
     assert max(abs(a - b) for a, b in zip(
         blocked_logits.flatten().tolist(), rebound_logits.flatten().tolist()
     )) < 2e-3
+
+
+def test_zero_initialized_crossdoc_adapter_is_exact_identity() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(19)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3), (4, 5), (6, 7))
+    memories = tuple(
+        encode_native_memory(
+            model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision="tiny-qwen-test",
+        )
+        for segment in segments
+    )
+    receipt = _packed_receipt(tuple(map(len, segments)))
+    independent = rebind_native_memories_to_receipt(model, memories, receipt)
+    widths = tuple(
+        int(layer.keys.shape[1] * layer.keys.shape[-1])
+        for layer in memories[0].layers
+    )
+    adapter = create_mlx_crossdoc_residual_adapter(
+        widths, CrossDocumentResidualAdapterConfig(rank=4), seed=19
+    )
+    adapted = adapted_crossdoc_memory(model, memories, receipt, adapter)
+    diagnostics = native_memory_diagnostics(independent, adapted)
+    assert diagnostics["max_key_abs_delta"] == 0.0
+    assert diagnostics["max_value_abs_delta"] == 0.0
+    assert mlx_adapter_parameter_count(adapter) == sum(24 * width for width in widths)
+
+
+def test_selective_boundary_reencode_preserves_shape_and_first_record() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(23)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3, 4), (5, 6, 7), (8, 9, 10))
+    memories = tuple(
+        encode_native_memory(
+            model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision="tiny-qwen-test",
+        )
+        for segment in segments
+    )
+    receipt = _packed_receipt(tuple(map(len, segments)))
+    independent = rebind_native_memories_to_receipt(model, memories, receipt)
+    repaired, reencode = selective_boundary_reencode_memory(
+        model,
+        segments,
+        memories,
+        receipt,
+        record_ids=("D1", "D2", "D3"),
+        boundary_tokens=2,
+    )
+    assert repaired.source_tokens == independent.source_tokens == 10
+    assert repaired.position_base == independent.position_base
+    assert reencode.reencoded_tokens == 4
+    assert reencode.context_native_tokens == 4
+    assert reencode.boundary_count == 2
+    for source, candidate in zip(independent.layers, repaired.layers):
+        assert source.keys[:, :, :4, :].tolist() == candidate.keys[:, :, :4, :].tolist()
+        assert source.values[:, :, :4, :].tolist() == candidate.values[:, :, :4, :].tolist()
 
 
 def test_shape_matched_prerope_rebind_is_exact() -> None:

@@ -6,11 +6,13 @@ import pytest
 import torch
 
 from pra_hf.crossdoc_composition import (
+    CrossDocumentResidualAdapterConfig,
     CrossDocumentCompositionConfig,
     CrossDocumentCompositionMode,
     CrossDocumentCompositionReceipt,
     GistAttentionMask,
     build_gist_attention_mask,
+    boundary_reencode_spans,
     contextualize_gists,
     memory_identity_digest,
 )
@@ -99,6 +101,41 @@ def test_composition_contract_rejects_independent_mode_and_is_reproducible() -> 
     assert receipt.receipt_id == dataclasses.replace(receipt).receipt_id
     assert receipt.to_dict()["receipt_id"] == receipt.receipt_id
     assert receipt.to_dict()["request_composition_flops_estimate"] == 4096
+
+
+def test_boundary_reencode_plan_is_local_and_bounded() -> None:
+    spans = boundary_reencode_spans((5, 3, 10), boundary_tokens=4)
+    assert [dataclasses.asdict(span) for span in spans] == [
+        {
+            "boundary_index": 0,
+            "left_start": 1,
+            "left_end": 5,
+            "right_start": 5,
+            "right_end": 8,
+        },
+        {
+            "boundary_index": 1,
+            "left_start": 5,
+            "left_end": 8,
+            "right_start": 8,
+            "right_end": 12,
+        },
+    ]
+    assert sum(span.reencoded_tokens for span in spans) == 7
+    assert sum(span.context_tokens for span in spans) == 7
+
+
+def test_crossdoc_adapter_config_enforces_a_real_training_objective() -> None:
+    config = CrossDocumentResidualAdapterConfig(rank=8, task_loss_weight=1.0)
+    assert config.rank == 8
+    with pytest.raises(ValueError, match="at least one positive"):
+        CrossDocumentResidualAdapterConfig(
+            kv_distillation_weight=0,
+            response_distillation_weight=0,
+            task_loss_weight=0,
+        )
+    with pytest.raises(ValueError, match="activation"):
+        CrossDocumentResidualAdapterConfig(activation="relu")
 
 
 @pytest.mark.parametrize(
