@@ -1,4 +1,4 @@
-# Paper 3.2: RAG, PRA, and Composable Native Memory
+# Paper 3.2: Persistent Native Memory for RAG
 
 Paper 3.2 owns the controlled comparison among full-document context,
 conventional RAG, RAG+PRA, and independently composed native memory. It was
@@ -17,6 +17,29 @@ The canonical RAG+PRA profiles are defined in
 `src/pra_hf/rag_composition.py`. A matched Selected Context/Native Memory
 comparison must share a selection receipt. A position-policy comparison must
 share selected identities, source spans, and token content.
+
+## Publication Claims
+
+The paper's causal thesis is narrow: frozen contiguous RAG selections can be
+transported and reused as native K/V, while independently encoded records do
+not reproduce the cross-document causal contextualization of packed RAG.
+
+Evidence is labeled as follows:
+
+- **Established:** 600/600 contiguous text/native comparisons; exact
+  shape-matched host-RoPE rebinding; exact-prefix and non-prefix reuse controls.
+- **Qualified boundary:** the powered independent-record gap and non-monotonic
+  fixed sparse-attention results.
+- **Negative:** fixed partial materialization, parameter-free gist append, and
+  broad post-hoc boundary copies.
+- **Pilot or uncertain:** reduced cross-model composition checks and the
+  rank-8 residual's `+0.0183` held-out F1 effect, whose five-seed interval
+  `[-0.0136, 0.0558]` crosses zero.
+
+For replicated natural results, the seed-cohort mean is the statistical unit.
+Intervals use 10,000 deterministic bootstrap resamples of five seed means;
+exact transport pair counts are deterministic execution checks rather than
+independent population replicates.
 
 ## Inheritance
 
@@ -178,4 +201,10 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
   --native-record-scale-run docs/papers/shared/results/paper3_2_rag/native_records/llama3_1_8b_seed11 \
   --heldout-repair-policy docs/papers/shared/results/paper3_2_rag/composition_natural/heldout_repair_policy.json \
   --output-dir docs/papers/shared/results/paper3_2_rag/publication
+```
+
+Build the independently publishable PDF from the paper directory:
+
+```bash
+latexmk -pdf -interaction=nonstopmode -halt-on-error paper_3_2.tex
 ```

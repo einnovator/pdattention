@@ -8,69 +8,54 @@
 \usepackage{float}
 \usepackage{placeins}
 \usepackage{hyperref}
-\usepackage{xcolor}
+\hypersetup{hidelinks}
 \usepackage{enumitem}
 \usepackage{microtype}
 \usepackage{multirow}
 
-\title{Paper 3.2: RAG, PRA, and Composable Native Memory\\
-\large Retrieval, Materialization, Ordering, and Positional Geometry}
+\title{Paper 3.2: Persistent Native Memory for RAG\\
+\large Transport, Composition, and Cross-Document Contextualization}
 \author{Jorge Sim\~ao}
-\date{Draft --- September 2026}
+\date{September 2026}
 
 \newcommand{\pra}{\textsc{PRA}}
 \newcommand{\rag}{\textsc{RAG}}
-\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) selects external evidence and serializes it
-into each prompt. Progressive Retrieval Attention (PRA) can instead retain a
-frozen selection as model-native K/V and reuse it across requests. This paper
-separates retrieval from that realization step, then asks when independently
-stored resources can be composed without recreating the packed RAG prompt. We
-compare lexical, dense, hybrid, reranked, and service-backed retrieval; freeze
-selected evidence; and test selected text, contiguous native reuse, independent
-records, RoPE rebinding, partial materialization, and bounded contextual repair.
+Retrieval-augmented generation (RAG) selects evidence, serializes it into a
+prompt, and prefills it again for each request. Progressive Retrieval Attention
+(PRA) can retain that evidence as model-native K/V, but independently stored
+resources do not share the causal history created by an ordinary packed RAG
+prompt. We freeze retrieval output and separate evidence selection from native
+realization, positional transport, and cross-document composition.
 
-Across five natural MultiHop-RAG cohorts, all 600 selector-frozen contiguous
-text/native comparisons preserve output, first-step logits, and answer NLL.
-Warm native reuse reduces TTFT by 92.3\% and total latency by 81.5\% relative to
-re-prefilling the same text, although an exact ordinary prefix-cache hit remains
-faster. When selections change, exact prefix reuse falls to zero while PRA
-reuses 28.1\% of selected K/V. That saving is not free composition:
-independently encoded resources preserve only 8.5--10.5\% of outputs, and 50\%
-contextual repair recovers 61.5\%. Partial materialization removes 25\% of
-active K/V but lowers mean F1 from .234 to .181. BGE reranking improves packed
-F1 to .134, yet canonical URI-addressed records reach .080; reduced order
-sensitivity and non-prefix reuse do not by themselves preserve quality.
+Across five natural MultiHop-RAG cohorts, all 600 matched contiguous
+text/native executions preserve generated output, first-step logits, and answer
+NLL. Warm native reuse reduces TTFT by 92.3\% and total latency by 81.5\%
+relative to re-prefilling the same selected text. An exact ordinary prefix-cache
+hit remains faster, but when the selected set changes, exact-prefix reuse falls
+to zero while PRA reuses 28.1\% of selected K/V.
 
-A selector-frozen causal decomposition over 150 questions localizes this gap.
-Removing document-to-document attention changes model behavior. Independently
-encoded pre-RoPE records rebound to the same packed coordinates closely track
-that blocked control (.108 versus .110 F1; first-step JS
-$8.80\times10^{-4}$), indicating that cross-resource contextualization, not
-position assignment alone, is the main conceptual difference. They are not
-numerically identical under the production 4-bit checkpoint: output agreement
-is 101/150 and value-state error grows through the decoder, although a tiny
-unquantized fixture matches within tolerance. A shape-matched control is exact
-at FP32, FP16, INT8, and INT4, localizing the residual to separately shaped
-execution rather than host RoPE rebinding. Parameter-free gist append falls
-from C's .108 F1 to .007, and post-hoc boundary variants reach zero F1, despite
-using only 16--272 request-specific interactions. Three-question pilots at
-Qwen3-4B, Qwen3-8B, and Llama-3.1-8B likewise find no post-hoc arm that
-improves both F1 and NLL over independent K/V. A token-level boundary mask
-approaches full-packed F1, but no fixed mask dominates across F1, official
-score, and NLL. A 1.38M-parameter rank-8 residual trained on 12 disjoint
-questions raises held-out independent-PRA F1 from .135 to .154 and official
-score from .433 to .533 while reducing first-step JS from .151 to .091. The
-five-seed F1 interval includes zero, however, and packed RAG remains at .199
-F1/.700 official score. Selective boundary re-encoding recomputes only
-20--80 of 989 native tokens and also reduces JS, but does not reliably improve
-F1 and sharply worsens answer NLL. Changed compositions therefore remain an
-open adaptation problem rather than a solved transport detail.
+A selector-frozen decomposition over 150 questions separates position from
+causal context. Independently encoded pre-RoPE records rebound to the packed
+positions closely track a packed computation in which document-to-document
+attention is disabled (.108 versus .110 F1; first-step JS
+$8.80\times10^{-4}$). A shape-matched rebinding control is exact at FP32,
+FP16, INT8, and INT4. The remaining production-path drift comes from separately
+shaped low-precision execution, while the larger behavioral gap to ordinary
+packed RAG comes from missing cross-document contextualization.
+
+Fixed partial materialization, parameter-free gist append, post-hoc boundary
+copies, and fixed sparse masks do not qualify as general repairs. A
+1.38M-parameter rank-8 residual raises held-out independent-PRA F1 from .135
+to .154 and official score from .433 to .533, but the five-seed F1 interval
+crosses zero, answer NLL worsens, and packed RAG remains at .199 F1 and .700
+official score. Persistent contiguous transport and request-time position
+binding are therefore established in the measured setting; selective learned
+cross-document interaction remains the open composition problem.
 \end{abstract}
 
 \section{Introduction}
@@ -83,21 +68,18 @@ D_1\,D_2\,D_3\,Q
 \]
 imposes a total order and a precise metric distance among documents even when $D_1,D_2,D_3$ are logically independent sources.  If these resources are encoded separately and reused later, their original positional coordinates and contextual histories are no longer automatically equivalent to the newly serialized RAG sequence.
 
-This paper therefore asks seven linked but separable questions:
+This paper asks five linked but separable questions:
 \begin{enumerate}[leftmargin=*]
-    \item Which external retrieval/index strategies provide the strongest candidate evidence?
-    \item Given the same candidates, how do conventional RAG and PRA routing compare?
-    \item Given the same selected evidence, what quality--cost frontier is obtained by full text, full native, and partial PRA materialization?
-    \item When selected native resources are independently stored, what ordering and positional composition should they use, and how much recomputation is required to recover fresh-context behavior?
-    \item Does the production URI/record/resolver path alter that conclusion,
-    and can a strong BM25--reranker selector close the remaining gap?
-    \item If packed RAG is denied document-to-document attention, do
-    independently encoded pre-RoPE records rebound to the same request
-    positions reproduce its behavior, and how much sparse interaction is
-    useful?
-    \item How much residual B/C drift is attributable to arithmetic precision
-    and shape-dependent kernels, and can request-local gist interaction add
-    cross-document context without mutating persistent records?
+    \item Can strong RAG-selected context be realized as persistent native
+    memory without changing model behavior?
+    \item When does native reuse provide systems value beyond ordinary prefix
+    caching?
+    \item What changes when selected resources are stored independently rather
+    than causally packed?
+    \item Can request-time RoPE rebinding separate positional mismatch from
+    missing cross-document contextualization?
+    \item How much of the remaining gap can fixed, nonparametric, or bounded
+    learned repair recover?
 \end{enumerate}
 
 The paper deliberately allows the strongest architecture to be complementary:
@@ -111,35 +93,85 @@ The paper deliberately allows the strongest architecture to be complementary:
 PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
 
 \paragraph{Contributions.}
-We make eight contributions.
+We make six contributions, grouped by scientific claim rather than experiment
+chronology.
 \begin{enumerate}[leftmargin=*]
-    \item A five-seed natural test showing exact selected-text/native transport under frozen retrieval, with ordinary prefix caching as a separate control.
-    \item A retrieval-index comparison spanning BM25, dense FAISS, hybrid RRF, two rerankers, Elasticsearch, and Qdrant with decomposed service latency.
-    \item A causal materialization ladder that contrasts score-ranked, evidence-aware, and equal-budget wrong memory while reporting active native K/V explicitly.
-    \item A multi-resource composition study derived from the earlier Paper~1.6 plan, separating RoPE rebinding from contextual repair and document-order sensitivity.
-    \item A changing-selection experiment showing non-prefix native reuse and its present fidelity cost across natural overlapping query sequences.
-    \item An end-to-end test of canonical PRA document records and root
-    references with BM25, MiniLM, and BGE selection, including five-seed order
-    and changing-query reuse measurements.
-    \item A selector-frozen causal decomposition that separates
-    cross-document contextualization from pre-RoPE transport, with exact host
-    RoPE contracts, layerwise diagnostics, and a sparse interaction ladder.
-    \item An explicit FP32/FP16/INT8/INT4 qualification with a shape-matched
-    pre-RoPE control, plus parameter-free request-local gist and boundary
-    composition mechanisms whose persistent document K/V remains immutable.
+    \item \textbf{Selector-frozen transport equivalence.} A five-seed natural
+    test establishes contiguous selected-text/native equivalence in the
+    measured model and precision.
+    \item \textbf{A fair systems boundary.} Exact-prefix caching and
+    changing-selection workloads distinguish repeated-prefix acceleration from
+    query-addressed non-prefix reuse.
+    \item \textbf{Persistent records under mature retrieval.} BM25, dense
+    FAISS, hybrid RRF, rerankers, Elasticsearch, and Qdrant feed one canonical
+    URI-addressed record and receipt contract.
+    \item \textbf{A causal composition decomposition.} Matched A/B/C
+    conditions separate positional transport from cross-document
+    contextualization and arbitrary document order.
+    \item \textbf{Precision-qualified rebinding.} Layerwise diagnostics and a
+    shape-matched control at FP32, FP16, INT8, and INT4 distinguish exact host
+    RoPE rebinding from separately shaped low-precision drift.
+    \item \textbf{A bounded repair frontier.} Partial materialization, fixed
+    sparse masks, parameter-free gist and boundary methods, and a rank-8
+    residual identify both measurable headroom and the remaining learned
+    composition problem.
 \end{enumerate}
 
-\section{Relationship to Prior PRA Work}
+\section{Background and Related Work}
 
-\subsection{Paper 1.5: positional transport}
+\subsection{Retrieval and multi-document answering}
+RAG combines parametric generation with retrieved nonparametric evidence
+\cite{lewis2020rag}; dense passage retrieval and late-interaction retrieval
+provide stronger semantic candidate generation than lexical search alone
+\cite{karpukhin2020dpr,khattab2020colbert}. Systems such as Atlas and Self-RAG
+also train retrieval and generation together
+\cite{izacard2023atlas,asai2024selfrag}. Multi-hop work shows that retrieval
+order and intermediate evidence discovery can be part of the reasoning process
+\cite{trivedi2023ircot,xiong2021mdr}. Our experiment instead freezes the
+selected evidence, so a realization effect cannot be attributed to a changed
+retriever. BM25 and reciprocal-rank fusion remain transparent controls
+\cite{robertson2009bm25,cormack2009rrf}.
+
+\subsection{Caching, native memory, and context reduction}
+Serving systems reuse ordinary prefix K/V and manage it in paged storage
+\cite{kwon2023vllm,gim2023promptcache}. CacheBlend explicitly studies fusing
+cached knowledge for RAG by recomputing selected positions
+\cite{yao2024cacheblend}. KV-selection and quantization methods reduce active
+or resident state within a request
+\cite{zhang2023h2o,li2024snapkv,tang2024quest,liu2024kivi}, while external
+memory architectures retrieve learned or cached state
+\cite{wu2022memorizing,borgeaud2022retro,mohtashami2023landmark}. PRA differs
+in the experimental boundary tested here: a frozen RAG selection becomes a
+persistent, logically addressed native object whose reuse may cross prompt
+prefixes and document combinations.
+
+\subsection{Position and sparse interaction}
+RoPE applies position-dependent rotations to queries and keys
+\cite{su2021roformer}; changing a cached key's phase can change its effective
+position but cannot recreate hidden-state context that was absent at encoding.
+Sparse long-context architectures demonstrate that useful attention need not
+be dense \cite{beltagy2020longformer,zaheer2020bigbird,roy2021routing}, but they
+do not imply that independently contextualized document K/V is interchangeable
+with states produced by one packed causal sequence. That distinction motivates
+our packed, document-isolated, and independent-record decomposition.
+
+\subsection{Relationship to prior PRA work}
+
+\paragraph{Paper 1.5: positional transport.}
 Paper~1.5 established source-relative positional transport, deferred/pre-RoPE machinery, and rebinding algebra.  It also separated positional fragmentation from contextualization fragmentation: changing the RoPE phase of a cached key can correct effective position, but it cannot reconstruct causal context that was absent when the hidden state was originally computed.
 
 Paper~3.2 reuses that machinery and focuses on multi-resource composition rather than re-deriving the positional transport result.
 
-\subsection{The unexecuted Paper 1.6 plan}
-An earlier Paper~1.6 plan proposed ``multi-frame positional geometry'' for independently retrieved resources.  It asked whether external resources need one global positional sequence and proposed source/global, globally packed, resource-adjacent, rank-distance, score-distance, near-band, and randomized policies, together with permutation, source-distance, distractor, and multi-resource experiments.  That plan was not executed as a standalone paper.  Paper~3.2 incorporates its central experiments in a practical RAG setting.
+\paragraph{Multi-frame positional geometry.}
+An earlier internal design study proposed ``multi-frame positional geometry''
+for independently retrieved resources. It asked whether external resources
+need one global positional sequence and specified source-local, globally
+packed, resource-adjacent, rank-distance, score-distance, near-band, and
+randomized policies, together with permutation, source-distance, distractor,
+and multi-resource controls. We implement the relevant comparisons here in a
+practical RAG setting rather than relying on that design as evidence.
 
-\subsection{Paper 3.0: causal materialization}
+\paragraph{Paper 3.0: causal materialization.}
 Paper~3.0 fixes selection and varies only the native K/V detail made active. It
 distinguishes evidence that justifies an answer to a reader from contextual
 states that are computationally sufficient for a particular frozen model, and
@@ -176,13 +208,13 @@ use as separate factors. A RAG chunk containing the right words is not assumed
 to be computationally sufficient, and a compact K/V interval is not assumed to
 be useful merely because its evidence density is high.
 
-\subsection{Paper 3.1: retrieval addresses}
+\paragraph{Paper 3.1: retrieval addresses.}
 Paper~3.1 studies compact persistent retrieval indices, especially generated summaries versus lexical, extractive, and native-QK alternatives.  Its conclusion is kept separate.  Paper~3.2 may reuse those indices as routing arms, but the present question is end-to-end RAG composition rather than summary generation.
 
-\subsection{Paper 4.5: preliminary RAG/runtime evidence}
+\paragraph{Paper 4.5: preliminary RAG/runtime evidence.}
 Paper~4.5 provides the initial RAG harness, candidate and selection receipts, Selected Context and Native Memory modes, and preliminary warm-reuse measurements.  The present paper treats these as motivating evidence and reruns the decisive comparisons under a frozen Paper~3.2 protocol.
 
-\section{Preliminary Evidence from Paper 4.5}
+\section{Inherited Motivation from Paper 4.5}
 \label{sec:prelim}
 
 The preliminary measurements already suggest that two claims should be kept separate.
@@ -190,27 +222,9 @@ The preliminary measurements already suggest that two claims should be kept sepa
 \paragraph{Strong RAG selection plus contiguous Native Memory.}
 A strong conventional reranker selected chunks that were then consumed either as Selected Context or as PRA Native Memory.  With selection receipts frozen, the Selected Context and corresponding PRA path preserved generated outputs.  Reusing the same contiguous selected native block also preserved outputs.
 
-Representative warm measurements are summarized in Table~\ref{tab:prelim-warm}.  These values are inherited preliminary evidence and are not yet final Paper~3.2 results.
-
-\begin{table}[ht]
-\centering
-\caption{Preliminary Paper~4.5 warm repeated-selection results.}
-\label{tab:prelim-warm}
-\begin{tabular}{llrr}
-\toprule
-Model / regime & Condition & Total latency (s) & TTFT (s) \\
-\midrule
-Qwen3-4B, representative & Selected Context & 3.031 & 2.640 \\
-                         & Native Memory    & 0.638 & 0.166 \\
-\midrule
-Qwen3-4B, 4K & Selected Context & 6.121 & -- \\
-              & Native Memory    & 0.799 & -- \\
-\midrule
-Qwen3-8B & Selected Context & 5.541 & 4.908 \\
-          & Native Memory    & 0.990 & 0.276 \\
-\bottomrule
-\end{tabular}
-\end{table}
+These inherited measurements are motivation rather than Paper~3.2 evidence.
+The decisive comparisons below rerun the protocol with selector-frozen receipts,
+five natural cohorts, and an exact-prefix-cache control.
 
 \paragraph{Persistent independent chunks.}
 A second experiment allowed selections to change and attempted reuse of independently cached chunks.  The preliminary run obtained roughly 22\% mean native chunk hits and reduced 101,294 selected tokens to 80,117 uniquely materialized native tokens, with cumulative runtime decreasing from approximately 151.19~s to 131.78~s.  However, the official score changed from approximately 0.440 for Selected Context to 0.380 for independently cached persistent native chunks.
@@ -236,15 +250,6 @@ At $N=50$, availability increased from .64 to .76, but support coverage changed
 from .515 to .505, span coverage from .338 to .300, and false-document fraction
 from .776 to .795. The result is a budget-sensitive selection signal, not
 evidence of better grounded generation.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.88\linewidth]{../shared/results/paper4_5_runtime_productization/rag/multihoprag_fixed_candidate_curves.pdf}
-\caption{Inherited Paper~4.5 selection probe. The vertical measure is whether
-selected context contains an accepted answer string; it is not model accuracy.
-The source artifact remains preliminary for Paper~3.2.}
-\label{fig:inherited-selection-probe}
-\end{figure}
 
 \subsection{Inherited powered decomposition}
 The powered 4B run used the same 50 questions, $N=20$, a 2K budget, pinned
@@ -272,15 +277,6 @@ output-exact. Cold native execution was 1.8\% slower (5.636 versus 5.535~s),
 whereas retained native reuse reduced total latency from 5.541 to 0.990~s and
 TTFT from 4.908 to 0.276~s, using approximately 285~MB of active detail.
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
-\caption{Inherited selector-frozen Qwen3-4B TTFT. Cold and retained-selection
-regimes are disjoint; the warm result is a repeated-selection benefit, not an
-unconditional RAG speedup or a comparison against an ordinary prefix-cache hit.}
-\label{fig:inherited-powered-ttft}
-\end{figure}
-
 Finally, the independent-chunk run changed both geometry and reuse unit. It
 reused 22.0\% of chunk lookups, reduced approximately 101,294 selected tokens
 to 80,117 uniquely materialized tokens, and lowered cumulative wall time from
@@ -293,7 +289,7 @@ section are inherited from commit
 \texttt{f60b6847eb65f8a5be9c758a34a2ebdc09244e6e} and remain preliminary until
 reproduced here.
 
-\section{Paper 3.2 Mechanism Gate}
+\section{Correctness and Transport Gates}
 \label{sec:mechanism-gate}
 
 Before loading a model, we ran the complete receipt and geometry pipeline on
@@ -308,18 +304,9 @@ token offsets.
 At document Recall@10, BM25, exact hashed-dense retrieval, and RRF hybrid
 obtained .833, .900, and .913. Their external-order selected-document recalls
 were .587, .667, and .733. PRA second-stage ranking reached .733 for all three
-candidate sets. Figure~\ref{fig:mechanism-retrieval} shows the decomposition.
-The synthetic fixture is deliberately lexical and small, so these numbers
-validate information flow and candidate ceilings; they do not rank production
-retrievers.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/retrieval_recall.pdf}
-\caption{Five-seed synthetic retrieval and frozen-selection mechanism gate.
-No language model is run, and answer-quality metrics are intentionally absent.}
-\label{fig:mechanism-retrieval}
-\end{figure}
+candidate sets. The synthetic fixture is deliberately lexical and small, so
+these numbers validate information flow and candidate ceilings; they do not
+rank production retrievers.
 
 The coordinate check also distinguishes overlap from identity collision.
 Globally packed, rank-distance, random-distance, and non-overlapping near-band
@@ -330,17 +317,6 @@ resource URI and chunk identity remain part of the native address, so equal
 position numbers from different documents are not deduplicated. This gate
 qualifies the experiment machinery only. Model-backed permutation, rebinding,
 and repair results are reported in the natural composition study below.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/mechanism_smoke/position_collisions.pdf}
-\caption{Effective-coordinate overlap by declared composition policy. Numeric
-position overlap is intentional for source-local and adjacent-resource frames;
-logical resource identities remain distinct.}
-\label{fig:mechanism-position-overlap}
-\end{figure}
-
-\FloatBarrier
 
 \subsection{First model-backed transport gate}
 
@@ -354,40 +330,12 @@ across cold and warm regimes.
 
 All 150 pairs shared the same candidate receipt, selection receipt, selected
 intervals, and token-F1 value, and all 150 generated strings matched exactly.
-Table~\ref{tab:model-smoke} reports means across the five seed summaries. Native
-realization replaced approximately 122 visible evidence tokens with the same
-number of selected native K/V states; the direct visible prompt fell from
+Native realization replaced approximately 122 visible evidence tokens with the
+same number of selected native K/V states; the direct visible prompt fell from
 153.6 to 32.0 tokens. Cold native execution remained 3.3\% slower in TTFT and
 4.1\% slower end to end. Once the exact selection was retained, native
 ingestion fell from 60.5 to 0.04~ms, TTFT from 102.2 to 37.0~ms, and total
 latency from 177.8 to 116.5~ms.
-
-\begin{table}[ht]
-\centering
-\caption{Five-seed controlled Qwen3-1.7B transport gate. Values are means of
-15-question seed summaries; parentheses give between-seed standard deviation.}
-\label{tab:model-smoke}
-\small
-\begin{tabular}{llrrrr}
-\toprule
-Regime & Realization & F1 & visible & TTFT (ms) & total (ms) \\
-\midrule
-Cold & Selected text & .094 (.010) & 153.6 & 100.6 (1.7) & 176.2 (2.7) \\
-Cold & Native K/V    & .094 (.010) & 32.0  & 103.9 (2.5) & 183.5 (2.7) \\
-Warm & Selected text & .094 (.010) & 153.6 & 102.2 (1.8) & 177.8 (2.5) \\
-Warm & Native K/V    & .094 (.010) & 32.0  & 37.0 (0.4)  & 116.5 (0.5) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/model_smoke/aggregate/model_smoke_transport.pdf}
-\caption{Matched realization cost on the controlled fixture. Error bars are
-between-seed standard deviations. Native reuse is beneficial only in the warm
-regime here; the cold path pays native encoding and is slightly slower.}
-\label{fig:model-smoke-transport}
-\end{figure}
 
 This result closes only the narrow transport gate. Standard BM25 achieved mean
 token F1 .109 and supporting-document coverage .933, while the generic PRA
@@ -404,27 +352,6 @@ revision \texttt{233902d2}. This is one fixed cohort (seed 11), not five
 independent natural cohorts. All 200 cold/warm Selected Context/Native Memory
 pairs---100 generic and 100 cross-encoder-selected---again shared candidate and
 selection receipts, intervals, scores, and exact generated output.
-Table~\ref{tab:natural-m1} separates selection from realization.
-
-\begin{table}[ht]
-\centering
-\caption{Qwen3-1.7B on 50 MultiHop-RAG questions. ``Vis./native'' reports
-direct visible prompt tokens and selected native K/V tokens.}
-\label{tab:natural-m1}
-\small
-\begin{tabular}{llrrrrrr}
-\toprule
-Condition & Regime & official & F1 & support & vis./native & TTFT & total \\
-\midrule
-BM25 text & Cold & .480 & .119 & .400 & 2108/0 & 1013 & 1105 \\
-Cross-encoder text & Cold & .500 & .137 & .455 & 2110/0 & 1020 & 1111 \\
-PRA generic selected & Cold & .440 & .122 & .468 & 2105/0 & 1000 & 1092 \\
-PRA strong selected & Cold & .500 & .137 & .455 & 2110/0 & 1003 & 1095 \\
-PRA strong native & Cold & .500 & .137 & .455 & 79/2031 & 1005 & 1129 \\
-PRA strong native & Warm & .500 & .137 & .455 & 79/2031 & 73 & 196 \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 Generic PRA raised answer-string availability from .56 to .64 and
 supporting-document coverage from .400 to .468; gold-chunk recall moved from
@@ -439,14 +366,6 @@ Cold strong-selector native execution was 3.1\% slower end to end than its
 matched Selected Context arm, while TTFT changed by only 0.2\%. Retaining the
 exact selection reduced TTFT from 999 to 73~ms (92.7\%) and total latency from
 1091 to 196~ms (82.0\%), at 222.1~MiB of active all-layer K/V.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.88\linewidth]{../shared/results/paper3_2_rag/natural/paper3_2_m1_multihoprag_strong_n20_2k_50/aggregate/model_smoke_transport.pdf}
-\caption{Single-cohort MultiHop-RAG realization cost with selector output
-frozen. No between-seed error bars are available for this first natural run.}
-\label{fig:natural-m1-transport}
-\end{figure}
 
 The native and repeated-selection economic gates pass at the prespecified
 50-example threshold. The selection gate fails because generic PRA does not
@@ -597,13 +516,20 @@ and a positional-recomposition result remain separate empirical claims.
 
 \section{Datasets}
 
-The study uses a staged dataset ladder.
+The study uses controlled fixtures for mechanism checks and MultiHop-RAG for
+the powered natural evaluation.
 
 \paragraph{Mechanism and inherited QA.}
-Controlled synthetic multi-document facts provide exact causal checks.  Natural PRA cohorts include HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue.
+Controlled synthetic multi-document facts provide exact causal checks. Earlier
+PRA studies on HotpotQA, QASPER, 2WikiMultiHopQA, and MuSiQue inform the routing
+and materialization controls, but their results are not pooled with this paper's
+RAG claims.
 
 \paragraph{Flagship RAG.}
-MultiHop-RAG is the mandatory first flagship dataset because preliminary Paper~4.5 infrastructure already exists.  Once the protocol is stable we add KILT Natural Questions and KILT HotpotQA.
+MultiHop-RAG is the flagship dataset because it provides multi-document
+questions, accepted answers, and supporting-document labels under the inherited
+Paper~4.5 harness. KILT Natural Questions and KILT HotpotQA are outside the
+present empirical scope; they are not required to support the conclusions.
 
 For each dataset we freeze corpus and query revisions, official metrics, chunking, candidate document construction, evidence labels where available, and the subset for which Full-Doc-In-Context fits the model's native window.
 
@@ -611,19 +537,21 @@ For each dataset we freeze corpus and query revisions, official metrics, chunkin
 
 The full experimental grid is intentionally run only on small models.
 
-\paragraph{Stage M0.}
-Qwen3-0.6B is the primary mechanism model.  Llama~3.2-1B provides an early cross-family check where practical.
+\paragraph{Controlled precision model.}
+Qwen3-0.6B isolates rebinding, shape, and precision effects.
 
-\paragraph{Stage M1.}
-After correctness gates, a 1--2B class model is used for reduced replication.
+\paragraph{Powered model.}
+Qwen3-1.7B is used for the five-seed natural transport, record, causal, and
+repair studies.
 
-\paragraph{Stage M2.}
-Qwen3-4B is mandatory because it connects directly to Paper~4.5 preliminary RAG evidence.  Qwen3-8B is the first scaling replication.
+\paragraph{Scale and family checks.}
+Qwen3-4B provides a five-seed native-record replication. Qwen3-4B, Qwen3-8B,
+and Llama-3.1-8B provide reduced transport and composition checks. These
+three-question or ten-question rows are mechanism pilots rather than powered
+quality estimates.
 
-\paragraph{Stage M3.}
-Only the strongest conditions are repeated on Qwen3-14B and, if compute permits, a larger Qwen and at least one non-Qwen family.
-
-This staged design tests whether an apparent mechanism survives scale without multiplying every retrieval, position, and materialization factor at every model size.
+This design tests whether the central mechanism survives an initial change in
+scale and family without presenting unexecuted larger-model plans as evidence.
 
 \section{Retrieval and Index Strategies}
 
@@ -645,7 +573,7 @@ A frozen cross-encoder or equivalently strong conventional reranker provides bot
 \subsection{Real retrieval services}
 We deployed pinned Elasticsearch and Qdrant services and evaluated lexical,
 dense, and service-level RRF retrieval against the same corpus and query
-receipts. Additional database vendors were deliberately deferred: the purpose
+receipts. Additional database vendors were deliberately excluded: the purpose
 is not a vendor benchmark, and Elasticsearch plus one vector database is enough
 to test whether the retrieval conclusions survive a service boundary. The
 user-specified ``Derby'' name was not silently interpreted as Apache Derby or a
@@ -1004,7 +932,16 @@ We report answer flips, pairwise JS/KL, target-probability variance, source-dist
 \subsection{Systems}
 We report index build time, retrieval p50/p95/p99, rerank latency, prefill, TTFT p50/p95/p99, ITL, completion latency, tokens/s, requests/s, memory, K/V bytes, transfer traffic, and cold/warm/hot state.
 
-All matched conditions use paired statistics and bootstrap 95\% confidence intervals.  Model- and workload-specific sign reversals remain visible rather than being averaged away.
+For five-seed experiments, the seed-cohort mean is the replication unit. We
+form deterministic percentile 95\% intervals from 10,000 bootstrap resamples
+of those five means and use exact two-sided sign-flip tests for paired effects.
+The 150 question executions increase within-cohort coverage; they are not 150
+independent statistical replicates. With five nonzero paired seed effects, the
+smallest attainable two-sided sign-flip value is .0625, so confidence intervals
+and effect direction carry more information than conventional thresholding.
+Exact transport counts remain execution-level deterministic checks rather than
+claims about population generalization. Model- and workload-specific sign
+reversals remain visible instead of being averaged away.
 
 \section{Experimental Sequence and Scope}
 
@@ -1044,30 +981,26 @@ Qwen3-4B repeated the decisive frozen transport and reduced composition matrix.
 \subsection{Phase 7: 8B replication}
 Qwen3-8B repeated the decisive reduced matrix.
 
-\subsection{Phase 8: larger/cross-family}
-Llama-3.1-8B provided the cross-family confirmation. Qwen3-14B was deferred
-because the 4B/8B/Llama matrix already answered the transport-generalization
-question and composition remained the limiting mechanism.
+\subsection{Phase 8: cross-family boundary}
+Llama-3.1-8B provided the reduced cross-family check. The paper does not infer
+a model-size law from the 4B/8B/Llama pilots; composition remains the limiting
+mechanism at the measured scales.
 
-\subsection{Phase 9: KILT validation}
-KILT Natural Questions and KILT HotpotQA remain follow-up datasets; adding
-corpora would not resolve the measured independent-composition failure.
-
-\subsection{Phase 10: native records and internal reranking}
+\subsection{Phase 9: native records and internal reranking}
 The final experiment ingests MultiHop-RAG documents through the canonical
 Paper~4.5 record envelope, resolves explicit leaves or a routed root, and
 materializes frozen chunk selections. Qwen3-1.7B runs BM25, historical MiniLM,
 and BGE-v2-M3 selectors on five seeds of 30 questions. Qwen3-4B, Qwen3-8B, and
 Llama-3.1-8B repeat the MiniLM comparison on one ten-question pilot each.
 
-\subsection{Phase 11: pre-RoPE causal decomposition}
+\subsection{Phase 10: pre-RoPE causal decomposition}
 Five 30-question Qwen3-1.7B cohorts use BM25 candidate generation followed by
 the pinned BGE-v2-M3 reranker. A/B/C share exact selected records and packed
 positions. The B/C gate is evaluated before the sparse cross-document mask
 ladder; reduced 4B, 8B, and Llama replication is conditional on an informative
 effect rather than automatic model breadth.
 
-\subsection{Phase 12: precision and request-local gist composition}
+\subsection{Phase 11: precision and request-local gist composition}
 The B/C comparison is repeated on a three-question controlled fixture under
 FP32 and FP16 compute casts of one pinned Qwen3-0.6B source checkpoint and
 separately converted 8-bit and 4-bit MLX checkpoints. Source precision,
@@ -1078,6 +1011,33 @@ Qwen3-1.7B cohorts before evaluating D, E, and F. Controlled precision results
 are mechanism diagnostics and are not presented as natural-task estimates.
 
 \section{Measured Retrieval and Native-Memory Results}
+
+\subsection{Evidence hierarchy}
+Table~\ref{tab:evidence-hierarchy} states the evidential status used throughout
+this section. It prevents deterministic transport checks, powered natural
+comparisons, negative controls, and small cross-model pilots from being read as
+interchangeable evidence.
+
+\begin{table}[ht]
+\centering
+\caption{Evidential status of the main result families.}
+\label{tab:evidence-hierarchy}
+\small
+\begin{tabular}{p{.18\linewidth}p{.72\linewidth}}
+\toprule
+Status & Result family \\
+\midrule
+Established & Contiguous frozen-selection transport; exact-prefix comparison;
+non-prefix addressable reuse; shape-matched host-RoPE rebinding. \\
+Qualified boundary & Powered independent-record quality gap; metric-dependent
+effect of packed cross-document context; non-monotonic fixed sparse masks. \\
+Negative & Fixed partial materialization, parameter-free gist append, and broad
+post-hoc boundary copies fail their quality-preserving gates. \\
+Pilot / uncertain & Reduced 4B/8B/Llama composition checks and the rank-8
+residual's five-seed F1 improvement require broader replication. \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Retrieval remains an independent component}
 Table~\ref{tab:retrieval-ladder} reports a frozen 50-question MultiHop-RAG
@@ -1157,15 +1117,6 @@ BGE-v2-M3 & .638 & .134 & .080 & $-.055$ [$-.076,-.035$] & 4788.5 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/publication/native_record_selector_quality.pdf}
-\caption{Better reranking improves both packed and record-relative answering,
-but does not remove the independent-record quality gap. All bars use the same
-frozen selection within each selector.}
-\label{fig:native-record-selector}
-\end{figure}
 
 Record-relative execution is much less sensitive to arbitrary record order.
 Across canonical, reverse, and two random permutations, mean pairwise
@@ -1277,18 +1228,10 @@ shape dependent. Under the production 4-bit checkpoint, layer-0 mean value RMSE 
 $3.10\times10^{-5}$, but mean value RMSE grows to .274 by layer 27.
 Independent and packed projection/attention shapes can take different
 quantized kernel paths; small early differences are amplified through the
-decoder. Figure~\ref{fig:prerope-bc-layers} reports mean and p95 rather than
-hiding this behavior behind either an exact tiny fixture or one worst-case
-maximum. The binding algebra and host-frequency contract pass, while exact
-4-bit numerical parity remains an open runtime qualification gate.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/prerope_causal/five_seed/bc_layer_fidelity.pdf}
-\caption{Layerwise B/C K/V divergence for 150 paired 4-bit executions. Values
-are measured after request-time rebinding to identical packed positions.}
-\label{fig:prerope-bc-layers}
-\end{figure}
+decoder. The committed layerwise receipts report mean and p95 trajectories
+rather than hiding this behavior behind either an exact tiny fixture or one
+worst-case maximum. The binding algebra and host-frequency contract pass,
+while exact 4-bit numerical parity remains an open runtime qualification gate.
 
 \subsection{Precision qualification separates rebinding from shape effects}
 The new controlled precision sweep uses three matched questions at every
@@ -1409,15 +1352,6 @@ operation-count estimate; latency and bytes are measured.}
 \resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/natural/five_seed/generated_composition_systems_table.tex}}
 \end{table}
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.92\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/natural/five_seed/gist_composition_frontier.pdf}
-\caption{Parameter-free composition quality against request-specific
-interaction count. A tiny interaction graph is not useful when its K/V states
-are not calibrated for the frozen decoder.}
-\label{fig:gist-composition-frontier}
-\end{figure}
-
 The failure distinguishes two superficially similar sparse mechanisms. The
 earlier boundary-8 \emph{attention mask} lets document hidden states acquire
 cross-document information while those states are computed and reaches .118
@@ -1512,14 +1446,6 @@ orders.}
 \resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/order/aggregate/generated_order_table.tex}}
 \end{table}
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.92\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/order/aggregate/crossdoc_order_robustness.pdf}
-\caption{Post-hoc parameter-free gist K/V increases, rather than reduces,
-record-order sensitivity.}
-\label{fig:gist-composition-order}
-\end{figure}
-
 Request-time rotation itself is inexpensive in this implementation:
 .69 ms on average. B and C have nearly identical generation-only TTFT
 (68.1 and 68.3 ms) and total generation latency (177.9 and 177.5 ms).
@@ -1543,10 +1469,11 @@ average, 99.97\% fewer than A's 665,894, while reaching .118 F1 versus A's
 (6.144 versus 5.940). The top-ranked-to-all policy slightly exceeds A on the
 official score (.473) but is lower on F1 and worse on NLL. Confidence
 intervals overlap broadly. Figure~\ref{fig:prerope-causal-quality} shows task
-quality and NLL together; Figure~\ref{fig:cross-document-budget} makes the
-absence of a smooth interaction-budget frontier visible. Boundary interaction
-is a promising composition primitive, but no tested fixed mask is qualified
-as a replacement for full packing.
+quality and NLL together. The edge counts in
+Table~\ref{tab:prerope-causal-quality} show the absence of a smooth
+interaction-budget frontier. Boundary interaction is a promising composition
+primitive, but no tested fixed mask is qualified as a replacement for full
+packing.
 
 \begin{figure}[ht]
 \centering
@@ -1554,14 +1481,6 @@ as a replacement for full packing.
 \caption{Task F1 and gold-answer NLL for A/B/C and the sparse mask ladder.
 Intervals bootstrap five seed-cohort means.}
 \label{fig:prerope-causal-quality}
-\end{figure}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.82\linewidth]{../shared/results/paper3_2_rag/prerope_causal/five_seed/cross_document_budget.pdf}
-\caption{Token F1 against allowed document-to-document attention edges. More
-interaction is not monotonically better on the measured cohort.}
-\label{fig:cross-document-budget}
 \end{figure}
 
 \FloatBarrier
@@ -1622,15 +1541,6 @@ pre-RoPE K/V; D--F are untrained post-hoc composition mechanisms.}
 \resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/crossdoc_composition/scale/aggregate/generated_scale_table.tex}}
 \end{table}
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\linewidth]{../shared/results/paper3_2_rag/crossdoc_composition/scale/aggregate/crossdoc_scale_quality.pdf}
-\caption{Token F1 in the reduced cross-model mechanism pilots. The Llama
-cohort shows less severe degradation, but no parameter-free composition arm
-improves on independent pre-RoPE K/V.}
-\label{fig:gist-composition-scale}
-\end{figure}
-
 \subsection{Natural composition and contextual repair}
 We next freeze the historical cross-encoder's selection for five independently
 sampled cohorts of ten natural questions, using four resource orders per
@@ -1666,15 +1576,6 @@ Full repair & 200/200 & .000 & .000 \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/publication/composition_nll_repair_curve.pdf}
-\caption{Position rebinding and deterministic contextual repair reduce the
-composition error, but all five cohorts reach exact parity only at full repair.
-Repair timings are diagnostic because fresh packed states were computed first.}
-\label{fig:composition-repair}
-\end{figure}
-
 Serialization itself is consequential: 39 of 50 questions generated more than
 one output across canonical, reverse, and two random orders. This establishes
 order sensitivity but does not identify an alternative position policy that
@@ -1690,15 +1591,6 @@ outputs. Non-overlapping near bands preserve 23 outputs, but increase JS to
 outputs with JS .151--.153. RESOURCE\_ADJACENT is weakest: 13 output matches,
 .197 JS, and 2.807 NLL error. Position geometry changes the failure, but does
 not replace missing cross-resource contextualization.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.9\linewidth]{../shared/results/paper3_2_rag/publication/position_policy_js.pdf}
-\caption{First-step divergence from fresh packed encoding under alternative
-position policies (200 order-specific comparisons per policy across five
-cohorts).}
-\label{fig:position-policy}
-\end{figure}
 
 \subsection{Held-out repair calibration}
 The fixed ladder makes a small adaptive test meaningful. We fit a bounded
@@ -1766,14 +1658,6 @@ Wrong memory, 25\% & 330.1 & .132 & .139 & 4.797 & 62.1 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.94\linewidth]{../shared/results/paper3_2_rag/publication/partial_materialization_frontier.pdf}
-\caption{Quality and gold-answer NLL against active native K/V. The different
-metrics need not rank small-sample generations identically.}
-\label{fig:partial-frontier}
-\end{figure}
 
 \subsection{Changing-selection reuse}
 The product-relevant test groups 100 natural questions across five seeds into
@@ -1857,14 +1741,6 @@ rebinder reads the host layer's exact frequency tensor; only corrected values
 are reported above. This is why cross-family validation is necessary even when
 contiguous native transport already passes.
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=.86\linewidth]{../shared/results/paper3_2_rag/publication/scale_composition_parity.pdf}
-\caption{Independent-composition output parity on the reduced scale cohort.
-Full repair, omitted for scale, is 1.0 for all three models.}
-\label{fig:scale-composition}
-\end{figure}
-
 \section{Interpretation and Falsification}
 
 Three claims now have different evidential status. First, contiguous native
@@ -1873,6 +1749,17 @@ output, logits, and answer NLL agree. Second, non-prefix resource reuse is
 measurable where exact-prefix reuse is zero. Third, useful composition is not
 yet established: RoPE rebinding removes only part of the error, and the tested
 bounded repair policies do not recover fresh behavior reliably.
+
+\subsection{Likelihood proximity is not generation quality}
+Three recurring observations separate evaluation layers. Independent BGE
+records lower teacher-forced answer NLL from 5.820 to 2.827 while generated
+F1 falls from .134 to .080. The trained residual improves F1 and official
+score while worsening NLL from 2.929 to 3.330. Several fixed masks and boundary
+repairs move first-step JS toward packed RAG without improving free-running
+answers. State-space error, next-token distribution proximity, teacher-forced
+answer likelihood, and generated-answer quality are therefore related but
+non-equivalent measurements. We require generated task metrics together with
+NLL and causal controls; none alone qualifies a composition method.
 
 The A/B/C decomposition identifies two separable causes. Denying packed
 documents cross-document attention changes the answer distribution, although
@@ -1903,6 +1790,21 @@ This does not invalidate persistent native memory, but it narrows its present
 safe use to contiguous blocks, unchanged selections, or explicitly repaired
 fragments.
 
+Packed RAG is not merely a permutation of document tokens. Its causal graph is
+directed:
+\[
+D_1 \longrightarrow D_2 \longrightarrow D_3 \longrightarrow Q.
+\]
+Independent records preserve each document's internal history but meet only at
+the query:
+\[
+D_1\quad D_2\quad D_3
+\qquad\longrightarrow\qquad Q.
+\]
+The A/B/C intervention holds request positions fixed while changing this
+factorization. Its result is why position rebinding can pass independently of
+full packed-RAG equivalence.
+
 The sparse-mask ladder also rejects a simple ``more interaction is better''
 account. An eight-token boundary window uses 99.97\% fewer document-to-document
 edges than full packing and nearly matches its mean F1, yet loses on official
@@ -1918,8 +1820,11 @@ fails on the same questions at all four tested precisions, and reduced 4B/8B
 pilots across Qwen and Llama find no post-hoc arm that improves both F1 and NLL
 over independent K/V. Sparse interaction
 is therefore not sufficient by itself: contextual K/V must be calibrated for
-the frozen decoder. We stop before the optional low-rank correction because
-its next credible test requires training and a new held-out cohort.
+the frozen decoder. The subsequent rank-8 residual supplies that held-out test:
+it improves F1 by .0183 and official score by .100, but its five-seed F1
+interval crosses zero, NLL worsens, and packed RAG remains ahead. Because the
+adapter is model-specific and transforms every selected K/V state, it is
+evidence of headroom rather than a qualified sparse composition mechanism.
 
 Partial materialization remains an open adaptive-control problem. The 75\%
 point matches mean F1 on the first seed but not across five cohorts;
@@ -1944,6 +1849,23 @@ useful only if representation fidelity is repaired.
 Every run persists dataset/corpus revision, query identity, candidate receipt, candidate scores, reranker scores, selected resource/chunk IDs, selected order, spans, materialization receipt, source and composition positions, position policy, model/tokenizer revision, generation settings, backend/index version, hardware, and run/commit IDs.
 
 Real retrieval services run in pinned Docker/Compose environments.  Network/service latency is separated from model inference.  FAISS in-process latency is not directly compared with remote-service end-to-end latency without decomposition.
+
+\begin{sloppypar}
+\small
+The canonical machine-readable entry points are
+\path{paper3_2_rag/publication/publication_summary.json} for the compact
+publication view,
+\path{natural_five_seed/aggregate/aggregate_summary.json} for transport,
+\path{native_records/five_seed/manifest.json} for record realization,
+\path{prerope_causal/five_seed/manifest.json} for A/B/C,
+\path{crossdoc_precision/aggregate/manifest.json} for precision, and
+\path{crossdoc_adapter/} followed by
+\path{qwen3_1_7b_rank8_five_seed/manifest.json} for the final repair frontier.
+All paths are relative to
+\path{docs/papers/shared/results/paper3_2_rag/} and are committed. Publication
+plots are regenerated from these receipts; neither untracked aggregate copy is
+required to build or verify the paper.
+\end{sloppypar}
 
 \section{Discussion}
 
@@ -1975,47 +1897,43 @@ and causal controls together; state-space proximity alone is insufficient.
 
 \section{Conclusion}
 
-Paper~3.2 evaluates PRA beneath a conventional RAG stack rather than requiring
-it to replace mature retrieval. Across five natural cohorts, contiguous native
-K/V reproduced frozen selected-text behavior exactly and made repeated reuse
-substantially cheaper than text re-prefill. An exact prefix cache remained the
-better baseline when the serialized prefix itself repeated.
+\paragraph{What works.}
+Under frozen selection, persistent contiguous native K/V reproduces selected
+text across all 600 measured pairs. Request-time host-RoPE binding is exact in
+the shape-matched control. Warm native reuse is substantially cheaper than text
+re-prefill, and changing-selection sessions expose 28.1\% non-prefix K/V reuse.
 
-Changing selections reveal both the opportunity and the hard boundary. PRA
-reused 28.1\% of selected K/V where ordinary prefix caching reused none, but
-independently encoded resources were not compositionally equivalent to a fresh
-packed prompt. Position rebinding helped; 50\% contextual repair helped more;
-neither restored exact behavior reliably. Partial materialization found one
-apparently promising 75\% point on the first ten questions, but five-seed
-replication rejected it as a quality-preserving fixed policy. Exercising the
-canonical Paper~4.5 record/resolver path and placing MiniLM or BGE reranking
-inside PRA improves selection but does not overturn that result: records are
-far less order-sensitive and expose non-prefix reuse, yet lose generated-answer
-F1 on the powered comparison. The practical
-architecture is therefore clearer than the final solution: external search can
-freeze strong evidence, PRA can store and reuse exact contiguous native blocks,
-and future work must make changed compositions contextually faithful without
-paying full reprefill.
+\paragraph{What standard baselines still win.}
+An exact ordinary prefix-cache hit is faster when the serialized evidence
+prefix is unchanged. In the powered natural comparison, ordinary packed RAG
+also remains better than independently stored records on generated-answer F1
+and official score. PRA therefore complements mature retrieval; it does not
+replace a strong selector or erase the value of an exact prefix cache.
 
-The pre-RoPE causal decomposition narrows that future work. Rebinding independent
-records to exact packed coordinates closely tracks a packed computation whose
-documents are causally isolated, but it does not recreate full packing, and
-separately shaped execution does not preserve exact B/C numerics. The
-shape-matched P2 control is exact across FP32, FP16, INT8, and INT4, while the
-parameter-free gist ladder fails its quality-preserving gate across the powered
-1.7B study and reduced Qwen-4B, Qwen-8B, and Llama-8B pilots. The trained
-rank-8 residual then recovers 28.9\% of the held-out F1 gap and 39.9\% of the
-first-step JS gap without changing persistent records, but its five-seed F1
-interval crosses zero and its NLL worsens. Sparse boundary re-encoding likewise
-shows that 2.0--8.1\% request-local recomputation can alter the right
-distributional quantities, but not yet preserve answer quality. The next gate
-is therefore not a larger unqualified adapter: it is replicated, model-family
-validation of selective learned interaction under joint generation and
-likelihood criteria. Host RoPE compatibility and numerical-runtime parity
-remain explicit, independently tested contracts.
+\paragraph{What causes the record gap.}
+Pre-RoPE records rebound to exact packed positions closely track packed
+documents whose cross-document attention is blocked. They do not track full
+causal packing as closely. Position transport and low-precision shape drift are
+real qualification issues, but the main conceptual difference is the causal
+context that documents acquire from earlier documents during packed prefill.
+
+\paragraph{What does not solve it.}
+Fixed partial materialization, parameter-free synthetic gist K/V, post-hoc
+boundary copies, and fixed sparse masks fail to preserve quality consistently.
+The rank-8 residual recovers part of the held-out F1 and JS gaps, but its
+five-seed F1 interval crosses zero, its NLL worsens, it is model-specific, and
+it touches every selected K/V state. Selective boundary re-encoding recomputes
+only 2.0--8.1\% of selected tokens yet also fails the joint quality gate.
+
+\paragraph{The remaining problem.}
+Persistent transport, request-specific position binding, and non-prefix
+addressability are established within the measured scope. The unresolved task
+is to learn or select a small amount of request-specific cross-document
+interaction while preserving those reuse benefits. That is the empirical
+boundary of this paper.
 
 \bibliographystyle{plain}
-% \bibliography{references}
+\bibliography{../shared/references}
 
 \appendix
 
@@ -2032,7 +1950,7 @@ cold encode time, request-time binding time, and generation-only timings. Seed
 is the replication unit; confidence intervals and sign-flip tests are computed
 over seed-cohort means rather than treating questions as independent runs.
 
-\section{Initial Service Matrix}
+\section{Measured Retrieval Service Matrix}
 \begin{table}[h]
 \centering
 \begin{tabular}{llll}
@@ -2044,9 +1962,6 @@ FAISS + BGE & dense reference & in process & measured, 50 questions \\
 Elasticsearch & lexical reference & remote Docker & measured, 50 questions \\
 Qdrant + BGE & vector reference & remote Docker & measured, 50 questions \\
 RRF service hybrid & lexical + vector & remote Docker & measured, 50 questions \\
-Weaviate or Milvus & vector/hybrid & remote Docker & deferred \\
-pgvector & DB-integrated vector & remote Docker & optional/planned \\
-Derby & user-requested backend & TBD & identity to resolve \\
 \bottomrule
 \end{tabular}
 \end{table}
