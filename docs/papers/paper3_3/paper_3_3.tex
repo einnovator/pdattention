@@ -13,14 +13,13 @@
 \usepackage{microtype}
 \usepackage{multirow}
 
-\title{Paper 3.3: Sparse Cross-Document Contextualization for Persistent Native Memory\\
-\large Recovering RAG Quality without Rebuilding the Packed Prefix}
+\title{Sparse Cross-Document Contextualization for Persistent Native Memory\\
+\large An Oracle Headroom Study beyond Packed RAG}
 \author{Jorge Sim\~ao}
 \date{Draft --- September 2026}
 
 \newcommand{\pra}{\textsc{PRA}}
 \newcommand{\rag}{\textsc{RAG}}
-\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
 
 \begin{document}
 \maketitle
@@ -39,22 +38,22 @@ cross-document-contextualization problem rather than a position-transport
 problem.
 
 This paper asks whether the useful portion of packed-RAG cross-document
-interaction is sparse and predictable. We first instrument packed RAG to obtain
-an oracle cross-document interaction graph and measure how much task quality is
-retained as that graph is sparsified. We then learn query-conditioned policies
-that select document pairs, layers, heads, and eventually token subsets for
-request-local interaction, while persistent document K/V remains immutable.
-Selected interactions are executed using the frozen base transformer's own
-attention operations rather than uncalibrated synthetic K/V.
+interaction is sparse. We instrument the unchanged host-model attention path,
+extract an oracle graph over physical layer/head/token edges, and replay the
+same frozen retrieval selection under exact sparse masks. Candidate identities,
+record order, prompt semantics, model revision, and generation settings remain
+fixed. Compressed graphs retain only causal cross-record edges; immutable
+selection receipts and graph digests tie every intervention to its source.
 
-The primary target is to recover at least 80\% of the quality gap between
-independent PRA and packed RAG while using at most 10\% of dense
-document-to-document interaction cost. We additionally measure non-prefix K/V
-reuse, order robustness, request latency, precision sensitivity, and
-cross-family transfer. The broader question is whether persistent neural memory
-can retain the economic advantages of reusable records while adding only the
-small amount of request-specific computation required to recover multi-document
-reasoning quality.
+The inception experiment evaluates edge-count budgets from 0 to 100\% and
+cumulative teacher-mass targets from 50 to 99\% on MultiHop-RAG. It also freezes
+disjoint 2,000/150/150 train/validation/test identities for a possible learned
+selector. On a ten-question mechanism cohort, 0.1\% of physical edges reached
+.1488 F1 versus .1490 for packed RAG and .1431 for independent PRA, but the
+cohort's packed official score was only .600. Larger edge and cumulative-mass
+budgets were non-monotonic. The prespecified .19/.67 gate therefore remains
+closed and no selector is trained. The result shows promising sparse headroom
+while rejecting raw attention mass as a sufficient utility signal.
 \end{abstract}
 
 \section{Introduction}
@@ -106,30 +105,45 @@ We therefore separate three quantities:
 
 The intended architecture is
 \[
+\begin{gathered}
 \text{persistent PRA K/V}
 \rightarrow
-\text{sparse interaction selector}
+\text{sparse interaction selector}\\
 \rightarrow
 \text{small request-local cross-record computation}
-\rightarrow
-Q.
+\rightarrow Q.
+\end{gathered}
 \]
 
-\paragraph{Contributions planned.}
-We target five contributions:
+\paragraph{Contributions.}
+This inception study makes four contributions:
 \begin{enumerate}[leftmargin=*]
-    \item An oracle sparsification study that measures packed-RAG quality as
-    cross-document attention edges are progressively removed.
-    \item A localization analysis over layers, heads, document pairs, and token
-    regions identifying where useful multi-document interactions occur.
-    \item A learned query-conditioned selector for sparse cross-document
-    interaction over persistent PRA records.
-    \item A request-local composition mechanism that executes selected
-    interactions with the original transformer rather than arbitrary appended
-    K/V.
-    \item A quality--reuse--latency evaluation across model scales, precision
-    regimes, and document-order permutations.
+    \item A host-preserving attention observer and sparse-mask replay path that
+    leaves base-model parameters and persistent records unchanged.
+    \item A compressed physical-edge graph and immutable interaction-plan
+    receipt spanning layers, heads, record pairs, and token positions.
+    \item A prespecified oracle sparsification study over edge-count and
+    cumulative-attention-mass budgets, with task and distribution metrics.
+    \item A leakage-safe data split and an explicit learned pair-selector design
+    that remains locked unless oracle evidence justifies training.
 \end{enumerate}
+
+\section{Related Work}
+
+RAG and retrieval-conditioned language models place external evidence in the
+model context or retrieve it during generation
+\cite{lewis2020rag,guu2020realm,borgeaud2022retro}. Sparse-attention systems
+reduce long-sequence cost through fixed, random, global, or learned access
+patterns \cite{beltagy2020longformer,zaheer2020bigbird,roy2021routing}. Other
+work retrieves external states at attention time or restricts K/V traffic
+\cite{bertsch2023unlimiformer,tang2024quest,liu2025retrievalattention}. These
+approaches motivate sparse access, but the present question is different: the
+retrieved records are already selected and persist as independently encoded
+native memory. We ask which request-specific cross-record interactions must be
+restored to recover the behavior of a conventional packed prefix. CacheBlend
+also studies reuse when separately cached chunks need request-time fusion
+\cite{yao2024cacheblend}; our unit of intervention is an auditable physical
+attention edge under a frozen RAG selection.
 
 \section{Relationship to Prior PRA Work}
 
@@ -221,9 +235,9 @@ most 10\% of dense cross-document interaction.
 \subsection{Teacher graph extraction}
 
 We instrument packed RAG with frozen retrieval, reranking, selected records,
-order, token budget, model, and generation settings. For every
+order, token budget, model, and generation settings. For every causal
 document-to-document attention interaction we record sufficient metadata to
-construct sparse teacher graphs:
+construct a sparse teacher graph:
 \begin{itemize}[leftmargin=*]
     \item layer and head;
     \item source and target record/chunk;
@@ -233,8 +247,14 @@ construct sparse teacher graphs:
     \item retrieval rank and score.
 \end{itemize}
 
-Dense attention tensors need not be persisted when a streaming top-$k$ or
-cumulative-mass summary is sufficient.
+Let $E$ be the set of causal token pairs whose source and target belong to
+different records. The stored score array has shape $[L,H,|E|]$, not
+$[L,H,T,T]$. Source and target token indices and record identities are stored
+once, so within-record and causally impossible entries never enter the artifact.
+For each layer, the observer computes probabilities on a diagnostic side path;
+the hidden-state update still uses MLX's host scaled-dot-product-attention
+kernel. A parity receipt checks the observer path against ordinary host
+execution before the graph is interpreted.
 
 \subsection{Oracle budgets}
 
@@ -249,6 +269,13 @@ covering
 50,\;75,\;90,\;95,\;99\%
 \]
 of cross-document attention mass.
+
+For replay, a plan contains a Boolean array of shape $[L,H,|E|]$. At layer
+$\ell$, selected physical edges are added to a packed mask that otherwise
+blocks cross-record attention. The frozen host model then executes the modified
+mask. The 100\% plan must reproduce the packed teacher exactly; the 0\% plan
+must reproduce the blocked packed control. These endpoint checks distinguish a
+sparsification result from an instrumentation or transport error.
 
 \subsection{Oracle gate}
 
@@ -283,6 +310,9 @@ concentrate in a few layers or heads, request-local compute can be reduced
 further.
 
 \section{Learned Interaction Selection}
+
+This section specifies the next-stage design; it is not evaluated in the
+present paper. Training is deliberately locked by the failed inception gate.
 
 \subsection{Pair selector}
 
@@ -393,14 +423,19 @@ Candidate and selection receipts are frozen before composition conditions run.
 
 \subsection{Training split}
 
-Target:
+The frozen split uses:
 \begin{itemize}[leftmargin=*]
-    \item 500--2,000 training questions;
-    \item 100--200 validation questions;
-    \item a held-out five-seed test cohort of at least 150 questions.
+    \item 2,000 training questions;
+    \item 150 validation questions;
+    \item 150 fixed held-out test questions evaluated with seeds
+    11, 23, 37, 71, and 101.
 \end{itemize}
 
-No Paper~3.2 final evaluation question may enter training.
+The split seed is 3301. All 30 identities declared by the final Paper~3.2
+rank-8 residual manifest are excluded from every Paper~3.3 split, rather than
+only from training. The dataset revision, corpus revision, exact identities,
+legacy manifest, and split digest are persisted. Oracle smoke questions do not
+train or select parameters.
 
 \subsection{Model ladder}
 
@@ -444,41 +479,113 @@ latency, TTFT, total latency, and memory.
 Five-seed intervals, order sensitivity, model-scale transfer, family transfer,
 and precision sensitivity.
 
-\section{Planned Results}
+\section{Inception Results}
+
+\subsection{Scope and endpoint validity}
+
+We ran the complete oracle grid on ten deterministically selected MultiHop-RAG
+questions with Qwen3-1.7B-4bit on an Apple M4 Pro with 48~GiB unified memory.
+BM25 produced 20 candidates, BGE-v2-M3 reranked them, and a 512-token budget
+retained three or four records. The model, reranker, corpus, and dataset
+revisions are pinned in the manifest. This is a one-seed mechanism cohort, not
+a population estimate.
+
+Observer instrumentation matched ordinary host execution on all 10 questions.
+The 100\% physical-edge plan also matched the instrumented packed teacher on all
+10, with zero K/V delta and zero first-step JS. The 0\% plan matched the packed
+no-cross-document mask. The average teacher graph contained 38.04 million
+physical cross-document edges over 28 layers and 16 heads. These checks close
+the implementation gate: differences inside the sweep are caused by the edge
+mask, not by an alternate attention kernel.
+
+\subsection{Quality--sparsity frontier}
 
 \begin{table}[ht]
 \centering
-\caption{Primary quality--interaction frontier.}
+\small
+\caption{Paper 3.3 oracle smoke. ``Edges'' is the fraction of physical
+layer/head/token-pair cross-document edges. Attention mass is measured under
+the packed teacher.}
+\label{tab:oracle-frontier}
 \begin{tabular}{lrrrrr}
 \toprule
-Condition & F1 & Official & NLL & Cross-doc edges & Request ms \\
+Condition & F1 & Official & Gold NLL & Edges & Mass \\
 \midrule
-Packed RAG & .199 & .700 & TBD & 100\% & TBD \\
-Independent PRA & .135 & .433 & TBD & 0\% & TBD \\
-Paper 3.2 residual & .154 & .533 & TBD & adapter & TBD \\
-Oracle 0.1\% & TBD & TBD & TBD & .1\% & TBD \\
-Oracle 1\% & TBD & TBD & TBD & 1\% & TBD \\
-Oracle 5\% & TBD & TBD & TBD & 5\% & TBD \\
-Learned sparse & TBD & TBD & TBD & TBD & TBD \\
+Packed host / oracle 100\% & .1490 & .600 & 4.780 & 100\% & 100\% \\
+Independent PRA & .1431 & .600 & 2.550 & 0\% & 0\% \\
+Oracle top 0.01\% & .1449 & .600 & 2.579 & .01\% & 4.0\% \\
+Oracle top 0.05\% & .1416 & .600 & 2.571 & .05\% & 19.2\% \\
+Oracle top 0.1\% & \textbf{.1488} & \textbf{.600} & 2.610 & .1\% & 36.2\% \\
+Oracle top 0.5\% & .0968 & .400 & 4.794 & .5\% & 80.3\% \\
+Oracle top 5\% & .0990 & .400 & 4.851 & 5\% & 91.9\% \\
+Oracle top 10\% & .1212 & .500 & 4.852 & 10\% & 95.1\% \\
+\midrule
+Mass oracle 50\% & .1403 & .500 & 2.753 & .149\% & 50\% \\
+Mass oracle 75\% & .1145 & .500 & 3.757 & .324\% & 75\% \\
+Mass oracle 90\% & .0768 & .400 & 4.758 & 3.466\% & 90\% \\
+Mass oracle 99\% & .1308 & .500 & 4.855 & 30.902\% & 99\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{table}[ht]
+At 0.1\% physical edges, F1 was .1488 versus .1490 for packed RAG and
+.1431 for independent PRA. This recovers 97.3\% of the small
+independent-to-packed F1 gap on this cohort. Official score remained .600 in all
+three conditions, so no official-score gap existed to recover. The 0.1\% plan
+did not reproduce the same strings as packed RAG: output agreement was 0/10 and
+first-step JS remained .110. The result is therefore task-level headroom, not
+behavioral equivalence.
+
+The frontier is strongly non-monotonic. Increasing the top-edge budget from
+0.1\% to 0.5\% reduced F1 from .1488 to .0968 even though retained teacher mass
+rose from 36.2\% to 80.3\%. Likewise, the smallest set carrying 50\% of teacher
+mass used only .149\% of physical edges but did not outperform independent PRA.
+Raw attention mass is thus an inadequate causal-utility target by itself.
+
+\begin{figure}[ht]
 \centering
-\caption{Interaction localization.}
-\begin{tabular}{lrrrr}
-\toprule
-Region & Oracle mass & Selected edges & Quality retained & Cost \\
-\midrule
-Early layers & TBD & TBD & TBD & TBD \\
-Middle layers & TBD & TBD & TBD & TBD \\
-Late layers & TBD & TBD & TBD & TBD \\
-Boundary tokens & TBD & TBD & TBD & TBD \\
-Top-ranked pairs & TBD & TBD & TBD & TBD \\
-\bottomrule
-\end{tabular}
-\end{table}
+\includegraphics[width=.86\linewidth]{../shared/results/paper3_3_sparse_crossdoc/oracle_natural_seed11_n10/oracle_quality_frontier.pdf}
+\caption{Task quality and retained teacher mass across physical top-edge
+budgets. The curve is a mechanism smoke over ten questions; connecting lines do
+not imply monotonicity or statistical precision.}
+\label{fig:oracle-frontier}
+\end{figure}
+
+\subsection{Interaction localization}
+
+Cross-document attention mass was distributed across the network: layers
+0--8 contained 27.4\%, layers 9--18 contained 31.7\%, and layers 19--27
+contained 40.8\%. No single layer exceeded 4.85\% on average, and the largest
+layer/head cell averaged only .357\%. The graph is therefore late-leaning but
+not localized to one layer or head. Pair mass was more concentrated: the first
+record supplied 49.1\% of mass into the second and 38.8\% into the third.
+These values partly reflect causal geometry and token counts; they are routing
+features to test, not evidence that early-ranked records are causally sufficient.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.78\linewidth]{../shared/results/paper3_3_sparse_crossdoc/oracle_natural_seed11_n10/oracle_layer_localization.pdf}
+\caption{Mean share of packed-teacher cross-document attention mass by decoder
+layer. Later layers carry more aggregate mass, but no narrow layer band
+dominates.}
+\label{fig:layer-localization}
+\end{figure}
+
+\subsection{Go/no-go decision}
+
+The inception gate is \textbf{not passed}. The 0.1\% oracle is close to this
+cohort's packed F1, but neither condition reaches the prespecified absolute
+thresholds of .19 F1 and .67 official score. With one ten-question cohort we
+also cannot establish statistical equivalence. Learned-selector training
+therefore remains locked. The appropriate next experiment is a powered oracle
+replication on the frozen test protocol, followed by a task-aware or
+ablation-aware edge oracle if raw attention ranking remains non-monotonic.
+
+The reported encoding times, roughly 0.5--0.9 seconds per condition, execute a
+dense host attention kernel under a sparse mask. Edge fraction is therefore a
+logical interaction budget, not a measured wall-time or FLOP reduction. A
+production sparse kernel is downstream work and should be evaluated only after
+the quality gate passes.
 
 \section{Success Criteria}
 
@@ -491,6 +598,11 @@ The primary practical gate is
 corresponding to approximately 80\% recovery of the Paper~3.2 packed-RAG gap,
 while using no more than 10\% of dense request-specific cross-document
 interaction.
+
+The ten-question smoke does not meet these absolute criteria. Its 0.1\% point
+meets the relative F1-recovery target only because the cohort's packed and
+independent endpoints are close. We do not substitute that post-hoc relative
+observation for the prespecified gate.
 
 A stronger result matches packed RAG within uncertainty while preserving:
 \begin{itemize}[leftmargin=*]
@@ -533,10 +645,13 @@ layers/heads, budget, policy revision, and model/runtime compatibility.
 
 \section{Discussion}
 
-If sparse interaction succeeds, the result would suggest that conventional RAG
-performs substantially redundant document-to-document computation. PRA could
-then retain persistent source state and pay only for a small request-specific
-neural ``join'' among selected resources.
+The 0.1\% result suggests that conventional RAG may perform substantially
+redundant document-to-document computation. It does not yet establish that
+claim: the sample is small, the absolute gate failed, and the present sparse
+mask still executes a dense kernel. PRA could eventually retain persistent
+source state and pay only for a small request-specific neural ``join'' among
+selected resources, but that economic claim requires both powered quality and
+a real sparse execution path.
 
 This would change the role of PRA from a cache/retrieval mechanism into a
 composable native-memory substrate:
@@ -554,21 +669,23 @@ recover cheaply after independent encoding.
 
 Paper~3.2 established that position transport and persistent native memory can
 be separated from the cross-document causal computation induced by packed RAG.
-Paper~3.3 targets that remaining computation directly. Rather than recreating
-the full packed prefix, we ask whether the useful cross-document graph is sparse
-enough to select and execute on demand. The goal is not merely to imitate RAG,
-but to recover its multi-document quality while preserving the non-prefix reuse
-and reduced order dependence enabled by persistent PRA records.
+Paper~3.3 targets that remaining computation directly. Exact endpoint checks
+show that the new observer and physical-edge masks isolate this variable. The
+ten-question smoke finds a promising 0.1\% point but also a sharply
+non-monotonic frontier, so attention mass alone is not a reliable selector
+target. The prespecified oracle gate remains closed. A powered oracle and a
+task-aware importance signal are required before learned selection or sparse
+runtime economics can be claimed.
 
 \bibliographystyle{plain}
-% \bibliography{references}
+\bibliography{../shared/references}
 
 \appendix
 
 \section{Artifact Schema}
 
 Each run should persist:
-\begin{itemize}[leftmargin=*]
+\begin{itemize}[leftmargin=*,nosep]
     \item dataset/query IDs and seed;
     \item candidate and selection receipts;
     \item persistent record URIs/versions;
@@ -582,5 +699,19 @@ Each run should persist:
     \item task/distribution/system metrics;
     \item git commit and hardware.
 \end{itemize}
+
+\section{Reproduction Map}
+
+The physical graph, plan, and localization implementation is in
+\url{src/pra_hf/sparse_crossdoc.py}. The host-preserving observer and sparse
+mask seam is in \url{src/pra_hf/rag_mlx_native.py}. The complete frozen
+retrieval and oracle sweep is in
+\url{experiments/paper3_3_sparse_crossdoc/run_oracle_sparsity.py}; split
+generation is in the adjacent \url{freeze_splits.py}. Exact commands and
+evidence labels appear in the experiment and paper README files.
+
+The publication manifest named in the README contains row metrics, receipts,
+localization, runtime metadata, and plot inputs. Regenerable teacher graphs are
+excluded from Git; their content digests remain in the manifest.
 
 \end{document}

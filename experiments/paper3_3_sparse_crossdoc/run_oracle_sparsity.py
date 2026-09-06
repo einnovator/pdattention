@@ -232,27 +232,33 @@ def _plot(summary: Sequence[Mapping[str, object]], localization: Sequence[Mappin
     if top:
         figure, axes = plt.subplots(1, 2, figsize=(9.0, 3.8))
         percentages = [float(row["target_percentage"]) for row in top]
+        positions = list(range(len(percentages)))
+        labels = [f"{value:g}" for value in percentages]
         axes[0].plot(
-            percentages,
+            positions,
             [float(row["token_f1"] or 0.0) for row in top],
             marker="o",
             label="Token F1",
         )
         axes[0].plot(
-            percentages,
+            positions,
             [float(row["official_score"] or 0.0) for row in top],
             marker="s",
             label="Official",
         )
         axes[0].axhline(0.19, color="black", linestyle="--", linewidth=1, label="F1 gate")
-        axes[0].set_xscale("symlog", linthresh=0.01)
         axes[0].set_xlabel("Dense cross-document edges retained (%)")
         axes[0].set_ylabel("Task score")
+        axes[0].set_xticks(positions, labels, rotation=35, ha="right")
         axes[0].legend(fontsize=8)
-        axes[1].plot(percentages, [100.0 * float(row["retained_attention_mass"]) for row in top], marker="o")
-        axes[1].set_xscale("symlog", linthresh=0.01)
+        axes[1].plot(
+            positions,
+            [100.0 * float(row["retained_attention_mass"]) for row in top],
+            marker="o",
+        )
         axes[1].set_xlabel("Dense cross-document edges retained (%)")
         axes[1].set_ylabel("Teacher attention mass retained (%)")
+        axes[1].set_xticks(positions, labels, rotation=35, ha="right")
         figure.tight_layout()
         figure.savefig(output / "oracle_quality_frontier.pdf", bbox_inches="tight")
         figure.savefig(output / "oracle_quality_frontier.png", dpi=180, bbox_inches="tight")
