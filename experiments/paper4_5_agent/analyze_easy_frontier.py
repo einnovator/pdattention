@@ -76,6 +76,8 @@ def summarize(root: Path) -> dict[str, Any]:
                 continue
             paired.append({
                 "condition": condition,
+                "mode": row.get("mode"),
+                "context_budget_fraction": row.get("context_budget_fraction"),
                 "instance_id": row["instance_id"],
                 "baseline_resolved": bool(base.get("resolved")),
                 "treatment_resolved": bool(row.get("resolved")),
@@ -87,6 +89,10 @@ def summarize(root: Path) -> dict[str, Any]:
                 ),
                 "baseline_physical_tokens": base.get("physical_input_tokens"),
                 "treatment_physical_tokens": row.get("physical_input_tokens"),
+                "baseline_cumulative_prompt_tokens": base.get("cumulative_prompt_tokens"),
+                "treatment_cumulative_prompt_tokens": row.get("cumulative_prompt_tokens"),
+                "baseline_trajectory_length": base.get("trajectory_length"),
+                "baseline_wall_time_s": base.get("wall_time_s"),
             })
     return {"conditions": summaries, "paired": paired}
 
@@ -101,8 +107,11 @@ def write_analysis(root: Path) -> dict[str, Any]:
     paired_path = root / "paired_outcomes.csv"
     with paired_path.open("w", newline="", encoding="utf-8") as stream:
         fields = [
-            "condition", "instance_id", "baseline_resolved", "treatment_resolved",
-            "outcome", "baseline_physical_tokens", "treatment_physical_tokens",
+            "condition", "mode", "context_budget_fraction", "instance_id",
+            "baseline_resolved", "treatment_resolved", "outcome",
+            "baseline_physical_tokens", "treatment_physical_tokens",
+            "baseline_cumulative_prompt_tokens", "treatment_cumulative_prompt_tokens",
+            "baseline_trajectory_length", "baseline_wall_time_s",
         ]
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
@@ -122,8 +131,16 @@ def write_analysis(root: Path) -> dict[str, Any]:
             f"{_display(row['cumulative_prompt_tokens'])} | "
             f"{_display(row['wall_time_s'])} | {row['invalid_patches']} |"
         )
+    lines.extend(["", "## Paired outcomes", "", "| Condition | Retained | Regressed | Recovered | Unchanged failure |", "| --- | ---: | ---: | ---: | ---: |"])
+    for condition in sorted({row["condition"] for row in analysis["paired"]}):
+        outcomes = [row["outcome"] for row in analysis["paired"] if row["condition"] == condition]
+        lines.append(
+            f"| `{condition}` | {outcomes.count('retained')} | {outcomes.count('regressed')} | "
+            f"{outcomes.count('recovered')} | {outcomes.count('unchanged_failure')} |"
+        )
     (root / "pra_frontier_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    _plots(root, analysis["conditions"])
+    _write_difficulty_analysis(root, analysis["paired"])
+    _plots(root, analysis["conditions"], analysis["paired"])
     return analysis
 
 
@@ -131,7 +148,55 @@ def _display(value: Any) -> str:
     return "N/R" if value is None else f"{value:,.0f}"
 
 
-def _plots(root: Path, rows: list[dict[str, Any]]) -> None:
+def _write_difficulty_analysis(root: Path, paired: list[dict[str, Any]]) -> None:
+    """Report paired quality effects in predeclared context-demand buckets."""
+
+    lines = [
+        "# Difficulty and context-demand analysis", "",
+        "Effects are paired by frozen task identity. Low, medium, and high buckets are "
+        "tertiles of the No-PRA baseline rather than post-treatment task labels.", "",
+        "| PRA condition | Measure | Low | Medium | High |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+    pra_rows = [row for row in paired if row.get("mode") == "gateway-pra"]
+    for condition in sorted({row["condition"] for row in pra_rows}):
+        selected = [row for row in pra_rows if row["condition"] == condition]
+        for field, label in (
+            ("baseline_trajectory_length", "trajectory length"),
+            ("baseline_cumulative_prompt_tokens", "cumulative prompt tokens"),
+        ):
+            effects = _bucket_effects(selected, field)
+            lines.append(
+                f"| `{condition}` | {label} | "
+                + " | ".join(_effect_display(value) for value in effects)
+                + " |"
+            )
+    if not pra_rows:
+        lines.append("| Not available | matched PRA rows have not completed | N/R | N/R | N/R |")
+    (root / "difficulty_analysis.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _bucket_effects(rows: list[dict[str, Any]], field: str) -> list[float | None]:
+    available = sorted((row for row in rows if row.get(field) is not None), key=lambda row: row[field])
+    if not available:
+        return [None, None, None]
+    first = math.ceil(len(available) / 3)
+    second = math.ceil(2 * len(available) / 3)
+    buckets = [available[:first], available[first:second], available[second:]]
+    return [
+        sum(int(row["treatment_resolved"]) - int(row["baseline_resolved"]) for row in bucket) / len(bucket)
+        if bucket else None
+        for bucket in buckets
+    ]
+
+
+def _effect_display(value: float | None) -> str:
+    return "N/R" if value is None else f"{100 * value:+.1f} pp"
+
+
+def _plots(
+    root: Path, rows: list[dict[str, Any]], paired: list[dict[str, Any]],
+) -> None:
     if not rows:
         return
     import matplotlib.pyplot as plt
@@ -150,6 +215,21 @@ def _plots(root: Path, rows: list[dict[str, Any]]) -> None:
         fig.tight_layout()
         fig.savefig(root / "success_vs_physical_tokens.png", dpi=180)
         plt.close(fig)
+    for field, xlabel, filename in (
+        ("cumulative_prompt_tokens", "Cumulative input tokens", "success_vs_cumulative_input_tokens.png"),
+        ("wall_time_s", "Task wall time (s)", "success_vs_wall_clock_time.png"),
+    ):
+        available = [(row["condition"], row[field], 100 * row["success"]) for row in rows if row[field] is not None]
+        if available:
+            fig, ax = plt.subplots(figsize=(7.2, 4.2))
+            for label, x, y in available:
+                ax.scatter(x, y, s=55)
+                ax.annotate(label, (x, y), xytext=(4, 5), textcoords="offset points", fontsize=8)
+            ax.set(xlabel=xlabel, ylabel="Official success (%)")
+            ax.grid(alpha=0.25)
+            fig.tight_layout()
+            fig.savefig(root / filename, dpi=180)
+            plt.close(fig)
     budget_rows = [row for row in rows if row["context_budget_fraction"] is not None]
     if budget_rows:
         fig, ax = plt.subplots(figsize=(7.2, 4.2))
@@ -184,6 +264,45 @@ def _plots(root: Path, rows: list[dict[str, Any]]) -> None:
             fig.tight_layout()
             fig.savefig(root / "token_saving_vs_success_retention.png", dpi=180)
             plt.close(fig)
+        retained_rows = [row for row in rows if row["context_budget_fraction"] is not None]
+        if retained_rows:
+            fig, ax = plt.subplots(figsize=(7.2, 4.2))
+            for mode in sorted({row["mode"] for row in retained_rows}):
+                selected = sorted(
+                    (row for row in retained_rows if row["mode"] == mode),
+                    key=lambda row: row["context_budget_fraction"],
+                )
+                ax.plot(
+                    [100 * row["context_budget_fraction"] for row in selected],
+                    [100 * row["resolved"] / baseline["resolved"] for row in selected],
+                    marker="o", label=mode,
+                )
+            ax.axhline(100, color="black", linewidth=1, linestyle="--")
+            ax.set(xlabel="Context budget (%)", ylabel="Solved-count retention (%)")
+            ax.grid(alpha=0.25)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig(root / "success_retention_vs_context_budget.png", dpi=180)
+            plt.close(fig)
+    pra_rows = [row for row in paired if row.get("mode") == "gateway-pra"]
+    for field, xlabel, filename in (
+        ("baseline_trajectory_length", "No-PRA trajectory length", "pra_gain_vs_trajectory_length.png"),
+        ("baseline_cumulative_prompt_tokens", "No-PRA cumulative input tokens", "pra_gain_vs_cumulative_context_load.png"),
+    ):
+        if not any(row.get(field) is not None for row in pra_rows):
+            continue
+        fig, ax = plt.subplots(figsize=(7.2, 4.2))
+        for condition in sorted({row["condition"] for row in pra_rows}):
+            selected = [row for row in pra_rows if row["condition"] == condition]
+            effects = _bucket_effects(selected, field)
+            ax.plot((1, 2, 3), [100 * value if value is not None else math.nan for value in effects], marker="o", label=condition)
+        ax.axhline(0, color="black", linewidth=1, linestyle="--")
+        ax.set(xlabel=f"{xlabel} bucket", ylabel="Paired success effect (pp)", xticks=(1, 2, 3), xticklabels=("Low", "Medium", "High"))
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        fig.savefig(root / filename, dpi=180)
+        plt.close(fig)
 
 
 def main() -> None:

@@ -27,7 +27,10 @@ from experiments.paper4_5_agent.build_easy_cohorts import (
     select_easy_rows,
 )
 from experiments.paper4_5_agent.promote_nested_baseline import promote
-from experiments.paper4_5_agent.analyze_easy_frontier import summarize as summarize_frontier
+from experiments.paper4_5_agent.analyze_easy_frontier import (
+    _bucket_effects,
+    summarize as summarize_frontier,
+)
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
@@ -189,6 +192,18 @@ def test_easy_frontier_summary_preserves_paired_outcomes_and_missing_metrics(tmp
     assert conditions["no_pra"]["wall_time_s"] is None
     assert conditions["truncation_50"]["token_saving_fraction"] == 0.5
     assert {row["outcome"] for row in summary["paired"]} == {"regressed", "recovered"}
+
+
+def test_context_demand_buckets_are_contiguous_tertiles() -> None:
+    rows = [
+        {
+            "baseline_trajectory_length": index,
+            "baseline_resolved": index < 3,
+            "treatment_resolved": index >= 3,
+        }
+        for index in range(6)
+    ]
+    assert _bucket_effects(rows, "baseline_trajectory_length") == [-1.0, 0.0, 1.0]
 
 
 def test_easy20_campaign_is_local_no_pra_calibration() -> None:
