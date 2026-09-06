@@ -41,6 +41,11 @@ from pra_hf.rag_composition import (
     SelectedResource,
     compose_resources,
 )
+from experiments.paper3_2_rag.run_crossdoc_adapter import (
+    PreparedExample,
+    _answer_logits,
+    _loss_components,
+)
 
 
 class _Array:
@@ -311,6 +316,78 @@ def test_selective_boundary_reencode_preserves_shape_and_first_record() -> None:
     for source, candidate in zip(independent.layers, repaired.layers):
         assert source.keys[:, :, :4, :].tolist() == candidate.keys[:, :, :4, :].tolist()
         assert source.values[:, :, :4, :].tolist() == candidate.values[:, :, :4, :].tolist()
+
+
+def test_crossdoc_adapter_takes_a_finite_distillation_and_task_step() -> None:
+    mx = pytest.importorskip("mlx.core")
+    nn = pytest.importorskip("mlx.nn")
+    optim = pytest.importorskip("mlx.optimizers")
+    mx.random.seed(29)
+    model = _tiny_qwen()
+    segments = ((1, 2, 3), (4, 5, 6))
+    packed = tuple(token for segment in segments for token in segment)
+    receipt = _packed_receipt(tuple(map(len, segments)))
+    teacher_pre = encode_native_memory(
+        model,
+        packed,
+        position_binding_mode=PositionBindingMode.PRE_ROPE,
+        model_revision="tiny-qwen-test",
+    )
+    teacher_post = rebind_native_memories_global_packed(model, (teacher_pre,))
+    independent = tuple(
+        encode_native_memory(
+            model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision="tiny-qwen-test",
+        )
+        for segment in segments
+    )
+    query_tokens = (7, 8)
+    answer_tokens = (9, 10)
+    teacher_logits = mx.stop_gradient(
+        _answer_logits(model, teacher_post, query_tokens, answer_tokens)
+    )
+    example = PreparedExample(
+        seed=11,
+        question=SimpleNamespace(example_id="tiny", answers=("x",)),
+        candidate_receipt_id="candidate",
+        selection_receipt_id="selection",
+        selected_document_ids=("D1", "D2"),
+        record_ids=("D1:0", "D2:0"),
+        segments=segments,
+        composition_receipt=receipt,
+        teacher_pre=teacher_pre,
+        teacher_post=teacher_post,
+        independent_pre=independent,
+        teacher_answer_logits=teacher_logits,
+        query_tokens=query_tokens,
+        answer_tokens=answer_tokens,
+    )
+    widths = tuple(
+        int(layer.keys.shape[1] * layer.keys.shape[-1])
+        for layer in independent[0].layers
+    )
+    config = CrossDocumentResidualAdapterConfig(rank=4)
+    adapter = create_mlx_crossdoc_residual_adapter(widths, config, seed=29)
+
+    def objective():
+        return _loss_components(adapter, example, model, config, 2.0)[0]
+
+    loss_and_grad = nn.value_and_grad(adapter, objective)
+    before, gradients = loss_and_grad()
+    optimizer = optim.AdamW(learning_rate=1e-2)
+    optimizer.update(adapter, gradients)
+    mx.eval(adapter.parameters(), optimizer.state, before)
+    after = objective()
+    mx.eval(after)
+    assert float(before.item()) > 0
+    assert float(after.item()) >= 0
+    adapted = adapted_crossdoc_memory(model, independent, receipt, adapter)
+    diagnostics = native_memory_diagnostics(
+        rebind_native_memories_to_receipt(model, independent, receipt), adapted
+    )
+    assert diagnostics["max_key_abs_delta"] > 0
 
 
 def test_shape_matched_prerope_rebind_is_exact() -> None:
