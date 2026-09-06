@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,8 +61,7 @@ def run_campaign(
         record.update(state="RUNNING", started_at=_now(), command=list(cell.command))
         _persist(config, state, root, state_path)
         workdir = (repository / cell.working_directory).resolve()
-        environment = os.environ.copy()
-        environment.update({key: os.path.expandvars(value) for key, value in cell.environment.items()})
+        environment = _campaign_environment(cell.environment)
         log_dir = root / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -153,6 +153,18 @@ def _persist(config: CampaignConfig, state: dict[str, Any], root: Path, state_pa
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _campaign_environment(overrides: dict[str, str]) -> dict[str, str]:
+    """Keep child cells on the interpreter selected for the scheduler."""
+
+    environment = os.environ.copy()
+    environment.update({key: os.path.expandvars(value) for key, value in overrides.items()})
+    interpreter_directory = str(Path(sys.executable).resolve().parent)
+    environment["PATH"] = os.pathsep.join(
+        (interpreter_directory, environment.get("PATH", ""))
+    ).rstrip(os.pathsep)
+    return environment
 
 
 def _repository_root(config_path: Path) -> Path:

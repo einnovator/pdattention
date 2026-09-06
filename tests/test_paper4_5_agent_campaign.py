@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,7 +48,11 @@ from experiments.paper4_5_agent.runners.r2egym import (
     write_task_results,
 )
 from experiments.paper4_5_agent.summarize_baseline import summarize
-from experiments.paper4_5_agent.run_campaign import record_result, run_campaign
+from experiments.paper4_5_agent.run_campaign import (
+    _campaign_environment,
+    record_result,
+    run_campaign,
+)
 from experiments.paper4_5_agent.schema import (
     CampaignConfig,
     PublishedBaseline,
@@ -111,6 +117,13 @@ def test_easy_selection_is_deterministic_and_outcome_blind() -> None:
     assert [row["instance_id"] for row in first] == [row["instance_id"] for row in second]
     card = build_card(rows, count=4, eligible_count=7)
     assert "model_outcome" not in json.dumps(card)
+
+
+def test_campaign_children_use_scheduler_interpreter() -> None:
+    environment = _campaign_environment({"PRA_TEST_VALUE": "present"})
+    selected = Path(environment["PATH"].split(os.pathsep)[0]).resolve()
+    assert selected == Path(sys.executable).parent.resolve()
+    assert environment["PRA_TEST_VALUE"] == "present"
 
 
 def test_nested_baseline_promotion_reuses_only_exact_completed_prefix(tmp_path: Path) -> None:
