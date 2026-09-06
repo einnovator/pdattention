@@ -506,6 +506,10 @@ def test_official_result_rejects_inconsistent_score_and_ids() -> None:
             official_grader=True, score=0.5, resolved=1, total=2,
             task_ids=("only-one",),
         )
+    with pytest.raises(ValueError, match="timeout count"):
+        OfficialResult(
+            official_grader=True, score=0.0, resolved=0, total=2, timeouts=3,
+        )
 
 
 def test_h100_preflight_accepts_nvidia_smi_mib_format() -> None:

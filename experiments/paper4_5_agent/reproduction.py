@@ -18,6 +18,7 @@ class OfficialResult(StrictModel):
     score: float = Field(ge=0, le=1)
     resolved: int = Field(ge=0)
     total: int = Field(ge=1)
+    timeouts: int = Field(default=0, ge=0)
     task_ids: tuple[str, ...] = ()
     configuration_differences: tuple[str, ...] = ()
     grader_artifact: str | None = None
@@ -27,6 +28,8 @@ class OfficialResult(StrictModel):
     def counts_and_score_are_consistent(self) -> "OfficialResult":
         if self.resolved > self.total:
             raise ValueError("resolved count cannot exceed total")
+        if self.timeouts > self.total:
+            raise ValueError("timeout count cannot exceed total")
         expected_score = self.resolved / self.total
         if not math.isclose(self.score, expected_score, rel_tol=0.0, abs_tol=1e-12):
             raise ValueError("score must equal resolved / total")
