@@ -75,6 +75,7 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _normalize_report,
     _trajectory_metrics,
     _write_empty_predictions,
+    gateway_preflight,
     package_versions,
 )
 from experiments.agents.schema import BenchmarkManifest
@@ -543,6 +544,45 @@ def test_h100_preflight_accepts_nvidia_smi_mib_format() -> None:
     assert _is_h100_80gb("NVIDIA H100 80GB HBM3, 81559 MiB")
     assert not _is_h100_80gb("NVIDIA H100 PCIe, 61440 MiB")
     assert not _is_h100_80gb("NVIDIA RTX 4090, 24564 MiB")
+
+
+def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        model_ids = ["qwen3-coder:30b"]
+
+        def do_GET(self) -> None:  # noqa: N802
+            payload = (
+                {"status": "ok", "gateway_mode": "G00", "protocol_version": "1"}
+                if self.path == "/health"
+                else {"data": [{"id": model_id} for model_id in self.model_ids]}
+            )
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    args = SimpleNamespace(
+        mode="gateway-passthrough",
+        base_url=f"http://127.0.0.1:{server.server_port}/v1",
+        served_model="qwen3-coder:30b",
+    )
+    try:
+        assert gateway_preflight(args)["gateway_mode"] == "G00"
+        Handler.model_ids = []
+        with pytest.raises(RuntimeError, match="must pin and advertise"):
+            gateway_preflight(args)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_context_treatments_share_budget_and_keep_mandatory_messages() -> None:

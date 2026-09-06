@@ -12,6 +12,8 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,51 @@ EXPECTED_PACKAGES = {
     "vllm": "0.22.1",
 }
 PINNED_DATASET_REVISION = "c104f840cc67f8b6eec6f759ebc8b2693d585d4a"
+
+
+def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Reject an unpinned or incorrectly configured treatment gateway early."""
+
+    expected_mode = {
+        ContextTreatment.PASSTHROUGH.value: "G00",
+        ContextTreatment.PRA_SELECTED_CONTEXT.value: "G10",
+    }.get(args.mode)
+    if expected_mode is None:
+        return None
+    root = args.base_url.rstrip("/").removesuffix("/v1")
+
+    def read(path: str) -> dict[str, Any]:
+        try:
+            with urllib.request.urlopen(f"{root}{path}", timeout=15) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"gateway preflight failed for {root}{path}: {error}"
+            ) from error
+
+    health = read("/health")
+    if health.get("status") != "ok" or health.get("gateway_mode") != expected_mode:
+        raise RuntimeError(
+            "gateway preflight mode mismatch: "
+            f"expected {expected_mode}, observed {health.get('gateway_mode')!r}"
+        )
+    catalog = read("/v1/models")
+    model_ids = tuple(
+        str(row.get("id"))
+        for row in catalog.get("data", ())
+        if isinstance(row, dict) and row.get("id")
+    )
+    if args.served_model not in model_ids:
+        raise RuntimeError(
+            "gateway must pin and advertise the frozen backend model: "
+            f"expected {args.served_model!r}, observed {list(model_ids)!r}"
+        )
+    return {
+        "url": root,
+        "gateway_mode": expected_mode,
+        "advertised_model": args.served_model,
+        "protocol_version": health.get("protocol_version"),
+    }
 
 
 def package_versions() -> dict[str, str | None]:
@@ -130,6 +177,7 @@ def run(args: argparse.Namespace) -> Path:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     receipt = preflight(args, card)
+    receipt["gateway_preflight"] = gateway_preflight(args)
     _write_json(output / "run_manifest.json", receipt)
     if args.preflight_only:
         return output / "run_manifest.json"
