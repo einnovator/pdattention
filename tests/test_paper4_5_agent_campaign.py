@@ -206,6 +206,24 @@ def test_context_demand_buckets_are_contiguous_tertiles() -> None:
     assert _bucket_effects(rows, "baseline_trajectory_length") == [-1.0, 0.0, 1.0]
 
 
+def test_frontier_reports_matched_pra_vs_truncation_delta(tmp_path: Path) -> None:
+    for condition, mode, resolved, tokens in (
+        ("truncation_50", "truncation", False, 50),
+        ("pra_selected_50", "gateway-pra", True, 45),
+    ):
+        directory = tmp_path / condition
+        directory.mkdir()
+        (directory / "results.jsonl").write_text(json.dumps({
+            "instance_id": "task", "resolved": resolved, "mode": mode,
+            "context_budget_fraction": 0.5, "physical_input_tokens": tokens,
+        }) + "\n", encoding="utf-8")
+
+    summary = summarize_frontier(tmp_path)
+
+    assert summary["matched_budget"][0]["success_delta"] == 1.0
+    assert summary["matched_budget"][0]["physical_input_token_delta"] == -5
+
+
 def test_easy20_campaign_is_local_no_pra_calibration() -> None:
     campaign = CampaignConfig.load(EASY20_CONFIG)
     baseline = campaign.baselines[0]

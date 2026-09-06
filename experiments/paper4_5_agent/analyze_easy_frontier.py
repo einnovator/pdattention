@@ -94,7 +94,37 @@ def summarize(root: Path) -> dict[str, Any]:
                 "baseline_trajectory_length": base.get("trajectory_length"),
                 "baseline_wall_time_s": base.get("wall_time_s"),
             })
-    return {"conditions": summaries, "paired": paired}
+    matched_budget = []
+    for budget in (0.5, 0.25, 0.125):
+        truncation = next(
+            (row for row in summaries if row["mode"] == "truncation" and row["context_budget_fraction"] == budget),
+            None,
+        )
+        pra = next(
+            (row for row in summaries if row["mode"] == "gateway-pra" and row["context_budget_fraction"] == budget),
+            None,
+        )
+        if truncation is None or pra is None:
+            continue
+        matched_budget.append({
+            "context_budget_fraction": budget,
+            "truncation_condition": truncation["condition"],
+            "pra_condition": pra["condition"],
+            "success_delta": pra["success"] - truncation["success"],
+            "resolved_delta": pra["resolved"] - truncation["resolved"],
+            "physical_input_token_delta": (
+                pra["physical_input_tokens"] - truncation["physical_input_tokens"]
+                if pra["physical_input_tokens"] is not None
+                and truncation["physical_input_tokens"] is not None
+                else None
+            ),
+            "wall_time_delta_s": (
+                pra["wall_time_s"] - truncation["wall_time_s"]
+                if pra["wall_time_s"] is not None and truncation["wall_time_s"] is not None
+                else None
+            ),
+        })
+    return {"conditions": summaries, "paired": paired, "matched_budget": matched_budget}
 
 
 def write_analysis(root: Path) -> dict[str, Any]:
@@ -138,6 +168,19 @@ def write_analysis(root: Path) -> dict[str, Any]:
             f"| `{condition}` | {outcomes.count('retained')} | {outcomes.count('regressed')} | "
             f"{outcomes.count('recovered')} | {outcomes.count('unchanged_failure')} |"
         )
+    lines.extend([
+        "", "## Matched-budget contrasts", "",
+        "| Budget | PRA - truncation success | Resolved delta | Physical-token delta | Wall-time delta (s) |",
+        "| ---: | ---: | ---: | ---: | ---: |",
+    ])
+    for row in analysis["matched_budget"]:
+        lines.append(
+            f"| {row['context_budget_fraction']:.1%} | {row['success_delta']:+.1%} | "
+            f"{row['resolved_delta']:+d} | {_signed_display(row['physical_input_token_delta'])} | "
+            f"{_signed_display(row['wall_time_delta_s'])} |"
+        )
+    if not analysis["matched_budget"]:
+        lines.append("| N/R | N/R | N/R | N/R | N/R |")
     (root / "pra_frontier_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _write_difficulty_analysis(root, analysis["paired"])
     _plots(root, analysis["conditions"], analysis["paired"])
@@ -146,6 +189,10 @@ def write_analysis(root: Path) -> dict[str, Any]:
 
 def _display(value: Any) -> str:
     return "N/R" if value is None else f"{value:,.0f}"
+
+
+def _signed_display(value: Any) -> str:
+    return "N/R" if value is None else f"{value:+,.0f}"
 
 
 def _write_difficulty_analysis(root: Path, paired: list[dict[str, Any]]) -> None:
