@@ -396,6 +396,77 @@ def summarize_selected_localization(
     return summaries
 
 
+def publication_summary(
+    result: Mapping[str, object], *, source_manifest_sha256: str
+) -> dict[str, object]:
+    """Keep publication evidence compact while retaining raw-manifest provenance."""
+
+    receipts = result.get("receipts", [])
+    host_parity = sum(
+        bool(row.get("instrumented_host_parity")) for row in receipts
+    )
+    replay_parity = sum(
+        bool(row.get("full_oracle_replay_parity")) for row in receipts
+    )
+    copied_fields = (
+        "experiment",
+        "scope",
+        "evidence_tier",
+        "questions",
+        "dataset",
+        "model",
+        "model_revision",
+        "reranker",
+        "reranker_revision",
+        "reranker_device",
+        "seed",
+        "token_budget",
+        "candidate_count",
+        "max_resources",
+        "edge_percentages",
+        "mass_percentages",
+        "ranking_targets",
+        "run_configuration",
+        "run_configuration_digest",
+        "frozen_split",
+        "selector_frozen",
+        "oracle_granularity",
+        "base_model_weights_frozen",
+        "persistent_records_mutated",
+        "git_commit",
+        "hardware",
+        "runtime_versions",
+        "elapsed_seconds",
+        "inherited_residual_baseline",
+        "gate",
+        "interventional_gate",
+        "ranking_frontier_diagnostics",
+        "conditions",
+        "paired_bootstrap_effects",
+        "selected_edge_localization_summary",
+    )
+    return {
+        "schema_version": "paper3.3-oracle-publication-summary-v1",
+        "source_manifest": "manifest.json",
+        "source_manifest_schema_version": result.get("schema_version"),
+        "source_manifest_sha256": source_manifest_sha256,
+        **{field: result.get(field) for field in copied_fields},
+        "mechanism_parity": {
+            "receipts": len(receipts),
+            "instrumented_host_exact": host_parity,
+            "full_oracle_replay_exact": replay_parity,
+        },
+        "raw_artifact_counts": {
+            "graphs": len(result.get("graphs", [])),
+            "group_interventions": len(result.get("group_interventions", [])),
+            "selected_edge_localizations": len(
+                result.get("selected_edge_localization", [])
+            ),
+            "metric_rows": len(result.get("rows", [])),
+        },
+    }
+
+
 def oracle_gate(summary: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Apply the prespecified inception gate to top-edge conditions only."""
 
@@ -1477,7 +1548,15 @@ def main() -> None:
         "receipts": receipts,
         "rows": rows,
     }
-    _atomic_json(args.output / "manifest.json", result)
+    manifest_path = args.output / "manifest.json"
+    _atomic_json(manifest_path, result)
+    _atomic_json(
+        args.output / "publication_summary.json",
+        publication_summary(
+            result,
+            source_manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        ),
+    )
     _atomic_json(args.output / "group_interventions.json", intervention_rows)
     _atomic_json(
         args.output / "selected_edge_localization.json", selected_localizations

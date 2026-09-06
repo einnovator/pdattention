@@ -13,6 +13,7 @@ from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     interventional_oracle_gate,
     oracle_gate,
     paired_bootstrap_effects,
+    publication_summary,
     ranking_frontier_diagnostics,
     summarize_rows,
     summarize_selected_localization,
@@ -215,6 +216,39 @@ def test_selected_localization_summary_preserves_physical_counts() -> None:
     )
     assert result[0]["selected_physical_head_edges"] == 10
     assert result[0]["top_layers"][0]["selected_fraction"] == 1.0
+
+
+def test_publication_summary_keeps_provenance_without_raw_rows() -> None:
+    result = publication_summary(
+        {
+            "schema_version": "raw-v2",
+            "questions": 2,
+            "conditions": [{"condition": "PACKED_RAG_HOST"}],
+            "receipts": [
+                {
+                    "instrumented_host_parity": True,
+                    "full_oracle_replay_parity": True,
+                },
+                {
+                    "instrumented_host_parity": True,
+                    "full_oracle_replay_parity": False,
+                },
+            ],
+            "graphs": [{}, {}],
+            "group_interventions": [{}, {}, {}],
+            "selected_edge_localization": [{}, {}],
+            "rows": [{}, {}, {}, {}],
+        },
+        source_manifest_sha256="a" * 64,
+    )
+    assert result["source_manifest_sha256"] == "a" * 64
+    assert result["mechanism_parity"] == {
+        "receipts": 2,
+        "instrumented_host_exact": 2,
+        "full_oracle_replay_exact": 1,
+    }
+    assert result["raw_artifact_counts"]["metric_rows"] == 4
+    assert "rows" not in result
 
 
 def test_split_builder_rejects_insufficient_dataset() -> None:
