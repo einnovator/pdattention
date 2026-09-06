@@ -225,6 +225,9 @@ class RunIdentity(StrictModel):
     pra_mode: PRAMode
     pra_profile: PRAProfile
     connection: Literal["gateway", "direct", "commercial-native", "fixture"]
+    engine_pra_enabled: bool | None = None
+    gateway_pra_enabled: bool | None = None
+    gateway_mode: str | None = None
     protocol: str
     cache_state: CacheState
     session_state: Literal["reset", "continued"] = "reset"
@@ -236,6 +239,12 @@ class RunIdentity(StrictModel):
             raise ValueError("No-PRA runs must use the none profile")
         if self.pra_mode != PRAMode.NONE and self.pra_profile == PRAProfile.NONE:
             raise ValueError("PRA runs require quality, balanced, or economy")
+        if self.gateway_pra_enabled and self.connection != "gateway":
+            raise ValueError("gateway PRA can only be enabled on a gateway connection")
+        if self.gateway_mode is not None and self.connection != "gateway":
+            raise ValueError("gateway_mode is only valid on a gateway connection")
+        if self.pra_mode == PRAMode.NATIVE_MEMORY and self.engine_pra_enabled is False:
+            raise ValueError("native-memory runs require a PRA-enabled engine")
         return self
 
 

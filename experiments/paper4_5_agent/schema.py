@@ -24,6 +24,7 @@ class CampaignMode(str, Enum):
     GATEWAY_PASSTHROUGH = "gateway_passthrough"
     GATEWAY_PRA = "gateway_pra"
     NATIVE_PRA = "native_pra"
+    GATEWAY_NATIVE_PRA = "gateway_native_pra"
 
 
 class ReproductionStatus(str, Enum):
@@ -101,6 +102,13 @@ class CampaignCell(StrictModel):
     mode: CampaignMode
     baseline_id: str
     baseline_cell: str | None = None
+    agent_id: str | None = None
+    connection: Literal["direct", "gateway"] | None = None
+    engine_pra_enabled: bool | None = None
+    gateway_pra_enabled: bool | None = None
+    gateway_mode: Literal["G00", "G10", "G01", "G11"] | None = None
+    comparison_group: str | None = None
+    paired_cell: str | None = None
     command: tuple[str, ...]
     working_directory: str = "."
     environment: Mapping[str, str] = Field(default_factory=dict)
@@ -116,6 +124,13 @@ class CampaignCell(StrictModel):
             raise ValueError("native no-PRA cells cannot depend on another baseline")
         if self.mode != CampaignMode.NATIVE and not self.baseline_cell:
             raise ValueError("gateway and PRA cells require baseline_cell")
+        if self.connection == "direct" and (self.gateway_pra_enabled or self.gateway_mode):
+            raise ValueError("a direct campaign cell cannot enable or name a gateway")
+        if self.gateway_pra_enabled and self.connection != "gateway":
+            raise ValueError("gateway_pra_enabled requires connection=gateway")
+        if self.mode in {CampaignMode.NATIVE_PRA, CampaignMode.GATEWAY_NATIVE_PRA}:
+            if self.engine_pra_enabled is not True:
+                raise ValueError("native PRA campaign cells require engine_pra_enabled=true")
         return self
 
 
@@ -147,6 +162,14 @@ class CampaignConfig(StrictModel):
                     raise ValueError(f"{cell.cell_id} baseline_cell must be a native no-PRA cell")
                 if dependency.baseline_id != cell.baseline_id:
                     raise ValueError(f"{cell.cell_id} and its baseline use different published targets")
+            if cell.paired_cell:
+                pair = known_cells.get(cell.paired_cell)
+                if pair is None:
+                    raise ValueError(f"{cell.cell_id} references unknown paired_cell {cell.paired_cell}")
+                if pair.baseline_id != cell.baseline_id:
+                    raise ValueError(f"{cell.cell_id} and paired_cell use different baselines")
+                if not cell.comparison_group or pair.comparison_group != cell.comparison_group:
+                    raise ValueError(f"{cell.cell_id} and paired_cell require one comparison_group")
         return self
 
     @classmethod

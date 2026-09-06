@@ -154,6 +154,46 @@ and the complete compressed Harbor artifact tree are under
 `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/`
 `qwen3_coder_30b_multi_harness_v3/`.
 
+## PRA engine versus PRA gateway plus engine
+
+Gateway placement and PRA execution are independent axes. The native comparison
+therefore holds the agent, task, model, engine instance, selected records,
+budget, profile, and grader fixed while changing only the connection path:
+
+| Route | Agent connection | Gateway PRA | Engine PRA | Meaning |
+| --- | --- | --- | --- | --- |
+| `pra-engine-direct` | direct | no | yes | Agent sends typed context directly to the PRA-capable engine. |
+| `pra-gateway-engine` | gateway | yes, G11 | yes | Gateway mediates the same typed context; the same engine consumes native K/V. |
+
+The existing G10 `gateway_pra` treatment remains a selected-text fallback into
+an ordinary engine. It must not be substituted for either native route. The
+version-2 Harbor matrix rejects a native label unless the endpoint advertises
+effective `native_kv`, requires every direct task/repeat to finish before its
+gateway mate, and reports regressions and recoveries only for complete pairs.
+
+```bash
+export PRA_AGENT_PRA_ENGINE_URL=http://PRA_ENGINE_HOST:8000/v1
+export PRA_AGENT_PRA_GATEWAY_URL=http://PRA_GATEWAY_HOST:8080/v1
+python -m experiments.paper4_5_agent.harness_matrix \
+  --config experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pra_transport.yaml \
+  --resume
+```
+
+Mini-SWE-agent and Qwen Code are initially enabled because each has a complete
+10-task No-PRA baseline at the configured 10% admission floor. Aider remains
+locked at 0/10. OpenCode, Pi, OpenHands, SWE-agent, endpoint-configurable Codex,
+and the first-party PRA Agent are declared but disabled until each exact
+harness/model baseline and protocol path is admitted. PRA Agent is deliberately
+last: running it both direct and through G11 checks the first-party loop for the
+same regressions while also placing it beside external agents. Results remain
+per-agent; the matrix is not a leaderboard across different prompts or tools.
+
+The Easy-50 campaign now also declares a 50% native pair using
+`direct-native-pra` and `gateway-native-pra`. Set
+`PRA_AGENT_NATIVE_ENGINE_URL` and `PRA_AGENT_NATIVE_GATEWAY_URL` to endpoints
+backed by the same engine instance. Capability and live-generation probes run
+before the first benchmark task.
+
 ## Controlled SWE-bench fixed-50 campaign
 
 The next campaign uses the exact ordered 50-instance cohort from the external

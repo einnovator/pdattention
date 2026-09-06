@@ -1,0 +1,120 @@
+schema_version: 2
+matrix_kind: pra_transport
+campaign_id: paper4-5-qwen3-coder-30b-pra-transport-v1
+manifest: experiments/agents/manifests/terminal_bench_portable_pilot.yaml
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_pra_transport_v1
+baseline_admission_path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen3_coder_30b_multi_harness_v3/summary.json
+agent_host: distributed-harbor
+hardware:
+  agent_host: recorded by execution host
+  inference_host: same frozen PRA engine for both routes
+minimum_runs: 30
+minimum_runs_per_harness: 10
+minimum_success_rate: 0.10
+maximum_success_rate: 0.90
+models:
+  - model_id: qwen3-coder-30b-q4km
+    served_model: qwen3-coder:30b
+    model_revision: 06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca
+    engine: ollama
+    engine_version: 0.32.7
+    quantization: Q4_K_M
+    routes:
+      - route_id: pra-engine-direct
+        connection: direct
+        base_url_env: PRA_AGENT_PRA_ENGINE_URL
+        pra_mode: native-memory
+        pra_profile: balanced
+        engine_pra_enabled: true
+        gateway_pra_enabled: false
+        engine_target_id: qwen3-coder-30b-pra-engine-01
+        comparison_group: native-pra-transport
+      - route_id: pra-gateway-engine
+        connection: gateway
+        base_url_env: PRA_AGENT_PRA_GATEWAY_URL
+        pra_mode: native-memory
+        pra_profile: balanced
+        engine_pra_enabled: true
+        gateway_pra_enabled: true
+        gateway_mode: G11
+        engine_target_id: qwen3-coder-30b-pra-engine-01
+        comparison_group: native-pra-transport
+        requires_route: pra-engine-direct
+harnesses:
+  - harness_id: mini-swe-agent-2.4.6
+    agent: mini-swe-agent
+    result_agent_name: mini-swe-agent
+    version: 2.4.6
+    kwargs:
+      max_tokens: 8192
+  - harness_id: qwen-code-0.23.0
+    agent: qwen-coder
+    result_agent_name: qwen-coder
+    version: 0.23.0
+  - harness_id: aider-0.86.2
+    agent: aider
+    result_agent_name: aider
+    version: 0.86.2
+    model_name: openai/openai/qwen3-coder:30b
+    kwargs:
+      stream: false
+      auto_lint: false
+      auto_test: false
+    enabled: false
+    notes:
+      - No-PRA pilot was below the admission floor; keep locked until requalified.
+  - harness_id: opencode-pending
+    agent: opencode
+    version: 1.18.26
+    enabled: false
+    notes:
+      - Enable after a complete same-model No-PRA Harbor baseline is admitted.
+  - harness_id: openhands-pending
+    agent: openhands
+    version: 1.11.0
+    enabled: false
+    notes:
+      - Enable after pinning the Harbor adapter and admitting its No-PRA baseline.
+  - harness_id: pi-pending
+    agent: pi
+    version: 0.73.1
+    enabled: false
+    notes:
+      - Enable after the direct and gateway endpoint recipes pass Harbor qualification.
+  - harness_id: swe-agent-pending
+    agent: swe-agent
+    version: main-audit-2026-09-02
+    enabled: false
+    notes:
+      - Enable only through a pinned LiteLLM/OpenAI-compatible endpoint configuration.
+  - harness_id: codex-cli-pending
+    agent: codex
+    version: 0.152.1
+    agent_class: commercial
+    connections: [gateway]
+    enabled: false
+    notes:
+      - Requires the endpoint-configurable Responses adapter and its own No-PRA baseline.
+  - harness_id: claude-code-blocked
+    agent: claude-code
+    version: 2.1.258
+    agent_class: commercial
+    connections: [gateway]
+    enabled: false
+    notes:
+      - Blocked until an Anthropic Messages gateway path is implemented and qualified.
+  - harness_id: gemini-cli-blocked
+    agent: gemini-cli
+    version: 0.58.0
+    agent_class: commercial
+    connections: [gateway]
+    enabled: false
+    notes:
+      - Blocked because the audited release has no verified configurable PRA endpoint.
+  - harness_id: pra-agent-pending
+    agent: pra-agent
+    version: 0.2.0rc1
+    agent_class: first_party
+    enabled: false
+    notes:
+      - Final comparison arm; run both direct and gateway routes after Harbor integration.

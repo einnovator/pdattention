@@ -4,6 +4,14 @@ PRA Agent is the first-party agent surface. It owns persistent sessions, tasks,
 typed context records, tool authorization, lazy tool and skill disclosure, and
 the handoff to an embedded runtime, gateway, or direct remote engine.
 
+PRA Agent is also a benchmark subject. Its official task cohort is run against
+the same PRA-capable engine in two placements: direct engine access and G11
+gateway mediation. The selected records, model, profile, task sandbox, and
+grader stay fixed. This pair both compares PRA Agent with endpoint-configurable
+external agents and exposes first-party transport/session regressions when the
+two PRA Agent outcomes disagree. It is intentionally scheduled after the
+external harness and engine baselines are admitted.
+
 The current SDK also exposes `agent.mcp`, `agent.control_plane`, `agent.targets`,
 `agent.attachments`, `agent.history`, and `agent.sessions`. MCP controls remote
 tools and resources; direct Control Plane REST controls deterministic fleet and

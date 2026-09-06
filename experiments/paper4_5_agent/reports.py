@@ -136,13 +136,17 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
     frontier = [
         "# PRA frontier report", "",
         "No PRA frontier is interpreted before a compatible official baseline exists.", "",
-        "| Cell | Mode | State | Baseline gate |",
-        "| --- | --- | --- | --- |",
+        "| Cell | Agent | Mode | Connection | Engine PRA | Gateway PRA | State | Baseline gate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for cell in treatments:
         value = cells.get(cell.cell_id, {})
         frontier.append(
-            f"| `{cell.cell_id}` | `{cell.mode.value}` | {value.get('state', 'PENDING')} | "
+            f"| `{cell.cell_id}` | `{cell.agent_id or baselines[cell.baseline_id].harness}` | "
+            f"`{cell.mode.value}` | `{cell.connection or 'unspecified'}` | "
+            f"{cell.engine_pra_enabled if cell.engine_pra_enabled is not None else '-'} | "
+            f"{cell.gateway_pra_enabled if cell.gateway_pra_enabled is not None else '-'} | "
+            f"{value.get('state', 'PENDING')} | "
             f"`{cell.baseline_cell}` |"
         )
     (root / "pra_frontier_report.md").write_text("\n".join(frontier) + "\n", encoding="utf-8")

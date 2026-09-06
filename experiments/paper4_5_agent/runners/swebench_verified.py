@@ -30,14 +30,50 @@ EXPECTED_PACKAGES = {
 PINNED_DATASET_REVISION = "c104f840cc67f8b6eec6f759ebc8b2693d585d4a"
 
 
+def treatment_placement(mode: str) -> dict[str, Any]:
+    """Describe transport and PRA ownership independently for one treatment."""
+
+    return {
+        "no-pra": {
+            "connection": "direct", "engine_pra_enabled": False,
+            "gateway_pra_enabled": False, "gateway_mode": None,
+        },
+        ContextTreatment.TRUNCATION.value: {
+            "connection": "direct", "engine_pra_enabled": False,
+            "gateway_pra_enabled": False, "gateway_mode": None,
+        },
+        ContextTreatment.PASSTHROUGH.value: {
+            "connection": "gateway", "engine_pra_enabled": False,
+            "gateway_pra_enabled": False, "gateway_mode": "G00",
+        },
+        ContextTreatment.PRA_SELECTED_CONTEXT.value: {
+            "connection": "gateway", "engine_pra_enabled": False,
+            "gateway_pra_enabled": True, "gateway_mode": "G10",
+        },
+        ContextTreatment.DIRECT_NATIVE_PRA.value: {
+            "connection": "direct", "engine_pra_enabled": True,
+            "gateway_pra_enabled": False, "gateway_mode": None,
+        },
+        ContextTreatment.GATEWAY_NATIVE_PRA.value: {
+            "connection": "gateway", "engine_pra_enabled": True,
+            "gateway_pra_enabled": True, "gateway_mode": "G11",
+        },
+    }[mode]
+
+
 def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
-    """Reject an unpinned or incorrectly configured treatment gateway early."""
+    """Reject an unpinned or incorrectly configured treatment endpoint early."""
 
     expected_mode = {
         ContextTreatment.PASSTHROUGH.value: "G00",
         ContextTreatment.PRA_SELECTED_CONTEXT.value: "G10",
+        ContextTreatment.GATEWAY_NATIVE_PRA.value: "G11",
     }.get(args.mode)
-    if expected_mode is None:
+    native_required = args.mode in {
+        ContextTreatment.DIRECT_NATIVE_PRA.value,
+        ContextTreatment.GATEWAY_NATIVE_PRA.value,
+    }
+    if expected_mode is None and not native_required:
         return None
     root = args.base_url.rstrip("/").removesuffix("/v1")
 
@@ -51,11 +87,17 @@ def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
             ) from error
 
     health = read("/health")
-    if health.get("status") != "ok" or health.get("gateway_mode") != expected_mode:
+    if health.get("status") != "ok":
+        raise RuntimeError(f"endpoint preflight health failed: {health!r}")
+    if expected_mode is not None and health.get("gateway_mode") != expected_mode:
         raise RuntimeError(
             "gateway preflight mode mismatch: "
             f"expected {expected_mode}, observed {health.get('gateway_mode')!r}"
         )
+    effective = health.get("effective_capabilities") or health
+    engine = health.get("engine") or {}
+    if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
+        raise RuntimeError("native PRA treatment requires effective native_kv capability")
     catalog = read("/v1/models")
     model_ids = tuple(
         str(row.get("id"))
@@ -175,6 +217,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "max_steps": args.max_steps,
         "temperature": 0,
         "campaign_mode": args.mode,
+        **treatment_placement(args.mode),
         "context_budget_fraction": args.budget_fraction,
         "harness": "mini-swe-agent",
         "harness_version": args.harness_version,
@@ -497,6 +540,7 @@ def _write_task_rows(
         "peak_memory_bytes": None, "kv_bytes": None, "pra_memory_bytes": None,
     }
     rows = []
+    placement = treatment_placement(args.mode)
     for task_index, instance_id in enumerate(instance_ids):
         trajectory_path = _find_trajectory(output, instance_id)
         trajectory = _trajectory_metrics(trajectory_path) if trajectory_path else {}
@@ -518,8 +562,16 @@ def _write_task_rows(
             "model_revision": args.model_revision, "engine": args.engine,
             "engine_version": args.engine_version, "quantization": args.quantization,
             "dtype": args.dtype, "mode": args.mode,
+            **placement,
             "context_budget_fraction": args.budget_fraction,
-            "pra_config_id": "swebench-balanced-v1" if args.mode == "gateway-pra" else None,
+            "pra_config_id": (
+                "swebench-balanced-v1"
+                if args.mode in {
+                    ContextTreatment.PRA_SELECTED_CONTEXT.value,
+                    ContextTreatment.DIRECT_NATIVE_PRA.value,
+                    ContextTreatment.GATEWAY_NATIVE_PRA.value,
+                } else None
+            ),
             "context_budget": args.context_limit, "seed": 0, "resolved": instance_id in resolved,
             "benchmark_score": 1.0 if instance_id in resolved else 0.0,
             "logical_input_tokens": logical_tokens,

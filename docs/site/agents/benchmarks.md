@@ -40,6 +40,37 @@ graded and marked `BASELINE_REPRODUCED`. A changed engine, quantization,
 context limit, task cohort, or unofficial grader remains
 `BASELINE_ATTEMPTED`, even when it is operationally useful.
 
+## Separate gateway placement from PRA execution
+
+The agent comparison uses two independent switches: whether a PRA gateway is
+present and whether the engine performs native PRA. This produces four controls
+before budget/profile variants are considered:
+
+| Condition | Connection | Gateway PRA | Engine PRA | Interpretation |
+| --- | --- | --- | --- | --- |
+| Direct ordinary | agent -> engine | off | off | No-PRA quality and cost baseline. |
+| G00 pass-through | agent -> gateway -> engine | off | off | Gateway transport overhead only. |
+| Direct native PRA | agent -> PRA engine | off | on | Native PRA without gateway mediation. |
+| G11 native PRA | agent -> PRA gateway -> PRA engine | on | on | Full gateway plus native-engine product path. |
+
+G10 Selected Context is retained as a useful text-fallback condition, but it is
+not the full gateway-plus-native-engine arm. The principal gateway comparison
+is G11 minus direct native PRA, using the same engine instance and matched task,
+repeat, model revision, selected records, budget, and profile. A version-2 run
+records `connection`, `engine_pra_enabled`, `gateway_pra_enabled`,
+`gateway_mode`, `engine_target_id`, and `comparison_group` in every normalized
+row. Capability preflight rejects Native Memory when `native_kv` is not
+effective.
+
+The rollout order is Mini-SWE-agent and Qwen Code first, followed by admitted
+OpenCode, Pi, OpenHands, Aider, and SWE-agent configurations. Commercial agents
+are included only when their endpoint is genuinely configurable; Codex uses the
+Responses gateway path, while Claude Code and Gemini CLI remain blocked under
+their currently audited protocols. PRA Agent is the final first-party arm and
+runs twice, direct and through G11. Besides comparison, disagreement on that
+pair is a diagnostic for PRA Agent session, tool, typed-record, or gateway
+behavior rather than an engine-quality effect.
+
 Gateway treatments have an additional transport gate. Before launching an
 agent, the runner requires a healthy endpoint, the expected G00 or G10 mode,
 and the exact served model in `/v1/models`. G00 preserves OpenAI generation

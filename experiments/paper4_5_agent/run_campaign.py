@@ -54,11 +54,26 @@ def run_campaign(
             _persist(config, state, root, state_path)
             break
         if dry_run:
-            record.update(state="PENDING", command=list(cell.command), dry_run=True)
+            record.update(
+                state="PENDING", command=_expand_command(cell.command), dry_run=True,
+                agent_id=cell.agent_id, connection=cell.connection,
+                engine_pra_enabled=cell.engine_pra_enabled,
+                gateway_pra_enabled=cell.gateway_pra_enabled,
+                gateway_mode=cell.gateway_mode, comparison_group=cell.comparison_group,
+                paired_cell=cell.paired_cell,
+            )
             _persist(config, state, root, state_path)
             continue
 
-        record.update(state="RUNNING", started_at=_now(), command=list(cell.command))
+        command = _expand_command(cell.command)
+        record.update(
+            state="RUNNING", started_at=_now(), command=command,
+            agent_id=cell.agent_id, connection=cell.connection,
+            engine_pra_enabled=cell.engine_pra_enabled,
+            gateway_pra_enabled=cell.gateway_pra_enabled,
+            gateway_mode=cell.gateway_mode, comparison_group=cell.comparison_group,
+            paired_cell=cell.paired_cell,
+        )
         _persist(config, state, root, state_path)
         workdir = (repository / cell.working_directory).resolve()
         environment = _campaign_environment(cell.environment)
@@ -66,7 +81,7 @@ def run_campaign(
         log_dir.mkdir(parents=True, exist_ok=True)
         try:
             completed = subprocess.run(
-                list(cell.command), cwd=workdir, env=environment,
+                command, cwd=workdir, env=environment,
                 capture_output=True, text=True, timeout=cell.timeout_seconds, check=False,
             )
             (log_dir / f"{cell.cell_id}.stdout").write_text(completed.stdout, encoding="utf-8")
@@ -120,6 +135,12 @@ def record_result(config_path: Path, *, cell_id: str, result_path: Path) -> dict
         "review": review.model_dump(mode="json") if review else None,
         "reproduction_status": review.status.value if review else None,
         "imported_from": str(result_path),
+        "agent_id": cell.agent_id, "connection": cell.connection,
+        "engine_pra_enabled": cell.engine_pra_enabled,
+        "gateway_pra_enabled": cell.gateway_pra_enabled,
+        "gateway_mode": cell.gateway_mode,
+        "comparison_group": cell.comparison_group,
+        "paired_cell": cell.paired_cell,
     }
     _persist(config, state, root, state_path)
     return state
@@ -140,6 +161,13 @@ def _treatment_gate(cell: Any, cells: dict[str, Any]) -> str | None:
             f"Treatment requires baseline score >= {cell.minimum_baseline_score:.3f}; "
             f"observed {observed_score!r}."
         )
+    if cell.paired_cell:
+        paired = cells.get(cell.paired_cell, {})
+        if paired.get("state") != "COMPLETED":
+            return (
+                f"Treatment requires paired cell {cell.paired_cell}=COMPLETED; "
+                f"observed {paired.get('state', 'PENDING')}."
+            )
     return None
 
 
@@ -168,6 +196,12 @@ def _campaign_environment(overrides: dict[str, str]) -> dict[str, str]:
         (interpreter_directory, environment.get("PATH", ""))
     ).rstrip(os.pathsep)
     return environment
+
+
+def _expand_command(command: tuple[str, ...]) -> list[str]:
+    """Expand endpoint variables without invoking a shell or exposing credentials."""
+
+    return [os.path.expandvars(value) for value in command]
 
 
 def _repository_root(config_path: Path) -> Path:

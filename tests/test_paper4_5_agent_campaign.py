@@ -43,8 +43,13 @@ from experiments.paper4_5_agent.context_treatment import (
 )
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
+    MatrixModel,
+    MatrixRoute,
     _completed_attempt,
     _invalid_trial_reason,
+    _load_baseline_admission,
+    _paired_route_comparisons,
+    _route_preflight,
     harbor_command,
     matrix_cells,
     run_matrix,
@@ -58,6 +63,7 @@ from experiments.paper4_5_agent.runners.r2egym import (
 from experiments.paper4_5_agent.summarize_baseline import summarize
 from experiments.paper4_5_agent.run_campaign import (
     _campaign_environment,
+    _expand_command,
     record_result,
     run_campaign,
 )
@@ -77,6 +83,7 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _write_empty_predictions,
     gateway_preflight,
     package_versions,
+    treatment_placement,
 )
 from experiments.agents.schema import BenchmarkManifest
 
@@ -286,7 +293,7 @@ def test_calibration_next_tier_follows_admission_policy() -> None:
 def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     campaign = CampaignConfig.load(EASY50_CONFIG)
     assert len(campaign.baselines[0].task_ids) == 50
-    assert len(campaign.cells) == 8
+    assert len(campaign.cells) == 10
     baseline, *treatments = campaign.cells
     assert baseline.cell_id == "easy50-no-pra"
     assert all(cell.baseline_cell == baseline.cell_id for cell in treatments)
@@ -308,6 +315,17 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
             selected[key].command.index("--budget-fraction") + 1
         ]
         assert truncation_budget == selected_budget
+    direct = next(cell for cell in treatments if cell.mode.value == "native_pra")
+    gateway = next(
+        cell for cell in treatments if cell.mode.value == "gateway_native_pra"
+    )
+    assert direct.connection == "direct"
+    assert gateway.connection == "gateway"
+    assert direct.engine_pra_enabled is gateway.engine_pra_enabled is True
+    assert direct.gateway_pra_enabled is False
+    assert gateway.gateway_pra_enabled is True
+    assert gateway.paired_cell == direct.cell_id
+    assert gateway.comparison_group == direct.comparison_group == "native-pra-50"
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
@@ -1008,7 +1026,7 @@ def test_completed_attempt_ignores_running_job(tmp_path: Path) -> None:
 def test_harbor_matrix_command_is_one_task_and_redactable() -> None:
     config = HarnessMatrixConfig.load(MATRIX_CONFIG)
     manifest = BenchmarkManifest.load(ROOT / config.manifest)
-    _, model, harness, task_id, _ = matrix_cells(config, manifest)[0]
+    _, model, harness, task_id, _, _ = matrix_cells(config, manifest)[0]
     command = harbor_command(
         harbor="harbor", manifest=manifest, model=model, harness=harness,
         task_id=task_id, job_directory=Path("jobs"),
@@ -1093,3 +1111,159 @@ def test_agent_timeout_without_adapter_telemetry_remains_admissible() -> None:
         tokens=SimpleNamespace(input_tokens=0, output_tokens=0),
     )
     assert _invalid_trial_reason(row) is None
+
+
+def test_pra_transport_matrix_pairs_direct_and_gateway_to_one_engine() -> None:
+    path = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pra_transport.yaml"
+    config = HarnessMatrixConfig.load(path)
+    manifest = BenchmarkManifest.load(ROOT / config.manifest)
+    cells = matrix_cells(config, manifest)
+
+    assert config.matrix_kind == "pra_transport"
+    assert len(cells) == 40
+    first_direct, first_gateway = cells[:2]
+    assert first_direct[5].connection == "direct"
+    assert first_gateway[5].connection == "gateway"
+    assert first_gateway[5].requires_route == first_direct[5].route_id
+    assert first_direct[5].engine_target_id == first_gateway[5].engine_target_id
+
+
+def test_pra_transport_admission_is_per_harness() -> None:
+    path = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pra_transport.yaml"
+    config = HarnessMatrixConfig.load(path)
+    admission = _load_baseline_admission(config, ROOT)
+
+    assert admission["eligible"] is True
+    assert admission["by_harness"]["mini-swe-agent"]["eligible"] is True
+    assert admission["by_harness"]["qwen-coder"]["eligible"] is True
+    assert admission["by_harness"]["aider"]["eligible"] is False
+
+
+def test_native_route_rejects_an_ordinary_engine() -> None:
+    with pytest.raises(ValueError, match="engine_pra_enabled"):
+        MatrixRoute(
+            route_id="invalid", connection="direct", base_url_env="URL",
+            pra_mode="native-memory", pra_profile="balanced",
+            engine_pra_enabled=False, engine_target_id="engine-1",
+        )
+
+
+def test_route_preflight_authenticates_and_verifies_native_gateway() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            assert self.headers["Authorization"] == "Bearer secret"
+            payload = (
+                {"data": [{"id": "served-model"}]}
+                if self.path == "/v1/models"
+                else {
+                    "gateway_mode": "G11",
+                    "effective_capabilities": {"native_kv": True},
+                }
+            )
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    model = MatrixModel(
+        model_id="model", served_model="served-model", model_revision="revision",
+        engine="engine", engine_version="version",
+        routes=(MatrixRoute(
+            route_id="gateway", connection="gateway", base_url_env="URL",
+            pra_mode="native-memory", pra_profile="balanced",
+            engine_pra_enabled=True, gateway_pra_enabled=True, gateway_mode="G11",
+            engine_target_id="engine-1",
+        ),),
+    )
+    try:
+        _route_preflight(
+            f"http://127.0.0.1:{server.server_port}/v1", api_key="secret",
+            model=model, route=model.routes[0],
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_native_treatment_placement_separates_gateway_and_engine() -> None:
+    direct = treatment_placement("direct-native-pra")
+    gateway = treatment_placement("gateway-native-pra")
+
+    assert direct == {
+        "connection": "direct", "engine_pra_enabled": True,
+        "gateway_pra_enabled": False, "gateway_mode": None,
+    }
+    assert gateway == {
+        "connection": "gateway", "engine_pra_enabled": True,
+        "gateway_pra_enabled": True, "gateway_mode": "G11",
+    }
+
+
+def test_paired_route_summary_counts_regressions_and_recoveries() -> None:
+    def row(connection: str, task: str, success: bool) -> SimpleNamespace:
+        return SimpleNamespace(
+            identity=SimpleNamespace(
+                agent="agent", model="model", task_id=task, repeat=0,
+                connection=connection,
+            ),
+            metadata={"comparison_group": "g", "engine_target_id": "engine-1"},
+            outcome=SimpleNamespace(success=success),
+            tokens=SimpleNamespace(input_tokens=100),
+            timings=SimpleNamespace(task_wall_ms=10.0),
+        )
+
+    summary = _paired_route_comparisons([
+        row("direct", "a", True), row("gateway", "a", False),
+        row("direct", "b", False), row("gateway", "b", True),
+        row("direct", "unpaired", True),
+    ])[0]
+
+    assert summary["pairs"] == 2
+    assert summary["regressions"] == 1
+    assert summary["recoveries"] == 1
+    assert summary["outcome_matches"] == 0
+
+
+def test_campaign_command_expands_endpoint_without_a_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRA_TEST_ENDPOINT", "http://engine:8000/v1")
+    command = _expand_command(("runner", "--base-url", "${PRA_TEST_ENDPOINT}"))
+    assert command == ["runner", "--base-url", "http://engine:8000/v1"]
+
+
+def test_pra_transport_dry_run_orders_direct_before_gateway(
+    tmp_path: Path,
+) -> None:
+    source = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pra_transport.yaml"
+    payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    payload["output_directory"] = str(tmp_path / "matrix")
+    payload["baseline_admission_path"] = str(
+        ROOT / payload["baseline_admission_path"]
+    )
+    config = tmp_path / "matrix.yaml"
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    state = run_matrix(config, resume=False, dry_run=True)
+
+    direct = [
+        row for row in state["cells"].values()
+        if row.get("route_id") == "pra-engine-direct"
+    ]
+    gateway = [
+        row for row in state["cells"].values()
+        if row.get("route_id") == "pra-gateway-engine"
+    ]
+    assert len(direct) == len(gateway) == 20
+    assert {row["state"] for row in direct} == {"PENDING"}
+    assert {row["state"] for row in gateway} == {"BLOCKED"}
+    assert all("requires" in row["reason"] for row in gateway)

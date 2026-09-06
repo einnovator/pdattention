@@ -192,6 +192,10 @@ def import_harbor_job(
     connection: str,
     protocol: str,
     pra_version: str = "0.2.0rc1",
+    engine_pra_enabled: bool | None = None,
+    gateway_pra_enabled: bool | None = None,
+    gateway_mode: str | None = None,
+    run_metadata: Mapping[str, Any] | None = None,
 ) -> list[CodingAgentRun]:
     """Normalize official Harbor trial results without re-grading them."""
 
@@ -264,6 +268,9 @@ def import_harbor_job(
                 pra_mode=pra_mode,
                 pra_profile=pra_profile,
                 connection=connection,
+                engine_pra_enabled=engine_pra_enabled,
+                gateway_pra_enabled=gateway_pra_enabled,
+                gateway_mode=gateway_mode,
                 protocol=protocol,
                 cache_state=CacheState.COLD,
                 started_at=str(raw.get("started_at") or datetime.now().isoformat()),
@@ -304,6 +311,7 @@ def import_harbor_job(
                 "task_checksum": raw.get("task_checksum"),
                 "verifier_environment_mode": raw.get("verifier_environment_mode"),
                 "reward_components": rewards,
+                **dict(run_metadata or {}),
             },
         ))
 

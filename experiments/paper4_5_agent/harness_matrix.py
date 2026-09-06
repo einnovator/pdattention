@@ -1,4 +1,4 @@
-"""Crash-resumable no-PRA coding-agent matrix over official Harbor tasks."""
+"""Crash-resumable coding-agent matrix over official Harbor tasks."""
 
 from __future__ import annotations
 
@@ -6,9 +6,11 @@ import argparse
 import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 import yaml
 from pydantic import Field, model_validator
@@ -23,7 +25,7 @@ from experiments.agents.schema import (
 
 
 class MatrixModel(StrictModel):
-    """One directly served model; credentials remain in environment variables."""
+    """One served model and the direct/gateway routes that reach its engine."""
 
     model_id: str
     served_model: str
@@ -31,9 +33,60 @@ class MatrixModel(StrictModel):
     engine: str
     engine_version: str
     quantization: str | None = None
-    base_url_env: str
+    base_url_env: str | None = None
     api_key_env: str = "PRA_AGENT_API_KEY"
+    routes: tuple["MatrixRoute", ...] = ()
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def endpoint_contract_is_complete(self) -> "MatrixModel":
+        if not self.routes and not self.base_url_env:
+            raise ValueError("a legacy model requires base_url_env")
+        route_ids = [route.route_id for route in self.routes]
+        if len(route_ids) != len(set(route_ids)):
+            raise ValueError(f"route_id values must be unique for {self.model_id}")
+        known = set(route_ids)
+        for route in self.routes:
+            if route.requires_route and route.requires_route not in known:
+                raise ValueError(
+                    f"route {route.route_id} requires unknown route {route.requires_route}"
+                )
+        return self
+
+
+class MatrixRoute(StrictModel):
+    """One agent-to-engine path with explicit PRA placement semantics."""
+
+    route_id: str
+    connection: Literal["direct", "gateway"]
+    base_url_env: str
+    api_key_env: str | None = None
+    pra_mode: PRAMode = PRAMode.NONE
+    pra_profile: PRAProfile = PRAProfile.NONE
+    engine_pra_enabled: bool = False
+    gateway_pra_enabled: bool = False
+    gateway_mode: Literal["G00", "G10", "G01", "G11"] | None = None
+    engine_target_id: str
+    comparison_group: str | None = None
+    requires_route: str | None = None
+    preflight: bool = True
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def placement_is_coherent(self) -> "MatrixRoute":
+        if self.connection == "direct" and (self.gateway_pra_enabled or self.gateway_mode):
+            raise ValueError("a direct route cannot enable or name a gateway")
+        if self.connection == "gateway" and self.gateway_mode is None:
+            raise ValueError("a gateway route requires gateway_mode")
+        if self.gateway_pra_enabled and self.gateway_mode not in {"G01", "G11"}:
+            raise ValueError("gateway PRA requires G01 or G11 mediation")
+        if self.pra_mode == PRAMode.NATIVE_MEMORY and not self.engine_pra_enabled:
+            raise ValueError("native-memory requires engine_pra_enabled=true")
+        if self.pra_mode == PRAMode.NONE and self.pra_profile != PRAProfile.NONE:
+            raise ValueError("a No-PRA route must use profile none")
+        if self.pra_mode != PRAMode.NONE and self.pra_profile == PRAProfile.NONE:
+            raise ValueError("a PRA route requires an explicit profile")
+        return self
 
 
 class MatrixHarness(StrictModel):
@@ -41,24 +94,31 @@ class MatrixHarness(StrictModel):
 
     harness_id: str
     agent: str
+    result_agent_name: str | None = None
     version: str
     model_name: str | None = None
     kwargs: Mapping[str, str | int | float | bool] = Field(default_factory=dict)
+    agent_class: Literal["open_source", "commercial", "first_party"] = "open_source"
+    connections: tuple[Literal["direct", "gateway"], ...] = ("direct", "gateway")
+    notes: tuple[str, ...] = ()
     enabled: bool = True
 
 
 class HarnessMatrixConfig(StrictModel):
-    """Frozen no-PRA matrix used to qualify models and agent harnesses."""
+    """Frozen baseline or PRA-transport matrix used to qualify agent harnesses."""
 
-    schema_version: int = 1
+    schema_version: Literal[1, 2] = 1
+    matrix_kind: Literal["baseline", "pra_transport"] = "baseline"
     campaign_id: str
     manifest: str
     output_directory: str
     agent_host: str
     hardware: Mapping[str, Any] = Field(default_factory=dict)
     minimum_runs: int = Field(default=15, ge=1)
+    minimum_runs_per_harness: int = Field(default=10, ge=1)
     minimum_success_rate: float = Field(default=0.10, ge=0, le=1)
     maximum_success_rate: float = Field(default=0.90, ge=0, le=1)
+    baseline_admission_path: str | None = None
     models: tuple[MatrixModel, ...]
     harnesses: tuple[MatrixHarness, ...]
 
@@ -74,6 +134,28 @@ class HarnessMatrixConfig(StrictModel):
             raise ValueError("at least one model must be enabled")
         if not any(row.enabled for row in self.harnesses):
             raise ValueError("at least one harness must be enabled")
+        if self.matrix_kind == "pra_transport":
+            if self.schema_version != 2:
+                raise ValueError("pra_transport matrices require schema_version 2")
+            if not self.baseline_admission_path:
+                raise ValueError("pra_transport matrices require baseline_admission_path")
+            for model in self.models:
+                if not model.enabled:
+                    continue
+                groups: dict[str, list[MatrixRoute]] = {}
+                for route in model.routes:
+                    if route.enabled and route.comparison_group:
+                        groups.setdefault(route.comparison_group, []).append(route)
+                if not groups:
+                    raise ValueError(f"{model.model_id} has no matched comparison group")
+                for group, routes in groups.items():
+                    connections = {route.connection for route in routes}
+                    targets = {route.engine_target_id for route in routes}
+                    if connections != {"direct", "gateway"} or len(targets) != 1:
+                        raise ValueError(
+                            f"comparison group {group} must pair direct and gateway routes "
+                            "to one engine_target_id"
+                        )
         return self
 
     @classmethod
@@ -106,7 +188,7 @@ _UniqueKeyLoader.add_constructor(
 
 def matrix_cells(
     config: HarnessMatrixConfig, manifest: BenchmarkManifest,
-) -> list[tuple[str, MatrixModel, MatrixHarness, str, int]]:
+) -> list[tuple[str, MatrixModel, MatrixHarness, str, int, MatrixRoute]]:
     """Enumerate the frozen matrix in task-major order for early cross-harness data."""
 
     cells = []
@@ -118,9 +200,28 @@ def matrix_cells(
                 for harness in config.harnesses:
                     if not harness.enabled:
                         continue
-                    cell_id = f"{model.model_id}__{task_id}__{harness.harness_id}__r{repeat}"
-                    cells.append((cell_id, model, harness, task_id, repeat))
+                    for route in _model_routes(model):
+                        if not route.enabled or route.connection not in harness.connections:
+                            continue
+                        cell_id = _matrix_cell_id(
+                            model=model, harness=harness, task_id=task_id,
+                            repeat=repeat, route=route,
+                        )
+                        cells.append((cell_id, model, harness, task_id, repeat, route))
     return cells
+
+
+def _model_routes(model: MatrixModel) -> tuple[MatrixRoute, ...]:
+    """Map a version-1 model to its historical direct No-PRA route."""
+
+    if model.routes:
+        return model.routes
+    return (MatrixRoute(
+        route_id="direct-no-pra", connection="direct",
+        base_url_env=str(model.base_url_env), api_key_env=model.api_key_env,
+        pra_mode=PRAMode.NONE, pra_profile=PRAProfile.NONE,
+        engine_target_id=model.model_id, preflight=False,
+    ),)
 
 
 def harbor_command(
@@ -163,9 +264,14 @@ def run_matrix(
     output = (repository / config.output_directory).resolve()
     state_path = output / "matrix_state.json"
     state: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": config.schema_version,
         "campaign_id": config.campaign_id,
-        "pra_enabled": False,
+        "matrix_kind": config.matrix_kind,
+        "pra_enabled": any(
+            route.pra_mode != PRAMode.NONE
+            for model in config.models if model.enabled
+            for route in _model_routes(model) if route.enabled
+        ),
         "manifest": config.manifest,
         "cells": {},
     }
@@ -173,19 +279,48 @@ def run_matrix(
         state = json.loads(state_path.read_text(encoding="utf-8"))
     output.mkdir(parents=True, exist_ok=True)
     launched = 0
+    admission = _load_baseline_admission(config, repository)
+    preflighted: set[tuple[str, str, str]] = set()
 
-    for cell_id, model, harness_spec, task_id, repeat in matrix_cells(config, manifest):
+    for cell_id, model, harness_spec, task_id, repeat, route in matrix_cells(config, manifest):
         record = state.setdefault("cells", {}).setdefault(cell_id, {"state": "PENDING"})
         if record.get("state") == "COMPLETED":
             continue
         if max_cells is not None and launched >= max_cells:
             break
-        base_url = os.environ.get(model.base_url_env)
-        api_key = os.environ.get(model.api_key_env, "pra-local")
-        if not base_url and not dry_run:
-            record.update(state="BLOCKED", reason=f"missing environment variable {model.base_url_env}")
-            _persist(config, manifest, state, output, state_path)
+        gate = _route_gate(
+            config=config, model=model, harness=harness_spec, route=route,
+            task_id=task_id, repeat=repeat, cells=state["cells"], admission=admission,
+        )
+        if gate:
+            record.update(
+                state="BLOCKED", reason=gate, model=model.model_id, task_id=task_id,
+                harness=harness_spec.harness_id, repeat=repeat, route_id=route.route_id,
+                connection=route.connection, pra_mode=route.pra_mode.value,
+                engine_pra_enabled=route.engine_pra_enabled,
+                gateway_pra_enabled=route.gateway_pra_enabled,
+            )
+            _persist(config, manifest, state, output, state_path, admission=admission)
             continue
+        base_url = os.environ.get(route.base_url_env)
+        api_key_env = route.api_key_env or model.api_key_env
+        api_key = os.environ.get(api_key_env, "pra-local")
+        if not base_url and not dry_run:
+            record.update(state="BLOCKED", reason=f"missing environment variable {route.base_url_env}")
+            _persist(config, manifest, state, output, state_path, admission=admission)
+            continue
+        if not dry_run and route.preflight:
+            key = (base_url or "", route.route_id, model.served_model)
+            if key not in preflighted:
+                try:
+                    _route_preflight(
+                        base_url or "", api_key=api_key, model=model, route=route,
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    record.update(state="BLOCKED", reason=str(exc))
+                    _persist(config, manifest, state, output, state_path, admission=admission)
+                    continue
+                preflighted.add(key)
         cell_dir = output / "cells" / cell_id
         normalized_dir = cell_dir / "normalized"
         if resume and not dry_run:
@@ -195,7 +330,7 @@ def run_matrix(
                     row = _normalize_attempt(
                         attempt_dir=recovered, normalized_dir=normalized_dir,
                         manifest=manifest, model=model, config=config,
-                        task_id=task_id,
+                        harness=harness_spec, route=route, task_id=task_id,
                     )
                     invalid_reason = _invalid_trial_reason(row)
                     if invalid_reason:
@@ -216,7 +351,7 @@ def run_matrix(
                     record["attempts"] = max(
                         int(record.get("attempts", 0)), int(recovered.name[1:]),
                     )
-                    _persist(config, manifest, state, output, state_path)
+                    _persist(config, manifest, state, output, state_path, admission=admission)
                     continue
                 except (OSError, ValueError):
                     pass
@@ -230,10 +365,16 @@ def run_matrix(
         record.update(
             state="PENDING" if dry_run else "RUNNING",
             model=model.model_id, task_id=task_id, harness=harness_spec.harness_id,
-            repeat=repeat, pra_enabled=False, attempts=attempt,
+            repeat=repeat, route_id=route.route_id, connection=route.connection,
+            pra_enabled=route.pra_mode != PRAMode.NONE,
+            pra_mode=route.pra_mode.value, pra_profile=route.pra_profile.value,
+            engine_pra_enabled=route.engine_pra_enabled,
+            gateway_pra_enabled=route.gateway_pra_enabled,
+            gateway_mode=route.gateway_mode, engine_target_id=route.engine_target_id,
+            comparison_group=route.comparison_group, attempts=attempt,
             active_attempt=f"a{attempt:03d}", command=_redact(command),
         )
-        _persist(config, manifest, state, output, state_path)
+        _persist(config, manifest, state, output, state_path, admission=admission)
         if dry_run:
             launched += 1
             continue
@@ -255,12 +396,13 @@ def run_matrix(
                 state="FAILED", finished_at=_now(), returncode=completed.returncode,
                 reason="Harbor trial failed; inspect launcher.log and resume to retry.",
             )
-            _persist(config, manifest, state, output, state_path)
+            _persist(config, manifest, state, output, state_path, admission=admission)
             continue
         try:
             row = _normalize_attempt(
                 attempt_dir=jobs_dir, normalized_dir=normalized_dir,
-                manifest=manifest, model=model, config=config, task_id=task_id,
+                manifest=manifest, model=model, config=config,
+                harness=harness_spec, route=route, task_id=task_id,
             )
             invalid_reason = _invalid_trial_reason(row)
             if invalid_reason:
@@ -268,7 +410,7 @@ def run_matrix(
                     state="INVALID", finished_at=_now(), reason=invalid_reason,
                     normalized_result=None,
                 )
-                _persist(config, manifest, state, output, state_path)
+                _persist(config, manifest, state, output, state_path, admission=admission)
                 continue
             record.update(
                 state="COMPLETED", finished_at=_now(),
@@ -278,23 +420,33 @@ def run_matrix(
             )
         except (OSError, ValueError) as exc:
             record.update(state="FAILED", finished_at=_now(), reason=str(exc))
-        _persist(config, manifest, state, output, state_path)
-    _persist(config, manifest, state, output, state_path)
+        _persist(config, manifest, state, output, state_path, admission=admission)
+    _persist(config, manifest, state, output, state_path, admission=admission)
     return state
 
 
 def _normalize_attempt(
     *, attempt_dir: Path, normalized_dir: Path, manifest: BenchmarkManifest,
-    model: MatrixModel, config: HarnessMatrixConfig, task_id: str,
+    model: MatrixModel, config: HarnessMatrixConfig, harness: MatrixHarness,
+    route: MatrixRoute, task_id: str,
 ) -> Any:
     rows = import_harbor_job(
         attempt_dir, manifest, output=normalized_dir,
         engine=model.engine, engine_version=model.engine_version,
         host=config.agent_host, hardware=config.hardware,
         model=model.served_model, model_revision=model.model_revision,
-        quantization=model.quantization, pra_mode=PRAMode.NONE,
-        pra_profile=PRAProfile.NONE, connection="direct",
+        quantization=model.quantization, pra_mode=route.pra_mode,
+        pra_profile=route.pra_profile, connection=route.connection,
+        engine_pra_enabled=route.engine_pra_enabled,
+        gateway_pra_enabled=route.gateway_pra_enabled,
+        gateway_mode=route.gateway_mode,
         protocol="openai-chat-completions",
+        run_metadata={
+            "matrix_harness_id": harness.harness_id,
+            "route_id": route.route_id,
+            "engine_target_id": route.engine_target_id,
+            "comparison_group": route.comparison_group,
+        },
     )
     if len(rows) != 1 or rows[0].identity.task_id != task_id:
         raise ValueError(f"expected one normalized row for {task_id}, found {len(rows)}")
@@ -344,9 +496,186 @@ def _invalid_trial_reason(row: Any) -> str | None:
     return None
 
 
+def _load_baseline_admission(
+    config: HarnessMatrixConfig, repository: Path,
+) -> dict[str, Any]:
+    """Load the frozen No-PRA admission decision used by a PRA matrix."""
+
+    if config.matrix_kind == "baseline":
+        return {}
+    path = (repository / str(config.baseline_admission_path)).resolve()
+    if not path.is_file():
+        return {
+            "status": "BLOCKED", "eligible": False,
+            "reason": f"Baseline admission artifact is missing: {path}",
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "status": "BLOCKED", "eligible": False,
+            "reason": f"Baseline admission artifact is invalid: {exc}",
+        }
+    gate = dict(payload.get("admission_gate") or payload)
+    baseline_summary = payload.get("summary") or {}
+    by_harness = baseline_summary.get("by_harness") or {}
+    harness_gates = {}
+    for name, values in by_harness.items():
+        runs = int(values.get("runs") or 0)
+        successes = int(values.get("successes") or 0)
+        rate = values.get("success_rate")
+        eligible = (
+            runs >= config.minimum_runs_per_harness
+            and isinstance(rate, (int, float))
+            and config.minimum_success_rate <= float(rate) <= config.maximum_success_rate
+        )
+        harness_gates[str(name)] = {
+            "status": "ELIGIBLE" if eligible else "BLOCKED",
+            "eligible": eligible, "runs": runs, "successes": successes,
+            "official_success_rate": rate,
+            "reason": (
+                "Harness baseline is inside the preregistered comparison band."
+                if eligible else
+                "Harness baseline does not satisfy its size and success-rate gate."
+            ),
+        }
+    if "eligible" not in gate and payload.get("official_grader") is True:
+        score = payload.get("score")
+        total = int(payload.get("total") or 0)
+        eligible = (
+            isinstance(score, (int, float))
+            and total >= config.minimum_runs
+            and config.minimum_success_rate <= float(score) <= config.maximum_success_rate
+        )
+        gate = {
+            "status": "ELIGIBLE" if eligible else "BLOCKED",
+            "eligible": eligible,
+            "runs": total,
+            "successes": int(payload.get("resolved") or 0),
+            "official_success_rate": score,
+            "target_range": [config.minimum_success_rate, config.maximum_success_rate],
+            "reason": (
+                "The official No-PRA cohort is inside the preregistered comparison band."
+                if eligible else
+                "The official No-PRA cohort does not satisfy the size and success-rate gate."
+            ),
+        }
+    eligible = gate.get("eligible") is True and gate.get("status") == "ELIGIBLE"
+    if harness_gates:
+        enabled_names = {
+            row.result_agent_name or row.agent for row in config.harnesses if row.enabled
+        }
+        eligible = all(harness_gates.get(name, {}).get("eligible") for name in enabled_names)
+        gate["status"] = "ELIGIBLE" if eligible else "BLOCKED"
+        gate["reason"] = (
+            "Every enabled harness has an admitted No-PRA baseline."
+            if eligible else
+            "At least one enabled harness lacks an admitted No-PRA baseline."
+        )
+    return {
+        **dict(gate), "eligible": eligible, "by_harness": harness_gates,
+        "admission_scope": "per_harness",
+        "eligible_harnesses": sorted(
+            name for name, values in harness_gates.items() if values.get("eligible")
+        ),
+        "source": str(path.relative_to(repository)),
+        "reason": str(gate.get("reason") or (
+            "Baseline admitted." if eligible else "Baseline is not admitted."
+        )),
+    }
+
+
+def _route_gate(
+    *, config: HarnessMatrixConfig, model: MatrixModel, harness: MatrixHarness,
+    route: MatrixRoute, task_id: str, repeat: int,
+    cells: Mapping[str, Any], admission: Mapping[str, Any],
+) -> str | None:
+    """Enforce baseline admission and direct-before-gateway pair ordering."""
+
+    if config.matrix_kind == "pra_transport":
+        name = harness.result_agent_name or harness.agent
+        harness_gate = (admission.get("by_harness") or {}).get(name)
+        if harness_gate is not None and not harness_gate.get("eligible"):
+            return (
+                f"PRA transport matrix requires an admitted {name} baseline: "
+                f"{harness_gate.get('reason')}"
+            )
+        if harness_gate is None and not admission.get("eligible"):
+            return (
+                "PRA transport matrix requires an admitted No-PRA baseline: "
+                f"{admission.get('reason')}"
+            )
+    if route.requires_route:
+        required = next(
+            candidate for candidate in _model_routes(model)
+            if candidate.route_id == route.requires_route
+        )
+        required_id = _matrix_cell_id(
+            model=model, harness=harness, task_id=task_id,
+            repeat=repeat, route=required,
+        )
+        state = cells.get(required_id, {}).get("state", "PENDING")
+        if state != "COMPLETED":
+            return f"Route {route.route_id} requires {required_id}=COMPLETED; observed {state}."
+    return None
+
+
+def _matrix_cell_id(
+    *, model: MatrixModel, harness: MatrixHarness, task_id: str,
+    repeat: int, route: MatrixRoute,
+) -> str:
+    route_part = f"__{route.route_id}" if model.routes else ""
+    return f"{model.model_id}__{task_id}__{harness.harness_id}{route_part}__r{repeat}"
+
+
+def _route_preflight(
+    base_url: str, *, api_key: str, model: MatrixModel, route: MatrixRoute,
+) -> None:
+    """Verify that a declared PRA placement is exposed by the selected endpoint."""
+
+    root = base_url.rstrip("/").removesuffix("/v1")
+
+    def get(path: str) -> dict[str, Any]:
+        try:
+            request = urllib.request.Request(
+                f"{root}{path}", headers={"Authorization": f"Bearer {api_key}"},
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"route preflight failed for {root}{path}: {exc}") from exc
+
+    catalog = get("/v1/models")
+    model_ids = {
+        str(row.get("id")) for row in catalog.get("data", ())
+        if isinstance(row, Mapping) and row.get("id")
+    }
+    if model.served_model not in model_ids:
+        raise RuntimeError(
+            f"route {route.route_id} does not advertise {model.served_model!r}"
+        )
+    if not (route.engine_pra_enabled or route.gateway_pra_enabled):
+        return
+    capabilities = get("/v1/pra/capabilities")
+    effective = capabilities.get("effective_capabilities") or capabilities
+    engine = capabilities.get("engine") or {}
+    native_kv = bool(effective.get("native_kv") or engine.get("native_kv"))
+    if route.engine_pra_enabled and not native_kv:
+        raise RuntimeError(
+            f"route {route.route_id} claims a PRA engine but native_kv is not effective"
+        )
+    observed_mode = capabilities.get("gateway_mode")
+    if route.connection == "gateway" and observed_mode != route.gateway_mode:
+        raise RuntimeError(
+            f"route {route.route_id} expected gateway mode {route.gateway_mode}, "
+            f"observed {observed_mode!r}"
+        )
+
+
 def _persist(
     config: HarnessMatrixConfig, manifest: BenchmarkManifest,
     state: dict[str, Any], output: Path, state_path: Path,
+    *, admission: Mapping[str, Any] | None = None,
 ) -> None:
     """Atomically persist state and rebuild aggregate rows from completed cells."""
 
@@ -361,43 +690,56 @@ def _persist(
     aggregate = output / "runs.jsonl"
     aggregate.write_text("".join(row.json_line() + "\n" for row in rows), encoding="utf-8")
     summary = _summarize(rows)
-    gate = _admission_gate(config, rows)
+    gate = (
+        dict(admission or {})
+        if config.matrix_kind == "pra_transport"
+        else _admission_gate(config, rows)
+    )
+    comparisons = _paired_route_comparisons(rows)
     (output / "summary.json").write_text(
         json.dumps({
             "campaign_id": config.campaign_id,
-            "pra_enabled": False,
+            "matrix_kind": config.matrix_kind,
+            "pra_enabled": state.get("pra_enabled", False),
             "expected_runs": len(matrix_cells(config, manifest)),
             "completed_runs": len(rows),
             "summary": summary,
             "admission_gate": gate,
+            "paired_route_comparisons": comparisons,
         }, indent=2) + "\n",
         encoding="utf-8",
     )
     _write_markdown_report(
         output / "report.md", config=config, manifest=manifest,
         expected=len(matrix_cells(config, manifest)), summary=summary, gate=gate,
+        comparisons=comparisons,
     )
 
 
 def _write_markdown_report(
     path: Path, *, config: HarnessMatrixConfig, manifest: BenchmarkManifest,
     expected: int, summary: Mapping[str, Any], gate: Mapping[str, Any],
+    comparisons: list[Mapping[str, Any]],
 ) -> None:
     """Render a reviewable checkpoint without weakening official-result semantics."""
 
     lines = [
         f"# {config.campaign_id}", "",
-        "This is an official-Harbor **No-PRA baseline**. It does not estimate a PRA effect.",
+        (
+            "This is an official-Harbor **No-PRA baseline**. It does not estimate a PRA effect."
+            if config.matrix_kind == "baseline" else
+            "This is a matched **PRA engine direct vs PRA gateway + PRA engine** matrix."
+        ),
         "",
         f"- Frozen manifest: `{manifest.name}` ({len(manifest.task_ids)} tasks)",
         f"- Completed: `{summary['runs']}/{expected}` trials",
         f"- Admission: `{gate['status']}` - {gate['reason']}",
         f"- Tasks solved by any harness: `{summary['tasks_solved_any']}/"
         f"{summary['unique_tasks']}`",
-        "", "| Harness | Runs | Success | Reported input tokens | Token coverage | Model calls | Tool calls | Wall h |",
+        "", "| Harness / route | Runs | Success | Reported input tokens | Token coverage | Model calls | Tool calls | Wall h |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
-    for harness, values in sorted(summary["by_harness"].items()):
+    for harness, values in sorted(summary["by_harness_route"].items()):
         lines.append(
             f"| `{harness}` | {values['runs']} | {values['successes']}/{values['runs']} "
             f"({values['success_rate']:.1%}) | {values['input_tokens']:,} | "
@@ -406,9 +748,28 @@ def _write_markdown_report(
             f"{values['tool_calls']:,} | {values['wall_ms'] / 3_600_000:.2f} |"
         )
     lines.extend((
-        "", "The admission decision requires the complete preregistered matrix. "
-        "Harness rows are not an agent ranking because prompts, tools, and loop policies differ.", "",
+        "", (
+            "The admission decision requires the complete preregistered matrix. "
+            if config.matrix_kind == "baseline" else
+            "Treatment admission is applied per harness from the frozen No-PRA matrix. "
+        ) + "Harness rows are not an agent ranking because prompts, tools, and loop policies differ.", "",
     ))
+    if comparisons:
+        lines.extend((
+            "## Matched direct/gateway comparisons", "",
+            "| Agent | Model | Group | Pairs | Outcome matches | Direct success | Gateway success | Regressions | Recoveries |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ))
+        for row in comparisons:
+            lines.append(
+                f"| `{row['agent']}` | `{row['model']}` | `{row['comparison_group']}` | "
+                f"{row['pairs']} | {row['outcome_matches']} | {row['direct_successes']} | "
+                f"{row['gateway_successes']} | {row['regressions']} | {row['recoveries']} |"
+            )
+        lines.extend((
+            "", "A gateway effect is interpretable only for complete task/repeat pairs that "
+            "share the same engine target, model, PRA mode, and PRA profile.", "",
+        ))
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -416,24 +777,28 @@ def _summarize(rows: list[Any]) -> dict[str, Any]:
     """Summarize official rows without importing the PRA runtime package."""
 
     by_harness: dict[str, dict[str, int | float]] = {}
+    by_harness_route: dict[str, dict[str, int | float]] = {}
     for row in rows:
-        bucket = by_harness.setdefault(
-            row.identity.agent,
+        route_id = str(row.metadata.get("route_id") or row.identity.connection)
+        values = (
             {"runs": 0, "successes": 0, "input_tokens": 0, "output_tokens": 0,
              "token_reported_runs": 0, "model_calls": 0, "tool_calls": 0,
-             "wall_ms": 0.0},
+             "wall_ms": 0.0}
         )
-        bucket["runs"] += 1
-        bucket["successes"] += int(row.outcome.success)
-        bucket["input_tokens"] += row.tokens.input_tokens
-        bucket["output_tokens"] += row.tokens.output_tokens
-        bucket["token_reported_runs"] += int(
-            bool(row.tokens.input_tokens or row.tokens.output_tokens)
-        )
-        bucket["model_calls"] += row.behavior.model_calls
-        bucket["tool_calls"] += row.behavior.tool_calls
-        bucket["wall_ms"] += row.timings.task_wall_ms
-    for bucket in by_harness.values():
+        for key in (row.identity.agent, f"{row.identity.agent} / {route_id}"):
+            target = by_harness if key == row.identity.agent else by_harness_route
+            bucket = target.setdefault(key, dict(values))
+            bucket["runs"] += 1
+            bucket["successes"] += int(row.outcome.success)
+            bucket["input_tokens"] += row.tokens.input_tokens
+            bucket["output_tokens"] += row.tokens.output_tokens
+            bucket["token_reported_runs"] += int(
+                bool(row.tokens.input_tokens or row.tokens.output_tokens)
+            )
+            bucket["model_calls"] += row.behavior.model_calls
+            bucket["tool_calls"] += row.behavior.tool_calls
+            bucket["wall_ms"] += row.timings.task_wall_ms
+    for bucket in (*by_harness.values(), *by_harness_route.values()):
         runs = int(bucket["runs"])
         bucket["success_rate"] = bucket["successes"] / runs if runs else 0.0
     successes = sum(row.outcome.success for row in rows)
@@ -448,8 +813,51 @@ def _summarize(rows: list[Any]) -> dict[str, Any]:
         ),
         "input_tokens": sum(row.tokens.input_tokens for row in rows),
         "output_tokens": sum(row.tokens.output_tokens for row in rows),
-        "by_harness": by_harness,
+        "by_harness": by_harness, "by_harness_route": by_harness_route,
     }
+
+
+def _paired_route_comparisons(rows: list[Any]) -> list[dict[str, Any]]:
+    """Compare only exact direct/gateway pairs from one declared route group."""
+
+    grouped: dict[tuple[str, str, str, str, int], dict[str, Any]] = {}
+    for row in rows:
+        group = row.metadata.get("comparison_group")
+        if not group:
+            continue
+        key = (
+            row.identity.agent, row.identity.model, str(group),
+            row.identity.task_id, row.identity.repeat,
+        )
+        grouped.setdefault(key, {})[row.identity.connection] = row
+    buckets: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for (agent, model, group, _task, _repeat), pair in grouped.items():
+        if set(pair) != {"direct", "gateway"}:
+            continue
+        direct, gateway = pair["direct"], pair["gateway"]
+        if direct.metadata.get("engine_target_id") != gateway.metadata.get("engine_target_id"):
+            continue
+        key = (agent, model, group)
+        bucket = buckets.setdefault(key, {
+            "agent": agent, "model": model, "comparison_group": group,
+            "pairs": 0, "outcome_matches": 0, "direct_successes": 0,
+            "gateway_successes": 0, "regressions": 0, "recoveries": 0,
+            "direct_input_tokens": 0, "gateway_input_tokens": 0,
+            "direct_wall_ms": 0.0, "gateway_wall_ms": 0.0,
+        })
+        direct_ok = bool(direct.outcome.success)
+        gateway_ok = bool(gateway.outcome.success)
+        bucket["pairs"] += 1
+        bucket["outcome_matches"] += int(direct_ok == gateway_ok)
+        bucket["direct_successes"] += int(direct_ok)
+        bucket["gateway_successes"] += int(gateway_ok)
+        bucket["regressions"] += int(direct_ok and not gateway_ok)
+        bucket["recoveries"] += int(gateway_ok and not direct_ok)
+        bucket["direct_input_tokens"] += direct.tokens.input_tokens
+        bucket["gateway_input_tokens"] += gateway.tokens.input_tokens
+        bucket["direct_wall_ms"] += direct.timings.task_wall_ms
+        bucket["gateway_wall_ms"] += gateway.timings.task_wall_ms
+    return [buckets[key] for key in sorted(buckets)]
 
 
 def _admission_gate(config: HarnessMatrixConfig, rows: list[Any]) -> dict[str, Any]:

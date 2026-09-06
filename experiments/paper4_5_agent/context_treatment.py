@@ -29,6 +29,8 @@ class ContextTreatment(str, Enum):
     PASSTHROUGH = "gateway-passthrough"
     TRUNCATION = "truncation"
     PRA_SELECTED_CONTEXT = "gateway-pra"
+    DIRECT_NATIVE_PRA = "direct-native-pra"
+    GATEWAY_NATIVE_PRA = "gateway-native-pra"
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,10 @@ def transform_chat_payload(
             for segment_id, text in selected_texts
         ]
         envelope = dict(transformed.get("pra") or {})
+        native_requested = mode in {
+            ContextTreatment.DIRECT_NATIVE_PRA,
+            ContextTreatment.GATEWAY_NATIVE_PRA,
+        }
         envelope.update({
             "tenant_id": "paper4-5-swebench",
             "session_id": session_id,
@@ -119,10 +125,14 @@ def transform_chat_payload(
                 "max_resources": max(1, len(resources)),
                 "max_selected_tokens": max(1, available_tokens),
             },
-            "allow_text_fallback": True,
+            "allow_text_fallback": not native_requested,
+            "required_capabilities": ["logical_refs", "native_kv"] if native_requested else [],
             "pra_policy": {"profile": "swebench-balanced-v1"},
             "metadata": {
-                "requested_mode": "selected-context",
+                "requested_mode": "native-memory" if native_requested else "selected-context",
+                "connection": (
+                    "direct" if mode is ContextTreatment.DIRECT_NATIVE_PRA else "gateway"
+                ),
                 "benchmark_fairness": "agent-visible-messages-only",
             },
         })
