@@ -118,7 +118,7 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
                 "official_score": _mean(values, "official_multihop_rag_score"),
                 "exact_match": _mean(values, "exact_match"),
                 "gold_answer_mean_nll": _mean(values, "gold_answer_mean_nll"),
-                "first_step_js_vs_packed": _mean(
+                "first_step_js_vs_reference": _mean(
                     values, "first_step_js_divergence"
                 ),
                 "selected_logical_edge_fraction": _mean(
@@ -183,7 +183,8 @@ def _condition_row(
     memory: object,
     encode_ms: float,
     selection_receipt_id: str,
-    packed_logits: object | None,
+    reference_logits: object | None,
+    reference_condition: str,
     plan: object | None = None,
     execution: tuple[str, dict[str, object], object | None] | None = None,
 ) -> dict[str, object]:
@@ -195,14 +196,15 @@ def _condition_row(
             "first_step_js_divergence": 0.0,
             "first_step_kl_reference_to_condition": 0.0,
         }
-        if packed_logits is None
-        else _distribution_diagnostics(packed_logits, logits)
+        if reference_logits is None
+        else _distribution_diagnostics(reference_logits, logits)
     )
     row: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "example_id": getattr(question, "example_id"),
         "condition": condition,
         "selection_receipt_id": selection_receipt_id,
+        "distribution_reference_condition": reference_condition,
         "prediction": prediction,
         "encode_ms": encode_ms,
         **metrics,
@@ -458,14 +460,17 @@ def main() -> None:
 
         packed_execution = _execute(backend, question, packed)
         packed_logits = packed_execution[2]
+        instrumented_execution = _execute(backend, question, instrumented)
+        explicit_teacher_logits = instrumented_execution[2]
         packed_row = _condition_row(
-            condition="PACKED_RAG",
+            condition="PACKED_RAG_HOST",
             question=question,
             backend=backend,
             memory=packed,
             encode_ms=packed_ms,
             selection_receipt_id=selection.receipt_id,
-            packed_logits=None,
+            reference_logits=None,
+            reference_condition="SELF",
             execution=packed_execution,
         )
         rows.append(packed_row)
@@ -477,7 +482,9 @@ def main() -> None:
                 memory=instrumented,
                 encode_ms=instrumented_ms,
                 selection_receipt_id=selection.receipt_id,
-                packed_logits=packed_logits,
+                reference_logits=packed_logits,
+                reference_condition="PACKED_RAG_HOST",
+                execution=instrumented_execution,
             )
         )
         rows.append(
@@ -488,7 +495,8 @@ def main() -> None:
                 memory=blocked,
                 encode_ms=blocked_ms,
                 selection_receipt_id=selection.receipt_id,
-                packed_logits=packed_logits,
+                reference_logits=explicit_teacher_logits,
+                reference_condition="PACKED_RAG_INSTRUMENTED",
             )
         )
         rows.append(
@@ -499,10 +507,12 @@ def main() -> None:
                 memory=independent,
                 encode_ms=independent_ms,
                 selection_receipt_id=selection.receipt_id,
-                packed_logits=packed_logits,
+                reference_logits=packed_logits,
+                reference_condition="PACKED_RAG_HOST",
             )
         )
 
+        full_oracle_diagnostic: dict[str, object] | None = None
         for percentage in args.edge_percentages:
             plan = top_attention_edge_plan(graph, percentage / 100.0)
             encode_started = time.perf_counter()
@@ -519,6 +529,10 @@ def main() -> None:
                 ),
             )
             encode_ms = (time.perf_counter() - encode_started) * 1000.0
+            if percentage == 100.0:
+                full_oracle_diagnostic = native_memory_diagnostics(
+                    instrumented, memory
+                )
             rows.append(
                 _condition_row(
                     condition="ORACLE_TOP_ATTENTION",
@@ -527,7 +541,8 @@ def main() -> None:
                     memory=memory,
                     encode_ms=encode_ms,
                     selection_receipt_id=selection.receipt_id,
-                    packed_logits=packed_logits,
+                    reference_logits=explicit_teacher_logits,
+                    reference_condition="PACKED_RAG_INSTRUMENTED",
                     plan=plan,
                 )
             )
@@ -555,7 +570,8 @@ def main() -> None:
                     memory=memory,
                     encode_ms=encode_ms,
                     selection_receipt_id=selection.receipt_id,
-                    packed_logits=packed_logits,
+                    reference_logits=explicit_teacher_logits,
+                    reference_condition="PACKED_RAG_INSTRUMENTED",
                     plan=plan,
                 )
             )
@@ -582,6 +598,12 @@ def main() -> None:
                 "instrumented_host_parity": (
                     float(host_diagnostic["max_key_abs_delta"]) < 1e-5
                     and float(host_diagnostic["max_value_abs_delta"]) < 1e-5
+                ),
+                "full_oracle_vs_instrumented_diagnostic": full_oracle_diagnostic,
+                "full_oracle_replay_parity": bool(
+                    full_oracle_diagnostic
+                    and float(full_oracle_diagnostic["max_key_abs_delta"]) < 1e-5
+                    and float(full_oracle_diagnostic["max_value_abs_delta"]) < 1e-5
                 ),
             }
         )
