@@ -122,7 +122,7 @@ def test_easy_selection_is_deterministic_and_outcome_blind() -> None:
 def test_campaign_children_use_scheduler_interpreter() -> None:
     environment = _campaign_environment({"PRA_TEST_VALUE": "present"})
     selected = Path(environment["PATH"].split(os.pathsep)[0]).resolve()
-    assert selected == Path(sys.executable).parent.resolve()
+    assert selected == Path(sys.executable).absolute().parent.resolve()
     assert environment["PRA_TEST_VALUE"] == "present"
 
 

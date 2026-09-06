@@ -160,7 +160,10 @@ def _campaign_environment(overrides: dict[str, str]) -> dict[str, str]:
 
     environment = os.environ.copy()
     environment.update({key: os.path.expandvars(value) for key, value in overrides.items()})
-    interpreter_directory = str(Path(sys.executable).resolve().parent)
+    # Do not resolve the executable symlink: POSIX virtualenv ``python`` often
+    # points into /usr/bin, while its containing directory is what activates
+    # the environment for child commands.
+    interpreter_directory = str(Path(sys.executable).absolute().parent)
     environment["PATH"] = os.pathsep.join(
         (interpreter_directory, environment.get("PATH", ""))
     ).rstrip(os.pathsep)
