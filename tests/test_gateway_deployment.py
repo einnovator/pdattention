@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 import urllib.request
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -146,6 +147,28 @@ def test_openai_adapter_does_not_invent_a_decode_limit() -> None:
 
     assert "max_tokens" not in adapter._payload(_request())
     assert adapter._payload(_request(max_new_tokens=7))["max_tokens"] == 7
+
+
+def test_g00_openai_round_trip_preserves_generation_options() -> None:
+    payload = {
+        "model": "offline/model",
+        "messages": [{"role": "user", "content": "question"}],
+        "temperature": 0,
+        "top_p": 0.85,
+        "stop": ["</command>"],
+        "seed": 37,
+        "response_format": {"type": "json_object"},
+        "tool_choice": "none",
+        "parallel_tool_calls": False,
+        "max_tokens": 321,
+    }
+
+    request = PRAWireRequest.from_openai(payload)
+    forwarded = OpenAICompatibleEngineAdapter("http://engine")._payload(request)
+
+    assert forwarded == {**payload, "stream": False}
+    assert request.openai_fields["temperature"] == 0
+    assert "openai_fields" not in request.to_openai()["pra"]
 
 
 def test_openai_adapter_can_pin_backend_model_for_provider_prefixed_clients() -> None:
@@ -303,6 +326,106 @@ def test_openai_envelope_and_http_health_boundary():
         assert completion["pra"]["native_kv"] is False
         assert completion["pra"]["trace_id"]
         assert completion["pra_trace"][0]["correlation_id"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_g00_http_response_preserves_upstream_completion_fields() -> None:
+    class RawCompletionAdapter(RecordingAdapter):
+        def generate(self, request):
+            self.requests.append(request)
+            return PRAEngineResult(
+                "answer",
+                {
+                    "id": "upstream-17",
+                    "object": "chat.completion",
+                    "model": "served/model",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "answer",
+                                "tool_calls": None,
+                            },
+                            "finish_reason": "length",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 20,
+                        "total_tokens": 120,
+                    },
+                },
+            )
+
+    adapter = RawCompletionAdapter()
+    server = create_gateway_server(
+        PRAGateway(adapter, mode="G00"), host="127.0.0.1", port=0
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "offline/model",
+                "messages": [{"role": "user", "content": "question"}],
+                "temperature": 0,
+                "stop": ["DONE"],
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            completion = json.loads(response.read())
+
+        assert adapter.requests[0].openai_fields == {
+            "temperature": 0,
+            "stop": ["DONE"],
+        }
+        assert completion["id"] == "upstream-17"
+        assert completion["model"] == "served/model"
+        assert completion["choices"][0]["finish_reason"] == "length"
+        assert completion["usage"]["total_tokens"] == 120
+        assert completion["pra"]["native_kv"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_gateway_returns_json_when_upstream_connection_fails() -> None:
+    class FailingAdapter(RecordingAdapter):
+        def generate(self, request):
+            raise urllib.error.URLError("backend unavailable")
+
+    server = create_gateway_server(
+        PRAGateway(FailingAdapter(), mode="G00"), host="127.0.0.1", port=0
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/v1/chat/completions",
+            data=json.dumps(
+                {
+                    "model": "offline/model",
+                    "messages": [{"role": "user", "content": "question"}],
+                }
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=5)
+        assert caught.value.code == 502
+        body = json.loads(caught.value.read())
+        assert body["error"] == "upstream_connection_error"
+        assert "backend unavailable" in body["message"]
     finally:
         server.shutdown()
         server.server_close()

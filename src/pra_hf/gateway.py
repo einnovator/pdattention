@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import socket
 import time
+import urllib.error
 from dataclasses import replace
 from enum import Enum
 from http.server import BaseHTTPRequestHandler
@@ -819,6 +821,48 @@ def _handler(gateway: PRAGateway):
             self.end_headers()
             self.wfile.write(encoded)
 
+        def _chat_completion(
+            self, request: PRAWireRequest, result: PRAEngineResult
+        ) -> dict[str, Any]:
+            """Preserve the upstream envelope and append PRA diagnostics."""
+
+            protocol_trace = next(
+                (
+                    row
+                    for row in result.trace
+                    if row.get("stage") == "protocol_translation"
+                ),
+                {},
+            )
+            raw = dict(result.raw)
+            if isinstance(raw.get("choices"), list):
+                response = raw
+            else:
+                response = {
+                    "id": request.request_id,
+                    "object": "chat.completion",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": result.text,
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+            response["pra"] = {
+                "selected_resource_ids": protocol_trace.get(
+                    "selected_resource_ids", []
+                ),
+                "materialized_tokens": result.raw.get("materialized_tokens", 0),
+                "native_kv": protocol_trace.get("native_kv", False),
+                "trace_id": request.correlation_id,
+            }
+            response["pra_trace"] = list(result.trace)
+            return response
+
         def _sse(self, rows: Iterator[Mapping[str, Any]]) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -1157,34 +1201,7 @@ def _handler(gateway: PRAGateway):
                         self._sse(gateway.stream(request))
                     else:
                         result = gateway.generate(request, trace_headers=dict(self.headers.items()))
-                        protocol_trace = next(
-                            (
-                                row for row in result.trace
-                                if row.get("stage") == "protocol_translation"
-                            ),
-                            {},
-                        )
-                        self._json(
-                            200,
-                            {
-                                "id": request.request_id,
-                                "object": "chat.completion",
-                                "choices": [
-                                    {"index": 0, "message": {"role": "assistant", "content": result.text}}
-                                ],
-                                "pra": {
-                                    "selected_resource_ids": protocol_trace.get(
-                                        "selected_resource_ids", []
-                                    ),
-                                    "materialized_tokens": result.raw.get(
-                                        "materialized_tokens", 0
-                                    ),
-                                    "native_kv": protocol_trace.get("native_kv", False),
-                                    "trace_id": request.correlation_id,
-                                },
-                                "pra_trace": list(result.trace),
-                            },
-                        )
+                        self._json(200, self._chat_completion(request, result))
                 elif self.path == "/v1/responses":
                     request = _request_from_responses(payload)
                     if bool(payload.get("stream", False)):
@@ -1206,6 +1223,29 @@ def _handler(gateway: PRAGateway):
                     self._json(404, {"error": "not_found"})
             except (ValueError, TypeError, PermissionError, PRACapabilityError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
+            except urllib.error.HTTPError as error:
+                try:
+                    upstream = json.loads(error.read().decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    upstream = {"message": str(error)}
+                self._json(
+                    error.code,
+                    {
+                        "error": "upstream_http_error",
+                        "status": error.code,
+                        "upstream": upstream,
+                    },
+                )
+            except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+                self._json(
+                    502,
+                    {"error": "upstream_connection_error", "message": str(error)},
+                )
+            except Exception as error:  # keep the HTTP boundary well formed
+                self._json(
+                    500,
+                    {"error": "gateway_internal_error", "message": str(error)},
+                )
 
         def log_message(self, format: str, *args) -> None:
             return None

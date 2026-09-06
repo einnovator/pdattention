@@ -64,6 +64,13 @@ def gateway_cli() -> None:
     show_default=True,
 )
 @click.option("--backend-url")
+@click.option(
+    "--backend-timeout",
+    type=click.FloatRange(min=1.0),
+    default=120.0,
+    show_default=True,
+    help="Maximum seconds for one upstream generation request.",
+)
 @click.option("--model")
 @click.option("-a", "--pra-bundle", default="auto", show_default=True)
 @click.option("-p", "--profile", default="balanced", show_default=True)
@@ -110,7 +117,7 @@ def gateway_cli() -> None:
 @click.option("--registry-instance-name", help="Human-readable managed gateway name.")
 @click.option("--registry-required", is_flag=True, help="Fail startup when initial registration fails.")
 def gateway_serve(
-    config_path, host, port, mode, backend, backend_url, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
+    config_path, host, port, mode, backend, backend_url, backend_timeout, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir, observability, otel, otel_endpoint,
     prometheus, prometheus_port,
@@ -173,6 +180,7 @@ def gateway_serve(
         engine_type = EngineType.OPENAI_GENERIC if backend == "openai" else EngineType(backend)
         adapter = OpenAICompatibleEngineAdapter(
             backend_url,
+            timeout_seconds=backend_timeout,
             name=backend,
             engine_type=engine_type,
             pra_level=pra_level,

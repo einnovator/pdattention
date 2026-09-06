@@ -186,6 +186,7 @@ class PRAWireRequest:
     prefix_cache_handle: str | None = None
     cache_affinity_key: str | None = None
     max_new_tokens: int | None = None
+    openai_fields: Mapping[str, Any] = field(default_factory=dict)
     engine_hints: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -202,6 +203,7 @@ class PRAWireRequest:
                 )
         object.__setattr__(self, "history_mode", HistoryMode(self.history_mode))
         object.__setattr__(self, "tools", tuple(dict(tool) for tool in self.tools))
+        object.__setattr__(self, "openai_fields", dict(self.openai_fields))
         if self.protocol_version.split(".", 1)[0] != "1":
             raise ValueError(
                 f"Unsupported PRA protocol major version: {self.protocol_version}"
@@ -247,9 +249,18 @@ class PRAWireRequest:
 
     @classmethod
     def from_openai(cls, value: Mapping[str, Any]) -> "PRAWireRequest":
-        """Read the stable subset plus an optional ``pra`` extension envelope."""
+        """Read an OpenAI request without losing ordinary generation options.
+
+        PRA normalizes fields that affect its own mediation. All remaining
+        OpenAI-compatible fields are carried opaquely to the engine adapter so
+        a G00 gateway remains semantically equivalent to a direct request.
+        """
 
         envelope = dict(value.get("pra", {}))
+        reserved = {"model", "messages", "tools", "pra", "id"}
+        envelope["openai_fields"] = {
+            key: item for key, item in value.items() if key not in reserved
+        }
         envelope.update(
             {
                 "model": value.get("model"),
@@ -270,13 +281,16 @@ class PRAWireRequest:
         envelope.pop("model", None)
         envelope.pop("messages", None)
         tools = envelope.pop("tools", None)
+        openai_fields = envelope.pop("openai_fields", {})
         payload = {
+            **openai_fields,
             "model": self.model,
             "messages": list(self.messages),
             "stream": bool(stream),
-            "max_tokens": self.resolved_max_new_tokens,
             "pra": envelope,
         }
+        if self.max_new_tokens is not None or "max_new_tokens" in self.engine_hints:
+            payload["max_tokens"] = self.resolved_max_new_tokens
         if tools:
             payload["tools"] = list(tools)
         return payload
@@ -405,6 +419,7 @@ class OpenAICompatibleEngineAdapter:
         """Build an ordinary OpenAI request plus a typed PRA envelope at E1+."""
 
         payload: dict[str, Any] = {
+            **request.openai_fields,
             "model": self.model_override or request.model,
             "messages": list(request.messages),
             "stream": stream,
@@ -412,7 +427,9 @@ class OpenAICompatibleEngineAdapter:
         if request.max_new_tokens is not None or "max_new_tokens" in request.engine_hints:
             payload["max_tokens"] = request.resolved_max_new_tokens
         if stream:
-            payload["stream_options"] = {"include_usage": True}
+            stream_options = dict(payload.get("stream_options", {}))
+            stream_options.setdefault("include_usage", True)
+            payload["stream_options"] = stream_options
         if request.tools:
             payload["tools"] = list(request.tools)
         if self.capabilities().logical_refs:
@@ -420,6 +437,7 @@ class OpenAICompatibleEngineAdapter:
             envelope.pop("model", None)
             envelope.pop("messages", None)
             envelope.pop("tools", None)
+            envelope.pop("openai_fields", None)
             payload["pra"] = envelope
         return payload
 
