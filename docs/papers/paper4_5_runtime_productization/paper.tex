@@ -3003,6 +3003,31 @@ official score, verifier counts, turns, tool calls, cumulative context, TTFT
 and ITL distributions, decode output tokens/s, model-call requests/s, queue and
 inference time, resource use, and cost for that subsequent paired analysis.
 
+\paragraph{Difficulty-qualified local admission.}
+We next froze an easier cohort before inference by filtering SWE-bench Verified
+revision \texttt{c104f84} to its \texttt{<15 min fix} human-difficulty label,
+ordering eligible identifiers by a salted SHA-256 digest, and taking the first
+20. The ordered cohort digest is \texttt{021b532a...3bd75fb}. This is a local
+capability calibration, not a claim of reproducing the H100 study below.
+Qwen3-Coder-30B Q4\_K\_M, served by Ollama 0.32.7 on an M4 Pro, used the
+unmodified mini-swe-agent 2.4.6 backticks scaffold, a 32,768-token context,
+50 steps, temperature zero, and the official SWE-bench 4.1.0 Docker grader.
+The model resolved 9/20 tasks, or 45.0\% (Wilson 95\% interval
+25.8--65.8\%). This falls inside the preregistered 30--70\% preferred band and
+therefore admits the nested Easy-50 treatment frontier.
+
+The 20 trajectories made 525 model/tool turns and accumulated 4,286,673 prompt
+tokens and 84,145 completion tokens. Summing each task's maximum prompt gives
+226,423 tokens; the remaining 4,060,250 tokens are a conservative 94.7\%
+repeated-context estimate under the accumulating scaffold. Four submissions
+had empty patches, two had patches rejected by the official grader, and two
+reached the step limit. These failures remain in the denominator. This baseline
+is already a materially stronger test than the floor-regime Terminal-Bench
+cells: the agent is competent, while repeated context is large enough for
+selection to matter. No PRA quality or savings conclusion is drawn from the
+admission row alone; those require the identical Easy-50 tasks under
+pass-through, matched truncation, and PRA Selected Context.
+
 We therefore preregistered a stronger controlled SWE-bench campaign from an
 independent local-model study~\cite{av2026localcoding}. The checked-in benchmark
 card preserves its ordered seed-0 cohort of 50 SWE-bench Verified instances at
@@ -3051,10 +3076,12 @@ treatment evidence while the baseline gate is closed.
 \centering
 \small
 \caption{Canonical coding-agent admission evidence. Qwen treatment conditions
-were withheld because their No-PRA cohorts remained below the configured
-quality floor. The nonzero FIM-7B smoke remains withheld because its engine,
-precision, cohort, and context differ from the published baseline. Deltas
-remain blocked rather than being computed across inadmissible cells.}
+were withheld when their No-PRA cohorts remained below the configured quality
+floor. Easy-20 is the first admitted local baseline; its treatments use the
+nested Easy-50 cohort and are reported separately. The nonzero FIM-7B smoke
+remains withheld because its engine, precision, cohort, and context differ from
+the published baseline. Deltas remain blocked rather than being computed across
+inadmissible cells.}
 \begin{tabular}{llrrr}
 \toprule
 Cohort & Metric & No PRA & Selected Context & Selected + bundle \\
@@ -3067,6 +3094,8 @@ Qwen3-Coder-30B, one task & Verifier checks & 4/6 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, 30 trials & Official success & 2/30 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, 30 trials & Unique tasks solved & 1/10 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, 30 trials & Input tokens$^{\dagger}$ & 6.72M & BLOCKED & BLOCKED \\
+Qwen3-Coder-30B, Easy-20 & Official success & 9/20 & ADMITTED & ADMITTED \\
+Qwen3-Coder-30B, Easy-20 & Input tokens & 4.29M & ADMITTED & ADMITTED \\
 FIM-7B Q4, two tasks & Official success & 1/2 attempted & BLOCKED & BLOCKED \\
 \bottomrule
 \end{tabular}
