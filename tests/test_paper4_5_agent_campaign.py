@@ -245,6 +245,24 @@ def test_context_demand_buckets_are_contiguous_tertiles() -> None:
     assert _bucket_effects(rows, "baseline_trajectory_length") == [-1.0, 0.0, 1.0]
 
 
+def test_selected_context_trace_has_stable_resource_digest() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "assistant", "content": "alpha beta gamma"},
+            {"role": "user", "content": "find alpha"},
+        ]
+    }
+    _, first = transform_chat_payload(
+        payload, mode=ContextTreatment.PRA_SELECTED_CONTEXT, budget_fraction=0.75,
+    )
+    _, second = transform_chat_payload(
+        payload, mode=ContextTreatment.PRA_SELECTED_CONTEXT, budget_fraction=0.75,
+    )
+    assert first.selected_resource_digest
+    assert first.selected_resource_digest == second.selected_resource_digest
+
+
 def test_frontier_reports_matched_pra_vs_truncation_delta(tmp_path: Path) -> None:
     for condition, mode, resolved, tokens in (
         ("truncation_50", "truncation", False, 50),

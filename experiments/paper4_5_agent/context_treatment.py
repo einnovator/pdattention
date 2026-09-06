@@ -49,6 +49,7 @@ class TreatmentTrace:
     token_saving_fraction_estimate: float
     candidate_segments: int
     selected_segments: int
+    selected_resource_digest: str | None
     route_time_s: float
     token_estimator: str = "whitespace_v1"
 
@@ -77,7 +78,7 @@ def transform_chat_payload(
     if mode is ContextTreatment.PASSTHROUGH:
         return transformed, _trace(
             request_index, session_id, mode, budget_fraction, logical_tokens, logical_tokens,
-            0, logical_tokens, 0, 0, 0.0,
+            0, logical_tokens, 0, 0, None, 0.0,
         )
 
     mandatory_indices = _mandatory_indices(messages)
@@ -93,6 +94,9 @@ def transform_chat_payload(
         transformed["messages"] = [row for _, row in sorted(keep, key=lambda item: item[0])]
         candidate_segments = len(candidate_indices)
         selected_segments = len(selected)
+        selected_digest = _selection_digest(
+            (f"m{index}", str(row.get("content", ""))) for index, row in selected
+        )
     else:
         query = str(messages[max(mandatory_indices)].get("content", ""))
         segments = _segments(messages, candidate_indices, segment_tokens)
@@ -139,11 +143,12 @@ def transform_chat_payload(
         transformed["pra"] = envelope
         candidate_segments = len(segments)
         selected_segments = len(selected_texts)
+        selected_digest = _selection_digest(selected_texts)
     physical_tokens = mandatory_tokens + selected_tokens
     return transformed, _trace(
         request_index, session_id, mode, budget_fraction, logical_tokens, mandatory_tokens,
         selected_tokens, physical_tokens, candidate_segments, selected_segments,
-        time.perf_counter() - started,
+        selected_digest, time.perf_counter() - started,
     )
 
 
@@ -240,14 +245,29 @@ def _select_segments(
 def _trace(
     request_index: int, session_id: str, mode: ContextTreatment, budget_fraction: float,
     logical: int, mandatory: int, selected: int, physical: int,
-    candidates: int, selected_segments: int, route_time_s: float,
+    candidates: int, selected_segments: int, selected_resource_digest: str | None,
+    route_time_s: float,
 ) -> TreatmentTrace:
     avoided = max(0, logical - physical)
     return TreatmentTrace(
         request_index, session_id, mode.value, budget_fraction, logical, mandatory, selected,
         physical, avoided, avoided / logical if logical else 0.0,
-        candidates, selected_segments, route_time_s,
+        candidates, selected_segments, selected_resource_digest, route_time_s,
     )
+
+
+def _selection_digest(rows: Sequence[tuple[str, str]]) -> str:
+    """Fingerprint ordered selected records without retaining their content in metadata."""
+
+    material = [
+        {
+            "resource_id": resource_id,
+            "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        }
+        for resource_id, text in rows
+    ]
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _words(value: Any) -> list[str]:
