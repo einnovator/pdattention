@@ -59,6 +59,8 @@ def summarize(root: Path) -> dict[str, Any]:
             "wall_time_s": _sum_present(rows, "wall_time_s"),
             "grader_time_s": _sum_present(rows, "grader_time_s"),
             "invalid_patches": sum(row.get("invalid_patch") is True for row in rows),
+            "empty_patches": sum(row.get("empty_patch") is True for row in rows),
+            "timeouts": sum(row.get("timed_out") is True for row in rows),
             "errors": sum(row.get("error_type") is not None for row in rows),
             "token_saving_fraction": (
                 1 - physical / logical if physical is not None and logical else None
@@ -149,8 +151,8 @@ def write_analysis(root: Path) -> dict[str, Any]:
     lines = [
         "# Easy coding-agent frontier", "",
         "All treatment rows use the frozen Easy-50 task identities and the admitted No-PRA baseline.", "",
-        "| Condition | Resolved | Success | Wilson 95% | Physical input | Cumulative prompt | Wall (s) | Invalid patches |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Condition | Resolved | Success | Wilson 95% | Physical input | Cumulative prompt | Wall (s) | Empty | Invalid | Timeouts |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in analysis["conditions"]:
         interval = row["wilson_95"]
@@ -159,7 +161,8 @@ def write_analysis(root: Path) -> dict[str, Any]:
             f"{row['success']:.1%} | {interval[0]:.1%}--{interval[1]:.1%} | "
             f"{_display(row['physical_input_tokens'])} | "
             f"{_display(row['cumulative_prompt_tokens'])} | "
-            f"{_display(row['wall_time_s'])} | {row['invalid_patches']} |"
+            f"{_display(row['wall_time_s'])} | {row['empty_patches']} | "
+            f"{row['invalid_patches']} | {row['timeouts']} |"
         )
     lines.extend(["", "## Paired outcomes", "", "| Condition | Retained | Regressed | Recovered | Unchanged failure |", "| --- | ---: | ---: | ---: | ---: |"])
     for condition in sorted({row["condition"] for row in analysis["paired"]}):
