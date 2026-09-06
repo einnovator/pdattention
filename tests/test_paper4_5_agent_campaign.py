@@ -74,6 +74,7 @@ from experiments.paper4_5_agent.schema import (
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
+    _chunk_receipt_reusable,
     _cleanup_owned_containers,
     _execute_chunks,
     _grader_error_type,
@@ -98,6 +99,10 @@ FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed5
 EASY20 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json"
 EASY50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json"
 LITE50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_lite50.json"
+EASY20_RESULT = ROOT / (
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/"
+    "swebench_verified_easy20/no_pra/official_result.json"
+)
 
 
 def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:
@@ -275,6 +280,17 @@ def test_easy20_campaign_is_local_no_pra_calibration() -> None:
     assert "--local-calibration" in campaign.cells[0].command
 
 
+def test_easy20_official_receipt_records_admitted_nontrivial_baseline() -> None:
+    result = OfficialResult.load(EASY20_RESULT)
+    assert result.official_grader is True
+    assert (result.resolved, result.total, result.score) == (9, 20, 0.45)
+    review = review_result(
+        CampaignConfig.load(EASY20_CONFIG).baselines[0], result,
+        absolute_tolerance=0, require_exact_cohort=True,
+    )
+    assert review.status == ReproductionStatus.BASELINE_REPRODUCED
+
+
 @pytest.mark.parametrize(
     ("score", "band"),
     [(0.09, "FLOOR"), (0.15, "MARGINAL"), (0.25, "USEFUL"),
@@ -296,6 +312,7 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert len(campaign.cells) == 10
     baseline, *treatments = campaign.cells
     assert baseline.cell_id == "easy50-no-pra"
+    assert baseline.evidence_role == "baseline_admission"
     assert all(cell.baseline_cell == baseline.cell_id for cell in treatments)
     assert all(cell.minimum_baseline_score == 0.2 for cell in treatments)
     truncation = {
@@ -326,6 +343,14 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert gateway.gateway_pra_enabled is True
     assert gateway.paired_cell == direct.cell_id
     assert gateway.comparison_group == direct.comparison_group == "native-pra-50"
+    assert direct.evidence_role == "efficacy"
+    assert gateway.evidence_role == "product_end_to_end"
+    assert direct.selection_contract == gateway.selection_contract == "route_owned"
+    priorities = {cell.cell_id: cell.priority for cell in campaign.cells}
+    assert priorities["easy50-gateway-passthrough"] < priorities[direct.cell_id]
+    assert priorities[direct.cell_id] < priorities[gateway.cell_id]
+    assert priorities[gateway.cell_id] < priorities["easy50-truncation-50"]
+    assert priorities["easy50-truncation-50"] < priorities["easy50-pra-selected-50"]
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
@@ -489,6 +514,19 @@ def test_swebench_completed_chunks_reach_final_aggregation(
     assert result["resolved"] == 1
     assert result["timeouts"] == 0
     assert result["configuration_differences"] == []
+
+
+def test_treatment_resume_rejects_legacy_or_mismatched_chunk_receipts() -> None:
+    treatment = SimpleNamespace(mode="gateway-passthrough")
+    receipt = {"execution_fingerprint": "current"}
+    assert not _chunk_receipt_reusable(treatment, {}, receipt)
+    assert not _chunk_receipt_reusable(
+        treatment, {"execution_fingerprint": "old"}, receipt,
+    )
+    assert _chunk_receipt_reusable(
+        treatment, {"execution_fingerprint": "current"}, receipt,
+    )
+    assert _chunk_receipt_reusable(SimpleNamespace(mode="no-pra"), {}, receipt)
 
 
 def test_timed_out_agent_becomes_an_empty_official_prediction(tmp_path: Path) -> None:
@@ -1120,6 +1158,7 @@ def test_pra_transport_matrix_pairs_direct_and_gateway_to_one_engine() -> None:
     cells = matrix_cells(config, manifest)
 
     assert config.matrix_kind == "pra_transport"
+    assert config.evidence_role == "transport_qualification"
     assert len(cells) == 40
     first_direct, first_gateway = cells[:2]
     assert first_direct[5].connection == "direct"

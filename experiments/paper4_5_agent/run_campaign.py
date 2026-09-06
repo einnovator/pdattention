@@ -36,7 +36,12 @@ def run_campaign(
     cells = state.setdefault("cells", {})
     deadline = time.monotonic() + max_hours * 3600
 
-    for cell in config.cells:
+    stage_order = {"A": 0, "B": 1, "C": 2, "D": 3}
+    scheduled_cells = sorted(
+        enumerate(config.cells),
+        key=lambda item: (stage_order[item[1].stage], item[1].priority, item[0]),
+    )
+    for _declared_index, cell in scheduled_cells:
         record = cells.setdefault(cell.cell_id, {"state": "PENDING"})
         if record.get("state") == "COMPLETED":
             continue
@@ -61,7 +66,12 @@ def run_campaign(
                 gateway_pra_enabled=cell.gateway_pra_enabled,
                 gateway_mode=cell.gateway_mode, comparison_group=cell.comparison_group,
                 paired_cell=cell.paired_cell,
+                evidence_role=cell.evidence_role,
+                selection_contract=cell.selection_contract,
+                priority=cell.priority,
             )
+            record.pop("reason", None)
+            record.pop("error", None)
             _persist(config, state, root, state_path)
             continue
 
@@ -73,7 +83,12 @@ def run_campaign(
             gateway_pra_enabled=cell.gateway_pra_enabled,
             gateway_mode=cell.gateway_mode, comparison_group=cell.comparison_group,
             paired_cell=cell.paired_cell,
+            evidence_role=cell.evidence_role,
+            selection_contract=cell.selection_contract,
+            priority=cell.priority,
         )
+        record.pop("reason", None)
+        record.pop("error", None)
         _persist(config, state, root, state_path)
         workdir = (repository / cell.working_directory).resolve()
         environment = _campaign_environment(cell.environment)
@@ -100,6 +115,8 @@ def run_campaign(
                 review=review.model_dump(mode="json") if review else None,
                 reproduction_status=(review.status.value if review else None),
             )
+            record.pop("reason", None)
+            record.pop("error", None)
         except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
             record.update(state="FAILED", finished_at=_now(), error=str(exc))
         _persist(config, state, root, state_path)
@@ -141,6 +158,9 @@ def record_result(config_path: Path, *, cell_id: str, result_path: Path) -> dict
         "gateway_mode": cell.gateway_mode,
         "comparison_group": cell.comparison_group,
         "paired_cell": cell.paired_cell,
+        "evidence_role": cell.evidence_role,
+        "selection_contract": cell.selection_contract,
+        "priority": cell.priority,
     }
     _persist(config, state, root, state_path)
     return state

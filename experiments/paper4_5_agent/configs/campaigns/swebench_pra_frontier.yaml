@@ -50,6 +50,7 @@ cells:
     stage: A
     mode: native
     baseline_id: qwen3-coder-30b-fixed50
+    evidence_role: baseline_admission
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/qwen3_no_pra, --model, Qwen/Qwen3-Coder-30B-A3B-Instruct, --served-model, Qwen3-Coder-30B-A3B, --model-revision, b2cff646eb4bb1d68355c01b18ae02e7cf42d120, --tokenizer-revision, b2cff646eb4bb1d68355c01b18ae02e7cf42d120, --run-id, qwen3-coder-30b-no-pra]
     timeout_seconds: 64800
     result:
@@ -74,6 +75,7 @@ cells:
     stage: C
     mode: gateway_passthrough
     baseline_id: gemma4-31b-fixed50
+    evidence_role: transport_qualification
     baseline_cell: gemma4-31b-no-pra
     minimum_baseline_score: 0.20
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_gateway, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-gateway-passthrough, --mode, gateway-passthrough, --base-url, "http://127.0.0.1:8080/v1", --allow-partial-reproduction]
@@ -84,36 +86,42 @@ cells:
   - <<: *gemma_treatment
     cell_id: gemma4-truncation-50
     mode: truncation
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_50, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-truncation-50, --mode, truncation, --budget-fraction, "0.5", --base-url, "http://127.0.0.1:8000/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_50/official_result.json
   - <<: *gemma_treatment
     cell_id: gemma4-pra-50
     mode: gateway_pra
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_50, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-pra-50, --mode, gateway-pra, --budget-fraction, "0.5", --base-url, "http://127.0.0.1:8081/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_50/official_result.json
   - <<: *gemma_treatment
     cell_id: gemma4-truncation-25
     mode: truncation
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_25, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-truncation-25, --mode, truncation, --budget-fraction, "0.25", --base-url, "http://127.0.0.1:8000/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_25/official_result.json
   - <<: *gemma_treatment
     cell_id: gemma4-pra-25
     mode: gateway_pra
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_25, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-pra-25, --mode, gateway-pra, --budget-fraction, "0.25", --base-url, "http://127.0.0.1:8081/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_25/official_result.json
   - <<: *gemma_treatment
     cell_id: gemma4-truncation-12-5
     mode: truncation
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_12_5, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-truncation-12-5, --mode, truncation, --budget-fraction, "0.125", --base-url, "http://127.0.0.1:8000/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_truncation_12_5/official_result.json
   - <<: *gemma_treatment
     cell_id: gemma4-pra-12-5
     mode: gateway_pra
+    evidence_role: efficacy
     command: [python, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_12_5, --model, google/gemma-4-31B-it, --served-model, gemma-4-31B, --model-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --tokenizer-revision, 842da3794eaa0b77d5f08bae87a17459d91ff475, --run-id, gemma4-pra-12-5, --mode, gateway-pra, --budget-fraction, "0.125", --base-url, "http://127.0.0.1:8081/v1", --allow-partial-reproduction]
     result:
       path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_fixed50_campaign/gemma4_pra_12_5/official_result.json

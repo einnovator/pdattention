@@ -154,6 +154,13 @@ and the complete compressed Harbor artifact tree are under
 `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/`
 `qwen3_coder_30b_multi_harness_v3/`.
 
+The subsequent 40-cell native direct/G11 matrix is classified as
+`transport_qualification`, not primary efficacy evidence. Mini-SWE-agent and
+Qwen Code each enter it from a 1/10 floor and both solved only `fix-git`; one
+outcome change would therefore dominate a relative quality comparison. Use it
+to detect protocol, capability, native-envelope, isolation, accounting, and
+gateway regressions. The Easy-50 campaign below is the efficacy matrix.
+
 ## PRA engine versus PRA gateway plus engine
 
 Gateway placement and PRA execution are independent axes. The native comparison
@@ -170,6 +177,19 @@ an ordinary engine. It must not be substituted for either native route. The
 version-2 Harbor matrix rejects a native label unless the endpoint advertises
 effective `native_kv`, requires every direct task/repeat to finish before its
 gateway mate, and reports regressions and recoveries only for complete pairs.
+
+There are two distinct G11 questions. `G11-equivalence` replays a frozen PRA
+resource envelope and compares it with direct native execution; it is valid
+only when the receipts carry the same selected-resource digest.
+`G11-end-to-end` lets each placement run its normal routing and session path;
+it measures the product, but selection and transport effects are then jointly
+present. The Easy-50 native pair is explicitly `route_owned` and therefore the
+latter. It must not be described as frozen-selection transport equivalence.
+
+The Easy-50 scheduler uses explicit priorities: No PRA, corrected G00, direct
+native PRA at 50%, G11 end to end at 50%, matched 50% truncation, and G10 at
+50%. The 25% and 12.5% frontier remains later-stage work and runs only when the
+50% comparison is informative.
 
 ```bash
 export PRA_AGENT_PRA_ENGINE_URL=http://PRA_ENGINE_HOST:8000/v1

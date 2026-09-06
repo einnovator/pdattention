@@ -109,6 +109,17 @@ class CampaignCell(StrictModel):
     gateway_mode: Literal["G00", "G10", "G01", "G11"] | None = None
     comparison_group: str | None = None
     paired_cell: str | None = None
+    evidence_role: Literal[
+        "baseline_admission",
+        "transport_qualification",
+        "efficacy",
+        "transport_equivalence",
+        "product_end_to_end",
+    ]
+    selection_contract: Literal[
+        "not_applicable", "route_owned", "frozen_replay"
+    ] = "not_applicable"
+    priority: int = Field(default=100, ge=0)
     command: tuple[str, ...]
     working_directory: str = "."
     environment: Mapping[str, str] = Field(default_factory=dict)
@@ -131,6 +142,15 @@ class CampaignCell(StrictModel):
         if self.mode in {CampaignMode.NATIVE_PRA, CampaignMode.GATEWAY_NATIVE_PRA}:
             if self.engine_pra_enabled is not True:
                 raise ValueError("native PRA campaign cells require engine_pra_enabled=true")
+        if self.evidence_role == "baseline_admission" and self.mode != CampaignMode.NATIVE:
+            raise ValueError("baseline_admission is reserved for native no-PRA cells")
+        if self.evidence_role == "transport_equivalence":
+            if not self.paired_cell or self.selection_contract != "frozen_replay":
+                raise ValueError(
+                    "transport_equivalence requires paired_cell and frozen_replay"
+                )
+        if self.evidence_role == "product_end_to_end" and self.selection_contract != "route_owned":
+            raise ValueError("product_end_to_end requires route_owned selection")
         return self
 
 

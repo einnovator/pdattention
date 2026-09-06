@@ -34,6 +34,7 @@ cells:
     stage: B
     mode: native
     baseline_id: fim14b-r2egym-verified
+    evidence_role: baseline_admission
     command:
       - python
       - -m
@@ -64,6 +65,7 @@ cells:
     stage: C
     mode: gateway_passthrough
     baseline_id: fim14b-r2egym-verified
+    evidence_role: transport_qualification
     baseline_cell: fim14b-no-pra
     command: [python, -c, "raise SystemExit('gateway runner is locked until baseline reproduction')"]
     timeout_seconds: 64800
@@ -74,6 +76,7 @@ cells:
     stage: C
     mode: gateway_pra
     baseline_id: fim14b-r2egym-verified
+    evidence_role: efficacy
     baseline_cell: fim14b-no-pra
     command: [python, -c, "raise SystemExit('PRA runner is locked until baseline reproduction')"]
     timeout_seconds: 64800

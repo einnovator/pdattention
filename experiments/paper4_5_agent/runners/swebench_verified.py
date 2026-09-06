@@ -247,6 +247,7 @@ def run(args: argparse.Namespace) -> Path:
     output.mkdir(parents=True, exist_ok=True)
     receipt = preflight(args, card)
     receipt["gateway_preflight"] = gateway_preflight(args)
+    receipt["execution_fingerprint"] = _execution_fingerprint(receipt)
     _write_json(output / "run_manifest.json", receipt)
     if args.preflight_only:
         return output / "run_manifest.json"
@@ -292,9 +293,15 @@ def _execute_chunks(
         chunk_number = chunk_index // args.chunk_size
         chunk_dir = output / f"chunk_{chunk_number:02d}"
         report_receipt = chunk_dir / "official_chunk_result.json"
+        chunk_result = None
         if report_receipt.is_file():
-            chunk_result = json.loads(report_receipt.read_text(encoding="utf-8"))
-        else:
+            candidate = json.loads(report_receipt.read_text(encoding="utf-8"))
+            # Legacy direct baselines do not cross mutable treatment code. A
+            # treatment receipt, however, is reusable only under the exact
+            # endpoint, policy, and implementation that produced it.
+            if _chunk_receipt_reusable(args, candidate, receipt):
+                chunk_result = candidate
+        if chunk_result is None:
             chunk_dir.mkdir(parents=True, exist_ok=True)
             pattern = "(" + "|".join(re.escape(item) for item in chunk_ids) + ")"
             predictions = chunk_dir / "preds.json"
@@ -346,6 +353,8 @@ def _execute_chunks(
             chunk_result = _normalize_report(raw_report, chunk_ids)
             chunk_result["grader_wall_time_s"] = grader_wall_time_s
             chunk_result["agent_timeout_ids"] = chunk_ids if timed_out else []
+            if receipt.get("execution_fingerprint"):
+                chunk_result["execution_fingerprint"] = receipt["execution_fingerprint"]
             _write_json(report_receipt, chunk_result)
         submitted.update(chunk_result["submitted_ids"])
         resolved.update(chunk_result["resolved_ids"])
@@ -400,6 +409,40 @@ def _execute_chunks(
         output / "results.jsonl", output, args, instance_ids, resolved, errors, timeouts,
     )
     return output / "official_result.json"
+
+
+def _execution_fingerprint(receipt: dict[str, Any]) -> str:
+    """Bind resumable treatment chunks to endpoint, policy, and implementation."""
+
+    source_files = (Path(__file__), Path(__file__).parents[1] / "context_treatment.py")
+    material = {
+        "identity": {
+            key: receipt.get(key)
+            for key in (
+                "benchmark_ids_sha256", "benchmark_execution_revision", "model",
+                "model_revision", "engine", "engine_version", "campaign_mode",
+                "context_budget_fraction", "context_limit", "max_steps",
+            )
+        },
+        "gateway_preflight": receipt.get("gateway_preflight"),
+        "source_sha256": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in source_files
+        },
+    }
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _chunk_receipt_reusable(
+    args: argparse.Namespace, candidate: dict[str, Any], receipt: dict[str, Any],
+) -> bool:
+    """Allow legacy direct baselines, but require exact treatment provenance."""
+
+    if getattr(args, "mode", "no-pra") == "no-pra":
+        return True
+    expected = receipt.get("execution_fingerprint")
+    return bool(expected and candidate.get("execution_fingerprint") == expected)
 
 
 def _nvidia_gpu() -> str | None:

@@ -109,6 +109,9 @@ class HarnessMatrixConfig(StrictModel):
 
     schema_version: Literal[1, 2] = 1
     matrix_kind: Literal["baseline", "pra_transport"] = "baseline"
+    evidence_role: Literal[
+        "baseline_admission", "transport_qualification"
+    ] = "baseline_admission"
     campaign_id: str
     manifest: str
     output_directory: str
@@ -135,6 +138,10 @@ class HarnessMatrixConfig(StrictModel):
         if not any(row.enabled for row in self.harnesses):
             raise ValueError("at least one harness must be enabled")
         if self.matrix_kind == "pra_transport":
+            if self.evidence_role != "transport_qualification":
+                raise ValueError(
+                    "pra_transport matrices are transport qualification, not efficacy"
+                )
             if self.schema_version != 2:
                 raise ValueError("pra_transport matrices require schema_version 2")
             if not self.baseline_admission_path:
@@ -267,6 +274,7 @@ def run_matrix(
         "schema_version": config.schema_version,
         "campaign_id": config.campaign_id,
         "matrix_kind": config.matrix_kind,
+        "evidence_role": config.evidence_role,
         "pra_enabled": any(
             route.pra_mode != PRAMode.NONE
             for model in config.models if model.enabled
@@ -700,6 +708,7 @@ def _persist(
         json.dumps({
             "campaign_id": config.campaign_id,
             "matrix_kind": config.matrix_kind,
+            "evidence_role": config.evidence_role,
             "pra_enabled": state.get("pra_enabled", False),
             "expected_runs": len(matrix_cells(config, manifest)),
             "completed_runs": len(rows),
@@ -732,6 +741,7 @@ def _write_markdown_report(
         ),
         "",
         f"- Frozen manifest: `{manifest.name}` ({len(manifest.task_ids)} tasks)",
+        f"- Evidence role: `{config.evidence_role}`",
         f"- Completed: `{summary['runs']}/{expected}` trials",
         f"- Admission: `{gate['status']}` - {gate['reason']}",
         f"- Tasks solved by any harness: `{summary['tasks_solved_any']}/"

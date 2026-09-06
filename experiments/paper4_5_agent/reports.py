@@ -42,11 +42,20 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
         >= cell.minimum_baseline_score
         for cell in config.cells
     )
+    efficacy_admitted = any(
+        cell.evidence_role == "efficacy"
+        and cell.baseline_cell
+        and cells.get(cell.baseline_cell, {}).get("reproduction_status") == "BASELINE_REPRODUCED"
+        and (cells.get(cell.baseline_cell, {}).get("result") or {}).get("score", -1)
+        >= cell.minimum_baseline_score
+        for cell in config.cells
+    )
     summary = {
         "campaign_id": config.campaign_id,
         "baselines": [row.model_dump(mode="json") for row in config.baselines],
         "cells": cells,
         "pra_interpretation_allowed": treatment_admitted,
+        "efficacy_interpretation_allowed": efficacy_admitted,
     }
     (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
@@ -136,13 +145,16 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
     frontier = [
         "# PRA frontier report", "",
         "No PRA frontier is interpreted before a compatible official baseline exists.", "",
-        "| Cell | Agent | Mode | Connection | Engine PRA | Gateway PRA | State | Baseline gate |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "Transport qualification, efficacy, equivalence, and product end-to-end rows are "
+        "reported separately; none is silently promoted into another evidence class.", "",
+        "| Cell | Agent | Evidence role | Selection | Mode | Connection | Engine PRA | Gateway PRA | State | Baseline gate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for cell in treatments:
         value = cells.get(cell.cell_id, {})
         frontier.append(
             f"| `{cell.cell_id}` | `{cell.agent_id or baselines[cell.baseline_id].harness}` | "
+            f"`{cell.evidence_role}` | `{cell.selection_contract}` | "
             f"`{cell.mode.value}` | `{cell.connection or 'unspecified'}` | "
             f"{cell.engine_pra_enabled if cell.engine_pra_enabled is not None else '-'} | "
             f"{cell.gateway_pra_enabled if cell.gateway_pra_enabled is not None else '-'} | "

@@ -2878,12 +2878,17 @@ Gateway placement is not synonymous with PRA execution. We therefore factor
 the promoted agent experiment into two binary ownership axes. The ordinary
 controls are direct engine access and G00 pass-through to that same ordinary
 engine. The native comparison is (i) an agent sending typed selected context
-directly to a PRA-capable engine and (ii) the same agent sending the same
-selection through a G11 PRA gateway to the same PRA-capable engine. In both
-native arms the engine, model revision, task and repeat, selected records,
-budget, profile, and official grader are fixed. Their difference estimates
-gateway mediation; it does not compare native PRA against No-PRA. G10 remains
-a separate selected-text fallback and is not relabeled as native execution.
+directly to a PRA-capable engine and (ii) the same agent using a G11 PRA
+gateway in front of that engine. This defines two experiments that must not be
+conflated. In \emph{G11-equivalence}, the complete request and selected-resource
+envelope are replayed, and matching resource digests make the difference an
+estimate of gateway mediation. In \emph{G11-end-to-end}, each placement owns
+its normal session and selection path; this estimates product behavior, with
+selection and transport jointly present. Both fix the engine, model revision,
+task and repeat, budget, profile, and official grader. The Easy-50 native cells
+below are explicitly route-owned end-to-end cells; they are not reported as
+frozen-selection equivalence. G10 remains a separate selected-text fallback
+and is not relabeled as native execution.
 
 The executable version-2 matrix records connection, engine-PRA and gateway-PRA
 flags, gateway mode, physical engine target, and comparison group in every row.
@@ -2898,6 +2903,17 @@ and through G11. That pair serves two purposes: comparison with external agent
 loops and diagnosis of PRA Agent session, tool, typed-record, or transport
 faults when its outcomes diverge. Different agents remain separate experimental
 units because their prompts and tools differ.
+
+The 40-cell Terminal-Bench direct/G11 matrix is a transport qualification,
+not the principal efficacy experiment. Its two enabled harnesses each resolved
+only 1/10 No-PRA tasks, and both resolved the same \texttt{fix-git} identity.
+At that floor, one outcome change dominates the relative rate. The matrix can
+still reveal protocol failures, crashes, isolation errors, duplicate native
+materialization, and accounting regressions. PRA efficacy is instead tested on
+the admitted Easy-50 cohort described below, whose direct ordinary baseline
+resolved 14/50 tasks. Its preregistered execution order is corrected G00,
+direct native PRA at 50\%, G11 end to end at 50\%, matched 50\% truncation, and
+G10 at 50\%; lower budgets follow only when that comparison is informative.
 
 The first capable reproduction target is TIGER-Lab FIM-14B under its published
 R2E-Gym configuration~\cite{wang2026fim,jain2025r2egym}: all 500 SWE-bench
