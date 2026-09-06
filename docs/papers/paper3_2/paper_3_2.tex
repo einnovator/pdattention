@@ -884,6 +884,41 @@ never overwrite the persistent native K/V and use one host attention softmax
 over persistent, request-local, and query state. Token-level cross-document
 edges and gist-level interactions are accounted separately.
 
+The learned follow-up repairs the selected records themselves rather than
+adding uncalibrated tokens. Flatten the native heads of token $t$ in record
+$i$ to $k_{\ell it},v_{\ell it}\in\mathbb{R}^{d_{kv}}$, and let
+$\bar{k}_{\ell,<i},\bar{v}_{\ell,<i}$ be token-weighted means over preceding
+corrected records. A rank-$r$ request-local residual computes
+\[
+ \Delta k_{\ell it}=U^K_\ell\phi\!\left(
+ D^K_\ell[k_{\ell it};\bar{k}_{\ell,<i}]\right),\qquad
+ \Delta v_{\ell it}=U^V_\ell\phi\!\left(
+ D^V_\ell[v_{\ell it};\bar{v}_{\ell,<i}]\right).
+\]
+The first record is unchanged. Every $U_\ell$ is initialized to exactly zero,
+so step zero is the independent-PRA computation; only the adapter is updated.
+The corrected pre-RoPE keys are then bound with the host's ordinary RoPE at the
+frozen packed positions. Training uses
+\[
+ \mathcal L = \lambda_{KV}\mathcal L_{KV}
+ +\lambda_D T^2\operatorname{KL}(p_A^T\Vert p_R^T)
+ +\lambda_Y\operatorname{CE}(y,p_R),
+\]
+where $\mathcal L_{KV}$ is layerwise K/V mean-square error normalized by the
+packed teacher's energy, $p_A$ is the packed-RAG answer-position distribution,
+and $y$ is an accepted answer. The language model, retriever, selected records,
+and persistent K/V remain frozen.
+
+The nonparametric comparator performs selective boundary re-encoding. At each
+join $D_{i-1}|D_i$, it exposes the final $w$ native tokens of $D_{i-1}$ as
+immutable context and passes only the first $w$ tokens of $D_i$ through the
+frozen host model at their packed positions. Those ephemeral K/V replace the
+corresponding prefix in the request view; all other selected K/V remain reused.
+This costs at most $w(m-1)$ recomputed tokens for $m$ selected records, requires
+no packed-teacher states at inference, and leaves the persistent records
+unchanged. We compare $w\in\{8,16,32\}$ with the rank-8 learned residual under
+the same frozen selection.
+
 Only after the B/C gate do we vary document interaction. The sparse ladder
 allows the immediately previous document, the top-ranked document, or
 adjacent boundary windows of 8, 16, 32, and 64 tokens. In the boundary arm,
@@ -908,7 +943,9 @@ A useful result is a Pareto curve:
 \quad\text{vs}\quad
 \text{TTFT/prefill}.
 \]
-Adaptive repair is postponed until fixed policies establish headroom.
+The earlier diagnostic stopped at fixed policies; the residual experiment
+above is the first trained follow-up and uses disjoint calibration and
+evaluation identities.
 
 \section{Repeated-Query RAG and Persistent Reuse}
 

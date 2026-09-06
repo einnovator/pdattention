@@ -186,6 +186,7 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.run_crossdoc_adapter \
   --rank 8 --steps 100 --learning-rate 0.0002 \
   --kv-weight 1 --response-weight 1 --task-weight 0.1 \
   --boundary-windows 8,16,32 \
+  --resume \
   --output docs/papers/shared/results/paper3_2_rag/crossdoc_adapter/qwen3_1_7b_rank8_five_seed
 ```
 
@@ -193,7 +194,9 @@ The manifest records optimizer settings, adapter size, frozen model and
 reranker revisions, disjoint IDs, seed-level quality, K/V error, first-step JS,
 request-local re-encoding tokens, and measured transform latency. The saved
 adapter is model-specific and is not promoted to a general SDK profile by this
-single-model experiment.
+single-model experiment. Training state is checkpointed before evaluation and
+each completed evaluation example is written atomically, so `--resume` can
+recover a disconnected remote run without mixing changed settings.
 
 When the five-seed A/B/C comparison is informative, run the preregistered
 reduced scale check (ten questions each, one seed) serially on the same host:

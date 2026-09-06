@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from experiments.paper3_2_rag.run_crossdoc_adapter import (
+    _exact_sign_flip_p,
     _select_disjoint_cohort,
     summarize_rows,
 )
@@ -50,3 +51,7 @@ def test_adapter_summary_uses_seed_level_variation() -> None:
     assert result["seed_token_f1_std"] == pytest.approx(0.25)
     assert result["output_match_rate"] == pytest.approx(0.5)
     assert result["adapter_parameters"] == 128
+
+
+def test_five_same_direction_seed_effects_have_minimum_two_sided_p() -> None:
+    assert _exact_sign_flip_p((1, 1, 1, 1, 1)) == pytest.approx(0.0625)

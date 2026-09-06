@@ -689,9 +689,14 @@ def _write_outputs(
 
     if history:
         figure, axis = plt.subplots(figsize=(7.5, 4.2))
-        axis.plot([row["step"] for row in history], [row["total_loss"] for row in history], label="total")
-        axis.plot([row["step"] for row in history], [row["kv_distillation_loss"] for row in history], label="K/V distillation")
-        axis.plot([row["step"] for row in history], [row["task_loss"] for row in history], label="task NLL")
+        steps = [row["step"] for row in history]
+        axis.plot(steps, [row["total_loss"] for row in history], label="total")
+        axis.plot(
+            steps,
+            [row["kv_distillation_loss"] for row in history],
+            label="K/V distillation",
+        )
+        axis.plot(steps, [row["task_loss"] for row in history], label="task NLL")
         axis.set_xlabel("Optimizer step")
         axis.set_ylabel("Loss")
         axis.grid(alpha=0.25)
@@ -700,6 +705,27 @@ def _write_outputs(
         figure.savefig(output / "crossdoc_adapter_training.png", dpi=180)
         figure.savefig(output / "crossdoc_adapter_training.pdf")
         plt.close(figure)
+
+
+def _write_partial_rows(path: Path, rows: Sequence[Mapping[str, object]]) -> None:
+    """Atomically checkpoint completed evaluation examples for remote recovery."""
+
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def _read_jsonl(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def main() -> None:
@@ -729,6 +755,7 @@ def main() -> None:
     parser.add_argument("--task-weight", type=float, default=0.25)
     parser.add_argument("--boundary-windows", type=_ints, default=(8, 16, 32))
     parser.add_argument("--seed", type=int, default=202)
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (
@@ -810,22 +837,76 @@ def main() -> None:
         widths, adapter_config, seed=args.seed
     )
     parameter_count = mlx_adapter_parameter_count(adapter)
-    history, checkpoint_selection = _train(
-        adapter,
-        training_examples,
-        backend.model,
-        adapter_config,
-        steps=args.steps,
-        learning_rate=args.learning_rate,
-        temperature=args.temperature,
-        seed=args.seed,
-        checkpoint_every=args.checkpoint_every,
-    )
     args.output.mkdir(parents=True, exist_ok=True)
-    adapter.save_weights(str(args.output / "crossdoc_residual_adapter.safetensors"))
+    adapter_path = args.output / "crossdoc_residual_adapter.safetensors"
+    training_state_path = args.output / "training_state.json"
+    history_path = args.output / "training_history.jsonl"
+    training_contract = {
+        "schema_version": SCHEMA_VERSION,
+        "model_id": args.model,
+        "model_revision": revision,
+        "adapter_config": asdict(adapter_config),
+        "train_example_ids": [
+            str(getattr(example.question, "example_id"))
+            for example in training_examples
+        ],
+        "steps": args.steps,
+        "learning_rate": args.learning_rate,
+        "temperature": args.temperature,
+        "checkpoint_every": args.checkpoint_every,
+    }
+    if args.resume and adapter_path.exists() and training_state_path.exists():
+        saved_training_state = json.loads(
+            training_state_path.read_text(encoding="utf-8")
+        )
+        for key, expected in training_contract.items():
+            if saved_training_state.get(key) != expected:
+                raise ValueError(f"resume training contract changed: {key}")
+        adapter.load_weights(str(adapter_path))
+        checkpoint_selection = saved_training_state["checkpoint_selection"]
+        history = _read_jsonl(history_path)
+        print("[resume] loaded frozen adapter checkpoint", flush=True)
+    else:
+        history, checkpoint_selection = _train(
+            adapter,
+            training_examples,
+            backend.model,
+            adapter_config,
+            steps=args.steps,
+            learning_rate=args.learning_rate,
+            temperature=args.temperature,
+            seed=args.seed,
+            checkpoint_every=args.checkpoint_every,
+        )
+        adapter.save_weights(str(adapter_path))
+        history_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in history),
+            encoding="utf-8",
+        )
+        training_state_path.write_text(
+            json.dumps(
+                {**training_contract, "checkpoint_selection": checkpoint_selection},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
-    rows: list[dict[str, object]] = []
+    partial_path = args.output / "condition_results.partial.jsonl"
+    rows: list[dict[str, object]] = _read_jsonl(partial_path) if args.resume else []
+    expected_condition_count = 4 + len(args.boundary_windows)
+    completed_counts: dict[str, int] = {}
+    for row in rows:
+        example_id = str(row["example_id"])
+        completed_counts[example_id] = completed_counts.get(example_id, 0) + 1
     for index, (seed, question) in enumerate(eval_questions, 1):
+        if completed_counts.get(str(question.example_id), 0) == expected_condition_count:
+            print(
+                f"[resume {index}/{len(eval_questions)}] {question.example_id}",
+                flush=True,
+            )
+            continue
         print(f"[evaluate {index}/{len(eval_questions)}] {question.example_id}", flush=True)
         example = _prepare_example(
             seed=seed,
@@ -926,6 +1007,7 @@ def main() -> None:
             )
             row["output_matches_packed"] = row["prediction"] == teacher_row["prediction"]
             rows.append(row)
+        _write_partial_rows(partial_path, rows)
 
     summary = summarize_rows(rows)
     manifest = {
