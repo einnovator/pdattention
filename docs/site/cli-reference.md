@@ -40,7 +40,8 @@ pra gateway serve [OPTIONS]
 | `--port` | INTEGER | `8080` | no | TCP port for the local service. |
 | `--mode` | TEXT | `passthrough` | no | Select the product execution or gateway mediation mode. |
 | `--backend` | openai / sglang / freetoken / vllm / ollama / llama_cpp / mlx / custom / huggingface | `openai` | no | Select the downstream gateway adapter. |
-| `--backend-url` | TEXT | `-` | no | Base URL of the existing downstream model endpoint. |
+| `--backend-url` | TEXT | `-` | no | Downstream server origin or OpenAI-compatible `/v1` API root. |
+| `--backend-timeout` | FLOAT | `120` | no | Upstream request timeout in seconds. Increase for long agent turns. |
 | `--model` | TEXT | `-` | no | Model identifier or local model path. |
 | `-a`, `--pra-bundle` | TEXT | `auto` | no | Load a PRA bundle or configuration override. |
 | `-p`, `--profile` | TEXT | `balanced` | no | Select a named PRA or agent profile. |
@@ -74,8 +75,16 @@ pra gateway serve [OPTIONS]
 **Common use**
 
 ```bash
-pra gateway serve --mode selected-context --backend vllm --backend-url http://127.0.0.1:8000/v1 --sessions-dir .pra/gateway-sessions
+pra gateway serve --mode selected-context --backend vllm \
+  --backend-url http://127.0.0.1:8000/v1 --backend-timeout 600 \
+  --model Qwen/Qwen3-4B --sessions-dir .pra/gateway-sessions
 ```
+
+Pin `--model` when a client sends a provider-qualified alias rather than the
+identifier served by the downstream engine. The gateway advertises the pinned
+identifier at `/v1/models`. Agent benchmark runners reject a pass-through run
+unless `/health` reports `G00` and `/v1/models` contains the exact frozen
+served-model identifier.
 
 **Example output**
 

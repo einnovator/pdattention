@@ -67,11 +67,37 @@ def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
             "gateway must pin and advertise the frozen backend model: "
             f"expected {args.served_model!r}, observed {list(model_ids)!r}"
         )
+    probe_payload = json.dumps({
+        "model": args.served_model,
+        "messages": [{"role": "user", "content": "Reply with OK."}],
+        "temperature": 0,
+        "max_tokens": 1,
+        "stream": False,
+    }).encode("utf-8")
+    probe_request = urllib.request.Request(
+        f"{root}/v1/chat/completions",
+        data=probe_payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(probe_request, timeout=120) as response:
+            completion = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"gateway generation probe failed for {root}/v1/chat/completions: {error}"
+        ) from error
+    choices = completion.get("choices") if isinstance(completion, dict) else None
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError(
+            "gateway generation probe returned no OpenAI-compatible choices"
+        )
     return {
         "url": root,
         "gateway_mode": expected_mode,
         "advertised_model": args.served_model,
         "protocol_version": health.get("protocol_version"),
+        "generation_probe": "passed",
     }
 
 

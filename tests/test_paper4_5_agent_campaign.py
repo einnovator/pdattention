@@ -563,6 +563,20 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
             self.end_headers()
             self.wfile.write(encoded)
 
+        def do_POST(self) -> None:  # noqa: N802
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            assert self.path == "/v1/chat/completions"
+            assert body["model"] == "qwen3-coder:30b"
+            assert body["temperature"] == 0
+            encoded = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}]
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
         def log_message(self, format: str, *args: object) -> None:
             return None
 
@@ -575,7 +589,9 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
         served_model="qwen3-coder:30b",
     )
     try:
-        assert gateway_preflight(args)["gateway_mode"] == "G00"
+        result = gateway_preflight(args)
+        assert result["gateway_mode"] == "G00"
+        assert result["generation_probe"] == "passed"
         Handler.model_ids = []
         with pytest.raises(RuntimeError, match="must pin and advertise"):
             gateway_preflight(args)

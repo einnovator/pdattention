@@ -40,6 +40,14 @@ graded and marked `BASELINE_REPRODUCED`. A changed engine, quantization,
 context limit, task cohort, or unofficial grader remains
 `BASELINE_ATTEMPTED`, even when it is operationally useful.
 
+Gateway treatments have an additional transport gate. Before launching an
+agent, the runner requires a healthy endpoint, the expected G00 or G10 mode,
+and the exact served model in `/v1/models`. G00 preserves OpenAI generation
+options and the upstream completion envelope. Upstream HTTP and connection
+failures are returned as structured JSON errors instead of terminating the
+client connection. A failed transport gate is an invalid treatment run, never
+a zero-quality PRA result.
+
 The primary target is
 [`TIGER-Lab/FIM-14B`](https://huggingface.co/TIGER-Lab/FIM-14B), whose model
 card reports `29.20%` on all 500 SWE-bench Verified instances with the
