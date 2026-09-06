@@ -3053,8 +3053,35 @@ path normalizes both origin and \texttt{/v1} API roots, pins and advertises the
 served model, preserves OpenAI request and response fields, returns structured
 upstream errors, and uses an explicit upstream timeout. A benchmark run now
 must pass health, mode, model-catalog, and live one-token generation probes
-before its first task. Three tasks previously solved by the direct baseline
-form an additional parity gate before the corrected Easy-50 rerun.
+before its first task. The clean corrected parity gate then reran three tasks
+previously solved by the direct baseline and resolved all 3/3 again with the
+official grader, zero timeouts, and zero grader errors. It used 69 model calls,
+403,703 prompt tokens, and 9,503 completion tokens, versus 63 calls, 458,690
+prompt tokens, and 8,573 completion tokens in the corresponding direct
+trajectories. This tiny selected-on-success diagnostic establishes end-task
+transport parity, not an efficiency advantage or a population-level quality
+estimate; the two runs followed different trajectories despite temperature
+zero, and gateway latency was confounded by network placement and a shared
+single-slot model server. It clears the transport gate for a fresh corrected
+Easy-50 comparison.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Corrected G00 end-task parity gate on three tasks selected because the
+direct baseline solved them. Equal 3/3 outcomes validate transport semantics;
+the selected cohort and differing trajectories preclude accuracy, token-saving,
+or latency claims.}
+\begin{tabular}{lrrrr}
+\toprule
+Path & Resolved & Model calls & Prompt tokens & Completion tokens \\
+\midrule
+Direct Ollama & 3/3 & 63 & 458,690 & 8,573 \\
+PRA Gateway G00 & 3/3 & 69 & 403,703 & 9,503 \\
+\bottomrule
+\end{tabular}
+\label{tab:gateway-g00-parity}
+\end{table}
 
 We therefore preregistered a stronger controlled SWE-bench campaign from an
 independent local-model study~\cite{av2026localcoding}. The checked-in benchmark

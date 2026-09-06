@@ -48,6 +48,16 @@ failures are returned as structured JSON errors instead of terminating the
 client connection. A failed transport gate is an invalid treatment run, never
 a zero-quality PRA result.
 
+The first Easy-50 G00 attempt is retained as such an invalid run: all `50/50`
+trajectories stopped on the first call with a transport error and no
+submission. After repairing URL normalization and pass-through fidelity, a
+clean three-task gate reran identities previously solved directly and again
+resolved `3/3` with the official grader. The corrected gate used 69 model
+calls, 403,703 prompt tokens, and 9,503 output tokens, with no timeouts or
+grader errors. This selected-on-success smoke establishes end-task transport
+parity; it is not an estimate of gateway accuracy or latency. A fresh Easy-50
+G00 run remains the population-level comparison.
+
 The primary target is
 [`TIGER-Lab/FIM-14B`](https://huggingface.co/TIGER-Lab/FIM-14B), whose model
 card reports `29.20%` on all 500 SWE-bench Verified instances with the

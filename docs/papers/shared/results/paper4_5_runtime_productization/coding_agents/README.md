@@ -145,5 +145,9 @@ rows and explicit machine-readable invalidation live under
 The repair preserves ordinary OpenAI request fields and upstream response
 metadata, accepts backend origins and `/v1` API roots, pins the downstream
 model, returns structured upstream failures, and probes a real generation
-before agent launch. A three-task direct-solved parity cohort must pass before
-the corrected Easy-50 condition is admitted.
+before agent launch. The clean direct-solved parity cohort subsequently
+resolved `3/3` again through corrected G00, with 69 model calls, 403,703 prompt
+tokens, 9,503 output tokens, no timeouts, and no grader errors. This
+selected-on-success gate validates transport, not population accuracy or
+latency. Its retained evidence is under `gateway_parity3_fixed_mac4/`; a fresh
+Easy-50 pass-through run is the next quality comparison.
