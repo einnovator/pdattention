@@ -244,6 +244,81 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
     )
 
 
+def paired_bootstrap_effects(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    reference_condition: str = "PACKED_RAG_INSTRUMENTED",
+    bootstrap_replicates: int = 2000,
+    seed: int = 3303,
+) -> list[dict[str, object]]:
+    """Bootstrap paired condition-minus-teacher effects over question IDs."""
+
+    import numpy as np
+
+    reference = {
+        str(row["example_id"]): row
+        for row in rows
+        if row["condition"] == reference_condition
+    }
+    grouped: dict[tuple[str, float | None], list[Mapping[str, object]]] = {}
+    for row in rows:
+        if row["condition"] == reference_condition:
+            continue
+        grouped.setdefault(
+            (str(row["condition"]), row.get("target_percentage")), []
+        ).append(row)
+    result = []
+    for group_index, ((condition, target), values) in enumerate(
+        sorted(grouped.items())
+    ):
+        pairs = [
+            (row, reference[str(row["example_id"])])
+            for row in values
+            if str(row["example_id"]) in reference
+        ]
+        metrics: dict[str, object] = {}
+        for metric in (
+            "token_f1",
+            "official_multihop_rag_score",
+            "gold_answer_mean_nll",
+        ):
+            differences = np.asarray(
+                [
+                    float(condition_row[metric]) - float(reference_row[metric])
+                    for condition_row, reference_row in pairs
+                    if condition_row.get(metric) is not None
+                    and reference_row.get(metric) is not None
+                ],
+                dtype=np.float64,
+            )
+            if not differences.size:
+                metrics[metric] = None
+                continue
+            rng = np.random.default_rng(seed + group_index)
+            samples = rng.choice(
+                differences,
+                size=(bootstrap_replicates, differences.size),
+                replace=True,
+            ).mean(axis=1)
+            low, high = np.quantile(samples, (0.025, 0.975))
+            metrics[metric] = {
+                "mean_difference": float(differences.mean()),
+                "ci95": [float(low), float(high)],
+            }
+        result.append(
+            {
+                "condition": condition,
+                "target_percentage": target,
+                "paired_examples": len(pairs),
+                "reference_condition": reference_condition,
+                "bootstrap_replicates": bootstrap_replicates,
+                "bootstrap_seed": seed + group_index,
+                "effects": metrics,
+            }
+        )
+    return result
+
+
 def oracle_gate(summary: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Apply the prespecified inception gate to top-edge conditions only."""
 
@@ -1217,6 +1292,7 @@ def main() -> None:
         )
 
     summary = summarize_rows(rows)
+    paired_effects = paired_bootstrap_effects(rows)
     gate = oracle_gate(summary)
     frontier_diagnostics = ranking_frontier_diagnostics(summary)
     causal_gate = interventional_oracle_gate(summary, frontier_diagnostics)
@@ -1270,6 +1346,7 @@ def main() -> None:
         "interventional_gate": causal_gate,
         "ranking_frontier_diagnostics": frontier_diagnostics,
         "conditions": summary,
+        "paired_bootstrap_effects": paired_effects,
         "graphs": graph_summaries,
         "localization": localizations,
         "selected_edge_localization": selected_localizations,

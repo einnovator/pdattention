@@ -36,6 +36,7 @@ Run the small natural inception gate on Apple Silicon:
 PYTHONPATH=src python -m experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity \
   --dataset multihoprag --max-examples 3 --token-budget 512 \
   --model mlx-community/Qwen3-1.7B-4bit \
+  --split-name validation \
   --output docs/papers/shared/results/paper3_3_sparse_crossdoc/oracle_natural_seed11
 ```
 
@@ -63,13 +64,13 @@ and `layer_head_js` are available for targeted diagnostics but are intentionally
 excluded from the default command because a full layer/head ablation is much
 more expensive.
 
-For the powered gate, use the same command with `--max-examples 100` and omit
-the two layer targets after the ten-question localization run identifies the
-useful hierarchy. The runner samples only from the frozen `test_ids` in
-`splits.json`, writes one atomic checkpoint per question, and rejects resume
-when the run configuration differs. The learned selector remains locked unless
-a powered interventional frontier reaches the absolute quality gate and is
-monotonic in token F1.
+For the powered gate, use the same command with `--split-name test`,
+`--max-examples 100`, and omit the two layer targets after the ten-question
+validation localization identifies the useful hierarchy. The runner restricts
+sampling to the named frozen split in `splits.json`, writes one atomic
+checkpoint per question, and rejects resume when the run configuration differs.
+The learned selector remains locked unless a powered test frontier reaches the
+absolute quality gate and is monotonic in token F1.
 
 ## Learned Pair Selector, Conditional Design
 

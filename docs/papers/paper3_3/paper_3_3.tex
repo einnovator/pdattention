@@ -50,10 +50,11 @@ cumulative teacher-mass targets from 50 to 99\% on MultiHop-RAG. It also freezes
 disjoint 2,000/150/150 train/validation/test identities for a possible learned
 selector. On a ten-question mechanism cohort, 0.1\% of physical edges reached
 .1488 F1 versus .1490 for packed RAG and .1431 for independent PRA, but the
-cohort's packed official score was only .600. Larger edge and cumulative-mass
-budgets were non-monotonic. The prespecified .19/.67 gate therefore remains
-closed and no selector is trained. The result shows promising sparse headroom
-while rejecting raw attention mass as a sufficient utility signal.
+0.0059 packed--independent gap is small and the cohort's packed official score
+was only .600. Larger edge and cumulative-mass budgets were non-monotonic. The
+prespecified .19/.67 gate therefore remains closed and no selector is trained.
+The result shows promising sparse headroom while rejecting raw attention mass
+as a sufficient utility signal.
 \end{abstract}
 
 \section{Introduction}
@@ -276,6 +277,45 @@ blocks cross-record attention. The frozen host model then executes the modified
 mask. The 100\% plan must reproduce the packed teacher exactly; the 0\% plan
 must reproduce the blocked packed control. These endpoint checks distinguish a
 sparsification result from an instrumentation or transport error.
+
+\subsection{Interventional ranking targets}
+
+Attention magnitude is observational: a large coefficient shows that an
+interaction occurred, not that it improved the answer. We therefore add a
+leave-one-group-out utility for a group $g$,
+\[
+u_{\mathrm{NLL}}(g)
+=
+\mathcal L_{\mathrm{answer}}(M_{\setminus g})
+-
+\mathcal L_{\mathrm{answer}}(M),
+\]
+where $M$ is the packed teacher and $M_{\setminus g}$ removes only the group's
+cross-document edges. A positive value means that removing the group raises
+gold-answer NLL. We also measure first-step Jensen--Shannon divergence,
+$u_{\mathrm{JS}}(g)$, between $M_{\setminus g}$ and $M$.
+
+The hierarchy is document pair $\rightarrow$ layer $\rightarrow$ layer/head
+$\rightarrow$ token edge. At each tested level, groups are ordered by measured
+utility and physical edges within a group are refined by teacher attention. A
+second pair-level proxy ranks by
+\[
+\max(0,u_{\mathrm{NLL}}(g))\,a_e,
+\]
+where $a_e$ is the teacher attention of edge $e$ in group $g$. This is a
+finite-difference-times-attention diagnostic, not a gradient attribution.
+These rankings are compared with raw attention at matched physical-edge
+budgets $0,.01,.05,.1,.5,$ and $1\%$; 100\% remains an endpoint parity check.
+
+Every natural question is sampled only after restricting the dataset to a
+named frozen Paper~3.3 split. Atomic per-question checkpoints bind the dataset,
+model, reranker, split digest, ranking targets, and budgets, so a resumed run
+cannot mix configurations. A ten-question validation diagnostic localizes the
+.1\% plans by layer, head, and document pair and selects ranking targets. The
+powered confirmation then requires at least 100 previously untouched test
+questions. Learned selection remains locked unless an interventional test
+ranking meets the absolute quality gate and its F1 frontier is non-decreasing
+through 1\%.
 
 \subsection{Oracle gate}
 
@@ -528,13 +568,14 @@ Mass oracle 99\% & .1308 & .500 & 4.855 & 30.902\% & 99\% \\
 \end{tabular}
 \end{table}
 
-At 0.1\% physical edges, F1 was .1488 versus .1490 for packed RAG and
-.1431 for independent PRA. This recovers 97.3\% of the small
-independent-to-packed F1 gap on this cohort. Official score remained .600 in all
+At 0.1\% physical edges, the oracle recovers 97.3\% of this ten-question
+cohort's small 0.0059 F1 packed--independent gap: F1 is .1488 versus .1490 for
+packed RAG and .1431 for independent PRA. Official score remained .600 in all
 three conditions, so no official-score gap existed to recover. The 0.1\% plan
 did not reproduce the same strings as packed RAG: output agreement was 0/10 and
 first-step JS remained .110. The result is therefore task-level headroom, not
-behavioral equivalence.
+behavioral equivalence, and the relative percentage should not be read as a
+large absolute quality gain.
 
 The frontier is strongly non-monotonic. Increasing the top-edge budget from
 0.1\% to 0.5\% reduced F1 from .1488 to .0968 even though retained teacher mass
@@ -589,15 +630,16 @@ the quality gate passes.
 
 \section{Success Criteria}
 
-The primary practical gate is
+The predeclared practical gate is
 \[
-\mathrm{F1}\gtrsim .186,
+\mathrm{F1}\ge .19,
 \qquad
-\mathrm{official}\gtrsim .647,
+\mathrm{official}\ge .67,
 \]
-corresponding to approximately 80\% recovery of the Paper~3.2 packed-RAG gap,
-while using no more than 10\% of dense request-specific cross-document
-interaction.
+or statistical indistinguishability from packed RAG, while using no more than
+5\% of dense request-specific cross-document interaction. Approximate 80\%
+gap recovery remains a useful descriptive quantity, but does not replace these
+absolute thresholds.
 
 The ten-question smoke does not meet these absolute criteria. Its 0.1\% point
 meets the relative F1-recovery target only because the cohort's packed and

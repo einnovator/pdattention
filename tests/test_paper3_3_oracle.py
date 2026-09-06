@@ -12,6 +12,7 @@ from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     _select_split_cohort,
     interventional_oracle_gate,
     oracle_gate,
+    paired_bootstrap_effects,
     ranking_frontier_diagnostics,
     summarize_rows,
 )
@@ -127,6 +128,37 @@ def test_interventional_gate_requires_power_and_monotonicity() -> None:
     gate = interventional_oracle_gate(summary, frontiers)
     assert gate["status"] == "PASS_POWERED"
     assert gate["learned_selector_training_unlocked"] is True
+
+
+def test_paired_bootstrap_preserves_question_pairing() -> None:
+    rows = []
+    for index in range(4):
+        rows.extend(
+            (
+                {
+                    "example_id": f"example:{index}",
+                    "condition": "PACKED_RAG_INSTRUMENTED",
+                    "target_percentage": None,
+                    "token_f1": 0.5,
+                    "official_multihop_rag_score": 0.6,
+                    "gold_answer_mean_nll": 2.0,
+                },
+                {
+                    "example_id": f"example:{index}",
+                    "condition": "ORACLE_PAIR_NLL",
+                    "target_percentage": 0.1,
+                    "token_f1": 0.4,
+                    "official_multihop_rag_score": 0.6,
+                    "gold_answer_mean_nll": 2.25,
+                },
+            )
+        )
+    effects = paired_bootstrap_effects(rows, bootstrap_replicates=100)
+    assert effects[0]["paired_examples"] == 4
+    assert effects[0]["effects"]["token_f1"]["mean_difference"] == pytest.approx(-0.1)
+    assert effects[0]["effects"]["gold_answer_mean_nll"][
+        "mean_difference"
+    ] == pytest.approx(0.25)
 
 
 def test_split_selection_samples_only_declared_ids(tmp_path) -> None:
