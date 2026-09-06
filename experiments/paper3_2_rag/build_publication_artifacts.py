@@ -13,6 +13,103 @@ def _load(path: Path | None) -> dict[str, object] | None:
     return json.loads(path.read_text(encoding="utf-8")) if path is not None else None
 
 
+def _transport_systems_plot(summary: dict[str, object], output: Path) -> None:
+    """Plot matched transport costs without conflating text and native tokens."""
+    import matplotlib.pyplot as plt
+
+    rows = summary["conditions"]
+
+    def row(condition: str, regime: str) -> dict[str, object]:
+        return next(
+            item
+            for item in rows
+            if item["condition"] == condition
+            and item["regime"] == regime
+            and item["selector_profile"] == "pra_strong_reranker"
+        )
+
+    text = row("PRA_SELECTED_CONTEXT_NO_ADAPTOR", "WARM")
+    native = row("PRA_NATIVE_MEMORY_NO_ADAPTOR", "WARM")
+    prefix = row("PRA_SELECTED_CONTEXT_NO_ADAPTOR", "PREFIX_WARM")
+    labels = ["text re-prefill", "native reuse", "exact-prefix hit"]
+    colors = ["#475569", "#0f766e", "#2563eb"]
+    ttft = [float(item["ttft_ms_mean"]) for item in (text, native, prefix)]
+    total = [float(item["total_latency_ms_mean"]) for item in (text, native, prefix)]
+
+    fig, (latency, tokens) = plt.subplots(1, 2, figsize=(9.2, 3.7))
+    x = list(range(len(labels)))
+    width = 0.36
+    latency.bar([value - width / 2 for value in x], ttft, width, label="TTFT", color="#0f766e")
+    latency.bar([value + width / 2 for value in x], total, width, label="total", color="#7dd3fc")
+    latency.set_yscale("log")
+    latency.set_ylabel("Latency (ms, log scale)")
+    latency.legend(fontsize=8)
+    latency.grid(axis="y", alpha=0.25)
+    latency.set_xticks(x, labels, rotation=18, ha="right")
+
+    token_labels = ["selected text", "native K/V"]
+    token_values = [
+        float(text["visible_prompt_tokens_mean"]),
+        float(native["selected_native_kv_tokens_mean"]),
+    ]
+    tokens.bar(token_labels, token_values, color=["#475569", "#0f766e"])
+    tokens.set_ylabel("Mean selected representation tokens")
+    tokens.grid(axis="y", alpha=0.25)
+    tokens.text(
+        0.5,
+        0.94,
+        "600/600 output, logit, and NLL checks match",
+        transform=tokens.transAxes,
+        ha="center",
+        va="top",
+        fontsize=8,
+    )
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _adapter_delta_histogram(results: Path, output: Path) -> None:
+    """Show the per-example F1 effect hidden by the five-seed mean."""
+    import matplotlib.pyplot as plt
+
+    with gzip.open(results, "rt", encoding="utf-8") as source:
+        rows = [json.loads(line) for line in source]
+    by_example: dict[tuple[int, str], dict[str, float]] = {}
+    for row in rows:
+        key = (int(row["seed"]), str(row["example_id"]))
+        by_example.setdefault(key, {})[str(row["condition"])] = float(row["token_f1"])
+    deltas = [
+        conditions["R_TRAINED_RESIDUAL"] - conditions["C_INDEPENDENT_PRA"]
+        for conditions in by_example.values()
+        if "R_TRAINED_RESIDUAL" in conditions and "C_INDEPENDENT_PRA" in conditions
+    ]
+    improved = sum(delta > 1e-12 for delta in deltas)
+    tied = sum(abs(delta) <= 1e-12 for delta in deltas)
+    worse = sum(delta < -1e-12 for delta in deltas)
+
+    fig, axis = plt.subplots(figsize=(7.5, 3.5))
+    axis.hist(deltas, bins=15, color="#0f766e", edgecolor="white")
+    axis.axvline(0.0, color="#111827", linewidth=1)
+    axis.set_xlabel("Per-example token-F1 delta: trained residual minus independent PRA")
+    axis.set_ylabel("Examples")
+    axis.grid(axis="y", alpha=0.25)
+    axis.text(
+        0.98,
+        0.94,
+        f"improved {improved} | tied {tied} | worse {worse}",
+        transform=axis.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8,
+    )
+    fig.tight_layout()
+    fig.savefig(output.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output.with_suffix(".png"), dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _summarize_scale_run(run_dir: Path) -> dict[str, object]:
     manifest = _load(run_dir / "cohort_manifest.json")
     assert manifest is not None
@@ -493,6 +590,7 @@ def main() -> None:
     parser.add_argument("--retrieval-summary", type=Path)
     parser.add_argument("--service-summary", type=Path)
     parser.add_argument("--transport-summary", type=Path)
+    parser.add_argument("--adapter-results", type=Path)
     parser.add_argument("--nonprefix-manifest", type=Path)
     parser.add_argument("--scale-run", type=Path, action="append", default=[])
     parser.add_argument("--position-manifest", type=Path)
@@ -523,6 +621,11 @@ def main() -> None:
     transport = _load(args.transport_summary)
     if transport is not None:
         result["transport"] = transport
+        _transport_systems_plot(transport, args.output_dir / "transport_systems_summary")
+    if args.adapter_results is not None:
+        _adapter_delta_histogram(
+            args.adapter_results, args.output_dir / "adapter_f1_delta_histogram"
+        )
     nonprefix = _load(args.nonprefix_manifest)
     if nonprefix is not None:
         result["nonprefix_reuse"] = nonprefix["summary"]

@@ -1,5 +1,14 @@
 # Paper 3.2: Persistent Native Memory for RAG
 
+## Publication Forms
+
+- `paper_3_2.tex` is the concise conference-style paper. Its main narrative is
+  transport -> composition -> repair, with audit-oriented appendices.
+- `paper_3_2_full.tex` preserves the exhaustive 38-page technical report that
+  preceded the reorganization.
+- `SECTION_MAP.md` records where each technical-report section appears in the
+  concise paper or appendices.
+
 Paper 3.2 owns the controlled comparison among full-document context,
 conventional RAG, RAG+PRA, and independently composed native memory. It was
 branched from Paper 3.1 at commit `24992aeae567b5f5275b9c3e76488f06f524bb1d`.
@@ -188,6 +197,8 @@ PYTHONPATH=src python -m experiments.paper3_2_rag.build_publication_artifacts \
   --position-manifest docs/papers/shared/results/paper3_2_rag/position_natural/five_seed/manifest.json \
   --retrieval-summary docs/papers/shared/results/paper3_2_rag/local_retrieval/summary.json \
   --service-summary docs/papers/shared/results/paper3_2_rag/service_retrieval_cuda/summary.json \
+  --transport-summary docs/papers/shared/results/paper3_2_rag/natural_five_seed/aggregate/aggregate_summary.json \
+  --adapter-results docs/papers/shared/results/paper3_2_rag/crossdoc_adapter/qwen3_1_7b_rank8_five_seed/condition_results.jsonl.gz \
   --nonprefix-manifest docs/papers/shared/results/paper3_2_rag/nonprefix_reuse/five_seed/manifest.json \
   --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_4b_seed11 \
   --scale-run docs/papers/shared/results/paper3_2_rag/scale/qwen3_8b_seed11 \
@@ -207,4 +218,5 @@ Build the independently publishable PDF from the paper directory:
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error paper_3_2.tex
+latexmk -pdf -interaction=nonstopmode -halt-on-error paper_3_2_full.tex
 ```
