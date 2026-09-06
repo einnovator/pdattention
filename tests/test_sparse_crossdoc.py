@@ -11,11 +11,14 @@ from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     CrossDocumentOracleGraph,
     cumulative_attention_mass_plan,
+    full_interaction_plan,
     interaction_group_ablation_plan,
     interaction_group_keys,
     interaction_localization,
     ranked_edge_plan,
+    ranked_physical_prefix,
     ranked_physical_indices_by_group_utility,
+    ranked_physical_prefix_by_group_utility,
     selected_interaction_localization,
     top_attention_edge_plan,
 )
@@ -145,6 +148,16 @@ def test_causal_group_ranking_refines_with_attention() -> None:
     assert weighted_plan.selected_mask[0].sum() == 4
     assert not weighted_plan.selected_mask[1].any()
 
+    prefix = ranked_physical_prefix_by_group_utility(
+        graph,
+        "layer",
+        {(0,): 0.1, (1,): 0.9},
+        4,
+    )
+    prefix_plan = ranked_edge_plan(graph, 0.25, ranked=prefix, mode="PREFIX")
+    assert prefix_plan.selected_mask[1].sum() == 4
+    assert not prefix_plan.selected_mask[0].any()
+
 
 def test_selected_interaction_localization_accounts_for_budget() -> None:
     graph = _graph()
@@ -160,5 +173,14 @@ def test_selected_interaction_localization_accounts_for_budget() -> None:
 def test_ranked_plan_rejects_non_permutation() -> None:
     graph = _graph()
     ranked = np.zeros(graph.physical_edge_count, dtype=np.int64)
-    with pytest.raises(ValueError, match="permutation"):
+    with pytest.raises(ValueError, match="unique"):
         ranked_edge_plan(graph, 0.1, ranked=ranked, mode="INVALID")
+
+
+def test_ranked_prefix_is_deterministic_at_ties_and_full_plan_avoids_indices() -> None:
+    graph = _graph()
+    prefix = ranked_physical_prefix(graph, 4)
+    assert prefix.tolist() == [0, 4, 8, 12]
+    full = full_interaction_plan(graph, mode="PARITY")
+    assert full.selected_mask.all()
+    assert full.retained_attention_mass == 1.0

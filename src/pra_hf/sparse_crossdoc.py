@@ -373,6 +373,32 @@ def ranked_physical_indices(graph: CrossDocumentOracleGraph) -> np.ndarray:
     return np.argsort(-scores, kind="stable")
 
 
+def _ranked_prefix(scores: np.ndarray, count: int) -> np.ndarray:
+    """Return a deterministic descending prefix without sorting the full array."""
+
+    size = int(scores.size)
+    if count < 0 or count > size:
+        raise ValueError("ranked prefix count is outside the score array")
+    if count == 0:
+        return np.asarray([], dtype=np.int64)
+    if count == size:
+        return np.argsort(-scores, kind="stable")
+    partition = np.argpartition(scores, size - count)[size - count :]
+    threshold = float(scores[partition].min())
+    greater = np.flatnonzero(scores > threshold)
+    remaining = count - greater.size
+    equal = np.flatnonzero(scores == threshold)[:remaining]
+    selected = np.concatenate((greater, equal)).astype(np.int64, copy=False)
+    order = np.lexsort((selected, -scores[selected]))
+    return selected[order]
+
+
+def ranked_physical_prefix(graph: CrossDocumentOracleGraph, count: int) -> np.ndarray:
+    """Rank only the physical-edge prefix needed by the largest sparse budget."""
+
+    return _ranked_prefix(graph.edge_scores.reshape(-1), count)
+
+
 def _plan(
     graph: CrossDocumentOracleGraph,
     *,
@@ -417,6 +443,24 @@ def top_attention_edge_plan(
         :count
     ]
     return _plan(graph, mode="TOP_ATTENTION", target=fraction, selected=selected)
+
+
+def full_interaction_plan(
+    graph: CrossDocumentOracleGraph, *, mode: str = "FULL"
+) -> SparseInteractionPlan:
+    """Construct the dense parity endpoint without a full integer index array."""
+
+    return SparseInteractionPlan(
+        graph_digest=graph.graph_digest,
+        selection_receipt_id=graph.selection_receipt_id,
+        mode=mode,
+        target=1.0,
+        selected_mask=np.ones(graph.edge_scores.shape, dtype=np.bool_),
+        token_pair_count=graph.token_pair_count,
+        layer_count=graph.layer_count,
+        head_count=graph.head_count,
+        retained_attention_mass=1.0,
+    )
 
 
 def cumulative_attention_mass_plan(
@@ -624,6 +668,53 @@ def ranked_physical_indices_by_group_utility(
     raise ValueError(f"unsupported utility/attention combination: {combination}")
 
 
+def ranked_physical_prefix_by_group_utility(
+    graph: CrossDocumentOracleGraph,
+    kind: InteractionGroupKind,
+    utilities: Mapping[InteractionGroupKey, float],
+    count: int,
+    *,
+    combination: Literal["lexicographic", "utility_x_attention"] = "lexicographic",
+) -> np.ndarray:
+    """Rank only the causal-utility prefix required by sparse frontier plans."""
+
+    keys = interaction_group_keys(graph, kind)
+    missing = [key for key in keys if key not in utilities]
+    if missing:
+        raise ValueError(f"missing intervention utilities for {kind}: {missing[:4]}")
+    if count < 0 or count > graph.physical_edge_count:
+        raise ValueError("ranked prefix count is outside the graph")
+    scores = graph.edge_scores.reshape(-1)
+    if combination == "utility_x_attention":
+        combined = np.empty(scores.shape, dtype=np.float32)
+        for key in keys:
+            indices = np.flatnonzero(
+                interaction_group_mask(graph, kind, key).reshape(-1)
+            )
+            combined[indices] = max(0.0, float(utilities[key])) * scores[indices]
+        if not np.any(combined > 0):
+            return ranked_physical_prefix(graph, count)
+        return _ranked_prefix(combined, count)
+    if combination != "lexicographic":
+        raise ValueError(f"unsupported utility/attention combination: {combination}")
+    ranked_groups = sorted(keys, key=lambda key: (-float(utilities[key]), key))
+    remaining = count
+    prefixes: list[np.ndarray] = []
+    for key in ranked_groups:
+        if remaining <= 0:
+            break
+        indices = np.flatnonzero(interaction_group_mask(graph, kind, key).reshape(-1))
+        take = min(remaining, int(indices.size))
+        local = _ranked_prefix(scores[indices], take)
+        prefixes.append(indices[local])
+        remaining -= take
+    return (
+        np.concatenate(prefixes).astype(np.int64, copy=False)
+        if prefixes
+        else np.asarray([], dtype=np.int64)
+    )
+
+
 def ranked_edge_plan(
     graph: CrossDocumentOracleGraph,
     fraction: float,
@@ -635,15 +726,17 @@ def ranked_edge_plan(
 
     if not 0.0 <= fraction <= 1.0:
         raise ValueError("edge fraction must be in [0, 1]")
-    if ranked.ndim != 1 or ranked.size != graph.physical_edge_count:
-        raise ValueError("ranked physical edge indices do not cover the graph")
+    count = int(math.ceil(graph.physical_edge_count * fraction))
+    if ranked.ndim != 1 or ranked.size < count:
+        raise ValueError(
+            "ranked physical edge prefix does not cover the requested budget"
+        )
     if (
         np.any(ranked < 0)
         or np.any(ranked >= graph.physical_edge_count)
-        or np.unique(ranked).size != graph.physical_edge_count
+        or np.unique(ranked).size != ranked.size
     ):
-        raise ValueError("ranked physical edge indices must be a permutation")
-    count = int(math.ceil(graph.physical_edge_count * fraction))
+        raise ValueError("ranked physical edge indices must be unique and in range")
     return _plan(graph, mode=mode, target=fraction, selected=ranked[:count])
 
 

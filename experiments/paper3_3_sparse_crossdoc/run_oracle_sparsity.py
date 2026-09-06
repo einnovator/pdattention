@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import statistics
 import subprocess
 import time
@@ -71,18 +72,20 @@ from pra_hf.sparse_crossdoc import (
     InteractionGroupKind,
     InteractionGroupKey,
     cumulative_attention_mass_plan,
+    full_interaction_plan,
     interaction_group_ablation_plan,
     interaction_group_keys,
     interaction_localization,
     ranked_edge_plan,
     ranked_physical_indices,
-    ranked_physical_indices_by_group_utility,
+    ranked_physical_prefix,
+    ranked_physical_prefix_by_group_utility,
     selected_interaction_localization,
     top_attention_edge_plan,
 )
 
 
-SCHEMA_VERSION = "paper3.3-oracle-sparsity-run-v1"
+SCHEMA_VERSION = "paper3.3-oracle-sparsity-run-v2"
 DEFAULT_EDGE_PERCENTAGES = (0.0, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0)
 DEFAULT_MASS_PERCENTAGES = (50.0, 75.0, 90.0, 95.0, 99.0)
 DEFAULT_SPLIT_MANIFEST = Path(
@@ -569,7 +572,11 @@ def _measure_group_interventions(
     for kind in kinds:
         nll_utilities[kind] = {}
         js_utilities[kind] = {}
-        for key in interaction_group_keys(graph, kind):
+        keys = interaction_group_keys(graph, kind)
+        print(f"  measuring {len(keys)} {kind} ablations", flush=True)
+        for group_index, key in enumerate(keys, 1):
+            if group_index == 1 or group_index % 8 == 0 or group_index == len(keys):
+                print(f"    {kind} {group_index}/{len(keys)}", flush=True)
             plan = interaction_group_ablation_plan(graph, kind, key)
             memory, encode_ms = _encode_sparse_plan(
                 backend=backend,
@@ -614,6 +621,7 @@ def _ranking_indices(
     graph: object,
     target: str,
     attention_ranking: object,
+    maximum_count: int,
     nll_utilities: Mapping[InteractionGroupKind, Mapping[InteractionGroupKey, float]],
     js_utilities: Mapping[InteractionGroupKind, Mapping[InteractionGroupKey, float]],
 ) -> object:
@@ -628,8 +636,8 @@ def _ranking_indices(
     combination = (
         "utility_x_attention" if target.endswith("_x_attention") else "lexicographic"
     )
-    return ranked_physical_indices_by_group_utility(
-        graph, kind, utilities, combination=combination
+    return ranked_physical_prefix_by_group_utility(
+        graph, kind, utilities, maximum_count, combination=combination
     )
 
 
@@ -1042,7 +1050,18 @@ def main() -> None:
             }
         )
         graph_summaries.append(graph_summary)
-        ranked_edges = ranked_physical_indices(graph)
+        sparse_percentages = [
+            percentage for percentage in args.edge_percentages if percentage < 100.0
+        ]
+        maximum_sparse_fraction = max(sparse_percentages, default=0.0) / 100.0
+        maximum_ranked_count = int(
+            math.ceil(graph.physical_edge_count * maximum_sparse_fraction)
+        )
+        ranked_edges = (
+            ranked_physical_indices(graph)
+            if not args.skip_mass_frontier
+            else ranked_physical_prefix(graph, maximum_ranked_count)
+        )
 
         encode_started = time.perf_counter()
         packed = encode_native_memory(
@@ -1150,16 +1169,22 @@ def main() -> None:
             str, tuple[object, float, tuple[str, dict[str, object], object | None]]
         ] = {}
         for target in args.ranking_targets:
+            print(f"  replaying {target} frontier", flush=True)
             target_ranking = _ranking_indices(
                 graph=graph,
                 target=target,
                 attention_ranking=ranked_edges,
+                maximum_count=maximum_ranked_count,
                 nll_utilities=nll_utilities,
                 js_utilities=js_utilities,
             )
             condition = _ranking_condition(target)
             for percentage in args.edge_percentages:
-                if target == "attention":
+                if percentage == 100.0:
+                    plan = full_interaction_plan(
+                        graph, mode=condition.removeprefix("ORACLE_")
+                    )
+                elif target == "attention":
                     plan = top_attention_edge_plan(
                         graph, percentage / 100.0, ranked=target_ranking
                     )
@@ -1299,9 +1324,18 @@ def main() -> None:
     result = {
         "schema_version": SCHEMA_VERSION,
         "experiment": "paper3.3_oracle_cross_document_sparsity",
-        "scope": "small_natural_mechanism_gate"
-        if args.dataset == "multihoprag"
-        else "fixture_smoke",
+        "scope": (
+            "powered_natural_interventional_gate"
+            if args.dataset == "multihoprag" and len(questions) >= 100
+            else "small_natural_mechanism_gate"
+            if args.dataset == "multihoprag"
+            else "fixture_smoke"
+        ),
+        "evidence_tier": (
+            "MEASURED_POWERED"
+            if args.dataset == "multihoprag" and len(questions) >= 100
+            else "MEASURED_SMOKE"
+        ),
         "dataset": dataset_metadata,
         "model": args.model,
         "model_revision": revision,
