@@ -4,8 +4,9 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from unittest.mock import patch
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -430,6 +431,92 @@ def test_gateway_returns_json_when_upstream_connection_fails() -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_g00_http_end_to_end_is_semantics_preserving() -> None:
+    class UpstreamHandler(BaseHTTPRequestHandler):
+        received = []
+
+        def do_POST(self) -> None:  # noqa: N802
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            self.received.append(json.loads(body))
+            response = json.dumps(
+                {
+                    "id": "upstream-e2e",
+                    "object": "chat.completion",
+                    "created": 123,
+                    "model": "qwen3-coder:30b",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "OK"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 8,
+                        "completion_tokens": 1,
+                        "total_tokens": 9,
+                    },
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
+    upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    upstream_thread.start()
+    adapter = OpenAICompatibleEngineAdapter(
+        f"http://127.0.0.1:{upstream.server_port}/v1",
+        model_override="qwen3-coder:30b",
+    )
+    gateway = create_gateway_server(
+        PRAGateway(adapter, mode="G00"), host="127.0.0.1", port=0
+    )
+    gateway_thread = threading.Thread(target=gateway.serve_forever, daemon=True)
+    gateway_thread.start()
+    client_payload = {
+        "model": "openai/qwen3-coder:30b",
+        "messages": [{"role": "user", "content": "Reply only OK"}],
+        "temperature": 0,
+        "top_p": 0.9,
+        "stop": ["DONE"],
+        "seed": 11,
+        "max_tokens": 64,
+    }
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{gateway.server_port}/v1/chat/completions",
+            data=json.dumps(client_payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            completion = json.loads(response.read())
+
+        assert UpstreamHandler.received == [
+            {
+                **client_payload,
+                "model": "qwen3-coder:30b",
+                "stream": False,
+            }
+        ]
+        assert completion["id"] == "upstream-e2e"
+        assert completion["created"] == 123
+        assert completion["choices"][0]["finish_reason"] == "stop"
+        assert completion["usage"]["total_tokens"] == 9
+    finally:
+        gateway.shutdown()
+        gateway.server_close()
+        gateway_thread.join(timeout=5)
+        upstream.shutdown()
+        upstream.server_close()
+        upstream_thread.join(timeout=5)
 
 
 def test_gateway_stream_preserves_ids_and_uses_the_same_mediation() -> None:

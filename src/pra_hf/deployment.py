@@ -346,6 +346,12 @@ class OpenAICompatibleEngineAdapter:
         observability: Observability | None = None,
     ):
         self.base_url = base_url.rstrip("/")
+        # OpenAI clients conventionally configure the API root with a trailing
+        # ``/v1``. Accept both that form and the server origin so callers do not
+        # accidentally send requests to ``/v1/v1/chat/completions``.
+        self.api_base_url = (
+            self.base_url if self.base_url.endswith("/v1") else f"{self.base_url}/v1"
+        )
         self.timeout_seconds = float(timeout_seconds)
         self.engine_type = EngineType(engine_type)
         self.name = name or self.engine_type.value
@@ -399,7 +405,7 @@ class OpenAICompatibleEngineAdapter:
         headers = {"Content-Type": "application/json"}
         self.observability.inject(headers)
         http_request = urllib.request.Request(
-            f"{self.base_url}/v1/chat/completions",
+            f"{self.api_base_url}/chat/completions",
             data=payload,
             headers=headers,
             method="POST",
@@ -448,7 +454,7 @@ class OpenAICompatibleEngineAdapter:
         headers = {"Accept": "text/event-stream", "Content-Type": "application/json"}
         self.observability.inject(headers)
         http_request = urllib.request.Request(
-            f"{self.base_url}/v1/chat/completions",
+            f"{self.api_base_url}/chat/completions",
             data=payload,
             headers=headers,
             method="POST",
