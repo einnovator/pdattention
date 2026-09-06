@@ -48,7 +48,7 @@ EXAMPLES = {
     "pra router preview": "pra router preview litellm-eu --registry-url http://127.0.0.1:9200 --json",
     "pra router reconcile": "pra router reconcile litellm-eu --registry-url http://127.0.0.1:9200 --confirm --json",
     "pra router controller": "pra router controller --registry-url http://127.0.0.1:9200 --interval 10",
-    "pra gateway serve": "pra gateway serve --mode selected-context --backend vllm --backend-url http://127.0.0.1:8000/v1 --sessions-dir .pra/gateway-sessions",
+    "pra gateway serve": "pra gateway serve --mode selected-context --backend vllm \\\n  --backend-url http://127.0.0.1:8000/v1 --backend-timeout 600 \\\n  --model Qwen/Qwen3-4B --sessions-dir .pra/gateway-sessions",
     "pra gateway health": "pra gateway health --management-url http://gateway:9150",
     "pra gateway upstreams": "pra gateway upstreams --management-url http://gateway:9150 --json",
     "pra gateway sessions": "pra gateway sessions --management-url http://gateway:9150 --json",
@@ -268,7 +268,7 @@ OPTION_HELP = {
     "port": "TCP port for the local service.",
     "mode": "Select the product execution or gateway mediation mode.",
     "backend": "Select the downstream gateway adapter.",
-    "backend_url": "Base URL of the existing downstream model endpoint.",
+    "backend_url": "Downstream server origin or OpenAI-compatible /v1 API root.",
     "model": "Model identifier or local model path.",
     "prefix_cache_mode": "Declare or auto-detect downstream prefix-cache behavior.",
     "session_state": "Enable or disable downstream session state.",
@@ -361,6 +361,16 @@ OPTION_HELP = {
     "resource_id": "Address a privacy-safe resource identifier returned by the API.",
     "tenant_id": "Authorize the storage action for this tenant.",
     "idempotency_key": "Deduplicate a retried management action.",
+}
+
+
+COMMAND_NOTES = {
+    "pra gateway serve": (
+        "Pin `--model` when a client sends a provider-qualified alias rather than "
+        "the identifier served downstream. The gateway advertises the pinned model "
+        "at `/v1/models`. Agent benchmark runners require the expected gateway mode, "
+        "this exact model identifier, and a successful live generation probe."
+    ),
 }
 
 
@@ -587,6 +597,13 @@ def render() -> str:
                 EXAMPLES[path],
                 "```",
                 "",
+            ]
+        )
+        note = COMMAND_NOTES.get(path)
+        if note:
+            lines.extend([note, ""])
+        lines.extend(
+            [
                 "**Example output**",
                 "",
                 "```text",

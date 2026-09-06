@@ -2991,8 +2991,8 @@ stable enough quality floor for a treatment comparison.
 This negative gate matters to the product claim. Token reduction from a model
 that no longer completes coding tasks is not a PRA benefit. A code-capable
 agent/model pairing must first establish nonzero success and enter the
-preregistered 10--90\% admission band. The expanded cohort's 6.7\% result falls
-below that lower boundary, so the scheduler correctly withheld treatment
+preregistered 20--80\% admission band, with 30--70\% preferred. The expanded
+cohort's 6.7\% result falls below that lower boundary, so the scheduler correctly withheld treatment
 launches. Only after admission may identical tasks compare
 No PRA, PRA Selected Context without an adaptor, and Selected Context with the
 immutable Runtime Bundle under
@@ -3027,6 +3027,34 @@ cells: the agent is competent, while repeated context is large enough for
 selection to matter. No PRA quality or savings conclusion is drawn from the
 admission row alone; those require the identical Easy-50 tasks under
 pass-through, matched truncation, and PRA Selected Context.
+
+The nested Easy-50 No-PRA expansion resolved 14/50 tasks, or 28.0\% (Wilson
+95\% interval 17.5--41.7\%), and retained one one-hour agent timeout as an
+unresolved result. Thus the larger estimate contracts from the optimistic
+9/20 calibration prefix but remains above the preregistered 20\% treatment
+floor. Across 1,229 model/tool turns it accumulated 10,115,822 prompt tokens
+and 200,677 completion tokens. The per-task maximum prompts sum to 526,997
+tokens, leaving 9,588,825 tokens, or 94.8\%, as conservative repeated context.
+Eight tasks produced empty submissions and 13 produced patches rejected by the
+official grader; all remain in the denominator. The pass-through and
+matched-budget conditions reuse these exact 50 identifiers and execution
+settings.
+
+An initial G00 pass-through attempt produced a nominal 0/50, but it is not a
+quality observation. Every trajectory stopped on its first model call with an
+\texttt{InternalServerError} and an empty submission. The downstream URL had
+been supplied in the conventional OpenAI form ending in \texttt{/v1}, while the
+adapter appended a second \texttt{/v1}; the resulting upstream HTTP 404 escaped
+the request handler and appeared to the harness as a disconnected server. The
+same implementation also discarded generation options and reconstructed a
+reduced completion envelope. We therefore mark all 50 rows
+\texttt{INVALID\_TRANSPORT} and exclude them from PRA deltas. The repaired G00
+path normalizes both origin and \texttt{/v1} API roots, pins and advertises the
+served model, preserves OpenAI request and response fields, returns structured
+upstream errors, and uses an explicit upstream timeout. A benchmark run now
+must pass health, mode, model-catalog, and live one-token generation probes
+before its first task. Three tasks previously solved by the direct baseline
+form an additional parity gate before the corrected Easy-50 rerun.
 
 We therefore preregistered a stronger controlled SWE-bench campaign from an
 independent local-model study~\cite{av2026localcoding}. The checked-in benchmark
@@ -3096,6 +3124,8 @@ Qwen3-Coder-30B, 30 trials & Unique tasks solved & 1/10 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, 30 trials & Input tokens$^{\dagger}$ & 6.72M & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, Easy-20 & Official success & 9/20 & ADMITTED & ADMITTED \\
 Qwen3-Coder-30B, Easy-20 & Input tokens & 4.29M & ADMITTED & ADMITTED \\
+Qwen3-Coder-30B, Easy-50 & Official success & 14/50 & RUNNING & RUNNING \\
+Qwen3-Coder-30B, Easy-50 & Input tokens & 10.12M & RUNNING & RUNNING \\
 FIM-7B Q4, two tasks & Official success & 1/2 attempted & BLOCKED & BLOCKED \\
 \bottomrule
 \end{tabular}

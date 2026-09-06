@@ -48,9 +48,11 @@ frozen model endpoint before starting the campaign:
 
 ```bash
 pra gateway serve --mode passthrough --backend ollama \
-  --backend-url http://192.168.1.102:11435/v1 --host 127.0.0.1 --port 8080
+  --backend-url http://192.168.1.102:11435/v1 --backend-timeout 3600 \
+  --model qwen3-coder:30b --host 127.0.0.1 --port 8080
 pra gateway serve --mode selected-context --backend ollama \
-  --backend-url http://192.168.1.102:11435/v1 --host 127.0.0.1 --port 8081
+  --backend-url http://192.168.1.102:11435/v1 --backend-timeout 3600 \
+  --model qwen3-coder:30b --host 127.0.0.1 --port 8081
 python -m experiments.paper4_5_agent.run_campaign \
   --config experiments/paper4_5_agent/configs/campaigns/swebench_easy50_pra_frontier.yaml \
   --max-hours 18 --resume
@@ -59,6 +61,14 @@ python -m experiments.paper4_5_agent.run_campaign \
 Port 8080 preserves the ordinary OpenAI payload. Port 8081 realizes selected
 typed records as visible text through G10. The latter is PRA Selected Context,
 not native attention-level PRA.
+
+The runner probes gateway health, mode, model identity, and one live generation
+before launching Docker tasks. After a gateway implementation or deployment
+change, first run the three-task
+`benchmarks/swebench_verified_gateway_parity3.json` cohort. Those identities
+were solved by the direct baseline, so a transport failure is visible before a
+50-task treatment consumes model time. A run in which the gateway fails is
+invalid transport evidence, not an observed zero for PRA.
 
 ```bash
 python -m experiments.paper4_5_agent.run_campaign \

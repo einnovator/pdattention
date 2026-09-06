@@ -132,3 +132,18 @@ different system prompt and tool schema. The fixture is too small for latency
 or quality claims. It did reveal and motivate fixes for decode-limit
 forwarding, streamed tool calls and usage, `tool_calls` finish reasons,
 BOM-marked Windows files, provider persistence, and large transcript storage.
+
+## Easy-50 gateway invalidation
+
+The admitted Qwen3-Coder-30B No-PRA Easy-50 baseline resolved `14/50`. Its
+first nominal G00 result was `0/50`, but all 50 trajectories ended on their
+first API call with `InternalServerError` and no submission. This is an invalid
+gateway transport run, not a model or PRA result. The retained raw normalized
+rows and explicit machine-readable invalidation live under
+`swebench_verified_easy50/gateway_passthrough_invalid_transport/`.
+
+The repair preserves ordinary OpenAI request fields and upstream response
+metadata, accepts backend origins and `/v1` API roots, pins the downstream
+model, returns structured upstream failures, and probes a real generation
+before agent launch. A three-task direct-solved parity cohort must pass before
+the corrected Easy-50 condition is admitted.
