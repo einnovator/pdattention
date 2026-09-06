@@ -2882,13 +2882,16 @@ directly to a PRA-capable engine and (ii) the same agent using a G11 PRA
 gateway in front of that engine. This defines two experiments that must not be
 conflated. In \emph{G11-equivalence}, the complete request and selected-resource
 envelope are replayed, and matching resource digests make the difference an
-estimate of gateway mediation. In \emph{G11-end-to-end}, each placement owns
+estimate of gateway mediation. The direct run writes an ordered selection
+fixture keyed by a digest of the complete agent-visible request. Replay has no
+ordinal or approximate fallback: a changed trajectory aborts the equivalence
+cell instead of admitting a different selection. In \emph{G11-end-to-end}, each placement owns
 its normal session and selection path; this estimates product behavior, with
 selection and transport jointly present. Both fix the engine, model revision,
-task and repeat, budget, profile, and official grader. The Easy-50 native cells
-below are explicitly route-owned end-to-end cells; they are not reported as
-frozen-selection equivalence. G10 remains a separate selected-text fallback
-and is not relabeled as native execution.
+task and repeat, budget, profile, and official grader. Easy-50 contains both
+the fail-closed frozen replay and a separate route-owned product cell. G10
+remains a separate selected-text fallback and is not relabeled as native
+execution.
 
 The executable version-2 matrix records connection, engine-PRA and gateway-PRA
 flags, gateway mode, physical engine target, and comparison group in every row.
@@ -2912,8 +2915,9 @@ still reveal protocol failures, crashes, isolation errors, duplicate native
 materialization, and accounting regressions. PRA efficacy is instead tested on
 the admitted Easy-50 cohort described below, whose direct ordinary baseline
 resolved 14/50 tasks. Its preregistered execution order is corrected G00,
-direct native PRA at 50\%, G11 end to end at 50\%, matched 50\% truncation, and
-G10 at 50\%; lower budgets follow only when that comparison is informative.
+direct native PRA at 50\%, frozen G11 equivalence, G11 end to end at 50\%,
+matched 50\% truncation, and G10 at 50\%; lower budgets follow only when that
+comparison is informative.
 
 The first capable reproduction target is TIGER-Lab FIM-14B under its published
 R2E-Gym configuration~\cite{wang2026fim,jain2025r2egym}: all 500 SWE-bench

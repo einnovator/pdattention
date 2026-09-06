@@ -183,17 +183,20 @@ resource envelope and compares it with direct native execution; it is valid
 only when the receipts carry the same selected-resource digest.
 `G11-end-to-end` lets each placement run its normal routing and session path;
 it measures the product, but selection and transport effects are then jointly
-present. The Easy-50 native pair is explicitly `route_owned` and therefore the
-latter. It must not be described as frozen-selection transport equivalence.
+present. Easy-50 now includes both forms. The direct native run writes a
+content-addressed selection fixture. `G11-equivalence` replays only exact
+request-digest matches from that fixture and fails closed as soon as the paired
+trajectories diverge. The separate `G11-end-to-end` cell remains `route_owned`
+and must not be described as frozen-selection transport equivalence.
 
 The Easy-50 scheduler uses explicit priorities: No PRA, corrected G00, direct
-native PRA at 50%, G11 end to end at 50%, matched 50% truncation, and G10 at
-50%. The 25% and 12.5% frontier remains later-stage work and runs only when the
-50% comparison is informative.
+native PRA at 50%, frozen G11 equivalence, G11 end to end at 50%, matched 50%
+truncation, and G10 at 50%. The 25% and 12.5% frontier remains later-stage work
+and runs only when the 50% comparison is informative.
 
 ```bash
-export PRA_AGENT_PRA_ENGINE_URL=http://PRA_ENGINE_HOST:8000/v1
-export PRA_AGENT_PRA_GATEWAY_URL=http://PRA_GATEWAY_HOST:8080/v1
+export PRA_AGENT_NATIVE_ENGINE_URL=http://PRA_ENGINE_HOST:8000/v1
+export PRA_AGENT_NATIVE_GATEWAY_URL=http://PRA_GATEWAY_HOST:8080/v1
 python -m experiments.paper4_5_agent.harness_matrix \
   --config experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pra_transport.yaml \
   --resume
@@ -213,6 +216,13 @@ The Easy-50 campaign now also declares a 50% native pair using
 `PRA_AGENT_NATIVE_ENGINE_URL` and `PRA_AGENT_NATIVE_GATEWAY_URL` to endpoints
 backed by the same engine instance. Capability and live-generation probes run
 before the first benchmark task.
+
+The direct cell records `native_pra_direct_50/selection_fixture.jsonl`. Each row
+binds the complete agent-visible request digest to ordered resource IDs,
+content, and a selected-resource digest. The equivalence cell consumes that
+fixture with `--selection-replay`; no nearest or ordinal fallback is allowed.
+The ordinary G11 product cell performs its own route and remains a distinct
+causal comparison.
 
 ## Controlled SWE-bench fixed-50 campaign
 

@@ -61,8 +61,9 @@ def transform_chat_payload(
     budget_fraction: float,
     request_index: int = 0,
     segment_tokens: int = 256,
+    frozen_selection: Sequence[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, Any], TreatmentTrace]:
-    """Apply a matched budget using only messages already visible to the agent."""
+    """Apply a matched budget, optionally replaying an exact recorded selection."""
 
     mode = ContextTreatment(mode)
     if not 0 < budget_fraction <= 1:
@@ -76,6 +77,8 @@ def transform_chat_payload(
     session_id = session_id_for_messages(messages)
     logical_tokens = sum(_count_tokens(row.get("content")) for row in messages)
     if mode is ContextTreatment.PASSTHROUGH:
+        if frozen_selection is not None:
+            raise ValueError("passthrough mode cannot replay a context selection")
         return transformed, _trace(
             request_index, session_id, mode, budget_fraction, logical_tokens, logical_tokens,
             0, logical_tokens, 0, 0, None, 0.0,
@@ -88,6 +91,8 @@ def transform_chat_payload(
     candidate_indices = [index for index in range(len(messages)) if index not in mandatory_indices]
     started = time.perf_counter()
     if mode is ContextTreatment.TRUNCATION:
+        if frozen_selection is not None:
+            raise ValueError("truncation mode cannot replay a context selection")
         selected = _truncate_recent(messages, candidate_indices, available_tokens)
         selected_tokens = sum(_count_tokens(row[1].get("content")) for row in selected)
         keep = [(index, messages[index]) for index in mandatory_indices] + selected
@@ -100,8 +105,17 @@ def transform_chat_payload(
     else:
         query = str(messages[max(mandatory_indices)].get("content", ""))
         segments = _segments(messages, candidate_indices, segment_tokens)
-        selected_texts = _select_segments(segments, query, available_tokens)
+        selected_texts = (
+            list(frozen_selection)
+            if frozen_selection is not None
+            else _select_segments(segments, query, available_tokens)
+        )
         selected_tokens = sum(_count_tokens(text) for _, text in selected_texts)
+        if selected_tokens > available_tokens:
+            raise ValueError(
+                "frozen selection exceeds the matched request context budget: "
+                f"{selected_tokens} > {available_tokens}"
+            )
         transformed["messages"] = [messages[index] for index in sorted(mandatory_indices)]
         resources = [
             {
@@ -288,11 +302,18 @@ class TreatmentProxy:
     def __init__(
         self, target_base_url: str, *, mode: ContextTreatment | str,
         budget_fraction: float, trace_path: Path,
+        selection_record_path: Path | None = None,
+        selection_replay_path: Path | None = None,
     ) -> None:
+        if selection_record_path is not None and selection_replay_path is not None:
+            raise ValueError("selection recording and replay are mutually exclusive")
         self.target_base_url = target_base_url.rstrip("/")
         self.mode = ContextTreatment(mode)
         self.budget_fraction = budget_fraction
         self.trace_path = trace_path
+        self.selection_record_path = selection_record_path
+        self.selection_replay_path = selection_replay_path
+        self._frozen_selections = _load_selection_fixture(selection_replay_path)
         self._lock = threading.Lock()
         self._request_index = 0
         self._server: ThreadingHTTPServer | None = None
@@ -331,10 +352,20 @@ class TreatmentProxy:
             with self._lock:
                 self._request_index += 1
                 request_index = self._request_index
+            input_digest = _selection_input_digest(payload.get("messages", ()))
+            frozen = self._frozen_selections.get(input_digest)
+            if self.selection_replay_path is not None and frozen is None:
+                raise RuntimeError(
+                    "frozen selection replay has no exact request match for "
+                    f"{input_digest}; the paired trajectories have diverged"
+                )
             payload, trace = transform_chat_payload(
                 payload, mode=self.mode, budget_fraction=self.budget_fraction,
-                request_index=request_index,
+                request_index=request_index, frozen_selection=frozen,
             )
+            if self.selection_record_path is not None:
+                resources = (payload.get("pra") or {}).get("resources") or ()
+                self._record_selection(input_digest, trace, resources)
             body = json.dumps(payload).encode("utf-8")
         target = self.target_base_url.removesuffix("/v1") + handler.path
         headers = {
@@ -360,3 +391,65 @@ class TreatmentProxy:
             with self._lock:
                 with self.trace_path.open("a", encoding="utf-8") as stream:
                     stream.write(json.dumps(asdict(trace), sort_keys=True) + "\n")
+
+    def _record_selection(
+        self, input_digest: str, trace: TreatmentTrace, resources: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Persist replayable selected content while telemetry retains hashes only."""
+
+        row = {
+            "request_input_sha256": input_digest,
+            "session_id": trace.session_id,
+            "selected_resource_digest": trace.selected_resource_digest,
+            "resources": [
+                {"resource_id": str(item["resource_id"]), "text": str(item["text"])}
+                for item in resources
+            ],
+        }
+        assert self.selection_record_path is not None
+        self.selection_record_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            with self.selection_record_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _selection_input_digest(messages: Sequence[Mapping[str, Any]]) -> str:
+    """Bind replay to the complete agent-visible request, including trajectory order."""
+
+    encoded = json.dumps(messages, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_selection_fixture(path: Path | None) -> dict[str, list[tuple[str, str]]]:
+    """Load a direct-run fixture and reject ambiguous duplicate request identities."""
+
+    if path is None:
+        return {}
+    if not path.is_file():
+        raise FileNotFoundError(f"selection replay fixture does not exist: {path}")
+    selections: dict[str, list[tuple[str, str]]] = {}
+    digests: dict[str, str | None] = {}
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        request_digest = str(row["request_input_sha256"])
+        resources = [
+            (str(item["resource_id"]), str(item["text"]))
+            for item in row.get("resources", ())
+        ]
+        selection_digest = _selection_digest(resources)
+        expected_digest = row.get("selected_resource_digest")
+        if expected_digest != selection_digest:
+            raise ValueError(
+                f"selection fixture line {line_number} failed its content digest"
+            )
+        if request_digest in selections and digests[request_digest] != selection_digest:
+            raise ValueError(
+                f"selection fixture has conflicting rows for request {request_digest}"
+            )
+        selections[request_digest] = resources
+        digests[request_digest] = selection_digest
+    return selections

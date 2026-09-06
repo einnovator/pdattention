@@ -58,8 +58,11 @@ not the full gateway-plus-native-engine arm. The principal gateway comparison
 is G11 minus direct native PRA, using the same engine instance and matched task,
 repeat, model revision, budget, and profile. Selected records are matched only
 in the dedicated `G11-equivalence` protocol, where both receipts must contain
-the same selected-resource digest. In `G11-end-to-end`, each placement owns its
-normal selection path, so the result measures the deployed product rather than
+the same selected-resource digest. The direct run records an ordered selection
+fixture keyed by a digest of the complete agent-visible request. Equivalence
+replay has no fuzzy or ordinal fallback: a changed trajectory fails the cell
+instead of silently routing a different context. In `G11-end-to-end`, each
+placement owns its normal selection path, so the result measures the deployed product rather than
 transport alone. A version-2 run
 records `connection`, `engine_pra_enabled`, `gateway_pra_enabled`,
 `gateway_mode`, `engine_target_id`, and `comparison_group` in every normalized
@@ -71,8 +74,9 @@ harnesses each solved just 1/10 baseline tasks, and both successes were the same
 `fix-git` identity. It can reveal crashes, leakage, double materialization,
 protocol regressions, and accounting errors, but it is too close to the quality
 floor to establish PRA efficacy. Primary efficacy uses the admitted Easy-50
-cohort (`14/50` direct ordinary baseline) and runs G00, direct native, G11,
-matched truncation, and G10 in that order before lower budgets.
+cohort (`14/50` direct ordinary baseline) and runs G00, direct native, frozen
+G11 equivalence, end-to-end G11, matched truncation, and G10 in that order
+before lower budgets.
 
 The rollout order is Mini-SWE-agent and Qwen Code first, followed by admitted
 OpenCode, Pi, OpenHands, Aider, and SWE-agent configurations. Commercial agents

@@ -31,6 +31,8 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--selection-record", type=Path)
+    parser.add_argument("--selection-replay", type=Path)
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--recover-timeout-chunk", type=int)
     options = parser.parse_args()
@@ -65,6 +67,8 @@ def main() -> None:
         allow_partial_reproduction=False,
         local_calibration=True,
         recover_timeout_chunk=options.recover_timeout_chunk,
+        selection_record=options.selection_record,
+        selection_replay=options.selection_replay,
     )
     print(run(args))
 

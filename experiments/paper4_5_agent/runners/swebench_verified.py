@@ -196,6 +196,16 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
             f"SWE-bench dataset revision={current_dataset_revision!r}; "
             f"execution requires {args.benchmark_revision!r}"
         )
+    selection_record = getattr(args, "selection_record", None)
+    selection_replay = getattr(args, "selection_replay", None)
+    selection_contract = (
+        "frozen_replay" if selection_replay
+        else "route_owned" if args.mode in {
+            ContextTreatment.PRA_SELECTED_CONTEXT.value,
+            ContextTreatment.DIRECT_NATIVE_PRA.value,
+            ContextTreatment.GATEWAY_NATIVE_PRA.value,
+        } else "not_applicable"
+    )
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "benchmark_source_revision": card["source_revision"],
@@ -217,6 +227,13 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "max_steps": args.max_steps,
         "temperature": 0,
         "campaign_mode": args.mode,
+        "selection_contract": selection_contract,
+        "selection_record_path": str(selection_record) if selection_record else None,
+        "selection_replay_path": str(selection_replay) if selection_replay else None,
+        "selection_replay_sha256": (
+            hashlib.sha256(selection_replay.read_bytes()).hexdigest()
+            if selection_replay else None
+        ),
         **treatment_placement(args.mode),
         "context_budget_fraction": args.budget_fraction,
         "harness": "mini-swe-agent",
@@ -242,6 +259,15 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
 def run(args: argparse.Namespace) -> Path:
     """Execute all fixed IDs in resumable chunks and normalize official grading."""
 
+    selection_record = getattr(args, "selection_record", None)
+    selection_replay = getattr(args, "selection_replay", None)
+    if selection_record and selection_replay:
+        raise ValueError("--selection-record and --selection-replay are mutually exclusive")
+    if (selection_record or selection_replay) and args.mode not in {
+        ContextTreatment.DIRECT_NATIVE_PRA.value,
+        ContextTreatment.GATEWAY_NATIVE_PRA.value,
+    }:
+        raise ValueError("selection fixtures are restricted to native-PRA treatments")
     card = load_benchmark_card(args.benchmark_card)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -265,6 +291,8 @@ def run(args: argparse.Namespace) -> Path:
             mode=ContextTreatment(args.mode),
             budget_fraction=args.budget_fraction,
             trace_path=output / "request_telemetry.jsonl",
+            selection_record_path=getattr(args, "selection_record", None),
+            selection_replay_path=getattr(args, "selection_replay", None),
         )
         agent_base_url = proxy.start()
     try:
@@ -425,6 +453,8 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
             )
         },
         "gateway_preflight": receipt.get("gateway_preflight"),
+        "selection_contract": receipt.get("selection_contract"),
+        "selection_replay_sha256": receipt.get("selection_replay_sha256"),
         "source_sha256": {
             path.name: hashlib.sha256(path.read_bytes()).hexdigest()
             for path in source_files
@@ -606,6 +636,14 @@ def _write_task_rows(
             "engine_version": args.engine_version, "quantization": args.quantization,
             "dtype": args.dtype, "mode": args.mode,
             **placement,
+            "selection_contract": (
+                "frozen_replay" if getattr(args, "selection_replay", None)
+                else "route_owned" if args.mode in {
+                    ContextTreatment.PRA_SELECTED_CONTEXT.value,
+                    ContextTreatment.DIRECT_NATIVE_PRA.value,
+                    ContextTreatment.GATEWAY_NATIVE_PRA.value,
+                } else "not_applicable"
+            ),
             "context_budget_fraction": args.budget_fraction,
             "pra_config_id": (
                 "swebench-balanced-v1"
@@ -631,6 +669,7 @@ def _write_task_rows(
             "tokens_avoided_estimate": trace.get("tokens_avoided_estimate"),
             "token_saving_fraction_estimate": trace.get("token_saving_fraction_estimate"),
             "token_estimator": trace.get("token_estimator"),
+            "selected_resource_digests": trace.get("selected_resource_digests"),
             "output_tokens": trajectory.get("output_tokens"),
             "materialized_tokens": None,
             "selected_tokens": None,
@@ -765,6 +804,10 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "token_saving_fraction_estimate": max(0, logical - physical) / logical if logical else 0.0,
         "route_time_s": sum(float(row.get("route_time_s") or 0) for row in rows),
         "token_estimator": rows[0].get("token_estimator"),
+        "selected_resource_digests": [
+            row["selected_resource_digest"]
+            for row in rows if row.get("selected_resource_digest")
+        ],
     }
 
 
@@ -810,6 +853,14 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument(
+        "--selection-record", type=Path,
+        help="Record exact ordered selected resources for a later transport-equivalence replay.",
+    )
+    parser.add_argument(
+        "--selection-replay", type=Path,
+        help="Replay an exact direct-run selection fixture; fail if request content diverges.",
+    )
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--grader-workers", type=int, default=4)
     parser.add_argument("--chunk-size", type=int, default=10)

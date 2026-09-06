@@ -39,6 +39,7 @@ from experiments.paper4_5_agent.analyze_easy_frontier import (
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
+    _load_selection_fixture,
     transform_chat_payload,
 )
 from experiments.paper4_5_agent.harness_matrix import (
@@ -263,6 +264,41 @@ def test_selected_context_trace_has_stable_resource_digest() -> None:
     assert first.selected_resource_digest == second.selected_resource_digest
 
 
+def test_frozen_selection_replays_exact_order_and_content() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "assistant", "content": "alpha beta gamma"},
+            {"role": "user", "content": "find alpha"},
+        ]
+    }
+    frozen = [("record-b", "beta"), ("record-a", "alpha")]
+
+    transformed, trace = transform_chat_payload(
+        payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+        budget_fraction=0.75, frozen_selection=frozen,
+    )
+
+    assert [
+        (row["resource_id"], row["text"])
+        for row in transformed["pra"]["resources"]
+    ] == frozen
+    assert trace.selected_segments == 2
+    assert trace.selected_resource_digest
+
+
+def test_selection_fixture_rejects_modified_content(tmp_path: Path) -> None:
+    fixture = tmp_path / "selection.jsonl"
+    fixture.write_text(json.dumps({
+        "request_input_sha256": "request",
+        "selected_resource_digest": "wrong",
+        "resources": [{"resource_id": "record", "text": "content"}],
+    }) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="content digest"):
+        _load_selection_fixture(fixture)
+
+
 def test_frontier_reports_matched_pra_vs_truncation_delta(tmp_path: Path) -> None:
     for condition, mode, resolved, tokens in (
         ("truncation_50", "truncation", False, 50),
@@ -327,7 +363,7 @@ def test_calibration_next_tier_follows_admission_policy() -> None:
 def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     campaign = CampaignConfig.load(EASY50_CONFIG)
     assert len(campaign.baselines[0].task_ids) == 50
-    assert len(campaign.cells) == 10
+    assert len(campaign.cells) == 11
     baseline, *treatments = campaign.cells
     assert baseline.cell_id == "easy50-no-pra"
     assert baseline.evidence_role == "baseline_admission"
@@ -352,7 +388,12 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
         assert truncation_budget == selected_budget
     direct = next(cell for cell in treatments if cell.mode.value == "native_pra")
     gateway = next(
-        cell for cell in treatments if cell.mode.value == "gateway_native_pra"
+        cell for cell in treatments
+        if cell.mode.value == "gateway_native_pra" and cell.selection_contract == "route_owned"
+    )
+    equivalence = next(
+        cell for cell in treatments
+        if cell.mode.value == "gateway_native_pra" and cell.selection_contract == "frozen_replay"
     )
     assert direct.connection == "direct"
     assert gateway.connection == "gateway"
@@ -364,9 +405,14 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert direct.evidence_role == "efficacy"
     assert gateway.evidence_role == "product_end_to_end"
     assert direct.selection_contract == gateway.selection_contract == "route_owned"
+    assert equivalence.evidence_role == "transport_equivalence"
+    assert equivalence.paired_cell == direct.cell_id
+    assert "--selection-record" in direct.command
+    assert "--selection-replay" in equivalence.command
     priorities = {cell.cell_id: cell.priority for cell in campaign.cells}
     assert priorities["easy50-gateway-passthrough"] < priorities[direct.cell_id]
-    assert priorities[direct.cell_id] < priorities[gateway.cell_id]
+    assert priorities[direct.cell_id] < priorities[equivalence.cell_id]
+    assert priorities[equivalence.cell_id] < priorities[gateway.cell_id]
     assert priorities[gateway.cell_id] < priorities["easy50-truncation-50"]
     assert priorities["easy50-truncation-50"] < priorities["easy50-pra-selected-50"]
 
@@ -804,11 +850,13 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     target_thread = threading.Thread(target=target.serve_forever, daemon=True)
     target_thread.start()
     trace_path = tmp_path / "request_telemetry.jsonl"
+    selection_path = tmp_path / "selection_fixture.jsonl"
     proxy = TreatmentProxy(
         f"http://127.0.0.1:{target.server_port}/v1",
-        mode=ContextTreatment.PRA_SELECTED_CONTEXT,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
         budget_fraction=0.5,
         trace_path=trace_path,
+        selection_record_path=selection_path,
     )
     proxy_url = proxy.start()
     try:
@@ -834,8 +882,11 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
         target_thread.join(timeout=5)
     assert observed["pra"]["metadata"]["benchmark_fairness"] == "agent-visible-messages-only"
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
-    assert trace["mode"] == "gateway-pra"
+    assert trace["mode"] == "direct-native-pra"
     assert trace["physical_input_tokens_estimate"] <= trace["logical_input_tokens_estimate"]
+    fixture = _load_selection_fixture(selection_path)
+    assert len(fixture) == 1
+    assert next(iter(fixture.values()))
 
 
 def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:
