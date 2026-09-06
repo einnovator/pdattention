@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import urllib.request
@@ -67,6 +68,7 @@ from experiments.paper4_5_agent.schema import (
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
+    _cleanup_owned_containers,
     _execute_chunks,
     _grader_error_type,
     _is_h100_80gb,
@@ -480,6 +482,31 @@ def test_timed_out_agent_becomes_an_empty_official_prediction(tmp_path: Path) ->
             "model_patch": "",
         }
     }
+
+
+def test_timeout_cleanup_targets_only_emitted_owned_containers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    output = (
+        "Started container minisweagent-a1b2 with ID x\n"
+        "container sweb.eval.repo__task.run-1 completed\n"
+        "unrelated production-container must remain"
+    )
+
+    cleaned = _cleanup_owned_containers(output)
+
+    assert cleaned == ["minisweagent-a1b2", "sweb.eval.repo__task.run-1"]
+    assert commands == [
+        ["docker", "rm", "-f", "minisweagent-a1b2"],
+        ["docker", "rm", "-f", "sweb.eval.repo__task.run-1"],
+    ]
 
 
 def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Path) -> None:

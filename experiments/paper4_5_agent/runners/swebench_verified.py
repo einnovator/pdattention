@@ -333,8 +333,10 @@ def _run(
     except subprocess.TimeoutExpired as exc:
         stdout = _timeout_text(exc.stdout)
         stderr = _timeout_text(exc.stderr)
+        cleaned = _cleanup_owned_containers(stdout + "\n" + stderr)
         log.write_text(
-            stdout + "\n--- STDERR ---\n" + stderr + "\n--- TIMEOUT ---\n",
+            stdout + "\n--- STDERR ---\n" + stderr + "\n--- TIMEOUT ---\n"
+            + "cleaned_containers=" + json.dumps(cleaned) + "\n",
             encoding="utf-8",
         )
         raise
@@ -349,6 +351,27 @@ def _timeout_text(value: str | bytes | None) -> str:
     if value is None:
         return ""
     return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+
+
+def _cleanup_owned_containers(process_output: str) -> list[str]:
+    """Remove only task containers named in the timed-out subprocess output."""
+
+    names = sorted(set(re.findall(
+        r"\b(?:minisweagent-[a-z0-9]+|sweb\.eval\.[A-Za-z0-9_.-]+)\b",
+        process_output,
+    )))
+    cleaned = []
+    for name in names:
+        try:
+            completed = subprocess.run(
+                ["docker", "rm", "-f", name], capture_output=True, text=True,
+                timeout=30, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode == 0:
+            cleaned.append(name)
+    return cleaned
 
 
 def _write_empty_predictions(
