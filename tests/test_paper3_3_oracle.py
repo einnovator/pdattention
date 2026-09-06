@@ -15,6 +15,7 @@ from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     paired_bootstrap_effects,
     ranking_frontier_diagnostics,
     summarize_rows,
+    summarize_selected_localization,
 )
 
 
@@ -185,6 +186,35 @@ def test_split_selection_samples_only_declared_ids(tmp_path) -> None:
         "example:5",
     }
     assert metadata["split_digest"] == "abc"
+
+
+def test_selected_localization_summary_preserves_physical_counts() -> None:
+    result = summarize_selected_localization(
+        [
+            {
+                "ranking_target": "attention",
+                "selected_physical_head_edges": 10,
+                "top_layers": [{"layer": 2, "selected_physical_head_edges": 10}],
+                "layer_heads": [
+                    {
+                        "layer": 2,
+                        "head": 3,
+                        "selected_physical_head_edges": 10,
+                    }
+                ],
+                "top_layer_heads": [],
+                "record_pairs": [
+                    {
+                        "source_record_index": 0,
+                        "target_record_index": 1,
+                        "selected_physical_head_edges": 10,
+                    }
+                ],
+            }
+        ]
+    )
+    assert result[0]["selected_physical_head_edges"] == 10
+    assert result[0]["top_layers"][0]["selected_fraction"] == 1.0
 
 
 def test_split_builder_rejects_insufficient_dataset() -> None:

@@ -336,6 +336,66 @@ def paired_bootstrap_effects(
     return result
 
 
+def summarize_selected_localization(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Aggregate where each 0.1% ranking spends its physical-edge budget."""
+
+    grouped: dict[str, list[Mapping[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["ranking_target"]), []).append(row)
+    summaries = []
+    for target, values in sorted(grouped.items()):
+        layer_counts: dict[int, int] = {}
+        layer_head_counts: dict[tuple[int, int], int] = {}
+        pair_counts: dict[tuple[int, int], int] = {}
+        total = 0
+        for value in values:
+            total += int(value["selected_physical_head_edges"])
+            for row in value["top_layers"]:
+                layer = int(row["layer"])
+                layer_counts[layer] = layer_counts.get(layer, 0) + int(
+                    row["selected_physical_head_edges"]
+                )
+            for row in value.get("layer_heads", value["top_layer_heads"]):
+                key = (int(row["layer"]), int(row["head"]))
+                layer_head_counts[key] = layer_head_counts.get(key, 0) + int(
+                    row["selected_physical_head_edges"]
+                )
+            for row in value["record_pairs"]:
+                key = (
+                    int(row["source_record_index"]),
+                    int(row["target_record_index"]),
+                )
+                pair_counts[key] = pair_counts.get(key, 0) + int(
+                    row["selected_physical_head_edges"]
+                )
+
+        def top_rows(counts: Mapping[tuple[int, ...] | int, int], count: int):
+            ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            return [
+                {
+                    "key": list(key) if isinstance(key, tuple) else [key],
+                    "selected_physical_head_edges": value,
+                    "selected_fraction": value / max(total, 1),
+                }
+                for key, value in ordered[:count]
+            ]
+
+        summaries.append(
+            {
+                "ranking_target": target,
+                "examples": len(values),
+                "target_percentage": 0.1,
+                "selected_physical_head_edges": total,
+                "top_layers": top_rows(layer_counts, 8),
+                "top_layer_heads": top_rows(layer_head_counts, 16),
+                "top_record_index_pairs": top_rows(pair_counts, 8),
+            }
+        )
+    return summaries
+
+
 def oracle_gate(summary: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Apply the prespecified inception gate to top-edge conditions only."""
 
@@ -1336,6 +1396,9 @@ def main() -> None:
 
     summary = summarize_rows(rows)
     paired_effects = paired_bootstrap_effects(rows)
+    selected_localization_summary = summarize_selected_localization(
+        selected_localizations
+    )
     gate = oracle_gate(summary)
     frontier_diagnostics = ranking_frontier_diagnostics(summary)
     causal_gate = interventional_oracle_gate(summary, frontier_diagnostics)
@@ -1403,6 +1466,7 @@ def main() -> None:
         "graphs": graph_summaries,
         "localization": localizations,
         "selected_edge_localization": selected_localizations,
+        "selected_edge_localization_summary": selected_localization_summary,
         "group_interventions": intervention_rows,
         "receipts": receipts,
         "rows": rows,

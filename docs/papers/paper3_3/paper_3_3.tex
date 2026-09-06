@@ -727,6 +727,33 @@ runtime economics can be claimed.
 
 \appendix
 
+\section{Interventional Replay Procedure}
+
+For each frozen selection, the implementation performs the following steps:
+\begin{enumerate}[leftmargin=*]
+    \item Encode the concatenated records with ordinary full-causal attention,
+    observing only causal cross-record probabilities into a compressed
+    $[L,H,|E|]$ graph.
+    \item Encode the same tokens with every cross-record edge blocked. This is
+    the base mask to which sparse plans add visibility.
+    \item For each document-pair or layer group $g$, replay the full graph
+    except $g$, score the gold answer without decoding, and record
+    $u_{\mathrm{NLL}}(g)$ and $u_{\mathrm{JS}}(g)$.
+    \item Order groups by one measured utility. Within a group, order physical
+    edges by teacher attention, or multiply non-negative group NLL utility by
+    edge attention for the combined proxy.
+    \item Replay nested prefixes at each physical-edge budget. Generate and
+    teacher-force the answer from the same immutable selection and query.
+    \item Verify that the empty plan matches the blocked control and that the
+    full plan matches the instrumented packed teacher exactly.
+\end{enumerate}
+
+The implementation obtains only the prefix needed by the largest sparse
+budget through deterministic partition selection. It does not sort all tens of
+millions of edges for each target. This optimization changes oracle-analysis
+latency, not the selected set or the dense masked host execution used to test
+quality.
+
 \section{Artifact Schema}
 
 Each run should persist:
@@ -737,11 +764,14 @@ Each run should persist:
     \item document order;
     \item teacher interaction graph digest;
     \item oracle/learned interaction-plan digest;
+    \item leave-one-group-out NLL and first-step JS utility;
     \item selected pairs/layers/heads/tokens;
     \item interaction budget;
     \item training checkpoint/policy revision;
     \item precision/runtime metadata;
     \item task/distribution/system metrics;
+    \item paired bootstrap effects against the packed teacher;
+    \item reranker execution device and frozen-split digest;
     \item git commit and hardware.
 \end{itemize}
 
@@ -756,7 +786,10 @@ generation is in the adjacent \url{freeze_splits.py}. Exact commands and
 evidence labels appear in the experiment and paper README files.
 
 The publication manifest named in the README contains row metrics, receipts,
-localization, runtime metadata, and plot inputs. Regenerable teacher graphs are
-excluded from Git; their content digests remain in the manifest.
+group interventions, selected-edge localization, monotonicity diagnostics,
+paired intervals, runtime metadata, and plot inputs. Regenerable teacher graphs
+and per-question recovery checkpoints are excluded from Git; graph content
+digests and checkpoint-bound configuration digests remain in the final
+manifest.
 
 \end{document}
