@@ -41,6 +41,10 @@ from pra_hf.rag_composition import (
     SelectedResource,
     compose_resources,
 )
+from pra_hf.sparse_crossdoc import (
+    CrossDocumentAttentionCollector,
+    top_attention_edge_plan,
+)
 from experiments.paper3_2_rag.run_crossdoc_adapter import (
     PreparedExample,
     _answer_logits,
@@ -252,6 +256,51 @@ def test_block_isolated_packed_matches_independent_prerope_records() -> None:
     assert max(abs(a - b) for a, b in zip(
         blocked_logits.flatten().tolist(), rebound_logits.flatten().tolist()
     )) < 2e-3
+
+
+def test_teacher_attention_observer_and_full_oracle_replay_match_host_path() -> None:
+    mx = pytest.importorskip("mlx.core")
+    mx.random.seed(13)
+    model = _tiny_qwen()
+    tokens = (1, 2, 3, 4)
+    full_mask, _ = build_document_attention_mask(
+        (2, 2), policy=DocumentAttentionPolicy.FULL_CAUSAL
+    )
+    collector = CrossDocumentAttentionCollector(
+        (2, 2),
+        record_ids=("D1", "D2"),
+        selection_receipt_id="selection-1",
+        model_revision="tiny-qwen-test",
+    )
+    observed = encode_native_memory_with_mask(
+        model,
+        tokens,
+        full_mask,
+        attention_observer=collector.observe,
+    )
+    graph = collector.finalize()
+    plan = top_attention_edge_plan(graph, 1.0)
+    blocked_mask, _ = build_document_attention_mask(
+        (2, 2), policy=DocumentAttentionPolicy.NO_CROSS_DOC
+    )
+    replayed = encode_native_memory_with_mask(
+        model,
+        tokens,
+        blocked_mask,
+        sparse_mask_provider=lambda layer, _heads: plan.mask_for_layer(
+            layer,
+            base_mask=blocked_mask,
+            source_tokens=graph.source_tokens,
+            target_tokens=graph.target_tokens,
+        ),
+    )
+    host = encode_native_memory_with_mask(model, tokens, full_mask)
+    observed_diagnostics = native_memory_diagnostics(host, observed)
+    replayed_diagnostics = native_memory_diagnostics(host, replayed)
+    assert observed_diagnostics["max_key_abs_delta"] < 1e-5
+    assert observed_diagnostics["max_value_abs_delta"] < 1e-5
+    assert replayed_diagnostics["max_key_abs_delta"] < 1e-5
+    assert replayed_diagnostics["max_value_abs_delta"] < 1e-5
 
 
 def test_zero_initialized_crossdoc_adapter_is_exact_identity() -> None:

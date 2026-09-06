@@ -1,0 +1,586 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{multirow}
+
+\title{Paper 3.3: Sparse Cross-Document Contextualization for Persistent Native Memory\\
+\large Recovering RAG Quality without Rebuilding the Packed Prefix}
+\author{Jorge Sim\~ao}
+\date{Draft --- September 2026}
+
+\newcommand{\pra}{\textsc{PRA}}
+\newcommand{\rag}{\textsc{RAG}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Retrieval-augmented generation (RAG) normally serializes selected documents into
+one causal token sequence, so later documents are contextualized by earlier
+documents before the query is decoded. Progressive Retrieval Attention (PRA)
+instead allows selected resources to remain independently addressable and to
+persist as native key/value memory. Prior work established that contiguous PRA
+transport can preserve model behavior exactly, that pre-RoPE keys can be rebound
+to request-specific packed positions, and that independently stored resources
+closely reproduce a packed computation when document-to-document attention is
+disabled. The remaining quality gap is therefore primarily a
+cross-document-contextualization problem rather than a position-transport
+problem.
+
+This paper asks whether the useful portion of packed-RAG cross-document
+interaction is sparse and predictable. We first instrument packed RAG to obtain
+an oracle cross-document interaction graph and measure how much task quality is
+retained as that graph is sparsified. We then learn query-conditioned policies
+that select document pairs, layers, heads, and eventually token subsets for
+request-local interaction, while persistent document K/V remains immutable.
+Selected interactions are executed using the frozen base transformer's own
+attention operations rather than uncalibrated synthetic K/V.
+
+The primary target is to recover at least 80\% of the quality gap between
+independent PRA and packed RAG while using at most 10\% of dense
+document-to-document interaction cost. We additionally measure non-prefix K/V
+reuse, order robustness, request latency, precision sensitivity, and
+cross-family transfer. The broader question is whether persistent neural memory
+can retain the economic advantages of reusable records while adding only the
+small amount of request-specific computation required to recover multi-document
+reasoning quality.
+\end{abstract}
+
+\section{Introduction}
+
+RAG systems solve a retrieval problem and a context-construction problem.
+Retrieval selects useful evidence. Context construction then decides how that
+evidence is presented to the language model. The common implementation packs
+retrieved text into a causal sequence,
+\[
+D_1\,D_2\,\cdots\,D_m\,Q,
+\]
+and freshly prefills the whole sequence. This creates a dense and
+order-dependent computation graph: $D_2$ can attend to $D_1$, $D_3$ can attend
+to both $D_1$ and $D_2$, and the final query can attend to all preceding
+states.
+
+PRA exposes a different design point. Each $D_i$ can remain a persistent
+addressable record with reusable model-native K/V. The query can later select
+and materialize those records without rebuilding all source states. The
+advantage is straightforward when a selection repeats or when records recur
+across changing queries. The harder question is composition: independent
+records do not contain the cross-document causal history introduced by ordinary
+packed RAG.
+
+Paper~3.2 localized this difference. Contiguous selected-context transport was
+behaviorally exact across multiple model scales and families. Pre-RoPE
+request-time rebinding reproduced the positional geometry of a packed request,
+and independently encoded records closely tracked a packed control in which
+document-to-document attention was disabled. In the powered natural comparison,
+however, packed RAG remained stronger than independent PRA. A small trained
+residual recovered part of the gap but did not establish a qualified solution.
+Fixed sparse masks were non-monotonic, while one very small boundary interaction
+budget approached packed F1 on some metrics.
+
+These results motivate a narrower question:
+\begin{quote}
+\textbf{How much cross-document interaction is actually necessary, and can the
+necessary interactions be predicted and executed sparsely at request time?}
+\end{quote}
+
+We therefore separate three quantities:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{persistent source state}, stored once as reusable PRA records;
+    \item \textbf{request-specific interaction selection}, which determines
+    which records/tokens/layers need contextualization;
+    \item \textbf{request-specific interaction execution}, which applies a
+    small amount of the frozen base model's own computation.
+\end{enumerate}
+
+The intended architecture is
+\[
+\text{persistent PRA K/V}
+\rightarrow
+\text{sparse interaction selector}
+\rightarrow
+\text{small request-local cross-record computation}
+\rightarrow
+Q.
+\]
+
+\paragraph{Contributions planned.}
+We target five contributions:
+\begin{enumerate}[leftmargin=*]
+    \item An oracle sparsification study that measures packed-RAG quality as
+    cross-document attention edges are progressively removed.
+    \item A localization analysis over layers, heads, document pairs, and token
+    regions identifying where useful multi-document interactions occur.
+    \item A learned query-conditioned selector for sparse cross-document
+    interaction over persistent PRA records.
+    \item A request-local composition mechanism that executes selected
+    interactions with the original transformer rather than arbitrary appended
+    K/V.
+    \item A quality--reuse--latency evaluation across model scales, precision
+    regimes, and document-order permutations.
+\end{enumerate}
+
+\section{Relationship to Prior PRA Work}
+
+\subsection{Paper 1.5: request-time RoPE binding}
+
+Paper~1.5 separated coordinate correctness from causal contextualization and
+showed that, for RoPE models,
+\[
+K_{\mathrm{post}}(p)=R_pK_{\mathrm{pre}}.
+\]
+Pre-RoPE storage therefore allows a persistent key to be rebound to a
+request-specific effective position without re-encoding the source.
+
+Paper~3.3 assumes that positional contract and does not reopen the positional
+transport question except as a runtime qualification requirement.
+
+\subsection{Paper 3.0: materialization is a computational choice}
+
+Paper~3.0 showed that more materialized K/V is not automatically better and
+that useful detail depends on the query, evidence distribution, and consumer
+layer. This motivates a query-conditioned interaction policy rather than a fixed
+global cross-document mask.
+
+\subsection{Paper 3.2: causal localization of the composition gap}
+
+Paper~3.2 supplies the direct starting point. With a strong frozen selector,
+packed RAG reached approximately .199 token F1 and .700 official score on the
+final held-out comparison, while independent PRA reached approximately .135 and
+.433. A rank-8 request-local residual raised PRA to approximately .154 F1 and
+.533 official score but left substantial headroom and an uncertain five-seed
+F1 effect.
+
+More importantly, Paper~3.2 compared
+\[
+A=\text{full causal packed RAG},
+\]
+\[
+B=\text{packed RAG with document-to-document attention disabled},
+\]
+and
+\[
+C=\text{independent pre-RoPE PRA records rebound to the same positions}.
+\]
+$B$ and $C$ were behaviorally close, while a shape-matched storage/rebinding
+control was exact across the tested precision modes. The principal semantic
+difference is therefore cross-document causal interaction.
+
+Paper~3.3 does not attempt to make independent records reproduce every dense
+packed state. It asks which subset of those interactions is needed for task
+quality.
+
+\section{Problem Formulation}
+
+Let the selected evidence consist of $m$ persistent records
+\[
+\mathcal D=\{D_1,\ldots,D_m\},
+\]
+with total token count $T$. Let $\mathcal E_{\mathrm{full}}$ denote all
+document-to-document attention edges allowed by ordinary packed causal RAG.
+
+We seek a request-specific sparse edge set
+\[
+\mathcal E_q \subset \mathcal E_{\mathrm{full}}
+\]
+such that
+\[
+|\mathcal E_q| \ll |\mathcal E_{\mathrm{full}}|
+\]
+while preserving task utility:
+\[
+U(\mathcal D,Q,\mathcal E_q)
+\approx
+U(\mathcal D,Q,\mathcal E_{\mathrm{full}}).
+\]
+
+The system must additionally preserve most persistent native state:
+\[
+C_{\mathrm{new}}(\mathcal E_q)
+\ll
+C_{\mathrm{prefill}}(\mathcal D).
+\]
+
+Our primary quality target is to recover at least 80\% of the
+independent-to-packed RAG gap under a request-specific interaction budget of at
+most 10\% of dense cross-document interaction.
+
+\section{Oracle Sparse Interaction}
+
+\subsection{Teacher graph extraction}
+
+We instrument packed RAG with frozen retrieval, reranking, selected records,
+order, token budget, model, and generation settings. For every
+document-to-document attention interaction we record sufficient metadata to
+construct sparse teacher graphs:
+\begin{itemize}[leftmargin=*]
+    \item layer and head;
+    \item source and target record/chunk;
+    \item source and target token positions;
+    \item attention mass;
+    \item distance to document boundaries;
+    \item retrieval rank and score.
+\end{itemize}
+
+Dense attention tensors need not be persisted when a streaming top-$k$ or
+cumulative-mass summary is sufficient.
+
+\subsection{Oracle budgets}
+
+We first retain the highest-attention edges at budgets
+\[
+0,\;0.01,\;0.05,\;0.1,\;0.5,\;1,\;2,\;5,\;10,\;100\%.
+\]
+
+A complementary cumulative-mass condition retains the smallest edge set
+covering
+\[
+50,\;75,\;90,\;95,\;99\%
+\]
+of cross-document attention mass.
+
+\subsection{Oracle gate}
+
+The learned-selector program proceeds only if a sparse oracle can approach
+packed-RAG quality. The initial gate is
+\[
+\mathrm{F1}\ge .19,
+\qquad
+\mathrm{official}\ge .67,
+\]
+or statistical indistinguishability from packed RAG while using no more than
+5\% of dense cross-document interactions.
+
+\section{Where Useful Interactions Live}
+
+We analyze oracle-selected interactions by:
+\begin{itemize}[leftmargin=*]
+    \item transformer layer;
+    \item attention head;
+    \item source/target retrieval rank;
+    \item document pair;
+    \item chunk pair;
+    \item token boundary distance;
+    \item query overlap;
+    \item entity/token overlap;
+    \item gist similarity.
+\end{itemize}
+
+This analysis determines the appropriate routing granularity. If useful
+interactions are largely pair-level, we avoid token-level prediction. If they
+concentrate in a few layers or heads, request-local compute can be reduced
+further.
+
+\section{Learned Interaction Selection}
+
+\subsection{Pair selector}
+
+The first learned policy predicts interaction importance for selected pair
+$(D_i,D_j)$:
+\[
+s_{ij}=
+f_\theta(g_q,g_i,g_j,r_i,r_j,\phi_{ij}),
+\]
+where $g_q$ is a query gist, $g_i,g_j$ are persistent record/chunk gists,
+$r_i,r_j$ are retrieval/reranker features, and $\phi_{ij}$ contains pairwise
+semantic features.
+
+The pair selector is trained against oracle pair importance while controlling a
+request-specific interaction budget.
+
+\subsection{Layer/head selector}
+
+If the oracle is concentrated, we extend the policy to
+\[
+s_{ij\ell h}
+\]
+or a factored approximation.
+
+The paper prefers the simplest selector that reaches the quality/economics gate.
+
+\section{Sparse Request-Local Contextualization}
+
+Synthetic parameter-free K/V append failed in Paper~3.2. The present paper
+therefore prioritizes on-manifold computation using the frozen base
+transformer's own projections and attention operations.
+
+Candidate mechanisms are:
+
+\paragraph{Sparse packed-mask composition.}
+Use selected interactions in a request-local composition pass as the first
+oracle/runtime control.
+
+\paragraph{Boundary interaction.}
+Permit selected real boundary tokens to interact across selected record pairs.
+
+\paragraph{Selected-token interaction.}
+Use a learned token gate within selected record pairs.
+
+\paragraph{Selected-layer propagation.}
+Apply interaction only at selected layers, then propagate corrected request
+states through the remaining decoder.
+
+Persistent record K/V remains immutable. All corrections are request-local.
+
+\section{Training Objective}
+
+The base model remains frozen initially.
+
+We optimize
+\[
+\mathcal L =
+\lambda_{\mathrm{task}}\mathcal L_{\mathrm{answer}}
++
+\lambda_{\mathrm{seq}}
+KL(P_{\mathrm{sparse}}\Vert P_{\mathrm{packed}})
++
+\lambda_{\mathrm{sel}}\mathcal L_{\mathrm{selector}}
++
+\lambda_{\mathrm{cost}}C_{\mathrm{interaction}}.
+\]
+
+Task quality receives the dominant weight. Global K/V reconstruction is not a
+primary objective because Paper~3.2 showed that state proximity, answer NLL,
+and generated-answer quality need not agree.
+
+\section{Order Robustness}
+
+Packed RAG changes its causal graph when selected documents are permuted. PRA
+records offer the possibility of more stable set-like evidence composition.
+
+We evaluate canonical, reverse, and random permutations under:
+\begin{itemize}[leftmargin=*]
+    \item packed RAG;
+    \item independent PRA;
+    \item oracle sparse composition;
+    \item learned sparse composition.
+\end{itemize}
+
+We report task quality together with mean pairwise JS, unique outputs per
+question, and F1/NLL variance. Lower order sensitivity is considered a benefit
+only at matched or improved task quality.
+
+\section{Experimental Protocol}
+
+\subsection{Dataset}
+
+MultiHop-RAG is the first mandatory dataset because Paper~3.2 already provides
+frozen retrieval, canonical records, support labels, and powered natural
+baselines.
+
+Additional datasets are introduced only after the mechanism passes the primary
+gate.
+
+\subsection{Selection}
+
+Use the strongest qualified matched selector from Paper~3.2:
+\[
+\mathrm{BM25}\rightarrow\mathrm{BGE\mbox{-}v2\mbox{-}M3}.
+\]
+
+Candidate and selection receipts are frozen before composition conditions run.
+
+\subsection{Training split}
+
+Target:
+\begin{itemize}[leftmargin=*]
+    \item 500--2,000 training questions;
+    \item 100--200 validation questions;
+    \item a held-out five-seed test cohort of at least 150 questions.
+\end{itemize}
+
+No Paper~3.2 final evaluation question may enter training.
+
+\subsection{Model ladder}
+
+\begin{description}[leftmargin=2cm]
+    \item[M0] Qwen3-1.7B: full discovery/training matrix.
+    \item[M1] Qwen3-4B: reduced qualification.
+    \item[M2] Qwen3-8B: reduced qualification.
+    \item[M3] Llama-3.1-8B: cross-family qualification.
+\end{description}
+
+\section{Baselines}
+
+Mandatory baselines:
+\begin{enumerate}[leftmargin=*]
+    \item packed RAG;
+    \item independent pre-RoPE PRA;
+    \item Paper~3.2 rank-8 residual;
+    \item fixed sparse boundary mask;
+    \item oracle sparse interaction;
+    \item learned sparse selector/composer.
+\end{enumerate}
+
+\section{Metrics}
+
+\paragraph{Task quality.}
+Official score, token F1, exact match, gold-answer NLL, and answer
+log-probability.
+
+\paragraph{Distributional fidelity.}
+First-step JS/KL, logit differences, and generated-output agreement.
+
+\paragraph{Sparsity.}
+Selected document pairs, layers, heads, tokens, and total cross-document
+interaction edges.
+
+\paragraph{Systems.}
+Persistent K/V reuse, newly computed states, request-local FLOPs, composition
+latency, TTFT, total latency, and memory.
+
+\paragraph{Robustness.}
+Five-seed intervals, order sensitivity, model-scale transfer, family transfer,
+and precision sensitivity.
+
+\section{Planned Results}
+
+\begin{table}[ht]
+\centering
+\caption{Primary quality--interaction frontier.}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & F1 & Official & NLL & Cross-doc edges & Request ms \\
+\midrule
+Packed RAG & .199 & .700 & TBD & 100\% & TBD \\
+Independent PRA & .135 & .433 & TBD & 0\% & TBD \\
+Paper 3.2 residual & .154 & .533 & TBD & adapter & TBD \\
+Oracle 0.1\% & TBD & TBD & TBD & .1\% & TBD \\
+Oracle 1\% & TBD & TBD & TBD & 1\% & TBD \\
+Oracle 5\% & TBD & TBD & TBD & 5\% & TBD \\
+Learned sparse & TBD & TBD & TBD & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Interaction localization.}
+\begin{tabular}{lrrrr}
+\toprule
+Region & Oracle mass & Selected edges & Quality retained & Cost \\
+\midrule
+Early layers & TBD & TBD & TBD & TBD \\
+Middle layers & TBD & TBD & TBD & TBD \\
+Late layers & TBD & TBD & TBD & TBD \\
+Boundary tokens & TBD & TBD & TBD & TBD \\
+Top-ranked pairs & TBD & TBD & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Success Criteria}
+
+The primary practical gate is
+\[
+\mathrm{F1}\gtrsim .186,
+\qquad
+\mathrm{official}\gtrsim .647,
+\]
+corresponding to approximately 80\% recovery of the Paper~3.2 packed-RAG gap,
+while using no more than 10\% of dense request-specific cross-document
+interaction.
+
+A stronger result matches packed RAG within uncertainty while preserving:
+\begin{itemize}[leftmargin=*]
+    \item persistent native K/V reuse;
+    \item lower order sensitivity;
+    \item materially lower request-specific compute.
+\end{itemize}
+
+\section{Falsification}
+
+Scientifically useful negative outcomes include:
+\begin{itemize}[leftmargin=*]
+    \item an oracle requires dense interaction;
+    \item learned selection fails to approach the oracle;
+    \item sparse state propagation destroys quality;
+    \item selector overhead erases saved prefill;
+    \item order robustness disappears at matched quality;
+    \item the mechanism does not transfer across models/families.
+\end{itemize}
+
+\section{Systems Integration}
+
+Paper~3.3 reuses the canonical Paper~4.5/Paper~3.2 \texttt{ContextRecord} and storage
+metadata. The learned interaction policy is request-local and must not mutate
+persistent source records.
+
+The target runtime abstraction is
+\[
+\texttt{ContextRecord}
+\rightarrow
+\texttt{SelectionReceipt}
+\rightarrow
+\texttt{InteractionPlan}
+\rightarrow
+\texttt{RequestLocalComposition}.
+\]
+
+An \texttt{InteractionPlan} should record selected record pairs, token spans,
+layers/heads, budget, policy revision, and model/runtime compatibility.
+
+\section{Discussion}
+
+If sparse interaction succeeds, the result would suggest that conventional RAG
+performs substantially redundant document-to-document computation. PRA could
+then retain persistent source state and pay only for a small request-specific
+neural ``join'' among selected resources.
+
+This would change the role of PRA from a cache/retrieval mechanism into a
+composable native-memory substrate:
+\[
+\text{persistent records}
++
+\text{sparse request-local contextualization}.
+\]
+
+If it fails, the result would instead bound how separable transformer source
+context really is: packed causal contextualization may be too distributed to
+recover cheaply after independent encoding.
+
+\section{Conclusion}
+
+Paper~3.2 established that position transport and persistent native memory can
+be separated from the cross-document causal computation induced by packed RAG.
+Paper~3.3 targets that remaining computation directly. Rather than recreating
+the full packed prefix, we ask whether the useful cross-document graph is sparse
+enough to select and execute on demand. The goal is not merely to imitate RAG,
+but to recover its multi-document quality while preserving the non-prefix reuse
+and reduced order dependence enabled by persistent PRA records.
+
+\bibliographystyle{plain}
+% \bibliography{references}
+
+\appendix
+
+\section{Artifact Schema}
+
+Each run should persist:
+\begin{itemize}[leftmargin=*]
+    \item dataset/query IDs and seed;
+    \item candidate and selection receipts;
+    \item persistent record URIs/versions;
+    \item document order;
+    \item teacher interaction graph digest;
+    \item oracle/learned interaction-plan digest;
+    \item selected pairs/layers/heads/tokens;
+    \item interaction budget;
+    \item training checkpoint/policy revision;
+    \item precision/runtime metadata;
+    \item task/distribution/system metrics;
+    \item git commit and hardware.
+\end{itemize}
+
+\end{document}

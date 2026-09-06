@@ -13,7 +13,7 @@ import math
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Sequence
+from typing import Callable, Sequence
 
 from .crossdoc_composition import (
     CrossDocumentCompositionConfig,
@@ -296,13 +296,17 @@ def encode_native_memory_with_mask(
     *,
     position_binding_mode: PositionBindingMode = PositionBindingMode.POST_ROPE,
     model_revision: str = "UNKNOWN",
+    attention_observer: Callable[[int, object], None] | None = None,
+    sparse_mask_provider: Callable[[int, int], object] | None = None,
 ) -> MLXNativeMemory:
     """Encode a packed document prefix under an explicit document mask.
 
     The model's public top-level call constructs its own causal mask. Walking
     the unchanged host layers is the narrowest available seam for the B arm;
-    projections, RoPE, attention kernels, residuals, and cache objects remain
-    the host implementation.
+    projections, RoPE, residuals, and cache objects remain the host
+    implementation. Paper 3.3 optionally observes probabilities or supplies a
+    per-layer ``[H,T,T]`` sparse mask. Those diagnostic paths expand GQA K/V
+    heads and evaluate the same scaled dot-product attention explicitly.
     """
 
     if not token_ids:
@@ -319,7 +323,14 @@ def encode_native_memory_with_mask(
     mask = mx.array(attention_mask, dtype=mx.bool_)
     stored_layers: list[MLXNativeLayerKV] = []
     for layer_index, layer in enumerate(layers):
-        layer_mask = mask
+        layer_mask = (
+            mx.array(
+                sparse_mask_provider(layer_index, int(layer.self_attn.n_heads)),
+                dtype=mx.bool_,
+            )
+            if sparse_mask_provider is not None
+            else mask
+        )
         if bool(getattr(layer, "use_sliding", False)):
             window = int(getattr(host, "sliding_window"))
             positions = mx.arange(size)
@@ -355,14 +366,50 @@ def encode_native_memory_with_mask(
                 values,
             )
         )
-        attended = scaled_dot_product_attention(
-            queries,
-            keys_post,
-            values,
-            cache=None,
-            scale=attention.scale,
-            mask=layer_mask,
-        )
+        if attention_observer is None and sparse_mask_provider is None:
+            attended = scaled_dot_product_attention(
+                queries,
+                keys_post,
+                values,
+                cache=None,
+                scale=attention.scale,
+                mask=layer_mask,
+            )
+        else:
+            query_heads = int(queries.shape[1])
+            kv_heads = int(keys_post.shape[1])
+            if query_heads % kv_heads:
+                raise ValueError("query heads must be divisible by K/V heads")
+            repeats = query_heads // kv_heads
+            expanded_keys = (
+                mx.repeat(keys_post, repeats, axis=1) if repeats > 1 else keys_post
+            )
+            expanded_values = (
+                mx.repeat(values, repeats, axis=1) if repeats > 1 else values
+            )
+            scores = mx.matmul(
+                queries,
+                mx.swapaxes(expanded_keys, -1, -2),
+            ) * float(attention.scale)
+            visible = layer_mask
+            if visible.ndim == 2:
+                visible = visible[None, None, :, :]
+            elif visible.ndim == 3:
+                visible = visible[None, :, :, :]
+            else:
+                raise ValueError("layer attention mask must have shape [T,T] or [H,T,T]")
+            scores = mx.where(
+                visible,
+                scores,
+                mx.array(float("-inf"), dtype=scores.dtype),
+            )
+            probabilities = mx.softmax(scores.astype(mx.float32), axis=-1)
+            if attention_observer is not None:
+                mx.eval(probabilities)
+                attention_observer(layer_index, probabilities)
+            attended = mx.matmul(
+                probabilities.astype(expanded_values.dtype), expanded_values
+            )
         attended = attended.transpose(0, 2, 1, 3).reshape(batch, tokens, -1)
         hidden = residual + attention.o_proj(attended)
         hidden = hidden + layer.mlp(layer.post_attention_layernorm(hidden))
