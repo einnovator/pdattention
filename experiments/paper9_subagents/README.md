@@ -48,7 +48,7 @@ PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
   --shared-tokens 512,2048,8192,32768 \
   --fanouts 1,2,4,8,16 \
   --seeds 11,23,37,71,101 \
-  --output docs/papers/shared/results/paper9_subagents/mlx_live_v1
+  --output docs/papers/shared/results/paper9_subagents/mlx_live_m4_final
 ```
 
 For 32K sources, omit the diagnostic one-shot arm and restrict the measured

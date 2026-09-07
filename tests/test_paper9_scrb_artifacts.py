@@ -91,3 +91,51 @@ def test_natural_repository_cohort_executes_both_schedulers_without_duplicate_re
         assert row["orientation_reuses"] == 110
         assert row["dag_join_parents_visible"] == 2
         assert row["completed_peer_visible_rate"] == 1
+
+
+def test_live_mlx_primary_sweep_is_five_seed_and_exact() -> None:
+    path = RESULTS.parent / "mlx_live_m4_final" / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    assert summary["seeds"] == [11, 23, 37, 71, 101]
+    assert summary["shared_token_targets"] == [512, 2048, 8192]
+    assert summary["fanouts"] == [1, 2, 4, 8, 16]
+    for condition in (
+        "host_split_text",
+        "harness_memo_text",
+        "pra_record_reprefill",
+        "pra_native_kv",
+    ):
+        result = summary["conditions"][condition]
+        assert result["argmax_parity_vs_host_split"] == 1
+        assert result["max_abs_logit_delta_vs_host_split"] == 0
+    for point in summary["session_economics"]["max_fanout_by_shared_tokens"].values():
+        assert point["fanout"] == 16
+        assert point["physical_token_reduction_mean"] > 0.90
+
+
+def test_live_mlx_32k_sweep_exposes_capacity_dependent_economics() -> None:
+    m4 = json.loads(
+        (RESULTS.parent / "mlx_32_m4_final" / "summary.json").read_text(encoding="utf-8")
+    )
+    m5 = json.loads(
+        (RESULTS.parent / "mlx_32_m5_replication" / "summary.json").read_text(encoding="utf-8")
+    )
+    assert m4["seeds"] == [11, 23, 37, 71, 101]
+    assert m5["seeds"] == [37, 101]
+    assert m4["conditions"]["pra_native_kv"]["argmax_parity_vs_host_split"] == 1
+    assert m5["conditions"]["pra_native_kv"]["argmax_parity_vs_host_split"] == 1
+    m4_point = m4["session_economics"]["max_fanout_by_shared_tokens"]["32768"]
+    m5_point = m5["session_economics"]["max_fanout_by_shared_tokens"]["32768"]
+    assert m4_point["amortized_speedup_mean"] > 3
+    assert m5_point["amortized_speedup_mean"] < 1
+    assert m4_point["physical_token_reduction_mean"] > 0.74
+    assert m5_point["physical_token_reduction_mean"] > 0.74
+
+
+def test_live_mlx_generation_parity_is_exact_for_all_five_seeds() -> None:
+    path = RESULTS.parent / "mlx_generation_parity_v1" / "generation_parity.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    assert summary["seeds"] == [11, 23, 37, 71, 101]
+    assert summary["generation_tokens"] == 16
+    assert summary["exact_sequence_matches"] == 5
+    assert summary["max_abs_logit_delta"] == 0

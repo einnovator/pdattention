@@ -14,9 +14,19 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(stream))
 
 
-def host_points(directory: Path) -> list[dict]:
-    rows = read_rows(directory / "rows.csv")
-    sessions = read_rows(directory / "session_rows.csv")
+def host_points(directories: list[Path]) -> list[dict]:
+    """Combine non-overlapping source-size sweeps from one physical host."""
+
+    rows = [
+        row
+        for directory in directories
+        for row in read_rows(directory / "rows.csv")
+    ]
+    sessions = [
+        row
+        for directory in directories
+        for row in read_rows(directory / "session_rows.csv")
+    ]
     points = []
     for size in sorted({int(row["target_shared_tokens"]) for row in sessions}):
         fanout = max(
@@ -41,6 +51,9 @@ def host_points(directory: Path) -> list[dict]:
         points.append({
             "shared_tokens": size,
             "max_measured_fanout": fanout,
+            "session_replicates": len(selected_sessions),
+            "text_requests": len(text),
+            "native_requests": len(native),
             "amortized_speedup": statistics.mean(
                 float(row["amortized_speedup"]) for row in selected_sessions
             ),
@@ -57,8 +70,8 @@ def host_points(directory: Path) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--m4", type=Path, required=True)
-    parser.add_argument("--m5", type=Path, required=True)
+    parser.add_argument("--m4", type=Path, nargs="+", required=True)
+    parser.add_argument("--m5", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
     hosts = {
@@ -68,6 +81,10 @@ def main() -> None:
     artifact = {
         "protocol": "paper9-mlx-cross-host-v1",
         "interpretation": "Observed host-model timings; maximum measured fan-out is 16 through 8K and 4 at 32K.",
+        "source_artifacts": {
+            "M4 Pro, 48 GB": [str(path) for path in arguments.m4],
+            "M5, 16 GB": [str(path) for path in arguments.m5],
+        },
         "hosts": hosts,
     }
     arguments.output.mkdir(parents=True, exist_ok=True)
@@ -97,7 +114,9 @@ def main() -> None:
         )
     for axis in axes:
         axis.set_xscale("log", base=2)
-        axis.axhline(1.0, color="#333333", linewidth=0.8)
+        axis.axhline(1.0, color="#333333", linewidth=0.8, linestyle="--")
+        axis.set_xticks((512, 2048, 8192, 32768), ("512", "2K", "8K", "32K"))
+        axis.grid(axis="y", color="#d7d7d7", linewidth=0.5)
         axis.set_xlabel("Shared source tokens")
         axis.legend(fontsize=8)
     axes[0].set_ylabel("Amortized session speedup")

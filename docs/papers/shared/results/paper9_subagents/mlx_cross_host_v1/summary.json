@@ -1,0 +1,108 @@
+{
+  "protocol": "paper9-mlx-cross-host-v1",
+  "interpretation": "Observed host-model timings; maximum measured fan-out is 16 through 8K and 4 at 32K.",
+  "source_artifacts": {
+    "M4 Pro, 48 GB": [
+      "docs\\papers\\shared\\results\\paper9_subagents\\mlx_live_m4_final",
+      "docs\\papers\\shared\\results\\paper9_subagents\\mlx_32_m4_final"
+    ],
+    "M5, 16 GB": [
+      "docs\\papers\\shared\\results\\paper9_subagents\\mlx_live_m5_final",
+      "docs\\papers\\shared\\results\\paper9_subagents\\mlx_32_m5_replication"
+    ]
+  },
+  "hosts": {
+    "M4 Pro, 48 GB": [
+      {
+        "shared_tokens": 512,
+        "max_measured_fanout": 16,
+        "session_replicates": 5,
+        "text_requests": 155,
+        "native_requests": 155,
+        "amortized_speedup": 5.032237281303851,
+        "physical_token_reduction": 0.9084457061745919,
+        "native_to_text_request_ratio": 0.1419314125493869,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 2048,
+        "max_measured_fanout": 16,
+        "session_replicates": 5,
+        "text_requests": 155,
+        "native_requests": 155,
+        "amortized_speedup": 8.73617085639803,
+        "physical_token_reduction": 0.9300635785649409,
+        "native_to_text_request_ratio": 0.05407934245489313,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 8192,
+        "max_measured_fanout": 16,
+        "session_replicates": 5,
+        "text_requests": 155,
+        "native_requests": 155,
+        "amortized_speedup": 11.68792173955963,
+        "physical_token_reduction": 0.9356297683768102,
+        "native_to_text_request_ratio": 0.02309096406920731,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 32768,
+        "max_measured_fanout": 4,
+        "session_replicates": 5,
+        "text_requests": 35,
+        "native_requests": 35,
+        "amortized_speedup": 3.887382904544687,
+        "physical_token_reduction": 0.7496339677891655,
+        "native_to_text_request_ratio": 0.0077995066490668345,
+        "argmax_parity": 1.0
+      }
+    ],
+    "M5, 16 GB": [
+      {
+        "shared_tokens": 512,
+        "max_measured_fanout": 16,
+        "session_replicates": 2,
+        "text_requests": 62,
+        "native_requests": 62,
+        "amortized_speedup": 2.7569726300727337,
+        "physical_token_reduction": 0.9084457061745919,
+        "native_to_text_request_ratio": 0.3068934191734172,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 2048,
+        "max_measured_fanout": 16,
+        "session_replicates": 2,
+        "text_requests": 62,
+        "native_requests": 62,
+        "amortized_speedup": 5.310729689997517,
+        "physical_token_reduction": 0.9300635785649409,
+        "native_to_text_request_ratio": 0.1276454669183565,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 8192,
+        "max_measured_fanout": 16,
+        "session_replicates": 2,
+        "text_requests": 62,
+        "native_requests": 62,
+        "amortized_speedup": 2.495636291989914,
+        "physical_token_reduction": 0.9356297683768102,
+        "native_to_text_request_ratio": 0.32584496630822635,
+        "argmax_parity": 1.0
+      },
+      {
+        "shared_tokens": 32768,
+        "max_measured_fanout": 4,
+        "session_replicates": 2,
+        "text_requests": 14,
+        "native_requests": 14,
+        "amortized_speedup": 0.4789639572115309,
+        "physical_token_reduction": 0.7496339677891655,
+        "native_to_text_request_ratio": 1.8860642053700978,
+        "argmax_parity": 1.0
+      }
+    ]
+  }
+}

@@ -66,5 +66,28 @@ PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
   --shared-tokens 512,2048,8192,32768 \
   --fanouts 1,2,4,8,16 \
   --seeds 11,23,37,71,101 \
-  --output docs/papers/shared/results/paper9_subagents/mlx_live_v1
+  --output docs/papers/shared/results/paper9_subagents/mlx_live_m4_final
 ```
+
+## Current evidence
+
+The five-seed tracked-source cohort executes both sequential and parallel
+schedulers. Each run makes 35 logical file reads but only 13 physical reads;
+the remaining 22 are valid ancestor reuses. Explicit two-parent DAG joins and
+completed-only peer visibility are observed in every run. On held-out
+descendant queries, lexical and learned top-1 routing each recover 60% of the
+relevant records, while oracle top-1 recovers 100%. The current learned linear
+ranker therefore does not close the selection gap.
+
+The live MLX sweep uses immutable Qwen3-0.6B-4bit revision `73e3e38d`. On an
+M4 Pro with 48 GB, fan-out 16 yields `5.03x`, `8.74x`, and `11.69x` amortized
+speedup for 512, 2K, and 8K shared records. At 32K and fan-out four, the same
+host yields `3.89x`; a 16 GB M5 yields `0.48x` despite exact logits
+and the same 75% physical-token reduction. The retained K/V is shared, but the
+public MLX cache seam still constructs transient concatenated attention views.
+The result is therefore a residency-sensitive implementation boundary, not a
+claim that native reuse is uniformly faster.
+
+A separate five-seed, 16-token greedy generation check at 8K matches all five
+host split-prefill sequences exactly with zero observed logit delta. These are
+direct model-forward measurements, not HTTP TTFT or autonomous-agent quality.

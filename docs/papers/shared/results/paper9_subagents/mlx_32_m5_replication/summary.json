@@ -1,0 +1,81 @@
+{
+  "protocol": "paper9-mlx-live-reuse-v1",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "engine": "mlx-lm",
+  "hardware": "Apple-M5-16GB",
+  "seeds": [
+    37,
+    101
+  ],
+  "shared_token_targets": [
+    32768
+  ],
+  "fanouts": [
+    1,
+    2,
+    4
+  ],
+  "scope": "Live host-model forward/prefill and post-RoPE native K/V; not an HTTP serving TTFT benchmark.",
+  "conditions": {
+    "harness_memo_text": {
+      "requests": 14,
+      "mean_request_ms": 12558.521851198748,
+      "p50_request_ms": 12477.130207931623,
+      "p95_request_ms": 13128.566498216242,
+      "p99_request_ms": 13200.275733377784,
+      "physical_input_tokens": 458976,
+      "native_tokens_reused": 0,
+      "argmax_parity_vs_host_split": 1,
+      "max_abs_logit_delta_vs_host_split": 0.0
+    },
+    "host_split_text": {
+      "requests": 14,
+      "mean_request_ms": 12473.780907690525,
+      "p50_request_ms": 12324.721771059558,
+      "p95_request_ms": 13299.149791453965,
+      "p99_request_ms": 13324.016191200353,
+      "physical_input_tokens": 458976,
+      "native_tokens_reused": 0,
+      "argmax_parity_vs_host_split": 1,
+      "max_abs_logit_delta_vs_host_split": 0.0
+    },
+    "pra_native_kv": {
+      "requests": 14,
+      "mean_request_ms": 23526.351675624028,
+      "p50_request_ms": 22853.25039573945,
+      "p95_request_ms": 32638.700235518627,
+      "p99_request_ms": 34445.848846039735,
+      "physical_input_tokens": 224,
+      "native_tokens_reused": 458752,
+      "argmax_parity_vs_host_split": 1,
+      "max_abs_logit_delta_vs_host_split": 0.0
+    },
+    "pra_record_reprefill": {
+      "requests": 14,
+      "mean_request_ms": 12513.86297055121,
+      "p50_request_ms": 12442.685792222619,
+      "p95_request_ms": 12914.967223955318,
+      "p99_request_ms": 13079.858378684148,
+      "physical_input_tokens": 458976,
+      "native_tokens_reused": 0,
+      "argmax_parity_vs_host_split": 1,
+      "max_abs_logit_delta_vs_host_split": 0.0
+    }
+  },
+  "session_economics": {
+    "points": 6,
+    "mean_amortized_speedup": 0.41056846065548425,
+    "max_amortized_speedup": 0.5067211860211505,
+    "mean_physical_token_reduction": 0.41646331543842524,
+    "max_fanout_by_shared_tokens": {
+      "32768": {
+        "fanout": 4,
+        "amortized_speedup_mean": 0.4789639572115309,
+        "physical_token_reduction_mean": 0.7496339677891655,
+        "native_argmax_parity": 1,
+        "duplicate_kv_bytes_avoided_mean": 11274289152
+      }
+    }
+  }
+}

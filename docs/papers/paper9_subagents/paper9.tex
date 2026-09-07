@@ -26,10 +26,11 @@ child either receives a copied parent transcript or reacquires information, and
 a parent commonly receives a lossy child summary. We extend Progressive
 Retrieval Attention (PRA) from one typed-record stream to a lineage graph with
 \emph{selectively permeable context boundaries}. The implementation assigns
-records to agents, persists start/stop/resume events, exposes selected or
-routable ancestor and completed-descendant records, and validates exact reuse
-through four generic effects and normalized resource identities. Concrete tool
-semantics remain in the harness; the runtime remains tool agnostic.
+records to agents, persists lifecycle and topology events, supports explicit
+DAG joins and peer links, exposes selected or routable ancestor and
+completed-descendant records, and validates exact reuse through four generic
+effects and normalized resource identities. Concrete tool semantics remain in
+the harness; the runtime remains tool agnostic.
 
 We separate three gains that are often conflated: avoided tool execution,
 payload reuse, and native K/V reuse. The initial Subagent Context Reuse
@@ -43,10 +44,16 @@ unmodified-resource hits with zero stale reads; domain-wide invalidation loses
 them, while an unsafe control produces 16 stale reads at fan-out 16. In a
 completed-child evidence task, selective descendant routing attains the
 full-transcript upper bound with 384 rather than 16,384 parent-context tokens.
-An opportunity audit of 12 existing single-agent coding traces finds eight
-exact repeated reads/searches among 40 such calls, but does not establish a
-natural cross-agent hit rate. Live native-engine and natural subagent results
-therefore remain open gates.
+A five-seed tracked-repository workload then exercises sequential and parallel
+fan-out, DAG joins, peers, and bounded descendant routing. It records 220 valid
+ancestor hits without duplicate physical reads; lexical and learned top-1
+routing recover 60.0\% of held-out evidence, whereas oracle top-1 reaches
+100\%, exposing a remaining selection gap. Finally, live MLX measurements with
+Qwen3-0.6B-4bit preserve host split-prefill logits exactly, including five of
+five 16-token greedy generations. Native reuse is strongly amortized when K/V
+fits comfortably, but reverses under a 32K-token memory-pressure condition on
+a 16 GB host. Selectively permeable contexts are therefore operational, while
+their economic value depends on routing quality, fan-out, and residency.
 \end{abstract}
 
 \section{Introduction}
@@ -78,7 +85,8 @@ This paper contributes:
     \item native K/V reuse across agent streams when model and engine constraints permit;
     \item controlled consistency semantics for sequential, parallel, shared-workspace, and externally mutable resources;
     \item a benchmark suite designed specifically to quantify when cross-agent reuse produces a performance benefit;
-    \item a controlled benchmark and an instrumentation-only audit that make the current evidence boundary explicit.
+    \item natural-source sequential/parallel, graph-routing, and live MLX
+    experiments that separate correctness, selection quality, and residency-dependent economics.
 \end{enumerate}
 
 \section{Background and Position in the PRA Series}
@@ -549,7 +557,8 @@ unchanged, while lifecycle and tool events pass through these four surfaces.
 \section{Implementation Status}
 
 Table~\ref{tab:implementation-status} separates implemented runtime contracts
-from mechanisms that still need live engine or natural-agent validation. The
+from mechanisms that still need autonomous-agent or production serving
+validation. The
 native interface is a narrow callback: an engine returns a receipt containing
 model, revision, encoding, position contract, token count, and byte count. A
 reuse request must match all compatibility fields, and the harness attaches a
@@ -574,7 +583,7 @@ Native K/V compatibility callback & Experimental & Receipt and exactly-once test
 Sequential/parallel callback scheduler & Experimental & Five-seed tracked-source cohort \\
 Explicit DAG joins and peer visibility & Experimental & Cycle, isolation, and replay tests \\
 Validity-first descendant selectors & Experimental & Lexical, learned, and oracle cohort \\
-Live MLX native K/V reuse & Experimental & Host-model prefill and logit-parity sweep \\
+Live MLX native K/V reuse & Experimental & Cross-host prefill and greedy-generation parity \\
 Autonomous multi-harness campaign & Open & Generic callback only \\
 \bottomrule
 \end{tabular}
@@ -747,6 +756,88 @@ context substantially but leave a measurable oracle gap.}
 \label{fig:natural-routing}
 \end{figure}
 
+\subsection{Live native reuse and the residency boundary}
+
+The live experiment freezes the selected source and query token IDs, then
+compares four execution paths on \texttt{mlx-lm} 0.31.3 with the immutable
+revision \texttt{73e3e38d} of Qwen3-0.6B-4bit. The ordinary baseline prefills
+the source and query through a host prompt cache. Harness memoization and typed
+record reuse avoid repeated acquisition but deliberately re-prefill those same
+tokens. Native reuse encodes the source once as post-RoPE K/V, gives each child
+a fresh local cache, and presents only the query tokens to the child forward.
+Thus selector output, tokenization, positions, and model weights are fixed.
+The 512--8K sweep contains 465 child requests per condition on the primary M4
+host across five seeds and 186 per condition on the two-seed M5 replication.
+The 32K pressure sweep contains 35 and 14 requests per condition, respectively;
+its maximum measured fan-out is four.
+
+These are direct model-forward and prefill measurements, not HTTP time to first
+token. They exclude queueing, network transfer, scheduler contention, and K/V
+tier promotion. Session cost charges native source encoding once and then sums
+all child requests. The public MLX cache interface also forms a transient
+concatenated shared-plus-local attention view at every layer. Persistent K/V is
+shared, but this path is not segmented zero-copy attention.
+
+At fan-out 16 on the 48 GB M4 Pro, amortized speedup rises from
+$5.03\times$ at 512 shared tokens to $8.74\times$ at 2K and $11.69\times$
+at 8K; physical input-token processing falls by 90.8--93.6\%. On the 16 GB
+M5 replication, the corresponding speedups are $2.76\times$,
+$5.31\times$, and $2.50\times$. The decline already visible at 8K foreshadows
+the 32K capacity boundary. Harness-memo and typed-record re-prefill remain
+within 1.1\% of ordinary split-prefill on the M4; on the M5 they are 6.7\%
+and 4.5\% slower, respectively. Avoiding tool execution or payload transfer
+does not by itself avoid model ingestion.
+
+Table~\ref{tab:mlx-pressure} isolates the 32K, four-child point on two Apple
+Silicon hosts. The 48 GB M4 Pro has enough residency headroom: one native encode
+plus four child requests is $3.89\times$ faster than four text prefills. On the
+16 GB M5, however, each native child request is slower than text and the
+amortized ratio reverses to $0.48\times$. Both hosts reduce physical input-token
+processing by 75.0\% and preserve the baseline logits exactly. The opposing
+timing result therefore cannot be attributed to retrieval or model quality; it
+is consistent with memory pressure and transient concatenation in the current
+adapter.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Live 32K shared-record result at measured fan-out four. Latency is the
+within-host mean per child; speedup includes one native source encode.}
+\label{tab:mlx-pressure}
+\begin{tabular}{lrrrrr}
+\toprule
+Host & Text (ms) & Native (ms) & Speedup & Token red. & Logit parity \\
+\midrule
+M4 Pro, 48 GB & 26,522 & 207 & $3.89\times$ & 75.0\% & 1.000 \\
+M5, 16 GB & 12,474 & 23,526 & $0.48\times$ & 75.0\% & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:mlx-cross-host} reports the full measured source-size sweep.
+Fan-out is 16 through 8K and four at 32K. It should be read as a capacity
+curve, not as a hardware comparison: model, tokens, and adapter are matched,
+but the two hosts have different memory capacity and compute. At 32K, sharing
+one retained record also avoids 10.5 GiB of persistent duplicate K/V for the
+three additional children on each host; transient attention views are not
+included in that avoided-allocation count.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper9_subagents/mlx_cross_host_v1/mlx_cross_host.pdf}
+\caption{Live MLX reuse across source size and memory-capacity regimes. Left:
+amortized session speedup at maximum measured fan-out. Right: native/text
+per-child latency ratio. The dashed line marks parity.}
+\label{fig:mlx-cross-host}
+\end{figure}
+
+Next-token argmax parity is 1.000 with maximum absolute logit delta zero in
+every retained native point. A separate five-seed 8K-source check generates 16
+tokens greedily from both host split-prefill and native K/V. All five sequences
+match token for token and the maximum observed logit delta remains zero. This
+validates short output trajectories, but it is not an answer-quality or
+autonomous-agent evaluation.
+
 \subsection{Natural trace opportunity audit}
 
 We scanned 12 existing Paper 4.5 coding-agent trajectories containing 90 tool
@@ -782,24 +873,31 @@ general transaction or distributed-coherence protocol.
 
 The mechanism may provide large gains only when agents repeatedly need shared
 records or expensive tools. Controlled orchestration can overstate natural
-reuse; the 12-trace audit is too small and is not multi-agent. The injected
-latency model omits queueing, transfer, cache eviction, and engine scheduling.
-Likewise, the native callback validates compatibility and exactly-once
-attachment semantics but does not yet measure model outputs or live prefill.
+reuse; the tracked-source cohort uses deterministic callbacks rather than an
+autonomous model, and the 12-trace audit is small and single-agent. The learned
+linear selector does not improve on lexical top-1 and leaves a 40-point oracle
+recall gap. Larger learned-routing and end-task cohorts are required.
+
+The live experiment covers one quantized model family and direct MLX forwards.
+It omits queueing, transfer, tier eviction, serving concurrency, cancellation,
+and end-task answer quality. Its two hosts deliberately reveal rather than
+resolve a memory-capacity interaction. Segmented attention or another
+zero-copy host seam is needed to test whether the 16 GB reversal is fundamental
+or merely an implementation cost.
 
 Correctness depends on declared consistency assumptions. External mutation can
 invalidate local state even when no write appears in the session tree. The
 runtime therefore rejects \texttt{UNKNOWN} effects and requires a validator for
-\texttt{EXTERNAL} resources. The next gates are a real sequential/parallel
-subagent cohort, a live compatible engine comparison against harness
-memoization, and learned rather than oracle descendant routing. Cross-session
+\texttt{EXTERNAL} resources. The next gates are autonomous sequential/parallel
+multi-harness tasks, stronger learned descendant routing, and live serving
+measurements under concurrency and memory-tier transitions. Cross-session
 memory remains explicitly outside Paper 9.
 
-The present result is therefore architectural and controlled: subagent
-isolation and context sharing need not be binary, and the implementation can
-make boundaries selectively permeable without weakening its default safety
-policy. Whether that mechanism is economically useful in natural workloads is
-not yet established.
+The present result is architectural, controlled, and live at the model-forward
+level: subagent isolation and context sharing need not be binary, and the
+implementation can make boundaries selectively permeable without weakening its
+default safety policy. Autonomous task utility and production serving economics
+remain unestablished.
 
 \section{Conclusion}
 
@@ -811,11 +909,14 @@ and the model engine handles native attention state. The implementation shows
 that exact ancestor reuse, selective invalidation, durable graph replay, and
 completed-descendant routing can share one coherent typed-record contract.
 Controlled SCRB results expose the distinct value of tool, payload, and native
-reuse and show the expected fan-out scaling without presenting simulated costs
-as live serving evidence. The remaining empirical question is deliberately
-narrower: how often natural subagents encounter valid reuse opportunities, and
-whether live native K/V reuse pays after routing, transfer, residency, and
-scheduling costs are included.
+reuse. Tracked-source runs demonstrate sequential and parallel callback
+integration, 220 valid ancestor hits, DAG/peer visibility, and a measurable
+automatic-routing gap. Live MLX results establish exact short-trajectory parity
+and show both sides of the systems tradeoff: fan-out amortizes native K/V when
+the record fits comfortably, while memory pressure can erase the gain even
+though physical input tokens fall sharply. The remaining empirical question is
+therefore not whether cross-stream native reuse can work, but when routing,
+residency, engine implementation, and real agent behavior make it worthwhile.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
