@@ -21,6 +21,7 @@ Run the frozen natural validation cohort with the inherited strong reranker:
 PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.run_expansion_frontier \
   --dataset multihoprag --split-name validation --max-examples 150 \
   --selector cross_encoder --reranker BAAI/bge-reranker-v2-m3 \
+  --selection-cache .runs/paper3_3_validation_selection.jsonl \
   --output docs/papers/shared/results/paper3_3_crossdoc_expansion/validation_n150
 ```
 
@@ -29,3 +30,28 @@ and deduplicated expansion tokens, already-resident versus newly materialized
 native tokens, search latency, and complete policy receipts. These are
 retrieval/mechanism measurements. They are not answer F1 or an SDK promotion
 until the generation, sparse-SA, five-seed, scale, and family gates pass.
+
+After selecting a policy and budget on validation, replay that frozen choice
+through the native MLX path:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.run_expansion_generation \
+  --cache-dir .cache/rag_eval --split-name test --max-examples 150 \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --mode hybrid_rrf --query-conditioned --top-k 1 \
+  --cross-token-budget 128 \
+  --selection-cache .runs/paper3_3_test_selection.jsonl \
+  --output docs/papers/shared/results/paper3_3_crossdoc_expansion/generation_test_qwen17b
+```
+
+The JSONL cache freezes tokenizer-independent source intervals and validates
+the candidate receipt, selector revision, token budget, and resource limit on
+every replay. Model-specific native token counts are measured only when those
+fixed intervals are encoded. This keeps policy and cross-model comparisons
+paired while avoiding repeated cross-encoder inference.
+
+The generation runner reports six separately named conditions: packed RAG,
+independent PRA, expansion-only native memory, linked pair attention, linked
+boundary attention, and a linked-region physical-edge oracle. The last three
+reuse Paper 3.3's host attention instrumentation and remain research controls;
+they are not sparse-kernel speed measurements.

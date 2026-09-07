@@ -408,6 +408,67 @@ states through the remaining decoder.
 
 Persistent record K/V remains immutable. All corrections are request-local.
 
+\section{Retrieval-Guided Cross-Document Expansion}
+
+Physical-edge selection asks which neural interactions to replay. A cheaper
+alternative asks an earlier question: whether one selected record identifies a
+small, previously unselected interval in another selected record. Let
+$S_i\subset D_i$ be the frozen first-stage span for record $D_i$. For every
+allowed ordered pair $i\ne j$, we issue either
+\[
+S_i\longrightarrow \operatorname{search}(D_j)
+\quad\text{or}\quad
+(Q,S_i)\longrightarrow \operatorname{search}(D_j).
+\]
+The first form measures selected-span evidence alone; the second uses the user
+query to suppress associations unrelated to the current reasoning path. Search
+never escapes the records authorized by the frozen first-stage receipt.
+
+We implement exact chunk BM25, frozen dense similarity, reciprocal-rank fusion,
+an entity/keyterm channel, and a support-span oracle. For lexical rank
+$r_{\mathrm{lex}}(c)$ and dense rank $r_{\mathrm{dense}}(c)$, the primary hybrid
+score is
+\[
+s_{\mathrm{RRF}}(c)=
+\frac{1}{60+r_{\mathrm{lex}}(c)}+
+\frac{1}{60+r_{\mathrm{dense}}(c)}.
+\]
+RRF avoids calibrating unlike raw scores. A normalized weighted fusion is kept
+as a secondary research arm. We also compare symmetric all-pairs expansion,
+higher-to-lower and lower-to-higher retrieval rank, a top-record hub, and pairs
+that pass a query-relevance threshold.
+
+The runtime, rather than the search policy, owns safety and accounting. It
+rejects unauthorized targets, removes overlap with the initial selection and
+other expansions in logical source coordinates, clips the final interval to a
+global token ceiling, and distinguishes resident from newly encoded native K/V.
+For candidate set $C$ and admitted source intervals $A$, it records
+\[
+B_{\mathrm{cross}}\in\{32,64,128,256,512\},\qquad
+k_{\mathrm{pair}}\in\{1,2,4,8\},
+\]
+together with requested, deduplicated, reused, and newly materialized tokens.
+The hash-addressed \texttt{CrossDocumentExpansionReceipt} contains source and
+target identities, offsets, channel scores, ranks, keyterms, policy revision,
+and failure labels, but not raw source text.
+
+Expansion and neural interaction remain separate interventions. \emph{Expansion
+only} appends selected native source intervals without cross-record SA.
+\emph{Pair SA} admits base-model attention only between retrieval-linked record
+pairs. \emph{Boundary SA} further limits each linked pair to a source suffix and
+target prefix. Finally, a diagnostic physical-edge arm ranks teacher edges only
+inside retrieval-linked pairs. These masks execute through the unchanged host
+attention implementation, so their edge fractions describe logical sparsity,
+not kernel acceleration.
+
+The public abstraction is fail-closed. Parameter-free modes have stable
+configuration and plugin contracts, while oracle and weighted modes require an
+explicit experiment flag. Runtime authorization, deduplication, budget
+enforcement, and receipt generation also wrap custom plugins. No mode becomes
+an SDK default from a smoke result: qualification requires a powered frozen
+cohort, five-seed uncertainty, at least two model sizes, bounded quality and
+latency, and preferably cross-family replication.
+
 \section{Training Objective}
 
 The base model remains frozen initially.
@@ -917,7 +978,14 @@ The physical graph, plan, and localization implementation is in
 mask seam is in \url{src/pra_hf/rag_mlx_native.py}. The complete frozen
 retrieval and oracle sweep is in
 \url{experiments/paper3_3_sparse_crossdoc/run_oracle_sparsity.py}; split
-generation is in the adjacent \url{freeze_splits.py}. Exact commands and
+generation is in the adjacent \url{freeze_splits.py}. Cross-record search,
+authorization, logical-interval deduplication, accounting, and qualification
+gates are implemented in \url{src/pra_hf/crossdoc_expansion.py}. Retrieval-
+linked pair and boundary plans are in \url{src/pra_hf/sparse_crossdoc.py}. The
+evidence frontier and native answer replay are respectively
+\url{experiments/paper3_3_crossdoc_expansion/run_expansion_frontier.py} and
+\url{experiments/paper3_3_crossdoc_expansion/run_expansion_generation.py}.
+Exact commands and
 evidence labels appear in the experiment and paper README files.
 
 The tracked publication summary named in the README contains aggregate metrics,

@@ -852,9 +852,10 @@ def build_cross_document_expansion_policy(
     *,
     semantic_encoder: SemanticEncoder | None = None,
     custom_policy: CrossDocumentExpansionPolicy | None = None,
+    qualification: CrossDocumentPolicyQualification | None = None,
     allow_experimental: bool = False,
 ) -> CrossDocumentExpansionPolicy:
-    """Build an SDK policy while keeping oracle/weighted modes research-only."""
+    """Build a policy without silently promoting an unqualified SDK mode."""
 
     if config.mode is CrossDocumentExpansionMode.CUSTOM:
         if custom_policy is None:
@@ -865,6 +866,17 @@ def build_cross_document_expansion_policy(
         CrossDocumentExpansionMode.HYBRID_WEIGHTED,
     } and not allow_experimental:
         raise ValueError(f"{config.mode.value} is available only in experiment/debug mode")
+    if (
+        config.mode is not CrossDocumentExpansionMode.NONE
+        and not allow_experimental
+        and (
+            qualification is None
+            or not qualification.sdk_exposable
+        )
+    ):
+        raise ValueError(
+            f"{config.mode.value} has not passed the cross-document SDK qualification gate"
+        )
     return BuiltinCrossDocumentExpansionPolicy(config, semantic_encoder=semantic_encoder)
 
 

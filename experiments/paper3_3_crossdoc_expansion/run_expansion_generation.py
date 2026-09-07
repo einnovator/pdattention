@@ -23,9 +23,10 @@ from experiments.paper3_2_rag.run_composition_fidelity import (
 )
 from experiments.paper3_2_rag.run_prerope_causal_decomposition import DEFAULT_RERANKER
 from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
+    cached_record_level_context,
     _gold_chunks,
-    _record_level_context,
     _selected_records,
+    load_selection_cache,
 )
 from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     DEFAULT_SPLIT_MANIFEST,
@@ -195,6 +196,11 @@ def main() -> None:
     parser.add_argument("--cross-token-budget", type=int, default=128)
     parser.add_argument("--boundary-tokens", type=int, default=8)
     parser.add_argument("--linked-edge-fraction", type=float, default=0.001)
+    parser.add_argument(
+        "--selection-cache",
+        type=Path,
+        help="Frozen first-stage selections produced by the expansion frontier.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.max_examples <= 0 or args.top_k <= 0 or args.cross_token_budget < 0:
@@ -222,6 +228,7 @@ def main() -> None:
         name_prefix="paper3_3_crossdoc_generation",
     )
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
+    selection_cache = load_selection_cache(args.selection_cache)
     rows: list[dict[str, object]] = []
     started = time.time()
 
@@ -238,17 +245,17 @@ def main() -> None:
             chunker=chunker,
             seed=args.seed,
         )
-        prepared = prepare_candidate_context(
-            candidate, by_id, token_count=backend.token_count
-        )
-        ranking_started = time.perf_counter()
-        ranking = selector.rank(question.question, prepared.chunks)
-        ranking_ms = (time.perf_counter() - ranking_started) * 1000.0
-        context = _record_level_context(
-            ranking,
-            prepared,
-            selector_name=selector.name,
-            selector_latency_ms=ranking_ms,
+        # Source intervals are tokenizer-independent. Model-native token counts
+        # are measured only after the frozen text selection is encoded below.
+        prepared = prepare_candidate_context(candidate, by_id)
+        context = cached_record_level_context(
+            selection_cache,
+            cache_path=args.selection_cache,
+            example_id=question.example_id,
+            candidate_receipt_id=candidate.receipt_id,
+            prepared=prepared,
+            selector=selector,
+            query=question.question,
             token_budget=args.token_budget,
             max_resources=args.max_resources,
         )
@@ -451,6 +458,7 @@ def main() -> None:
         "reranker_revision": reranker_revision,
         "split": split_metadata,
         "seed": args.seed,
+        "selection_cache": str(args.selection_cache) if args.selection_cache else None,
         "policy": {
             "mode": args.mode.value,
             "query_conditioned": args.query_conditioned,

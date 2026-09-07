@@ -15,6 +15,7 @@ from pra_hf.crossdoc_expansion import (
     CrossDocumentFailure,
     CrossDocumentGranularity,
     CrossDocumentPolicyEvidence,
+    CrossDocumentPolicyQualification,
     CrossDocumentSelectedRecord,
     build_cross_document_expansion_policy,
     qualify_cross_document_policy,
@@ -206,6 +207,18 @@ def test_experimental_modes_fail_closed_in_sdk_factory() -> None:
         CrossDocumentExpansionConfig(mode="oracle"), allow_experimental=True
     )
     assert policy.name == "oracle"
+
+
+def test_parameter_free_modes_require_a_passing_sdk_qualification() -> None:
+    config = CrossDocumentExpansionConfig(mode="lexical")
+    with pytest.raises(ValueError, match="qualification gate"):
+        build_cross_document_expansion_policy(config)
+
+    policy = build_cross_document_expansion_policy(
+        config,
+        qualification=CrossDocumentPolicyQualification("SDK_OPTIONAL", True, ()),
+    )
+    assert policy.name == "lexical"
 
 
 def test_custom_policy_requires_an_explicit_plugin() -> None:

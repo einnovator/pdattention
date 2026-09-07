@@ -3,7 +3,9 @@ from __future__ import annotations
 from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     _controlled_crossdoc_fixture,
     _fixture_initial_context,
+    cached_record_level_context,
     evaluate_question,
+    load_selection_cache,
 )
 from pra_hf.crossdoc_expansion import (
     CrossDocumentDirection,
@@ -13,6 +15,7 @@ from pra_hf.crossdoc_expansion import (
 from pra_hf.rag_evaluation import (
     ChunkerConfig,
     FirstStageBM25,
+    RankedChunk,
     SelectionReceipt,
     context_metrics,
     make_candidate_receipt,
@@ -69,3 +72,63 @@ def test_controlled_frontier_recovers_an_omitted_peer_span() -> None:
     assert rows[0]["answer_string_availability"] == 1.0
     assert rows[0]["distractor_fraction"] == 0.0
     assert receipts[0]["chosen_spans"]
+
+
+def test_selection_cache_replays_without_reranking(tmp_path) -> None:
+    documents, questions, metadata = _controlled_crossdoc_fixture()
+    question = questions[0]
+    candidate = make_candidate_receipt(
+        dataset="fixture",
+        dataset_revision=metadata["dataset_revision"],
+        corpus_revision=metadata["corpus_revision"],
+        corpus_sha256=metadata["corpus_sha256"],
+        question=question,
+        retriever=FirstStageBM25(documents),
+        candidate_count=len(documents),
+        chunker=ChunkerConfig(32, 4),
+        seed=11,
+    )
+    prepared = prepare_candidate_context(candidate, {row.document_id: row for row in documents})
+
+    class CountingSelector:
+        name = "frozen-selector@test"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def rank(self, query, chunks):
+            del query
+            self.calls += 1
+            return tuple(
+                RankedChunk(chunk, 1.0 / rank, rank, {"fixture": rank})
+                for rank, chunk in enumerate(chunks, 1)
+            )
+
+    cache_path = tmp_path / "selection.jsonl"
+    selector = CountingSelector()
+    first = cached_record_level_context(
+        {},
+        cache_path=cache_path,
+        example_id=question.example_id,
+        candidate_receipt_id=candidate.receipt_id,
+        prepared=prepared,
+        selector=selector,
+        query=question.question,
+        token_budget=256,
+        max_resources=2,
+    )
+    second = cached_record_level_context(
+        load_selection_cache(cache_path),
+        cache_path=cache_path,
+        example_id=question.example_id,
+        candidate_receipt_id=candidate.receipt_id,
+        prepared=prepared,
+        selector=selector,
+        query=question.question,
+        token_budget=256,
+        max_resources=2,
+    )
+
+    assert selector.calls == 1
+    assert first.selected_chunk_ids == second.selected_chunk_ids
+    assert first.selector_name == second.selector_name

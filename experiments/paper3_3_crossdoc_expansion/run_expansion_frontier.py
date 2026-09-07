@@ -15,7 +15,7 @@ import subprocess
 import time
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Mapping, MutableMapping, Sequence
 
 from experiments.paper3_2_rag.run_composition_fidelity import _resolve_hf_revision
 from experiments.paper3_2_rag.run_prerope_causal_decomposition import DEFAULT_RERANKER
@@ -56,6 +56,7 @@ from pra_hf.rag_record_runtime import document_record_uri
 
 
 SCHEMA_VERSION = "paper3.3-crossdoc-expansion-frontier-v1"
+SELECTION_CACHE_SCHEMA_VERSION = "paper3.3-frozen-selection-cache-v1"
 
 
 class _FrozenProposalPolicy:
@@ -236,6 +237,112 @@ def _record_level_context(
         selector_name=selector_name,
         candidate_chunks=prepared.chunks,
     )
+
+
+def load_selection_cache(path: Path | None) -> dict[str, dict[str, object]]:
+    """Load resumable frozen first-stage selections keyed by example identity."""
+
+    if path is None or not path.exists():
+        return {}
+    result: dict[str, dict[str, object]] = {}
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("schema_version") != SELECTION_CACHE_SCHEMA_VERSION:
+            raise ValueError(f"unsupported selection cache schema at line {line_number}")
+        example_id = str(row["example_id"])
+        previous = result.get(example_id)
+        if previous is not None and previous != row:
+            raise ValueError(f"conflicting frozen selections for {example_id}")
+        result[example_id] = row
+    return result
+
+
+def cached_record_level_context(
+    cache: MutableMapping[str, dict[str, object]],
+    *,
+    cache_path: Path | None,
+    example_id: str,
+    candidate_receipt_id: str,
+    prepared,
+    selector,
+    query: str,
+    token_budget: int,
+    max_resources: int,
+) -> PackedContext:
+    """Replay or persist one provenance-checked frozen first-stage selection."""
+
+    cached = cache.get(example_id)
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in prepared.chunks}
+    if cached is not None:
+        expected = {
+            "candidate_receipt_id": candidate_receipt_id,
+            "selector_name": selector.name,
+            "token_budget": token_budget,
+            "max_resources": max_resources,
+        }
+        mismatches = [key for key, value in expected.items() if cached.get(key) != value]
+        if mismatches:
+            raise ValueError(
+                f"frozen selection cache mismatch for {example_id}: {', '.join(mismatches)}"
+            )
+        selected = tuple(
+            RankedChunk(
+                chunks_by_id[str(row["chunk_id"])],
+                float(row["score"]),
+                int(row["rank"]),
+                {str(key): int(value) for key, value in dict(row["channel_ranks"]).items()},
+            )
+            for row in cached["selected"]
+        )
+        return PackedContext(
+            condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+            chunks=selected,
+            token_budget=token_budget,
+            packed_tokens=sum(row.chunk.token_count for row in selected),
+            candidate_tokens=prepared.candidate_tokens,
+            selector_latency_ms=float(cached["selector_latency_ms"]),
+            index_build_ms=prepared.build_latency_ms,
+            selector_name=selector.name,
+            candidate_chunks=prepared.chunks,
+        )
+
+    ranking_started = time.perf_counter()
+    ranking = selector.rank(query, prepared.chunks)
+    ranking_ms = (time.perf_counter() - ranking_started) * 1000.0
+    context = _record_level_context(
+        ranking,
+        prepared,
+        selector_name=selector.name,
+        selector_latency_ms=ranking_ms,
+        token_budget=token_budget,
+        max_resources=max_resources,
+    )
+    if cache_path is not None:
+        row: dict[str, object] = {
+            "schema_version": SELECTION_CACHE_SCHEMA_VERSION,
+            "example_id": example_id,
+            "candidate_receipt_id": candidate_receipt_id,
+            "selector_name": selector.name,
+            "selector_latency_ms": ranking_ms,
+            "token_budget": token_budget,
+            "max_resources": max_resources,
+            "selected": [
+                {
+                    "chunk_id": selected.chunk.chunk_id,
+                    "score": selected.score,
+                    "rank": selected.rank,
+                    "channel_ranks": dict(selected.channel_ranks),
+                }
+                for selected in context.chunks
+            ],
+        }
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with cache_path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, sort_keys=True) + "\n")
+        cache[example_id] = row
+    return context
 
 
 def _git_commit() -> str:
@@ -661,6 +768,11 @@ def main() -> None:
     parser.add_argument("--top-k", type=_csv_int, default=(1, 2, 4, 8))
     parser.add_argument("--cross-token-budgets", type=_csv_int, default=(32, 64, 128, 256, 512))
     parser.add_argument("--all-candidate-kv-resident", action="store_true")
+    parser.add_argument(
+        "--selection-cache",
+        type=Path,
+        help="Resumable cache that freezes first-stage selections across experiment arms.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.max_examples <= 0 or args.max_resources < 2:
@@ -698,6 +810,7 @@ def main() -> None:
 
     rows: list[dict[str, object]] = []
     receipts: list[dict[str, object]] = []
+    selection_cache = load_selection_cache(args.selection_cache)
     started = time.time()
     for index, question in enumerate(questions, 1):
         print(f"[{index}/{len(questions)}] {question.example_id}", flush=True)
@@ -718,14 +831,14 @@ def main() -> None:
                 question, prepared, token_budget=args.token_budget
             )
         else:
-            ranking_started = time.perf_counter()
-            ranking = selector.rank(question.question, prepared.chunks)
-            ranking_ms = (time.perf_counter() - ranking_started) * 1000.0
-            context = _record_level_context(
-                ranking,
-                prepared,
-                selector_name=selector.name,
-                selector_latency_ms=ranking_ms,
+            context = cached_record_level_context(
+                selection_cache,
+                cache_path=args.selection_cache,
+                example_id=question.example_id,
+                candidate_receipt_id=candidate.receipt_id,
+                prepared=prepared,
+                selector=selector,
+                query=question.question,
                 token_budget=args.token_budget,
                 max_resources=args.max_resources,
             )
@@ -786,6 +899,7 @@ def main() -> None:
         "top_k": list(args.top_k),
         "cross_token_budgets": list(args.cross_token_budgets),
         "all_candidate_kv_resident": args.all_candidate_kv_resident,
+        "selection_cache": str(args.selection_cache) if args.selection_cache else None,
         "elapsed_s": time.time() - started,
         "evidence_scope": "retrieval_mechanism_not_answer_quality",
         "summary": summary,
