@@ -1,0 +1,502 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{graphicx}
+
+\title{Selectively Permeable Subagent Contexts with Progressive Retrieval Attention}
+\author{Anonymous Draft}
+\date{Paper 9 Inception Draft}
+
+\newcommand{\pra}{PRA}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Modern agent harnesses commonly implement subagents by allowing a parent language model to issue a delegation or subagent tool call, after which the harness creates an isolated child agent loop with its own context, tools, model, and workspace policy. This isolation limits interference but introduces hard context boundaries: information already read or computed by an ancestor is often copied, re-read, re-tokenized, or re-prefilled in descendants, while detailed child evidence is typically compressed into a lossy summary before returning to the parent.
+
+We propose extending Progressive Retrieval Attention (PRA) from task-aware typed records within a single agent stream to a graph of agent context streams with \emph{selectively permeable context boundaries}. The harness remains a conventional configurable subagent harness and reports lifecycle events as typed records. The PRA runtime, which may execute remotely, remains tool-agnostic: it reasons only over generic agent lineage, typed records, resource identities, declarative side effects, validity metadata, visibility policies, and materialization state. Concrete tools such as file reads, file writes, database queries, and HTTP requests remain understood only by harness adapters, which map tool semantics to generic \texttt{READ}, \texttt{WRITE}, \texttt{PURE}, or \texttt{UNKNOWN} effects and resource dependency descriptors.
+
+This representation allows a child to reuse valid ancestor tool results without copying full parent context, and, in PRA-enabled engines, to reuse already encoded native K/V state rather than repeating model prefill. It also allows a parent to retrieve detailed records from completed descendants without replaying entire child transcripts. We introduce a controlled Subagent Context Reuse Benchmark (SCRB) designed to vary shared context size, subagent fan-out, repeated access probability, mutation patterns, workspace isolation, and remote-tool latency, followed by naturalistic coding-agent evaluation. The central question is not whether subagents help decomposition, but whether PRA can preserve their isolation while making context boundaries selectively permeable, safe, and computationally reusable.
+\end{abstract}
+
+\section{Introduction}
+
+Subagents have become a common agent-harness primitive. A parent model issues a tool-like delegation command, the harness creates a child model loop, and the child operates in a separate context until it returns a result, summary, artifact, or status. This design provides useful context isolation and enables parallel or specialist work, but the boundary is usually coarse. The child either begins with little parent state or receives a copied/summarized subset, and the parent generally sees only a compact return value rather than an addressable representation of the child's detailed execution history.
+
+This paper studies a complementary question: \emph{what if subagent context boundaries remain execution-isolated but become selectively permeable at the record and native-attention-state levels?}
+
+The work builds on earlier PRA papers on retrieval within attention, progressive materialization, persistent and typed records, tool/skill integration, structured context, and task-aware compaction. In particular, Paper 8 establishes a single-session agent harness where tool calls, tool results, tasks, artifacts, and compacted representations are explicit PRA records. Paper 9 extends this model across multiple agents by adding agent identity and lineage, a context-stream tree or DAG, cross-stream visibility, and validity-aware reuse.
+
+The design deliberately separates three layers:
+
+\begin{enumerate}[leftmargin=*]
+    \item the \textbf{agent harness}, which understands concrete tool semantics and ordinary subagent execution;
+    \item the \textbf{PRA runtime}, which may be remote and therefore operates only on generic records, resource/effect metadata, visibility, validity, lineage, and policy;
+    \item the \textbf{PRA-enabled model engine}, which stores and materializes native K/V and performs model-specific routing and context integration.
+\end{enumerate}
+
+The resulting abstraction is a graph of context streams rather than a collection of isolated transcript blobs.
+
+\paragraph{Contributions.}
+The planned contributions are:
+
+\begin{enumerate}[leftmargin=*]
+    \item a generic representation of agent lineage and subagent lifecycle in PRA records;
+    \item a tool-agnostic declarative effect/resource model for determining when prior records remain valid;
+    \item ancestor and descendant record visibility policies that do not require copying entire contexts;
+    \item cross-agent tool-result and payload reuse;
+    \item native K/V reuse across agent streams when model and engine constraints permit;
+    \item controlled consistency semantics for sequential, parallel, shared-workspace, and externally mutable resources;
+    \item a benchmark suite designed specifically to quantify when cross-agent reuse produces a performance benefit;
+    \item naturalistic coding-agent measurements of how often such reuse opportunities occur in practice.
+\end{enumerate}
+
+\section{Background and Position in the PRA Series}
+
+\subsection{Progressive Retrieval Attention}
+
+PRA treats logical context as larger than the physically materialized model context. External records can remain addressable and be selectively routed and materialized into attention as needed. Earlier papers developed semantic, lexical, hierarchical, iterative, adaptive, and graph-aware selection mechanisms, as well as model/engine integrations capable of retaining native per-layer K/V state for external records.
+
+\subsection{From persistent records to agent context}
+
+The Papers 5--7 line develops persistent and typed resources, runtime integration, adaptive context control, and structured records. Paper 8 moves these ideas into an agent harness with task records and explicit tool-call/tool-result records. Tool results can be compacted in active context while preserving richer native/detail representations externally.
+
+Paper 9 starts from this property:
+
+\begin{quote}
+Compaction need not mean deletion. A compact active representation may coexist with a richer addressable representation and, where supported, persisted native K/V.
+\end{quote}
+
+This makes subagent reuse possible even after the parent has compacted its own tool history.
+
+\subsection{Relationship to Paper 4.5 and the agent SDK}
+
+Paper 4.5 establishes practical deployment modes and SDK boundaries among agent-side behavior, PRA gateways/runtimes, and engine integration. Paper 9 should preserve these boundaries. A PRA runtime may execute out-of-process or remotely and must not depend on Python objects, local filesystem assumptions, or a particular harness implementation.
+
+\section{Conventional Subagent Mechanics}
+
+At the harness level, the initial Paper 9 implementation should intentionally remain conventional:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+Parent LLM
+  -> spawn_subagent(task, options)
+Harness
+  -> allocate child agent/session
+  -> select model/tools/workspace/context policy
+Child agent loop
+  -> LLM -> tools -> observations -> ...
+Harness
+  -> return result/summary/artifacts
+Parent LLM
+\end{lstlisting}
+
+The paper does not claim novelty in this mechanism. Novelty begins after child creation: how the parent and child context streams are represented, what records are mutually visible, and whether already acquired/encoded information can be safely reused.
+
+\section{System Architecture}
+
+\subsection{Agent harness responsibilities}
+
+The harness is responsible for:
+
+\begin{itemize}[leftmargin=*]
+    \item spawning, resuming, stopping, and inspecting subagents;
+    \item assigning agent and task identities;
+    \item selecting child models, tools, permissions, and workspace semantics;
+    \item understanding concrete tool behavior;
+    \item mapping concrete tools to generic effect/resource descriptors;
+    \item emitting typed lifecycle and tool records;
+    \item enforcing safety and execution permissions;
+    \item applying user-configured subagent semantics.
+\end{itemize}
+
+The harness should be able to expose a capability matrix rather than requiring all semantics in the first implementation.
+
+\subsection{PRA runtime responsibilities}
+
+The PRA runtime should understand only generic concepts:
+
+\begin{itemize}[leftmargin=*]
+    \item session, agent, task, and record identities;
+    \item parent/child lineage and context-stream topology;
+    \item typed records and compact/detail representations;
+    \item record visibility and routing eligibility;
+    \item resource domains and resource identities;
+    \item generic effects and dependency sets;
+    \item validity and reuse policies;
+    \item causal/logical ordering;
+    \item materialization state and engine capability descriptors.
+\end{itemize}
+
+It should not contain special cases for tools such as \texttt{file\_read}, \texttt{git\_diff}, SQL, or HTTP.
+
+\subsection{PRA engine responsibilities}
+
+The engine integration handles model-near state and execution:
+
+\begin{itemize}[leftmargin=*]
+    \item persisted native K/V;
+    \item model-specific tokenization and positional handling;
+    \item routing and per-layer materialization;
+    \item cross-agent K/V reuse when compatible;
+    \item cache residency and eviction;
+    \item bounded physical context.
+\end{itemize}
+
+\section{Agent and Record Topology}
+
+Each PRA record gains an \texttt{agent\_uuid} in addition to existing session and record metadata.
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+RecordMetadata
+  record_uuid
+  session_uuid
+  agent_uuid
+  task_uuid?
+  created_at
+  logical_clock?
+  type
+  representation
+\end{lstlisting}
+
+Subagent creation is recorded as a lifecycle event, usually caused by an ordinary tool call in the parent stream:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+AgentStartRecord
+  agent_uuid
+  session_uuid
+  parent_agent_uuid
+  parent_task_uuid?
+  spawn_call_record_uuid?
+  model_descriptor
+  workspace_id?
+  tool_profile_id?
+  context_policy
+\end{lstlisting}
+
+A corresponding \texttt{AgentStopRecord} captures status and typed result, summary, and artifact references. Completed child branches can remain externally addressable even if no longer active.
+
+The resulting context topology may be a tree under simple delegation, or a DAG if later semantics permit shared tasks, joins, or explicitly shared context branches.
+
+\section{Configurable Subagent Semantics}
+
+Table~\ref{tab:semantics} lists the main dimensions exposed by the harness SDK.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.28\linewidth}p{0.64\linewidth}}
+\toprule
+Dimension & Candidate semantics \\
+\midrule
+Child context & empty; selected; parent snapshot; logical fork \\
+Child model & same; cheaper; specialist; explicit \\
+Tools & inherited; restricted; specialist; explicit \\
+State & ephemeral; persistent; resumable \\
+Execution & synchronous; asynchronous \\
+Scheduling & sequential; parallel; DAG \\
+Return & final answer; summary; artifacts; typed records \\
+Communication & child-to-parent; bidirectional; peer-to-peer \\
+Workspace & shared; isolated; worktree/branch; explicit \\
+Lifetime & one-shot; resumable \\
+Recursion & prohibited; bounded; unrestricted \\
+Ancestor visibility & none; selected; routable; inherited \\
+Descendant visibility & none; completed-only; routable \\
+\bottomrule
+\end{tabular}
+\caption{Subagent semantics exposed by the harness SDK. Paper 9 need not implement all modes initially.}
+\label{tab:semantics}
+\end{table}
+
+\section{Generic Effect and Resource Descriptors}
+
+Cross-agent reuse is unsafe unless the system can determine whether a prior result remains valid. PRA should not learn tool-specific semantics. Instead, harness adapters map tools into a deliberately small generic effect system:
+
+\[
+\texttt{EffectType} \in \{\texttt{PURE},\texttt{READ},\texttt{WRITE},\texttt{UNKNOWN}\}.
+\]
+
+A read tool may declare a resource domain and a key derived from its arguments:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+name: file_read
+
+effect: READ
+resource_domain: os.FILE
+resource_key: normalize(args.path)
+reuse:
+  enabled: true
+  max_age: 300s
+  validation: stat
+\end{lstlisting}
+
+A corresponding write declares mutation and invalidation:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+name: file_write
+
+effect: WRITE
+resource_domain: os.FILE
+resource_key: normalize(args.path)
+invalidates: same_resource
+\end{lstlisting}
+
+The runtime sees only normalized metadata such as
+\texttt{domain=os.FILE, key=/repo/src/parser.py}.
+
+\subsection{Dependency sets}
+
+Some results depend on multiple or coarse-grained resources. A directory grep can declare dependencies on a file tree or a resolved set of matching files. This turns validity tracking into a generic dependency/invalidation problem rather than a filesystem-specific optimization.
+
+\section{Selective Context Permeability}
+
+A child does not need a physical copy of parent context. Instead, its logical context can be represented as
+
+\[
+C_{child} = C_{local} \cup C_{inherited} \cup C_{ancestor-visible},
+\]
+
+where the third set remains external until routed/materialized.
+
+The most important mode is \texttt{ROUTABLE}: ancestor records remain candidates for PRA selection but are not physically inserted into the child's prompt or K/V until needed.
+
+The reverse direction is also useful. A parent may route into completed descendant records when a later synthesis question requires detailed evidence unavailable in the child's returned summary.
+
+\section{Three Levels of Cross-Agent Reuse}
+
+\subsection{Tool execution reuse}
+
+If a child requests an operation whose valid result already exists in an ancestor-visible stream, the system can avoid executing the external tool again.
+
+\subsection{Record payload reuse}
+
+The prior result record can be referenced directly instead of copied and re-serialized into the child stream.
+
+\subsection{Native K/V reuse}
+
+If the PRA engine retains compatible native K/V for that record, it can materialize the existing state into the child context without repeated model prefill. This is the most PRA-specific benefit and distinguishes the proposal from ordinary harness-level memoization.
+
+\section{Consistency and Validity}
+
+Parallel agents and external processes make cache validity nontrivial. We therefore define explicit consistency modes.
+
+\paragraph{ANCESTRY.}
+Only mutations in the child-visible ancestor causal chain invalidate a prior result. This is appropriate for immutable snapshots or isolated worktrees.
+
+\paragraph{SESSION\_TREE.}
+Any causally prior mutation to the relevant resource in the shared session tree invalidates. This assumes the harness controls the shared workspace.
+
+\paragraph{EXTERNAL.}
+Resources may change outside PRA. Reuse requires TTL, file metadata, content hashes, ETags, version tokens, or another application-provided validator; otherwise reuse is disabled.
+
+Conservative invalidation is the default. Unknown effects do not qualify for reuse.
+
+\section{Why Compaction Matters}
+
+Paper 8 may compact a large tool result into a smaller active representation while retaining a richer addressable representation and possibly persisted native K/V. Therefore, compaction does not remove the opportunity for a later child to reuse the original information.
+
+A conventional compacting agent may need to execute the tool again because the detailed output is no longer present in active context. PRA can instead route to the original record and rematerialize its payload or native K/V into the child context, provided validity checks succeed.
+
+\section{Benchmark: Subagent Context Reuse Benchmark (SCRB)}
+
+A generic coding benchmark may contain too few repeated parent-child reads to measure this mechanism reliably. We therefore propose SCRB, a controlled suite in which reuse opportunities are intentional and parameterized, followed by naturalistic validation on existing coding-agent tasks.
+
+\subsection{Family A: Shared repository orientation}
+
+The parent reads common repository instructions, architecture documents, build metadata, core interfaces, and test conventions before spawning multiple independent children. Children solve separate subtasks that naturally require the same shared material.
+
+Primary variables:
+
+\begin{itemize}[leftmargin=*]
+    \item number of children: 2, 4, 8, 16;
+    \item shared context size;
+    \item probability that a child needs each shared record;
+    \item whether the common material is still active, compacted, or external-only.
+\end{itemize}
+
+\subsection{Family B: Shared definition fan-out}
+
+Repositories contain a large protocol schema, AST definition, API interface, generated type file, or configuration model needed by many independent children. The parent reads it once. Children perform separate fixes or analyses that all depend on it.
+
+Sweep shared definition sizes such as 2K, 8K, 32K, and 64K tokens to expose the transition where native K/V reuse becomes valuable.
+
+\subsection{Family C: Repeated grep/search}
+
+The parent performs repository-wide searches for symbol usages, route registrations, interface implementations, error codes, or table references. Children later issue equivalent searches. Variants include exact repeated queries, semantically equivalent but syntactically different queries, and writes that should or should not invalidate the cached search result.
+
+\subsection{Family D: Unrelated mutation}
+
+The parent reads resources $A$ and $B$. One child writes $A$ while another later reads $B$. Correct selective invalidation should preserve reuse of $B$, unlike coarse domain-wide invalidation.
+
+\subsection{Family E: Relevant mutation}
+
+The parent reads $A$, a child writes $A$, and a later child reads $A$. Reuse must be rejected under shared-workspace semantics. The primary safety metric is stale-read rate, which should be zero for supported consistency modes.
+
+\subsection{Family F: Isolated worktrees}
+
+Each child operates in a separate Git worktree or immutable snapshot. Sibling mutations should not invalidate ancestor reads in another worktree when resource identities and workspace IDs establish isolation. This family studies how workspace semantics alter the safe reuse envelope.
+
+\subsection{Family G: Completed-child evidence recovery}
+
+Several children investigate different hypotheses and return compact summaries. The parent then receives a synthesis question requiring exact evidence from one completed child, such as a test log, code span, or interface definition. Compare summary-only, full-transcript copying, transcript replay, and PRA descendant routing.
+
+\subsection{Family H: Hierarchical delegation}
+
+Root agents spawn children that spawn grandchildren. Common instructions or interfaces originate in the root. This family measures whether deeper descendants can reuse valid root records without full context copying as delegation depth increases.
+
+\subsection{Family I: Expensive remote tools}
+
+Controlled HTTP, database, static-analysis, or package-metadata services expose deterministic resources with tunable latency. This demonstrates that the mechanism is not filesystem-specific and allows direct study of the wall-clock value of avoiding repeated external calls.
+
+\subsection{Family J: Naturalistic coding-agent tasks}
+
+After controlled evaluation, instrument selected Paper 4.5 tasks, SWE-bench Verified subsets, Mini-SWE-agent subsets, and custom multi-issue repository tasks. First measure how frequently independent subagents naturally repeat reads/searches already performed by ancestors. Then evaluate end-to-end benefit without forcing reuse through scripted behavior.
+
+\section{Baselines}
+
+The minimum comparison set is:
+
+\begin{enumerate}[leftmargin=*]
+    \item conventional isolated subagents;
+    \item conventional subagents with harness-level result memoization;
+    \item PRA records without cross-agent visibility;
+    \item PRA ancestor visibility with payload reuse;
+    \item PRA ancestor visibility with native K/V reuse;
+    \item PRA with resource-level selective invalidation.
+\end{enumerate}
+
+Where practical, also compare parent-context copying/snapshotting and full transcript sharing.
+
+Separating harness memoization from K/V reuse is essential to avoid attributing ordinary tool caching gains to PRA.
+
+\section{Hypotheses}
+
+\paragraph{H1: Result reuse.}
+Repeated ancestor reads/searches reduce tool executions and wall-clock latency when children can reuse valid records.
+
+\paragraph{H2: Native K/V reuse.}
+For sufficiently large shared records, native K/V reuse reduces child prefill cost beyond harness-level memoization.
+
+\paragraph{H3: Bounded context.}
+PRA preserves bounded active physical context while avoiding repeated copying/prefill of shared material into every child.
+
+\paragraph{H4: Selective invalidation.}
+Resource-level invalidation preserves more reusable state than domain-wide invalidation while maintaining zero stale-read errors under stated consistency assumptions.
+
+\paragraph{H5: Descendant permeability.}
+Parents answer post-hoc evidence questions more accurately and with lower context growth by routing into completed descendants than by relying on summaries alone.
+
+\paragraph{H6: Fan-out scaling.}
+Benefits increase with shared context size, child fan-out, and repeated-access probability, subject to routing and cache-residency overhead.
+
+\section{Analytical Cost Model}
+
+Let $S$ be the token size of a reusable shared record set, $N$ the number of child agents, and $p$ the probability that a child needs the shared set. Let $C_{tool}$ be the external tool cost, $C_{prefill}(S)$ the model prefill cost, $C_{route}$ the PRA lookup/routing cost, and $C_{mat}$ the cost of materializing already stored K/V.
+
+Ignoring one-time parent acquisition, duplicated work without reuse is approximately
+
+\[
+C_{base} = Np\left(C_{tool} + C_{prefill}(S)\right).
+\]
+
+With cross-agent PRA reuse,
+
+\[
+C_{pra} = Np\left(C_{route} + C_{mat}\right).
+\]
+
+The experiments should report empirical break-even regions rather than assuming universal benefit.
+
+\section{Metrics}
+
+\subsection{Correctness}
+
+Task success, patch/test success, stale-read count, invalid reuse count, and post-hoc evidence accuracy.
+
+\subsection{Tool and agent behavior}
+
+Tool calls per agent, duplicate calls, avoided calls, reused reads/searches, invalidations, false invalidations, and explicit cache hit/miss reasons.
+
+\subsection{Model cost}
+
+Logical tokens, physically materialized tokens, prefill tokens, decode tokens, reused K/V token-equivalents, and K/V bytes where measurable.
+
+\subsection{Runtime}
+
+Wall-clock time, external-tool latency, routing overhead, materialization overhead, time-to-first-child-result, and total run time.
+
+\subsection{Storage}
+
+Duplicate payload bytes avoided, K/V storage overhead, cache residency, and evictions.
+
+\section{Tracing and Scientific Instrumentation}
+
+Every reuse attempt should emit a structured trace record containing request/source agent identities, source record, resource identity, decision, reason, validation method, age, causal position, and whether payload, K/V, or tool execution was reused.
+
+Suggested miss reasons include:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+NO_MATCH
+NOT_VISIBLE
+EXPIRED
+WRITE_INVALIDATION
+EXTERNAL_VALIDATION_FAILED
+MODEL_INCOMPATIBLE
+KV_EVICTED
+UNKNOWN_EFFECT
+POLICY_DISABLED
+\end{lstlisting}
+
+This instrumentation is required both for systems debugging and for credible experimental analysis.
+
+\section{Implementation Plan}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Trace-only study.} Instrument the Paper 8 harness to estimate natural repeated parent/subagent tool accesses before changing the engine.
+    \item \textbf{Agent lineage records.} Add agent identity, lifecycle records, and stream topology.
+    \item \textbf{Harness-level ancestor reuse.} Exact-match result reuse with conservative validity checks, without K/V reuse.
+    \item \textbf{Resource-level invalidation.} Add effect descriptors, resource keys, TTL/version validation, and workspace-aware consistency.
+    \item \textbf{Cross-stream PRA routing.} Allow children to route into visible ancestors and parents into completed descendants.
+    \item \textbf{Native K/V reuse.} Reuse compatible stored K/V across agent streams.
+    \item \textbf{Parallel/DAG semantics.} Add causal ordering and shared-workspace invalidation for parallel children.
+    \item \textbf{Naturalistic evaluation.} Re-run coding-agent tasks and quantify observed reuse frequency and end-to-end value.
+\end{enumerate}
+
+\section{Non-Goals}
+
+The first Paper 9 implementation does not attempt cross-session long-term memory, arbitrary distributed cache coherence, automatic semantic equivalence between different tool calls, database transaction semantics, general peer-to-peer multi-agent communication, or a new delegation/planning algorithm. These are separable research directions.
+
+\section{Threats to Validity}
+
+The mechanism may provide large gains only for workloads with repeated shared reads or expensive shared context. Controlled benchmarks can overstate practical reuse if natural agents rarely repeat ancestor accesses. Conversely, unrestricted naturalistic benchmarks may under-measure the mechanism if agent planners fail to decompose work in reuse-friendly ways. We therefore separate upper-bound microbenchmarks, controlled repository tasks, and naturalistic coding-agent traces.
+
+Correctness also depends on declared consistency assumptions. External resource mutation can invalidate local reuse even when no mutation exists in the agent DAG. The main system should therefore prefer conservative validation and report consistency modes explicitly.
+
+\section{Expected Outcome}
+
+The target result is not a claim that all subagent systems become faster. The desired contribution is a quantitative characterization of when a graph of addressable context streams is superior to isolated transcript boundaries. In favorable workloads, PRA should reduce repeated tool execution and repeated model prefill while preserving bounded active context. In less favorable workloads, routing and bookkeeping overhead should be measured and the mechanism should degrade gracefully by simply producing few cache hits.
+
+The broader architectural claim is that subagent isolation and context sharing need not be binary choices. PRA can preserve isolated execution while making context selectively permeable through typed, validity-aware, progressively materialized records.
+
+\section{Related Work}
+
+\todo{Add a detailed related-work section covering Claude Code subagents, Codex and coding-agent delegation patterns, OpenHands task/delegate abstractions, Pi subagent extensions, SWE-agent-style multi-agent systems, agent memory/context compaction, prompt caching, prefix/KV caching, semantic caches, distributed cache coherence analogies, effect systems, build-system dependency tracking, and transactional/causal consistency. Clearly distinguish ordinary response/tool memoization from native K/V reuse and from PRA's record-level selective materialization.}
+
+\section{Results}
+
+\todo{Populate controlled SCRB results, ablations, naturalistic reuse-frequency measurements, latency/token savings, stale-read safety results, and post-hoc descendant evidence experiments.}
+
+\section{Conclusion}
+
+Paper 9 extends PRA from task-aware context within one agent stream to multiple subagent streams with explicit lineage and selectively permeable boundaries. The harness remains conventional and configurable; concrete tool semantics stay in harness adapters; the PRA runtime remains generic and potentially remote; and the model engine is responsible only for native attention-state handling. This division enables safe reuse of valid ancestor and descendant records, including native K/V where supported, without requiring whole-context copying or lossy transcript summarization. The central empirical question is workload-dependent: when subagents repeatedly depend on shared context, can this representation turn context isolation from a duplication cost into an efficiently reusable graph of state?
+
+\end{document}
