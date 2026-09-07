@@ -104,6 +104,18 @@ def environment_metadata() -> dict[str, object]:
     }
 
 
+def file_sha256(path: Path | None) -> str | None:
+    """Hash an optional artifact in bounded blocks for provenance manifests."""
+
+    if path is None or not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 class _FrozenProposalPolicy:
     """Replay one scored candidate tuple across counterfactual budgets."""
 
@@ -1030,6 +1042,7 @@ def main() -> None:
         "cross_token_budgets": list(args.cross_token_budgets),
         "all_candidate_kv_resident": args.all_candidate_kv_resident,
         "selection_cache": str(args.selection_cache) if args.selection_cache else None,
+        "selection_cache_sha256": file_sha256(args.selection_cache),
         "elapsed_s": time.time() - started,
         "evidence_scope": "retrieval_mechanism_not_answer_quality",
         "environment": environment_metadata(),

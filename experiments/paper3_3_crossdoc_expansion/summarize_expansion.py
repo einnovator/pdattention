@@ -132,6 +132,7 @@ def build_publication_summary(
             "dense_encoder": run.get("dense_encoder"),
             "dense_revision": run.get("dense_revision"),
             "policy_parameters": run.get("policy_parameters"),
+            "selection_cache_sha256": run.get("selection_cache_sha256"),
             "examples": run["question_count_evaluated"],
         },
         "selection_rule": {

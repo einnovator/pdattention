@@ -29,6 +29,7 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     _selected_records,
     load_selection_cache,
     environment_metadata,
+    file_sha256,
 )
 from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     DEFAULT_SPLIT_MANIFEST,
@@ -515,6 +516,7 @@ def main() -> None:
         "split": split_metadata,
         "seed": args.seed,
         "selection_cache": str(args.selection_cache) if args.selection_cache else None,
+        "selection_cache_sha256": file_sha256(args.selection_cache),
         "policy": {
             "mode": args.mode.value,
             "query_conditioned": args.query_conditioned,
