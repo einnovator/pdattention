@@ -61,6 +61,7 @@ def _generate_timed(model, tokenizer, query, cache, max_tokens: int):
     started = time.perf_counter()
     generated = []
     arrivals = []
+    stop_ids = _stop_token_ids(tokenizer)
     for token, _ in generate_step(
         mx.array(query, dtype=mx.int32),
         model,
@@ -68,7 +69,10 @@ def _generate_timed(model, tokenizer, query, cache, max_tokens: int):
         prompt_cache=cache,
         sampler=make_sampler(temp=0),
     ):
-        generated.append(int(token))
+        token = int(token)
+        if token in stop_ids:
+            break
+        generated.append(token)
         arrivals.append((time.perf_counter() - started) * 1000.0)
     completion_ms = (time.perf_counter() - started) * 1000.0
     itl_ms = (
@@ -85,6 +89,19 @@ def _generate_timed(model, tokenizer, query, cache, max_tokens: int):
         "itl_ms": itl_ms,
         "completion_latency_ms": completion_ms,
     }
+
+
+def _stop_token_ids(tokenizer) -> set[int]:
+    """Normalize single- and multi-EOS tokenizer contracts used by MLX-LM."""
+
+    values = getattr(tokenizer, "eos_token_ids", None)
+    if values is None:
+        values = getattr(tokenizer, "eos_token_id", None)
+    if values is None:
+        return set()
+    if isinstance(values, int):
+        return {values}
+    return {int(value) for value in values}
 
 
 def main() -> None:

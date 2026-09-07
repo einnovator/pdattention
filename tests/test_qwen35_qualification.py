@@ -11,6 +11,7 @@ from experiments.paper4_5_runtime.build_hf_catalog_bundles import (
     SPECS,
     _structural_adapter,
 )
+from experiments.paper6_2_mlx.run_matched_e0_e2 import _stop_token_ids
 
 
 def test_selected_chunks_respect_budget_and_score_order() -> None:
@@ -71,3 +72,13 @@ def test_prompt_accepts_batch_encoding_mapping() -> None:
             return UserDict({"input_ids": [[7, 8, 9]]})
 
     assert _prompt(Tokenizer(), "evidence", "question") == [7, 8, 9]
+
+
+@pytest.mark.parametrize(
+    ("attributes", "expected"),
+    [({"eos_token_id": 9}, {9}), ({"eos_token_ids": {9, 10}}, {9, 10}), ({}, set())],
+)
+def test_mlx_generation_normalizes_stop_tokens(attributes, expected) -> None:
+    tokenizer = type("Tokenizer", (), attributes)()
+
+    assert _stop_token_ids(tokenizer) == expected
