@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from experiments.paper4_5_runtime.run_qwen35_qualification import (
+    _decode_tokens_per_second,
     _prompt,
     select_chunk_indices,
 )
@@ -82,3 +83,8 @@ def test_mlx_generation_normalizes_stop_tokens(attributes, expected) -> None:
     tokenizer = type("Tokenizer", (), attributes)()
 
     assert _stop_token_ids(tokenizer) == expected
+
+
+def test_decode_rate_excludes_prompt_prefill() -> None:
+    assert _decode_tokens_per_second(4, 50.0) == pytest.approx(20.0)
+    assert _decode_tokens_per_second(0, 50.0) == 0.0

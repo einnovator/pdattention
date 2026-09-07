@@ -141,6 +141,17 @@ def _aggregate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return output
 
 
+def _decode_tokens_per_second(
+    generated_tokens: int,
+    itl_ms: float,
+) -> float:
+    """Report decode rate independently from prompt-prefill/TTFT cost."""
+
+    if generated_tokens <= 0 or itl_ms <= 0:
+        return 0.0
+    return 1_000.0 / itl_ms
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     import mlx.core as mx
     import mlx_lm
@@ -177,6 +188,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for line in checkpoint.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+        for row in rows:
+            row["output_tokens_per_second"] = _decode_tokens_per_second(
+                int(row["generated_tokens"]), float(row["itl_ms"])
+            )
     complete = {(row["example_id"], row["condition"]) for row in rows}
     for feature_index, feature in enumerate(features[: args.max_examples or None]):
         example = by_id[str(feature["example_id"])]
@@ -240,7 +255,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             recalled = len(positive_set.intersection(selected)) / max(
                 len(positive_set), 1
             )
-            latency_s = max(float(generated["completion_latency_ms"]) / 1_000.0, 1e-9)
             row = {
                 "schema_version": "pra-qwen35-qualification-v1",
                 "model_id": args.model,
@@ -270,7 +284,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "itl_ms": generated["itl_ms"],
                 "completion_latency_ms": generated["completion_latency_ms"],
                 "generated_tokens": generated["generated_tokens"],
-                "output_tokens_per_second": generated["generated_tokens"] / latency_s,
+                "output_tokens_per_second": _decode_tokens_per_second(
+                    int(generated["generated_tokens"]), float(generated["itl_ms"])
+                ),
                 "peak_unified_memory_bytes": int(mx.get_peak_memory()),
                 "evidence_tier": "MODEL_BACKED_NATURAL_QA_CONTROLLED",
             }

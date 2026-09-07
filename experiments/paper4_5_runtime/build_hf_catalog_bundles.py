@@ -464,6 +464,12 @@ def _manifest(
     paired_artifacts: list[Path],
 ) -> dict:
     commit = _git_commit()
+    end_task_path = RESULTS / slug / "end_task_qualification.json"
+    end_task = (
+        json.loads(end_task_path.read_text(encoding="utf-8"))
+        if end_task_path.is_file()
+        else None
+    )
     combined_evidence = next(
         (row for row in paired_evidence if row["dataset"] == "combined"), None
     )
@@ -631,7 +637,9 @@ def _manifest(
                         else MeasurementState.NO_QUALIFIED_ADAPTER
                     ),
                     adaptor_note=(
-                        "The exact learned router is bundled but has not completed the matched end-task arm."
+                        "The exact learned router is bundled; its matched end-task arm is retained in qualification/end_task_qualification.json."
+                        if learned_adapters and end_task
+                        else "The exact learned router is bundled but has not completed the matched end-task arm."
                         if learned_adapters
                         else "No learned adaptor qualified for this exact model revision and quantization."
                     ),
@@ -641,6 +649,7 @@ def _manifest(
             ],
             "metrics": paired_evidence + diagnostics,
             "routing_diagnostics": diagnostics,
+            "end_task_generation": end_task["aggregate"] if end_task else [],
             "runtime_smoke": (
                 json.loads(runtime_smoke.read_text(encoding="utf-8"))
                 if runtime_smoke.is_file()
@@ -683,7 +692,9 @@ def _manifest(
                 ),
                 f"The qualification identity is the exact {quantization} {engine.upper()} model and revision; it does not transfer automatically to another checkpoint, engine, or quantization.",
                 *(
-                    ["Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality."]
+                    [f"The controlled end-task arm contains {len(end_task['rows']) // 8} examples per dataset; routing and generation claims remain dataset-specific."]
+                    if end_task
+                    else ["Routing evidence compares a frozen generic router with a small learned router; it does not establish end-task generation quality."]
                     if comparison is not None
                     else [
                         "The selector-frozen natural-QA run qualifies the generic Native Memory path; an exact learned-adaptor arm still requires a separate run."
@@ -709,6 +720,7 @@ def _manifest(
                     ]
                     if paired_evidence else []
                 ),
+                *(["qualification/end_task_qualification.json"] if end_task else []),
             ],
         },
         "provenance": {
@@ -817,6 +829,9 @@ def build_one(slug: str, *, force: bool = False) -> Path:
             shutil.copy2(result_dir / "comparison.json", qualification / "comparison.json")
             shutil.copy2(result_dir / "feature_dataset_manifest.json", qualification / "feature_dataset_manifest.json")
             shutil.copy2(RESULTS / "summary.json", qualification / "catalog_summary.json")
+            end_task = result_dir / "end_task_qualification.json"
+            if end_task.is_file():
+                shutil.copy2(end_task, qualification / "end_task_qualification.json")
         if paired_evidence:
             for evidence_path in paired_artifacts:
                 shutil.copy2(evidence_path, qualification / evidence_path.name)
