@@ -7,6 +7,10 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     evaluate_question,
     load_selection_cache,
 )
+from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
+    build_publication_summary,
+    select_validation_config,
+)
 from pra_hf.crossdoc_expansion import (
     CrossDocumentDirection,
     CrossDocumentExpansionMode,
@@ -132,3 +136,61 @@ def test_selection_cache_replays_without_reranking(tmp_path) -> None:
     assert selector.calls == 1
     assert first.selected_chunk_ids == second.selected_chunk_ids
     assert first.selector_name == second.selector_name
+
+
+def test_publication_summary_freezes_best_bounded_validation_policy() -> None:
+    def aggregate(mode, gain, distractors, fraction, budget):
+        return {
+            "mode": mode,
+            "query_conditioned": True,
+            "direction": "symmetric",
+            "granularity": "chunk",
+            "top_k_per_pair": 1,
+            "max_extra_tokens": budget,
+            "supporting_span_coverage_delta": gain,
+            "gold_chunk_recall_delta": gain,
+            "distractor_fraction_mean": distractors,
+            "extra_native_fraction_mean": fraction,
+            "requested_cross_tokens_mean": 20.0,
+            "deduplicated_cross_tokens_mean": 10.0,
+        }
+
+    summary = (
+        aggregate("lexical", 0.10, 0.2, 0.10, 64),
+        aggregate("dense", 0.10, 0.4, 0.08, 32),
+        aggregate("entity", 0.20, 0.0, 0.30, 128),
+        aggregate("oracle", 0.40, 0.0, 0.20, 128),
+    )
+    best, oracle = select_validation_config(summary)
+    assert best["mode"] == "lexical"
+    assert oracle["mode"] == "oracle"
+
+    rows = []
+    for example_id, initial, gain in (("a", 0.0, 1.0), ("b", 1.0, 0.0)):
+        rows.append(
+            {
+                **best,
+                "example_id": example_id,
+                "supporting_span_coverage": initial + gain,
+                "initial_supporting_span_coverage": initial,
+                "gold_chunk_recall": initial + gain,
+                "initial_gold_chunk_recall": initial,
+                "answer_string_availability": initial + gain,
+                "initial_answer_string_availability": initial,
+            }
+        )
+    run = {
+        "summary": summary,
+        "git_commit": "abc",
+        "dataset": "fixture",
+        "split_name": "validation",
+        "split_digest": "digest",
+        "selector": "selector",
+        "reranker_revision": "revision",
+        "question_count_evaluated": 2,
+    }
+    result = build_publication_summary(run, rows)
+    assert result["selected_policy"]["mode"] == "lexical"
+    assert result["oracle_gap_recovery"] == 0.25
+    assert result["requested_to_deduplicated_token_ratio"] == 2.0
+    assert result["qualification"]["sdk_exposable"] is False
