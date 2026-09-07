@@ -19,7 +19,16 @@ structural_adapter:
 supported_precisions:
 - precision_family: INT4
   encoding: MLX-4bit
+  serving_precision: INT4
+  feature_extraction_precision: FP32
+  adaptor_parameter_precision: FP32
+  engine: mlx
+  mode: Selected Context
+  profile: BALANCED
   evidence_tier: CONTROLLED
+  datasets:
+  - qasper
+  - hotpotqa
 learned_adapters:
   combined-router-d128:
     path: learned_adapters/combined-router-d128
@@ -388,8 +397,8 @@ engine_realizations:
     bundle_consumed_by: pra_gateway
 provenance:
   pra_version: 0.2.0rc1
-  pra_commit: 4b9371d2c4d567c804e7c78e3ee908cbb1440924
-  bundle_build_commit: 4b9371d2c4d567c804e7c78e3ee908cbb1440924
+  pra_commit: 4002da39b64c5f343407ef8de669755ed002e20d
+  bundle_build_commit: 4002da39b64c5f343407ef8de669755ed002e20d
   hf_repo: EInnovator/pra-qwen3-5-27b-mlx-4bit
   hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
   license: apache-2.0

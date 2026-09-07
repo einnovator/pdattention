@@ -84,37 +84,65 @@ class ModelInspector:
     def inspect(self, model_id: str, *, revision: str | None = None) -> dict[str, Any]:
         from transformers import AutoConfig
 
-        config = AutoConfig.from_pretrained(model_id, revision=revision)
-        model_type = str(getattr(config, "model_type", "unknown"))
+        resolved_revision = revision
+        try:
+            config: Any = AutoConfig.from_pretrained(model_id, revision=revision)
+        except ValueError as exc:
+            # New model families can be usable by an engine before the installed
+            # Transformers release registers their config class. Metadata-only
+            # inspection must still let the pinned PRA registry fail closed.
+            if "does not recognize this architecture" not in str(exc):
+                raise
+            from huggingface_hub import hf_hub_download
+
+            config_path = Path(hf_hub_download(model_id, "config.json", revision=revision))
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            if resolved_revision is None and config_path.parent.parent.name == "snapshots":
+                resolved_revision = config_path.parent.name
+        model_type = str(self._value(config, "model_type", "unknown"))
         mapping = KNOWN_STRUCTURAL_MAPPINGS.get(model_type)
-        layers = int(getattr(config, "num_hidden_layers", 0) or 0)
-        hidden = int(getattr(config, "hidden_size", 0) or 0)
-        vocab = int(getattr(config, "vocab_size", 0) or 0)
-        intermediate = int(getattr(config, "intermediate_size", hidden * 4) or hidden * 4)
+        shape_config = self._value(config, "text_config", None) or config
+        layers = int(self._value(shape_config, "num_hidden_layers", 0) or 0)
+        hidden = int(self._value(shape_config, "hidden_size", 0) or 0)
+        vocab = int(self._value(shape_config, "vocab_size", 0) or 0)
+        intermediate = int(
+            self._value(shape_config, "intermediate_size", hidden * 4) or hidden * 4
+        )
         approximate_parameters = vocab * hidden + layers * (
             4 * hidden * hidden + 3 * hidden * intermediate
         )
+        architectures = self._value(config, "architectures", None) or [model_type]
         return {
             "model": {
                 "id": model_id,
-                "revision": revision or getattr(config, "_commit_hash", None) or "unresolved",
-                "architecture": (getattr(config, "architectures", None) or [model_type])[0],
+                "revision": resolved_revision
+                or self._value(config, "_commit_hash", None)
+                or "unresolved",
+                "architecture": architectures[0],
                 "family": mapping["family"] if mapping else model_type,
                 "variant": self._variant(model_id),
                 "parameter_count_approx": approximate_parameters or None,
             },
             "attention": {
                 "layers": layers or None,
-                "query_heads": getattr(config, "num_attention_heads", None),
-                "kv_heads": getattr(config, "num_key_value_heads", None),
-                "head_dim": getattr(config, "head_dim", None) or (
-                    hidden // int(getattr(config, "num_attention_heads", 1) or 1) if hidden else None
+                "query_heads": self._value(shape_config, "num_attention_heads", None),
+                "kv_heads": self._value(shape_config, "num_key_value_heads", None),
+                "head_dim": self._value(shape_config, "head_dim", None) or (
+                    hidden // int(self._value(shape_config, "num_attention_heads", 1) or 1)
+                    if hidden else None
                 ),
-                "topology": "heterogeneous" if getattr(config, "layer_types", None) else "homogeneous_global",
+                "topology": (
+                    "heterogeneous"
+                    if self._value(shape_config, "layer_types", None)
+                    else "homogeneous_global"
+                ),
                 "position_encoding": (
                     str(mapping["position"])
                     if mapping
-                    else "rope" if hasattr(config, "rope_theta") else "unknown"
+                    else "rope"
+                    if self._value(shape_config, "rope_theta", None)
+                    or self._value(shape_config, "rope_parameters", None)
+                    else "unknown"
                 ),
             },
             "pra": {
@@ -127,6 +155,14 @@ class ModelInspector:
                 "profile_status": "registry_lookup_required",
             },
         }
+
+    @staticmethod
+    def _value(config: Any, name: str, default: Any = None) -> Any:
+        """Read one config field from either Transformers objects or raw JSON."""
+
+        if isinstance(config, Mapping):
+            return config.get(name, default)
+        return getattr(config, name, default)
 
     @staticmethod
     def _variant(model_id: str) -> str:

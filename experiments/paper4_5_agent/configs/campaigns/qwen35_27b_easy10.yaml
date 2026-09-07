@@ -1,6 +1,6 @@
 schema_version: 1
-campaign_id: paper4-5-qwen35-27b-easy10-v1
-output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10
+campaign_id: paper4-5-qwen35-27b-easy10-v5
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5
 baselines:
   - baseline_id: qwen35-27b-easy10-mlx
     admission_kind: local_calibration
@@ -39,6 +39,7 @@ baselines:
     notes:
       - Local model and transport qualification on the frozen Easy-10 prefix.
       - Native K/V is unavailable because Qwen3.5 also requires detached DeltaNet state.
+      - Each official AMD64 SWE-bench image is acquired immediately before execution on the ARM64 grader host.
 cells:
   - cell_id: qwen35-easy10-no-pra
     stage: A
@@ -50,9 +51,9 @@ cells:
     connection: direct
     engine_pra_enabled: false
     gateway_pra_enabled: false
-    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/no_pra, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://192.168.1.102:18095/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-no-pra, --chat-template-no-thinking, --local-calibration]
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/no_pra, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://192.168.1.102:18095/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-no-pra, --chat-template-no-thinking, --prefix-caching, --prepull-images, --docker-platform, linux/amd64, --image-pull-timeout-seconds, "3600", --local-calibration]
     timeout_seconds: 43200
-    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/no_pra/official_result.json, absolute_tolerance: 0, require_exact_cohort: true}
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/no_pra/official_result.json, absolute_tolerance: 0, require_exact_cohort: true}
   - cell_id: qwen35-easy10-g00
     stage: B
     mode: gateway_passthrough
@@ -66,9 +67,9 @@ cells:
     gateway_pra_enabled: false
     gateway_mode: G00
     minimum_baseline_score: 0.10
-    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/g00, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://127.0.0.1:18091/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-g00, --mode, gateway-passthrough, --chat-template-no-thinking, --local-calibration]
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/g00, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://192.168.1.102:18095/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-g00, --mode, gateway-passthrough, --chat-template-no-thinking, --prefix-caching, --prepull-images, --docker-platform, linux/amd64, --image-pull-timeout-seconds, "3600", --local-calibration]
     timeout_seconds: 43200
-    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/g00/official_result.json, require_exact_cohort: true}
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/g00/official_result.json, require_exact_cohort: true}
   - cell_id: qwen35-easy10-selected50
     stage: B
     mode: gateway_pra
@@ -82,6 +83,6 @@ cells:
     gateway_pra_enabled: true
     gateway_mode: G10
     minimum_baseline_score: 0.10
-    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/selected50, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://127.0.0.1:18092/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-selected50, --mode, gateway-pra, --budget-fraction, "0.5", --chat-template-no-thinking, --local-calibration]
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/selected50, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://192.168.1.102:18095/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-selected50, --mode, gateway-pra, --budget-fraction, "0.5", --chat-template-no-thinking, --prefix-caching, --prepull-images, --docker-platform, linux/amd64, --image-pull-timeout-seconds, "3600", --local-calibration]
     timeout_seconds: 43200
-    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/selected50/official_result.json, require_exact_cohort: true}
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10_v5/selected50/official_result.json, require_exact_cohort: true}

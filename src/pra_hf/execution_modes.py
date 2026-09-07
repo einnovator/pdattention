@@ -233,7 +233,11 @@ class ExecutionModeResolver:
             if mechanism in {ModeStatus.AVAILABLE, ModeStatus.CANDIDATE, ModeStatus.RESEARCH_ONLY}
             else mechanism
         )
-        economics = self._economic_status(engine, mode)
+        economics = (
+            mechanism
+            if mechanism in {ModeStatus.NOT_APPLICABLE, ModeStatus.BLOCKED}
+            else self._economic_status(engine, mode)
+        )
         recommendation_text = " ".join(
             str(engine.get(key, ""))
             for key in ("recommended_today", "production_recommendation")

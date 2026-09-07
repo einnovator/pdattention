@@ -472,6 +472,10 @@ class BundleBuilder:
         )
         qualification = bundle.qualification if isinstance(bundle.qualification, Mapping) else {}
         headline = [row for row in qualification.get("headline", []) if isinstance(row, Mapping)]
+        end_task_generation = [
+            row for row in qualification.get("end_task_generation", [])
+            if isinstance(row, Mapping)
+        ]
         recommended_name, recommended = next(
             ((str(name), value) for name, value in bundle.profiles.items()
              if isinstance(value, Mapping) and value.get("recommended") is True),
@@ -570,6 +574,26 @@ class BundleBuilder:
                 f"{receipt.get('hardware')}; {receipt.get('cohort')} (n={receipt.get('sample_count')}); "
                 f"{receipt.get('date')}; PRA commit `{receipt.get('pra_commit')}`; "
                 f"artifact `{receipt.get('artifact')}`; SHA-256 `{receipt.get('artifact_sha256')}`.", "",
+            ]
+        elif end_task_generation:
+            lines += [
+                "| Dataset | Condition | Token F1 | Exact match | Evidence recall | Visible tokens | TTFT mean | Decode tok/s | Peak memory |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+            for row in end_task_generation:
+                lines.append(
+                    f"| {row.get('dataset', 'NOT_MEASURED')} (n={row.get('examples', 'NOT_MEASURED')}) "
+                    f"| {row.get('condition', 'NOT_MEASURED')} "
+                    f"| {_metric(row.get('token_f1'))} | {_metric(row.get('exact_match'))} "
+                    f"| {_metric(row.get('evidence_recall'))} | {_metric(row.get('visible_prompt_tokens'))} "
+                    f"| {_metric(row.get('ttft_ms'))} ms "
+                    f"| {_metric(row.get('output_tokens_per_second'))} "
+                    f"| {_bytes(row.get('peak_unified_memory_bytes'))} |"
+                )
+            lines += [
+                "",
+                "These rows compare full visible context with selected visible context; they are not Native Memory measurements. The oracle is an evidence-availability control, not a deployable selector.",
+                "",
             ]
         else:
             lines += ["No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.", ""]
@@ -698,6 +722,10 @@ class BundleBuilder:
             for row in end_task:
                 for label, values in (("Selected Context", row.get("baseline", {})), ("Native Memory", row.get("pra", {}))):
                     lines.append(f"| {row.get('dataset')} (n={row.get('sample_count')}) | {label} | {values.get('quality_metric', 'metric')}={_metric(values.get('quality'))} | {_metric(values.get('visible_tokens'))} | {_metric(values.get('ttft_ms', {}).get('p50'))} ms | {_metric(values.get('completion_latency_ms', {}).get('mean'))} ms | {row.get('hardware')} | {row.get('evidence_tier')} |")
+        elif end_task_generation:
+            lines += [
+                "The bundle packages the selected-context generation cohort summarized in Headline results. Row-level outputs and immutable execution metadata are retained in `qualification/end_task_qualification.json`.",
+            ]
         else:
             lines.append("What remains to be measured: paired end-task quality for this exact bundle identity.")
         lines += ["", "## Native Memory qualification", ""]

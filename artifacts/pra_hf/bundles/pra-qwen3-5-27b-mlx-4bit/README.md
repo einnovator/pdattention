@@ -43,11 +43,22 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 | Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| INT4 | MLX-4bit | INT4 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Selected Context | BALANCED | CONTROLLED | NOT_MEASURED |
+| INT4 | MLX-4bit | INT4 | FP32 | FP32 | mlx | Selected Context | BALANCED | CONTROLLED | qasper, hotpotqa |
 
 ## Headline results
 
-No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
+| Dataset | Condition | Token F1 | Exact match | Evidence recall | Visible tokens | TTFT mean | Decode tok/s | Peak memory |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hotpotqa (n=16) | FULL_NO_PRA | 0.8869 | 0.6875 | 1 | 1669 | 1.531e+04 ms | 14.42 | 17.27 GiB |
+| hotpotqa (n=16) | PRA_GENERIC | 0.6019 | 0.4375 | 0.5058 | 375.3 | 3642 ms | 13.61 | 15.72 GiB |
+| hotpotqa (n=16) | PRA_LEARNED | 0.3199 | 0.25 | 0.2923 | 374.7 | 3638 ms | 15.57 | 15.72 GiB |
+| hotpotqa (n=16) | PRA_ORACLE_CONTROL | 0.8997 | 0.75 | 1 | 375.2 | 3640 ms | 14.6 | 15.72 GiB |
+| qasper (n=16) | FULL_NO_PRA | 0.5321 | 0.5 | 1 | 3648 | 3.294e+04 ms | 5.695 | 17.27 GiB |
+| qasper (n=16) | PRA_GENERIC | 0.3854 | 0.375 | 0.3439 | 772.9 | 7095 ms | 2.922 | 15.73 GiB |
+| qasper (n=16) | PRA_LEARNED | 0.4593 | 0.4375 | 0.5531 | 773 | 7079 ms | 3.866 | 15.73 GiB |
+| qasper (n=16) | PRA_ORACLE_CONTROL | 0.4697 | 0.4375 | 0.9581 | 772.8 | 7042 ms | 5.841 | 15.73 GiB |
+
+These rows compare full visible context with selected visible context; they are not Native Memory measurements. The oracle is an evidence-availability control, not a deployable selector.
 
 ## Evidence by engine, mode, and profile
 
@@ -105,7 +116,7 @@ pra serve mlx-community/Qwen3.5-27B-4bit -e mlx -a EInnovator/pra-qwen3-5-27b-ml
 
 ## End-to-end qualification
 
-What remains to be measured: paired end-task quality for this exact bundle identity.
+The bundle packages the selected-context generation cohort summarized in Headline results. Row-level outputs and immutable execution metadata are retained in `qualification/end_task_qualification.json`.
 
 ## Native Memory qualification
 
@@ -156,8 +167,8 @@ pra report .pra/runs/qasper --format html
 
 ## Reproducibility
 
-- PRA commit: `4b9371d2c4d567c804e7c78e3ee908cbb1440924`
-- Bundle build commit: `4b9371d2c4d567c804e7c78e3ee908cbb1440924`
+- PRA commit: `4002da39b64c5f343407ef8de669755ed002e20d`
+- Bundle build commit: `4002da39b64c5f343407ef8de669755ed002e20d`
 - Bundle schema: `2`
 - PRA package: `0.2.0rc1`
 - Component fingerprints and file checksums are recorded in `bundle.yaml`.

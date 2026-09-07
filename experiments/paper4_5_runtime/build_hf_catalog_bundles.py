@@ -554,9 +554,26 @@ def _manifest(
                     "precision_family": combined_evidence["precision_family"],
                     "encoding": combined_evidence["precision_encoding"],
                     "evidence_tier": combined_evidence["evidence_tier"],
+                    "feature_extraction_precision": "FP32",
+                    "adaptor_parameter_precision": "FP32" if learned_adapters else None,
                 }
             ]
             if combined_evidence is not None
+            else [
+                {
+                    "precision_family": "INT4",
+                    "encoding": "MLX-4bit",
+                    "serving_precision": "INT4",
+                    "feature_extraction_precision": "FP32",
+                    "adaptor_parameter_precision": "FP32" if learned_adapters else None,
+                    "engine": engine,
+                    "mode": "Selected Context",
+                    "profile": "BALANCED",
+                    "evidence_tier": "CONTROLLED",
+                    "datasets": ["qasper", "hotpotqa"] if end_task else [],
+                }
+            ]
+            if end_task and quantization == "4bit"
             else []
         ),
         "base_model": {

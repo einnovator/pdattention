@@ -81,6 +81,7 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _grader_error_type,
     _is_h100_80gb,
     _normalize_report,
+    _prepull_swebench_images,
     _trajectory_metrics,
     _write_empty_predictions,
     gateway_preflight,
@@ -605,6 +606,46 @@ def test_timed_out_agent_becomes_an_empty_official_prediction(tmp_path: Path) ->
     }
 
 
+def test_swebench_images_are_pulled_per_task_with_explicit_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], log: Path, timeout: int, **kwargs: object) -> float:
+        commands.append(command)
+        assert log.parent == tmp_path
+        assert timeout == 900
+        docker_config = Path(str(kwargs["extra_environment"]["DOCKER_CONFIG"]))
+        assert docker_config == tmp_path / ".docker-anonymous"
+        return 1.25
+
+    monkeypatch.setattr(
+        "experiments.paper4_5_agent.runners.swebench_verified._run", fake_run,
+    )
+    args = SimpleNamespace(
+        docker_platform="linux/amd64", image_pull_timeout_seconds=900,
+    )
+
+    _prepull_swebench_images(args, ["django__django-13297"], tmp_path, 3)
+
+    image = "docker.io/swebench/sweb.eval.x86_64.django_1776_django-13297:latest"
+    assert commands == [["docker", "pull", "--platform", "linux/amd64", image]]
+    receipt = json.loads(
+        (tmp_path / "chunk_03.image_receipt.json").read_text(encoding="utf-8")
+    )
+    assert receipt == {
+        "schema_version": 1,
+        "images": [{
+            "instance_id": "django__django-13297",
+            "image": image,
+            "platform": "linux/amd64",
+            "wall_time_s": 1.25,
+        }],
+        "registry_auth": "anonymous_public_pull",
+        "excluded_from_model_and_grader_wall_time": True,
+    }
+
+
 def test_timeout_cleanup_targets_only_emitted_owned_containers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -719,6 +760,58 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> None:
+    class Target(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            encoded = json.dumps({"data": [{"id": "model"}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_POST(self) -> None:  # noqa: N802
+            self.rfile.read(int(self.headers["Content-Length"]))
+            encoded = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}]
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+    target_thread = threading.Thread(target=target.serve_forever, daemon=True)
+    target_thread.start()
+    proxy = TreatmentProxy(
+        f"http://127.0.0.1:{target.server_port}/v1",
+        mode=ContextTreatment.PASSTHROUGH,
+        budget_fraction=1.0,
+        trace_path=tmp_path / "trace.jsonl",
+    )
+    proxy_url = proxy.start()
+    args = SimpleNamespace(
+        mode="gateway-passthrough",
+        base_url="http://raw-engine.invalid/v1",
+        served_model="model",
+        chat_template_no_thinking=False,
+        prefix_caching=True,
+    )
+    try:
+        result = gateway_preflight(args, base_url=proxy_url)
+        assert result["gateway_mode"] == "G00"
+        assert result["generation_probe"] == "passed"
+    finally:
+        proxy.close()
+        target.shutdown()
+        target.server_close()
+        target_thread.join(timeout=5)
 
 
 def test_context_treatments_share_budget_and_keep_mandatory_messages() -> None:

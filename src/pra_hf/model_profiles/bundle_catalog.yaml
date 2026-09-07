@@ -289,3 +289,21 @@ bundles:
     quality_gate: 0/15 exact paired outputs; mean token-F1 delta -0.3813, so Native Memory remains candidate-only
     context_saving: 91.7% fewer visible tokens
     artifact: docs/papers/shared/results/paper4_5_runtime/exact_identity_qualification/qwen2.5-1.5b-instruct-bnb-8bit/qualification_summary.json
+  - order: 17
+    repo: EInnovator/pra-qwen3-5-27b-mlx-4bit
+    model: mlx-community/Qwen3.5-27B-4bit
+    model_size: 27B
+    family: qwen3_5
+    precision_family: INT4
+    precision_encoding: MLX-4bit
+    datasets: [qasper, hotpotqa]
+    role: Hybrid-attention Selected Context and routing qualification
+    evidence_tier: CONTROLLED
+    recommendation: Generic BALANCED; qasper-learned only for matched QASPER
+    qualification_date: 2026-09-07
+    publication_status: PUBLISHED
+    engine: mlx
+    profile: BALANCED
+    quality_gate: 32 held-out natural-QA examples with oracle control
+    context_saving: 78.0% fewer visible prompt tokens overall
+    artifact: docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3.5-27b/qualification_summary.json

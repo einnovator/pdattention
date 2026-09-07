@@ -61,7 +61,9 @@ def treatment_placement(mode: str) -> dict[str, Any]:
     }[mode]
 
 
-def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
+def gateway_preflight(
+    args: argparse.Namespace, *, base_url: str | None = None,
+) -> dict[str, Any] | None:
     """Reject an unpinned or incorrectly configured treatment endpoint early."""
 
     expected_mode = {
@@ -75,7 +77,7 @@ def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
     }
     if expected_mode is None and not native_required:
         return None
-    root = args.base_url.rstrip("/").removesuffix("/v1")
+    root = (base_url or args.base_url).rstrip("/").removesuffix("/v1")
 
     def read(path: str) -> dict[str, Any]:
         try:
@@ -116,6 +118,7 @@ def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
         "chat_template_no_thinking": bool(
             getattr(args, "chat_template_no_thinking", False)
         ),
+        "prefix_caching": bool(getattr(args, "prefix_caching", False)),
         "max_tokens": 1,
         "stream": False,
     }).encode("utf-8")
@@ -228,6 +231,8 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "kv_cache_dtype": args.kv_cache_dtype,
         "context_limit": args.context_limit,
         "max_steps": args.max_steps,
+        "docker_platform": getattr(args, "docker_platform", None),
+        "prepull_images": bool(getattr(args, "prepull_images", False)),
         "temperature": 0,
         "campaign_mode": args.mode,
         "selection_contract": selection_contract,
@@ -275,20 +280,13 @@ def run(args: argparse.Namespace) -> Path:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     receipt = preflight(args, card)
-    receipt["gateway_preflight"] = gateway_preflight(args)
-    receipt["execution_fingerprint"] = _execution_fingerprint(receipt)
-    _write_json(output / "run_manifest.json", receipt)
-    if args.preflight_only:
-        return output / "run_manifest.json"
-    if receipt["configuration_differences"] and not args.allow_partial_reproduction:
-        raise RuntimeError(
-            "source-matched preflight failed; use --allow-partial-reproduction only for a "
-            "diagnostic that must remain locked from PRA"
-        )
-
     proxy = None
     agent_base_url = args.base_url.rstrip("/")
-    if args.mode != "no-pra":
+    if args.mode in {
+        ContextTreatment.PASSTHROUGH.value,
+        ContextTreatment.TRUNCATION.value,
+        ContextTreatment.PRA_SELECTED_CONTEXT.value,
+    }:
         proxy = TreatmentProxy(
             agent_base_url,
             mode=ContextTreatment(args.mode),
@@ -299,6 +297,18 @@ def run(args: argparse.Namespace) -> Path:
         )
         agent_base_url = proxy.start()
     try:
+        receipt["gateway_preflight"] = gateway_preflight(
+            args, base_url=agent_base_url,
+        )
+        receipt["execution_fingerprint"] = _execution_fingerprint(receipt)
+        _write_json(output / "run_manifest.json", receipt)
+        if args.preflight_only:
+            return output / "run_manifest.json"
+        if receipt["configuration_differences"] and not args.allow_partial_reproduction:
+            raise RuntimeError(
+                "source-matched preflight failed; use --allow-partial-reproduction only for a "
+                "diagnostic that must remain locked from PRA"
+            )
         return _execute_chunks(args, card, output, agent_base_url, receipt)
     finally:
         if proxy is not None:
@@ -334,6 +344,8 @@ def _execute_chunks(
                 chunk_result = candidate
         if chunk_result is None:
             chunk_dir.mkdir(parents=True, exist_ok=True)
+            if getattr(args, "prepull_images", False):
+                _prepull_swebench_images(args, chunk_ids, output, chunk_number)
             pattern = "(" + "|".join(re.escape(item) for item in chunk_ids) + ")"
             predictions = chunk_dir / "preds.json"
             agent_command = [
@@ -433,7 +445,9 @@ def _execute_chunks(
                 getattr(args, "chat_template_no_thinking", False)
             ),
             "function_calling": False,
-            "prefix_caching": False,
+            "prefix_caching": bool(getattr(args, "prefix_caching", False)),
+            "container_platform": getattr(args, "docker_platform", None),
+            "images_prepulled": bool(getattr(args, "prepull_images", False)),
             "grading": args.grading,
         },
     }
@@ -462,6 +476,9 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "model_revision", "engine", "engine_version", "campaign_mode",
                 "context_budget_fraction", "context_limit", "max_steps",
                 "chat_template_no_thinking",
+                "prefix_caching",
+                "docker_platform",
+                "prepull_images",
             )
         },
         "gateway_preflight": receipt.get("gateway_preflight"),
@@ -498,6 +515,45 @@ def _nvidia_gpu() -> str | None:
     return result.stdout.strip() or None
 
 
+def _prepull_swebench_images(
+    args: argparse.Namespace,
+    instance_ids: list[str],
+    output: Path,
+    chunk_number: int,
+) -> None:
+    """Acquire official task images before mini-swe-agent's fixed startup timeout."""
+
+    docker_config = output / ".docker-anonymous"
+    docker_config.mkdir(parents=True, exist_ok=True)
+    receipts: list[dict[str, Any]] = []
+    for instance_id in instance_ids:
+        compatible_id = instance_id.replace("__", "_1776_").lower()
+        image = f"docker.io/swebench/sweb.eval.x86_64.{compatible_id}:latest"
+        command = ["docker", "pull"]
+        if args.docker_platform:
+            command.extend(["--platform", args.docker_platform])
+        command.append(image)
+        log = output / f"chunk_{chunk_number:02d}.{compatible_id}.image.log"
+        wall_time_s = _run(
+            command,
+            log,
+            args.image_pull_timeout_seconds,
+            extra_environment={"DOCKER_CONFIG": str(docker_config)},
+        )
+        receipts.append({
+            "instance_id": instance_id,
+            "image": image,
+            "platform": args.docker_platform,
+            "wall_time_s": wall_time_s,
+        })
+    _write_json(output / f"chunk_{chunk_number:02d}.image_receipt.json", {
+        "schema_version": 1,
+        "images": receipts,
+        "registry_auth": "anonymous_public_pull",
+        "excluded_from_model_and_grader_wall_time": True,
+    })
+
+
 def _dataset_revision() -> str | None:
     try:
         from huggingface_hub import HfApi
@@ -525,6 +581,15 @@ def _run(
     environment.setdefault("OPENAI_API_KEY", "dummy")
     environment.setdefault("MSWEA_COST_TRACKING", "ignore_errors")
     environment.setdefault("TOKENIZERS_PARALLELISM", "false")
+    path_entries = environment.get("PATH", "").split(os.pathsep)
+    for candidate in (
+        "/Applications/Docker.app/Contents/Resources/bin",
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+    ):
+        if Path(candidate).is_dir() and candidate not in path_entries:
+            path_entries.insert(0, candidate)
+    environment["PATH"] = os.pathsep.join(path_entries)
     environment.update(extra_environment or {})
     started = time.perf_counter()
     try:
@@ -861,6 +926,11 @@ def main() -> None:
         action="store_true",
         help="Disable model-specific thinking through the OpenAI extra-body contract.",
     )
+    parser.add_argument(
+        "--prefix-caching",
+        action="store_true",
+        help="Record that the serving endpoint has ordinary prefix caching enabled.",
+    )
     parser.add_argument("--grading", default="SWE-bench 4.1.0 official Docker harness")
     parser.add_argument("--context-limit", type=int, default=16384)
     parser.add_argument("--max-steps", type=int, default=40)
@@ -882,6 +952,16 @@ def main() -> None:
     parser.add_argument("--grader-workers", type=int, default=4)
     parser.add_argument("--chunk-size", type=int, default=10)
     parser.add_argument("--timeout-seconds", type=int, default=21600)
+    parser.add_argument(
+        "--prepull-images",
+        action="store_true",
+        help="Pull each official task image immediately before mini-swe-agent starts it.",
+    )
+    parser.add_argument(
+        "--docker-platform",
+        help="Optional platform for task-image acquisition, for example linux/amd64 on Apple Silicon.",
+    )
+    parser.add_argument("--image-pull-timeout-seconds", type=int, default=3600)
     parser.add_argument(
         "--recover-timeout-chunk", type=int,
         help="Normalize a previously observed timed-out chunk without rerunning its agent.",

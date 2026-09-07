@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "evidence_as_of": "2026-09-03",
+  "evidence_as_of": "2026-09-07",
   "profile_registry": "src/pra_hf/model_profiles/pra_profile_benchmarks.json",
   "families": [
     {
       "slug": "qwen",
       "name": "Qwen",
-      "model_types": ["qwen2", "qwen3"],
-      "examples": ["Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct (bitsandbytes 8-bit runtime)", "Qwen/Qwen2.5-Coder-1.5B-Instruct", "Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-4B-8bit", "mlx-community/Qwen3-8B-4bit", "mlx-community/Qwen3-8B-6bit", "mlx-community/Qwen3-8B-8bit", "mlx-community/Qwen3-14B-4bit", "mlx-community/Qwen3-14B-8bit", "mlx-community/Qwen3-32B-4bit"],
+      "model_types": ["qwen2", "qwen3", "qwen3_5"],
+      "examples": ["Qwen/Qwen2.5-1.5B-Instruct", "Qwen/Qwen2.5-1.5B-Instruct (bitsandbytes 8-bit runtime)", "Qwen/Qwen2.5-Coder-1.5B-Instruct", "Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "mlx-community/Qwen3-4B-4bit", "mlx-community/Qwen3-4B-8bit", "mlx-community/Qwen3-8B-4bit", "mlx-community/Qwen3-8B-6bit", "mlx-community/Qwen3-8B-8bit", "mlx-community/Qwen3-14B-4bit", "mlx-community/Qwen3-14B-8bit", "mlx-community/Qwen3-32B-4bit", "mlx-community/Qwen3.5-27B-4bit"],
       "bundle_links": {
         "Qwen/Qwen2.5-1.5B-Instruct": {
           "repo": "EInnovator/pra-qwen2-5-1-5b-instruct",
@@ -116,13 +116,22 @@
           "engines": "MLX paired natural-QA Native Memory qualification",
           "recommended_mode": "Native Memory with BALANCED",
           "qualified_at": "2026-09-01"
+        },
+        "mlx-community/Qwen3.5-27B-4bit": {
+          "repo": "EInnovator/pra-qwen3-5-27b-mlx-4bit",
+          "url": "https://huggingface.co/EInnovator/pra-qwen3-5-27b-mlx-4bit",
+          "revision": "48d50f2bf46c2f2e0bfeabb650b4237ac3fbfde0",
+          "status": "Controlled",
+          "engines": "MLX Selected Context and five-seed routing qualification",
+          "recommended_mode": "Generic balanced; learned router only for matched QASPER",
+          "qualified_at": "2026-09-07"
         }
       },
       "selected_context": "Available",
       "native_memory": "Validated mapping",
       "adapter_requirement": "Optional",
-      "adapter_detail": "The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.",
-      "evidence": "Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227, so generic routing remains default. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern.",
+      "adapter_detail": "The SDK includes Qwen2/Qwen3/Qwen3.5 structural mappings. Qwen3.5 Selected Context is supported, but detached native memory remains unavailable because its DeltaNet layers require recurrent and convolution state in addition to K/V.",
+      "evidence": "Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3.5-27B 4-bit adds a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER F1 from 0.385 to 0.459 while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern.",
       "commands": [
         "pra inspect Qwen/Qwen2.5-1.5B-Instruct --engine hf --pra-bundle auto",
         "pra model validate Qwen/Qwen2.5-1.5B-Instruct --suite smoke",

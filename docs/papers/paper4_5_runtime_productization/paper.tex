@@ -49,6 +49,12 @@ A scheduler-invisible CUDA vLLM prototype preserves 128/128 outputs in each of
 FULL, E0, E2-HOT, and E2-WARM, but E0 sustains 56.3 requests/s versus 45.5 and
 42.4 for the two native modes. Thus semantic parity and scheduler invisibility
 do not yet imply an economic win.
+On a 48~GiB M4 Pro, a Qwen3.5-27B MLX 4-bit checkpoint runs at 31.1 decode
+tokens/s and fits in 15.4~GiB at smoke scale. At a 20\% selected-context budget,
+it removes 77--79\% of visible prompt tokens and reduces mean TTFT by 76--79\%
+on 32 held-out QASPER and HotpotQA questions. Its learned router helps QASPER
+but hurts HotpotQA, and detached native K/V is unavailable because 48 of 64
+layers require DeltaNet recurrent state beyond K/V.
 
 The same evidence discipline applies above the engine. On 50 MultiHop-RAG
 questions, a powered Qwen3-4B decomposition finds that generic PRA selection
@@ -840,16 +846,18 @@ dataset-qualified option, not the catalog default.}
 Table~\ref{tab:hf-catalog-adapters} separates four conclusions. First, the
 adapter is useful on QASPER across model scale and family: $R_{20}$ rises from
 0.413 to 0.640 for Qwen3-4B, 0.318 to 0.679 for Qwen3-14B, 0.318 to 0.468 for
-Llama-3.1-8B, and 0.226 to 0.454 for Gemma-3-1B. The matched Qwen2.5-1.5B
+Llama-3.1-8B, 0.226 to 0.454 for Gemma-3-1B, and 0.375 to 0.610 for
+Qwen3.5-27B. The matched Qwen2.5-1.5B
 checkpoints extend the result to post-trained HF identities: general instruction
 tuning rises from 0.296 to 0.381, while code-and-instruction tuning rises from
 0.173 to 0.394. Second, this gain is not a
 universal property of additional parameters. HotpotQA $R_{20}$ declines by
-0.044, 0.180, 0.195, and 0.018 for the four MLX checkpoints, and by 0.051 and
+0.044, 0.180, 0.195, 0.018, and 0.210 for the five MLX checkpoints, and by 0.051 and
 0.183 for the two HF checkpoints. Gemma's HotpotQA MRR nevertheless
 rises from 0.385 to 0.538, showing that even the direction can depend on the
-metric. Third, model size alone does not remove domain dependence: the largest
-Qwen model has both the largest QASPER gain and the largest Qwen HotpotQA loss.
+metric. Third, model size alone does not remove domain dependence: Qwen3.5-27B
+retains a substantial QASPER gain while producing the largest Qwen HotpotQA
+loss, whereas Qwen3-14B has the largest QASPER gain.
 Fourth, post-training changes routing geometry even when architecture and size
 are matched. The code-tuned checkpoint starts from lower generic QASPER recall
 but receives the larger learned gain; its qualification still concerns document
@@ -863,6 +871,74 @@ opt-in research profile. These are exact checkpoint identities; no result is
 transferred between MLX and HF, between base and post-trained checkpoints, or
 across tokenizer revisions. Routing diagnostics remain separate from generation
 quality, equivalence, and serving economics.
+
+\subsection{Qwen3.5-27B hybrid-attention qualification}
+
+The 27B Qwen3.5 checkpoint tests a materially different deployment boundary.
+We run the exact \path{mlx-community/Qwen3.5-27B-4bit} revision
+\texttt{45797d2...9553} on an M4 Pro with 48~GiB unified memory. The model has
+64 decoder layers in a repeating three-DeltaNet/one-full-attention pattern,
+so only 16 layers expose ordinary attention K/V. A short warm-up decodes at
+31.1 tokens/s with 15.4~GiB peak unified allocation. PRA can select and
+serialize evidence for the whole model, and the router can use the final
+attention-input representation. It cannot honestly detach only K/V: the
+remaining 48 layers also require recurrent and convolution state. The bundle
+therefore advertises Selected Context and fails closed for Native Memory.
+
+The routing protocol matches the catalog experiment above: 48 training, 16
+validation, and 32 identity-disjoint test examples; five seeds; 32-token
+chunks; and a rank-128 asymmetric router with 1,310,720 parameters. The
+validation-selected seed improves QASPER $R_{20}$ from 0.375 to 0.610 and MRR
+from 0.346 to 0.683. It simultaneously lowers HotpotQA $R_{20}$ from 0.518 to
+0.308 and MRR from 0.656 to 0.282. This is not a general 27B routing upgrade.
+The public \texttt{qasper-learned} profile is opt-in; generic routing remains
+the default.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Qwen3.5-27B held-out routing at a 20\% chunk budget.}
+\label{tab:qwen35-routing}
+\input{../shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3.5-27b/generated_qwen35_routing.tex}
+\end{table}
+
+We then execute the same 32 test questions under full context, generic PRA,
+learned PRA, and an evidence-aware oracle control. The selected conditions use
+about 375 visible tokens instead of 1,669 on HotpotQA and 773 instead of 3,648
+on QASPER. Mean TTFT falls from 15.31 to 3.64~s and from 32.94 to 7.08--7.09~s,
+respectively. Quality depends on routing. Generic HotpotQA F1 is 0.602 versus
+0.887 full, while the oracle reaches 0.900 with the same selected-token budget.
+On QASPER, learned routing improves F1 from 0.385 generic to 0.459, narrowing
+but not closing the gap to 0.532 full. The oracle's QASPER evidence recall is
+0.958 but F1 is only 0.470, which also exposes answer-generation error and the
+small cohort's sensitivity to yes/no response formatting.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Qwen3.5-27B end-task qualification. PRA conditions retain 20\% of
+source chunks; TTFT includes selection and visible selected-context prefill.}
+\label{tab:qwen35-end-task}
+\input{../shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3.5-27b/generated_qwen35_end_task.tex}
+\end{table*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=.94\textwidth]{../shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3.5-27b/qwen35_qualification.pdf}
+\caption{Qwen3.5-27B qualification separates routing recall, answer F1, and
+TTFT. The learned router is useful on QASPER but reverses direction on
+HotpotQA. Oracle quality at the same budget shows that better selection has
+substantial headroom; model size alone does not supply it.}
+\label{fig:qwen35-qualification}
+\end{figure*}
+
+The immutable bundle is published as
+\path{EInnovator/pra-qwen3-5-27b-mlx-4bit} at commit
+\texttt{48d50f2...fde0}. It contains the structural contract, the router, exact
+base/tokenizer revisions, aggregate and row-level qualification receipts, and
+the native-memory exclusion. An adapter can therefore improve a qualified
+domain without being enabled globally, while unsupported physical state never
+silently degrades to a misleading K/V-only implementation.
 
 \paragraph{Evidence-to-card publication.}
 A schema-checked importer now reads the paired MLX artifacts rather than

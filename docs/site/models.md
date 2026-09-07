@@ -7,7 +7,7 @@ and therefore requires a known structural mapping plus model-specific validation
 
 | Family | Selected Context | Native Memory | Structural adapter | Evidence |
 | --- | --- | --- | --- | --- |
-| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227, so generic routing remains default. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern. |
+| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3.5-27B 4-bit adds a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER F1 from 0.385 to 0.459 while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern. |
 | [Llama](#llama) | ✅ Available | ℹ️ Validated mapping | **Optional** | Llama-3.1-8B 4-bit has a five-seed, held-out MLX routing comparison. The Llama-3.2-1B 8-bit bundle has exact structural validation only. Learned routing improves QASPER MRR but reduces HotpotQA recall on the measured 4-bit identity, so generic routing remains the default. |
 | [Gemma 3 text](#gemma3) | ✅ Available | 🧪 Partial topology | **Required for native production** | Gemma-3-1B 4-bit has a five-seed, held-out MLX comparison under its mixed sliding/global topology. Its 8-bit bundle has exact structural validation only. Learned routing helps QASPER and combined MRR on the measured 4-bit identity, while HotpotQA recall remains mixed. |
 | [Other Hugging Face causal decoders](#other-hf) | ✅ Available | ⏳ Qualification pending | **Required** | No family-wide native claim is made for unregistered architectures. |
@@ -32,10 +32,10 @@ Community search results remain explicit opt-in artifacts.
 
 ## Qwen { #qwen }
 
-**Model types:** `qwen2, qwen3`  
+**Model types:** `qwen2, qwen3, qwen3_5`  
 **Adapter:** Optional
 
-The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter when the deployment needs a pinned, reviewable artifact.
+The SDK includes Qwen2/Qwen3/Qwen3.5 structural mappings. Qwen3.5 Selected Context is supported, but detached native memory remains unavailable because its DeltaNet layers require recurrent and convolution state in addition to K/V.
 
 **Known examples and published bundles**
 
@@ -54,6 +54,7 @@ The SDK includes Qwen2/Qwen3 structural mappings. Export a declarative adapter w
 | `mlx-community/Qwen3-14B-4bit` | [EInnovator/pra-qwen3-14b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
 | `mlx-community/Qwen3-14B-8bit` | [EInnovator/pra-qwen3-14b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-8bit) | Engine-qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-03 |
 | `mlx-community/Qwen3-32B-4bit` | [EInnovator/pra-qwen3-32b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-32b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
+| `mlx-community/Qwen3.5-27B-4bit` | [EInnovator/pra-qwen3-5-27b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-5-27b-mlx-4bit) | Controlled | MLX Selected Context and five-seed routing qualification | Generic balanced; learned router only for matched QASPER | 2026-09-07 |
 
 **Inspect and launch**
 
@@ -65,7 +66,7 @@ pra serve Qwen/Qwen2.5-1.5B-Instruct --engine hf --mode auto --profile recommend
 
 **Evidence boundary**
 
-Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227, so generic routing remains default. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern.
+Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3.5-27B 4-bit adds a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER F1 from 0.385 to 0.459 while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern.
 
 **Limitations**
 
@@ -200,4 +201,4 @@ Selected Context is the portable cross-engine path.
 5. Promote Native Memory only after quality, geometry, lifecycle, and economics pass
    for the exact model revision, tokenizer, quantization, engine, and hardware.
 
-_Generated from the model registry; evidence current through 2026-09-03._
+_Generated from the model registry; evidence current through 2026-09-07._

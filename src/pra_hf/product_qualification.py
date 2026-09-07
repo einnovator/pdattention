@@ -605,6 +605,15 @@ class QualificationService:
 
     def inspect(self, model: str, engine: str, model_metadata: Mapping[str, Any]) -> dict[str, Any]:
         row = self.registry.resolve(engine)
+        model_pra = model_metadata.get("pra", {})
+        if isinstance(model_pra, Mapping) and model_pra.get("native_kv") is False:
+            row["capabilities"]["native_memory"] = "Not applicable"
+            row["capabilities"]["native_serving"] = "Not applicable"
+            row["recommended_today"] = (
+                "Use Selected Context; this model requires detached non-K/V state "
+                "that the native-memory contract does not represent."
+            )
+            row["production_recommendation"] = row["recommended_today"]
         resolution = ExecutionModeResolver().resolve("auto", row)
         profiles = ["REFERENCE_CORRECTNESS", "BALANCED", "ECONOMY", "QUALITY_MAX_CANDIDATE"]
         return {

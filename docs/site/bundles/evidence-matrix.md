@@ -62,6 +62,10 @@ This page preserves the staged attribution chain: ordinary **No PRA**, PRA **Sel
 | `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Native Memory | QUALITY | NEEDS_RUN | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CONTROLLED |
 | `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Selected Context | BALANCED | NEEDS_RUN | Selected Context: NEEDS_RUN | Selected Context + Bundle: NO_QUALIFIED_ADAPTER | CONTROLLED |
 | `Qwen/Qwen2.5-1.5B-Instruct` | INT8 / bitsandbytes-8bit-LLM.int8 | hf | Native Memory | ECONOMY | NEEDS_RUN | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CONTROLLED |
+| `mlx-community/Qwen3.5-27B-4bit` | INT4 / MLX-4bit | mlx | Selected Context | QUALITY | NOT_MEASURED | Selected Context: CALIBRATION_PENDING | Selected Context + Bundle: CALIBRATION_PENDING | CONTROLLED |
+| `mlx-community/Qwen3.5-27B-4bit` | INT4 / MLX-4bit | mlx | Selected Context | BALANCED | NOT_MEASURED | Selected Context: NEEDS_RUN | Selected Context + Bundle: NEEDS_RUN | CONTROLLED |
+| `mlx-community/Qwen3.5-27B-4bit` | INT4 / MLX-4bit | mlx | Selected Context | ECONOMY | NOT_MEASURED | Selected Context: CALIBRATION_PENDING | Selected Context + Bundle: CALIBRATION_PENDING | CONTROLLED |
+| `mlx-community/Qwen3.5-27B-4bit` | INT4 / MLX-4bit | mlx | Selected Context | QASPER-LEARNED | NOT_MEASURED | Selected Context: NEEDS_RUN | Selected Context + Bundle: NEEDS_RUN | CONTROLLED |
 
 A `MEASURED (n)` cell reports the number of scalar metrics available for that exact condition. Detailed values follow only for measured records; profile rows without matched evidence remain explicit.
 
