@@ -212,7 +212,16 @@ def main() -> None:
 
     model_revision = _resolve_hf_revision(args.model, args.model_revision)
     reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
-    dense_revision = _resolve_hf_revision(args.dense_model, args.dense_revision)
+    uses_dense = args.mode in {
+        CrossDocumentExpansionMode.DENSE,
+        CrossDocumentExpansionMode.HYBRID_RRF,
+        CrossDocumentExpansionMode.HYBRID_WEIGHTED,
+    }
+    dense_revision = (
+        _resolve_hf_revision(args.dense_model, args.dense_revision)
+        if uses_dense
+        else None
+    )
     backend = PersistentMLXBackend(
         args.model, model_revision, args.max_new_tokens, native_cache_unit="chunk"
     )
@@ -234,11 +243,15 @@ def main() -> None:
         # without weakening the candidate/selector provenance checks.
         name_prefix="paper3_3_crossdoc_expansion",
     )
-    semantic_encoder = SentenceTransformerEmbedder(
-        args.dense_model,
-        revision=dense_revision,
-        device=_resolve_reranker_device(args.dense_device),
-        query_prefix="Represent this sentence for searching relevant passages: ",
+    semantic_encoder = (
+        SentenceTransformerEmbedder(
+            args.dense_model,
+            revision=dense_revision,
+            device=_resolve_reranker_device(args.dense_device),
+            query_prefix="Represent this sentence for searching relevant passages: ",
+        )
+        if dense_revision is not None
+        else None
     )
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     selection_cache = load_selection_cache(args.selection_cache)
@@ -470,7 +483,9 @@ def main() -> None:
         "model_revision": model_revision,
         "reranker": args.reranker,
         "reranker_revision": reranker_revision,
-        "dense_encoder": semantic_encoder.identity,
+        "dense_encoder": (
+            semantic_encoder.identity if semantic_encoder is not None else None
+        ),
         "dense_revision": dense_revision,
         "split": split_metadata,
         "seed": args.seed,
