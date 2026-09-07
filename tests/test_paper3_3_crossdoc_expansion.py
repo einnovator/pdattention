@@ -8,6 +8,7 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     load_selection_cache,
 )
 from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
+    build_fixed_evaluation_summary,
     build_publication_summary,
     select_validation_config,
 )
@@ -217,3 +218,50 @@ def test_bm25_receipt_scores_are_nonnegative_and_repeatable() -> None:
     assert first.receipt_id == second.receipt_id
     assert all(candidate.score >= 0.0 for candidate in first.candidates)
     assert max(retriever.document_frequency.values()) <= len(documents)
+
+
+def test_fixed_evaluation_summary_replays_validation_config_without_test_selection() -> None:
+    config = {
+        "mode": "dense",
+        "query_conditioned": False,
+        "direction": "symmetric",
+        "granularity": "chunk",
+        "top_k_per_pair": 1,
+        "max_extra_tokens": 64,
+    }
+    aggregate = {
+        **config,
+        "supporting_span_coverage_delta": 0.1,
+        "gold_chunk_recall_delta": 0.2,
+        "distractor_fraction_mean": 0.25,
+        "extra_native_fraction_mean": 0.1,
+    }
+    rows = [
+        {
+            **config,
+            "example_id": "test-a",
+            "supporting_span_coverage": 1.0,
+            "initial_supporting_span_coverage": 0.0,
+            "gold_chunk_recall": 1.0,
+            "initial_gold_chunk_recall": 0.0,
+            "answer_string_availability": 1.0,
+            "initial_answer_string_availability": 0.0,
+        }
+    ]
+    run = {
+        "summary": [aggregate],
+        "git_commit": "abc",
+        "dataset": "multihoprag",
+        "split_name": "test",
+        "split_digest": "test-digest",
+        "selector": "selector",
+        "reranker_revision": "revision",
+        "question_count_evaluated": 1,
+    }
+
+    result = build_fixed_evaluation_summary(run, rows, config=config)
+
+    assert result["selected_policy"] == aggregate
+    assert result["selection_rule"]["split"] == "validation"
+    assert result["selection_rule"]["evaluation_split"] == "test"
+    assert result["selection_rule"]["objective"] == "frozen_validation_selected_policy_replay"

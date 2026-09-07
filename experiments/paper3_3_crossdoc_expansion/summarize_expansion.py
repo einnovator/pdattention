@@ -182,18 +182,98 @@ def build_publication_summary(
     }
 
 
+def build_fixed_evaluation_summary(
+    run: Mapping[str, object],
+    rows: Sequence[Mapping[str, object]],
+    *,
+    config: Mapping[str, object],
+) -> dict[str, object]:
+    """Summarize a validation-selected policy without retuning on the test split."""
+
+    matched_summary = [
+        row for row in run["summary"] if _config_key(row) == _config_key(config)
+    ]
+    if len(matched_summary) != 1:
+        raise ValueError(
+            "fixed evaluation requires exactly one aggregate matching the frozen config"
+        )
+    selected = matched_summary[0]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "source": {
+            "git_commit": run["git_commit"],
+            "dataset": run["dataset"],
+            "split_name": run["split_name"],
+            "split_digest": run["split_digest"],
+            "selector": run["selector"],
+            "reranker_revision": run["reranker_revision"],
+            "dense_encoder": run.get("dense_encoder"),
+            "dense_revision": run.get("dense_revision"),
+            "policy_parameters": run.get("policy_parameters"),
+            "selection_cache_sha256": run.get("selection_cache_sha256"),
+            "examples": run["question_count_evaluated"],
+        },
+        "selection_rule": {
+            "split": "validation",
+            "objective": "frozen_validation_selected_policy_replay",
+            "evaluation_split": run["split_name"],
+            "test_locked": True,
+        },
+        "selected_policy": dict(selected),
+        "paired_uncertainty": {
+            "supporting_span_coverage": paired_bootstrap_summary(
+                rows,
+                selected,
+                metric="supporting_span_coverage",
+                initial_metric="initial_supporting_span_coverage",
+            ),
+            "gold_chunk_recall": paired_bootstrap_summary(
+                rows,
+                selected,
+                metric="gold_chunk_recall",
+                initial_metric="initial_gold_chunk_recall",
+            ),
+            "answer_string_availability": paired_bootstrap_summary(
+                rows,
+                selected,
+                metric="answer_string_availability",
+                initial_metric="initial_answer_string_availability",
+            ),
+        },
+        "qualification": {
+            "status": "RESEARCH_ONLY",
+            "sdk_exposable": False,
+            "reasons": [
+                "generation gate pending",
+                "model-size and cross-family gates pending",
+            ],
+        },
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=Path, required=True)
     parser.add_argument("--rows", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-extra-fraction", type=float, default=0.20)
+    parser.add_argument(
+        "--frozen-config",
+        type=Path,
+        help="Validation publication summary whose selected policy is replayed as-is.",
+    )
     args = parser.parse_args()
     run = json.loads(args.run.read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in args.rows.read_text(encoding="utf-8").splitlines()]
-    result = build_publication_summary(
-        run, rows, max_extra_fraction=args.max_extra_fraction
-    )
+    if args.frozen_config is None:
+        result = build_publication_summary(
+            run, rows, max_extra_fraction=args.max_extra_fraction
+        )
+    else:
+        frozen = json.loads(args.frozen_config.read_text(encoding="utf-8"))
+        result = build_fixed_evaluation_summary(
+            run, rows, config=frozen["selected_policy"]
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"output": str(args.output), "selected": result["selected_policy"]}))
