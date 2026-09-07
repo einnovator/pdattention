@@ -118,6 +118,33 @@ def run_cohort(repo: Path, *, seed: int, parallel: bool) -> tuple[list[dict], di
     if any(row.error for row in child_results):
         raise RuntimeError(f"Subagent callback failed: {[row.error for row in child_results]}")
 
+    # Exercise the non-tree topology on the same completed natural records.
+    join = harness.spawn_subagent(
+        "root",
+        SubagentSpec(context_policy=ContextVisibilityPolicy(ancestor="routable")),
+        agent_uuid="dag-synthesis",
+    )
+    for child_result in child_results[:2]:
+        harness.join_subagent(join.agent_uuid, child_result.agent_uuid)
+    dag_visible_sources = {
+        record.agent_uuid
+        for record in harness.graph.visible_records(join.agent_uuid)
+        if record.agent_uuid in {row.agent_uuid for row in child_results[:2]}
+    }
+    peer = harness.spawn_subagent(
+        "root",
+        SubagentSpec(context_policy=ContextVisibilityPolicy(peer="completed_only")),
+        agent_uuid="peer-synthesis",
+    )
+    harness.link_subagent_peers(peer.agent_uuid, child_results[0].agent_uuid)
+    peer_visible_sources = {
+        record.agent_uuid
+        for record in harness.graph.visible_records(peer.agent_uuid)
+        if record.agent_uuid == child_results[0].agent_uuid
+    }
+    harness.stop_subagent(join.agent_uuid)
+    harness.stop_subagent(peer.agent_uuid)
+
     candidates = visible_routing_candidates(harness.graph, "root")
     evidence = tuple(
         candidate
@@ -173,6 +200,8 @@ def run_cohort(repo: Path, *, seed: int, parallel: bool) -> tuple[list[dict], di
         "orientation_reuses": len(child_results) * len(orientation_paths),
         "candidate_records": len(evidence),
         "source_bytes": sum((repo / question.path).stat().st_size for question in questions),
+        "dag_join_parents_visible": len(dag_visible_sources),
+        "completed_peer_visible": int(bool(peer_visible_sources)),
     }
     return rows, stats
 
@@ -197,6 +226,8 @@ def summarize(rows: list[dict], scheduler_rows: list[dict]) -> dict:
             "mean_physical_file_reads": statistics.mean(row["physical_file_reads"] for row in selected),
             "mean_logical_file_reads": statistics.mean(row["logical_file_reads"] for row in selected),
             "orientation_reuses": sum(row["orientation_reuses"] for row in selected),
+            "dag_join_parents_visible": min(row["dag_join_parents_visible"] for row in selected),
+            "completed_peer_visible_rate": statistics.mean(row["completed_peer_visible"] for row in selected),
         }
     return {
         "protocol": "paper9-natural-repository-v1",

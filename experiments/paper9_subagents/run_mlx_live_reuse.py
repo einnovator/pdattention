@@ -53,6 +53,17 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
+def write_rows(path: Path, rows: list[dict]) -> None:
+    """Atomically checkpoint completed live points for crash-safe resumption."""
+
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=tuple(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary.replace(path)
+
+
 def timed_forward(model, token_ids: list[int], *, cache=None) -> tuple[float, np.ndarray]:
     import mlx.core as mx
 
@@ -226,6 +237,22 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
             "max_abs_logit_delta_vs_host_split": max(row["max_abs_logit_delta_vs_host_split"] for row in selected),
         }
     sessions = build_session_rows(rows)
+    scaling = {}
+    for size in sorted({row["target_shared_tokens"] for row in sessions}):
+        max_fanout = max(
+            row["fanout"] for row in sessions if row["target_shared_tokens"] == size
+        )
+        selected = [
+            row for row in sessions
+            if row["target_shared_tokens"] == size and row["fanout"] == max_fanout
+        ]
+        scaling[str(size)] = {
+            "fanout": max_fanout,
+            "amortized_speedup_mean": statistics.mean(row["amortized_speedup"] for row in selected),
+            "physical_token_reduction_mean": statistics.mean(row["physical_token_reduction"] for row in selected),
+            "native_argmax_parity": statistics.mean(row["native_argmax_parity"] for row in selected),
+            "duplicate_kv_bytes_avoided_mean": statistics.mean(row["duplicate_kv_bytes_avoided"] for row in selected),
+        }
     return {
         "protocol": "paper9-mlx-live-reuse-v1",
         "model": model_id,
@@ -240,6 +267,7 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
             "mean_amortized_speedup": statistics.mean(row["amortized_speedup"] for row in sessions),
             "max_amortized_speedup": max(row["amortized_speedup"] for row in sessions),
             "mean_physical_token_reduction": statistics.mean(row["physical_token_reduction"] for row in sessions),
+            "max_fanout_by_shared_tokens": scaling,
         },
     }
 
@@ -322,13 +350,16 @@ def plot(rows: list[dict], session_rows: list[dict], output: Path) -> None:
     sizes = sorted({row["target_shared_tokens"] for row in rows})
     ratios = []
     for size in sizes:
-        selected = [row["amortized_speedup"] for row in session_rows if row["target_shared_tokens"] == size and row["fanout"] == max(available_fanouts)]
+        size_fanout = max(
+            row["fanout"] for row in session_rows if row["target_shared_tokens"] == size
+        )
+        selected = [row["amortized_speedup"] for row in session_rows if row["target_shared_tokens"] == size and row["fanout"] == size_fanout]
         ratios.append(statistics.mean(selected))
     axes[1].plot(sizes, ratios, marker="o", color="#255b96")
     axes[1].axhline(1.0, color="#333333", linewidth=0.8)
     axes[1].set_xscale("log", base=2)
     axes[1].set_xlabel("Shared source tokens")
-    axes[1].set_ylabel(f"Amortized speedup at N={max(available_fanouts)}")
+    axes[1].set_ylabel("Amortized speedup at max measured N")
     figure.tight_layout()
     figure.savefig(output / "mlx_live_reuse.pdf", bbox_inches="tight")
     figure.savefig(output / "mlx_live_reuse.png", dpi=180, bbox_inches="tight")
@@ -343,6 +374,7 @@ def main() -> None:
     parser.add_argument("--seeds", default=",".join(str(seed) for seed in SEEDS))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--analyze-existing", action="store_true")
+    parser.add_argument("--resume", action="store_true")
     arguments = parser.parse_args()
     seeds = tuple(int(value) for value in arguments.seeds.split(",") if value)
     arguments.output.mkdir(parents=True, exist_ok=True)
@@ -352,16 +384,23 @@ def main() -> None:
         from mlx_lm import load
 
         model, tokenizer = load(arguments.model)
-        rows: list[dict] = []
+        rows = (
+            load_rows(arguments.output / "rows.csv")
+            if arguments.resume and (arguments.output / "rows.csv").exists()
+            else []
+        )
+        completed = {
+            (row["seed"], row["target_shared_tokens"], row["fanout"])
+            for row in rows
+        }
         for seed in seeds:
             for target_tokens in (int(value) for value in arguments.shared_tokens.split(",")):
                 for fanout in (int(value) for value in arguments.fanouts.split(",")):
+                    if (seed, target_tokens, fanout) in completed:
+                        continue
                     print(f"seed={seed} shared={target_tokens} fanout={fanout}", flush=True)
                     rows.extend(run_point(model, tokenizer, arguments.model, seed, target_tokens, fanout))
-        with (arguments.output / "rows.csv").open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=tuple(rows[0]))
-            writer.writeheader()
-            writer.writerows(rows)
+                    write_rows(arguments.output / "rows.csv", rows)
     session_rows = build_session_rows(rows)
     with (arguments.output / "session_rows.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=tuple(session_rows[0]))

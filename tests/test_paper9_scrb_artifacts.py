@@ -66,3 +66,28 @@ def test_natural_trace_audit_is_labeled_as_opportunity_not_cross_agent_evidence(
     assert summary["read_search_calls"] == 40
     assert summary["exact_repeated_read_search_calls"] == 8
     assert "not observed cross-agent reuse" in summary["scope"]
+
+
+def test_natural_repository_cohort_separates_validity_from_bounded_routing() -> None:
+    path = RESULTS.parent / "natural_repository_v1" / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    assert summary["seeds"] == [11, 23, 37, 71, 101]
+    assert summary["routing"]["all_valid"]["evidence_recall"] == 1
+    assert summary["routing"]["oracle"]["evidence_recall"] == 1
+    assert summary["routing"]["learned"]["evidence_recall"] == 0.6
+    assert summary["routing"]["all_valid"]["mean_selected_tokens"] > (
+        summary["routing"]["oracle"]["mean_selected_tokens"] * 10
+    )
+
+
+def test_natural_repository_cohort_executes_both_schedulers_without_duplicate_reads() -> None:
+    path = RESULTS.parent / "natural_repository_v1" / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    for scheduler in ("sequential", "parallel"):
+        row = summary["scheduling"][scheduler]
+        assert row["runs"] == 5
+        assert row["mean_logical_file_reads"] == 35
+        assert row["mean_physical_file_reads"] == 13
+        assert row["orientation_reuses"] == 110
+        assert row["dag_join_parents_visible"] == 2
+        assert row["completed_peer_visible_rate"] == 1

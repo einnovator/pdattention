@@ -514,6 +514,38 @@ POLICY_DISABLED
 
 This instrumentation is required both for systems debugging and for credible experimental analysis.
 
+\section{Implementation Path}
+
+The implementation is split into four small surfaces. The context graph stores
+descriptors and typed streams, traverses all explicit parents for DAG-aware
+visibility, and serializes topology changes as lifecycle records. The harness
+maps concrete callbacks to generic effects, coalesces concurrent identical
+calls, and owns bounded worker scheduling. The descendant router receives only
+records already admitted by the graph. Finally, an optional engine port turns a
+record into a compatibility receipt and attaches it at most once to each target.
+
+The request path can be summarized as follows:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+effect = harness.describe_effect(tool, arguments)
+entry = exact_index.lookup(tool, arguments)
+if entry:
+    require graph.is_visible(requester, entry.source)
+    require validity(entry.resources, effect.consistency)
+    if compatible(entry.native_kv, request.model):
+        engine.attach_once(entry.native_kv, requester)
+    return entry.payload
+output = harness.execute(tool, arguments)
+graph.append(typed_result(output, effect.resources))
+index.register(output) only if effect in {PURE, READ}
+\end{lstlisting}
+
+This ordering is important. Semantic ranking cannot make a stale or hidden
+record valid, and native compatibility cannot authorize a record. Conversely,
+a valid record need not be materialized until selection requests it. Existing
+harnesses integrate at the callback boundary: their planner and child loop stay
+unchanged, while lifecycle and tool events pass through these four surfaces.
+
 \section{Implementation Status}
 
 Table~\ref{tab:implementation-status} separates implemented runtime contracts
@@ -667,10 +699,17 @@ callbacks, not an autonomous coding-task success benchmark.
 Each run issues 35 logical reads but only 13 physical file reads: the parent
 acquires two shared records once, all 22 child orientation requests reuse them,
 and each child reads one distinct source file. Across the ten runs this produces
-220 valid ancestor hits. Mean observed harness time is 23.4 ms sequential and
-28.2 ms parallel. The files are local and small enough that thread scheduling
+220 valid ancestor hits. Mean observed harness time is 19.6 ms sequential and
+26.9 ms parallel. The files are local and small enough that thread scheduling
 dominates; Paper 9 therefore claims correctness and integration coverage here,
 not a parallel speedup.
+
+Every run also creates a synthesis stream with two completed children as DAG
+parents and a separate completed-only peer link. Both joined parents are visible
+in all ten runs, and the explicit peer is visible in all ten; unlinked siblings
+remain hidden. These observations exercise the persisted topology on natural
+records but do not establish that unconstrained multi-agent communication is
+safe or useful.
 
 After children stop, the parent asks held-out questions about their detailed
 findings. Table~\ref{tab:natural-routing} separates validity from selection.

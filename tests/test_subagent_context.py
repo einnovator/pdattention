@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 import time
 
+import pytest
+
 from pra_hf.context_records import ContextRecord, RecordType, serialize_record
 from pra_hf.session_service import LocalSessionService
 from pra_hf.subagent_context import (
@@ -309,6 +311,8 @@ def test_dag_join_and_explicit_peer_visibility_remain_fail_closed() -> None:
     assert set(graph.ancestors("join")) == {"left", "right", "root"}
     assert right_evidence in graph.visible_records("join")
     assert right_evidence not in graph.visible_records("left")
+    with pytest.raises(ValueError, match="cycle"):
+        graph.add_parent("root", "join")
 
     peer = graph.spawn(
         "root",
