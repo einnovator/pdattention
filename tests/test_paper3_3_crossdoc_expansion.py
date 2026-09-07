@@ -292,6 +292,7 @@ def test_generation_summary_uses_paired_examples() -> None:
         "selection_cache_sha256": "digest",
         "policy": {"mode": "dense"},
         "examples": 2,
+        "summary": [{"condition": "PACKED_RAG", "ttft_ms_mean": 10.0}],
     }
 
     result = summarize_generation(run, rows, replicates=100)
@@ -304,3 +305,4 @@ def test_generation_summary_uses_paired_examples() -> None:
     )
     assert effect["paired_examples"] == 2
     assert abs(effect["effects"]["token_f1"]["mean_difference"]) < 1e-12
+    assert result["condition_summary"][0]["ttft_ms_mean"] == 10.0

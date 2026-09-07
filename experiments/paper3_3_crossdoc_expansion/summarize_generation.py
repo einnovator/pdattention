@@ -125,6 +125,7 @@ def summarize_generation(
             "replicates_per_seed": replicates,
             "note": "seeds repeat resampling; they are not independent model runs",
         },
+        "condition_summary": run["summary"],
         "absolute": absolute,
         "paired_effects": paired,
     }
