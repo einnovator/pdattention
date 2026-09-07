@@ -74,6 +74,8 @@ class Geometry:
     chunk_overlap: int
     build_token_budget: int
     build_max_resources: int
+    token_count_mode: str
+    deduplicate_documents: bool
 
 
 @dataclass(frozen=True)
@@ -87,8 +89,19 @@ class AuditCell:
     geometry: Geometry
 
 
-COMMON_GEOMETRY = Geometry("common_128", 10, 128, 16, 1024, 8)
-LEGACY_GEOMETRY_V2 = Geometry("paper32_256_bm25v2", 50, 256, 32, 1024, 4)
+COMMON_GEOMETRY = Geometry(
+    "common_128", 10, 128, 16, 1024, 8, "source_whitespace", True
+)
+LEGACY_GEOMETRY_V2 = Geometry(
+    "paper32_256_chunk_level_bm25v2",
+    50,
+    256,
+    32,
+    1024,
+    4,
+    "model_native",
+    False,
+)
 CELLS = (
     AuditCell("paper33_test_512", "paper33_test", 512, 4, COMMON_GEOMETRY),
     AuditCell("paper33_test_1024", "paper33_test", 1024, 8, COMMON_GEOMETRY),
@@ -145,13 +158,17 @@ def _load_cohort_ids(
 
 
 def _select_under_budget(
-    ranking: Sequence[RankedChunk], *, token_budget: int, max_resources: int
+    ranking: Sequence[RankedChunk],
+    *,
+    token_budget: int,
+    max_resources: int,
+    deduplicate_documents: bool = True,
 ) -> tuple[RankedChunk, ...]:
     selected: list[RankedChunk] = []
     seen_documents: set[str] = set()
     packed_tokens = 0
     for row in ranking:
-        if row.chunk.document_id in seen_documents:
+        if deduplicate_documents and row.chunk.document_id in seen_documents:
             continue
         if packed_tokens + row.chunk.token_count > token_budget:
             continue
@@ -231,6 +248,7 @@ def _frozen_ranking(
         ranking,
         token_budget=geometry.build_token_budget,
         max_resources=geometry.build_max_resources,
+        deduplicate_documents=geometry.deduplicate_documents,
     )
     row: dict[str, object] = {
         "schema_version": SELECTION_SCHEMA_VERSION,
@@ -262,9 +280,13 @@ def _context(
     selector_latency_ms: float,
     token_budget: int,
     max_resources: int,
+    deduplicate_documents: bool,
 ) -> PackedContext:
     selected = _select_under_budget(
-        ranked, token_budget=token_budget, max_resources=max_resources
+        ranked,
+        token_budget=token_budget,
+        max_resources=max_resources,
+        deduplicate_documents=deduplicate_documents,
     )
     return PackedContext(
         condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
@@ -513,7 +535,22 @@ def main() -> None:
                 chunker=chunker,
                 seed=11,
             )
-            prepared = prepare_candidate_context(candidate, document_by_id)
+            if cell.geometry.token_count_mode == "model_native":
+                if backend is None:
+                    model_revision = _resolve_hf_revision(
+                        args.model, args.model_revision
+                    )
+                    backend = PersistentMLXBackend(
+                        args.model,
+                        model_revision,
+                        args.max_new_tokens,
+                        native_cache_unit="chunk",
+                    )
+                prepared = prepare_candidate_context(
+                    candidate, document_by_id, token_count=backend.token_count
+                )
+            else:
+                prepared = prepare_candidate_context(candidate, document_by_id)
             ranked, selector_latency_ms = _frozen_ranking(
                 path=cache_path,
                 cache=selection_cache,
@@ -530,6 +567,7 @@ def main() -> None:
                 selector_latency_ms=selector_latency_ms,
                 token_budget=cell.token_budget,
                 max_resources=cell.max_resources,
+                deduplicate_documents=cell.geometry.deduplicate_documents,
             )
             if len(context.chunks) < 2:
                 raise RuntimeError(f"{example_id} selected fewer than two records")
