@@ -26,6 +26,77 @@ The runtime keeps selection and physical execution separate. It can freeze
 selected identities, plan model-specific materialization, and inspect every
 lifecycle decision without changing task semantics.
 
+## Subagent context graphs
+
+`SubagentHarness` wraps an existing parent/child agent loop; it does not replace
+the loop or impose a planner. Each child receives a durable identity and an
+explicit visibility policy. Parent records may remain hidden, be copied by
+identity, or remain external and routable until the child needs them. A parent
+may similarly route into records produced by a completed child instead of
+copying that child's full transcript.
+
+```python
+from pathlib import Path
+
+from pra_hf import (
+    ConsistencyMode,
+    ContextVisibilityPolicy,
+    DeclarativeTool,
+    EffectType,
+    RecordVisibility,
+    ResourceIdentity,
+    SubagentHarness,
+    SubagentSpec,
+    ToolEffectDescriptor,
+)
+
+harness = SubagentHarness("session-42", root_workspace_id="repo-1")
+child = harness.spawn_subagent(
+    harness.root.agent_uuid,
+    SubagentSpec(
+        context_policy=ContextVisibilityPolicy(
+            ancestor=RecordVisibility.ROUTABLE,
+            descendant=RecordVisibility.COMPLETED_ONLY,
+        )
+    ),
+)
+
+read_file = DeclarativeTool(
+    uri="tool://file/read",
+    execute=lambda args: Path(str(args["path"])).read_text(encoding="utf-8"),
+    describe_effect=lambda args: ToolEffectDescriptor(
+        effect=EffectType.READ,
+        resources=(ResourceIdentity("os.file", str(args["path"]), "repo-1"),),
+        reuse_enabled=True,
+        consistency=ConsistencyMode.SESSION_TREE,
+        max_age_seconds=300,
+    ),
+)
+
+result = harness.execute_tool(child.agent_uuid, read_file, {"path": "README.md"})
+inspection = harness.inspect_subagent(child.agent_uuid)
+```
+
+Tool adapters declare only generic effects and normalized resource identities;
+tool-specific semantics stay in the host harness. `PURE` and `READ` results can
+be shared after exact-call, visibility, age, and resource-version checks.
+`WRITE` advances the affected resource epoch. `UNKNOWN` is fail-closed and can
+never enable reuse. For resources mutated outside the session tree, select
+`ConsistencyMode.EXTERNAL` and provide a validator on lookup.
+
+Payload reuse and native K/V reuse are separate decisions. A
+`NativeKVReusePort` may return a receipt containing model, model revision,
+encoding revision, position contract, token count, and byte count. The harness
+attaches it at most once per target agent and falls back to payload reuse when
+the receipt is incompatible, evicted, or rejected by the engine. Every reuse
+attempt becomes a `REUSE_DECISION` typed record with its hit/miss reason.
+
+Lifecycle calls are `spawn_subagent`, `stop_subagent`, and `resume_subagent`.
+The corresponding records, agent/task identities, timestamps, and logical
+clocks survive `LocalSessionService` persistence. The current product surface
+supports lineage trees; general DAG joins, learned cross-agent routing, and
+production-qualified native cross-agent reuse remain experimental.
+
 ## Session-aware realization
 
 The gateway and embedded runtime share one realization planner. For each

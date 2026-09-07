@@ -262,6 +262,11 @@ def _record_to_dict(record: ContextRecord) -> dict[str, object]:
         "policy": _policy_to_dict(record.policy),
         "version": record.version,
         "source_fingerprint": record.source_fingerprint,
+        "session_uuid": record.session_uuid,
+        "agent_uuid": record.agent_uuid,
+        "task_uuid": record.task_uuid,
+        "created_at": record.created_at,
+        "logical_clock": record.logical_clock,
         "views": {
             name.value: {
                 "name": view.name.value,
@@ -286,6 +291,11 @@ def _record_from_dict(value: Mapping[str, object]) -> ContextRecord:
         policy=RecordPolicy(**dict(value["policy"])),
         version=str(value.get("version", "v1")),
         source_fingerprint=str(value.get("source_fingerprint", "")),
+        session_uuid=value.get("session_uuid"),
+        agent_uuid=value.get("agent_uuid"),
+        task_uuid=value.get("task_uuid"),
+        created_at=(float(value["created_at"]) if value.get("created_at") is not None else None),
+        logical_clock=(int(value["logical_clock"]) if value.get("logical_clock") is not None else None),
         views={
             RecordViewName(name): RecordView(**row)
             for name, row in dict(value.get("views", {})).items()
@@ -420,4 +430,3 @@ class LocalSessionService(SessionService):
             if not path.exists():
                 raise SessionNotFound((user_id, session_id))
             path.unlink()
-

@@ -11,6 +11,14 @@ It does not move execution authority into the model.
 
 ::: pra_hf.session_service
 
+## Subagent contexts and reuse
+
+::: pra_hf.subagent_context
+
+## Subagent harness
+
+::: pra_hf.subagent_harness
+
 ## Task state and scope
 
 ::: pra_hf.task_context

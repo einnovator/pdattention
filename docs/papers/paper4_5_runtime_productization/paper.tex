@@ -3386,8 +3386,12 @@ sustained multi-tenant serving are not. The LRU fixture validates byte
 accounting but is not a production cache policy study. The inherited language-model cohort is
 too small for quality claims.  The new capability and compact-result workflows
 and Paper 8 task/session integration are executed contract tests, not a new
-latency or answer-quality experiment. The shell is intentionally single-agent;
-subagents and learned long-term memory remain scoped to Papers 9 and 10.
+latency or answer-quality experiment. The primary interactive shell remains
+single-agent. The SDK now includes Paper 9's experimental lineage, selective
+visibility, generic effect, resource-validity, and native-reuse contracts so
+external harnesses can wrap their own child loops; Paper 9 retains ownership of
+the subagent benchmark and qualification claims. Learned long-term memory
+remains scoped to Paper 10.
 Model-resident result routing currently requires an isolated model session; safe
 concurrent multi-tenant partitioning of model-resident result K/V remains an
 engine-level gate.
@@ -3822,6 +3826,10 @@ credential redaction, runtime mapping, and shared agent launcher\\
 presentation, reconnect replay, one-shot approval, and safe detached lifecycle\\
 \path{src/pra_hf/session_service.py} & In-memory and atomic local logical
 session persistence\\
+\path{src/pra_hf/subagent_context.py} & Durable agent lineage, selective
+cross-stream visibility, resource validity, and auditable reuse decisions\\
+\path{src/pra_hf/subagent_harness.py} & Experimental harness-neutral
+spawn/stop/resume and payload/native-result reuse callbacks\\
 \path{src/pra_hf/task_context.py}, \path{src/pra_hf/task_scope.py} & Versioned
 task DAG, provenance, scope admission, and working-set lifecycle\\
 \path{src/pra_hf/toolsets.py}, \path{src/pra_hf/tui.py} & Reusable tools and the

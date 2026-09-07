@@ -37,6 +37,10 @@ class RecordType(str, Enum):
     SESSION_RECORD = "session_record"
     TASK_STATE = "task_state"
     TASK_EVENT = "task_event"
+    AGENT_START = "agent_start"
+    AGENT_STOP = "agent_stop"
+    AGENT_RESUME = "agent_resume"
+    REUSE_DECISION = "reuse_decision"
     GENERIC_DOCUMENT = "generic_document"
     USER_PASTE = "user.paste"
     ATTACHMENT = "session.attachment"
@@ -210,7 +214,12 @@ class RecordBoundary:
 
 @dataclass(frozen=True)
 class ContextRecord:
-    """Provider-independent context object whose boundaries survive admission."""
+    """Provider-independent context object whose boundaries survive admission.
+
+    Session, agent, task, and logical-clock fields locate the record in a
+    multi-agent context graph. They are optional so older manifests remain
+    readable; a subagent runtime fills them before persistence.
+    """
 
     record_id: str
     record_type: RecordType | str
@@ -223,6 +232,11 @@ class ContextRecord:
     version: str = "v1"
     source_fingerprint: str = ""
     views: Mapping[RecordViewName | str, RecordView] = field(default_factory=dict)
+    session_uuid: str | None = None
+    agent_uuid: str | None = None
+    task_uuid: str | None = None
+    created_at: float | None = None
+    logical_clock: int | None = None
 
     def __post_init__(self) -> None:
         record_type = RecordType(self.record_type)
@@ -235,6 +249,8 @@ class ContextRecord:
             raise ValueError("Record policy type does not match ContextRecord type.")
         if not self.record_id:
             raise ValueError("record_id is required.")
+        if self.logical_clock is not None and self.logical_clock < 0:
+            raise ValueError("logical_clock cannot be negative.")
         normalized_views = {
             RecordViewName(name): view if isinstance(view, RecordView) else RecordView(name, view, ())
             for name, view in self.views.items()
@@ -293,6 +309,14 @@ def serialize_record(
         "version": record.version,
         "view": view_name.value,
     }
+    for name, value in (
+        ("session_uuid", record.session_uuid),
+        ("agent_uuid", record.agent_uuid),
+        ("task_uuid", record.task_uuid),
+        ("logical_clock", record.logical_clock),
+    ):
+        if value is not None:
+            header_fields[name] = value
     if view_name == RecordViewName.FULL:
         header_fields["fingerprint"] = record.source_fingerprint
     header = json.dumps(header_fields, sort_keys=True)
