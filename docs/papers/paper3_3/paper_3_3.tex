@@ -567,6 +567,43 @@ selection headroom.}
 \end{figure}
 \FloatBarrier
 
+\subsection{Frozen test retrieval}
+
+We replay the validation-selected dense policy unchanged on the disjoint
+150-question test split. Table~\ref{tab:expansion-test} includes two oracle
+controls but does not use them to retune the policy. The locked policy raises
+supporting-span coverage by 0.89 points, gold-chunk recall by 1.63 points, and
+answer-string availability by 1.33 points. Conservative paired bootstrap
+intervals are $[0.22,1.78]$, $[0.52,3.08]$, and $[0.00,3.33]$ points,
+respectively. Thus the evidence-recovery effect transfers, but the
+answer-availability interval touches zero.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Frozen test retrieval. Oracle rows diagnose available headroom and
+do not participate in policy selection.}
+\label{tab:expansion-test}
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & Span cov. & Chunk recall & Answer avail. & Extra K/V & Distractor & Tokens \\
+\midrule
+No expansion & 40.83 & 38.54 & 60.00 & 0.00\% & --- & 0.0 \\
+Dense, 64 (locked) & 41.72 & 40.18 & 61.33 & 12.65\% & 95.33\% & 64.0 \\
+Oracle, 64 & 50.67 & 64.48 & 60.00 & 9.00\% & 0.00\% & 45.6 \\
+Oracle, 256 & 63.72 & 70.07 & 60.00 & 21.37\% & 0.00\% & 108.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The matched 64-token oracle gains 9.83 span points and 25.93 chunk-recall
+points while using fewer physical tokens than the dense policy. Dense
+selected-only therefore recovers 9.04\% of matched-budget oracle span
+headroom. Its 95.33\% distractor fraction also exceeds validation's 86.0\%.
+This generalization gap keeps the parameter-free expansion policy
+\texttt{RESEARCH\_ONLY}; the following generation experiment asks whether
+the small retrieval gain nevertheless changes answer behavior.
+
 \section{Training Objective}
 
 The base model remains frozen initially.
@@ -631,8 +668,9 @@ The frozen split uses:
 \begin{itemize}[leftmargin=*]
     \item 2,000 training questions;
     \item 150 validation questions;
-    \item 150 fixed held-out test questions evaluated with seeds
-    11, 23, 37, 71, and 101.
+    \item 150 fixed held-out test questions; paired uncertainty uses
+    bootstrap seeds 11, 23, 37, 71, and 101, which are repeated resampling
+    calculations rather than independent model runs.
 \end{itemize}
 
 The split seed is 3301. All 30 identities declared by the final Paper~3.2

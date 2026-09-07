@@ -46,8 +46,8 @@ through the native MLX path:
 PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.run_expansion_generation \
   --cache-dir .cache/rag_eval --split-name test --max-examples 150 \
   --model mlx-community/Qwen3-1.7B-4bit \
-  --mode hybrid_rrf --query-conditioned --top-k 1 \
-  --cross-token-budget 128 \
+  --mode dense --no-query-conditioned --top-k 1 \
+  --cross-token-budget 64 \
   --selection-cache .runs/paper3_3_test_selection.jsonl \
   --output docs/papers/shared/results/paper3_3_crossdoc_expansion/generation_test_qwen17b
 ```
@@ -57,6 +57,13 @@ the candidate receipt, selector revision, token budget, and resource limit on
 every replay. Model-specific native token counts are measured only when those
 fixed intervals are encoded. This keeps policy and cross-model comparisons
 paired while avoiding repeated cross-encoder inference.
+
+The dense selected-only, k=1, 64-token policy above is fixed by the corrected
+BM25-v2 validation frontier. Do not replace it using test retrieval or answer
+metrics. Summarize a held-out retrieval replay with `summarize_expansion
+--frozen-config <validation-publication-summary>` and a generation run with
+`summarize_generation`; both commands preserve the cache digest and distinguish
+bootstrap resampling seeds from independent model trials.
 
 The generation runner reports six separately named conditions: packed RAG,
 independent PRA, expansion-only native memory, linked pair attention, linked

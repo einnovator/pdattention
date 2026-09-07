@@ -1,0 +1,210 @@
+{
+  "paired_uncertainty": {
+    "answer_string_availability": {
+      "bootstrap_replicates_per_seed": 2000,
+      "bootstrap_seed_intervals": [
+        {
+          "ci95": [
+            0.0,
+            0.03333333333333333
+          ],
+          "seed": 11
+        },
+        {
+          "ci95": [
+            0.0,
+            0.03333333333333333
+          ],
+          "seed": 23
+        },
+        {
+          "ci95": [
+            0.0,
+            0.03333333333333333
+          ],
+          "seed": 37
+        },
+        {
+          "ci95": [
+            0.0,
+            0.03333333333333333
+          ],
+          "seed": 71
+        },
+        {
+          "ci95": [
+            0.0,
+            0.03333333333333333
+          ],
+          "seed": 101
+        }
+      ],
+      "conservative_ci95": [
+        0.0,
+        0.03333333333333333
+      ],
+      "examples": 150,
+      "observed_mean_delta": 0.013333333333333334,
+      "uncertainty_label": "five_seed_paired_bootstrap_not_independent_policy_runs"
+    },
+    "gold_chunk_recall": {
+      "bootstrap_replicates_per_seed": 2000,
+      "bootstrap_seed_intervals": [
+        {
+          "ci95": [
+            0.0057777777777777775,
+            0.03011111111111111
+          ],
+          "seed": 11
+        },
+        {
+          "ci95": [
+            0.005222222222222222,
+            0.02988888888888889
+          ],
+          "seed": 23
+        },
+        {
+          "ci95": [
+            0.005555555555555555,
+            0.03022222222222222
+          ],
+          "seed": 37
+        },
+        {
+          "ci95": [
+            0.005222222222222222,
+            0.030777777777777775
+          ],
+          "seed": 71
+        },
+        {
+          "ci95": [
+            0.005555555555555555,
+            0.03
+          ],
+          "seed": 101
+        }
+      ],
+      "conservative_ci95": [
+        0.005222222222222222,
+        0.030777777777777775
+      ],
+      "examples": 150,
+      "observed_mean_delta": 0.016333333333333335,
+      "uncertainty_label": "five_seed_paired_bootstrap_not_independent_policy_runs"
+    },
+    "supporting_span_coverage": {
+      "bootstrap_replicates_per_seed": 2000,
+      "bootstrap_seed_intervals": [
+        {
+          "ci95": [
+            0.0022222222222222222,
+            0.017777777777777778
+          ],
+          "seed": 11
+        },
+        {
+          "ci95": [
+            0.0022222222222222222,
+            0.017777777777777778
+          ],
+          "seed": 23
+        },
+        {
+          "ci95": [
+            0.0022222222222222222,
+            0.01777777777777778
+          ],
+          "seed": 37
+        },
+        {
+          "ci95": [
+            0.0022222222222222222,
+            0.01777777777777778
+          ],
+          "seed": 71
+        },
+        {
+          "ci95": [
+            0.0022222222222222222,
+            0.017777777777777778
+          ],
+          "seed": 101
+        }
+      ],
+      "conservative_ci95": [
+        0.0022222222222222222,
+        0.01777777777777778
+      ],
+      "examples": 150,
+      "observed_mean_delta": 0.008888888888888889,
+      "uncertainty_label": "five_seed_paired_bootstrap_not_independent_policy_runs"
+    }
+  },
+  "qualification": {
+    "reasons": [
+      "generation gate pending",
+      "model-size and cross-family gates pending"
+    ],
+    "sdk_exposable": false,
+    "status": "RESEARCH_ONLY"
+  },
+  "schema_version": "paper3.3-crossdoc-expansion-publication-v1",
+  "selected_policy": {
+    "answer_string_availability_mean": 0.6133333333333333,
+    "cross_search_latency_ms_mean": 249.46886834455654,
+    "deduplicated_cross_tokens_mean": 64.0,
+    "direction": "symmetric",
+    "distractor_fraction_mean": 0.9533333333333334,
+    "examples": 150,
+    "extra_native_fraction_mean": 0.12650612414838128,
+    "gold_chunk_recall_delta": 0.016333333333333366,
+    "gold_chunk_recall_mean": 0.4017777777777778,
+    "granularity": "chunk",
+    "initial_answer_string_availability_mean": 0.6,
+    "initial_gold_chunk_recall_mean": 0.3854444444444444,
+    "initial_native_tokens_mean": 506.44,
+    "initial_supporting_document_coverage_mean": 0.6422222222222221,
+    "initial_supporting_span_coverage_mean": 0.4083333333333333,
+    "max_extra_tokens": 64,
+    "mode": "dense",
+    "newly_exposed_supporting_spans_mean": 0.02666666666666667,
+    "newly_materialized_cross_tokens_mean": 0.0,
+    "query_conditioned": false,
+    "requested_cross_tokens_mean": 1521.7933333333333,
+    "reused_cross_kv_tokens_mean": 64.0,
+    "semantic_prepare_latency_ms_mean": 370.2933672225724,
+    "supporting_document_coverage_mean": 0.6422222222222221,
+    "supporting_span_coverage_delta": 0.00888888888888889,
+    "supporting_span_coverage_mean": 0.4172222222222222,
+    "top_k_per_pair": 1
+  },
+  "selection_rule": {
+    "evaluation_split": "test",
+    "objective": "frozen_validation_selected_policy_replay",
+    "split": "validation",
+    "test_locked": true
+  },
+  "source": {
+    "dataset": "multihoprag",
+    "dense_encoder": "sentence_transformers:BAAI/bge-base-en-v1.5@a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+    "dense_revision": "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+    "examples": 150,
+    "git_commit": "960a0c0f44c3b4448da18cf7383f25edb87a184d",
+    "policy_parameters": {
+      "dense_query_weight": 1.0,
+      "dense_selected_weight": 1.0,
+      "dense_weight": 1.0,
+      "lexical_weight": 1.0,
+      "minimum_pair_query_score": 0.0,
+      "query_relevance_weight": 0.25,
+      "rrf_constant": 60.0
+    },
+    "reranker_revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "selection_cache_sha256": "a4b30cffe7f0df4428bbaf11e35a428ec1a71da8d3e673ce29ab12217dd294ee",
+    "selector": "paper3_3_crossdoc_expansion_cross_encoder:BAAI/bge-reranker-v2-m3@953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "split_digest": "2f77e581892ef8bfc897f753985caeb0f96f9054c61e0962ebb101768f99cb37",
+    "split_name": "test"
+  }
+}
