@@ -215,11 +215,13 @@ class MLXAttentionInputCapture:
     def __init__(self, model: Any, layer_id: int) -> None:
         import mlx.nn as nn
 
-        layers = model.model.layers
+        decoder = _resolve_decoder(model)
+        layers = decoder.layers
         self.layer_id = layer_id if layer_id >= 0 else len(layers) + layer_id
         if not 0 <= self.layer_id < len(layers):
             raise ValueError(f"Routing layer {layer_id} is outside {len(layers)} layers.")
         self.model = model
+        self.decoder = decoder
         self.sink: list[Any] = []
         layer = layers[self.layer_id]
         self.original = layer.input_layernorm
@@ -240,7 +242,7 @@ class MLXAttentionInputCapture:
         if not token_ids:
             raise ValueError("Cannot extract routing states from an empty token sequence.")
         self.sink.clear()
-        output = self.model.model(mx.array(token_ids, dtype=mx.int32)[None])
+        output = self.decoder(mx.array(token_ids, dtype=mx.int32)[None])
         if len(self.sink) != 1:
             raise RuntimeError(
                 f"Expected one layer capture, observed {len(self.sink)} at layer {self.layer_id}."
@@ -250,7 +252,20 @@ class MLXAttentionInputCapture:
         return torch.from_numpy(np.asarray(captured))[0].clone()
 
     def close(self) -> None:
-        self.model.model.layers[self.layer_id].input_layernorm = self.original
+        self.decoder.layers[self.layer_id].input_layernorm = self.original
+
+
+def _resolve_decoder(model: Any) -> Any:
+    """Return the token decoder for conventional and hybrid MLX-LM models."""
+
+    direct = getattr(model, "model", None)
+    if direct is not None and hasattr(direct, "layers"):
+        return direct
+    language_model = getattr(model, "language_model", None)
+    nested = getattr(language_model, "model", None)
+    if nested is not None and hasattr(nested, "layers"):
+        return nested
+    raise TypeError("MLX model does not expose a supported decoder layer stack.")
 
 
 def _source_features(

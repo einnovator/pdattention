@@ -23,6 +23,20 @@ from .profile_benchmarks import ProfileBenchmarkRegistry
 KNOWN_STRUCTURAL_MAPPINGS: dict[str, dict[str, Any]] = {
     "qwen2": {"family": "qwen", "attention": "self_attn", "position": "rope", "status": "VALIDATED"},
     "qwen3": {"family": "qwen", "attention": "self_attn", "position": "rope", "status": "VALIDATED"},
+    "qwen3_5": {
+        "family": "qwen3_5",
+        "attention": "full_attention_only",
+        "position": "partial_rope",
+        "status": "PARTIAL_TOPOLOGY",
+        "native_kv": False,
+    },
+    "qwen3_5_text": {
+        "family": "qwen3_5",
+        "attention": "full_attention_only",
+        "position": "partial_rope",
+        "status": "PARTIAL_TOPOLOGY",
+        "native_kv": False,
+    },
     "llama": {"family": "llama", "attention": "self_attn", "position": "rope", "status": "VALIDATED"},
     "gemma3_text": {"family": "gemma3", "attention": "self_attn", "position": "rope", "status": "PARTIAL_TOPOLOGY"},
 }
@@ -97,14 +111,18 @@ class ModelInspector:
                     hidden // int(getattr(config, "num_attention_heads", 1) or 1) if hidden else None
                 ),
                 "topology": "heterogeneous" if getattr(config, "layer_types", None) else "homogeneous_global",
-                "position_encoding": "rope" if hasattr(config, "rope_theta") or mapping else "unknown",
+                "position_encoding": (
+                    str(mapping["position"])
+                    if mapping
+                    else "rope" if hasattr(config, "rope_theta") else "unknown"
+                ),
             },
             "pra": {
                 "structural_adapter": {
                     "status": mapping["status"] if mapping else "UNSUPPORTED",
                     "source": f"builtin:{mapping['family']}" if mapping else None,
                 },
-                "native_kv": bool(mapping),
+                "native_kv": bool(mapping and mapping.get("native_kv", True)),
                 "routing_capture": bool(mapping),
                 "profile_status": "registry_lookup_required",
             },
