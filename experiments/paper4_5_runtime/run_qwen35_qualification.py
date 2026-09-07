@@ -25,7 +25,7 @@ from experiments.paper4_5_runtime.extract_mlx_catalog_features import (  # noqa:
 )
 from experiments.paper6_2_mlx.run_answer_quality_pressure import _metrics  # noqa: E402
 from experiments.paper6_2_mlx.run_matched_e0_e2 import _generate_timed  # noqa: E402
-from pra_torch.hf import load_hf_routing_projection  # noqa: E402
+from pra_hf.router import PRARouter  # noqa: E402
 
 
 def select_chunk_indices(
@@ -157,7 +157,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         int(manifest["seed"]),
     )
     by_id = {example["id"]: example for example in examples}
-    router = load_hf_routing_projection(args.router / "adapter_model.pt")
+    router = PRARouter.from_pretrained(args.router)
     model, tokenizer_wrapper = load(args.model, revision=args.revision)
     tokenizer = getattr(tokenizer_wrapper, "_tokenizer", tokenizer_wrapper)
     resolved = model_info(args.model, revision=args.revision)
