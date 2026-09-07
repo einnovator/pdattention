@@ -35,7 +35,7 @@ def timed_forward(model, token_ids: list[int], *, cache=None) -> tuple[float, np
     logits = model(mx.array(token_ids, dtype=mx.int32)[None], cache=cache)
     final = logits[0, -1]
     mx.eval(final)
-    return (time.perf_counter() - started) * 1000.0, np.asarray(final)
+    return (time.perf_counter() - started) * 1000.0, np.asarray(final.astype(mx.float32))
 
 
 def shared_text(tokenizer, target_tokens: int, seed: int) -> str:
