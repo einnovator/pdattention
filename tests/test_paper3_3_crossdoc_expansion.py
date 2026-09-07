@@ -7,6 +7,9 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     evaluate_question,
     load_selection_cache,
 )
+from experiments.paper3_3_crossdoc_expansion.aggregate_generation_ladder import (
+    build_ladder,
+)
 from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
     build_fixed_evaluation_summary,
     build_publication_summary,
@@ -306,3 +309,38 @@ def test_generation_summary_uses_paired_examples() -> None:
     assert effect["paired_examples"] == 2
     assert abs(effect["effects"]["token_f1"]["mean_difference"]) < 1e-12
     assert result["condition_summary"][0]["ttft_ms_mean"] == 10.0
+
+
+def test_generation_ladder_requires_one_frozen_selection() -> None:
+    effects = [
+        {
+            "condition": condition,
+            "reference_condition": "INDEPENDENT_PRA",
+            "effects": {
+                "token_f1": {"mean_difference": 0.0, "conservative_ci95": [-0.1, 0.1]},
+                "official_multihop_rag_score": {
+                    "mean_difference": 0.0,
+                    "conservative_ci95": [-0.1, 0.1],
+                },
+            },
+        }
+        for condition in (
+            "EXPANSION_ONLY",
+            "CROSSDOC_EXPANSION_PAIR_SA",
+            "CROSSDOC_EXPANSION_PAIR_SA_BOUNDARY",
+        )
+    ]
+    summary = {
+        "source": {
+            "model": "model",
+            "model_revision": "revision",
+            "examples": 2,
+            "selection_cache_sha256": "frozen",
+        },
+        "paired_effects": effects,
+    }
+
+    result = build_ladder([summary, summary])
+
+    assert result["selection_cache_sha256"] == "frozen"
+    assert len(result["models"]) == 2

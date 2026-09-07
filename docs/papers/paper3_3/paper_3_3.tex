@@ -60,6 +60,18 @@ include zero. Every frontier remains non-monotonic and the absolute .19/.67
 gate is missed. The result supports sparse causal headroom and shows that
 task-aware rankings improve on raw magnitude, but it does not justify learned
 selector training.
+
+We then test a cheaper alternative: use one frozen selected record to retrieve
+additional source intervals from another. Among 221 validation configurations,
+dense selected-only expansion gains 2.94 support-span points using 12.66\%
+extra native tokens, but recovers only 12.71\% of oracle headroom. Replayed
+unchanged on 150 test questions, the gain contracts to 0.89 points and 95.3\%
+of admitted tokens fall outside annotated support. Expansion-only native
+generation lowers F1 from .0896 to .0761. Allowing attention only across
+retrieval-linked record pairs restores F1 to .0874, statistically overlapping
+independent PRA but not improving it. Cheap expansion finds some missing
+evidence; current parameter-free scores do not select it precisely enough, and
+cross-record interaction remains necessary to consume it safely.
 \end{abstract}
 
 \section{Introduction}
@@ -603,6 +615,58 @@ headroom. Its 95.33\% distractor fraction also exceeds validation's 86.0\%.
 This generalization gap keeps the parameter-free expansion policy
 \texttt{RESEARCH\_ONLY}; the following generation experiment asks whether
 the small retrieval gain nevertheless changes answer behavior.
+
+\subsection{Native answer replay}
+
+Table~\ref{tab:expansion-generation} replays the frozen test selection through
+Qwen3-1.7B-4bit. The model sees 84.3 additional model-native tokens on average
+after the 64 source-token intervals are tokenized. Expansion-only lowers F1
+from .0896 for independent PRA to .0761 and official score from .4333 to
+.3733. Its paired F1 effect is $-.0135$ with conservative 95\% interval
+$[-.0272,.00005]$; the official-score effect is $-.0600$ with interval
+$[-.1400,.0200]$. The interval endpoints prevent a directional significance
+claim, but the means do not support promotion.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Frozen 150-question Qwen3-1.7B native generation replay. Lower NLL is
+better; times are per question in milliseconds. Linked masks execute a dense
+host kernel and are mechanism controls, not sparse-speed results.}
+\label{tab:expansion-generation}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & F1 & Official & Gold NLL & Encode & TTFT & Total \\
+\midrule
+Packed RAG & .0863 & .4267 & 5.3106 & 305.1 & 68.0 & 207.9 \\
+Independent PRA & \textbf{.0896} & .4333 & 3.0310 & 362.2 & 75.0 & 214.1 \\
+Expansion only & .0761 & .3733 & \textbf{2.6310} & 423.0 & 76.3 & 219.0 \\
+Linked pair SA & .0874 & .4400 & 3.0117 & 808.2 & 71.4 & 214.8 \\
+Linked boundary SA & .0879 & \textbf{.4467} & 3.0152 & 776.2 & 68.2 & 212.1 \\
+Linked top-attention & .0783 & .3800 & 2.6583 & 775.5 & 68.2 & 211.6 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Retrieval-linked pair SA reduces the expansion-only F1 deficit relative to
+independent PRA by 84.1\%; the boundary variant reduces it by 87.6\%. Their
+remaining paired F1 effects, $-.0021$ and $-.0017$, have intervals
+$[-.0099,.0056]$ and $[-.0111,.0081]$. Both linked modes are therefore
+statistically compatible with independent PRA on this cohort, not superior to
+it. The apparently favorable expansion-only gold NLL is especially
+instructive: it improves by .4000 while decoded F1 and official score decline.
+Answer-likelihood distillation alone would select the wrong deployment policy.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper3_3_crossdoc_expansion/generation_test_qwen17b_dense64/generation_quality.pdf}
+\caption{Absolute answer F1 and official MultiHop-RAG score for the frozen
+Qwen3-1.7B replay. Error bars are conservative envelopes across five paired
+bootstrap calculations; they do not represent independently trained models.}
+\label{fig:expansion-generation}
+\end{figure}
+\FloatBarrier
 
 \section{Training Objective}
 
