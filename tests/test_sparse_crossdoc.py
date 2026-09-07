@@ -15,6 +15,8 @@ from pra_hf.sparse_crossdoc import (
     interaction_group_ablation_plan,
     interaction_group_keys,
     interaction_localization,
+    linked_pair_interaction_plan,
+    linked_top_attention_edge_plan,
     ranked_edge_plan,
     ranked_physical_prefix,
     ranked_physical_indices_by_group_utility,
@@ -43,6 +45,19 @@ def _graph() -> CrossDocumentOracleGraph:
     second[0, :, 3, 1] = (0.025, 0.025)
     collector.observe(0, first)
     collector.observe(1, second)
+    return collector.finalize()
+
+
+def _three_record_graph() -> CrossDocumentOracleGraph:
+    collector = CrossDocumentAttentionCollector(
+        (2, 2, 2),
+        record_ids=("D1", "D2", "D3"),
+        selection_receipt_id="selection-3",
+        model_revision="model@revision",
+    )
+    attention = np.zeros((1, 1, 6, 6), dtype=np.float32)
+    attention[0, 0, 2:, :4] = 0.1
+    collector.observe(0, attention)
     return collector.finalize()
 
 
@@ -184,3 +199,34 @@ def test_ranked_prefix_is_deterministic_at_ties_and_full_plan_avoids_indices() -
     full = full_interaction_plan(graph, mode="PARITY")
     assert full.selected_mask.all()
     assert full.retained_attention_mass == 1.0
+
+
+def test_retrieval_links_restrict_pair_and_boundary_attention() -> None:
+    graph = _three_record_graph()
+    pair = linked_pair_interaction_plan(graph, (("D1", "D3"),))
+
+    assert pair.selected_physical_head_edges == 4
+    selected_pairs = {
+        (
+            graph.record_ids[int(graph.source_records[index])],
+            graph.record_ids[int(graph.target_records[index])],
+        )
+        for index in np.flatnonzero(pair.selected_mask[0, 0])
+    }
+    assert selected_pairs == {("D1", "D3")}
+
+    boundary = linked_pair_interaction_plan(
+        graph, (("D1", "D3"),), boundary_tokens=1
+    )
+    assert boundary.selected_physical_head_edges == 1
+
+    top = linked_top_attention_edge_plan(graph, (("D1", "D3"),), 0.5)
+    assert top.selected_physical_head_edges == 2
+
+
+def test_retrieval_link_plan_rejects_unknown_or_self_pairs() -> None:
+    graph = _three_record_graph()
+    with pytest.raises(ValueError, match="distinct graph record IDs"):
+        linked_pair_interaction_plan(graph, (("D1", "D1"),))
+    with pytest.raises(ValueError, match="distinct graph record IDs"):
+        linked_pair_interaction_plan(graph, (("D1", "missing"),))

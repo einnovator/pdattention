@@ -463,6 +463,103 @@ def full_interaction_plan(
     )
 
 
+def linked_pair_interaction_plan(
+    graph: CrossDocumentOracleGraph,
+    linked_record_pairs: Sequence[tuple[str, str]],
+    *,
+    boundary_tokens: int | None = None,
+    mode: str = "CROSSDOC_EXPANSION_PAIR_SA",
+) -> SparseInteractionPlan:
+    """Allow physical edges only between retrieval-linked record pairs.
+
+    Links are treated as undirected discovery evidence while the packed graph
+    still enforces causal source-to-target order.  ``boundary_tokens`` narrows
+    each allowed pair to the source suffix and target prefix; ``None`` admits
+    every physical edge in the linked pair.
+    """
+
+    if boundary_tokens is not None and boundary_tokens <= 0:
+        raise ValueError("boundary_tokens must be positive when provided")
+    known = set(graph.record_ids)
+    links = {frozenset(pair) for pair in linked_record_pairs}
+    if any(len(pair) != 2 or not pair.issubset(known) for pair in links):
+        raise ValueError("linked pairs must contain two distinct graph record IDs")
+    allowed_pair = np.asarray(
+        [
+            frozenset(
+                (
+                    graph.record_ids[int(source)],
+                    graph.record_ids[int(target)],
+                )
+            )
+            in links
+            for source, target in zip(graph.source_records, graph.target_records)
+        ],
+        dtype=np.bool_,
+    )
+    if boundary_tokens is not None:
+        source_limit = np.asarray(
+            [
+                graph.document_boundaries[int(index)].end - boundary_tokens
+                for index in graph.source_records
+            ],
+            dtype=np.int32,
+        )
+        target_limit = np.asarray(
+            [
+                graph.document_boundaries[int(index)].start + boundary_tokens
+                for index in graph.target_records
+            ],
+            dtype=np.int32,
+        )
+        allowed_pair &= graph.source_tokens >= source_limit
+        allowed_pair &= graph.target_tokens < target_limit
+    pair_indices = np.flatnonzero(allowed_pair)
+    if pair_indices.size:
+        layer_offsets = np.arange(graph.layer_count, dtype=np.int64)[:, None, None]
+        head_offsets = np.arange(graph.head_count, dtype=np.int64)[None, :, None]
+        selected = (
+            layer_offsets * graph.head_count * graph.token_pair_count
+            + head_offsets * graph.token_pair_count
+            + pair_indices[None, None, :]
+        ).reshape(-1)
+    else:
+        selected = np.asarray([], dtype=np.int64)
+    suffix = "_BOUNDARY" if boundary_tokens is not None else ""
+    return _plan(
+        graph,
+        mode=mode + suffix,
+        target=float(boundary_tokens or 1.0),
+        selected=selected,
+    )
+
+
+def linked_top_attention_edge_plan(
+    graph: CrossDocumentOracleGraph,
+    linked_record_pairs: Sequence[tuple[str, str]],
+    fraction: float,
+) -> SparseInteractionPlan:
+    """Keep the highest-attention physical edges inside retrieval-linked pairs."""
+
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("edge fraction must be in [0, 1]")
+    pair_plan = linked_pair_interaction_plan(graph, linked_record_pairs)
+    candidate_indices = np.flatnonzero(pair_plan.selected_mask.reshape(-1))
+    count = int(math.ceil(candidate_indices.size * fraction))
+    if count:
+        scores = graph.edge_scores.reshape(-1)
+        local = _ranked_prefix(scores[candidate_indices], count)
+        selected = candidate_indices[local]
+    else:
+        selected = np.asarray([], dtype=np.int64)
+    return _plan(
+        graph,
+        mode="CROSSDOC_EXPANSION_TOP_ATTENTION",
+        target=fraction,
+        selected=selected,
+    )
+
+
 def cumulative_attention_mass_plan(
     graph: CrossDocumentOracleGraph,
     mass_fraction: float,

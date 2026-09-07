@@ -13,10 +13,12 @@ from pra_hf.crossdoc_expansion import (
     CrossDocumentExpansionRequest,
     CrossDocumentExpansionRuntime,
     CrossDocumentFailure,
+    CrossDocumentGranularity,
     CrossDocumentPolicyEvidence,
     CrossDocumentSelectedRecord,
     build_cross_document_expansion_policy,
     qualify_cross_document_policy,
+    _target_interval,
 )
 from pra_hf.rag_evaluation import RAGChunk
 
@@ -250,3 +252,31 @@ def test_receipt_contains_no_source_text() -> None:
     assert "amber key opens" not in serialized
     assert all("target_text_sha256" in row for row in receipt["candidates"])
     assert all("text_sha256" in row for row in receipt["chosen_spans"])
+
+
+def test_logical_interval_selects_the_best_matching_sentence() -> None:
+    chunk = _chunk(
+        "d2",
+        4,
+        "Routine maintenance ended. The amber key opens the lunar vault. Weather stayed clear.",
+        100,
+    )
+
+    span, text, tokens = _target_interval(
+        chunk,
+        "Alice amber key vault",
+        CrossDocumentGranularity.LOGICAL_INTERVAL,
+    )
+
+    assert text == "The amber key opens the lunar vault."
+    assert span[0] > chunk.start
+    assert span[1] < chunk.end
+    assert tokens == 7
+
+
+def test_receipt_persists_extracted_keyterms() -> None:
+    request, _ = _fixture()
+    receipt = _run(request, CrossDocumentExpansionMode.ENTITY).receipt.to_dict()
+
+    assert receipt["candidates"]
+    assert any("amber" in row["keyterms"] for row in receipt["candidates"])

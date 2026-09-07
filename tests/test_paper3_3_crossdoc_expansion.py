@@ -8,6 +8,7 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
 from pra_hf.crossdoc_expansion import (
     CrossDocumentDirection,
     CrossDocumentExpansionMode,
+    CrossDocumentGranularity,
 )
 from pra_hf.rag_evaluation import (
     ChunkerConfig,
@@ -54,6 +55,7 @@ def test_controlled_frontier_recovers_an_omitted_peer_span() -> None:
         selection=selection,
         modes=(CrossDocumentExpansionMode.LEXICAL,),
         directions=(CrossDocumentDirection.SYMMETRIC,),
+        granularity=CrossDocumentGranularity.CHUNK,
         query_conditioning=(False,),
         top_ks=(1,),
         budgets=(16,),
@@ -67,4 +69,3 @@ def test_controlled_frontier_recovers_an_omitted_peer_span() -> None:
     assert rows[0]["answer_string_availability"] == 1.0
     assert rows[0]["distractor_fraction"] == 0.0
     assert receipts[0]["chosen_spans"]
-

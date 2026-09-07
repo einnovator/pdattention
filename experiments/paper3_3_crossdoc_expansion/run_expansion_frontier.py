@@ -32,6 +32,7 @@ from pra_hf.crossdoc_expansion import (
     CrossDocumentExpansionMode,
     CrossDocumentExpansionRequest,
     CrossDocumentExpansionRuntime,
+    CrossDocumentGranularity,
     CrossDocumentSelectedRecord,
     build_cross_document_expansion_policy,
 )
@@ -359,6 +360,7 @@ def evaluate_question(
     selection: SelectionReceipt,
     modes: Sequence[CrossDocumentExpansionMode],
     directions: Sequence[CrossDocumentDirection],
+    granularity: CrossDocumentGranularity,
     query_conditioning: Sequence[bool],
     top_ks: Sequence[int],
     budgets: Sequence[int],
@@ -385,7 +387,14 @@ def evaluate_question(
             for direction in directions:
                 for top_k in top_ks:
                     for budget_tokens in budgets:
-                        condition = (mode.value, query_conditioned, direction.value, top_k, budget_tokens)
+                        condition = (
+                            mode.value,
+                            query_conditioned,
+                            direction.value,
+                            granularity.value,
+                            top_k,
+                            budget_tokens,
+                        )
                         if mode is CrossDocumentExpansionMode.NONE:
                             condition = (mode.value,)
                         if condition in seen_conditions:
@@ -410,12 +419,18 @@ def evaluate_question(
                             mode=mode,
                             query_conditioned=query_conditioned,
                             direction=direction,
+                            granularity=granularity,
                             budget=budget,
                         )
                         policy = build_cross_document_expansion_policy(
                             config, allow_experimental=True
                         )
-                        proposal_key = (mode.value, query_conditioned, direction.value)
+                        proposal_key = (
+                            mode.value,
+                            query_conditioned,
+                            direction.value,
+                            granularity.value,
+                        )
                         cached_policy = proposal_cache.get(proposal_key)
                         if cached_policy is None:
                             proposal_started = time.perf_counter()
@@ -445,6 +460,7 @@ def evaluate_question(
                             "mode": mode.value,
                             "query_conditioned": query_conditioned,
                             "direction": direction.value,
+                            "granularity": granularity.value,
                             "top_k_per_pair": top_k,
                             "max_extra_tokens": budget_tokens,
                             "selection_receipt_id": selection.receipt_id,
@@ -499,7 +515,7 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
     for row in rows:
         key = (
             row["mode"], row["query_conditioned"], row["direction"],
-            row["top_k_per_pair"], row["max_extra_tokens"],
+            row["granularity"], row["top_k_per_pair"], row["max_extra_tokens"],
         )
         grouped.setdefault(key, []).append(row)
     result = []
@@ -527,8 +543,9 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
             "mode": key[0],
             "query_conditioned": key[1],
             "direction": key[2],
-            "top_k_per_pair": key[3],
-            "max_extra_tokens": key[4],
+            "granularity": key[3],
+            "top_k_per_pair": key[4],
+            "max_extra_tokens": key[5],
             "examples": len(values),
         }
         for field in mean_fields:
@@ -634,6 +651,12 @@ def main() -> None:
         type=lambda value: _csv_enum(value, CrossDocumentDirection),
         default=(CrossDocumentDirection.SYMMETRIC,),
     )
+    parser.add_argument(
+        "--granularity",
+        type=CrossDocumentGranularity,
+        choices=tuple(CrossDocumentGranularity),
+        default=CrossDocumentGranularity.CHUNK,
+    )
     parser.add_argument("--query-conditioning", type=_csv_bool, default=(False, True))
     parser.add_argument("--top-k", type=_csv_int, default=(1, 2, 4, 8))
     parser.add_argument("--cross-token-budgets", type=_csv_int, default=(32, 64, 128, 256, 512))
@@ -660,7 +683,9 @@ def main() -> None:
     retriever = FirstStageBM25(documents)
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     if args.selector == "cross_encoder":
-        reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
+        reranker_revision = _resolve_hf_revision(
+            args.reranker, args.reranker_revision or "main"
+        )
         selector = CrossEncoderRAGSelector(
             model_id=args.reranker,
             revision=reranker_revision,
@@ -721,6 +746,7 @@ def main() -> None:
             selection=selection,
             modes=args.modes,
             directions=args.directions,
+            granularity=args.granularity,
             query_conditioning=args.query_conditioning,
             top_ks=args.top_k,
             budgets=args.cross_token_budgets,
@@ -755,6 +781,7 @@ def main() -> None:
         "max_resources": args.max_resources,
         "modes": [row.value for row in args.modes],
         "directions": [row.value for row in args.directions],
+        "granularity": args.granularity.value,
         "query_conditioning": list(args.query_conditioning),
         "top_k": list(args.top_k),
         "cross_token_budgets": list(args.cross_token_budgets),

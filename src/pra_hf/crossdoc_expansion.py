@@ -16,6 +16,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Callable, Mapping, Protocol, Sequence
 
 import numpy as np
@@ -26,6 +27,7 @@ from .rag_evaluation import RAGChunk
 
 _TERM = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./:+-]*")
 _TOKEN = re.compile(r"\S+")
+_SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)")
 _CAPITALIZED = re.compile(r"\b(?:[A-Z][\w.-]+(?:\s+[A-Z][\w.-]+){0,3})\b")
 _STOPWORDS = frozenset(
     "a an and are as at be by for from has have in is it of on or that the to was were will with".split()
@@ -228,6 +230,7 @@ class CrossDocumentCandidate:
     dense_score: float | None = None
     query_score: float | None = None
     entity_overlap: float | None = None
+    keyterms: tuple[str, ...] = ()
     lexical_rank: int | None = None
     dense_rank: int | None = None
     selection_reason: str = ""
@@ -354,6 +357,13 @@ CrossDocumentExpansionPlugin = CrossDocumentExpansionPolicy
 SemanticEncoder = Callable[[str], Sequence[float]]
 
 
+@lru_cache(maxsize=32_768)
+def _cached_hashed_vector(text: str, dimensions: int) -> tuple[float, ...]:
+    """Reuse immutable fallback embeddings across policy/budget sweeps."""
+
+    return tuple(hashed_semantic_vector(text, dimensions=dimensions))
+
+
 class _ChunkBM25:
     """Exact BM25 index over the peer chunks available in one request."""
 
@@ -400,7 +410,7 @@ class BuiltinCrossDocumentExpansionPolicy:
         self.name = config.mode.value
         self.revision = policy_revision
         self._encode = semantic_encoder or (
-            lambda text: hashed_semantic_vector(text, dimensions=config.dense_dimensions)
+            lambda text: _cached_hashed_vector(text, config.dense_dimensions)
         )
 
     def propose(
@@ -424,6 +434,7 @@ class BuiltinCrossDocumentExpansionPolicy:
                     continue
                 for source_span in source.spans:
                     cross_query = _cross_query(request.query, source_span.text, self.config)
+                    keyterms = _keyterms(cross_query, lexical)
                     source_vector = _normalize(self._encode(source_span.text))
                     dense_query = _normalize(
                         self.config.dense_query_weight * query_vector
@@ -431,6 +442,16 @@ class BuiltinCrossDocumentExpansionPolicy:
                     )
                     pair_rows: list[CrossDocumentCandidate] = []
                     for chunk in request.candidate_chunks_by_record[target.record_uri]:
+                        selected_sections = {
+                            row.section_id for row in target.spans if row.section_id is not None
+                        }
+                        if (
+                            self.config.granularity
+                            is CrossDocumentGranularity.HIERARCHICAL
+                            and selected_sections
+                            and chunk.section_id not in selected_sections
+                        ):
+                            continue
                         if _fully_covered(
                             (chunk.start, chunk.end),
                             tuple((row.start, row.end) for row in target.spans),
@@ -440,6 +461,9 @@ class BuiltinCrossDocumentExpansionPolicy:
                         query_score = lexical.score(request.query, chunk)
                         dense_score = float(np.dot(dense_query, target_vectors[chunk.chunk_id]))
                         entity_overlap = _entity_overlap(cross_query, chunk.text, lexical)
+                        target_span, target_text, target_tokens = _target_interval(
+                            chunk, cross_query, self.config.granularity
+                        )
                         score, reason = self._base_score(
                             lexical_score=lexical_score,
                             dense_score=dense_score,
@@ -454,9 +478,9 @@ class BuiltinCrossDocumentExpansionPolicy:
                                 source_span=(source_span.start, source_span.end),
                                 target_record_uri=target.record_uri,
                                 target_chunk_id=chunk.chunk_id,
-                                target_span=(chunk.start, chunk.end),
-                                target_text=chunk.text,
-                                target_tokens=chunk.token_count,
+                                target_span=target_span,
+                                target_text=target_text,
+                                target_tokens=target_tokens,
                                 source_rank=source.rank,
                                 target_rank=record_by_uri[target.record_uri].rank,
                                 score=score,
@@ -464,6 +488,7 @@ class BuiltinCrossDocumentExpansionPolicy:
                                 dense_score=dense_score,
                                 query_score=query_score,
                                 entity_overlap=entity_overlap,
+                                keyterms=keyterms,
                                 selection_reason=reason,
                                 gold_support=chunk.chunk_id in request.gold_chunk_ids,
                             )
@@ -627,6 +652,44 @@ def _entity_overlap(query: str, text: str, index: _ChunkBM25) -> float:
     entity_hits = sum(value in target for value in capitalized)
     term_hits = sum(term in set(_terms(text)) for term in rare)
     return float(2 * entity_hits + term_hits)
+
+
+def _keyterms(query: str, index: _ChunkBM25, *, limit: int = 12) -> tuple[str, ...]:
+    """Extract deterministic entities and rare terms for receipt inspection."""
+
+    entities = [value.casefold() for value in _CAPITALIZED.findall(query)]
+    terms = sorted(
+        set(_terms(query)),
+        key=lambda term: (index.document_frequency.get(term, 0), term),
+    )
+    return tuple(dict.fromkeys((*entities, *terms)))[:limit]
+
+
+def _target_interval(
+    chunk: RAGChunk,
+    query: str,
+    granularity: CrossDocumentGranularity,
+) -> tuple[tuple[int, int], str, int]:
+    """Map a scored chunk to a chunk or best matching logical sentence."""
+
+    if granularity is not CrossDocumentGranularity.LOGICAL_INTERVAL:
+        return (chunk.start, chunk.end), chunk.text, chunk.token_count
+    query_terms = set(_terms(query))
+    sentences = tuple(_SENTENCE.finditer(chunk.text))
+    if not sentences:
+        return (chunk.start, chunk.end), chunk.text, chunk.token_count
+    match = max(
+        sentences,
+        key=lambda row: (
+            len(query_terms.intersection(_terms(row.group(0)))),
+            -row.start(),
+        ),
+    )
+    text = match.group(0).strip()
+    leading = len(match.group(0)) - len(match.group(0).lstrip())
+    start = chunk.start + match.start() + leading
+    end = start + len(text)
+    return (start, end), text, max(1, len(_TOKEN.findall(text)))
 
 
 class CrossDocumentExpansionRuntime:
