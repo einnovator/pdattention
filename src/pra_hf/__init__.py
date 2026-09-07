@@ -1,6 +1,24 @@
 """Public PRA-HF API for bounded sparse native-K/V memory."""
 
 from .config import PRAConfig
+from .crossdoc_expansion import (
+    CrossDocumentBudget,
+    CrossDocumentDirection,
+    CrossDocumentExpandedSpan,
+    CrossDocumentExpansionConfig,
+    CrossDocumentExpansionMode,
+    CrossDocumentExpansionPlan,
+    CrossDocumentExpansionPolicy,
+    CrossDocumentExpansionReceipt,
+    CrossDocumentExpansionRequest,
+    CrossDocumentExpansionRuntime,
+    CrossDocumentGranularity,
+    CrossDocumentPolicyEvidence,
+    CrossDocumentPolicyQualification,
+    CrossDocumentSelectedRecord,
+    build_cross_document_expansion_policy,
+    qualify_cross_document_policy,
+)
 from .evaluation import evaluate_router_features
 from .memory_adapter import PRAMemoryAdapter
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle
@@ -40,6 +58,20 @@ __version__ = "0.2.0rc1"
 
 __all__ = [
     "GenerationResult",
+    "CrossDocumentBudget",
+    "CrossDocumentDirection",
+    "CrossDocumentExpandedSpan",
+    "CrossDocumentExpansionConfig",
+    "CrossDocumentExpansionMode",
+    "CrossDocumentExpansionPlan",
+    "CrossDocumentExpansionPolicy",
+    "CrossDocumentExpansionReceipt",
+    "CrossDocumentExpansionRequest",
+    "CrossDocumentExpansionRuntime",
+    "CrossDocumentGranularity",
+    "CrossDocumentPolicyEvidence",
+    "CrossDocumentPolicyQualification",
+    "CrossDocumentSelectedRecord",
     "DiscoveryCandidate",
     "GistIndex",
     "HierarchicalGistIndex",
@@ -68,11 +100,13 @@ __all__ = [
     "TokenChunkRecord",
     "TokenNativeIndex",
     "build_query_graph",
+    "build_cross_document_expansion_policy",
     "connected_components",
     "evaluate_router_features",
     "exact_summary_scores",
     "hybrid_scores",
     "pool_hard_graph_facets",
+    "qualify_cross_document_policy",
     "retrieval_metrics",
     "weighted_label_propagation",
 ]

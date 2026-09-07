@@ -1029,12 +1029,14 @@ def context_metrics(
         for chunk in context.candidate_chunks
         if (
             any(
-                chunk.document_id == document_id
-                and chunk.start < end
-                and start < chunk.end
-                for start, end in spans
+                any(
+                    chunk.document_id == document_id
+                    and chunk.start < end
+                    and start < chunk.end
+                    for start, end in spans
+                )
+                for document_id, spans in question.gold_spans.items()
             )
-            for document_id, spans in question.gold_spans.items()
         )
         or (
             chunk.document_id in question.gold_document_ids
