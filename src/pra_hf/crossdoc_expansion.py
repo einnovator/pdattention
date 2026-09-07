@@ -416,7 +416,7 @@ class BuiltinCrossDocumentExpansionPolicy:
         config: CrossDocumentExpansionConfig,
         *,
         semantic_encoder: SemanticEncoderLike | None = None,
-        policy_revision: str = "builtin-v1",
+        policy_revision: str = "builtin-v2",
     ) -> None:
         if config.mode is CrossDocumentExpansionMode.CUSTOM:
             raise ValueError("custom mode requires a caller-provided policy")

@@ -310,7 +310,7 @@ class CandidateReceipt:
 class FirstStageBM25:
     """Small exact BM25 retriever used to create auditable candidate receipts."""
 
-    revision = "pra_bm25_v1_k1.2_b0.75"
+    revision = "pra_bm25_v2_k1.2_b0.75_document_df_sorted_query"
 
     def __init__(self, documents: Sequence[RAGDocument]) -> None:
         self.documents = tuple(documents)
@@ -720,7 +720,7 @@ def _bm25_chunk_scores(query: str, chunks: Sequence[RAGChunk]) -> dict[str, floa
 class StandardRAGSelector:
     """Defensible baseline: global BM25 chunk ranking over frozen documents."""
 
-    name = "global_bm25_chunk_packing_v1"
+    name = "global_bm25_chunk_packing_v2"
 
     def rank(self, query: str, chunks: Sequence[RAGChunk]) -> tuple[RankedChunk, ...]:
         scores = _bm25_chunk_scores(query, chunks)
