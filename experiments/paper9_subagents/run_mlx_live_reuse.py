@@ -22,10 +22,35 @@ from pra_hf.subagent_mlx_native import MLXSubagentNativePort
 
 
 SEEDS = (11, 23, 37, 71, 101)
+INTEGER_FIELDS = {
+    "seed", "target_shared_tokens", "actual_shared_tokens", "query_tokens", "fanout",
+    "child_index", "native_kv_bytes", "physical_input_tokens", "native_tokens_reused",
+    "argmax_matches_host_split", "payload_hit", "native_hit", "tool_calls_so_far",
+}
+FLOAT_FIELDS = {
+    "one_time_native_encode_ms", "model_ms", "route_attach_ms", "request_ms",
+    "max_abs_logit_delta_vs_host_split",
+}
 
 
 def percentile(values: list[float], percentile_value: float) -> float:
     return float(np.percentile(np.asarray(values, dtype=np.float64), percentile_value))
+
+
+def load_rows(path: Path) -> list[dict]:
+    """Restore numeric CSV fields for analysis without loading a model."""
+
+    with path.open(newline="", encoding="utf-8") as stream:
+        raw_rows = list(csv.DictReader(stream))
+    rows = []
+    for raw in raw_rows:
+        row = dict(raw)
+        for name in INTEGER_FIELDS:
+            row[name] = int(row[name])
+        for name in FLOAT_FIELDS:
+            row[name] = float(row[name])
+        rows.append(row)
+    return rows
 
 
 def timed_forward(model, token_ids: list[int], *, cache=None) -> tuple[float, np.ndarray]:
@@ -200,6 +225,7 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
             "argmax_parity_vs_host_split": statistics.mean(row["argmax_matches_host_split"] for row in selected),
             "max_abs_logit_delta_vs_host_split": max(row["max_abs_logit_delta_vs_host_split"] for row in selected),
         }
+    sessions = build_session_rows(rows)
     return {
         "protocol": "paper9-mlx-live-reuse-v1",
         "model": model_id,
@@ -209,10 +235,58 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
         "fanouts": sorted({row["fanout"] for row in rows}),
         "scope": "Live host-model forward/prefill and post-RoPE native K/V; not an HTTP serving TTFT benchmark.",
         "conditions": by_condition,
+        "session_economics": {
+            "points": len(sessions),
+            "mean_amortized_speedup": statistics.mean(row["amortized_speedup"] for row in sessions),
+            "max_amortized_speedup": max(row["amortized_speedup"] for row in sessions),
+            "mean_physical_token_reduction": statistics.mean(row["physical_token_reduction"] for row in sessions),
+        },
     }
 
 
-def plot(rows: list[dict], output: Path) -> None:
+def build_session_rows(rows: list[dict]) -> list[dict]:
+    """Charge source encoding once and aggregate all child requests."""
+
+    points = sorted({
+        (int(row["seed"]), int(row["target_shared_tokens"]), int(row["fanout"]))
+        for row in rows
+    })
+    sessions = []
+    for seed, size, fanout in points:
+        selected = [
+            row for row in rows
+            if int(row["seed"]) == seed
+            and int(row["target_shared_tokens"]) == size
+            and int(row["fanout"]) == fanout
+        ]
+        text = [row for row in selected if row["condition"] == "host_split_text"]
+        native = [row for row in selected if row["condition"] == "pra_native_kv"]
+        encode_ms = float(native[0]["one_time_native_encode_ms"])
+        text_ms = sum(float(row["request_ms"]) for row in text)
+        native_ms = encode_ms + sum(float(row["request_ms"]) for row in native)
+        text_tokens = sum(int(row["physical_input_tokens"]) for row in text)
+        native_tokens = int(native[0]["actual_shared_tokens"]) + sum(
+            int(row["physical_input_tokens"]) for row in native
+        )
+        sessions.append({
+            "seed": seed,
+            "target_shared_tokens": size,
+            "actual_shared_tokens": int(native[0]["actual_shared_tokens"]),
+            "fanout": fanout,
+            "host_split_session_ms": text_ms,
+            "native_session_ms": native_ms,
+            "one_time_native_encode_ms": encode_ms,
+            "amortized_speedup": text_ms / native_ms,
+            "host_split_physical_tokens": text_tokens,
+            "native_physical_tokens": native_tokens,
+            "physical_token_reduction": 1.0 - native_tokens / text_tokens,
+            "duplicate_kv_bytes_avoided": max(0, fanout - 1) * int(native[0]["native_kv_bytes"]),
+            "native_argmax_parity": statistics.mean(int(row["argmax_matches_host_split"]) for row in native),
+        })
+    return sessions
+
+
+def plot(rows: list[dict], session_rows: list[dict], output: Path) -> None:
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(1, 2, figsize=(9.4, 3.6))
@@ -248,14 +322,13 @@ def plot(rows: list[dict], output: Path) -> None:
     sizes = sorted({row["target_shared_tokens"] for row in rows})
     ratios = []
     for size in sizes:
-        text = [row["request_ms"] for row in rows if row["condition"] == "pra_record_reprefill" and row["target_shared_tokens"] == size]
-        native = [row["request_ms"] for row in rows if row["condition"] == "pra_native_kv" and row["target_shared_tokens"] == size]
-        ratios.append(statistics.mean(text) / statistics.mean(native))
+        selected = [row["amortized_speedup"] for row in session_rows if row["target_shared_tokens"] == size and row["fanout"] == max(available_fanouts)]
+        ratios.append(statistics.mean(selected))
     axes[1].plot(sizes, ratios, marker="o", color="#255b96")
     axes[1].axhline(1.0, color="#333333", linewidth=0.8)
     axes[1].set_xscale("log", base=2)
     axes[1].set_xlabel("Shared source tokens")
-    axes[1].set_ylabel("Record re-prefill / native latency")
+    axes[1].set_ylabel(f"Amortized speedup at N={max(available_fanouts)}")
     figure.tight_layout()
     figure.savefig(output / "mlx_live_reuse.pdf", bbox_inches="tight")
     figure.savefig(output / "mlx_live_reuse.png", dpi=180, bbox_inches="tight")
@@ -269,25 +342,34 @@ def main() -> None:
     parser.add_argument("--fanouts", default="1,2,4,8,16")
     parser.add_argument("--seeds", default=",".join(str(seed) for seed in SEEDS))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--analyze-existing", action="store_true")
     arguments = parser.parse_args()
-    from mlx_lm import load
-
-    model, tokenizer = load(arguments.model)
-    rows: list[dict] = []
     seeds = tuple(int(value) for value in arguments.seeds.split(",") if value)
-    for seed in seeds:
-        for target_tokens in (int(value) for value in arguments.shared_tokens.split(",")):
-            for fanout in (int(value) for value in arguments.fanouts.split(",")):
-                print(f"seed={seed} shared={target_tokens} fanout={fanout}", flush=True)
-                rows.extend(run_point(model, tokenizer, arguments.model, seed, target_tokens, fanout))
     arguments.output.mkdir(parents=True, exist_ok=True)
-    with (arguments.output / "rows.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=tuple(rows[0]))
+    if arguments.analyze_existing:
+        rows = load_rows(arguments.output / "rows.csv")
+    else:
+        from mlx_lm import load
+
+        model, tokenizer = load(arguments.model)
+        rows: list[dict] = []
+        for seed in seeds:
+            for target_tokens in (int(value) for value in arguments.shared_tokens.split(",")):
+                for fanout in (int(value) for value in arguments.fanouts.split(",")):
+                    print(f"seed={seed} shared={target_tokens} fanout={fanout}", flush=True)
+                    rows.extend(run_point(model, tokenizer, arguments.model, seed, target_tokens, fanout))
+        with (arguments.output / "rows.csv").open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=tuple(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    session_rows = build_session_rows(rows)
+    with (arguments.output / "session_rows.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=tuple(session_rows[0]))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(session_rows)
     summary = summarize(rows, arguments.model, seeds)
     (arguments.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    plot(rows, arguments.output)
+    plot(rows, session_rows, arguments.output)
     print(json.dumps(summary, indent=2))
 
 

@@ -24,8 +24,29 @@ python experiments/paper9_subagents/run_scrb.py `
   --output docs/papers/shared/results/paper9_subagents/scrb_v1
 ```
 
-The live-engine and natural coding-agent phases remain separate gates. They
-must not reuse the controlled simulator's latency numbers as measurements.
+Live-engine and natural-source phases remain separate from SCRB. They must not
+reuse the controlled simulator's latency numbers as measurements, and the
+tracked-source cohort is not an autonomous coding-agent success benchmark.
+
+The tracked-source natural workload exercises the real callback scheduler and
+completed-child selectors without claiming autonomous coding success:
+
+```powershell
+$env:PYTHONPATH = "src"
+python experiments/paper9_subagents/run_natural_repository_workload.py
+```
+
+On Apple Silicon, the live MLX benchmark freezes source/query tokens and
+compares one-shot text, host split-prefill, memoized text re-prefill, typed
+record re-prefill, and immutable native K/V reuse:
+
+```bash
+PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
+  --shared-tokens 512,2048,8192,32768 \
+  --fanouts 1,2,4,8,16 \
+  --seeds 11,23,37,71,101 \
+  --output docs/papers/shared/results/paper9_subagents/mlx_live_v1
+```
 
 An instrumentation-only audit can be run against Paper 4.5 trajectory exports:
 

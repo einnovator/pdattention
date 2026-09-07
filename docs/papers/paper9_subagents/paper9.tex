@@ -200,6 +200,8 @@ AgentStartRecord
   agent_uuid
   session_uuid
   parent_agent_uuid
+  additional_parent_agent_uuids[]
+  peer_agent_uuids[]
   parent_task_uuid?
   spawn_call_record_uuid?
   model_descriptor
@@ -208,9 +210,18 @@ AgentStartRecord
   context_policy
 \end{lstlisting}
 
-A corresponding \texttt{AgentStopRecord} captures status and typed result, summary, and artifact references. Completed child branches can remain externally addressable even if no longer active.
+A corresponding \texttt{AgentStopRecord} captures status and typed result,
+summary, and artifact references. Completed child branches can remain
+externally addressable even if no longer active. \texttt{AgentLinkRecord}
+events add an extra parent or a symmetric peer edge and make those topology
+changes replayable.
 
-The resulting context topology may be a tree under simple delegation, or a DAG if later semantics permit shared tasks, joins, or explicitly shared context branches.
+The implementation preserves one primary spawn parent for compatibility and
+supports additional parents for explicit DAG joins. Ancestor traversal follows
+all parents, while the historical \texttt{lineage()} call preserves the primary
+chain. Peer links are separate: sharing a parent does not make siblings visible,
+and adding a peer edge does not bypass either stream's visibility policy. Cycle
+checks reject invalid parent links.
 
 \section{Configurable Subagent Semantics}
 
@@ -235,7 +246,8 @@ Workspace & shared; isolated; worktree/branch; explicit \\
 Lifetime & one-shot; resumable \\
 Recursion & prohibited; bounded; unrestricted \\
 Ancestor visibility & none; selected; routable; inherited \\
-Descendant visibility & none; completed-only; routable \\
+    Descendant visibility & none; completed-only; routable \\
+    Peer visibility & none; selected; completed-only; routable \\
 \bottomrule
 \end{tabular}
 \caption{Subagent semantics exposed by the harness SDK. Paper 9 need not implement all modes initially.}
@@ -295,6 +307,25 @@ where the third set remains external until routed/materialized.
 The most important mode is \texttt{ROUTABLE}: ancestor records remain candidates for PRA selection but are not physically inserted into the child's prompt or K/V until needed.
 
 The reverse direction is also useful. A parent may route into completed descendant records when a later synthesis question requires detailed evidence unavailable in the child's returned summary.
+
+Validity and selection are intentionally ordered rather than fused. The graph
+first removes records that are not visible under lineage, completion, and peer
+policy. Resource consistency then rejects stale records. Only this authorized,
+valid candidate set reaches the descendant router. Paper 9 implements
+all-valid, lexical, learned pairwise-linear, and oracle selectors. The learned
+ranker uses bounded lexical, record-type, completion, and size features; it
+does not add a second language model to the request path.
+
+Parallelism remains a harness concern. The public scheduler accepts any child
+callback and executes it sequentially or through a bounded worker pool. This is
+the integration seam for an existing agent loop rather than a new planner:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+harness.run_subagents(
+    parent_uuid, child_specs,
+    lambda child, pra: existing_agent_loop(child, pra),
+    parallel=True, max_workers=8)
+\end{lstlisting}
 
 \section{Three Levels of Cross-Agent Reuse}
 
@@ -508,16 +539,23 @@ Completed-descendant visibility & Experimental & Runtime contract tests \\
 Exact tool/payload reuse & Experimental & Runtime tests and SCRB \\
 Resource-level and external validation & Experimental & Mutation and validator tests \\
 Native K/V compatibility callback & Experimental & Receipt and exactly-once tests \\
-Parallel scheduler and sibling communication & Harness-owned / open & No end-to-end cohort \\
-General DAG joins & Not implemented & Deferred \\
-Natural subagent campaign & Open & Single-agent opportunity audit only \\
+Sequential/parallel callback scheduler & Experimental & Five-seed tracked-source cohort \\
+Explicit DAG joins and peer visibility & Experimental & Cycle, isolation, and replay tests \\
+Validity-first descendant selectors & Experimental & Lexical, learned, and oracle cohort \\
+Live MLX native K/V reuse & Experimental & Host-model prefill and logit-parity sweep \\
+Autonomous multi-harness campaign & Open & Generic callback only \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \section{Non-Goals}
 
-The first Paper 9 implementation does not attempt cross-session long-term memory, arbitrary distributed cache coherence, automatic semantic equivalence between different tool calls, database transaction semantics, general peer-to-peer multi-agent communication, or a new delegation/planning algorithm. These are separable research directions.
+The first Paper 9 implementation does not attempt cross-session long-term
+memory, arbitrary distributed cache coherence, automatic semantic equivalence
+between different tool calls, database transaction semantics, unrestricted
+peer-to-peer messaging, or a new delegation/planning algorithm. Explicit peer
+record visibility is narrower than general agent communication. These are
+separable research directions.
 
 \section{Controlled Results}
 
@@ -589,6 +627,16 @@ produces 16 stale reads. The production runtime check independently confirms
 the same decision sequence: two executions for $A$, one for $B$, and explicit
 \texttt{WRITE\_INVALIDATION} for the rejected reuse.
 
+The executable contract suite also covers the adversarial cases omitted by the
+aggregate fixture. Exact repeated reads hit; a relevant shared-workspace write
+misses; an unrelated write preserves the hit; an external resource misses
+without a successful version validator; a sibling write in another explicitly
+identified worktree does not invalidate an ancestry-scoped snapshot; and
+\texttt{UNKNOWN} effects fail closed. A compatible native receipt is attached
+once per target even when the payload is requested repeatedly. DAG joins,
+completed-only peers, cycle rejection, and graph replay are tested separately.
+These are runtime contracts rather than probabilistic safety estimates.
+
 The completed-child fixture asks a parent for exact detail omitted from roughly
 half of compact summaries. Summary-only return reaches 55.2\% over 500 seeded
 cases. Full transcript copy and replay reach 100\% while adding 16,384 tokens
@@ -604,6 +652,60 @@ learned descendant selection remains unmeasured.
 reads of the unsafe control. Right: controlled completed-child evidence
 accuracy versus parent-context growth.}
 \label{fig:scrb-safety}
+\end{figure}
+
+\subsection{Tracked-source sequential and parallel cohort}
+
+The next cohort replaces generated payloads with 11 tracked PRA modules. A
+parent reads the repository README and build configuration, then delegates one
+module-level investigation to each child. Every child requests the two common
+orientation records through the ordinary tool interface before reading its own
+module. We run the same workload sequentially and with an eight-worker harness
+pool for five seeds. This is a natural-source systems cohort with deterministic
+callbacks, not an autonomous coding-task success benchmark.
+
+Each run issues 35 logical reads but only 13 physical file reads: the parent
+acquires two shared records once, all 22 child orientation requests reuse them,
+and each child reads one distinct source file. Across the ten runs this produces
+220 valid ancestor hits. Mean observed harness time is 23.4 ms sequential and
+28.2 ms parallel. The files are local and small enough that thread scheduling
+dominates; Paper 9 therefore claims correctness and integration coverage here,
+not a parallel speedup.
+
+After children stop, the parent asks held-out questions about their detailed
+findings. Table~\ref{tab:natural-routing} separates validity from selection.
+All-valid preserves every answer record but exposes 24,262 source tokens per
+query. Bounded lexical and learned routing each recover 60.0\% at one record;
+the learned linear selector does not improve on lexical overlap on this small
+cohort. The oracle confirms that one relevant record is sufficient, reaching
+100\% recall with 2,160 tokens on average. Thus selective permeability is
+implemented, but automatic descendant discovery remains the quality bottleneck.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Completed-child selection on tracked repository sources. Results pool
+40 held-out query runs across five workload seeds and two schedulers.}
+\label{tab:natural-routing}
+\begin{tabular}{lrrr}
+\toprule
+Selector & Evidence recall & Useful precision & Selected tokens \\
+\midrule
+All valid records & 1.000 & 0.091 & 24,262 \\
+Lexical top-1 & 0.600 & 0.600 & 2,501 \\
+Learned top-1 & 0.600 & 0.600 & 2,501 \\
+Oracle top-1 & 1.000 & 1.000 & 2,160 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper9_subagents/natural_repository_v1/natural_repository_routing.pdf}
+\caption{Tracked-source completed-child routing. The all-valid arm preserves
+recall by materializing the full valid surface; bounded selectors reduce
+context substantially but leave a measurable oracle gap.}
+\label{fig:natural-routing}
 \end{figure}
 
 \subsection{Natural trace opportunity audit}
