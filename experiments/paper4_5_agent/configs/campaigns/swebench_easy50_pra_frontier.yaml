@@ -66,11 +66,11 @@ cells:
     gateway_pra_enabled: false
     gateway_mode: G00
     minimum_baseline_score: 0.20
-    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/gateway_passthrough, --run-id, easy50-gateway-passthrough, --mode, gateway-passthrough, --base-url, http://127.0.0.1:8080/v1]
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/gateway_passthrough, --run-id, easy50-gateway-passthrough, --mode, gateway-passthrough]
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/gateway_passthrough/official_result.json, require_exact_cohort: true}
   - cell_id: easy50-truncation-50
-    stage: B
+    stage: D
     mode: truncation
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
@@ -89,7 +89,7 @@ cells:
     mode: gateway_pra
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
-    priority: 50
+    priority: 20
     baseline_cell: easy50-no-pra
     agent_id: mini-swe-agent-2.4.6
     connection: gateway
@@ -97,11 +97,11 @@ cells:
     gateway_pra_enabled: true
     gateway_mode: G10
     minimum_baseline_score: 0.20
-    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_50, --run-id, easy50-pra-selected-50, --mode, gateway-pra, --budget-fraction, "0.5", --base-url, http://127.0.0.1:8081/v1]
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_50, --run-id, easy50-pra-selected-50, --mode, gateway-pra, --budget-fraction, "0.5"]
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_50/official_result.json, require_exact_cohort: true}
   - cell_id: easy50-native-pra-direct-50
-    stage: B
+    stage: D
     mode: native_pra
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
@@ -118,7 +118,7 @@ cells:
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/native_pra_direct_50/official_result.json, require_exact_cohort: true}
   - cell_id: easy50-native-pra-gateway-50
-    stage: B
+    stage: D
     mode: gateway_native_pra
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: product_end_to_end
@@ -137,7 +137,7 @@ cells:
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/native_pra_gateway_50/official_result.json, require_exact_cohort: true}
   - cell_id: easy50-native-pra-gateway-equivalence-50
-    stage: B
+    stage: D
     mode: gateway_native_pra
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: transport_equivalence
@@ -181,7 +181,7 @@ cells:
     gateway_pra_enabled: true
     gateway_mode: G10
     minimum_baseline_score: 0.20
-    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_25, --run-id, easy50-pra-selected-25, --mode, gateway-pra, --budget-fraction, "0.25", --base-url, http://127.0.0.1:8081/v1]
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_25, --run-id, easy50-pra-selected-25, --mode, gateway-pra, --budget-fraction, "0.25"]
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_25/official_result.json, require_exact_cohort: true}
   - cell_id: easy50-truncation-12-5
@@ -189,6 +189,7 @@ cells:
     mode: truncation
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
+    priority: 50
     baseline_cell: easy50-no-pra
     agent_id: mini-swe-agent-2.4.6
     connection: direct
@@ -203,6 +204,7 @@ cells:
     mode: gateway_pra
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
+    priority: 60
     baseline_cell: easy50-no-pra
     agent_id: mini-swe-agent-2.4.6
     connection: gateway
@@ -210,6 +212,6 @@ cells:
     gateway_pra_enabled: true
     gateway_mode: G10
     minimum_baseline_score: 0.20
-    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_12_5, --run-id, easy50-pra-selected-12-5, --mode, gateway-pra, --budget-fraction, "0.125", --base-url, http://127.0.0.1:8081/v1]
+    command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_12_5, --run-id, easy50-pra-selected-12-5, --mode, gateway-pra, --budget-fraction, "0.125"]
     timeout_seconds: 64800
     result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/pra_selected_12_5/official_result.json, require_exact_cohort: true}

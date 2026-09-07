@@ -410,12 +410,32 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert equivalence.paired_cell == direct.cell_id
     assert "--selection-record" in direct.command
     assert "--selection-replay" in equivalence.command
-    priorities = {cell.cell_id: cell.priority for cell in campaign.cells}
-    assert priorities["easy50-gateway-passthrough"] < priorities[direct.cell_id]
-    assert priorities[direct.cell_id] < priorities[equivalence.cell_id]
-    assert priorities[equivalence.cell_id] < priorities[gateway.cell_id]
-    assert priorities[gateway.cell_id] < priorities["easy50-truncation-50"]
-    assert priorities["easy50-truncation-50"] < priorities["easy50-pra-selected-50"]
+    stage_order = {"A": 0, "B": 1, "C": 2, "D": 3}
+    declared_order = {cell.cell_id: index for index, cell in enumerate(campaign.cells)}
+
+    def schedule_key(cell_id: str) -> tuple[int, int, int]:
+        cell = next(row for row in campaign.cells if row.cell_id == cell_id)
+        return stage_order[cell.stage], cell.priority, declared_order[cell_id]
+
+    text_frontier = [
+        "easy50-gateway-passthrough",
+        "easy50-pra-selected-50",
+        "easy50-truncation-25",
+        "easy50-pra-selected-25",
+    ]
+    assert sorted(text_frontier, key=schedule_key) == text_frontier
+    assert all(
+        schedule_key("easy50-pra-selected-25") < schedule_key(cell.cell_id)
+        for cell in (direct, equivalence, gateway)
+    )
+    for cell_id in (
+        "easy50-gateway-passthrough",
+        "easy50-pra-selected-50",
+        "easy50-pra-selected-25",
+    ):
+        command = next(cell.command for cell in campaign.cells if cell.cell_id == cell_id)
+        assert "http://127.0.0.1:8080/v1" not in command
+        assert "http://127.0.0.1:8081/v1" not in command
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
