@@ -10,6 +10,7 @@ from pra_hf.rag_evaluation import (
     ContextCondition,
     CrossEncoderRAGSelector,
     FirstStageBM25,
+    FirstStageBM25V2,
     PRAHybridSelector,
     RAGFailureClass,
     RAGDocument,
@@ -63,6 +64,22 @@ def test_candidate_receipt_roundtrip_and_document_integrity() -> None:
     changed = {**documents, "date": replace(documents["date"], text="Changed source")}
     with pytest.raises(ValueError, match="changed after retrieval"):
         restored.validate_documents(changed)
+
+
+def test_bm25_v2_counts_document_occurrence_and_preserves_v1_receipts() -> None:
+    documents = (
+        RAGDocument("repeated", "Repeated", "rare rare rare common"),
+        RAGDocument("other", "Other", "common ordinary terms"),
+    )
+    legacy = FirstStageBM25(documents)
+    corrected = FirstStageBM25V2(documents)
+
+    assert legacy.document_frequency["rare"] == 3
+    assert corrected.document_frequency["rare"] == 1
+    assert corrected.scores("rare")["repeated"] > legacy.scores("rare")["repeated"]
+    assert corrected.scores("rare common") == corrected.scores("common rare")
+    assert corrected.revision != legacy.revision
+    assert corrected.index_sha256 != legacy.index_sha256
 
 
 def test_receipt_rejects_tampering() -> None:

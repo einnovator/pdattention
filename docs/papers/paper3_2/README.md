@@ -147,6 +147,31 @@ The completed next-iteration evidence is organized under
 - `crossdoc_composition/scale/` contains three-question Qwen3-4B, Qwen3-8B,
   and Llama-3.1-8B mechanism pilots. These runs are cross-model diagnostics,
   not powered quality estimates.
+- `protocol_reconciliation/` audits the apparently different Paper 3.2 and
+  Paper 3.3 packed-RAG endpoints without introducing a new PRA mechanism. It
+  evaluates both historical cohorts with corrected BM25-v2 at matched 512 and
+  1,024 source-token budgets, then repeats the old cohort with Paper 3.2's
+  original chunk geometry. Packed and independent conditions share one frozen
+  selection receipt in every cell.
+
+Run the protocol reconciliation with the hash-linked Paper 3.3 selection
+anchor retained in that directory:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper3_2_rag.run_protocol_reconciliation \
+  --paper33-selection-anchor \
+    docs/papers/shared/results/paper3_2_rag/protocol_reconciliation/paper3_3_test_selection_anchor.jsonl \
+  --reranker-device mps \
+  --output .runs/paper3_2_protocol_reconciliation
+PYTHONPATH=src:. python -m experiments.paper3_2_rag.summarize_protocol_reconciliation \
+  --run-dir .runs/paper3_2_protocol_reconciliation \
+  --paper32-manifest \
+    docs/papers/shared/results/paper3_2_rag/crossdoc_adapter/qwen3_1_7b_rank8_five_seed/manifest.json \
+  --paper33-summary \
+    docs/papers/shared/results/paper3_2_rag/protocol_reconciliation/paper3_3_reported_summary.json \
+  --output-dir \
+    docs/papers/shared/results/paper3_2_rag/protocol_reconciliation
+```
 
 First regenerate the seed-aware aggregates from the five raw manifests. The
 aggregator retains seed summaries and reports deterministic seed-bootstrap

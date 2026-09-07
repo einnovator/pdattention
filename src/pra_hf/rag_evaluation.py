@@ -374,6 +374,60 @@ class FirstStageBM25:
         )
 
 
+class FirstStageBM25V2(FirstStageBM25):
+    """Corrected, deterministic BM25 used by the Paper 3.2/3.3 audit.
+
+    Version 1 accidentally accumulated term frequency rather than document
+    occurrence when computing IDF and iterated query terms through an unordered
+    set.  Keeping the corrected implementation under a new class preserves the
+    reproducibility of historical v1 receipts while making the repair explicit
+    in every new candidate receipt.
+    """
+
+    revision = "pra_bm25_v2_k1.2_b0.75_document_df_sorted_query"
+
+    def __init__(self, documents: Sequence[RAGDocument]) -> None:
+        super().__init__(documents)
+        self.document_frequency = Counter()
+        for frequencies in self.term_frequencies.values():
+            self.document_frequency.update(frequencies.keys())
+        self.index_sha256 = _digest(
+            {
+                "revision": self.revision,
+                "documents": [
+                    (document.document_id, document.fingerprint)
+                    for document in self.documents
+                ],
+            }
+        )
+
+    def scores(self, query: str) -> Mapping[str, float]:
+        query_terms = tuple(sorted(set(_terms(query))))
+        count = max(len(self.documents), 1)
+        scores: dict[str, float] = {}
+        for document_id, frequencies in self.term_frequencies.items():
+            score = 0.0
+            for term in query_terms:
+                frequency = frequencies.get(term, 0)
+                if not frequency:
+                    continue
+                document_frequency = self.document_frequency.get(term, 0)
+                inverse = math.log(
+                    1.0
+                    + (count - document_frequency + 0.5)
+                    / (document_frequency + 0.5)
+                )
+                denominator = frequency + 1.2 * (
+                    0.25
+                    + 0.75
+                    * self.lengths[document_id]
+                    / max(self.average_length, 1.0)
+                )
+                score += inverse * frequency * 2.2 / denominator
+            scores[document_id] = score
+        return scores
+
+
 def make_candidate_receipt(
     *,
     dataset: str,
