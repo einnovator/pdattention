@@ -104,7 +104,7 @@ def shared_text(tokenizer, target_tokens: int, seed: int) -> str:
 
 def run_point(
     model, tokenizer, model_id: str, model_revision: str, seed: int,
-    target_tokens: int, fanout: int,
+    target_tokens: int, fanout: int, *, include_one_shot: bool = True,
 ) -> list[dict]:
     import mlx.core as mx
 
@@ -147,8 +147,9 @@ def run_point(
         full_ids = [*source_ids, *query_ids]
 
         # A: no reuse. This repeats the exact selected source in each child.
-        isolated_ms, isolated_logits = timed_forward(model, full_ids)
         split_ms, split_logits = timed_split_forward(model, source_ids, query_ids)
+        if include_one_shot:
+            isolated_ms, isolated_logits = timed_forward(model, full_ids)
 
         # B: ordinary result memoization still serializes and prefills the text.
         lookup_started = time.perf_counter()
@@ -159,7 +160,7 @@ def run_point(
             allow_native_kv_reuse=False,
         )
         memo_lookup_ms = (time.perf_counter() - lookup_started) * 1000.0
-        memo_ms, memo_logits = timed_forward(model, full_ids)
+        memo_ms, memo_logits = timed_split_forward(model, source_ids, query_ids)
 
         # C: a visible typed record is reused, but execution remains E0 text.
         record_lookup_started = time.perf_counter()
@@ -170,7 +171,7 @@ def run_point(
             allow_native_kv_reuse=False,
         )
         record_lookup_ms = (time.perf_counter() - record_lookup_started) * 1000.0
-        record_ms, record_logits = timed_forward(model, full_ids)
+        record_ms, record_logits = timed_split_forward(model, source_ids, query_ids)
 
         # D: the same typed record attaches immutable host-native K/V by ref.
         native_lookup_started = time.perf_counter()
@@ -196,13 +197,14 @@ def run_point(
             "one_time_native_encode_ms": encode_ms,
             "native_kv_bytes": native.nbytes,
         }
-        values = (
-            ("isolated_text", isolated_ms, 0.0, len(full_ids), isolated_logits),
+        values = [
             ("host_split_text", split_ms, 0.0, len(full_ids), split_logits),
             ("harness_memo_text", memo_ms, memo_lookup_ms, len(full_ids), memo_logits),
             ("pra_record_reprefill", record_ms, record_lookup_ms, len(full_ids), record_logits),
             ("pra_native_kv", native_ms, native_lookup_ms, len(query_ids), native_logits),
-        )
+        ]
+        if include_one_shot:
+            values.insert(0, ("isolated_text", isolated_ms, 0.0, len(full_ids), isolated_logits))
         for condition, model_ms, route_ms, physical_tokens, logits in values:
             rows.append(
                 {
@@ -387,6 +389,7 @@ def main() -> None:
     parser.add_argument("--model-revision", default="UNKNOWN")
     parser.add_argument("--analyze-existing", action="store_true")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--omit-one-shot", action="store_true")
     arguments = parser.parse_args()
     seeds = tuple(int(value) for value in arguments.seeds.split(",") if value)
     arguments.output.mkdir(parents=True, exist_ok=True)
@@ -415,6 +418,7 @@ def main() -> None:
                         run_point(
                             model, tokenizer, arguments.model, arguments.model_revision,
                             seed, target_tokens, fanout,
+                            include_one_shot=not arguments.omit_one_shot,
                         )
                     )
                     write_rows(arguments.output / "rows.csv", rows)
