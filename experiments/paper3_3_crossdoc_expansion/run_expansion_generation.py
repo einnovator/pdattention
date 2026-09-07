@@ -71,6 +71,7 @@ from pra_hf.rag_mlx_native import (
     encode_native_memory_with_mask,
     rebind_native_memories_to_receipt,
 )
+from pra_hf.rag_retrieval import SentenceTransformerEmbedder
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     linked_pair_interaction_plan,
@@ -182,6 +183,9 @@ def main() -> None:
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision", default="main")
     parser.add_argument("--reranker-device", default="auto")
+    parser.add_argument("--dense-model", default="BAAI/bge-base-en-v1.5")
+    parser.add_argument("--dense-revision", default="main")
+    parser.add_argument("--dense-device", default="auto")
     parser.add_argument(
         "--mode", type=CrossDocumentExpansionMode, default=CrossDocumentExpansionMode.HYBRID_RRF
     )
@@ -208,6 +212,7 @@ def main() -> None:
 
     model_revision = _resolve_hf_revision(args.model, args.model_revision)
     reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
+    dense_revision = _resolve_hf_revision(args.dense_model, args.dense_revision)
     backend = PersistentMLXBackend(
         args.model, model_revision, args.max_new_tokens, native_cache_unit="chunk"
     )
@@ -225,7 +230,15 @@ def main() -> None:
         model_id=args.reranker,
         revision=reranker_revision,
         device=_resolve_reranker_device(args.reranker_device),
-        name_prefix="paper3_3_crossdoc_generation",
+        # Match the frontier label so its frozen selection cache can be replayed
+        # without weakening the candidate/selector provenance checks.
+        name_prefix="paper3_3_crossdoc_expansion",
+    )
+    semantic_encoder = SentenceTransformerEmbedder(
+        args.dense_model,
+        revision=dense_revision,
+        device=_resolve_reranker_device(args.dense_device),
+        query_prefix="Represent this sentence for searching relevant passages: ",
     )
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     selection_cache = load_selection_cache(args.selection_cache)
@@ -296,6 +309,7 @@ def main() -> None:
                 granularity=args.granularity,
                 budget=budget,
             ),
+            semantic_encoder=semantic_encoder,
             allow_experimental=True,
         )
         expansion = CrossDocumentExpansionRuntime().expand(request, policy)
@@ -456,6 +470,8 @@ def main() -> None:
         "model_revision": model_revision,
         "reranker": args.reranker,
         "reranker_revision": reranker_revision,
+        "dense_encoder": semantic_encoder.identity,
+        "dense_revision": dense_revision,
         "split": split_metadata,
         "seed": args.seed,
         "selection_cache": str(args.selection_cache) if args.selection_cache else None,

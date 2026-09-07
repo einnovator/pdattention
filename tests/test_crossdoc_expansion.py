@@ -200,6 +200,39 @@ def test_hybrid_rrf_persists_independent_channel_ranks() -> None:
     }
 
 
+def test_dense_policy_batches_documents_and_identifies_encoder_revision() -> None:
+    request, _ = _fixture()
+
+    class RecordingEncoder:
+        identity = "fixture-dense@abc123"
+
+        def __init__(self) -> None:
+            self.query_calls = 0
+            self.document_batches = []
+
+        def encode_query(self, text):
+            self.query_calls += 1
+            return (1.0, float("amber" in text.casefold()))
+
+        def encode_documents(self, texts):
+            self.document_batches.append(tuple(texts))
+            return tuple((1.0, float("amber" in text.casefold())) for text in texts)
+
+    encoder = RecordingEncoder()
+    policy = BuiltinCrossDocumentExpansionPolicy(
+        CrossDocumentExpansionConfig(mode="dense", budget=request.budget),
+        semantic_encoder=encoder,
+    )
+
+    candidates = policy.propose(request)
+
+    assert candidates
+    assert encoder.query_calls == 1 + len(request.selected_records)
+    assert len(encoder.document_batches) == 1
+    assert len(encoder.document_batches[0]) == 6
+    assert policy.revision.endswith("+fixture-dense@abc123")
+
+
 def test_experimental_modes_fail_closed_in_sdk_factory() -> None:
     with pytest.raises(ValueError, match="experiment/debug"):
         build_cross_document_expansion_policy(CrossDocumentExpansionConfig(mode="oracle"))

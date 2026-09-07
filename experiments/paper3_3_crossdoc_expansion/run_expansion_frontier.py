@@ -53,6 +53,7 @@ from pra_hf.rag_evaluation import (
     prepare_candidate_context,
 )
 from pra_hf.rag_record_runtime import document_record_uri
+from pra_hf.rag_retrieval import SentenceTransformerEmbedder
 
 
 SCHEMA_VERSION = "paper3.3-crossdoc-expansion-frontier-v1"
@@ -472,6 +473,7 @@ def evaluate_question(
     top_ks: Sequence[int],
     budgets: Sequence[int],
     all_candidate_kv_resident: bool,
+    semantic_encoder=None,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     records = _selected_records(dataset, context.chunks)
     if len(records) < 2:
@@ -530,7 +532,9 @@ def evaluate_question(
                             budget=budget,
                         )
                         policy = build_cross_document_expansion_policy(
-                            config, allow_experimental=True
+                            config,
+                            semantic_encoder=semantic_encoder,
+                            allow_experimental=True,
                         )
                         proposal_key = (
                             mode.value,
@@ -745,6 +749,9 @@ def main() -> None:
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision")
     parser.add_argument("--reranker-device", default="auto")
+    parser.add_argument("--dense-model", default="BAAI/bge-base-en-v1.5")
+    parser.add_argument("--dense-revision", default="main")
+    parser.add_argument("--dense-device", default="auto")
     parser.add_argument(
         "--modes",
         type=lambda value: _csv_enum(value, CrossDocumentExpansionMode),
@@ -807,6 +814,26 @@ def main() -> None:
     else:
         reranker_revision = None
         selector = StandardRAGSelector()
+    uses_dense = any(
+        mode
+        in {
+            CrossDocumentExpansionMode.DENSE,
+            CrossDocumentExpansionMode.HYBRID_RRF,
+            CrossDocumentExpansionMode.HYBRID_WEIGHTED,
+        }
+        for mode in args.modes
+    )
+    if uses_dense:
+        dense_revision = _resolve_hf_revision(args.dense_model, args.dense_revision)
+        semantic_encoder = SentenceTransformerEmbedder(
+            args.dense_model,
+            revision=dense_revision,
+            device=_resolve_reranker_device(args.dense_device),
+            query_prefix="Represent this sentence for searching relevant passages: ",
+        )
+    else:
+        dense_revision = None
+        semantic_encoder = None
 
     rows: list[dict[str, object]] = []
     receipts: list[dict[str, object]] = []
@@ -864,6 +891,7 @@ def main() -> None:
             top_ks=args.top_k,
             budgets=args.cross_token_budgets,
             all_candidate_kv_resident=args.all_candidate_kv_resident,
+            semantic_encoder=semantic_encoder,
         )
         rows.extend(question_rows)
         receipts.extend(question_receipts)
@@ -888,6 +916,10 @@ def main() -> None:
         "question_count_evaluated": len({row["example_id"] for row in rows}),
         "selector": selector.name,
         "reranker_revision": reranker_revision,
+        "dense_encoder": (
+            semantic_encoder.identity if semantic_encoder is not None else None
+        ),
+        "dense_revision": dense_revision,
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
         "chunker": asdict(chunker),

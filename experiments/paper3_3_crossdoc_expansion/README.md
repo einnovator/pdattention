@@ -21,11 +21,15 @@ Run the frozen natural validation cohort with the inherited strong reranker:
 PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.run_expansion_frontier \
   --dataset multihoprag --split-name validation --max-examples 150 \
   --selector cross_encoder --reranker BAAI/bge-reranker-v2-m3 \
+  --dense-model BAAI/bge-base-en-v1.5 \
   --selection-cache .runs/paper3_3_validation_selection.jsonl \
   --output docs/papers/shared/results/paper3_3_crossdoc_expansion/validation_n150
 ```
 
-The output records support-span/chunk recovery, distractor fraction, requested
+The dense and RRF arms use the pinned sentence-transformer's distinct query and
+document encodings. The runtime retains a dependency-free signed-hash fallback,
+but powered semantic results must identify the model and immutable revision in
+their summary. The output records support-span/chunk recovery, distractor fraction, requested
 and deduplicated expansion tokens, already-resident versus newly materialized
 native tokens, search latency, and complete policy receipts. These are
 retrieval/mechanism measurements. They are not answer F1 or an SDK promotion

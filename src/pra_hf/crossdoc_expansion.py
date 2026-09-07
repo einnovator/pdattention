@@ -354,7 +354,19 @@ class CrossDocumentExpansionPolicy(Protocol):
 
 
 CrossDocumentExpansionPlugin = CrossDocumentExpansionPolicy
-SemanticEncoder = Callable[[str], Sequence[float]]
+
+
+class SemanticEncoder(Protocol):
+    """Query/document encoder used by dense and hybrid expansion policies."""
+
+    identity: str
+
+    def encode_query(self, text: str) -> Sequence[float]: ...
+
+    def encode_documents(self, texts: Sequence[str]) -> Sequence[Sequence[float]]: ...
+
+
+SemanticEncoderLike = SemanticEncoder | Callable[[str], Sequence[float]]
 
 
 @lru_cache(maxsize=32_768)
@@ -401,17 +413,40 @@ class BuiltinCrossDocumentExpansionPolicy:
         self,
         config: CrossDocumentExpansionConfig,
         *,
-        semantic_encoder: SemanticEncoder | None = None,
+        semantic_encoder: SemanticEncoderLike | None = None,
         policy_revision: str = "builtin-v1",
     ) -> None:
         if config.mode is CrossDocumentExpansionMode.CUSTOM:
             raise ValueError("custom mode requires a caller-provided policy")
         self.config = config
         self.name = config.mode.value
-        self.revision = policy_revision
-        self._encode = semantic_encoder or (
-            lambda text: _cached_hashed_vector(text, config.dense_dimensions)
-        )
+        if semantic_encoder is None:
+            self.semantic_encoder_identity = (
+                f"signed-hash-{config.dense_dimensions}-v1"
+            )
+            self._encode_query = lambda text: _cached_hashed_vector(
+                text, config.dense_dimensions
+            )
+            self._encode_documents = lambda texts: tuple(
+                _cached_hashed_vector(text, config.dense_dimensions) for text in texts
+            )
+        elif hasattr(semantic_encoder, "encode_query") and hasattr(
+            semantic_encoder, "encode_documents"
+        ):
+            self.semantic_encoder_identity = str(
+                getattr(semantic_encoder, "identity", type(semantic_encoder).__name__)
+            )
+            self._encode_query = semantic_encoder.encode_query
+            self._encode_documents = semantic_encoder.encode_documents
+        else:
+            self.semantic_encoder_identity = str(
+                getattr(semantic_encoder, "identity", type(semantic_encoder).__name__)
+            )
+            self._encode_query = semantic_encoder
+            self._encode_documents = lambda texts: tuple(
+                semantic_encoder(text) for text in texts
+            )
+        self.revision = f"{policy_revision}+{self.semantic_encoder_identity}"
 
     def propose(
         self, request: CrossDocumentExpansionRequest
@@ -422,9 +457,18 @@ class BuiltinCrossDocumentExpansionPolicy:
             chunk for chunks in request.candidate_chunks_by_record.values() for chunk in chunks
         )
         lexical = _ChunkBM25(all_chunks)
-        query_vector = _normalize(self._encode(request.query))
+        query_vector = _normalize(self._encode_query(request.query))
+        encoded_targets = self._encode_documents(tuple(row.text for row in all_chunks))
+        if len(encoded_targets) != len(all_chunks):
+            raise ValueError("semantic encoder returned the wrong document count")
         target_vectors = {
-            row.chunk_id: _normalize(self._encode(row.text)) for row in all_chunks
+            row.chunk_id: _normalize(vector)
+            for row, vector in zip(all_chunks, encoded_targets)
+        }
+        source_vectors = {
+            span.chunk_id: _normalize(self._encode_query(span.text))
+            for record in request.selected_records
+            for span in record.spans
         }
         record_by_uri = {row.record_uri: row for row in request.selected_records}
         candidates: list[CrossDocumentCandidate] = []
@@ -435,7 +479,7 @@ class BuiltinCrossDocumentExpansionPolicy:
                 for source_span in source.spans:
                     cross_query = _cross_query(request.query, source_span.text, self.config)
                     keyterms = _keyterms(cross_query, lexical)
-                    source_vector = _normalize(self._encode(source_span.text))
+                    source_vector = source_vectors[source_span.chunk_id]
                     dense_query = _normalize(
                         self.config.dense_query_weight * query_vector
                         + self.config.dense_selected_weight * source_vector
@@ -850,7 +894,7 @@ def _uncovered_fragments(
 def build_cross_document_expansion_policy(
     config: CrossDocumentExpansionConfig,
     *,
-    semantic_encoder: SemanticEncoder | None = None,
+    semantic_encoder: SemanticEncoderLike | None = None,
     custom_policy: CrossDocumentExpansionPolicy | None = None,
     qualification: CrossDocumentPolicyQualification | None = None,
     allow_experimental: bool = False,
