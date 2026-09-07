@@ -1,4 +1,4 @@
-"""Build deterministic SWE-bench Verified Easy-20 and Easy-50 cohorts."""
+"""Build deterministic SWE-bench Verified Easy-10, Easy-20, and Easy-50 cohorts."""
 
 from __future__ import annotations
 
@@ -80,8 +80,8 @@ def build_card(
     }
 
 
-def generate(output: Path) -> tuple[Path, Path]:
-    """Download the pinned source and write nested Easy-20/Easy-50 cards."""
+def generate(output: Path) -> tuple[Path, ...]:
+    """Download the pinned source and write nested Easy-10/20/50 cards."""
 
     from datasets import load_dataset
 
@@ -89,12 +89,12 @@ def generate(output: Path) -> tuple[Path, Path]:
     eligible_count = sum(row.get("difficulty") == DIFFICULTY for row in rows)
     output.mkdir(parents=True, exist_ok=True)
     paths = []
-    for count in (20, 50):
+    for count in (10, 20, 50):
         path = output / f"swebench_verified_easy{count}.json"
         card = build_card(rows, count=count, eligible_count=eligible_count)
         path.write_text(json.dumps(card, indent=2) + "\n", encoding="utf-8")
         paths.append(path)
-    return paths[0], paths[1]
+    return tuple(paths)
 
 
 def main() -> None:

@@ -1,0 +1,87 @@
+schema_version: 1
+campaign_id: paper4-5-qwen35-27b-easy10-v1
+output_directory: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10
+baselines:
+  - baseline_id: qwen35-27b-easy10-mlx
+    admission_kind: local_calibration
+    source_url: https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified
+    source_revision: c104f840cc67f8b6eec6f759ebc8b2693d585d4a
+    benchmark_revision: c104f840cc67f8b6eec6f759ebc8b2693d585d4a
+    task_ids_sha256: c8554f3d54411814c8ae4dce68cc17b7eb20026bb4cf39d13b9c9203d18dd21c
+    task_ids_path: experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json
+    published_score: null
+    published_resolved: null
+    published_total: 10
+    minimum_admission_score: 0.10
+    maximum_admission_score: 0.90
+    benchmark: SWE-bench Verified Easy-10
+    dataset: princeton-nlp/SWE-bench_Verified
+    split: test
+    harness: mini-swe-agent
+    harness_version: 2.4.6
+    model: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    tokenizer_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    engine: mlx-lm
+    engine_version: 0.31.3
+    dtype: mixed
+    quantization: MLX-4bit
+    kv_cache_dtype: mixed
+    scaffold: swebench_backticks.yaml
+    context_limit: 32768
+    max_steps: 50
+    max_steps_absolute: 50
+    temperature: 0
+    function_calling: false
+    prefix_caching: true
+    tool_configuration: unmodified mini-swe-agent text/backticks bash tool
+    grading: SWE-bench 4.1.0 official Docker harness
+    notes:
+      - Local model and transport qualification on the frozen Easy-10 prefix.
+      - Native K/V is unavailable because Qwen3.5 also requires detached DeltaNet state.
+cells:
+  - cell_id: qwen35-easy10-no-pra
+    stage: A
+    mode: native
+    baseline_id: qwen35-27b-easy10-mlx
+    evidence_role: baseline_admission
+    priority: 0
+    agent_id: mini-swe-agent-2.4.6
+    connection: direct
+    engine_pra_enabled: false
+    gateway_pra_enabled: false
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/no_pra, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://192.168.1.102:18090/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-no-pra, --local-calibration]
+    timeout_seconds: 43200
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/no_pra/official_result.json, absolute_tolerance: 0, require_exact_cohort: true}
+  - cell_id: qwen35-easy10-g00
+    stage: B
+    mode: gateway_passthrough
+    baseline_id: qwen35-27b-easy10-mlx
+    baseline_cell: qwen35-easy10-no-pra
+    evidence_role: transport_qualification
+    priority: 10
+    agent_id: mini-swe-agent-2.4.6
+    connection: gateway
+    engine_pra_enabled: false
+    gateway_pra_enabled: false
+    gateway_mode: G00
+    minimum_baseline_score: 0.10
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/g00, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://127.0.0.1:18091/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-g00, --mode, gateway-passthrough, --local-calibration]
+    timeout_seconds: 43200
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/g00/official_result.json, require_exact_cohort: true}
+  - cell_id: qwen35-easy10-selected50
+    stage: B
+    mode: gateway_pra
+    baseline_id: qwen35-27b-easy10-mlx
+    baseline_cell: qwen35-easy10-no-pra
+    evidence_role: efficacy
+    priority: 20
+    agent_id: mini-swe-agent-2.4.6
+    connection: gateway
+    engine_pra_enabled: false
+    gateway_pra_enabled: true
+    gateway_mode: G10
+    minimum_baseline_score: 0.10
+    command: [python3, -m, experiments.paper4_5_agent.runners.swebench_verified, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy10.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/selected50, --model, mlx-community/Qwen3.5-27B-4bit, --served-model, mlx-community/Qwen3.5-27B-4bit, --model-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --tokenizer-revision, 45797d2985a12c55e6473686e9ea91b95e959553, --base-url, http://127.0.0.1:18092/v1, --engine, mlx-lm, --engine-version, 0.31.3, --dtype, mixed, --quantization, MLX-4bit, --kv-cache-dtype, mixed, --harness-version, 2.4.6, --grader-version, 4.1.0, --context-limit, "32768", --max-steps, "50", --chunk-size, "1", --workers, "1", --grader-workers, "2", --timeout-seconds, "3600", --run-id, qwen35-easy10-selected50, --mode, gateway-pra, --budget-fraction, "0.5", --local-calibration]
+    timeout_seconds: 43200
+    result: {path: docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/qwen35_27b_easy10/selected50/official_result.json, require_exact_cohort: true}

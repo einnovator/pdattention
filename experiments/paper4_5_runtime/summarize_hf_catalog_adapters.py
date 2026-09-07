@@ -18,6 +18,7 @@ MODELS = {
     "qwen3-4b": "Qwen3-4B",
     "qwen3-4b-mlx-8bit": "Qwen3-4B 8-bit",
     "qwen3-14b": "Qwen3-14B",
+    "qwen3.5-27b": "Qwen3.5-27B 4-bit",
     "llama3-8b": "Llama-3.1-8B",
     "gemma3-1b": "Gemma-3-1B",
 }
