@@ -43,7 +43,17 @@ from pra_hf.rag_evaluation import (
     make_candidate_receipt,
     prepare_candidate_context,
 )
-from pra_hf.rag_mlx_native import combine_native_memories, encode_native_memory
+from pra_hf.rag_composition import (
+    PositionPolicy,
+    RAGPRAProfile,
+    SelectedResource,
+    compose_resources,
+)
+from pra_hf.rag_mlx_native import (
+    PositionBindingMode,
+    encode_native_memory,
+    rebind_native_memories_to_receipt,
+)
 
 
 SCHEMA_VERSION = "paper3.2-paper3.3-protocol-reconciliation-v1"
@@ -256,6 +266,51 @@ def _context(
     selected = _select_under_budget(
         ranked, token_budget=token_budget, max_resources=max_resources
     )
+
+
+def _encode_independent(
+    backend: PersistentMLXBackend,
+    texts: Sequence[str],
+    record_ids: Sequence[str],
+    *,
+    selection_receipt_id: str,
+    revision: str,
+):
+    """Reproduce the source-local pre-RoPE realization used by both papers."""
+
+    segments = _token_segments(backend.tokenizer, texts)
+    resources = tuple(
+        SelectedResource(
+            resource_id=record_id,
+            chunk_id=record_id,
+            source_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            source_positions=tuple(range(len(segment))),
+            rank=rank,
+            score=1.0 / rank,
+        )
+        for rank, (record_id, text, segment) in enumerate(
+            zip(record_ids, texts, segments), 1
+        )
+    )
+    composition = compose_resources(
+        resources,
+        selection_receipt_id=selection_receipt_id,
+        profile=RAGPRAProfile.RAG_PLUS_PRA_NATIVE_REBOUND,
+        position_policy=PositionPolicy.GLOBAL_PACKED,
+        near_gap=0,
+    )
+    started = time.perf_counter()
+    pre_rope = tuple(
+        encode_native_memory(
+            backend.model,
+            segment,
+            position_binding_mode=PositionBindingMode.PRE_ROPE,
+            model_revision=revision,
+        )
+        for segment in segments
+    )
+    memory = rebind_native_memories_to_receipt(backend.model, pre_rope, composition)
+    return memory, (time.perf_counter() - started) * 1000.0, segments
     return PackedContext(
         condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
         chunks=selected,
@@ -516,18 +571,13 @@ def main() -> None:
             packed_execution = _execute(backend, question, packed_memory)
             packed_logits = packed_execution[2]
 
-            independent_started = time.perf_counter()
-            independent_memory = combine_native_memories(
-                tuple(
-                    encode_native_memory(
-                        backend.model, segment, model_revision=model_revision
-                    )
-                    for segment in segments
-                )
+            independent_memory, independent_encode_ms, _ = _encode_independent(
+                backend,
+                texts,
+                tuple(row.chunk.chunk_id for row in context.chunks),
+                selection_receipt_id=selection.receipt_id,
+                revision=model_revision,
             )
-            independent_encode_ms = (
-                time.perf_counter() - independent_started
-            ) * 1000.0
             independent_execution = _execute(backend, question, independent_memory)
 
             new_rows = (
