@@ -474,6 +474,7 @@ def evaluate_question(
     budgets: Sequence[int],
     all_candidate_kv_resident: bool,
     semantic_encoder=None,
+    policy_parameters: Mapping[str, float] | None = None,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     records = _selected_records(dataset, context.chunks)
     if len(records) < 2:
@@ -530,6 +531,7 @@ def evaluate_question(
                             direction=direction,
                             granularity=granularity,
                             budget=budget,
+                            **dict(policy_parameters or {}),
                         )
                         policy = build_cross_document_expansion_policy(
                             config,
@@ -752,12 +754,19 @@ def main() -> None:
     parser.add_argument("--dense-model", default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--dense-revision", default="main")
     parser.add_argument("--dense-device", default="auto")
+    parser.add_argument("--dense-query-weight", type=float, default=1.0)
+    parser.add_argument("--dense-selected-weight", type=float, default=1.0)
+    parser.add_argument("--rrf-constant", type=float, default=60.0)
+    parser.add_argument("--lexical-weight", type=float, default=1.0)
+    parser.add_argument("--dense-weight", type=float, default=1.0)
+    parser.add_argument("--query-relevance-weight", type=float, default=0.25)
+    parser.add_argument("--minimum-pair-query-score", type=float, default=0.0)
     parser.add_argument(
         "--modes",
         type=lambda value: _csv_enum(value, CrossDocumentExpansionMode),
         default=tuple(
             CrossDocumentExpansionMode(value)
-            for value in "none,lexical,dense,hybrid_rrf,entity,oracle".split(",")
+            for value in "none,lexical,dense,hybrid_rrf,hybrid_weighted,entity,oracle".split(",")
         ),
     )
     parser.add_argument(
@@ -838,6 +847,15 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     receipts: list[dict[str, object]] = []
     selection_cache = load_selection_cache(args.selection_cache)
+    policy_parameters = {
+        "dense_query_weight": args.dense_query_weight,
+        "dense_selected_weight": args.dense_selected_weight,
+        "rrf_constant": args.rrf_constant,
+        "lexical_weight": args.lexical_weight,
+        "dense_weight": args.dense_weight,
+        "query_relevance_weight": args.query_relevance_weight,
+        "minimum_pair_query_score": args.minimum_pair_query_score,
+    }
     started = time.time()
     for index, question in enumerate(questions, 1):
         print(f"[{index}/{len(questions)}] {question.example_id}", flush=True)
@@ -892,6 +910,7 @@ def main() -> None:
             budgets=args.cross_token_budgets,
             all_candidate_kv_resident=args.all_candidate_kv_resident,
             semantic_encoder=semantic_encoder,
+            policy_parameters=policy_parameters,
         )
         rows.extend(question_rows)
         receipts.extend(question_receipts)
@@ -920,6 +939,7 @@ def main() -> None:
             semantic_encoder.identity if semantic_encoder is not None else None
         ),
         "dense_revision": dense_revision,
+        "policy_parameters": policy_parameters,
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
         "chunker": asdict(chunker),

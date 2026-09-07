@@ -152,8 +152,10 @@ class CrossDocumentExpansionConfig:
             raise ValueError("cross-document weights must be finite and non-negative")
         if self.dense_query_weight + self.dense_selected_weight <= 0:
             raise ValueError("dense query and selected-span weights cannot both be zero")
-        if self.iteration_depth not in (1, 2):
-            raise ValueError("only one or two bounded expansion rounds are supported")
+        if self.iteration_depth != 1:
+            raise ValueError(
+                "iterative cross-document expansion is locked until the one-pass policy qualifies"
+            )
 
 
 @dataclass(frozen=True)

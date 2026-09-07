@@ -16,6 +16,7 @@ from .crossdoc_expansion import (
     CrossDocumentPolicyEvidence,
     CrossDocumentPolicyQualification,
     CrossDocumentSelectedRecord,
+    SemanticEncoder,
     build_cross_document_expansion_policy,
     qualify_cross_document_policy,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "CrossDocumentPolicyEvidence",
     "CrossDocumentPolicyQualification",
     "CrossDocumentSelectedRecord",
+    "SemanticEncoder",
     "DiscoveryCandidate",
     "GistIndex",
     "HierarchicalGistIndex",

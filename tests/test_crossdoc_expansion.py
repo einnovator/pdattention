@@ -254,6 +254,11 @@ def test_parameter_free_modes_require_a_passing_sdk_qualification() -> None:
     assert policy.name == "lexical"
 
 
+def test_second_expansion_round_fails_closed_until_implemented() -> None:
+    with pytest.raises(ValueError, match="iterative cross-document expansion is locked"):
+        CrossDocumentExpansionConfig(mode="lexical", iteration_depth=2)
+
+
 def test_custom_policy_requires_an_explicit_plugin() -> None:
     with pytest.raises(ValueError, match="custom_policy"):
         build_cross_document_expansion_policy(CrossDocumentExpansionConfig(mode="custom"))

@@ -186,6 +186,13 @@ def main() -> None:
     parser.add_argument("--dense-model", default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--dense-revision", default="main")
     parser.add_argument("--dense-device", default="auto")
+    parser.add_argument("--dense-query-weight", type=float, default=1.0)
+    parser.add_argument("--dense-selected-weight", type=float, default=1.0)
+    parser.add_argument("--rrf-constant", type=float, default=60.0)
+    parser.add_argument("--lexical-weight", type=float, default=1.0)
+    parser.add_argument("--dense-weight", type=float, default=1.0)
+    parser.add_argument("--query-relevance-weight", type=float, default=0.25)
+    parser.add_argument("--minimum-pair-query-score", type=float, default=0.0)
     parser.add_argument(
         "--mode", type=CrossDocumentExpansionMode, default=CrossDocumentExpansionMode.HYBRID_RRF
     )
@@ -255,6 +262,15 @@ def main() -> None:
     )
     chunker = ChunkerConfig(args.chunk_tokens, args.chunk_overlap)
     selection_cache = load_selection_cache(args.selection_cache)
+    policy_parameters = {
+        "dense_query_weight": args.dense_query_weight,
+        "dense_selected_weight": args.dense_selected_weight,
+        "rrf_constant": args.rrf_constant,
+        "lexical_weight": args.lexical_weight,
+        "dense_weight": args.dense_weight,
+        "query_relevance_weight": args.query_relevance_weight,
+        "minimum_pair_query_score": args.minimum_pair_query_score,
+    }
     rows: list[dict[str, object]] = []
     started = time.time()
 
@@ -321,6 +337,7 @@ def main() -> None:
                 direction=args.direction,
                 granularity=args.granularity,
                 budget=budget,
+                **policy_parameters,
             ),
             semantic_encoder=semantic_encoder,
             allow_experimental=True,
@@ -499,6 +516,7 @@ def main() -> None:
             "cross_token_budget": args.cross_token_budget,
             "boundary_tokens": args.boundary_tokens,
             "linked_edge_fraction": args.linked_edge_fraction,
+            **policy_parameters,
         },
         "examples": len({row["example_id"] for row in rows}),
         "elapsed_s": time.time() - started,
