@@ -14,7 +14,11 @@ history.
   oracle edge/mass sweeps, interaction localization on the inception cohort,
   and interventional target selection on ten frozen validation questions.
 - `MEASURED_POWERED`: the 150-question frozen-test comparison of raw attention,
-  pair-NLL, pair-JS, and pair-NLL-times-attention rankings.
+  pair-NLL, pair-JS, and pair-NLL-times-attention rankings; the corrected
+  BM25-v2 cross-document expansion validation/test frontiers; and the
+  150-question Qwen3-1.7B frozen generation and gold-support-oracle replays.
+- `MEASURED_REDUCED`: matched 30-question Qwen3-4B, Qwen3-8B, and
+  Llama-3.1-8B generation replays using the same frozen selection-cache digest.
 - `DESIGN_ONLY`: the query-conditioned learned pair selector. Training remains
   locked unless the oracle gate passes.
 
@@ -71,6 +75,23 @@ The canonical compact artifact is
 `../shared/results/paper3_3_sparse_crossdoc/interventional_test_n150/publication_summary.json`;
 it is hash-linked to the full 60 MB per-question manifest retained on the
 experiment host.
+
+## Retrieval-Guided Expansion Decision
+
+The corrected BM25-v2 validation sweep evaluates 221 configurations over 150
+questions. Dense selected-only search at `k=1` and a 64-source-token ceiling
+was frozen for test. It gained 2.94 validation support-span points, but only
+0.89 held-out points, while 95.3% of held-out admitted tokens were outside
+annotated support. The 64-token support oracle gained 9.83 held-out points.
+
+On 150 Qwen3-1.7B questions, direct dense expansion reduced F1 from 0.0896 to
+0.0761. Retrieval-linked pair SA restored F1 to 0.0874. Gold-support expansion
+also reduced F1, to 0.0829, while boundary SA restored it to 0.0895. Reduced
+Qwen3-4B, Qwen3-8B, and Llama-3.1-8B cohorts had inconsistent signs. Expansion,
+linked attention, recursive depth, and learned selection therefore remain
+research-only. The tracked artifacts are under
+`../shared/results/paper3_3_crossdoc_expansion/`; all model runs carry the
+same frozen selection-cache SHA-256.
 
 ## Reproduce
 

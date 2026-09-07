@@ -668,6 +668,100 @@ bootstrap calculations; they do not represent independently trained models.}
 \end{figure}
 \FloatBarrier
 
+\paragraph{Gold-support expansion oracle.}
+The matched 64-source-token oracle separates routing error from consumption.
+It adds 60.1 model-native tokens on average and raises retrieval support-span
+coverage by 9.83 points, yet expansion-only F1 falls from .0896 to .0829
+($-.0066$, 95\% interval $[-.0170,.0037]$) and official score falls from
+.4333 to .4000 ($-.0333$, interval $[-.0933,.0267]$). Linked pair SA restores
+F1 to .0888 and boundary SA to .0895; both overlap independent PRA. The packed
+endpoint is already slightly below independent PRA on this cohort, so a
+packed-gap-recovery ratio is not meaningful. More importantly, even correctly
+identified missing support does not improve absolute answer quality when it is
+merely appended as independently encoded native memory. The mechanism gate is
+therefore closed for both parameter-free and oracle expansion-only execution.
+
+\subsection{Reduced scale and family replication}
+
+We replay the identical selection-cache digest on 30 matched test questions
+with Qwen3-4B, Qwen3-8B, and Llama-3.1-8B-Instruct. These reduced cohorts test
+directional transfer; they do not have the power of the 150-question 1.7B run.
+Table~\ref{tab:expansion-ladder} reports paired percentage-point effects
+against each model's independent-PRA condition.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Model ladder effects versus independent PRA. Columns report F1
+changes for the three interventions and the expansion-only official-score
+change.}
+\label{tab:expansion-ladder}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & $n$ & Expansion F1 & Pair-SA F1 & Boundary F1 & Expansion official \\
+\midrule
+Qwen3-1.7B & 150 & $-1.35$ & $-0.21$ & $-0.17$ & $-6.00$ \\
+Qwen3-4B & 30 & $+0.64$ & $-1.31$ & $-0.65$ & $-3.33$ \\
+Qwen3-8B & 30 & $-0.03$ & $+0.92$ & $+0.81$ & $-3.33$ \\
+Llama-3.1-8B & 30 & $+2.78$ & $-3.39$ & $-4.85$ & $+3.33$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No intervention has a consistent sign across scale and family. The only F1
+interval excluding zero is the negative Qwen3-4B pair-SA effect,
+$[-2.83,-0.09]$ points. Llama expansion-only has the largest positive mean,
+but its interval is $[-8.42,13.73]$ points; the corresponding official-score
+interval is $[0,10]$ points. Qwen3-8B pair SA is directionally positive but
+also uncertain. These results reject a universal larger-model consumption
+claim and keep both expansion and linked attention outside the SDK default
+surface.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper3_3_crossdoc_expansion/model_ladder_dense64/model_ladder_effects.pdf}
+\caption{Paired generation effects across model scale and family. Error bars
+are conservative bootstrap envelopes. The 1.7B point uses 150 questions; the
+three qualification points use the same 30-question subset.}
+\label{fig:expansion-ladder}
+\end{figure}
+\FloatBarrier
+
+\subsection{SDK qualification decision}
+
+Table~\ref{tab:expansion-sdk-gate} applies the predeclared SDK gate. The
+implementation itself is reproducible and auditable, but neither dense
+expansion nor linked SA has a stable answer-quality advantage.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Cross-document expansion SDK qualification.}
+\label{tab:expansion-sdk-gate}
+\begin{tabular}{>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.09\linewidth}}
+\toprule
+Criterion & Result & Gate \\
+\midrule
+Pinned deterministic policy and immutable receipt & BGE revisions and cache digest recorded & Pass \\
+No test-set tuning & Validation-selected policy replayed unchanged & Pass \\
+At most 20\% extra native K/V & 12.65\% source-token fraction on test & Pass \\
+At least 50\% packed-gap F1 recovery & No positive packed gap; expansion lowers 1.7B F1 & Fail \\
+No meaningful quality regression & Negative 1.7B mean; inconsistent ladder & Fail \\
+Independent-seed stability & Bootstrap resampling only, not five model runs & Not met \\
+Bounded production latency & 370.3 ms preparation plus 249.5 ms exhaustive search & Not met \\
+Two sizes and cross-family check & Qwen 1.7B/4B/8B and Llama 8B & Pass \\
+Authorization, fallback, and audit receipt & Fail-closed runtime tests & Pass \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The stable public behavior remains \texttt{mode=none}. Expansion modes remain
+explicit research options, oracle access remains experiment-only, and
+iteration depth two stays rejected by validation until one-pass quality
+qualifies. A learned selector is likewise not unlocked: the failure now
+includes consumption of an oracle selection, not merely a weak
+parameter-free ranker.
+
 \section{Training Objective}
 
 The base model remains frozen initially.
@@ -1040,6 +1134,11 @@ test, causal rankings improve sparse mean quality but do not establish a
 monotonic frontier or a nonzero paired task-quality effect. We do not substitute
 either post-hoc observation for the prespecified gate.
 
+Retrieval-guided expansion also misses its separate promotion gate. The locked
+policy recovers evidence at a bounded token cost, but expansion-only generation
+does not recover 50\% of a packed-RAG F1 gap or avoid a negative 1.7B mean.
+The gold-support oracle shows that improving the router alone is insufficient.
+
 A stronger result matches packed RAG within uncertainty while preserving:
 \begin{itemize}[leftmargin=*]
     \item persistent native K/V reuse;
@@ -1089,6 +1188,17 @@ source state and pay only for a small request-specific neural ``join'' among
 selected resources, but that economic claim requires both powered quality and
 a real sparse execution path.
 
+Retrieval-guided expansion gives a more concrete decomposition. Its
+parameter-free router finds a statistically positive but small amount of
+missing support, with poor precision. Replacing it with a support oracle
+substantially improves evidence recovery but still does not improve
+expansion-only answers. Retrieval-linked pair or boundary attention then
+restores much of the lost quality. The sequence locates two distinct research
+problems: selecting useful peer intervals and contextualizing those intervals
+without rebuilding a dense packed prefix. Neither can be inferred from gold
+NLL alone, and the model ladder shows that neither has a model-independent
+sign.
+
 This would change the role of PRA from a cache/retrieval mechanism into a
 composable native-memory substrate:
 \[
@@ -1117,6 +1227,17 @@ independent PRA, every frontier remains non-monotonic, and the absolute gate is
 missed. Sparse causal headroom is credible; a qualified selector is not.
 Learned-selector training remains locked until a finer task-aware utility signal
 produces a stable frontier.
+
+The complementary expansion study reaches the same operational decision by a
+different route. Dense selected-only search gains 0.89 support-span points on
+held-out test at 12.65\% extra source tokens, but admits 95.3\% distractors and
+lowers 1.7B answer F1 when materialized independently. Gold-support expansion
+also lowers F1; retrieval-linked attention repairs the deficit but does not
+beat independent PRA within uncertainty. Qwen scale points and Llama-8B do not
+share a consistent effect. Paper~3.3 therefore establishes auditable sparse
+interaction and expansion candidates, not a deployable cross-document
+controller. The SDK default remains no expansion, oracle access remains
+experiment-only, and learned or recursive policies remain locked.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
@@ -1185,7 +1306,11 @@ linked pair and boundary plans are in \url{src/pra_hf/sparse_crossdoc.py}. The
 evidence frontier and native answer replay are respectively
 \url{experiments/paper3_3_crossdoc_expansion/run_expansion_frontier.py} and
 \url{experiments/paper3_3_crossdoc_expansion/run_expansion_generation.py}.
-Exact commands and
+Held-out retrieval, paired generation, and cross-model figures are reduced by
+the adjacent \url{summarize_expansion.py},
+\url{summarize_generation.py}, and
+\url{aggregate_generation_ladder.py}; each checks or propagates the frozen
+selection-cache digest. Exact commands and
 evidence labels appear in the experiment and paper README files.
 
 The tracked publication summary named in the README contains aggregate metrics,

@@ -137,7 +137,15 @@ def plot_generation(summary: Mapping[str, object], output: Path) -> None:
     import matplotlib.pyplot as plt
 
     rows = summary["absolute"]
-    labels = [str(row["condition"]).replace("_", "\n") for row in rows]
+    display_names = {
+        "CROSSDOC_EXPANSION_PAIR_SA": "Linked pair SA",
+        "CROSSDOC_EXPANSION_PAIR_SA_BOUNDARY": "Linked boundary SA",
+        "CROSSDOC_EXPANSION_TOP_ATTENTION": "Linked top-edge",
+        "EXPANSION_ONLY": "Expansion only",
+        "INDEPENDENT_PRA": "Independent PRA",
+        "PACKED_RAG": "Packed RAG",
+    }
+    labels = [display_names.get(str(row["condition"]), str(row["condition"])) for row in rows]
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)
     for axis, metric, title in zip(
         axes,
