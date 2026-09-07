@@ -266,6 +266,17 @@ def _context(
     selected = _select_under_budget(
         ranked, token_budget=token_budget, max_resources=max_resources
     )
+    return PackedContext(
+        condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
+        chunks=selected,
+        token_budget=token_budget,
+        packed_tokens=sum(row.chunk.token_count for row in selected),
+        candidate_tokens=prepared.candidate_tokens,
+        selector_latency_ms=selector_latency_ms,
+        index_build_ms=prepared.build_latency_ms,
+        selector_name=selector_name,
+        candidate_chunks=prepared.chunks,
+    )
 
 
 def _encode_independent(
@@ -311,17 +322,6 @@ def _encode_independent(
     )
     memory = rebind_native_memories_to_receipt(backend.model, pre_rope, composition)
     return memory, (time.perf_counter() - started) * 1000.0, segments
-    return PackedContext(
-        condition=ContextCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR,
-        chunks=selected,
-        token_budget=token_budget,
-        packed_tokens=sum(row.chunk.token_count for row in selected),
-        candidate_tokens=prepared.candidate_tokens,
-        selector_latency_ms=selector_latency_ms,
-        index_build_ms=prepared.build_latency_ms,
-        selector_name=selector_name,
-        candidate_chunks=prepared.chunks,
-    )
 
 
 def _selection_ids(row: Mapping[str, object]) -> tuple[str, ...]:
