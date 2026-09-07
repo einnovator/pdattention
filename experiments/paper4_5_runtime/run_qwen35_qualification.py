@@ -7,6 +7,7 @@ import json
 import math
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from statistics import fmean
 from typing import Any
@@ -95,7 +96,7 @@ def _prompt(tokenizer: Any, source: str, question: str) -> list[int]:
         )
         if isinstance(rendered, str):
             return list(tokenizer.encode(rendered, add_special_tokens=False))
-        if isinstance(rendered, dict):
+        if isinstance(rendered, Mapping):
             rendered = rendered["input_ids"]
         if hasattr(rendered, "tolist"):
             rendered = rendered.tolist()

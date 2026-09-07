@@ -1,3 +1,5 @@
+from collections import UserDict
+
 import pytest
 import torch
 
@@ -58,3 +60,14 @@ def test_prompt_tokenizes_string_returned_by_mlx_tokenizer_wrapper() -> None:
             return [4, 5, 6]
 
     assert _prompt(Tokenizer(), "evidence", "question") == [4, 5, 6]
+
+
+def test_prompt_accepts_batch_encoding_mapping() -> None:
+    class Tokenizer:
+        chat_template = "template"
+
+        @staticmethod
+        def apply_chat_template(*_args, **_kwargs):
+            return UserDict({"input_ids": [[7, 8, 9]]})
+
+    assert _prompt(Tokenizer(), "evidence", "question") == [7, 8, 9]
