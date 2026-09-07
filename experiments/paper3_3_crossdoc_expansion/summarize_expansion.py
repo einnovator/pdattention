@@ -129,6 +129,9 @@ def build_publication_summary(
             "split_digest": run["split_digest"],
             "selector": run["selector"],
             "reranker_revision": run["reranker_revision"],
+            "dense_encoder": run.get("dense_encoder"),
+            "dense_revision": run.get("dense_revision"),
+            "policy_parameters": run.get("policy_parameters"),
             "examples": run["question_count_evaluated"],
         },
         "selection_rule": {

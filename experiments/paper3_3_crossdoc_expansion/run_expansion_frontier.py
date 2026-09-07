@@ -60,6 +60,31 @@ SCHEMA_VERSION = "paper3.3-crossdoc-expansion-frontier-v1"
 SELECTION_CACHE_SCHEMA_VERSION = "paper3.3-frozen-selection-cache-v1"
 
 
+class CachedSemanticEncoder:
+    """Cache immutable sentence-transformer vectors across policy counterfactuals."""
+
+    def __init__(self, encoder: SentenceTransformerEmbedder) -> None:
+        self.encoder = encoder
+        self.identity = encoder.identity
+        self._queries: dict[str, tuple[float, ...]] = {}
+        self._documents: dict[str, tuple[float, ...]] = {}
+
+    def encode_query(self, text: str) -> tuple[float, ...]:
+        if text not in self._queries:
+            self._queries[text] = tuple(float(value) for value in self.encoder.encode_query(text))
+        return self._queries[text]
+
+    def encode_documents(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        missing = tuple(dict.fromkeys(text for text in texts if text not in self._documents))
+        if missing:
+            vectors = self.encoder.encode_documents(missing)
+            self._documents.update(
+                (text, tuple(float(value) for value in vector))
+                for text, vector in zip(missing, vectors)
+            )
+        return tuple(self._documents[text] for text in texts)
+
+
 class _FrozenProposalPolicy:
     """Replay one scored candidate tuple across counterfactual budgets."""
 
@@ -834,11 +859,13 @@ def main() -> None:
     )
     if uses_dense:
         dense_revision = _resolve_hf_revision(args.dense_model, args.dense_revision)
-        semantic_encoder = SentenceTransformerEmbedder(
-            args.dense_model,
-            revision=dense_revision,
-            device=_resolve_reranker_device(args.dense_device),
-            query_prefix="Represent this sentence for searching relevant passages: ",
+        semantic_encoder = CachedSemanticEncoder(
+            SentenceTransformerEmbedder(
+                args.dense_model,
+                revision=dense_revision,
+                device=_resolve_reranker_device(args.dense_device),
+                query_prefix="Represent this sentence for searching relevant passages: ",
+            )
         )
     else:
         dense_revision = None

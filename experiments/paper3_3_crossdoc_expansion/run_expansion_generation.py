@@ -23,6 +23,7 @@ from experiments.paper3_2_rag.run_composition_fidelity import (
 )
 from experiments.paper3_2_rag.run_prerope_causal_decomposition import DEFAULT_RERANKER
 from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
+    CachedSemanticEncoder,
     cached_record_level_context,
     _gold_chunks,
     _selected_records,
@@ -251,11 +252,13 @@ def main() -> None:
         name_prefix="paper3_3_crossdoc_expansion",
     )
     semantic_encoder = (
-        SentenceTransformerEmbedder(
-            args.dense_model,
-            revision=dense_revision,
-            device=_resolve_reranker_device(args.dense_device),
-            query_prefix="Represent this sentence for searching relevant passages: ",
+        CachedSemanticEncoder(
+            SentenceTransformerEmbedder(
+                args.dense_model,
+                revision=dense_revision,
+                device=_resolve_reranker_device(args.dense_device),
+                query_prefix="Represent this sentence for searching relevant passages: ",
+            )
         )
         if dense_revision is not None
         else None

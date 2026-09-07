@@ -233,6 +233,26 @@ def test_dense_policy_batches_documents_and_identifies_encoder_revision() -> Non
     assert policy.revision.endswith("+fixture-dense@abc123")
 
 
+def test_lexical_policy_does_not_invoke_unused_dense_encoder() -> None:
+    request, _ = _fixture()
+
+    class RejectingEncoder:
+        identity = "must-not-run"
+
+        def encode_query(self, text):
+            raise AssertionError(text)
+
+        def encode_documents(self, texts):
+            raise AssertionError(texts)
+
+    policy = BuiltinCrossDocumentExpansionPolicy(
+        CrossDocumentExpansionConfig(mode="lexical", budget=request.budget),
+        semantic_encoder=RejectingEncoder(),
+    )
+
+    assert policy.propose(request)
+
+
 def test_experimental_modes_fail_closed_in_sdk_factory() -> None:
     with pytest.raises(ValueError, match="experiment/debug"):
         build_cross_document_expansion_policy(CrossDocumentExpansionConfig(mode="oracle"))

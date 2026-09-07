@@ -459,19 +459,29 @@ class BuiltinCrossDocumentExpansionPolicy:
             chunk for chunks in request.candidate_chunks_by_record.values() for chunk in chunks
         )
         lexical = _ChunkBM25(all_chunks)
-        query_vector = _normalize(self._encode_query(request.query))
-        encoded_targets = self._encode_documents(tuple(row.text for row in all_chunks))
-        if len(encoded_targets) != len(all_chunks):
-            raise ValueError("semantic encoder returned the wrong document count")
-        target_vectors = {
-            row.chunk_id: _normalize(vector)
-            for row, vector in zip(all_chunks, encoded_targets)
+        uses_dense = self.config.mode in {
+            CrossDocumentExpansionMode.DENSE,
+            CrossDocumentExpansionMode.HYBRID_RRF,
+            CrossDocumentExpansionMode.HYBRID_WEIGHTED,
         }
-        source_vectors = {
-            span.chunk_id: _normalize(self._encode_query(span.text))
-            for record in request.selected_records
-            for span in record.spans
-        }
+        if uses_dense:
+            query_vector = _normalize(self._encode_query(request.query))
+            encoded_targets = self._encode_documents(tuple(row.text for row in all_chunks))
+            if len(encoded_targets) != len(all_chunks):
+                raise ValueError("semantic encoder returned the wrong document count")
+            target_vectors = {
+                row.chunk_id: _normalize(vector)
+                for row, vector in zip(all_chunks, encoded_targets)
+            }
+            source_vectors = {
+                span.chunk_id: _normalize(self._encode_query(span.text))
+                for record in request.selected_records
+                for span in record.spans
+            }
+        else:
+            query_vector = np.empty(0, dtype=np.float64)
+            target_vectors = {}
+            source_vectors = {}
         record_by_uri = {row.record_uri: row for row in request.selected_records}
         candidates: list[CrossDocumentCandidate] = []
         for source in request.selected_records:
@@ -481,10 +491,14 @@ class BuiltinCrossDocumentExpansionPolicy:
                 for source_span in source.spans:
                     cross_query = _cross_query(request.query, source_span.text, self.config)
                     keyterms = _keyterms(cross_query, lexical)
-                    source_vector = source_vectors[source_span.chunk_id]
-                    dense_query = _normalize(
-                        self.config.dense_query_weight * query_vector
-                        + self.config.dense_selected_weight * source_vector
+                    dense_query = (
+                        _normalize(
+                            self.config.dense_query_weight * query_vector
+                            + self.config.dense_selected_weight
+                            * source_vectors[source_span.chunk_id]
+                        )
+                        if uses_dense
+                        else np.empty(0, dtype=np.float64)
                     )
                     pair_rows: list[CrossDocumentCandidate] = []
                     for chunk in request.candidate_chunks_by_record[target.record_uri]:
@@ -505,7 +519,11 @@ class BuiltinCrossDocumentExpansionPolicy:
                             continue
                         lexical_score = lexical.score(cross_query, chunk)
                         query_score = lexical.score(request.query, chunk)
-                        dense_score = float(np.dot(dense_query, target_vectors[chunk.chunk_id]))
+                        dense_score = (
+                            float(np.dot(dense_query, target_vectors[chunk.chunk_id]))
+                            if uses_dense
+                            else 0.0
+                        )
                         entity_overlap = _entity_overlap(cross_query, chunk.text, lexical)
                         target_span, target_text, target_tokens = _target_interval(
                             chunk, cross_query, self.config.granularity
