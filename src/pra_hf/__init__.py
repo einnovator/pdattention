@@ -268,7 +268,23 @@ from .subagent_harness import (
     NativeKVReusePort,
     SubagentHarness,
     SubagentInspection,
+    SubagentRunResult,
     SubagentSpec,
+)
+from .subagent_routing import (
+    DescendantRecordRouter,
+    DescendantRoute,
+    DescendantRoutingExample,
+    DescendantRoutingMode,
+    RoutingCandidate,
+    visible_routing_candidates,
+)
+from .subagent_mlx_native import (
+    MLXSubagentKVCache,
+    MLXSubagentMemory,
+    MLXSubagentNativePort,
+    encode_mlx_subagent_memory,
+    make_mlx_subagent_cache,
 )
 from .task_planning import (
     TaskOperation,
@@ -539,6 +555,18 @@ __all__ = [
     "SubagentCapabilities",
     "SubagentHarness",
     "SubagentInspection",
+    "SubagentRunResult",
     "SubagentSpec",
     "ToolEffectDescriptor",
+    "DescendantRecordRouter",
+    "DescendantRoute",
+    "DescendantRoutingExample",
+    "DescendantRoutingMode",
+    "RoutingCandidate",
+    "visible_routing_candidates",
+    "MLXSubagentKVCache",
+    "MLXSubagentMemory",
+    "MLXSubagentNativePort",
+    "encode_mlx_subagent_memory",
+    "make_mlx_subagent_cache",
 ]

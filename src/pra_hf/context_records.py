@@ -38,6 +38,7 @@ class RecordType(str, Enum):
     TASK_STATE = "task_state"
     TASK_EVENT = "task_event"
     AGENT_START = "agent_start"
+    AGENT_LINK = "agent_link"
     AGENT_STOP = "agent_stop"
     AGENT_RESUME = "agent_resume"
     REUSE_DECISION = "reuse_decision"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import time
 
 from pra_hf.context_records import ContextRecord, RecordType, serialize_record
 from pra_hf.session_service import LocalSessionService
@@ -20,6 +21,13 @@ from pra_hf.subagent_context import (
     ToolEffectDescriptor,
 )
 from pra_hf.subagent_harness import DeclarativeTool, SubagentHarness, SubagentSpec
+from pra_hf.subagent_routing import (
+    DescendantRecordRouter,
+    DescendantRoutingExample,
+    DescendantRoutingMode,
+    RoutingCandidate,
+    visible_routing_candidates,
+)
 
 
 def _read_effect(path: str = "/repo/shared.py", **kwargs) -> ToolEffectDescriptor:
@@ -281,3 +289,122 @@ def test_hierarchical_delegation_exposes_root_records_without_context_copy() -> 
     visible = graph.visible_records("grandchild")
     assert shared in visible
     assert all(row.record_id != shared.record_id for row in graph.records("grandchild"))
+
+
+def test_dag_join_and_explicit_peer_visibility_remain_fail_closed() -> None:
+    graph = AgentContextGraph("session")
+    graph.start_root("root")
+    graph.spawn("root", agent_uuid="left")
+    graph.spawn("root", agent_uuid="right")
+    right_evidence = graph.append_record(
+        "right", ContextRecord("right:evidence", RecordType.FILE_READ, "right branch")
+    )
+    graph.spawn(
+        "left",
+        agent_uuid="join",
+        context_policy=ContextVisibilityPolicy(ancestor="routable"),
+    )
+    graph.add_parent("join", "right")
+
+    assert set(graph.ancestors("join")) == {"left", "right", "root"}
+    assert right_evidence in graph.visible_records("join")
+    assert right_evidence not in graph.visible_records("left")
+
+    peer = graph.spawn(
+        "root",
+        agent_uuid="peer",
+        context_policy=ContextVisibilityPolicy(peer="completed_only"),
+    )
+    graph.link_peers(peer.agent_uuid, "right")
+    assert right_evidence not in graph.visible_records(peer.agent_uuid)
+    graph.stop("right", result_record_uuids=(right_evidence.record_id,))
+    assert right_evidence in graph.visible_records(peer.agent_uuid)
+
+    restored = AgentContextGraph.from_records("session", graph.all_records)
+    assert set(restored.ancestors("join")) == {"left", "right", "root"}
+    assert "right" in restored.descriptor("peer").peer_agent_uuids
+
+
+def test_parallel_harness_runs_callbacks_and_coalesces_duplicate_reads() -> None:
+    calls: list[str] = []
+    harness = SubagentHarness("session", root_agent_uuid="root")
+    tool = DeclarativeTool(
+        "tool://slow-read",
+        lambda arguments: time.sleep(0.03) or calls.append(str(arguments["path"])) or "data",
+        lambda arguments: _read_effect(str(arguments["path"])),
+    )
+    specs = tuple(
+        SubagentSpec(context_policy=ContextVisibilityPolicy(peer="routable"))
+        for _ in range(4)
+    )
+
+    def runner(child, active_harness):
+        # Make every stream a peer before issuing the same read. The per-call
+        # lock turns concurrent misses into one execution plus three hits.
+        for other in active_harness.graph.agents:
+            if other.agent_uuid not in {"root", child.agent_uuid}:
+                active_harness.link_subagent_peers(child.agent_uuid, other.agent_uuid)
+        return active_harness.execute_tool(child.agent_uuid, tool, {"path": "/repo/shared.py"})
+
+    rows = harness.run_subagents("root", specs, runner, parallel=True, max_workers=4)
+    assert all(row.status.value == "stopped" for row in rows)
+    assert calls == ["/repo/shared.py"]
+    assert sum(not row.value.executed for row in rows if row.value is not None) == 3
+
+
+def test_descendant_router_ranks_only_visible_valid_candidates() -> None:
+    graph = AgentContextGraph("session")
+    graph.start_root(
+        "root", context_policy=ContextVisibilityPolicy(descendant="completed_only")
+    )
+    graph.spawn("root", agent_uuid="api-child")
+    graph.spawn("root", agent_uuid="test-child")
+    api = graph.append_record(
+        "api-child",
+        ContextRecord(
+            "api:evidence",
+            RecordType.FILE_READ,
+            "RetryPolicy uses exponential_backoff and max_attempts 4.",
+        ),
+    )
+    test = graph.append_record(
+        "test-child",
+        ContextRecord(
+            "test:evidence",
+            RecordType.TERMINAL_OUTPUT,
+            "All authentication tests passed.",
+        ),
+    )
+    graph.stop("api-child", result_record_uuids=(api.record_id,))
+    graph.stop("test-child", result_record_uuids=(test.record_id,))
+    candidates = visible_routing_candidates(graph, "root")
+    examples = (
+        DescendantRoutingExample(
+            "What is RetryPolicy max_attempts?",
+            candidates,
+            frozenset({api.record_id}),
+        ),
+        DescendantRoutingExample(
+            "Did authentication tests pass?",
+            candidates,
+            frozenset({test.record_id}),
+        ),
+    )
+    router = DescendantRecordRouter().fit(examples)
+    route = router.route(
+        examples[0].query,
+        candidates,
+        mode=DescendantRoutingMode.LEARNED,
+        top_k=1,
+    )
+    oracle = router.route(
+        examples[1].query,
+        candidates,
+        mode="oracle",
+        top_k=1,
+        oracle_record_ids=examples[1].relevant_record_ids,
+    )
+
+    assert route.selected[0].record_uuid == api.record_id
+    assert route.recall(examples[0].relevant_record_ids) == 1.0
+    assert oracle.selected[0].record_uuid == test.record_id

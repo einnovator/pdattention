@@ -115,11 +115,13 @@ class ContextVisibilityPolicy:
 
     ancestor: RecordVisibility | str = RecordVisibility.NONE
     descendant: RecordVisibility | str = RecordVisibility.NONE
+    peer: RecordVisibility | str = RecordVisibility.NONE
     selected_record_ids: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "ancestor", RecordVisibility(self.ancestor))
         object.__setattr__(self, "descendant", RecordVisibility(self.descendant))
+        object.__setattr__(self, "peer", RecordVisibility(self.peer))
         object.__setattr__(self, "selected_record_ids", frozenset(self.selected_record_ids))
 
 
@@ -130,7 +132,8 @@ class SubagentCapabilities:
     spawn: str = "supported"
     resume: str = "supported"
     parallel: str = "experimental"
-    dag: str = "not_implemented"
+    dag: str = "experimental"
+    peer_visibility: str = "experimental"
     ancestor_record_visibility: str = "experimental"
     descendant_record_visibility: str = "experimental"
     cross_agent_result_reuse: str = "experimental"
@@ -139,11 +142,18 @@ class SubagentCapabilities:
 
 @dataclass(frozen=True)
 class AgentDescriptor:
-    """One execution stream and its position in a session lineage tree."""
+    """One execution stream and its position in a session lineage graph.
+
+    ``parent_agent_uuid`` remains the primary spawn parent for compatibility.
+    Additional parents express explicit DAG joins; peers are explicit lateral
+    links and never become visible merely because two agents share a parent.
+    """
 
     agent_uuid: str
     session_uuid: str
     parent_agent_uuid: str | None = None
+    additional_parent_agent_uuids: tuple[str, ...] = ()
+    peer_agent_uuids: tuple[str, ...] = ()
     parent_task_uuid: str | None = None
     spawn_call_record_uuid: str | None = None
     model_descriptor: str = "same"
@@ -160,12 +170,27 @@ class AgentDescriptor:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", AgentStatus(self.status))
+        object.__setattr__(
+            self,
+            "additional_parent_agent_uuids",
+            tuple(dict.fromkeys(self.additional_parent_agent_uuids)),
+        )
+        object.__setattr__(self, "peer_agent_uuids", tuple(dict.fromkeys(self.peer_agent_uuids)))
         object.__setattr__(self, "result_record_uuids", tuple(self.result_record_uuids))
         object.__setattr__(self, "artifact_record_uuids", tuple(self.artifact_record_uuids))
         if not self.agent_uuid or not self.session_uuid or not self.workspace_id:
             raise ValueError("Agent, session, and workspace identities are required.")
-        if self.parent_agent_uuid == self.agent_uuid:
+        if self.agent_uuid in self.parent_agent_uuids:
             raise ValueError("An agent cannot be its own parent.")
+        if self.agent_uuid in self.peer_agent_uuids:
+            raise ValueError("An agent cannot be its own peer.")
+
+    @property
+    def parent_agent_uuids(self) -> tuple[str, ...]:
+        """Return primary and joined parents in deterministic order."""
+
+        values = (() if self.parent_agent_uuid is None else (self.parent_agent_uuid,))
+        return tuple(dict.fromkeys(values + self.additional_parent_agent_uuids))
 
 
 @dataclass(frozen=True)
@@ -299,7 +324,11 @@ class AgentContextGraph:
                 graph._records[descriptor.agent_uuid] = []
             elif record.agent_uuid not in graph._agents:
                 raise ValueError(f"Record precedes agent start: {record.record_id}")
-            elif record.record_type in {RecordType.AGENT_STOP, RecordType.AGENT_RESUME}:
+            elif record.record_type in {
+                RecordType.AGENT_LINK,
+                RecordType.AGENT_STOP,
+                RecordType.AGENT_RESUME,
+            }:
                 graph._agents[record.agent_uuid] = cls._descriptor_from_payload(record.payload)
             graph._records[record.agent_uuid].append(record)
             graph._clock = max(graph._clock, record.logical_clock or 0)
@@ -318,6 +347,7 @@ class AgentContextGraph:
         values["context_policy"] = ContextVisibilityPolicy(
             ancestor=raw_policy.get("ancestor", RecordVisibility.NONE.value),
             descendant=raw_policy.get("descendant", RecordVisibility.NONE.value),
+            peer=raw_policy.get("peer", RecordVisibility.NONE.value),
             selected_record_ids=frozenset(raw_policy.get("selected_record_ids", ())),
         )
         return AgentDescriptor(**values)
@@ -464,17 +494,68 @@ class AgentContextGraph:
         while frontier:
             parent = frontier.pop(0)
             children = sorted(
-                row.agent_uuid for row in self._agents.values() if row.parent_agent_uuid == parent
+                row.agent_uuid for row in self._agents.values() if parent in row.parent_agent_uuids
             )
-            found.extend(children)
-            frontier.extend(children)
+            new_children = [child for child in children if child not in found]
+            found.extend(new_children)
+            frontier.extend(new_children)
         return tuple(found)
+
+    def ancestors(self, agent_uuid: str) -> tuple[str, ...]:
+        """Return every transitive parent in stable breadth-first order."""
+
+        self.descriptor(agent_uuid)
+        found: list[str] = []
+        frontier = list(self._agents[agent_uuid].parent_agent_uuids)
+        while frontier:
+            parent = frontier.pop(0)
+            if parent in found:
+                continue
+            found.append(parent)
+            frontier.extend(self.descriptor(parent).parent_agent_uuids)
+        return tuple(found)
+
+    def add_parent(self, agent_uuid: str, parent_agent_uuid: str) -> AgentDescriptor:
+        """Join an existing stream to an additional parent without creating a cycle."""
+
+        descriptor = self.descriptor(agent_uuid)
+        self.descriptor(parent_agent_uuid)
+        if parent_agent_uuid == agent_uuid or agent_uuid in self.ancestors(parent_agent_uuid):
+            raise ValueError("A DAG parent link cannot create a cycle.")
+        if parent_agent_uuid in descriptor.parent_agent_uuids:
+            return descriptor
+        updated = replace(
+            descriptor,
+            additional_parent_agent_uuids=(
+                *descriptor.additional_parent_agent_uuids,
+                parent_agent_uuid,
+            ),
+        )
+        self._agents[agent_uuid] = updated
+        self.append_record(agent_uuid, self._link_record(updated, "parent"))
+        return updated
+
+    def link_peers(self, left_agent_uuid: str, right_agent_uuid: str) -> None:
+        """Create a symmetric peer edge; visibility policy still gates records."""
+
+        left = self.descriptor(left_agent_uuid)
+        right = self.descriptor(right_agent_uuid)
+        if left_agent_uuid == right_agent_uuid:
+            raise ValueError("An agent cannot be its own peer.")
+        if right_agent_uuid not in left.peer_agent_uuids:
+            left = replace(left, peer_agent_uuids=(*left.peer_agent_uuids, right_agent_uuid))
+            self._agents[left_agent_uuid] = left
+            self.append_record(left_agent_uuid, self._link_record(left, "peer"))
+        if left_agent_uuid not in right.peer_agent_uuids:
+            right = replace(right, peer_agent_uuids=(*right.peer_agent_uuids, left_agent_uuid))
+            self._agents[right_agent_uuid] = right
+            self.append_record(right_agent_uuid, self._link_record(right, "peer"))
 
     def is_visible(self, requester_uuid: str, source_uuid: str, record_uuid: str) -> bool:
         if requester_uuid == source_uuid:
             return True
         requester = self.descriptor(requester_uuid)
-        if source_uuid in self.lineage(requester_uuid, include_self=False):
+        if source_uuid in self.ancestors(requester_uuid):
             mode = requester.context_policy.ancestor
             return mode in {RecordVisibility.ROUTABLE, RecordVisibility.INHERIT_ALL_REFERENCES} or (
                 mode == RecordVisibility.SELECTED
@@ -485,6 +566,17 @@ class AgentContextGraph:
             mode = requester.context_policy.descendant
             return source.status != AgentStatus.RUNNING and mode in {
                 RecordVisibility.COMPLETED_ONLY,
+                RecordVisibility.ROUTABLE,
+                RecordVisibility.INHERIT_ALL_REFERENCES,
+            }
+        if source_uuid in requester.peer_agent_uuids:
+            source = self.descriptor(source_uuid)
+            mode = requester.context_policy.peer
+            if mode == RecordVisibility.SELECTED:
+                return record_uuid in requester.context_policy.selected_record_ids
+            if mode == RecordVisibility.COMPLETED_ONLY:
+                return source.status != AgentStatus.RUNNING
+            return mode in {
                 RecordVisibility.ROUTABLE,
                 RecordVisibility.INHERIT_ALL_REFERENCES,
             }
@@ -506,6 +598,7 @@ class AgentContextGraph:
         payload["context_policy"] = {
             "ancestor": descriptor.context_policy.ancestor.value,
             "descendant": descriptor.context_policy.descendant.value,
+            "peer": descriptor.context_policy.peer.value,
             "selected_record_ids": sorted(descriptor.context_policy.selected_record_ids),
         }
         return ContextRecord(
@@ -513,6 +606,13 @@ class AgentContextGraph:
             record_type=record_type,
             payload=payload,
             task_uuid=descriptor.parent_task_uuid,
+        )
+
+    def _link_record(self, descriptor: AgentDescriptor, link_type: str) -> ContextRecord:
+        record = self._lifecycle_record(descriptor, RecordType.AGENT_LINK)
+        return replace(
+            record,
+            record_id=f"agent_link:{descriptor.agent_uuid}:{link_type}:{self._clock + 1}",
         )
 
 
@@ -640,7 +740,7 @@ class CrossAgentReuseRuntime:
                 not external_validator(resource, effect.version_token) for resource in effect.resources
             ):
                 return ReuseMissReason.EXTERNAL_VALIDATION_FAILED
-        requester_lineage = set(self.graph.lineage(requester_uuid))
+        requester_lineage = {requester_uuid, *self.graph.ancestors(requester_uuid)}
         for resource in effect.resources:
             canonical = resource.canonical
             current = self._resource_epochs.get(canonical, 0)
