@@ -248,6 +248,45 @@ SPECS = {
         "paired_evidence": "qwen3_32b_mlx_profiles.json",
         "routing_artifact": False,
     },
+    "qwen3.5-27b": {
+        "label": "Qwen3.5-27B",
+        "base_model": "mlx-community/Qwen3.5-27B-4bit",
+        "revision": "45797d2985a12c55e6473686e9ea91b95e959553",
+        "architecture": "Qwen3_5ForConditionalGeneration",
+        "family": "qwen3_5",
+        "model_type": "qwen3_5",
+        "layers": 64,
+        "hidden_size": 5120,
+        "heads": {"query": 24, "kv": 4, "head_dim": 256},
+        "topology": {
+            "type": "hybrid_linear_full_attention",
+            "pattern": "3_gated_deltanet_then_1_full_attention",
+            "native_memory_eligible_layers": list(range(3, 64, 4)),
+            "gqa": True,
+        },
+        "consumer_layers": list(range(3, 64, 4)),
+        "parameters": "27B",
+        "license": "apache-2.0",
+        "repo": "EInnovator/pra-qwen3-5-27b-mlx-4bit",
+        "engine": "mlx",
+        "engine_version": "mlx-lm 0.31.3",
+        "hardware": "Apple M4 Pro, 48 GB",
+        "quantization": "4bit",
+        "post_training": "pretrained and post-trained",
+        "qualification_date": "2026-09-07",
+        "layer_path": "language_model.model.layers",
+        "attention_path": "self_attn on full-attention layers only",
+        "position": {
+            "type": "partial_rope",
+            "implementation": "native",
+            "rotary_dimensions": 64,
+        },
+        "structural_status": "partial-topology",
+        "native_memory_available": False,
+        "extra_limitations": [
+            "Qwen3.5 interleaves 48 Gated DeltaNet layers with 16 full-attention layers. Selected Context and routing are supported, but detached Native Memory is unavailable until recurrent DeltaNet state has an explicit lifecycle and composition contract."
+        ],
+    },
     "llama3-8b": {
         "label": "Llama-3.1-8B",
         "base_model": "mlx-community/Llama-3.1-8B-Instruct-4bit",
@@ -347,15 +386,17 @@ def _structural_adapter(spec: dict) -> dict:
             "hidden_size": spec["hidden_size"],
         },
         "mapping": {
-            "layers": "model.layers",
-            "attention": "self_attn",
+            "layers": spec.get("layer_path", "model.layers"),
+            "attention": spec.get("attention_path", "self_attn"),
             "q_proj": "q_proj",
             "k_proj": "k_proj",
             "v_proj": "v_proj",
             "o_proj": "o_proj",
         },
         "heads": spec["heads"],
-        "position": {"type": "rope", "implementation": "native"},
+        "position": spec.get(
+            "position", {"type": "rope", "implementation": "native"}
+        ),
         "topology": spec["topology"],
     }
 
@@ -426,7 +467,10 @@ def _manifest(
     combined_evidence = next(
         (row for row in paired_evidence if row["dataset"] == "combined"), None
     )
+    native_available = bool(spec.get("native_memory_available", True))
     native_recommended = bool(
+        native_available
+        and
         combined_evidence
         and combined_evidence.get("recommendation") == "RECOMMENDED"
     )
@@ -464,7 +508,7 @@ def _manifest(
             "status": "CALIBRATION_PENDING",
             "recommended": False,
             "engine": engine,
-            "mode": "Native Memory",
+            "mode": "Native Memory" if native_available else "Selected Context",
         },
         "balanced": {
             "purpose": "Qualified default preserving the all-eligible consumer geometry",
@@ -482,7 +526,7 @@ def _manifest(
             "status": "CALIBRATION_PENDING",
             "recommended": False,
             "engine": engine,
-            "mode": "Native Memory",
+            "mode": "Native Memory" if native_available else "Selected Context",
         },
     }
     if learned_adapters:
@@ -493,7 +537,7 @@ def _manifest(
             "status": "RESEARCH",
             "recommended": False,
             "engine": engine,
-            "mode": "Native Memory",
+            "mode": "Native Memory" if native_available else "Selected Context",
         }
     diagnostics = _metric_rows(comparison, spec) if comparison is not None else []
     return {
@@ -519,7 +563,10 @@ def _manifest(
             "quantization": _quantization_manifest(spec),
             "post_training": spec.get("post_training", "pretrained and post-trained"),
         },
-        "structural_adapter": {"path": "structural_adapter", "status": "validated"},
+        "structural_adapter": {
+            "path": "structural_adapter",
+            "status": spec.get("structural_status", "validated"),
+        },
         "learned_adapters": learned_adapters,
         "profiles": profiles,
         "runtime_compatibility": (
@@ -531,6 +578,8 @@ def _manifest(
                         if native_recommended
                         else "CONTROLLED"
                         if paired_evidence
+                        else "UNAVAILABLE_HYBRID_STATE"
+                        if not native_available
                         else "AVAILABLE"
                     ),
                     "native_serving": "NOT_APPLICABLE",
@@ -546,6 +595,8 @@ def _manifest(
                         if native_recommended
                         else "CONTROLLED"
                         if paired_evidence
+                        else "UNAVAILABLE_HYBRID_STATE"
+                        if not native_available
                         else "AVAILABLE"
                     ),
                     "native_serving": "NOT_APPLICABLE",
@@ -624,6 +675,8 @@ def _manifest(
                 *(
                     ["Reduced consumer-layer configurations failed the held-out quality gate; BALANCED therefore retains all eligible layers."]
                     if native_recommended
+                    else ["Detached Native Memory is unavailable for this hybrid recurrent/attention topology; the bundle fails closed to Selected Context."]
+                    if not native_available
                     else ["Native Memory is measured but remains a candidate because the exact-output equivalence gate did not pass."]
                     if paired_evidence
                     else ["Native consumer-layer profiles and end-task generation remain uncalibrated for this exact identity."]

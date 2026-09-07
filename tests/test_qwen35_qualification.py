@@ -4,6 +4,10 @@ import torch
 from experiments.paper4_5_runtime.run_qwen35_qualification import (
     select_chunk_indices,
 )
+from experiments.paper4_5_runtime.build_hf_catalog_bundles import (
+    SPECS,
+    _structural_adapter,
+)
 
 
 def test_selected_chunks_respect_budget_and_score_order() -> None:
@@ -27,3 +31,13 @@ def test_selected_chunks_validate_shapes_and_budget() -> None:
         select_chunk_indices(torch.tensor([1.0]), [(0, 1), (1, 2)], token_budget=1)
     with pytest.raises(ValueError, match="positive"):
         select_chunk_indices(torch.tensor([1.0]), [(0, 1)], token_budget=0)
+
+
+def test_qwen35_bundle_declares_hybrid_topology_without_native_memory() -> None:
+    spec = SPECS["qwen3.5-27b"]
+    structural = _structural_adapter(spec)
+
+    assert spec["native_memory_available"] is False
+    assert spec["consumer_layers"] == list(range(3, 64, 4))
+    assert structural["mapping"]["layers"] == "language_model.model.layers"
+    assert structural["position"]["type"] == "partial_rope"
