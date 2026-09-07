@@ -389,13 +389,13 @@ class _ChunkBM25:
         self.average_length = sum(self.lengths.values()) / max(len(self.lengths), 1)
         self.document_frequency: Counter[str] = Counter()
         for value in self.frequencies.values():
-            self.document_frequency.update(value)
+            self.document_frequency.update(value.keys())
 
     def score(self, query: str, chunk: RAGChunk) -> float:
         score = 0.0
         count = max(len(self.chunks), 1)
         frequencies = self.frequencies[chunk.chunk_id]
-        for term in set(_terms(query)):
+        for term in sorted(set(_terms(query))):
             frequency = frequencies.get(term, 0)
             if not frequency:
                 continue

@@ -328,7 +328,7 @@ class FirstStageBM25:
         self.average_length = sum(self.lengths.values()) / max(len(self.lengths), 1)
         self.document_frequency: Counter[str] = Counter()
         for frequencies in self.term_frequencies.values():
-            self.document_frequency.update(frequencies)
+            self.document_frequency.update(frequencies.keys())
         self.index_sha256 = _digest(
             {
                 "revision": self.revision,
@@ -340,7 +340,7 @@ class FirstStageBM25:
         )
 
     def scores(self, query: str) -> Mapping[str, float]:
-        query_terms = set(_terms(query))
+        query_terms = tuple(sorted(set(_terms(query))))
         count = max(len(self.documents), 1)
         scores: dict[str, float] = {}
         for document_id, frequencies in self.term_frequencies.items():
@@ -697,12 +697,12 @@ def _bm25_chunk_scores(query: str, chunks: Sequence[RAGChunk]) -> dict[str, floa
     average = sum(lengths.values()) / max(len(lengths), 1)
     document_frequency: Counter[str] = Counter()
     for value in frequencies.values():
-        document_frequency.update(value)
+        document_frequency.update(value.keys())
     count = max(len(chunks), 1)
     scores: dict[str, float] = {}
     for chunk_id, chunk_terms in frequencies.items():
         score = 0.0
-        for term in set(_terms(query)):
+        for term in sorted(set(_terms(query))):
             frequency = chunk_terms.get(term, 0)
             if not frequency:
                 continue

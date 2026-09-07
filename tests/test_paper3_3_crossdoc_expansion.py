@@ -194,3 +194,26 @@ def test_publication_summary_freezes_best_bounded_validation_policy() -> None:
     assert result["oracle_gap_recovery"] == 0.25
     assert result["requested_to_deduplicated_token_ratio"] == 2.0
     assert result["qualification"]["sdk_exposable"] is False
+
+
+def test_bm25_receipt_scores_are_nonnegative_and_repeatable() -> None:
+    documents, questions, metadata = _controlled_crossdoc_fixture()
+    retriever = FirstStageBM25(documents)
+    arguments = {
+        "dataset": "fixture",
+        "dataset_revision": metadata["dataset_revision"],
+        "corpus_revision": metadata["corpus_revision"],
+        "corpus_sha256": metadata["corpus_sha256"],
+        "question": questions[0],
+        "retriever": retriever,
+        "candidate_count": len(documents),
+        "chunker": ChunkerConfig(32, 4),
+        "seed": 11,
+    }
+
+    first = make_candidate_receipt(**arguments)
+    second = make_candidate_receipt(**arguments)
+
+    assert first.receipt_id == second.receipt_id
+    assert all(candidate.score >= 0.0 for candidate in first.candidates)
+    assert max(retriever.document_frequency.values()) <= len(documents)

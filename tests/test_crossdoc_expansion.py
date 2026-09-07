@@ -94,6 +94,7 @@ def test_query_conditioned_lexical_expansion_finds_peer_evidence() -> None:
 
     assert chunks["d2x"].chunk_id in {row.target_chunk_id for row in plan.spans}
     assert all(row.target_record_uri != row.source_record_uri for row in plan.spans)
+    assert all(float(row["lexical_score"]) >= 0.0 for row in plan.receipt.candidates)
     assert plan.receipt.deduplicated_tokens <= 16
     assert plan.receipt.requested_tokens >= plan.receipt.deduplicated_tokens
 
