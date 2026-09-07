@@ -49,6 +49,7 @@ from pra_hf.rag_mlx_native import combine_native_memories, encode_native_memory
 SCHEMA_VERSION = "paper3.2-paper3.3-protocol-reconciliation-v1"
 SELECTION_SCHEMA_VERSION = "paper3.2-protocol-selection-v1"
 PAPER33_SELECTION_SCHEMA_VERSION = "paper3.3-frozen-selection-cache-v1"
+PAPER33_MODEL_REVISION = "3b1b1768f8f8cf8351c712464f906e86c2b8269e"
 PAPER33_RERANKER = "BAAI/bge-reranker-v2-m3"
 PAPER33_RERANKER_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
 
@@ -384,7 +385,7 @@ def main() -> None:
     )
     parser.add_argument("--paper33-selection-anchor", type=Path, required=True)
     parser.add_argument("--model", default="mlx-community/Qwen3-1.7B-4bit")
-    parser.add_argument("--model-revision", default="main")
+    parser.add_argument("--model-revision", default=PAPER33_MODEL_REVISION)
     parser.add_argument("--reranker", default=PAPER33_RERANKER)
     parser.add_argument("--reranker-revision", default=PAPER33_RERANKER_REVISION)
     parser.add_argument("--reranker-device", default="cpu")
