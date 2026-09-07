@@ -487,6 +487,86 @@ expansion results after this correction; every new receipt carries the v2
 revision. Earlier physical-edge results remain tied to their pinned historical
 commit and are not silently relabeled as v2 comparisons.
 
+\subsection{Frozen validation frontier}
+
+We evaluate 221 policy configurations on 150 frozen validation questions. The
+grid crosses five parameter-free channels and an oracle with selected-only or
+query-conditioned probes, $k\in\{1,2,4,8\}$, and extra-native-token ceilings
+from 32 to 512. Table~\ref{tab:expansion-validation} reports the best point per
+channel subject to an extra-native fraction of at most 20\%. These are
+validation choices, not test results. All non-oracle optima use a 64-token
+ceiling, which is 12.66\% of the initial 506.2-token native selection on
+average.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Best bounded cross-document expansion point per channel on the
+150-question validation split. Gains are absolute percentage points over the
+same frozen first-stage selection. ``Q'' indicates query conditioning.}
+\label{tab:expansion-validation}
+\begin{tabular}{lcrrrrr}
+\toprule
+Channel & Q & Span gain & Chunk gain & Extra K/V & Distractor & Search ms \\
+\midrule
+Lexical & yes & 2.67 & 3.71 & 12.66\% & 90.00\% & 337.8 \\
+Dense & no & \textbf{2.94} & 4.27 & 12.66\% & 86.00\% & 258.7 \\
+RRF hybrid & yes & 2.44 & 3.79 & 12.66\% & 88.00\% & 344.7 \\
+Weighted hybrid & yes & 1.83 & \textbf{4.35} & 12.66\% & 87.33\% & 340.5 \\
+Entity/keyterm & yes & 1.72 & 2.71 & 12.66\% & 92.67\% & 337.0 \\
+Oracle & yes & 23.17 & 30.55 & 19.65\% & 0.00\% & 338.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dense selected-only is the predeclared test policy: symmetric chunk search,
+$k=1$, and a 64-token global ceiling. It raises supporting-span coverage from
+41.33\% to 44.28\% and gold-chunk recall from 38.57\% to 42.85\%. Five repeated
+paired bootstrap calculations place the span gain in a conservative
+95\% interval of $[1.39,4.72]$ points and the chunk-recall gain in
+$[2.51,6.22]$ points. Answer-string availability rises by 2.67 points,
+with interval $[0.67,5.33]$.
+
+The positive retrieval effect is not yet an efficiency or answer-quality win.
+The selected policy requests 1,521.1 cross tokens per question before overlap
+removal and global clipping, but admits only 64.0: a 23.77-fold
+request-to-materialization amplification. Moreover, 86\% of admitted tokens do
+not overlap annotated support. The compact oracle gains 23.17 span points with
+99.4 extra tokens and no distractors; dense expansion therefore recovers only
+12.71\% of oracle span headroom. Figure~\ref{fig:expansion-frontier} makes both
+the bounded gain and the unresolved selectivity gap visible. Semantic vector
+preparation adds 358.7 ms per request in this exhaustive research
+implementation and is reported separately from the 258.7 ms dense search.
+
+Direction and interval controls sharpen the diagnosis. Symmetric lexical
+expansion gains 2.67 span points, whereas the query-selected-pair-only rule
+gains 1.33 points while reducing the distractor fraction from 90.0\% to
+38.7\% and the extra-native fraction from 12.66\% to 5.37\%. Restricting
+deduplication to logical source intervals raises lexical chunk-recall gain to
+6.96 points but does not close the oracle gap; the corresponding oracle gains
+28.36 points with only 5.58\% extra native tokens. These controls show that
+pair restriction and interval accounting can make expansion cleaner, but the
+current parameter-free score still does not identify most missing support.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}{.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_3_crossdoc_expansion/validation_n150_bm25v2_semantic/support_gain_vs_cross_tokens.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}{.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper3_3_crossdoc_expansion/validation_n150_bm25v2_semantic/support_gain_vs_distractors.pdf}
+\end{minipage}
+\caption{Validation expansion frontier. Left: support-span gain against
+additional native K/V. Right: gain against the fraction of admitted tokens
+outside annotated support. Oracle points expose substantial unresolved
+selection headroom.}
+\label{fig:expansion-frontier}
+\end{figure}
+\FloatBarrier
+
 \section{Training Objective}
 
 The base model remains frozen initially.

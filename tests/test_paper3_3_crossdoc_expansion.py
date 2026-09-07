@@ -12,6 +12,9 @@ from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
     build_publication_summary,
     select_validation_config,
 )
+from experiments.paper3_3_crossdoc_expansion.summarize_generation import (
+    summarize_generation,
+)
 from pra_hf.crossdoc_expansion import (
     CrossDocumentDirection,
     CrossDocumentExpansionMode,
@@ -265,3 +268,39 @@ def test_fixed_evaluation_summary_replays_validation_config_without_test_selecti
     assert result["selection_rule"]["split"] == "validation"
     assert result["selection_rule"]["evaluation_split"] == "test"
     assert result["selection_rule"]["objective"] == "frozen_validation_selected_policy_replay"
+
+
+def test_generation_summary_uses_paired_examples() -> None:
+    rows = []
+    for example_id, packed, expanded in (("a", 0.2, 0.3), ("b", 0.4, 0.3)):
+        for condition, value in (("PACKED_RAG", packed), ("EXPANSION_ONLY", expanded)):
+            rows.append(
+                {
+                    "condition": condition,
+                    "example_id": example_id,
+                    "token_f1": value,
+                    "exact_match": value,
+                    "official_multihop_rag_score": value,
+                    "gold_answer_mean_nll": 1.0 - value,
+                }
+            )
+    run = {
+        "git_commit": "abc",
+        "model": "model",
+        "model_revision": "revision",
+        "split": {"name": "test"},
+        "selection_cache_sha256": "digest",
+        "policy": {"mode": "dense"},
+        "examples": 2,
+    }
+
+    result = summarize_generation(run, rows, replicates=100)
+
+    effect = next(
+        row
+        for row in result["paired_effects"]
+        if row["condition"] == "EXPANSION_ONLY"
+        and row["reference_condition"] == "PACKED_RAG"
+    )
+    assert effect["paired_examples"] == 2
+    assert abs(effect["effects"]["token_f1"]["mean_difference"]) < 1e-12
