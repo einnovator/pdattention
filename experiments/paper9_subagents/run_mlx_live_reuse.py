@@ -102,11 +102,16 @@ def shared_text(tokenizer, target_tokens: int, seed: int) -> str:
     return tokenizer.decode(ids[:target_tokens], skip_special_tokens=True)
 
 
-def run_point(model, tokenizer, model_id: str, seed: int, target_tokens: int, fanout: int) -> list[dict]:
+def run_point(
+    model, tokenizer, model_id: str, model_revision: str, seed: int,
+    target_tokens: int, fanout: int,
+) -> list[dict]:
     import mlx.core as mx
 
     content = shared_text(tokenizer, target_tokens, seed)
-    port = MLXSubagentNativePort(model, tokenizer, model_id=model_id, revision="frozen")
+    port = MLXSubagentNativePort(
+        model, tokenizer, model_id=model_id, revision=model_revision
+    )
     harness = SubagentHarness(
         f"mlx-{seed}-{target_tokens}-{fanout}",
         root_agent_uuid="root",
@@ -220,7 +225,10 @@ def run_point(model, tokenizer, model_id: str, seed: int, target_tokens: int, fa
     return rows
 
 
-def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
+def summarize(
+    rows: list[dict], model_id: str, model_revision: str,
+    seeds: tuple[int, ...], hardware_label: str
+) -> dict:
     by_condition = {}
     for condition in sorted({row["condition"] for row in rows}):
         selected = [row for row in rows if row["condition"] == condition]
@@ -256,7 +264,9 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
     return {
         "protocol": "paper9-mlx-live-reuse-v1",
         "model": model_id,
+        "model_revision": model_revision,
         "engine": "mlx-lm",
+        "hardware": hardware_label,
         "seeds": list(seeds),
         "shared_token_targets": sorted({row["target_shared_tokens"] for row in rows}),
         "fanouts": sorted({row["fanout"] for row in rows}),
@@ -373,6 +383,8 @@ def main() -> None:
     parser.add_argument("--fanouts", default="1,2,4,8,16")
     parser.add_argument("--seeds", default=",".join(str(seed) for seed in SEEDS))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--hardware-label", default="unspecified")
+    parser.add_argument("--model-revision", default="UNKNOWN")
     parser.add_argument("--analyze-existing", action="store_true")
     parser.add_argument("--resume", action="store_true")
     arguments = parser.parse_args()
@@ -399,14 +411,21 @@ def main() -> None:
                     if (seed, target_tokens, fanout) in completed:
                         continue
                     print(f"seed={seed} shared={target_tokens} fanout={fanout}", flush=True)
-                    rows.extend(run_point(model, tokenizer, arguments.model, seed, target_tokens, fanout))
+                    rows.extend(
+                        run_point(
+                            model, tokenizer, arguments.model, arguments.model_revision,
+                            seed, target_tokens, fanout,
+                        )
+                    )
                     write_rows(arguments.output / "rows.csv", rows)
     session_rows = build_session_rows(rows)
     with (arguments.output / "session_rows.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=tuple(session_rows[0]))
         writer.writeheader()
         writer.writerows(session_rows)
-    summary = summarize(rows, arguments.model, seeds)
+    summary = summarize(
+        rows, arguments.model, arguments.model_revision, seeds, arguments.hardware_label
+    )
     (arguments.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     plot(rows, session_rows, arguments.output)
     print(json.dumps(summary, indent=2))
