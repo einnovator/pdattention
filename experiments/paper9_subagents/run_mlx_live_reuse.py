@@ -38,6 +38,21 @@ def timed_forward(model, token_ids: list[int], *, cache=None) -> tuple[float, np
     return (time.perf_counter() - started) * 1000.0, np.asarray(final.astype(mx.float32))
 
 
+def timed_split_forward(model, source_ids: list[int], query_ids: list[int]) -> tuple[float, np.ndarray]:
+    """Prefill source then query through an ordinary host prompt cache."""
+
+    import mlx.core as mx
+    from mlx_lm.models.cache import make_prompt_cache
+
+    cache = make_prompt_cache(model)
+    started = time.perf_counter()
+    model(mx.array(source_ids, dtype=mx.int32)[None], cache=cache)
+    logits = model(mx.array(query_ids, dtype=mx.int32)[None], cache=cache)
+    final = logits[0, -1]
+    mx.eval(final)
+    return (time.perf_counter() - started) * 1000.0, np.asarray(final.astype(mx.float32))
+
+
 def shared_text(tokenizer, target_tokens: int, seed: int) -> str:
     line = (
         f"Repository orientation seed {seed}: ContextRecord preserves resource identity, "
@@ -92,6 +107,7 @@ def run_point(model, tokenizer, model_id: str, seed: int, target_tokens: int, fa
 
         # A: no reuse. This repeats the exact selected source in each child.
         isolated_ms, isolated_logits = timed_forward(model, full_ids)
+        split_ms, split_logits = timed_split_forward(model, source_ids, query_ids)
 
         # B: ordinary result memoization still serializes and prefills the text.
         lookup_started = time.perf_counter()
@@ -141,6 +157,7 @@ def run_point(model, tokenizer, model_id: str, seed: int, target_tokens: int, fa
         }
         values = (
             ("isolated_text", isolated_ms, 0.0, len(full_ids), isolated_logits),
+            ("host_split_text", split_ms, 0.0, len(full_ids), split_logits),
             ("harness_memo_text", memo_ms, memo_lookup_ms, len(full_ids), memo_logits),
             ("pra_record_reprefill", record_ms, record_lookup_ms, len(full_ids), record_logits),
             ("pra_native_kv", native_ms, native_lookup_ms, len(query_ids), native_logits),
@@ -155,8 +172,8 @@ def run_point(model, tokenizer, model_id: str, seed: int, target_tokens: int, fa
                     "request_ms": model_ms + route_ms,
                     "physical_input_tokens": physical_tokens,
                     "native_tokens_reused": len(source_ids) if condition == "pra_native_kv" else 0,
-                    "argmax_matches_isolated": int(np.argmax(logits) == np.argmax(isolated_logits)),
-                    "max_abs_logit_delta": float(np.max(np.abs(logits - isolated_logits))),
+                    "argmax_matches_host_split": int(np.argmax(logits) == np.argmax(split_logits)),
+                    "max_abs_logit_delta_vs_host_split": float(np.max(np.abs(logits - split_logits))),
                     "payload_hit": int(condition != "isolated_text" and not payload.executed),
                     "native_hit": int(condition == "pra_native_kv" and native_reuse.reuse.kv_reused),
                     "tool_calls_so_far": calls,
@@ -180,8 +197,8 @@ def summarize(rows: list[dict], model_id: str, seeds: tuple[int, ...]) -> dict:
             "p99_request_ms": percentile(latencies, 99),
             "physical_input_tokens": sum(row["physical_input_tokens"] for row in selected),
             "native_tokens_reused": sum(row["native_tokens_reused"] for row in selected),
-            "argmax_parity": statistics.mean(row["argmax_matches_isolated"] for row in selected),
-            "max_abs_logit_delta": max(row["max_abs_logit_delta"] for row in selected),
+            "argmax_parity_vs_host_split": statistics.mean(row["argmax_matches_host_split"] for row in selected),
+            "max_abs_logit_delta_vs_host_split": max(row["max_abs_logit_delta_vs_host_split"] for row in selected),
         }
     return {
         "protocol": "paper9-mlx-live-reuse-v1",
@@ -200,8 +217,12 @@ def plot(rows: list[dict], output: Path) -> None:
 
     figure, axes = plt.subplots(1, 2, figsize=(9.4, 3.6))
     colors = {"harness_memo_text": "#68747d", "pra_record_reprefill": "#b8872d", "pra_native_kv": "#24796b"}
+    available_fanouts = sorted({row["fanout"] for row in rows})
+    shown_fanouts = [fanout for fanout in (1, 4, 16) if fanout in available_fanouts]
+    if not shown_fanouts:
+        shown_fanouts = available_fanouts
     for condition in colors:
-        for fanout in (1, 4, 16):
+        for fanout in shown_fanouts:
             points = []
             for size in sorted({row["target_shared_tokens"] for row in rows}):
                 selected = [
