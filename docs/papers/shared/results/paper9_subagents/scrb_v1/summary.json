@@ -1,0 +1,186 @@
+{
+  "cost_model": {
+    "kv_bytes_per_token": 4096,
+    "memo_lookup_ms": 0.03,
+    "native_materialize_ms_per_token": 0.0015,
+    "payload_bytes_per_token": 4,
+    "pra_route_ms": 0.12,
+    "prefill_ms_per_token": 0.02,
+    "tool_latency_ms": 50.0
+  },
+  "descendant_evidence": {
+    "full_transcript_copy": {
+      "accuracy": 1.0,
+      "n": 500,
+      "parent_context_growth_tokens": 16384.0
+    },
+    "pra_descendant_route": {
+      "accuracy": 1.0,
+      "n": 500,
+      "parent_context_growth_tokens": 384.0
+    },
+    "summary_only": {
+      "accuracy": 0.552,
+      "n": 500,
+      "parent_context_growth_tokens": 256.0
+    },
+    "transcript_replay": {
+      "accuracy": 1.0,
+      "n": 500,
+      "parent_context_growth_tokens": 16384.0
+    }
+  },
+  "evidence_scope": "event-driven controlled simulation with direct runtime contract checks; not live model latency",
+  "invalidation_fanout16": {
+    "coarse_domain": {
+      "false_invalidations": 80,
+      "reuse_rate": 0.0,
+      "stale_reads": 0
+    },
+    "selective_resource": {
+      "false_invalidations": 0,
+      "reuse_rate": 0.5,
+      "stale_reads": 0
+    },
+    "unsafe_no_invalidation": {
+      "false_invalidations": 0,
+      "reuse_rate": 1.0,
+      "stale_reads": 80
+    }
+  },
+  "runtime_contract_check": {
+    "read_execution_counts": {
+      "A": 2,
+      "B": 1
+    },
+    "relevant_read_executed": true,
+    "relevant_write_reason": "write_invalidation",
+    "stale_reads": 0,
+    "unrelated_read_reason": "none",
+    "unrelated_read_reused": true
+  },
+  "seeds": [
+    11,
+    23,
+    37,
+    71,
+    101
+  ],
+  "target_8k_fanout8": {
+    "harness_memoization": {
+      "native_tokens_reused": {
+        "ci95_high": 0.0,
+        "ci95_low": 0.0,
+        "mean": 0.0
+      },
+      "prefill_tokens": {
+        "ci95_high": 73728.0,
+        "ci95_low": 73728.0,
+        "mean": 73728.0
+      },
+      "simulated_wall_ms": {
+        "ci95_high": 1524.8,
+        "ci95_low": 1524.8,
+        "mean": 1524.8
+      },
+      "speedup_vs_isolated": 1.2621720881427072,
+      "tool_calls": {
+        "ci95_high": 1.0,
+        "ci95_low": 1.0,
+        "mean": 1.0
+      }
+    },
+    "isolated": {
+      "native_tokens_reused": {
+        "ci95_high": 0.0,
+        "ci95_low": 0.0,
+        "mean": 0.0
+      },
+      "prefill_tokens": {
+        "ci95_high": 73728.0,
+        "ci95_low": 73728.0,
+        "mean": 73728.0
+      },
+      "simulated_wall_ms": {
+        "ci95_high": 1924.56,
+        "ci95_low": 1924.56,
+        "mean": 1924.56
+      },
+      "speedup_vs_isolated": 1.0,
+      "tool_calls": {
+        "ci95_high": 9.0,
+        "ci95_low": 9.0,
+        "mean": 9.0
+      }
+    },
+    "pra_native_kv": {
+      "native_tokens_reused": {
+        "ci95_high": 65536.0,
+        "ci95_low": 65536.0,
+        "mean": 65536.0
+      },
+      "prefill_tokens": {
+        "ci95_high": 8192.0,
+        "ci95_low": 8192.0,
+        "mean": 8192.0
+      },
+      "simulated_wall_ms": {
+        "ci95_high": 313.10400000000004,
+        "ci95_low": 313.10400000000004,
+        "mean": 313.10400000000004
+      },
+      "speedup_vs_isolated": 6.146711635750421,
+      "tool_calls": {
+        "ci95_high": 1.0,
+        "ci95_low": 1.0,
+        "mean": 1.0
+      }
+    },
+    "pra_no_visibility": {
+      "native_tokens_reused": {
+        "ci95_high": 0.0,
+        "ci95_low": 0.0,
+        "mean": 0.0
+      },
+      "prefill_tokens": {
+        "ci95_high": 73728.0,
+        "ci95_low": 73728.0,
+        "mean": 73728.0
+      },
+      "simulated_wall_ms": {
+        "ci95_high": 1925.52,
+        "ci95_low": 1925.52,
+        "mean": 1925.52
+      },
+      "speedup_vs_isolated": 0.9995014333790353,
+      "tool_calls": {
+        "ci95_high": 9.0,
+        "ci95_low": 9.0,
+        "mean": 9.0
+      }
+    },
+    "pra_payload": {
+      "native_tokens_reused": {
+        "ci95_high": 0.0,
+        "ci95_low": 0.0,
+        "mean": 0.0
+      },
+      "prefill_tokens": {
+        "ci95_high": 73728.0,
+        "ci95_low": 73728.0,
+        "mean": 73728.0
+      },
+      "simulated_wall_ms": {
+        "ci95_high": 1525.52,
+        "ci95_low": 1525.52,
+        "mean": 1525.52
+      },
+      "speedup_vs_isolated": 1.2615763805128744,
+      "tool_calls": {
+        "ci95_high": 1.0,
+        "ci95_low": 1.0,
+        "mean": 1.0
+      }
+    }
+  }
+}
