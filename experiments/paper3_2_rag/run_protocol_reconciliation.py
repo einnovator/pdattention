@@ -27,7 +27,6 @@ from experiments.paper3_2_rag.run_composition_fidelity import (
 )
 from experiments.rag_vs_pra.datasets import load_multihop_rag
 from experiments.rag_vs_pra.run_powered_decomposition import (
-    DEFAULT_RERANKER,
     PersistentMLXBackend,
     _hardware,
     _resolve_hf_revision,
@@ -50,6 +49,8 @@ from pra_hf.rag_mlx_native import combine_native_memories, encode_native_memory
 SCHEMA_VERSION = "paper3.2-paper3.3-protocol-reconciliation-v1"
 SELECTION_SCHEMA_VERSION = "paper3.2-protocol-selection-v1"
 PAPER33_SELECTION_SCHEMA_VERSION = "paper3.3-frozen-selection-cache-v1"
+PAPER33_RERANKER = "BAAI/bge-reranker-v2-m3"
+PAPER33_RERANKER_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
 
 
 @dataclass(frozen=True)
@@ -384,8 +385,8 @@ def main() -> None:
     parser.add_argument("--paper33-selection-anchor", type=Path, required=True)
     parser.add_argument("--model", default="mlx-community/Qwen3-1.7B-4bit")
     parser.add_argument("--model-revision", default="main")
-    parser.add_argument("--reranker", default=DEFAULT_RERANKER)
-    parser.add_argument("--reranker-revision", default="main")
+    parser.add_argument("--reranker", default=PAPER33_RERANKER)
+    parser.add_argument("--reranker-revision", default=PAPER33_RERANKER_REVISION)
     parser.add_argument("--reranker-device", default="cpu")
     parser.add_argument("--max-new-tokens", type=int, default=24)
     parser.add_argument("--max-paper32-examples", type=int, default=30)
