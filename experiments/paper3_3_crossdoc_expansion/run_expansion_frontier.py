@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
+import platform
 import statistics
 import subprocess
 import time
@@ -83,6 +85,23 @@ class CachedSemanticEncoder:
                 for text, vector in zip(missing, vectors)
             )
         return tuple(self._documents[text] for text in texts)
+
+
+def environment_metadata() -> dict[str, object]:
+    """Capture compact software/hardware provenance without importing engines."""
+
+    packages = {}
+    for name in ("torch", "transformers", "sentence-transformers", "numpy"):
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "packages": packages,
+    }
 
 
 class _FrozenProposalPolicy:
@@ -865,14 +884,16 @@ def main() -> None:
         reranker_revision = _resolve_hf_revision(
             args.reranker, args.reranker_revision or "main"
         )
+        reranker_device = _resolve_reranker_device(args.reranker_device)
         selector = CrossEncoderRAGSelector(
             model_id=args.reranker,
             revision=reranker_revision,
-            device=_resolve_reranker_device(args.reranker_device),
+            device=reranker_device,
             name_prefix="paper3_3_crossdoc_expansion",
         )
     else:
         reranker_revision = None
+        reranker_device = None
         selector = StandardRAGSelector()
     uses_dense = any(
         mode
@@ -885,16 +906,18 @@ def main() -> None:
     )
     if uses_dense:
         dense_revision = _resolve_hf_revision(args.dense_model, args.dense_revision)
+        dense_device = _resolve_reranker_device(args.dense_device)
         semantic_encoder = CachedSemanticEncoder(
             SentenceTransformerEmbedder(
                 args.dense_model,
                 revision=dense_revision,
-                device=_resolve_reranker_device(args.dense_device),
+                device=dense_device,
                 query_prefix="Represent this sentence for searching relevant passages: ",
             )
         )
     else:
         dense_revision = None
+        dense_device = None
         semantic_encoder = None
 
     rows: list[dict[str, object]] = []
@@ -988,10 +1011,12 @@ def main() -> None:
         "question_count_evaluated": len({row["example_id"] for row in rows}),
         "selector": selector.name,
         "reranker_revision": reranker_revision,
+        "reranker_device": reranker_device,
         "dense_encoder": (
             semantic_encoder.identity if semantic_encoder is not None else None
         ),
         "dense_revision": dense_revision,
+        "dense_device": dense_device,
         "policy_parameters": policy_parameters,
         "candidate_count": args.candidate_count,
         "token_budget": args.token_budget,
@@ -1007,6 +1032,7 @@ def main() -> None:
         "selection_cache": str(args.selection_cache) if args.selection_cache else None,
         "elapsed_s": time.time() - started,
         "evidence_scope": "retrieval_mechanism_not_answer_quality",
+        "environment": environment_metadata(),
         "summary": summary,
     }
     (args.output / "summary.json").write_text(

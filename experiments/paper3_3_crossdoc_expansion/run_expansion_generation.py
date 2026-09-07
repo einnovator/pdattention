@@ -28,6 +28,7 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     _gold_chunks,
     _selected_records,
     load_selection_cache,
+    environment_metadata,
 )
 from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     DEFAULT_SPLIT_MANIFEST,
@@ -220,6 +221,7 @@ def main() -> None:
 
     model_revision = _resolve_hf_revision(args.model, args.model_revision)
     reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
+    reranker_device = _resolve_reranker_device(args.reranker_device)
     uses_dense = args.mode in {
         CrossDocumentExpansionMode.DENSE,
         CrossDocumentExpansionMode.HYBRID_RRF,
@@ -230,6 +232,7 @@ def main() -> None:
         if uses_dense
         else None
     )
+    dense_device = _resolve_reranker_device(args.dense_device) if uses_dense else None
     backend = PersistentMLXBackend(
         args.model, model_revision, args.max_new_tokens, native_cache_unit="chunk"
     )
@@ -246,7 +249,7 @@ def main() -> None:
     selector = CrossEncoderRAGSelector(
         model_id=args.reranker,
         revision=reranker_revision,
-        device=_resolve_reranker_device(args.reranker_device),
+        device=reranker_device,
         # Match the frontier label so its frozen selection cache can be replayed
         # without weakening the candidate/selector provenance checks.
         name_prefix="paper3_3_crossdoc_expansion",
@@ -256,7 +259,7 @@ def main() -> None:
             SentenceTransformerEmbedder(
                 args.dense_model,
                 revision=dense_revision,
-                device=_resolve_reranker_device(args.dense_device),
+                device=dense_device,
                 query_prefix="Represent this sentence for searching relevant passages: ",
             )
         )
@@ -503,10 +506,12 @@ def main() -> None:
         "model_revision": model_revision,
         "reranker": args.reranker,
         "reranker_revision": reranker_revision,
+        "reranker_device": reranker_device,
         "dense_encoder": (
             semantic_encoder.identity if semantic_encoder is not None else None
         ),
         "dense_revision": dense_revision,
+        "dense_device": dense_device,
         "split": split_metadata,
         "seed": args.seed,
         "selection_cache": str(args.selection_cache) if args.selection_cache else None,
@@ -523,6 +528,7 @@ def main() -> None:
         },
         "examples": len({row["example_id"] for row in rows}),
         "elapsed_s": time.time() - started,
+        "environment": environment_metadata(),
         "summary": _summarize(rows),
     }
     (args.output / "summary.json").write_text(
