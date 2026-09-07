@@ -1,0 +1,413 @@
+schema_version: 2
+base_model:
+  id: mlx-community/Qwen3.5-27B-4bit
+  revision: 45797d2985a12c55e6473686e9ea91b95e959553
+  tokenizer_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+  architecture: Qwen3_5ForConditionalGeneration
+  family: qwen3_5
+  parameter_count_approx: 27B
+  quantization:
+    bits: 4
+    group_size: 64
+    runtime: MLX
+  post_training: pretrained and post-trained
+  fingerprint: dd52a27b5b8c91c7414809203c31c62df3dd1b8635c2d4409a3d10e26497fbed
+structural_adapter:
+  path: structural_adapter
+  status: partial-topology
+  fingerprint: c02f7c231f026139b9183b676620abe875bbb4075b71e02411250e6675536404
+supported_precisions:
+- precision_family: INT4
+  encoding: MLX-4bit
+  evidence_tier: CONTROLLED
+learned_adapters:
+  combined-router-d128:
+    path: learned_adapters/combined-router-d128
+    type: routing
+    status: controlled-artifact
+    default: false
+    training:
+      datasets:
+      - QASPER
+      - HotpotQA
+      seed: 23
+      seeds_evaluated: &id008
+      - 11
+      - 23
+      - 37
+      - 53
+      - 71
+      steps: 512
+      parameters: 1310720
+      objective: multi-positive softmax
+    validation:
+      AUC0-30: 0.3604520666650601
+      MRR: 0.4825892857142857
+      R@10%: 0.2799766844997108
+      R@16: 0.44969394640447274
+      R@20%: 0.4588993517447465
+      R@3: 0.16118360805860807
+      R@30%: 0.5783927968960864
+      R@5%: 0.1940391844997108
+      R@8: 0.2970467032967033
+      f70: 0.5029808062294773
+      f80: 1.0
+      f90: 1.0
+    fingerprint: 7d787c062f33c4df2f55aff549d1ade80f3cfc68c86f24c948acdb11f860efef
+profiles:
+  quality:
+    purpose: Candidate maximum-quality profile; held-out calibration is incomplete
+    routing_adapter: null
+    consumer_layers: &id001
+    - 3
+    - 7
+    - 11
+    - 15
+    - 19
+    - 23
+    - 27
+    - 31
+    - 35
+    - 39
+    - 43
+    - 47
+    - 51
+    - 55
+    - 59
+    - 63
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Selected Context
+  balanced:
+    purpose: Qualified default preserving the all-eligible consumer geometry
+    routing_adapter: null
+    consumer_layers: *id001
+    status: QUALIFIED
+    recommended: true
+    engine: mlx
+    mode: Selected Context
+  economy:
+    purpose: Reduced-consumer candidate; the held-out quality gate has not passed
+    routing_adapter: null
+    consumer_layers: CALIBRATION_PENDING
+    status: CALIBRATION_PENDING
+    recommended: false
+    engine: mlx
+    mode: Selected Context
+  qasper-learned:
+    purpose: Research-only learned routing profile qualified only on matched QASPER
+      routing diagnostics
+    routing_adapter: combined-router-d128
+    consumer_layers: *id001
+    status: RESEARCH
+    recommended: false
+    engine: mlx
+    mode: Selected Context
+qualification:
+  contract_version: 1
+  status: CONTROLLED
+  headline: []
+  canonical_evidence: []
+  metrics:
+  - &id002
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.37515212309620205
+    secondary_metrics:
+      MRR: 0.3462842538331122
+      AUC0-30: 0.3104947816255382
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  - &id003
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: qasper
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.6099117987275882
+    secondary_metrics:
+      MRR: 0.6833333333333333
+      AUC0-30: 0.4893205519809138
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  - &id004
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.5183035714285714
+    secondary_metrics:
+      MRR: 0.6558493589743589
+      AUC0-30: 0.4111582341269841
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  - &id005
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: hotpotqa
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.3078869047619048
+    secondary_metrics:
+      MRR: 0.2818452380952381
+      AUC0-30: 0.23158358134920634
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 16
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  - &id006
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Generic cosine routing
+    quality_metric: R@20%
+    quality: 0.44672784726238673
+    secondary_metrics:
+      MRR: 0.5010668064037356
+      AUC0-30: 0.3608265078762612
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: balanced
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  - &id007
+    metric_class: ROUTING_DIAGNOSTIC
+    model_id: mlx-community/Qwen3.5-27B-4bit
+    model_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+    quantization: 4bit
+    engine: mlx-lm 0.31.3
+    hardware: Apple M4 Pro, 48 GB
+    dataset: combined
+    workload: held-out frozen-feature routing comparison
+    mode: Learned asymmetric routing
+    quality_metric: R@20%
+    quality: 0.4588993517447465
+    secondary_metrics:
+      MRR: 0.4825892857142857
+      AUC0-30: 0.3604520666650601
+    visible_tokens: null
+    ttft_ms: null
+    throughput: null
+    sample_count: 32
+    profile: qasper-learned
+    evidence_tier: CONTROLLED
+    date: '2026-09-07'
+    provenance: qualification/comparison.json
+  routing_diagnostics:
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id006
+  - *id007
+  end_task_generation:
+  - dataset: hotpotqa
+    condition: FULL_NO_PRA
+    examples: 16
+    exact_match: 0.6875
+    token_f1: 0.88691829004329
+    evidence_recall: 1.0
+    visible_prompt_tokens: 1668.6875
+    ttft_ms: 15305.066328233806
+    completion_latency_ms: 15631.64527862682
+    output_tokens_per_second: 14.420940497592689
+    peak_unified_memory_bytes: 18548117046
+  - dataset: hotpotqa
+    condition: PRA_GENERIC
+    examples: 16
+    exact_match: 0.4375
+    token_f1: 0.6019082633053221
+    evidence_recall: 0.5058035714285715
+    visible_prompt_tokens: 375.3125
+    ttft_ms: 3641.6391198217752
+    completion_latency_ms: 4065.195265626244
+    output_tokens_per_second: 13.605326128761728
+    peak_unified_memory_bytes: 16878050890
+  - dataset: hotpotqa
+    condition: PRA_LEARNED
+    examples: 16
+    exact_match: 0.25
+    token_f1: 0.31994047619047616
+    evidence_recall: 0.2922619047619048
+    visible_prompt_tokens: 374.6875
+    ttft_ms: 3637.9316588136135
+    completion_latency_ms: 4313.219539129932
+    output_tokens_per_second: 15.568033836631457
+    peak_unified_memory_bytes: 16882097738
+  - dataset: hotpotqa
+    condition: PRA_ORACLE_CONTROL
+    examples: 16
+    exact_match: 0.75
+    token_f1: 0.899702380952381
+    evidence_recall: 1.0
+    visible_prompt_tokens: 375.25
+    ttft_ms: 3640.29622367525
+    completion_latency_ms: 3933.4306847522384
+    output_tokens_per_second: 14.596069606736556
+    peak_unified_memory_bytes: 16878018122
+  - dataset: qasper
+    condition: FULL_NO_PRA
+    examples: 16
+    exact_match: 0.5
+    token_f1: 0.5321180555555556
+    evidence_recall: 1.0
+    visible_prompt_tokens: 3648.25
+    ttft_ms: 32944.893883002806
+    completion_latency_ms: 33422.12383604783
+    output_tokens_per_second: 5.695222645091373
+    peak_unified_memory_bytes: 18548117046
+  - dataset: qasper
+    condition: PRA_GENERIC
+    examples: 16
+    exact_match: 0.375
+    token_f1: 0.3854166666666667
+    evidence_recall: 0.34390212309620205
+    visible_prompt_tokens: 772.875
+    ttft_ms: 7094.610580861627
+    completion_latency_ms: 7331.4604140105075
+    output_tokens_per_second: 2.9222285753288966
+    peak_unified_memory_bytes: 16884981322
+  - dataset: qasper
+    condition: PRA_LEARNED
+    examples: 16
+    exact_match: 0.4375
+    token_f1: 0.45928030303030304
+    evidence_recall: 0.5531487974744553
+    visible_prompt_tokens: 773.0
+    ttft_ms: 7079.237252633902
+    completion_latency_ms: 7394.30220311624
+    output_tokens_per_second: 3.866175266506385
+    peak_unified_memory_bytes: 16886963786
+  - dataset: qasper
+    condition: PRA_ORACLE_CONTROL
+    examples: 16
+    exact_match: 0.4375
+    token_f1: 0.4696969696969697
+    evidence_recall: 0.9580592105263158
+    visible_prompt_tokens: 772.75
+    ttft_ms: 7042.441825491551
+    completion_latency_ms: 7496.109999992768
+    output_tokens_per_second: 5.8406116678784565
+    peak_unified_memory_bytes: 16884981322
+  runtime_smoke: null
+  training:
+    datasets: QASPER and HotpotQA
+    train_examples: 48
+    validation_examples: 16
+    held_out_test_examples: 32
+    seeds: *id008
+    selection: maximum combined validation AUC0-30
+    method: multi-positive softmax
+    parameter_count: 1310720
+    base_revision: 45797d2985a12c55e6473686e9ea91b95e959553
+  limitations:
+  - The learned router improves QASPER but is not uniformly positive on HotpotQA;
+    it is opt-in rather than the bundle default.
+  - The held-out routing diagnostic contains 16 examples per dataset and supports
+    controlled routing claims only.
+  - Detached Native Memory is unavailable for this hybrid recurrent/attention topology;
+    the bundle fails closed to Selected Context.
+  - The qualification identity is the exact 4bit MLX model and revision; it does not
+    transfer automatically to another checkpoint, engine, or quantization.
+  - The controlled end-task arm contains 16 examples per dataset; routing and generation
+    claims remain dataset-specific.
+  - Qwen3.5 interleaves 48 Gated DeltaNet layers with 16 full-attention layers. Selected
+    Context and routing are supported, but detached Native Memory is unavailable until
+    recurrent DeltaNet state has an explicit lifecycle and composition contract.
+  - Base-model and dataset licenses apply separately to the router artifact.
+  artifacts:
+  - qualification/comparison.json
+  - qualification/feature_dataset_manifest.json
+  - qualification/catalog_summary.json
+  - qualification/end_task_qualification.json
+runtime_compatibility:
+  mlx:
+    selected_context: validated
+    native_memory: UNAVAILABLE_HYBRID_STATE
+    native_serving: NOT_APPLICABLE
+    recommended: Selected Context with BALANCED
+engine_realizations:
+  mlx:
+    bundle_consumed_by: pra_runtime
+  remote_engines:
+    bundle_consumed_by: pra_gateway
+provenance:
+  pra_version: 0.2.0rc1
+  pra_commit: 4b9371d2c4d567c804e7c78e3ee908cbb1440924
+  bundle_build_commit: 4b9371d2c4d567c804e7c78e3ee908cbb1440924
+  hf_repo: EInnovator/pra-qwen3-5-27b-mlx-4bit
+  hf_collection: EInnovator/pra-bundles-6a971e52093232f858e660f6
+  license: apache-2.0
+  license_note: Router and project terms do not replace the base-model or dataset
+    licenses.
+  source_artifact: docs/papers/shared/results/paper4_5_runtime/quantized_bundles/qwen3.5-27b
+  selection_reason: Fleet-compatible exact quantization with evidence isolated from
+    other weight representations.
+checksums:
+  learned_adapters/combined-router-d128/adapter_model.pt: 9527c15f4095bdd7433b5d95a30763339df467caee5e7afdfdeb4de94dca8bcb
+  learned_adapters/combined-router-d128/config.json: cb8552c25fcb62bb9df1defa5fca43cc88a2083f324b750a20e40045abd07019
+  qualification/catalog_summary.json: 1eadaf85f9305bc35fb19922e81cde0489460e3f177d917fd3b1a0647776b2e8
+  qualification/comparison.json: 0f64808db33d2906ac71148a5e72c7c801658b822c2730d80c33ee41b7685040
+  qualification/end_task_qualification.json: 94a18cd80fdc9f1ff7acfe7df6856b7a7c9de6b3a20fe0a870a991b6e430e16a
+  qualification/feature_dataset_manifest.json: 34ebdfc735d6b7f0b130c62627fc89ba4cff703d6145509229d8188008d2137b
+  structural_adapter/pra_adapter.yaml: 3e103b5735eb134bf00d8e4b97bf9ab75d61f26145ad518f93ec1c3f653bb9d1
+trust:
+  status: eInnovator-qualified
+  publisher: EInnovator
+  scope: exact 4bit MLX model identity; evidence does not transfer across revisions,
+    engines, or quantizations

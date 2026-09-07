@@ -113,6 +113,9 @@ def gateway_preflight(args: argparse.Namespace) -> dict[str, Any] | None:
         "model": args.served_model,
         "messages": [{"role": "user", "content": "Reply with OK."}],
         "temperature": 0,
+        "chat_template_no_thinking": bool(
+            getattr(args, "chat_template_no_thinking", False)
+        ),
         "max_tokens": 1,
         "stream": False,
     }).encode("utf-8")
@@ -342,6 +345,11 @@ def _execute_chunks(
                 "-c", "model.model_kwargs.temperature=0",
                 "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers), "-o", str(chunk_dir),
             ]
+            if getattr(args, "chat_template_no_thinking", False):
+                agent_command.extend([
+                    "-c",
+                    'model.model_kwargs.extra_body={"chat_template_kwargs":{"enable_thinking":false}}',
+                ])
             dataset_environment = {"HF_DATASETS_CACHE": str(output / "hf_datasets_cache")}
             timed_out = False
             if getattr(args, "recover_timeout_chunk", None) == chunk_number:
@@ -421,6 +429,9 @@ def _execute_chunks(
             "context_limit": args.context_limit,
             "max_steps": args.max_steps,
             "temperature": 0.0,
+            "chat_template_no_thinking": bool(
+                getattr(args, "chat_template_no_thinking", False)
+            ),
             "function_calling": False,
             "prefix_caching": False,
             "grading": args.grading,
@@ -450,6 +461,7 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "benchmark_ids_sha256", "benchmark_execution_revision", "model",
                 "model_revision", "engine", "engine_version", "campaign_mode",
                 "context_budget_fraction", "context_limit", "max_steps",
+                "chat_template_no_thinking",
             )
         },
         "gateway_preflight": receipt.get("gateway_preflight"),
@@ -844,6 +856,11 @@ def main() -> None:
     parser.add_argument("--harness-version", default=EXPECTED_PACKAGES["mini-swe-agent"])
     parser.add_argument("--grader-version", default=EXPECTED_PACKAGES["swebench"])
     parser.add_argument("--scaffold", default="swebench_backticks.yaml")
+    parser.add_argument(
+        "--chat-template-no-thinking",
+        action="store_true",
+        help="Disable model-specific thinking through the OpenAI extra-body contract.",
+    )
     parser.add_argument("--grading", default="SWE-bench 4.1.0 official Docker harness")
     parser.add_argument("--context-limit", type=int, default=16384)
     parser.add_argument("--max-steps", type=int, default=40)
