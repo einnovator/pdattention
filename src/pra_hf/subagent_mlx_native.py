@@ -2,7 +2,9 @@
 
 This is a deliberately narrow engine adapter. It encodes an immutable tool
 result once, retains the host model's post-RoPE K/V arrays, and gives each
-child a fresh local cache that attends to the shared arrays by reference.
+child a fresh local cache backed by those shared arrays. The current public
+MLX seam transiently concatenates shared and local K/V for host attention; it
+avoids persistent per-child copies but is not segmented zero-copy attention.
 Persistence and tiering remain the Paper 4.5 runtime's responsibility.
 """
 
@@ -39,7 +41,13 @@ class MLXSubagentMemory:
 
 
 class MLXSubagentKVCache:
-    """Expose immutable shared K/V before a request-local MLX prompt cache."""
+    """Expose immutable shared K/V before a request-local MLX prompt cache.
+
+    ``update_and_fetch`` uses the public host-cache contract, which requires a
+    transient concatenated attention view. The immutable stored arrays remain
+    shared, but this transient cost matters under memory pressure and is
+    reported explicitly by the Paper 9 live benchmark.
+    """
 
     def __init__(self, local_cache: object, memory: MLXLayerKV, position_base: int):
         self.local_cache = local_cache

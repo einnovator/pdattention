@@ -38,7 +38,10 @@ python experiments/paper9_subagents/run_natural_repository_workload.py
 
 On Apple Silicon, the live MLX benchmark freezes source/query tokens and
 compares one-shot text, host split-prefill, memoized text re-prefill, typed
-record re-prefill, and immutable native K/V reuse:
+record re-prefill, and immutable native K/V reuse. The host, memoized, and
+typed-record controls all use the same serving-style split-prefill path. The
+one-shot condition is diagnostic only because MLX kernel/chunking choices can
+change finite-precision logits even when the token sequence is identical:
 
 ```bash
 PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
@@ -47,6 +50,23 @@ PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
   --seeds 11,23,37,71,101 \
   --output docs/papers/shared/results/paper9_subagents/mlx_live_v1
 ```
+
+For 32K sources, omit the diagnostic one-shot arm and restrict the measured
+fan-out when device memory is constrained:
+
+```bash
+PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
+  --shared-tokens 32768 --fanouts 1,2,4 \
+  --seeds 11,23,37,71,101 --omit-one-shot \
+  --output docs/papers/shared/results/paper9_subagents/mlx_32
+```
+
+The current public MLX cache interface forms a transient concatenated
+shared-plus-local attention view. The retained native arrays are shared across
+children, but this benchmark must not be described as segmented zero-copy
+attention. `run_mlx_generation_parity.py` separately checks greedy output
+parity, and `analyze_mlx_cross_host.py` compares the same protocol across
+memory-capacity regimes.
 
 An instrumentation-only audit can be run against Paper 4.5 trajectory exports:
 
