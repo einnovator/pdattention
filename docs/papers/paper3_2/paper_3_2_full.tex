@@ -52,10 +52,14 @@ Fixed partial materialization, parameter-free gist append, post-hoc boundary
 copies, and fixed sparse masks do not qualify as general repairs. A
 1.38M-parameter rank-8 residual raises held-out independent-PRA F1 from .135
 to .154 and official score from .433 to .533, but the five-seed F1 interval
-crosses zero, answer NLL worsens, and packed RAG remains at .199 F1 and .700
-official score. Persistent contiguous transport and request-time position
-binding are therefore established in the measured setting; selective learned
-cross-document interaction remains the open composition problem.
+crosses zero and answer NLL worsens. A protocol-locked audit explains why the
+historical packed score of .700 is not a general endpoint: on 150 questions,
+packed RAG and independent PRA score .427 and .433 near 512 selected source
+tokens, but .527 and .333 near 1,024. Corrected BM25-v2 also narrows the legacy
+30-question packed/PRA gap from .267 to .067. Persistent contiguous transport
+and request-time position binding are therefore established in the measured
+setting; selective learned cross-document interaction remains the open
+large-context composition problem.
 \end{abstract}
 
 \section{Introduction}
@@ -93,7 +97,7 @@ The paper deliberately allows the strongest architecture to be complementary:
 PRA need not beat Elasticsearch, FAISS, Qdrant, or a strong cross-encoder reranker in order to provide value.
 
 \paragraph{Contributions.}
-We make six contributions, grouped by scientific claim rather than experiment
+We make seven contributions, grouped by scientific claim rather than experiment
 chronology.
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Selector-frozen transport equivalence.} A five-seed natural
@@ -115,6 +119,9 @@ chronology.
     sparse masks, parameter-free gist and boundary methods, and a rank-8
     residual identify both measurable headroom and the remaining learned
     composition problem.
+    \item \textbf{A protocol reconciliation.} A 780-row matched audit on the
+    Paper 3.2 and Paper 3.3 identities separates cohort, token-budget, and
+    BM25-version effects without introducing a new PRA mechanism.
 \end{enumerate}
 
 \section{Background and Related Work}
@@ -1425,6 +1432,63 @@ teacher-forced answer likelihood.}
 \label{fig:crossdoc-adapter}
 \end{figure}
 
+\subsection{Protocol reconciliation: the gap is budget-dependent}
+
+The repair experiment above inherited the original Paper 3.2 retrieval
+protocol: BM25-v1, 256-token chunks, a 1,024 model-token budget, and chunk-level
+selection that may retain several chunks from one document. Paper 3.3 instead
+used corrected deterministic BM25-v2, 128-token chunks, one chunk per document,
+and approximately 512 source tokens. The reported .700 and .427 packed scores
+are consequently outcomes from different protocols, not replications of one
+endpoint.
+
+We reconciled them with pinned Qwen3-1.7B-4bit and BGE-v2-M3 revisions, one
+prompt and evaluator, and one immutable selection receipt shared by each
+packed/PRA pair. All 150 Paper 3.3 selections at 512 tokens exactly reproduce
+the published selection anchor. The audit contains 780 model-backed rows and
+390 receipt-matched packed/PRA comparisons. It adds no PRA mechanism.
+
+\begin{table}[ht]
+\centering
+\caption{Protocol-locked reconciliation. $\Delta$ is independent PRA minus
+packed RAG; intervals are paired 10,000-sample bootstrap intervals. The legacy
+row budgets model-native tokens; other rows budget source whitespace tokens.}
+\label{tab:protocol-reconciliation}
+\small
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/protocol_reconciliation/generated_protocol_gap_table.tex}}
+\end{table}
+
+At the exact Paper 3.3 512-token endpoint, independent PRA is statistically
+indistinguishable from packed RAG: official score differs by +.007
+($[-.073,.087]$) and answer F1 by +.003 ($[-.010,.017]$). At the doubled
+budget, the selection averages 1,012 source tokens and 1,335 model-native
+tokens. Packed official score rises by .100 ($[.027,.173]$), whereas independent
+PRA changes by -.100 ($[-.167,-.033]$). The resulting PRA-minus-packed gap is
+-.193 ($[-.280,-.107]$), with an F1 gap of -.030 ($[-.046,-.015]$). More
+source-local state is therefore not monotonically more useful to this frozen
+decoder.
+
+The earlier 30 identities show almost the same packed endpoints under the
+common protocol: .433 at 512 tokens and .533 at 1,024, compared with .427 and
+.527 on the larger split. Cohort composition alone does not explain the packed
+difference. Replaying the exact legacy geometry with BM25-v2 changes 14 of 30
+selected chunk sets (mean Jaccard .713) while leaving token use nearly fixed.
+Packed official score falls from .700 to .567 and independent PRA rises from
+.433 to .500. Their gap contracts from .267 to .067, with corrected F1
+essentially tied at .1020 and .1025. The historical repair cohort was therefore
+unusually favorable to packed causal composition under the old selector.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.96\linewidth]{../shared/results/paper3_2_rag/protocol_reconciliation/protocol_reconciliation.pdf}
+\caption{Official score and answer F1 under matched identities and receipts.
+The Paper 3.3 512-token endpoint is a parity result; the larger common budget
+favors causal packing. Corrected BM25-v2 removes most of the historical legacy
+gap without changing the PRA mechanism.}
+\label{fig:protocol-reconciliation}
+\end{figure}
+\FloatBarrier
+
 \paragraph{Order robustness.}
 The same frozen selections were run in canonical, reverse, and seeded-random
 record order for 50 matched questions. Table~\ref{tab:gist-composition-order}
@@ -1895,6 +1959,16 @@ first-step distribution match does not translate into reliable answer gains.
 Composition adaptation must therefore be qualified on generation, likelihood,
 and causal controls together; state-space proximity alone is insufficient.
 
+The protocol reconciliation also makes the composition claim budget-specific.
+At roughly 512 selected source tokens, independent records and packed RAG are
+indistinguishable on the 150-question split. At roughly 1,024, packed quality
+improves while independent quality declines. The stable packed endpoints across
+the old and new identities, together with the large BM25-v1/v2 change on the
+same 30 identities, identify selection policy and selected-context scale as the
+main explanation for the apparently conflicting Paper 3.2 and Paper 3.3
+results. The paired bootstrap covers question sampling within these cohorts; it
+does not establish cross-model generality.
+
 \section{Conclusion}
 
 \paragraph{What works.}
@@ -1905,10 +1979,11 @@ re-prefill, and changing-selection sessions expose 28.1\% non-prefix K/V reuse.
 
 \paragraph{What standard baselines still win.}
 An exact ordinary prefix-cache hit is faster when the serialized evidence
-prefix is unchanged. In the powered natural comparison, ordinary packed RAG
-also remains better than independently stored records on generated-answer F1
-and official score. PRA therefore complements mature retrieval; it does not
-replace a strong selector or erase the value of an exact prefix cache.
+prefix is unchanged. At the matched 1,024-source-token endpoint, ordinary
+packed RAG also remains significantly better than independently stored records
+on generated-answer F1 and official score. At 512 tokens, however, the two are
+statistically indistinguishable. PRA therefore complements mature retrieval; it
+does not replace a strong selector or erase the value of an exact prefix cache.
 
 \paragraph{What causes the record gap.}
 Pre-RoPE records rebound to exact packed positions closely track packed
@@ -1929,8 +2004,10 @@ only 2.0--8.1\% of selected tokens yet also fails the joint quality gate.
 Persistent transport, request-specific position binding, and non-prefix
 addressability are established within the measured scope. The unresolved task
 is to learn or select a small amount of request-specific cross-document
-interaction while preserving those reuse benefits. That is the empirical
-boundary of this paper.
+interaction while preserving those reuse benefits as the selected context
+grows. Corrected BM25-v2 removes most of the historical .700-versus-.433 gap,
+but it does not remove the significant matched 1,024-token composition gap.
+That budget-qualified result is the empirical boundary of this paper.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
@@ -1942,6 +2019,9 @@ Committed artifact groups include local and service-backed retrieval,
 five-seed matched realization, partial materialization, independent
 composition, repair curves, permutation receipts, and changing-selection
 reuse. Each group retains raw rows or compressed raw rows plus a manifest.
+The protocol-reconciliation group adds 780 raw model-backed rows, 390 immutable
+paired receipts, the reproduced Paper 3.3 selection anchor, condition summaries,
+and paired 10,000-sample bootstrap contrasts.
 Cross-model scale and full positional-policy artifacts use the same schema.
 The pre-RoPE causal group additionally records the immutable RoPE contract,
 source and request positions, document spans, condition-specific masks,
