@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from experiments.paper4_5_runtime.run_qwen35_qualification import (
+    _prompt,
     select_chunk_indices,
 )
 from experiments.paper4_5_runtime.build_hf_catalog_bundles import (
@@ -41,3 +42,19 @@ def test_qwen35_bundle_declares_hybrid_topology_without_native_memory() -> None:
     assert spec["consumer_layers"] == list(range(3, 64, 4))
     assert structural["mapping"]["layers"] == "language_model.model.layers"
     assert structural["position"]["type"] == "partial_rope"
+
+
+def test_prompt_tokenizes_string_returned_by_mlx_tokenizer_wrapper() -> None:
+    class Tokenizer:
+        chat_template = "template"
+
+        @staticmethod
+        def apply_chat_template(*_args, **_kwargs):
+            return "rendered prompt"
+
+        @staticmethod
+        def encode(text, **_kwargs):
+            assert text == "rendered prompt"
+            return [4, 5, 6]
+
+    assert _prompt(Tokenizer(), "evidence", "question") == [4, 5, 6]

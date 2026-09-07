@@ -87,14 +87,21 @@ def _prompt(tokenizer: Any, source: str, question: str) -> list[int]:
         f"Evidence:\n{source}\n\nQuestion: {question}\nAnswer:"
     )
     if tokenizer.chat_template:
-        return list(
-            tokenizer.apply_chat_template(
-                [{"role": "user", "content": content}],
-                tokenize=True,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            )
+        rendered = tokenizer.apply_chat_template(
+            [{"role": "user", "content": content}],
+            tokenize=True,
+            add_generation_prompt=True,
+            enable_thinking=False,
         )
+        if isinstance(rendered, str):
+            return list(tokenizer.encode(rendered, add_special_tokens=False))
+        if isinstance(rendered, dict):
+            rendered = rendered["input_ids"]
+        if hasattr(rendered, "tolist"):
+            rendered = rendered.tolist()
+        if rendered and isinstance(rendered[0], list):
+            rendered = rendered[0]
+        return [int(token_id) for token_id in rendered]
     return list(tokenizer.encode(content, add_special_tokens=False))
 
 
