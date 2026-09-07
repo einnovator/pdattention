@@ -425,7 +425,13 @@ query to suppress associations unrelated to the current reasoning path. Search
 never escapes the records authorized by the frozen first-stage receipt.
 
 We implement exact chunk BM25, frozen dense similarity, reciprocal-rank fusion,
-an entity/keyterm channel, and a support-span oracle. For lexical rank
+an entity/keyterm channel, and a support-span oracle. Powered dense runs use
+BAAI BGE-base-en-v1.5 with its query and document encodings kept distinct; the
+dependency-free signed-hash encoder is an SDK fallback and is not labeled as a
+semantic result. Dense vectors for authorized peer chunks, the request, and
+selected source spans are prepared once per request. We report that preparation
+separately from scorer latency so dense and fusion rows cannot inherit
+order-dependent warm-cache advantages. For lexical rank
 $r_{\mathrm{lex}}(c)$ and dense rank $r_{\mathrm{dense}}(c)$, the primary hybrid
 score is
 \[
@@ -468,6 +474,18 @@ enforcement, and receipt generation also wrap custom plugins. No mode becomes
 an SDK default from a smoke result: qualification requires a powered frozen
 cohort, five-seed uncertainty, at least two model sizes, bounded quality and
 latency, and preferably cross-family replication.
+
+The first-stage selection cache stores tokenizer-independent source intervals
+and checks the candidate receipt, selector identity, token ceiling, and record
+limit before replay. Model tokenization occurs only during native encoding.
+An interprocess receipt check during this work exposed two defects in the
+historical BM25-v1 implementation: corpus term frequency had been accumulated
+where document occurrence was required, and floating sums traversed an
+unordered query-term set. BM25-v2 counts each term once per document and sorts
+query terms before accumulation. We invalidated and regenerated all preliminary
+expansion results after this correction; every new receipt carries the v2
+revision. Earlier physical-edge results remain tied to their pinned historical
+commit and are not silently relabeled as v2 comparisons.
 
 \section{Training Objective}
 

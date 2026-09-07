@@ -1,5 +1,9 @@
 # Paper 3.3 cross-document retrieval expansion
 
+Install the research dependencies with `pip install -e '.[research]'`. Natural
+runs use deterministic BM25-v2 receipts; v2 counts document occurrence for IDF
+and sorts query terms before floating-point accumulation.
+
 This experiment keeps first-stage retrieval, reranking, selected records, and
 initial selected spans frozen. A selected span may search only peer selected
 records. The runtime then enforces authorization, interval deduplication, and a
