@@ -509,6 +509,21 @@ def evaluate_question(
         uri: tuple(row for row in prepared.chunks if row.document_id == document_id)
         for document_id, uri in uri_by_document.items()
     }
+    semantic_prepare_latency_ms = 0.0
+    if semantic_encoder is not None:
+        semantic_started = time.perf_counter()
+        semantic_encoder.encode_documents(
+            tuple(
+                row.text
+                for chunks in candidates_by_record.values()
+                for row in chunks
+            )
+        )
+        semantic_encoder.encode_query(question.question)
+        for record in records:
+            for span in record.spans:
+                semantic_encoder.encode_query(span.text)
+        semantic_prepare_latency_ms = (time.perf_counter() - semantic_started) * 1000.0
     gold = _gold_chunks(question, prepared.chunks)
     initial_metrics = context_metrics(question, candidate, context)
     initial_span_hits = _span_hits(question, tuple(row.chunk for row in context.chunks))
@@ -614,6 +629,16 @@ def evaluate_question(
                                 if context.packed_tokens else 0.0
                             ),
                             "cross_search_latency_ms": plan.receipt.search_latency_ms,
+                            "semantic_prepare_latency_ms": (
+                                semantic_prepare_latency_ms
+                                if mode
+                                in {
+                                    CrossDocumentExpansionMode.DENSE,
+                                    CrossDocumentExpansionMode.HYBRID_RRF,
+                                    CrossDocumentExpansionMode.HYBRID_WEIGHTED,
+                                }
+                                else 0.0
+                            ),
                             "initial_supporting_document_coverage": initial_metrics[
                                 "supporting_document_coverage"
                             ],
@@ -665,6 +690,7 @@ def summarize_rows(rows: Sequence[Mapping[str, object]]) -> list[dict[str, objec
         "newly_materialized_cross_tokens",
         "extra_native_fraction",
         "cross_search_latency_ms",
+        "semantic_prepare_latency_ms",
         "initial_supporting_document_coverage",
         "supporting_document_coverage",
         "initial_supporting_span_coverage",
@@ -771,7 +797,7 @@ def main() -> None:
     parser.add_argument("--token-budget", type=int, default=512)
     parser.add_argument("--chunk-tokens", type=int, default=128)
     parser.add_argument("--chunk-overlap", type=int, default=16)
-    parser.add_argument("--max-resources", type=int, default=3)
+    parser.add_argument("--max-resources", type=int, default=4)
     parser.add_argument("--selector", choices=("bm25", "cross_encoder"), default="bm25")
     parser.add_argument("--reranker", default=DEFAULT_RERANKER)
     parser.add_argument("--reranker-revision")
