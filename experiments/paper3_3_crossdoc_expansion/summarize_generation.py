@@ -146,6 +146,9 @@ def plot_generation(summary: Mapping[str, object], output: Path) -> None:
         "PAIR_SA_ONLY": "Pair SA only",
         "PAIR_SA_ONLY_BOUNDARY": "Boundary SA only",
         "PACKED_RAG": "Packed RAG",
+        "NO_CROSS_DOC_PACKED": "No cross-doc packed",
+        "TASK_ORACLE_REGION_LAYER_SINGLETON": "Task oracle singleton",
+        "TASK_ORACLE_REGION_LAYER_UNION": "Ranked task-oracle union",
     }
     labels = [display_names.get(str(row["condition"]), str(row["condition"])) for row in rows]
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)

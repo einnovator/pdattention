@@ -120,8 +120,10 @@ Prefix, middle, and suffix windows are geometrically matched. In particular,
 source-suffix to target-prefix is the boundary hypothesis, while the other
 eight region pairs are equal-cost controls. Each singleton cell executes the
 original model attention and is scored by its incremental gold-answer NLL gain
-from the no-cross-document packed state. The best positive cells are then
-unioned and decoded as `TASK_ORACLE_REGION_LAYER`.
+from the no-cross-document packed state. The best singleton is decoded as
+`TASK_ORACLE_REGION_LAYER_SINGLETON`. Independently positive cells are also
+unioned and decoded as `TASK_ORACLE_REGION_LAYER_UNION`; this is a separate
+consumption test because singleton utilities need not compose additively.
 
 Run the first locked 1,024-token validation smoke on Apple Silicon:
 

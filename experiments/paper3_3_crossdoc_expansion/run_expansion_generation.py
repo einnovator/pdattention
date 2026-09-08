@@ -86,7 +86,7 @@ from pra_hf.sparse_crossdoc import (
 )
 
 
-SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v3"
+SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v4"
 TOKEN_REGIONS = ("prefix", "middle", "suffix")
 
 
@@ -329,41 +329,66 @@ def _region_layer_audit(
             row[2]["target_region"],
         )
     )
-    selected = [row for row in candidates if row[0] > 0.0][:oracle_cells]
-    selected_plans = [row[1] for row in selected]
-    oracle_plan = combine_interaction_plans(
-        graph, selected_plans, mode="TASK_ORACLE_REGION_LAYER"
+    positive = [row for row in candidates if row[0] > 0.0]
+    selected = positive[:oracle_cells]
+
+    def _consume(
+        *, condition: str, chosen: Sequence[tuple[float, object, dict[str, object]]]
+    ) -> dict[str, object]:
+        plan = combine_interaction_plans(
+            graph, [row[1] for row in chosen], mode=condition
+        )
+        memory, encode_ms = _encode_sparse_plan(
+            backend=backend,
+            packed_tokens=packed_tokens,
+            blocked_mask=blocked_mask,
+            revision=revision,
+            graph=graph,
+            plan=plan,
+        )
+        row = _condition_row(
+            condition=condition,
+            question=question,
+            backend=backend,
+            memory=memory,
+            encode_ms=encode_ms,
+            selection_receipt_id=selection_receipt_id,
+            reference_logits=packed_logits,
+            reference_condition="PACKED_RAG",
+            plan=plan,
+        )
+        row.update(
+            {
+                "selection_signal": "per_example_gold_answer_nll",
+                "selection_scope": "oracle_only",
+                "region_tokens": region_tokens,
+                "layer_band_count": layer_band_count,
+                "maximum_oracle_cells": (
+                    1 if condition.endswith("_SINGLETON") else oracle_cells
+                ),
+                "selected_oracle_cell_count": len(chosen),
+                "selected_oracle_cells": [candidate[2] for candidate in chosen],
+                "singleton_predicted_gold_nll_gain": (
+                    float(chosen[0][0]) if chosen else 0.0
+                ),
+                "additive_predicted_gold_nll_gain": sum(
+                    float(candidate[0]) for candidate in chosen
+                ),
+                "positive_candidate_cells": len(positive),
+                "blocked_gold_answer_mean_nll": blocked_nll,
+            }
+        )
+        return row
+
+    # The best singleton measures selection headroom without assuming that
+    # independently useful cells compose. The ranked union is a separate
+    # consumption test; its realized NLL can be worse through interaction.
+    singleton = positive[:1]
+    singleton_row = _consume(
+        condition="TASK_ORACLE_REGION_LAYER_SINGLETON", chosen=singleton
     )
-    oracle_memory, oracle_encode_ms = _encode_sparse_plan(
-        backend=backend,
-        packed_tokens=packed_tokens,
-        blocked_mask=blocked_mask,
-        revision=revision,
-        graph=graph,
-        plan=oracle_plan,
-    )
-    oracle_row = _condition_row(
-        condition="TASK_ORACLE_REGION_LAYER",
-        question=question,
-        backend=backend,
-        memory=oracle_memory,
-        encode_ms=oracle_encode_ms,
-        selection_receipt_id=selection_receipt_id,
-        reference_logits=packed_logits,
-        reference_condition="PACKED_RAG",
-        plan=oracle_plan,
-    )
-    oracle_row.update(
-        {
-            "selection_signal": "per_example_gold_answer_nll",
-            "selection_scope": "oracle_only",
-            "region_tokens": region_tokens,
-            "layer_band_count": layer_band_count,
-            "maximum_oracle_cells": oracle_cells,
-            "selected_oracle_cells": [row[2] for row in selected],
-            "positive_candidate_cells": sum(row[0] > 0.0 for row in candidates),
-            "blocked_gold_answer_mean_nll": blocked_nll,
-        }
+    union_row = _consume(
+        condition="TASK_ORACLE_REGION_LAYER_UNION", chosen=selected
     )
     blocked_row = _condition_row(
         condition="NO_CROSS_DOC_PACKED",
@@ -376,7 +401,7 @@ def _region_layer_audit(
         reference_condition="PACKED_RAG",
         plan=empty_plan,
     )
-    return [blocked_row, oracle_row], diagnostics
+    return [blocked_row, singleton_row, union_row], diagnostics
 
 
 def main() -> None:
