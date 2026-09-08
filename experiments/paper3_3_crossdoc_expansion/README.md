@@ -152,3 +152,17 @@ recovers a useful fraction of the locked 1,024-token packed deficit. Independent
 training seeds apply only after that gate; the oracle uses paired question
 bootstrap intervals and must later transfer to the reduced Qwen3-4B/Qwen3-8B
 and Llama-3.1-8B cohorts before any systems claim.
+
+Reduce a completed audit with strict cell/condition completeness checks:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.summarize_region_layer \
+  --run-dir .runs/paper3_3_region_layer_validation_n10 \
+  --output .runs/paper3_3_region_layer_validation_n10/publication
+```
+
+The reducer reports `selection_quality` (singleton NLL utility and the
+suffix-to-prefix boundary contrast against eight equal-cost controls) separately
+from `consumption_quality` (realized NLL, F1, and official-score changes for the
+singleton and ranked union). Bootstrap seeds are resampling seeds, not model
+training trials.

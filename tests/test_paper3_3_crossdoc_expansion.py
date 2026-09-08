@@ -15,6 +15,9 @@ from experiments.paper3_3_crossdoc_expansion.aggregate_generation_ladder import 
 from experiments.paper3_3_crossdoc_expansion.run_expansion_generation import (
     _summarize_region_layer,
 )
+from experiments.paper3_3_crossdoc_expansion.summarize_region_layer import (
+    summarize_region_layer_audit,
+)
 from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
     build_fixed_evaluation_summary,
     build_publication_summary,
@@ -457,3 +460,92 @@ def test_region_layer_summary_keeps_geometry_and_task_signal_separate() -> None:
     boundary = next(row for row in summary if row["band_index"] == 0)
     assert boundary["incremental_gold_nll_gain_mean"] == pytest.approx(0.05)
     assert boundary["positive_gain_fraction"] == 0.5
+
+
+def test_region_layer_audit_separates_selection_from_consumption() -> None:
+    diagnostics = []
+    rows = []
+    for example_id, boundary_gain in (("a", 0.4), ("b", 0.2)):
+        for source_region in ("prefix", "middle", "suffix"):
+            for target_region in ("prefix", "middle", "suffix"):
+                diagnostics.append(
+                    {
+                        "example_id": example_id,
+                        "band_index": 0,
+                        "layers": [0, 1],
+                        "source_region": source_region,
+                        "target_region": target_region,
+                        "incremental_gold_nll_gain": (
+                            boundary_gain
+                            if (source_region, target_region) == ("suffix", "prefix")
+                            else 0.1
+                        ),
+                        "selected_physical_edge_fraction": 0.001,
+                    }
+                )
+        for condition, nll, f1 in (
+            ("NO_CROSS_DOC_PACKED", 2.0, 0.1),
+            ("TASK_ORACLE_REGION_LAYER_SINGLETON", 1.7, 0.2),
+            ("TASK_ORACLE_REGION_LAYER_UNION", 2.1, 0.05),
+        ):
+            rows.append(
+                {
+                    "example_id": example_id,
+                    "condition": condition,
+                    "gold_answer_mean_nll": nll,
+                    "token_f1": f1,
+                    "exact_match": 0.0,
+                    "official_multihop_rag_score": 0.0,
+                    "additive_predicted_gold_nll_gain": (
+                        boundary_gain if condition.endswith("SINGLETON") else 0.7
+                    ),
+                }
+            )
+    run = {
+        "git_commit": "abc",
+        "model": "model",
+        "model_revision": "revision",
+        "split": {"name": "validation"},
+        "selection_cache_sha256": "digest",
+        "policy": {"layer_band_count": 1},
+        "examples": 2,
+        "summary": [],
+    }
+
+    result = summarize_region_layer_audit(run, rows, diagnostics, replicates=50)
+
+    boundary = next(
+        row
+        for row in result["selection_quality"]["cell_summary"]
+        if row["is_boundary_hypothesis"]
+    )
+    assert boundary["incremental_gold_nll_gain"]["mean"] == pytest.approx(0.3)
+    singleton, union = result["consumption_quality"]
+    assert singleton["realized_gold_nll_gain"]["mean"] == pytest.approx(0.3)
+    assert union["realized_gold_nll_gain"]["mean"] == pytest.approx(-0.1)
+
+
+def test_region_layer_audit_rejects_incomplete_cell_matrix() -> None:
+    run = {
+        "git_commit": "abc",
+        "model": "model",
+        "model_revision": "revision",
+        "split": {},
+        "policy": {"layer_band_count": 1},
+        "examples": 1,
+        "summary": [],
+    }
+    with pytest.raises(ValueError, match="incomplete region/layer matrices"):
+        summarize_region_layer_audit(
+            run,
+            [],
+            [
+                {
+                    "example_id": "a",
+                    "band_index": 0,
+                    "layers": [0],
+                    "source_region": "suffix",
+                    "target_region": "prefix",
+                }
+            ],
+        )
