@@ -77,12 +77,13 @@ from pra_hf.rag_mlx_native import (
 from pra_hf.rag_retrieval import SentenceTransformerEmbedder
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
+    all_record_pair_interaction_plan,
     linked_pair_interaction_plan,
     linked_top_attention_edge_plan,
 )
 
 
-SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v1"
+SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v2"
 
 
 def _git_commit() -> str:
@@ -392,6 +393,60 @@ def main() -> None:
             execution=packed_execution,
         )
 
+        # Isolate neural interaction from retrieval expansion.  These plans use
+        # only the original selected records and therefore form the no-expansion,
+        # interaction-present cells of the factorial comparison.
+        initial_lengths = tuple(len(segment) for segment in initial_segments)
+        initial_full_mask, _ = build_document_attention_mask(
+            initial_lengths, policy=DocumentAttentionPolicy.FULL_CAUSAL
+        )
+        initial_blocked_mask, _ = build_document_attention_mask(
+            initial_lengths, policy=DocumentAttentionPolicy.NO_CROSS_DOC
+        )
+        initial_collector = CrossDocumentAttentionCollector(
+            initial_lengths,
+            record_ids=initial_ids,
+            selection_receipt_id=selection.receipt_id,
+            model_revision=model_revision,
+        )
+        encode_native_memory_with_mask(
+            backend.model,
+            packed_tokens,
+            initial_full_mask,
+            model_revision=model_revision,
+            attention_observer=initial_collector.observe,
+        )
+        initial_graph = initial_collector.finalize()
+        interaction_only_rows = []
+        for sparse_plan in (
+            all_record_pair_interaction_plan(initial_graph),
+            all_record_pair_interaction_plan(
+                initial_graph,
+                boundary_tokens=args.boundary_tokens,
+            ),
+        ):
+            memory, encode_ms = _encode_sparse_plan(
+                backend=backend,
+                packed_tokens=packed_tokens,
+                blocked_mask=initial_blocked_mask,
+                revision=model_revision,
+                graph=initial_graph,
+                plan=sparse_plan,
+            )
+            interaction_only_rows.append(
+                _condition_row(
+                    condition=sparse_plan.mode,
+                    question=question,
+                    backend=backend,
+                    memory=memory,
+                    encode_ms=encode_ms,
+                    selection_receipt_id=selection.receipt_id,
+                    reference_logits=packed_execution[2],
+                    reference_condition="PACKED_RAG",
+                    plan=sparse_plan,
+                )
+            )
+
         extra_texts = tuple(row.text for row in expansion.spans)
         extra_ids = tuple(
             f"{row.target_chunk_id}:{row.start}:{row.end}" for row in expansion.spans
@@ -482,7 +537,13 @@ def main() -> None:
                     plan=sparse_plan,
                 )
             )
-        for row in (packed_row, independent_row, expansion_row, *linked_rows):
+        for row in (
+            packed_row,
+            independent_row,
+            *interaction_only_rows,
+            expansion_row,
+            *linked_rows,
+        ):
             row["schema_version"] = SCHEMA_VERSION
             row["expansion_receipt_id"] = expansion.receipt.receipt_id
             row["expansion_mode"] = args.mode.value
@@ -494,6 +555,7 @@ def main() -> None:
             row["deduplicated_cross_tokens"] = expansion.receipt.deduplicated_tokens
             row["reused_cross_kv_tokens"] = expansion.receipt.reused_native_tokens
             row["new_cross_kv_tokens"] = expansion.receipt.new_native_tokens
+            row["source_token_budget"] = args.token_budget
             rows.append(row)
 
     args.output.mkdir(parents=True, exist_ok=True)

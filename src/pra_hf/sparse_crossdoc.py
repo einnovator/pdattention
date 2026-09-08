@@ -534,6 +534,35 @@ def linked_pair_interaction_plan(
     )
 
 
+def all_record_pair_interaction_plan(
+    graph: CrossDocumentOracleGraph,
+    *,
+    boundary_tokens: int | None = None,
+    mode: str = "PAIR_SA_ONLY",
+) -> SparseInteractionPlan:
+    """Restore causal attention between every pair of independently encoded records.
+
+    The graph contains only source-to-later-target edges, so enumerating every
+    unordered record pair recovers the packed cross-record interaction surface
+    without adding evidence.  This is the interaction-only arm of the Paper 3.3
+    expansion-by-interaction factorial experiment.  ``boundary_tokens`` limits
+    each pair to the source suffix and target prefix when a cheaper repair is
+    desired.
+    """
+
+    record_pairs = tuple(
+        (source_id, target_id)
+        for source_index, source_id in enumerate(graph.record_ids)
+        for target_id in graph.record_ids[source_index + 1 :]
+    )
+    return linked_pair_interaction_plan(
+        graph,
+        record_pairs,
+        boundary_tokens=boundary_tokens,
+        mode=mode,
+    )
+
+
 def linked_top_attention_edge_plan(
     graph: CrossDocumentOracleGraph,
     linked_record_pairs: Sequence[tuple[str, str]],

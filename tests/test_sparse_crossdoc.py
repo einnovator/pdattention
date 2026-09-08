@@ -10,6 +10,7 @@ from pra_hf.rag_causal_decomposition import (
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     CrossDocumentOracleGraph,
+    all_record_pair_interaction_plan,
     cumulative_attention_mass_plan,
     full_interaction_plan,
     interaction_group_ablation_plan,
@@ -230,3 +231,15 @@ def test_retrieval_link_plan_rejects_unknown_or_self_pairs() -> None:
         linked_pair_interaction_plan(graph, (("D1", "D1"),))
     with pytest.raises(ValueError, match="distinct graph record IDs"):
         linked_pair_interaction_plan(graph, (("D1", "missing"),))
+
+
+def test_all_record_pair_plan_restores_every_causal_pair_without_new_records() -> None:
+    graph = _three_record_graph()
+    pair = all_record_pair_interaction_plan(graph)
+    boundary = all_record_pair_interaction_plan(graph, boundary_tokens=1)
+
+    assert pair.mode == "PAIR_SA_ONLY"
+    assert pair.selected_physical_head_edges == graph.physical_edge_count
+    assert pair.selected_mask.all()
+    assert boundary.mode == "PAIR_SA_ONLY_BOUNDARY"
+    assert boundary.selected_physical_head_edges == 3

@@ -65,8 +65,22 @@ metrics. Summarize a held-out retrieval replay with `summarize_expansion
 `summarize_generation`; both commands preserve the cache digest and distinguish
 bootstrap resampling seeds from independent model trials.
 
-The generation runner reports six separately named conditions: packed RAG,
-independent PRA, expansion-only native memory, linked pair attention, linked
-boundary attention, and a linked-region physical-edge oracle. The last three
-reuse Paper 3.3's host attention instrumentation and remain research controls;
-they are not sparse-kernel speed measurements.
+The generation runner reports eight separately named conditions. Four form an
+explicit expansion-by-interaction factorial:
+
+| Condition | Added evidence | Cross-record interaction |
+| --- | --- | --- |
+| `INDEPENDENT_PRA` | no | no |
+| `PAIR_SA_ONLY` | no | all causally valid selected-record pairs |
+| `EXPANSION_ONLY` | yes | no |
+| `CROSSDOC_EXPANSION_PAIR_SA` | yes | retrieval-linked pairs |
+
+Packed RAG is the dense causal reference. `PAIR_SA_ONLY_BOUNDARY` and
+`CROSSDOC_EXPANSION_PAIR_SA_BOUNDARY` are matched boundary-token controls, and
+the linked-region physical-edge oracle is a mechanism control. The interaction
+conditions reuse Paper 3.3's host attention instrumentation and are not
+sparse-kernel speed measurements.
+
+Run the same frozen test identities at both audit budgets by changing only
+`--token-budget 512` to `--token-budget 1024`. Each output row records
+`source_token_budget` and immutable selection and expansion receipt identities.
