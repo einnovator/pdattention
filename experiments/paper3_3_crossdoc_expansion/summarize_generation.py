@@ -143,6 +143,8 @@ def plot_generation(summary: Mapping[str, object], output: Path) -> None:
         "CROSSDOC_EXPANSION_TOP_ATTENTION": "Linked top-edge",
         "EXPANSION_ONLY": "Expansion only",
         "INDEPENDENT_PRA": "Independent PRA",
+        "PAIR_SA_ONLY": "Pair SA only",
+        "PAIR_SA_ONLY_BOUNDARY": "Boundary SA only",
         "PACKED_RAG": "Packed RAG",
     }
     labels = [display_names.get(str(row["condition"]), str(row["condition"])) for row in rows]

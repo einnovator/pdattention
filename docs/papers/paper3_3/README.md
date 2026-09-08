@@ -1,10 +1,15 @@
-# Paper 3.3: Sparse Cross-Document Contextualization
+# Paper 3.3: Cross-Document Dependencies for Persistent Native Memory
 
-Paper 3.3 begins from the causal boundary established by Paper 3.2: persistent
-independent records preserve reusable native K/V, but omit the cross-document
-history created by an ordinary packed RAG prefix. This paper asks whether a
-small request-specific set of real host-model attention edges can recover that
-history.
+Paper 3.3 separates two requirements of cross-document composition: selecting
+useful inter-record dependencies and executing them in a form the frozen
+decoder can consume. Persistent independent records preserve reusable native
+K/V, but omit the causal history created by an ordinary packed RAG prefix.
+
+The matched Paper 3.2 audit places that boundary. On the same 150 Paper 3.3
+identities, packed RAG and independent PRA score `0.427` and `0.433` near 512
+selected source tokens. Near 1,024 tokens they score `0.527` and `0.333`; the
+paired independent-minus-packed interval excludes zero. Paper 3.3 studies the
+dependency structure behind this context-scale transition.
 
 ## Evidence Boundary
 
@@ -16,7 +21,8 @@ history.
 - `MEASURED_POWERED`: the 150-question frozen-test comparison of raw attention,
   pair-NLL, pair-JS, and pair-NLL-times-attention rankings; the corrected
   BM25-v2 cross-document expansion validation/test frontiers; and the
-  150-question Qwen3-1.7B frozen generation and gold-support-oracle replays.
+  150-question Qwen3-1.7B frozen generation and gold-support-oracle replays;
+  plus the inherited 780-row matched 512/1,024-token protocol audit.
 - `MEASURED_REDUCED`: matched 30-question Qwen3-4B, Qwen3-8B, and
   Llama-3.1-8B generation replays using the same frozen selection-cache digest.
 - `DESIGN_ONLY`: the query-conditioned learned pair selector. Training remains

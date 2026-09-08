@@ -13,8 +13,8 @@
 \usepackage{microtype}
 \usepackage{multirow}
 
-\title{Sparse Cross-Document Contextualization for Persistent Native Memory\\
-\large An Oracle Headroom Study beyond Packed RAG}
+\title{Cross-Document Dependencies for Persistent Native Memory\\
+\large Separating Interaction Selection from Evidence Consumption}
 \author{Jorge Sim\~ao}
 \date{Draft --- September 2026}
 
@@ -25,53 +25,36 @@
 \maketitle
 
 \begin{abstract}
-Retrieval-augmented generation (RAG) normally serializes selected documents into
-one causal token sequence, so later documents are contextualized by earlier
-documents before the query is decoded. Progressive Retrieval Attention (PRA)
-instead allows selected resources to remain independently addressable and to
-persist as native key/value memory. Prior work established that contiguous PRA
-transport can preserve model behavior exactly, that pre-RoPE keys can be rebound
-to request-specific packed positions, and that independently stored resources
-closely reproduce a packed computation when document-to-document attention is
-disabled. The remaining quality gap is therefore primarily a
-cross-document-contextualization problem rather than a position-transport
-problem.
+Persistent native memory keeps retrieved records independently addressable and
+reusable, whereas ordinary retrieval-augmented generation (RAG) serializes them
+into one causal prefix. A matched 150-question audit shows why this distinction
+is budget dependent. Near 512 selected source tokens, packed RAG and independent
+Progressive Retrieval Attention (PRA) are tied within uncertainty (.427 versus
+.433 official score). Near 1,024 tokens, packed RAG rises to .527 while
+independent PRA falls to .333. This paper asks which inter-record dependencies
+explain that transition and whether they can be selected and executed sparsely.
 
-This paper asks whether the useful portion of packed-RAG cross-document
-interaction is sparse. We instrument the unchanged host-model attention path,
-extract an oracle graph over physical layer/head/token edges, and replay the
-same frozen retrieval selection under exact sparse masks. Candidate identities,
-record order, prompt semantics, model revision, and generation settings remain
-fixed. Compressed graphs retain only causal cross-record edges; immutable
-selection receipts and graph digests tie every intervention to its source.
+We separate two problems: choosing useful cross-document dependencies and
+presenting their consequences in a form the frozen decoder can consume. For
+selection, we instrument the unchanged host attention path, extract a graph over
+physical layer/head/token edges, and replay exact sparse masks under frozen
+retrieval receipts. On a ten-question mechanism cohort, 0.1\% of physical edges
+reaches .1488 F1 versus .1490 for packed RAG, although the absolute gap is small.
+On 150 frozen test questions, task-aware pair-NLL ranking at 1\% reaches .1243
+F1 versus .1148 for raw attention and .1119 for packed RAG. Its paired interval
+versus packed includes zero, and every frontier is non-monotonic: useful sparse
+headroom exists, but attention magnitude is not a dependable causal ranking.
 
-The inception experiment evaluates edge-count budgets from 0 to 100\% and
-cumulative teacher-mass targets from 50 to 99\% on MultiHop-RAG. It also freezes
-disjoint 2,000/150/150 train/validation/test identities for a possible learned
-selector. On a ten-question mechanism cohort, 0.1\% of physical edges reached
-.1488 F1 versus .1490 for packed RAG and .1431 for independent PRA, but this is
-97.3\% recovery of a small 0.0059 gap and the cohort's packed official score was
-only .600. We therefore run a powered 150-question frozen test comparing raw
-attention with document-pair leave-one-group-out NLL, first-step JS, and a
-finite-difference NLL-times-attention proxy. Pair NLL at 1\% obtains .1243 F1
-and .3933 official score versus .1119 and .3333 for packed RAG; paired
-differences are $+.0124$ F1 and $+.0600$ official, but both 95\% intervals
-include zero. Every frontier remains non-monotonic and the absolute .19/.67
-gate is missed. The result supports sparse causal headroom and shows that
-task-aware rankings improve on raw magnitude, but it does not justify learned
-selector training.
-
-We then test a cheaper alternative: use one frozen selected record to retrieve
-additional source intervals from another. Among 221 validation configurations,
-dense selected-only expansion gains 2.94 support-span points using 12.66\%
-extra native tokens, but recovers only 12.71\% of oracle headroom. Replayed
-unchanged on 150 test questions, the gain contracts to 0.89 points and 95.3\%
-of admitted tokens fall outside annotated support. Expansion-only native
-generation lowers F1 from .0896 to .0761. Allowing attention only across
-retrieval-linked record pairs restores F1 to .0874, statistically overlapping
-independent PRA but not improving it. Cheap expansion finds some missing
-evidence; current parameter-free scores do not select it precisely enough, and
-cross-record interaction remains necessary to consume it safely.
+For evidence consumption, we test 221 bounded cross-document retrieval policies.
+The selected dense policy gains 2.94 support-span points on validation but only
+0.89 on frozen test, where 95.3\% of admitted tokens are distractors.
+Expansion-only native generation lowers F1 from .0896 to .0761. More decisively,
+a gold-support expansion also lowers F1 when its spans remain independently
+contextualized. Restricting real self-attention to retrieval-linked record pairs
+restores most of this loss (.0874 F1), but does not improve reliably over
+independent PRA. Thus finding evidence and making it usable are distinct causal
+requirements. Neither raw attention mass nor retrieval alone supplies both, and
+the current mechanisms remain research controls rather than deployment defaults.
 \end{abstract}
 
 \section{Introduction}
@@ -96,20 +79,20 @@ across changing queries. The harder question is composition: independent
 records do not contain the cross-document causal history introduced by ordinary
 packed RAG.
 
-Paper~3.2 localized this difference. Contiguous selected-context transport was
-behaviorally exact across multiple model scales and families. Pre-RoPE
-request-time rebinding reproduced the positional geometry of a packed request,
-and independently encoded records closely tracked a packed control in which
-document-to-document attention was disabled. In the powered natural comparison,
-however, packed RAG remained stronger than independent PRA. A small trained
-residual recovered part of the gap but did not establish a qualified solution.
-Fixed sparse masks were non-monotonic, while one very small boundary interaction
-budget approached packed F1 on some metrics.
+Paper~3.2 localized this difference and then reconciled its earlier endpoint
+against Paper~3.3 under one selector, cohort, prompt, evaluator, and source-token
+budget. Near 512 tokens, packed RAG and independent PRA are statistically tied.
+Near 1,024, packed causal composition gains while independent realization
+degrades. Contiguous transport remains exact, pre-RoPE rebinding preserves
+packed coordinates, and independent records track a packed control with
+document-to-document attention disabled. The unresolved question is therefore
+not whether packing is universally better, but when cross-document dependencies
+become useful as selected context grows.
 
-These results motivate a narrower question:
+These results motivate the paper's central question:
 \begin{quote}
-\textbf{How much cross-document interaction is actually necessary, and can the
-necessary interactions be predicted and executed sparsely at request time?}
+\textbf{Which cross-document dependencies are useful, and how must their effects
+be executed so that a frozen decoder can consume them?}
 \end{quote}
 
 We therefore separate three quantities:
@@ -134,16 +117,23 @@ The intended architecture is
 \]
 
 \paragraph{Contributions.}
-This inception study makes four contributions:
+This study makes six contributions:
 \begin{enumerate}[leftmargin=*]
-    \item A host-preserving attention observer and sparse-mask replay path that
-    leaves base-model parameters and persistent records unchanged.
-    \item A compressed physical-edge graph and immutable interaction-plan
-    receipt spanning layers, heads, record pairs, and token positions.
-    \item A prespecified oracle sparsification study over edge-count and
-    cumulative-attention-mass budgets, with task and distribution metrics.
-    \item A leakage-safe data split and an explicit learned pair-selector design
-    that remains locked unless oracle evidence justifies training.
+    \item \textbf{Physical causal-interaction instrumentation.} Exact replay over
+    layer, head, record-pair, and token edges without changing model weights.
+    \item \textbf{Sparse causal headroom.} Very small edge subsets can approach
+    packed behavior on mechanism cohorts, although the frontier is unstable.
+    \item \textbf{Attention magnitude is not causal utility.} Pair-level
+    leave-one-group-out targets rank useful interactions better directionally
+    than raw attention mass on the powered test.
+    \item \textbf{Bounded cross-document retrieval expansion.} Lexical, dense,
+    hybrid, and oracle policies measure how much omitted support can be recovered
+    under explicit native-K/V budgets.
+    \item \textbf{Evidence exposure is insufficient.} Even gold support fails to
+    improve answers when added records remain independently contextualized.
+    \item \textbf{Linked neural interaction repairs consumption failure.}
+    Pair and boundary self-attention recover most expansion-induced degradation,
+    while leaving the deployment gate closed because gains are not robust.
 \end{enumerate}
 
 \section{Related Work}
@@ -187,12 +177,40 @@ global cross-document mask.
 
 \subsection{Paper 3.2: causal localization of the composition gap}
 
-Paper~3.2 supplies the direct starting point. With a strong frozen selector,
-packed RAG reached approximately .199 token F1 and .700 official score on the
-final held-out comparison, while independent PRA reached approximately .135 and
-.433. A rank-8 request-local residual raised PRA to approximately .154 F1 and
-.533 official score but left substantial headroom and an uncertain five-seed
-F1 effect.
+Paper~3.2 supplies the direct starting point, but its original 30-question
+endpoint and Paper~3.3's later 150-question endpoint used different chunking,
+retrieval revisions, and budgets. A protocol-locked audit reruns both cohorts
+with Qwen3-1.7B-4bit, deterministic BM25-v2, 128-token chunks, the same strong
+reranker, and one frozen receipt per packed/PRA pair. Table~\ref{tab:prior-budget-audit}
+reports the resulting budget transition.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Matched Paper 3.2/3.3 audit. $\Delta$ is independent PRA minus packed
+RAG; intervals are paired 10,000-sample bootstrap intervals. Budgets count
+source whitespace tokens.}
+\label{tab:prior-budget-audit}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_2_rag/protocol_reconciliation/generated_protocol_gap_table.tex}}
+\end{table}
+
+On the 150 Paper~3.3 identities, the 512-token endpoint is a parity result:
+official score differs by $+.007$ with interval $[-.073,.087]$, and F1 by
+$+.003$ with interval $[-.010,.017]$. At 1,024 tokens, packed official score
+rises from .427 to .527 while independent PRA falls from .433 to .333. The
+independent-minus-packed official gap is then $-.193$ with interval
+$[-.280,-.107]$, and the F1 gap is $-.030$ with interval $[-.046,-.015]$.
+The earlier .700 versus .433 comparison is therefore not a general endpoint;
+its legacy geometry and BM25-v1 selection contributed materially to the gap.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper3_2_rag/protocol_reconciliation/protocol_reconciliation.pdf}
+\caption{Protocol reconciliation from Paper~3.2. Independent realization and
+packing are tied near 512 selected source tokens, whereas packed causal
+composition becomes advantageous near 1,024 under the same selection protocol.}
+\label{fig:prior-budget-audit}
+\end{figure}
 
 More importantly, Paper~3.2 compared
 \[
@@ -211,7 +229,10 @@ difference is therefore cross-document causal interaction.
 
 Paper~3.3 does not attempt to make independent records reproduce every dense
 packed state. It asks which subset of those interactions is needed for task
-quality.
+quality, and whether retrieving omitted evidence can substitute for that neural
+interaction. The matched audit makes this a scaling question: the target is the
+dependency structure that emerges between 512 and 1,024 selected source tokens.
+\FloatBarrier
 
 \section{Problem Formulation}
 
@@ -727,40 +748,12 @@ three qualification points use the same 30-question subset.}
 \end{figure}
 \FloatBarrier
 
-\subsection{SDK qualification decision}
-
-Table~\ref{tab:expansion-sdk-gate} applies the predeclared SDK gate. The
-implementation itself is reproducible and auditable, but neither dense
-expansion nor linked SA has a stable answer-quality advantage.
-
-\begin{table}[H]
-\centering
-\small
-\caption{Cross-document expansion SDK qualification.}
-\label{tab:expansion-sdk-gate}
-\begin{tabular}{>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.09\linewidth}}
-\toprule
-Criterion & Result & Gate \\
-\midrule
-Pinned deterministic policy and immutable receipt & BGE revisions and cache digest recorded & Pass \\
-No test-set tuning & Validation-selected policy replayed unchanged & Pass \\
-At most 20\% extra native K/V & 12.65\% source-token fraction on test & Pass \\
-At least 50\% packed-gap F1 recovery & No positive packed gap; expansion lowers 1.7B F1 & Fail \\
-No meaningful quality regression & Negative 1.7B mean; inconsistent ladder & Fail \\
-Independent-seed stability & Bootstrap resampling only, not five model runs & Not met \\
-Bounded production latency & 370.3 ms preparation plus 249.5 ms exhaustive search & Not met \\
-Two sizes and cross-family check & Qwen 1.7B/4B/8B and Llama 8B & Pass \\
-Authorization, fallback, and audit receipt & Fail-closed runtime tests & Pass \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The stable public behavior remains \texttt{mode=none}. Expansion modes remain
-explicit research options, oracle access remains experiment-only, and
-iteration depth two stays rejected by validation until one-pass quality
-qualifies. A learned selector is likewise not unlocked: the failure now
-includes consumption of an oracle selection, not merely a weak
-parameter-free ranker.
+\paragraph{Qualification decision.}
+The implementation is reproducible and auditable, but neither dense expansion
+nor linked SA has a stable answer-quality advantage. The stable public behavior
+therefore remains \texttt{mode=none}; expansion, oracle, learned, and recursive
+policies remain research-only. Appendix~\ref{app:sdk-gate} gives the complete
+predeclared gate and runtime contract.
 
 \section{Training Objective}
 
@@ -1158,26 +1151,6 @@ Scientifically useful negative outcomes include:
     \item the mechanism does not transfer across models/families.
 \end{itemize}
 
-\section{Systems Integration}
-
-Paper~3.3 reuses the canonical Paper~4.5/Paper~3.2 \texttt{ContextRecord} and storage
-metadata. The learned interaction policy is request-local and must not mutate
-persistent source records.
-
-The target runtime abstraction is
-\[
-\texttt{ContextRecord}
-\rightarrow
-\texttt{SelectionReceipt}
-\rightarrow
-\texttt{InteractionPlan}
-\rightarrow
-\texttt{RequestLocalComposition}.
-\]
-
-An \texttt{InteractionPlan} should record selected record pairs, token spans,
-layers/heads, budget, policy revision, and model/runtime compatibility.
-
 \section{Discussion}
 
 The 0.1\% result suggests that conventional RAG may perform substantially
@@ -1243,6 +1216,50 @@ experiment-only, and learned or recursive policies remain locked.
 \bibliography{../shared/references}
 
 \appendix
+
+\section{SDK Qualification and Runtime Contract}
+\label{app:sdk-gate}
+
+Paper~3.3 reuses the canonical Paper~4.5/Paper~3.2 \texttt{ContextRecord} and
+storage metadata. Interaction is request-local and must not mutate persistent
+source records. The runtime sequence is
+\[
+\texttt{ContextRecord}
+\rightarrow
+\texttt{SelectionReceipt}
+\rightarrow
+\texttt{InteractionPlan}
+\rightarrow
+\texttt{RequestLocalComposition}.
+\]
+An \texttt{InteractionPlan} records selected record pairs, token spans,
+layers/heads, budget, policy revision, and model/runtime compatibility.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Cross-document expansion SDK qualification.}
+\label{tab:expansion-sdk-gate}
+\begin{tabular}{>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.40\linewidth}>{\raggedright\arraybackslash}p{.09\linewidth}}
+\toprule
+Criterion & Result & Gate \\
+\midrule
+Pinned deterministic policy and immutable receipt & BGE revisions and cache digest recorded & Pass \\
+No test-set tuning & Validation-selected policy replayed unchanged & Pass \\
+At most 20\% extra native K/V & 12.65\% source-token fraction on test & Pass \\
+At least 50\% packed-gap F1 recovery & No positive packed gap; expansion lowers 1.7B F1 & Fail \\
+No meaningful quality regression & Negative 1.7B mean; inconsistent ladder & Fail \\
+Independent-seed stability & Bootstrap resampling only, not five model runs & Not met \\
+Bounded production latency & 370.3 ms preparation plus 249.5 ms exhaustive search & Not met \\
+Two sizes and cross-family check & Qwen 1.7B/4B/8B and Llama 8B & Pass \\
+Authorization, fallback, and audit receipt & Fail-closed runtime tests & Pass \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The full expansion-policy grid, receipt fields, and timing decomposition are
+retained in the publication artifacts. They support reproducibility but are not
+part of the mechanism claim.
 
 \section{Interventional Replay Procedure}
 

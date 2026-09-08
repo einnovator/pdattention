@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
     _controlled_crossdoc_fixture,
     _fixture_initial_context,
@@ -17,6 +19,9 @@ from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
 )
 from experiments.paper3_3_crossdoc_expansion.summarize_generation import (
     summarize_generation,
+)
+from experiments.paper3_3_crossdoc_expansion.summarize_factorial import (
+    build_factorial_summary,
 )
 from pra_hf.crossdoc_expansion import (
     CrossDocumentDirection,
@@ -309,6 +314,38 @@ def test_generation_summary_uses_paired_examples() -> None:
     assert effect["paired_examples"] == 2
     assert abs(effect["effects"]["token_f1"]["mean_difference"]) < 1e-12
     assert result["condition_summary"][0]["ttft_ms_mean"] == 10.0
+
+
+def test_factorial_summary_keeps_budget_and_interaction_effects_separate() -> None:
+    runs = {}
+    for budget in (512, 1024):
+        rows = []
+        for example_id, base in (("a", 0.1), ("b", 0.2)):
+            for condition, delta in (
+                ("PACKED_RAG", 0.01),
+                ("INDEPENDENT_PRA", 0.0),
+                ("PAIR_SA_ONLY", 0.02),
+                ("PAIR_SA_ONLY_BOUNDARY", 0.01),
+                ("EXPANSION_ONLY", -0.01),
+                ("CROSSDOC_EXPANSION_PAIR_SA", 0.03),
+            ):
+                rows.append(
+                    {
+                        "condition": condition,
+                        "example_id": example_id,
+                        "token_f1": base + delta,
+                        "official_multihop_rag_score": base + delta,
+                    }
+                )
+        runs[budget] = ({"model": "model"}, rows)
+
+    result = build_factorial_summary(runs, replicates=50)
+
+    assert result["budgets"] == [512, 1024]
+    assert result["examples"] == 2
+    assert result["factorial_at_smallest_budget"]["token_f1"][
+        "interaction_effect"
+    ] == pytest.approx(0.02)
 
 
 def test_generation_ladder_requires_one_frozen_selection() -> None:
