@@ -52,7 +52,7 @@ training therefore remained locked pending the powered oracle reported below.
 
 The frozen validation diagnostic compares raw attention with document-pair and
 layer leave-one-group-out answer-NLL and first-step-JS rankings. Independent PRA
-reversed the inception endpoint and exceeded packed F1 (`0.1673` versus
+reversed the small-cohort endpoint and exceeded packed F1 (`0.1673` versus
 `0.1094`), while packed retained higher official score (`0.600` versus `0.500`).
 No ranking was monotonic through 1%. Pair-JS at 0.5% had the highest validation
 F1 (`0.1727`), but its paired F1 interval versus packed included zero. This is a

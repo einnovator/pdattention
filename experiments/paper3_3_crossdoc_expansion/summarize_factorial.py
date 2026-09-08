@@ -100,6 +100,18 @@ def build_factorial_summary(
                 "budget": budget,
                 "condition": condition,
                 "examples": len(by_id),
+                "selected_physical_edge_fraction": (
+                    statistics.fmean(
+                        float(row["selected_physical_edge_fraction"])
+                        for row in by_id.values()
+                        if row.get("selected_physical_edge_fraction") is not None
+                    )
+                    if any(
+                        row.get("selected_physical_edge_fraction") is not None
+                        for row in by_id.values()
+                    )
+                    else 0.0
+                ),
             }
             for metric in METRICS:
                 values = [float(row[metric]) for row in by_id.values()]
@@ -159,7 +171,13 @@ def _write_tables(summary: Mapping[str, object], output: Path) -> None:
     with (output / "budget_conditions.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
             stream,
-            fieldnames=("budget", "condition", "examples", *METRICS),
+            fieldnames=(
+                "budget",
+                "condition",
+                "examples",
+                "selected_physical_edge_fraction",
+                *METRICS,
+            ),
             extrasaction="ignore",
         )
         writer.writeheader()
@@ -172,19 +190,53 @@ def _write_tables(summary: Mapping[str, object], output: Path) -> None:
         in {"PACKED_RAG", "INDEPENDENT_PRA", "PAIR_SA_ONLY", "PAIR_SA_ONLY_BOUNDARY"}
     ]
     lines = [
-        "\\begin{tabular}{rlrrr}",
+        "\\begin{tabular}{rlrrrr}",
         "\\toprule",
-        "Budget & Condition & $n$ & F1 & Official \\\\",
+        "Budget & Condition & $n$ & Physical edges & F1 & Official \\\\",
         "\\midrule",
     ]
     for row in selected:
         lines.append(
             f'{int(row["budget"]):,} & {DISPLAY[str(row["condition"])]} & '
-            f'{int(row["examples"])} & {float(row["token_f1"]):.4f} & '
+            f'{int(row["examples"])} & '
+            f'{100.0 * float(row["selected_physical_edge_fraction"]):.2f}\\% & '
+            f'{float(row["token_f1"]):.4f} & '
             f'{float(row["official_multihop_rag_score"]):.4f} \\\\'
         )
     lines.extend(("\\bottomrule", "\\end{tabular}"))
     (output / "generated_budget_interaction_table.tex").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+    smallest = min(int(row["budget"]) for row in rows)
+    factorial_conditions = (
+        "INDEPENDENT_PRA",
+        "PAIR_SA_ONLY",
+        "EXPANSION_ONLY",
+        "CROSSDOC_EXPANSION_PAIR_SA",
+    )
+    factorial_rows = {
+        str(row["condition"]): row
+        for row in rows
+        if int(row["budget"]) == smallest
+    }
+    lines = [
+        "\\begin{tabular}{lccrr}",
+        "\\toprule",
+        "Condition & Added evidence & Linked SA & F1 & Official \\\\",
+        "\\midrule",
+    ]
+    for condition in factorial_conditions:
+        row = factorial_rows[condition]
+        lines.append(
+            f'{DISPLAY[condition]} & '
+            f'{"yes" if "EXPANSION" in condition else "no"} & '
+            f'{"yes" if "PAIR_SA" in condition else "no"} & '
+            f'{float(row["token_f1"]):.4f} & '
+            f'{float(row["official_multihop_rag_score"]):.4f} \\\\'
+        )
+    lines.extend(("\\bottomrule", "\\end{tabular}"))
+    (output / "generated_factorial_table.tex").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
 
