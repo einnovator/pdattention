@@ -39,6 +39,12 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument(
+        "--max-completion-tokens",
+        type=int,
+        default=4096,
+        help="Per-turn safety ceiling forwarded identically in every Easy-50 arm.",
+    )
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--selection-replay", type=Path)
     parser.add_argument(
@@ -72,6 +78,7 @@ def main() -> None:
         grading="SWE-bench 4.1.0 official Docker harness",
         context_limit=32768,
         max_steps=50,
+        max_completion_tokens=options.max_completion_tokens,
         run_id=options.run_id,
         mode=options.mode,
         budget_fraction=options.budget_fraction,

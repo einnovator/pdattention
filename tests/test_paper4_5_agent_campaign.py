@@ -76,6 +76,7 @@ from experiments.paper4_5_agent.schema import (
 from experiments.paper4_5_agent.runners.swebench_verified import (
     _aggregate_traces,
     _chunk_receipt_reusable,
+    _completion_token_overrides,
     _cleanup_owned_containers,
     _execute_chunks,
     _grader_error_type,
@@ -114,6 +115,15 @@ def test_local_qwen_runner_requests_official_x86_images_on_arm() -> None:
     assert official_image_platform("arm64") == "linux/amd64"
     assert official_image_platform("aarch64") == "linux/amd64"
     assert official_image_platform("x86_64") is None
+
+
+def test_easy50_completion_ceiling_is_forwarded_to_minisweagent() -> None:
+    assert _completion_token_overrides(
+        SimpleNamespace(max_completion_tokens=4096)
+    ) == ["-c", "model.model_kwargs.max_tokens=4096"]
+    assert _completion_token_overrides(SimpleNamespace()) == []
+    with pytest.raises(ValueError, match="must be positive"):
+        _completion_token_overrides(SimpleNamespace(max_completion_tokens=0))
 
 
 def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:

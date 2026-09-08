@@ -3002,6 +3002,13 @@ the fail-closed frozen replay and a separate route-owned product cell. G10
 remains a separate selected-text fallback and is not relabeled as native
 execution.
 
+Every Easy-50 arm fixes a 4,096-token per-turn completion ceiling in addition
+to the 32,768-token context and 50-step limits. This ceiling is part of the
+execution fingerprint. It bounds pathological continuations when a backend
+does not emit its normal end marker; ordinary shorter actions are unchanged,
+and a ceiling hit is retained as a protocol event rather than a PRA quality
+outcome.
+
 The executable version-2 matrix records connection, engine-PRA and gateway-PRA
 flags, gateway mode, physical engine target, and comparison group in every row.
 It refuses native labels unless endpoint preflight reports effective native

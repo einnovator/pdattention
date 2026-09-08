@@ -74,6 +74,12 @@ were solved by the direct baseline, so a transport failure is visible before a
 50-task treatment consumes model time. A run in which the gateway fails is
 invalid transport evidence, not an observed zero for PRA.
 
+All Easy-50 arms send the same 4,096-token per-turn completion ceiling. This is
+a nonbinding safety bound for ordinary mini-swe-agent actions, but it prevents
+a backend that misses its normal end marker from consuming the whole 32K
+context in one request. The ceiling is recorded in the execution identity and
+fingerprint, so differently bounded receipts cannot be silently resumed.
+
 ```bash
 python -m experiments.paper4_5_agent.run_campaign \
   --config experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml \

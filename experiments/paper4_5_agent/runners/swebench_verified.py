@@ -231,6 +231,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "kv_cache_dtype": args.kv_cache_dtype,
         "context_limit": args.context_limit,
         "max_steps": args.max_steps,
+        "max_completion_tokens": getattr(args, "max_completion_tokens", None),
         "docker_platform": getattr(args, "docker_platform", None),
         "prepull_images": bool(getattr(args, "prepull_images", False)),
         "temperature": 0,
@@ -355,8 +356,12 @@ def _execute_chunks(
                 "-c", args.scaffold,
                 "-c", f"model.model_kwargs.api_base={agent_base_url}",
                 "-c", "model.model_kwargs.temperature=0",
-                "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers), "-o", str(chunk_dir),
             ]
+            agent_command.extend(_completion_token_overrides(args))
+            agent_command.extend([
+                "-c", f"agent.step_limit={args.max_steps}", "-w", str(args.workers),
+                "-o", str(chunk_dir),
+            ])
             if getattr(args, "chat_template_no_thinking", False):
                 agent_command.extend([
                     "-c",
@@ -440,6 +445,7 @@ def _execute_chunks(
             "scaffold": args.scaffold,
             "context_limit": args.context_limit,
             "max_steps": args.max_steps,
+            "max_completion_tokens": getattr(args, "max_completion_tokens", None),
             "temperature": 0.0,
             "chat_template_no_thinking": bool(
                 getattr(args, "chat_template_no_thinking", False)
@@ -464,6 +470,17 @@ def _execute_chunks(
     return output / "official_result.json"
 
 
+def _completion_token_overrides(args: argparse.Namespace) -> list[str]:
+    """Bound pathological backend continuations without changing uncapped runners."""
+
+    max_completion_tokens = getattr(args, "max_completion_tokens", None)
+    if max_completion_tokens is None:
+        return []
+    if max_completion_tokens <= 0:
+        raise ValueError("max_completion_tokens must be positive")
+    return ["-c", f"model.model_kwargs.max_tokens={max_completion_tokens}"]
+
+
 def _execution_fingerprint(receipt: dict[str, Any]) -> str:
     """Bind resumable treatment chunks to endpoint, policy, and implementation."""
 
@@ -475,6 +492,7 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "benchmark_ids_sha256", "benchmark_execution_revision", "model",
                 "model_revision", "engine", "engine_version", "campaign_mode",
                 "context_budget_fraction", "context_limit", "max_steps",
+                "max_completion_tokens",
                 "chat_template_no_thinking",
                 "prefix_caching",
                 "docker_platform",
