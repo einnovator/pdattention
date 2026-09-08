@@ -11,15 +11,35 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from .context_records import ContextRecord, RecordType
 from .subagent_context import AgentContextGraph, AgentStatus
 
 
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*|\d+")
+_SEARCH_TOKEN_RE = re.compile(r"[A-Za-z]+|\d+")
+_SEARCH_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "from",
+        "in",
+        "is",
+        "module",
+        "of",
+        "the",
+        "to",
+        "where",
+        "which",
+        "with",
+    }
+)
 _EVIDENCE_TYPES = {
     RecordType.API_RESULT,
     RecordType.DB_RESULT,
@@ -41,6 +61,7 @@ class DescendantRoutingMode(str, Enum):
     ALL_VALID = "all_valid"
     LEXICAL = "lexical"
     LEARNED = "learned"
+    FIELDED_BM25 = "fielded_bm25"
     ORACLE = "oracle"
 
 
@@ -163,6 +184,11 @@ class DescendantRecordRouter:
         oracle_ids = set(oracle_record_ids)
         if mode == DescendantRoutingMode.LEARNED and not self.fitted:
             raise ValueError("The learned descendant router must be fitted before use.")
+        fielded_scores = (
+            _fielded_bm25_scores(query, candidates)
+            if mode == DescendantRoutingMode.FIELDED_BM25
+            else {}
+        )
 
         scored: list[tuple[float, RoutingCandidate]] = []
         for candidate in candidates:
@@ -173,6 +199,8 @@ class DescendantRecordRouter:
                 score = 1.0 if candidate.record_uuid in oracle_ids else 0.0
             elif mode == DescendantRoutingMode.LEARNED:
                 score = sum(weight * value for weight, value in zip(self.weights, features))
+            elif mode == DescendantRoutingMode.FIELDED_BM25:
+                score = fielded_scores[candidate.record_uuid]
             else:
                 score = features[1] + features[2] + 0.5 * features[3]
             scored.append((score, candidate))
@@ -239,3 +267,114 @@ def visible_routing_candidates(
 
 def _tokens(value: str) -> tuple[str, ...]:
     return tuple(match.group(0).lower() for match in _TOKEN_RE.finditer(value))
+
+
+def _search_stem(token: str) -> str:
+    """Apply a deliberately small deterministic normalizer for source search."""
+
+    token = token.lower()
+    if len(token) > 4 and token.endswith("ies"):
+        token = token[:-3] + "y"
+    elif len(token) > 4 and token.endswith("ses"):
+        token = token[:-2]
+    elif len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+        token = token[:-1]
+    if len(token) > 5 and token.endswith("ed"):
+        token = token[:-2]
+    if len(token) > 6 and token.endswith("ing"):
+        token = token[:-3]
+    return token
+
+
+def _search_tokens(value: str) -> tuple[str, ...]:
+    tokens = (_search_stem(match.group(0)) for match in _SEARCH_TOKEN_RE.finditer(value))
+    return tuple(token for token in tokens if token not in _SEARCH_STOPWORDS)
+
+
+def _candidate_search_fields(candidate: RoutingCandidate) -> tuple[str, str]:
+    """Return an identity field and lossless content field when structure exists."""
+
+    payload = candidate.record.payload
+    if not isinstance(payload, Mapping):
+        return "", candidate.text
+    arguments = payload.get("arguments")
+    identity = ""
+    if isinstance(arguments, Mapping):
+        for name in ("path", "uri", "resource", "record_id"):
+            value = arguments.get(name)
+            if isinstance(value, str):
+                identity = value
+                break
+    output = payload.get("output", candidate.text)
+    content = (
+        output
+        if isinstance(output, str)
+        else json.dumps(output, sort_keys=True, default=str)
+    )
+    return identity, content
+
+
+def _fielded_bm25_scores(
+    query: str,
+    candidates: Sequence[RoutingCandidate],
+    *,
+    lines_per_window: int = 12,
+) -> dict[str, float]:
+    """Rank concentrated evidence rather than whole-record word frequency.
+
+    Source paths and leading documentation are separate fields. The content is
+    divided into bounded line windows so a long module containing many generic
+    terms does not beat a short, locally relevant definition merely because of
+    document length. This remains a zero-model retrieval baseline: it neither
+    learns from nor inspects relevance labels.
+    """
+
+    if not candidates:
+        return {}
+    query_tokens = _search_tokens(query)
+    fields: list[tuple[str, str, tuple[tuple[str, ...], ...]]] = []
+    corpus_windows: list[tuple[str, ...]] = []
+    for candidate in candidates:
+        identity, content = _candidate_search_fields(candidate)
+        lines = content.splitlines() or [content]
+        windows = tuple(
+            _search_tokens(" ".join(lines[start : start + lines_per_window]))
+            for start in range(0, len(lines), lines_per_window)
+        ) or ((),)
+        fields.append((candidate.record_uuid, identity, windows))
+        corpus_windows.extend(windows)
+
+    document_frequency = Counter(
+        token for window in corpus_windows for token in set(window)
+    )
+    corpus_size = len(corpus_windows)
+    average_length = sum(map(len, corpus_windows)) / max(1, corpus_size)
+
+    def window_score(window: tuple[str, ...]) -> float:
+        frequencies = Counter(window)
+        length_normalizer = 0.25 + 0.75 * len(window) / max(1.0, average_length)
+        score = 0.0
+        for token in query_tokens:
+            frequency = frequencies[token]
+            if not frequency:
+                continue
+            inverse_frequency = math.log(
+                1.0
+                + (corpus_size - document_frequency[token] + 0.5)
+                / (document_frequency[token] + 0.5)
+            )
+            score += inverse_frequency * frequency * 2.2 / (
+                frequency + 1.2 * length_normalizer
+            )
+        return score
+
+    scores: dict[str, float] = {}
+    query_set = set(query_tokens)
+    for record_uuid, identity, windows in fields:
+        concentrated = max(window_score(window) for window in windows)
+        leading_documentation = window_score(windows[0])
+        identity_overlap = len(query_set & set(_search_tokens(identity)))
+        scores[record_uuid] = (
+            concentrated + 0.75 * leading_documentation + 2.0 * identity_overlap
+        )
+    return scores

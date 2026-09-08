@@ -93,6 +93,69 @@ def test_natural_repository_cohort_executes_both_schedulers_without_duplicate_re
         assert row["completed_peer_visible_rate"] == 1
 
 
+def test_fielded_router_closes_the_small_tracked_source_gap_without_hiding_baselines() -> None:
+    baseline = json.loads(
+        (RESULTS.parent / "natural_repository_v1" / "summary.json").read_text(encoding="utf-8")
+    )
+    improved = json.loads(
+        (RESULTS.parent / "natural_repository_v2" / "summary.json").read_text(encoding="utf-8")
+    )
+    assert baseline["routing"]["lexical"]["evidence_recall"] == 0.6
+    assert improved["routing"]["lexical"]["evidence_recall"] == 0.6
+    assert improved["routing"]["learned"]["evidence_recall"] < improved["routing"][
+        "fielded_bm25"
+    ]["evidence_recall"]
+    assert improved["routing"]["fielded_bm25"]["evidence_recall"] == 1
+    assert improved["routing"]["fielded_bm25"]["mean_selected_tokens"] == improved[
+        "routing"
+    ]["oracle"]["mean_selected_tokens"]
+    assert improved["fielded_bm25_protocol"]["model_calls"] == 0
+    assert (
+        improved["fielded_bm25_protocol"]["development_scope"]
+        == "post_hoc_in_cohort_diagnostic"
+    )
+
+
+def test_router_transfer_uses_frozen_external_repositories_and_retains_an_oracle_gap() -> None:
+    summary = json.loads(
+        (RESULTS.parent / "router_transfer_v1" / "summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary["development_examples"] == 11
+    assert set(summary["repositories"]) == {"dynaspike", "cognitive_coprocessors"}
+    pooled = summary["routing"]["pooled"]
+    assert pooled["fielded_bm25"]["queries"] == 16
+    assert pooled["lexical"]["top1_recall"] == 0.8125
+    assert pooled["fielded_bm25"]["top1_recall"] == 0.875
+    assert pooled["oracle"]["top1_recall"] == 1
+
+
+def test_autonomous_campaign_is_complete_and_keeps_consumption_separate() -> None:
+    summary = json.loads(
+        (RESULTS.parent / "autonomous_repository_v1" / "summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary["seeds"] == [11, 23, 37]
+    assert summary["agent_runs"] == 96
+    assert summary["execution_failures"] == 0
+    assert len(summary["source_hashes"]) == 5
+    assert set(summary["conditions"]) == {
+        "sequential_isolated",
+        "parallel_isolated",
+        "sequential_completed",
+        "parallel_completed",
+    }
+    assert all(row["seeds"] == 3 for row in summary["conditions"].values())
+    assert summary["paired_summary"]["completed_parallel_speedup"]["mean"] > 1.2
+    assert (
+        summary["paired_summary"]["sequential_context_physical_call_delta"]["mean"]
+        < -12
+    )
+    assert summary["paired_summary"]["sequential_context_accuracy_delta"]["mean"] < 0
+
+
 def test_live_mlx_primary_sweep_is_five_seed_and_exact() -> None:
     path = RESULTS.parent / "mlx_live_m4_final" / "summary.json"
     summary = json.loads(path.read_text(encoding="utf-8"))

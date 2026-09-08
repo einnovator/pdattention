@@ -11,6 +11,7 @@ from pra_hf.context_records import ContextRecord, RecordType, serialize_record
 from pra_hf.session_service import LocalSessionService
 from pra_hf.subagent_context import (
     AgentContextGraph,
+    AgentStatus,
     ConsistencyMode,
     ContextVisibilityPolicy,
     CrossAgentReuseRuntime,
@@ -412,3 +413,42 @@ def test_descendant_router_ranks_only_visible_valid_candidates() -> None:
     assert route.selected[0].record_uuid == api.record_id
     assert route.recall(examples[0].relevant_record_ids) == 1.0
     assert oracle.selected[0].record_uuid == test.record_id
+
+
+def test_fielded_descendant_router_prefers_concentrated_source_evidence() -> None:
+    distractor_text = "\n".join(
+        ["generic context and storage helpers"] * 20
+        + ["sessions may be persisted and recovered by another service"]
+    )
+    target_text = (
+        '"""Session persistence and recovery from local storage."""\n'
+        "class LocalSessionService: pass"
+    )
+    candidates = (
+        RoutingCandidate(
+            ContextRecord(
+                "distractor",
+                RecordType.TOOL_RESPONSE,
+                {"arguments": {"path": "context_store.py"}, "output": distractor_text},
+            ),
+            distractor_text,
+            AgentStatus.STOPPED,
+        ),
+        RoutingCandidate(
+            ContextRecord(
+                "target",
+                RecordType.TOOL_RESPONSE,
+                {"arguments": {"path": "session_service.py"}, "output": target_text},
+            ),
+            target_text,
+            AgentStatus.STOPPED,
+        ),
+    )
+    route = DescendantRecordRouter().route(
+        "Where are agent sessions persisted and recovered from local storage?",
+        candidates,
+        mode=DescendantRoutingMode.FIELDED_BM25,
+        top_k=1,
+    )
+
+    assert route.selected[0].record_uuid == "target"

@@ -1,0 +1,131 @@
+{
+  "protocol": "paper9-router-transfer-v1",
+  "development_repository": "pdattention-paper9",
+  "development_revision": "caffe8aa15e976a10838fe91b1109ce80c48b2e1",
+  "development_file_sha256": {
+    "src/pra_hf/subagent_context.py": "b373ff274354c6688db45b6ecb1d55f91118b658c3bc876440053945710cb5ad",
+    "src/pra_hf/subagent_harness.py": "8f449247922dc69cd5b9ba44fb4967fa1a2a6eae083f656cddb194c0afe5565d",
+    "src/pra_hf/subagent_routing.py": "7f2a6be450847fc1b4d89bd0e957ad5a7465cbd45d4680120cdb0e8a216c0358",
+    "src/pra_hf/progressive_context.py": "44873ba8659670454819e5c4e86cfc8efdce6f9c9944d947d466e1f0832f09f6",
+    "src/pra_hf/session_service.py": "ee3d16265a4f8391dcb1039e28a570cc0377d78160d3b6eb952600458b926f82",
+    "src/pra_hf/task_context.py": "d7f49b9ef84bd3130699d570522b683a8148325d8b1bd70e9e8c452174baa304",
+    "src/pra_hf/tool_records.py": "1153a284d6613080ee60f745dcb1ac7f798ebeb0354ffa40e2ee16e7c7aecf3a",
+    "src/pra_hf/hybrid_discovery.py": "07f0aa9abd08129a3461a8ab60e5a4d1c86d8d30aa289f6b760dd5976e94ff88",
+    "src/pra_hf/context_records.py": "0626024ee3f75cadf5b337f487aa4b54bc47e67ff79e44b07cbf2885a1f2e57e",
+    "src/pra_hf/capability_runtime.py": "7f203c2cfe1d2f591515700eca611808bc0dacfd44a4d635b22b547331078ad0",
+    "src/pra_hf/context_store.py": "00e7c139ad277eeff58525fea3933af4a075411cd62e04509bf9b1cfb0914737"
+  },
+  "development_examples": 11,
+  "label_policy": "external labels frozen in manifest before evaluation",
+  "repositories": {
+    "dynaspike": {
+      "revision": "2e046d382358e8ae0b6d3c44ea63f195bcbcfeeb",
+      "files": {
+        "src/spikeml/core/spikes.py": "aee34280b48c5e6584bf9467b0d6024a3ad1732eb030842fb8b3c198d282ef20",
+        "src/spikeml/core/signal.py": "e0686926f2e89268b589b4b1467faf57a8fb79d05e712b0400415882d1ce5fd9",
+        "src/spikeml/core/monitor.py": "66a2ef6cf798b33d43f88133a7159530a421919aef326ce7911dcf37c0063b3d",
+        "src/spikeml/core/feedback.py": "7bf763b8cc043b918b3bb9c66cfa55036e7e65178c8eab7cecb1000be7700469",
+        "src/spikeml/datasets/encoder.py": "c65a6b98cb7607430505e1da7659efc5a91ea65ae6f416850ceeae6d937df574",
+        "src/spikeml/plot/plot_stats.py": "6818834d0093b07170a7038b2f59d309c9eb7f81513825f05232e9943548bb55",
+        "src/spikeml/core/runner.py": "7274c839401a404c1dfbd59ad05ea4eee1820d906192817f9a1f298fc9b73b74",
+        "src/spikeml/core/optimize.py": "dbdba4ca742d239c4d851118919f70fcd68a860f0a86cef58f3d23fbb837bf1e"
+      }
+    },
+    "cognitive_coprocessors": {
+      "revision": "ce177061e1a1faf16b091bcf3aca039e327243a7",
+      "files": {
+        "src/ccpu/paper2/units.py": "85877c1efcdbdd47b75d946a141e71991f138cff55dbd79cc972a7ae7e4bc3e6",
+        "src/ccpu/paper2/router.py": "e222f8bf691071197b933838a7fb283a84b1cccbc0b9c4acc9ae9e11c991ad8f",
+        "src/ccpu/paper2/graph.py": "a62077d36d3974fb8ff18892cc16b2cdb63297942359f8a86d90d85e5e9eee4a",
+        "src/ccpu/paper2/state.py": "e9442de4d751b962e027394decc7daa852b1b8b71b17817eac32b3e3581fced3",
+        "src/ccpu/paper2_5/service_sources.py": "7ac49d01ea200420e68b5a87efcadac054ecb423c46db8f60bef4d34c0a009a4",
+        "src/ccpu/paper2_5/composition.py": "b5e46cbe77fd7a8bee70fdf75f6306cffa456eb1cbe7839d7ec4273c99c64c30",
+        "src/ccpu/paper2_5/enterprise.py": "9a257663a96e4d80a35f33280b210c5191167deadc12b5bb2deb5bcebcf886e1",
+        "src/ccpu/paper3/public_benchmarks.py": "676df436a764da27397f8d87dfdcf52ab9e58397582bdd5ace058fcea8dcd1f9"
+      }
+    }
+  },
+  "routing": {
+    "dynaspike": {
+      "all_valid": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 11461.0
+      },
+      "lexical": {
+        "queries": 8,
+        "top1_recall": 0.625,
+        "mean_selected_tokens": 2638.125
+      },
+      "learned": {
+        "queries": 8,
+        "top1_recall": 0.625,
+        "mean_selected_tokens": 2638.125
+      },
+      "fielded_bm25": {
+        "queries": 8,
+        "top1_recall": 0.75,
+        "mean_selected_tokens": 2341.625
+      },
+      "oracle": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 1432.625
+      }
+    },
+    "cognitive_coprocessors": {
+      "all_valid": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 7739.0
+      },
+      "lexical": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 967.375
+      },
+      "learned": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 967.375
+      },
+      "fielded_bm25": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 967.375
+      },
+      "oracle": {
+        "queries": 8,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 967.375
+      }
+    },
+    "pooled": {
+      "all_valid": {
+        "queries": 16,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 9600.0
+      },
+      "lexical": {
+        "queries": 16,
+        "top1_recall": 0.8125,
+        "mean_selected_tokens": 1802.75
+      },
+      "learned": {
+        "queries": 16,
+        "top1_recall": 0.8125,
+        "mean_selected_tokens": 1802.75
+      },
+      "fielded_bm25": {
+        "queries": 16,
+        "top1_recall": 0.875,
+        "mean_selected_tokens": 1654.5
+      },
+      "oracle": {
+        "queries": 16,
+        "top1_recall": 1.0,
+        "mean_selected_tokens": 1200.0
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": "paper9.router_transfer.v1",
+  "development_repository": "pdattention-paper9",
+  "repositories": [
+    {
+      "repository_id": "dynaspike",
+      "revision": "2e046d382358e8ae0b6d3c44ea63f195bcbcfeeb",
+      "candidate_paths": [
+        "src/spikeml/core/spikes.py",
+        "src/spikeml/core/signal.py",
+        "src/spikeml/core/monitor.py",
+        "src/spikeml/core/feedback.py",
+        "src/spikeml/datasets/encoder.py",
+        "src/spikeml/plot/plot_stats.py",
+        "src/spikeml/core/runner.py",
+        "src/spikeml/core/optimize.py"
+      ],
+      "queries": [
+        {"query_id": "spike_probability", "query": "Where is membrane activation converted into a clipped spike probability?", "relevant_path": "src/spikeml/core/spikes.py"},
+        {"query_id": "constant_signal", "query": "Which module generates a constant DC signal repeated across time steps?", "relevant_path": "src/spikeml/core/signal.py"},
+        {"query_id": "property_monitor", "query": "Where is a reference object's properties tracked and stored over time?", "relevant_path": "src/spikeml/core/monitor.py"},
+        {"query_id": "asymmetric_error", "query": "Which module computes strict and non-strict asymmetric feedback error?", "relevant_path": "src/spikeml/core/feedback.py"},
+        {"query_id": "one_hot", "query": "Where are integer class labels converted into a one-hot matrix?", "relevant_path": "src/spikeml/datasets/encoder.py"},
+        {"query_id": "stats_matrix", "query": "Which module plots a statistics matrix with error bars and sample scatter points?", "relevant_path": "src/spikeml/plot/plot_stats.py"},
+        {"query_id": "simulation_context", "query": "Where is the timestep and phase execution context for neural simulations defined?", "relevant_path": "src/spikeml/core/runner.py"},
+        {"query_id": "parameter_ranges", "query": "Which module extracts bounded parameter search ranges from a Pydantic model?", "relevant_path": "src/spikeml/core/optimize.py"}
+      ]
+    },
+    {
+      "repository_id": "cognitive_coprocessors",
+      "revision": "ce177061e1a1faf16b091bcf3aca039e327243a7",
+      "candidate_paths": [
+        "src/ccpu/paper2/units.py",
+        "src/ccpu/paper2/router.py",
+        "src/ccpu/paper2/graph.py",
+        "src/ccpu/paper2/state.py",
+        "src/ccpu/paper2_5/service_sources.py",
+        "src/ccpu/paper2_5/composition.py",
+        "src/ccpu/paper2_5/enterprise.py",
+        "src/ccpu/paper3/public_benchmarks.py"
+      ],
+      "queries": [
+        {"query_id": "unit_conversion", "query": "Where is exact bounded unit conversion with dimensional validation implemented?", "relevant_path": "src/ccpu/paper2/units.py"},
+        {"query_id": "six_way_router", "query": "Which module implements factorized six-way neural routing for diagnostic requests?", "relevant_path": "src/ccpu/paper2/router.py"},
+        {"query_id": "frame_closure", "query": "Where is the bounded ISA and frame-slot closure engine defined?", "relevant_path": "src/ccpu/paper2/graph.py"},
+        {"query_id": "micro_state", "query": "Which module owns bounded append-only typed micro-state shared by engines?", "relevant_path": "src/ccpu/paper2/state.py"},
+        {"query_id": "postgres_pgvector", "query": "Where are explicit service-backed Postgres and pgvector data coprocessors implemented?", "relevant_path": "src/ccpu/paper2_5/service_sources.py"},
+        {"query_id": "retrieval_composition", "query": "Which module runs bounded deterministic preprocessing compositions for heterogeneous retrieval?", "relevant_path": "src/ccpu/paper2_5/composition.py"},
+        {"query_id": "iceberg_fixture", "query": "Where is the local Iceberg governed-metric and ontology production-shaped fixture?", "relevant_path": "src/ccpu/paper2_5/enterprise.py"},
+        {"query_id": "benchmark_registry", "query": "Which module freezes the cross-paper public benchmark registry for matched controls?", "relevant_path": "src/ccpu/paper3/public_benchmarks.py"}
+      ]
+    }
+  ]
+}

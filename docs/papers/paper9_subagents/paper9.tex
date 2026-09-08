@@ -47,8 +47,18 @@ full-transcript upper bound with 384 rather than 16,384 parent-context tokens.
 A five-seed tracked-repository workload then exercises sequential and parallel
 fan-out, DAG joins, peers, and bounded descendant routing. It records 220 valid
 ancestor hits without duplicate physical reads; lexical and learned top-1
-routing recover 60.0\% of held-out evidence, whereas oracle top-1 reaches
-100\%, exposing a remaining selection gap. Finally, live MLX measurements with
+routing recover 60.0\% and 65.0\% of held-out evidence. A post-hoc, zero-model
+fielded BM25 diagnostic reaches the 100\% oracle result on this small cohort,
+but is not a transfer result. A three-seed, 96-agent autonomous repository
+campaign then crosses sequential/parallel scheduling with isolated or routed
+completed-peer context. Parallelism gives a highly variable $1.16\times$
+paired speedup in isolation and a steadier $1.28\times$ with completed-peer
+context. Sequential peer context avoids 12.3 physical tool executions per seed
+but reduces exact source-path accuracy by 12.5 percentage points, exposing a
+selection--consumption failure rather than a reuse failure. A frozen transfer
+to 16 questions in two unrelated repositories lowers fielded-BM25 top-1 recall
+to 87.5\%, versus 81.25\% for lexical and learned selectors and 100\% for the
+oracle. Finally, live MLX measurements with
 Qwen3-0.6B-4bit preserve host split-prefill logits exactly, including five of
 five 16-token greedy generations. Native reuse is strongly amortized when K/V
 fits comfortably, but reverses under a 32K-token memory-pressure condition on
@@ -85,8 +95,9 @@ This paper contributes:
     \item native K/V reuse across agent streams when model and engine constraints permit;
     \item controlled consistency semantics for sequential, parallel, shared-workspace, and externally mutable resources;
     \item a benchmark suite designed specifically to quantify when cross-agent reuse produces a performance benefit;
-    \item natural-source sequential/parallel, graph-routing, and live MLX
-    experiments that separate correctness, selection quality, and residency-dependent economics.
+    \item natural-source, autonomous sequential/parallel, frozen routing-transfer,
+    and live MLX experiments that separate correctness, selection quality,
+    consumption quality, and residency-dependent economics.
 \end{enumerate}
 
 \section{Background and Position in the PRA Series}
@@ -322,7 +333,10 @@ policy. Resource consistency then rejects stale records. Only this authorized,
 valid candidate set reaches the descendant router. Paper 9 implements
 all-valid, lexical, learned pairwise-linear, and oracle selectors. The learned
 ranker uses bounded lexical, record-type, completion, and size features; it
-does not add a second language model to the request path.
+does not add a second language model to the request path. A second-version
+diagnostic also includes fielded BM25 over resource identity, leading
+documentation, and bounded source windows while preserving the original
+whole-record baselines.
 
 Parallelism remains a harness concern. The public scheduler accepts any child
 callback and executes it sequentially or through a bounded worker pool. This is
@@ -557,8 +571,8 @@ unchanged, while lifecycle and tool events pass through these four surfaces.
 \section{Implementation Status}
 
 Table~\ref{tab:implementation-status} separates implemented runtime contracts
-from mechanisms that still need autonomous-agent or production serving
-validation. The
+from mechanisms that still need broader agent or production-serving validation.
+The
 native interface is a narrow callback: an engine returns a receipt containing
 model, revision, encoding, position contract, token count, and byte count. A
 reuse request must match all compatibility fields, and the harness attaches a
@@ -582,9 +596,9 @@ Resource-level and external validation & Experimental & Mutation and validator t
 Native K/V compatibility callback & Experimental & Receipt and exactly-once tests \\
 Sequential/parallel callback scheduler & Experimental & Five-seed tracked-source cohort \\
 Explicit DAG joins and peer visibility & Experimental & Cycle, isolation, and replay tests \\
-Validity-first descendant selectors & Experimental & Lexical, learned, and oracle cohort \\
+Validity-first descendant selectors & Experimental & Lexical, learned, fielded BM25, and oracle cohort \\
 Live MLX native K/V reuse & Experimental & Cross-host prefill and greedy-generation parity \\
-Autonomous multi-harness campaign & Open & Generic callback only \\
+Autonomous multi-harness campaign & Experimental & Three-seed, 96-agent read-only cohort \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -722,26 +736,35 @@ safe or useful.
 
 After children stop, the parent asks held-out questions about their detailed
 findings. Table~\ref{tab:natural-routing} separates validity from selection.
-All-valid preserves every answer record but exposes 24,262 source tokens per
-query. Bounded lexical and learned routing each recover 60.0\% at one record;
-the learned linear selector does not improve on lexical overlap on this small
-cohort. The oracle confirms that one relevant record is sufficient, reaching
-100\% recall with 2,160 tokens on average. Thus selective permeability is
-implemented, but automatic descendant discovery remains the quality bottleneck.
+In the immutable v1 artifact, all-valid preserves every answer record but
+exposes 24,262 source tokens per query. Bounded lexical and learned routing
+each recover 60.0\% at one record, while the oracle reaches 100\% recall with
+2,160 tokens on average. Inspection showed that whole-file overlap overweights
+generic vocabulary and misses concentrated definitions. The v2 diagnostic
+therefore adds fielded BM25 over the resource path, leading documentation, and
+12-line source windows. On the updated tracked sources, lexical remains at
+60.0\%, the learned linear selector reaches 65.0\%, and fielded BM25 matches
+the oracle at 100\% with the same 2,160 selected tokens on average; all-valid
+now exposes 24,857 tokens. This is a post-hoc in-cohort diagnostic, not evidence
+of cross-repository or cross-model routing transfer. Selective permeability is
+implemented, while automatic descendant discovery still requires a larger
+frozen evaluation.
 
 \begin{table}[H]
 \centering
 \small
 \caption{Completed-child selection on tracked repository sources. Results pool
-40 held-out query runs across five workload seeds and two schedulers.}
+40 query runs across five workload seeds and two schedulers; ``held-out''
+applies to the learned v2 split, not to post-hoc policy development.}
 \label{tab:natural-routing}
 \begin{tabular}{lrrr}
 \toprule
 Selector & Evidence recall & Useful precision & Selected tokens \\
 \midrule
-All valid records & 1.000 & 0.091 & 24,262 \\
+All valid records & 1.000 & 0.091 & 24,857 \\
 Lexical top-1 & 0.600 & 0.600 & 2,501 \\
-Learned top-1 & 0.600 & 0.600 & 2,501 \\
+Learned top-1 & 0.650 & 0.650 & 2,545 \\
+Fielded BM25 top-1 & 1.000 & 1.000 & 2,160 \\
 Oracle top-1 & 1.000 & 1.000 & 2,160 \\
 \bottomrule
 \end{tabular}
@@ -749,12 +772,114 @@ Oracle top-1 & 1.000 & 1.000 & 2,160 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=.92\linewidth]{../shared/results/paper9_subagents/natural_repository_v1/natural_repository_routing.pdf}
+\includegraphics[width=.92\linewidth]{../shared/results/paper9_subagents/natural_repository_v2/natural_repository_routing.pdf}
 \caption{Tracked-source completed-child routing. The all-valid arm preserves
-recall by materializing the full valid surface; bounded selectors reduce
-context substantially but leave a measurable oracle gap.}
+recall by materializing the full valid surface. Field-aware local evidence
+closes the in-cohort oracle gap, but transfer remains unmeasured.}
 \label{fig:natural-routing}
 \end{figure}
+
+\subsection{Autonomous sequential-versus-parallel campaign}
+
+We next replace deterministic callbacks with real model-driven child loops.
+Eight repository questions ask where specific Paper 9 mechanisms are
+implemented. Each child independently chooses among read, literal-search, and
+file-listing tools, then must name the exact relative source path. The four
+matched conditions cross sequential or four-worker parallel scheduling with a
+hard peer boundary or completed-peer visibility. In the latter conditions,
+fielded BM25 routes at most one valid record available when a child starts.
+Task order is shuffled by seed; the model, questions, tool surface, seven-step
+limit, and temperature-zero decoding remain fixed. This produces 96 autonomous
+agent runs over three seeds with no execution failures. It is a read-only
+repository investigation and exact-path benchmark, not a patch-generation or
+semantic answer-quality benchmark.
+
+The campaign ran through Ollama 0.33.3 with
+\texttt{qwen3-coder:30b} Q4\_K\_M on the 48 GB M4 Pro host used for the primary
+MLX study. The artifact fixes the model digest, base repository revision,
+campaign source hashes, complete tool traces, and per-call token counts.
+Table~\ref{tab:autonomous-campaign} reports means over seeds. Isolated
+parallelism is nearly neutral by ratio of means, but the paired speedup is
+$1.16\times$ with standard deviation 0.45: individual seeds range from
+$0.66\times$ to $1.55\times$. Shared-engine contention and different generation
+paths dominate a simple fan-out estimate. With completed-peer context, the
+paired parallel speedup is a steadier $1.28\times$ (standard deviation 0.07).
+
+\begin{table}[H]
+\centering
+\small
+\caption{Autonomous repository campaign, mean over seeds 11, 23, and 37.
+Accuracy requires the exact expected source path. ``Physical'' counts actual
+tool executions after reuse; routed values count peer records and their
+estimated tokens.}
+\label{tab:autonomous-campaign}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Accuracy & Wall (s) & Physical & Prompt tok. & Routed rec./tok. \\
+\midrule
+Sequential, isolated & 0.917 & 143.5 & 31.3 & 109,164 & 0.0 / 0 \\
+Parallel, isolated & 0.875 & 139.7 & 32.7 & 120,572 & 0.0 / 0 \\
+Sequential, completed & 0.792 & 170.2 & 19.0 & 139,441 & 7.0 / 10,442 \\
+Parallel, completed & 0.917 & 133.9 & 23.3 & 122,755 & 4.0 / 6,979 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sequential completed-peer visibility reduces physical tool executions by 12.3
+per seed relative to sequential isolation, yet its paired accuracy change is
+$-0.125$ with standard deviation 0.331. In one seed, an incorrect early answer
+was selected into later contexts and several descendants answered without
+consulting a tool, producing 50\% accuracy. Another seed improved by 12.5
+points and the third was unchanged. Thus a valid, compact, reusable record can
+be well selected while still being poorly consumed. The result motivates
+explicit selection and consumption evaluations rather than treating fewer
+tool calls as task improvement.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper9_subagents/autonomous_repository_v1/autonomous_campaign.pdf}
+\caption{Autonomous accuracy and campaign wall time. Error bars are standard
+deviations across three seeds; the large isolated-parallel timing variance is
+part of the result.}
+\label{fig:autonomous-campaign}
+\end{figure}
+
+\subsection{Frozen cross-repository routing transfer}
+
+The perfect fielded-BM25 result above was developed after inspecting the small
+Paper 9 cohort, so it cannot establish generalization. We therefore freeze 16
+questions over eight candidate files in each of two unrelated repositories:
+DynaSpike at revision \texttt{2e046d38} and Cognitive Coprocessors at revision
+\texttt{ce177061}. The manifest fixes repository revisions, paths, questions,
+and relevance labels before evaluation; the result additionally records every
+candidate file hash. The linear selector is fit on all 11 Paper 9 development
+examples and then applied unchanged. Fielded BM25 has no fitted parameters and
+is also applied unchanged.
+
+Table~\ref{tab:router-transfer} shows that the in-cohort perfect result does not
+fully transfer. Fielded BM25 improves pooled top-1 recall from 81.25\% to
+87.5\% and reduces mean selected tokens from 1,803 to 1,655, but remains two
+queries below the oracle. Both misses are short DynaSpike modules with little
+leading documentation: the spike-probability implementation and the one-hot
+encoder. Concentrated semantic evidence helps, but resource metadata and local
+documentation quality remain part of the routing boundary.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen descendant-router transfer. Each repository contributes eight
+queries over eight candidate files; all selectors are top-1.}
+\label{tab:router-transfer}
+\begin{tabular}{lrrrr}
+\toprule
+Cohort & Lexical & Learned & Fielded BM25 & Oracle \\
+\midrule
+DynaSpike & 0.625 & 0.625 & 0.750 & 1.000 \\
+Cognitive Coprocessors & 1.000 & 1.000 & 1.000 & 1.000 \\
+Pooled & 0.812 & 0.812 & 0.875 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Live native reuse and the residency boundary}
 
@@ -873,31 +998,40 @@ general transaction or distributed-coherence protocol.
 
 The mechanism may provide large gains only when agents repeatedly need shared
 records or expensive tools. Controlled orchestration can overstate natural
-reuse; the tracked-source cohort uses deterministic callbacks rather than an
-autonomous model, and the 12-trace audit is small and single-agent. The learned
-linear selector does not improve on lexical top-1 and leaves a 40-point oracle
-recall gap. Larger learned-routing and end-task cohorts are required.
+reuse, and the 12-trace audit is small and single-agent. The autonomous cohort
+closes the callback-only gap but remains a read-only, eight-question exact-path
+task on the Paper 9 repository, with one quantized model, one serving engine,
+one host, and three seeds. It does not measure autonomous patch quality. Its
+context arm also combines selection and consumption; a larger factorial should
+hold the selected record fixed and vary how it is presented to the model.
+Fielded BM25 closes the oracle gap only on a post-hoc 11-module diagnostic and
+reaches 87.5\%, not 100\%, on frozen cross-repository transfer. The two external
+repositories and 16 questions are still too small to establish broad transfer.
 
 The live experiment covers one quantized model family and direct MLX forwards.
-It omits queueing, transfer, tier eviction, serving concurrency, cancellation,
-and end-task answer quality. Its two hosts deliberately reveal rather than
-resolve a memory-capacity interaction. Segmented attention or another
-zero-copy host seam is needed to test whether the 16 GB reversal is fundamental
-or merely an implementation cost.
+It omits queueing, transfer, tier eviction, multi-session serving concurrency,
+cancellation, task termination, and end-task answer quality. The Ollama
+campaign exercises concurrent model requests but not the direct MLX native-K/V
+path. Its two MLX hosts deliberately reveal rather than resolve a
+memory-capacity interaction. Segmented attention or another zero-copy host seam
+is needed to test whether the 16 GB reversal is fundamental or merely an
+implementation cost.
 
 Correctness depends on declared consistency assumptions. External mutation can
 invalidate local state even when no write appears in the session tree. The
 runtime therefore rejects \texttt{UNKNOWN} effects and requires a validator for
-\texttt{EXTERNAL} resources. The next gates are autonomous sequential/parallel
-multi-harness tasks, stronger learned descendant routing, and live serving
-measurements under concurrency and memory-tier transitions. Cross-session
-memory remains explicitly outside Paper 9.
+\texttt{EXTERNAL} resources. The next gates are cross-model and broader
+cross-repository autonomous transfer, direct-MLX concurrent sessions,
+cancellation and task termination, eviction and memory-tier transitions, and a
+segmented zero-copy implementation. Cross-session memory remains explicitly
+outside Paper 9.
 
 The present result is architectural, controlled, and live at the model-forward
-level: subagent isolation and context sharing need not be binary, and the
-implementation can make boundaries selectively permeable without weakening its
-default safety policy. Autonomous task utility and production serving economics
-remain unestablished.
+level, with an initial real-model autonomous cohort: subagent isolation and
+context sharing need not be binary, and the implementation can make boundaries
+selectively permeable without weakening its default safety policy. Autonomous
+patch utility, cross-model robustness, and production serving economics remain
+unestablished.
 
 \section{Conclusion}
 
@@ -910,13 +1044,18 @@ that exact ancestor reuse, selective invalidation, durable graph replay, and
 completed-descendant routing can share one coherent typed-record contract.
 Controlled SCRB results expose the distinct value of tool, payload, and native
 reuse. Tracked-source runs demonstrate sequential and parallel callback
-integration, 220 valid ancestor hits, DAG/peer visibility, and a measurable
-automatic-routing gap. Live MLX results establish exact short-trajectory parity
-and show both sides of the systems tradeoff: fan-out amortizes native K/V when
-the record fits comfortably, while memory pressure can erase the gain even
-though physical input tokens fall sharply. The remaining empirical question is
-therefore not whether cross-stream native reuse can work, but when routing,
-residency, engine implementation, and real agent behavior make it worthwhile.
+integration, 220 valid ancestor hits, DAG/peer visibility, and show that
+field-aware retrieval can close the small in-cohort routing gap. Frozen
+cross-repository evaluation retains a measurable oracle gap. The autonomous
+campaign shows both sides of permeable context: parallel scheduling can reduce
+wall time, and completed-peer reuse can avoid physical tool executions, but a
+selected record can also propagate a bad answer and reduce task accuracy. Live
+MLX results establish exact short-trajectory parity and show both sides of the
+systems tradeoff: fan-out amortizes native K/V when the record fits comfortably,
+while memory pressure can erase the gain even though physical input tokens fall
+sharply. The remaining empirical question is therefore not whether cross-stream
+native reuse can work, but when routing, consumption, residency, engine
+implementation, and real agent behavior make it worthwhile.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

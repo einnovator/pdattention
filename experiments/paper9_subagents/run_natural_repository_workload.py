@@ -230,8 +230,15 @@ def summarize(rows: list[dict], scheduler_rows: list[dict]) -> dict:
             "completed_peer_visible_rate": statistics.mean(row["completed_peer_visible"] for row in selected),
         }
     return {
-        "protocol": "paper9-natural-repository-v1",
+        "protocol": "paper9-natural-repository-v2",
         "interpretation": "Natural tracked source files with deterministic harness callbacks; not an autonomous coding-agent success benchmark.",
+        "fielded_bm25_protocol": {
+            "model_calls": 0,
+            "relevance_labels_used_for_scoring": False,
+            "fields": ["resource_identity", "leading_documentation", "source_windows"],
+            "source_window_lines": 12,
+            "development_scope": "post_hoc_in_cohort_diagnostic",
+        },
         "seeds": list(SEEDS),
         "routing": by_mode,
         "scheduling": by_scheduler,
@@ -242,14 +249,16 @@ def plot(summary: dict, output: Path) -> None:
     import matplotlib.pyplot as plt
 
     modes = [mode.value for mode in DescendantRoutingMode]
+    labels = [mode.replace("_", " ") for mode in modes]
     recall = [summary["routing"][mode]["evidence_recall"] for mode in modes]
     tokens = [summary["routing"][mode]["mean_selected_tokens"] for mode in modes]
     figure, axes = plt.subplots(1, 2, figsize=(9.2, 3.5))
-    axes[0].bar(modes, recall, color=("#68747d", "#24796b", "#b8872d", "#255b96"))
+    colors = ("#68747d", "#24796b", "#b8872d", "#765aa5", "#255b96")
+    axes[0].bar(labels, recall, color=colors)
     axes[0].set_ylim(0, 1.05)
     axes[0].set_ylabel("Evidence recall")
     axes[0].tick_params(axis="x", rotation=20)
-    axes[1].bar(modes, tokens, color=("#68747d", "#24796b", "#b8872d", "#255b96"))
+    axes[1].bar(labels, tokens, color=colors)
     axes[1].set_yscale("log")
     axes[1].set_ylabel("Selected source tokens (log)")
     axes[1].tick_params(axis="x", rotation=20)
@@ -265,7 +274,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("docs/papers/shared/results/paper9_subagents/natural_repository_v1"),
+        default=Path("docs/papers/shared/results/paper9_subagents/natural_repository_v2"),
     )
     arguments = parser.parse_args()
     arguments.output.mkdir(parents=True, exist_ok=True)

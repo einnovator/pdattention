@@ -20,7 +20,9 @@ compatibility receipts.
 | Compatible native K/V callback | Experimental |
 | Sequential/parallel callback scheduling | Experimental |
 | Explicit DAG joins and peer visibility | Experimental |
-| Validity-first lexical/learned/oracle descendant routing | Experimental |
+| Validity-first lexical/learned/fielded-BM25/oracle routing | Experimental |
+| Autonomous sequential/parallel model campaign | Experimental benchmark |
+| Frozen cross-repository router transfer | Experimental benchmark |
 | Live MLX native K/V reuse | Experimental benchmark |
 | Cross-session memory | Out of scope; Paper 10 |
 
@@ -75,9 +77,24 @@ The five-seed tracked-source cohort executes both sequential and parallel
 schedulers. Each run makes 35 logical file reads but only 13 physical reads;
 the remaining 22 are valid ancestor reuses. Explicit two-parent DAG joins and
 completed-only peer visibility are observed in every run. On held-out
-descendant queries, lexical and learned top-1 routing each recover 60% of the
-relevant records, while oracle top-1 recovers 100%. The current learned linear
-ranker therefore does not close the selection gap.
+descendant queries, the immutable v1 lexical and learned top-1 policies each
+recover 60% of the relevant records. The v2 learned policy reaches 65%, while
+a post-hoc zero-model fielded-BM25 diagnostic matches the 100% oracle result at
+the same 2,160 selected tokens on average.
+
+The real-model autonomous campaign runs 96 read-only repository investigators:
+eight questions, four scheduling/context conditions, and three seeds with
+`qwen3-coder:30b` Q4_K_M on the 48 GB M4 Pro. Isolated parallel execution has a
+paired `1.16x` mean speedup with high seed variance; completed-peer parallelism
+has a steadier `1.28x`. Sequential completed-peer context avoids 12.3 physical
+tool calls per seed but lowers exact-path accuracy by 12.5 percentage points.
+This is evidence that selection and consumption quality must be evaluated
+separately, not a coding-patch success claim.
+
+Frozen transfer to DynaSpike and Cognitive Coprocessors gives 87.5% pooled
+fielded-BM25 top-1 recall, versus 81.25% for lexical and learned routing and
+100% for the oracle. Candidate revisions and hashes are recorded in the
+artifact; broader cross-repository and cross-model transfer remain open.
 
 The live MLX sweep uses immutable Qwen3-0.6B-4bit revision `73e3e38d`. On an
 M4 Pro with 48 GB, fan-out 16 yields `5.03x`, `8.74x`, and `11.69x` amortized

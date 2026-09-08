@@ -36,6 +36,39 @@ $env:PYTHONPATH = "src"
 python experiments/paper9_subagents/run_natural_repository_workload.py
 ```
 
+The v2 cohort preserves the original whole-record lexical and learned baselines
+and adds a zero-model fielded BM25 policy over resource identity, leading
+documentation, and bounded source windows. Its output is written to
+`natural_repository_v2`; the tracked `natural_repository_v1` artifact remains
+the immutable 60% baseline.
+
+The autonomous repository campaign crosses sequential/parallel scheduling with
+isolated/completed-peer context. Model children choose their own read-only
+repository tools; the harness records path accuracy, model tokens, routed peer
+records, and logical versus physical tool calls:
+
+```bash
+PYTHONPATH=src python -m experiments.paper9_subagents.run_autonomous_repository_campaign \
+  --repo . --output docs/papers/shared/results/paper9_subagents/autonomous_repository_v1/seeds/seed11 \
+  --model qwen3-coder:30b --seeds 11 --max-workers 4 --max-steps 7
+```
+
+Seeds 11, 23, and 37 were checkpointed independently and combined with
+`aggregate_autonomous_campaign.py`. The aggregate records the M4 host, Ollama
+and model versions, base repository revision, source hashes, paired speedups,
+and paired selection-versus-consumption deltas.
+
+The frozen router-transfer cohort fits the learned baseline only on Paper 9's
+development repository, then evaluates unchanged policies on two unrelated
+repositories pinned by commit and file hash:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m experiments.paper9_subagents.run_router_transfer `
+  --repo dynaspike=D:\git\rd\dynaspike `
+  --repo cognitive_coprocessors=D:\git\rd\cognitive_coprocessors
+```
+
 On Apple Silicon, the live MLX benchmark freezes source/query tokens and
 compares one-shot text, host split-prefill, memoized text re-prefill, typed
 record re-prefill, and immutable native K/V reuse. The host, memoized, and

@@ -1,0 +1,91 @@
+{
+  "protocol": "paper9-autonomous-repository-v1",
+  "evidence_scope": "real autonomous read-only model loops; not a patch-generation benchmark",
+  "model": "qwen3-coder:30b",
+  "base_url": "http://127.0.0.1:11434",
+  "seeds": [
+    37
+  ],
+  "task_ids": [
+    "unknown_effect",
+    "resource_invalidation",
+    "external_validation",
+    "parallel_scheduler",
+    "duplicate_read_coalescing",
+    "descendant_router",
+    "completed_visibility",
+    "mlx_native_cache"
+  ],
+  "max_steps": 7,
+  "max_workers": 4,
+  "conditions": [
+    {
+      "condition": "sequential_isolated",
+      "seed": 37,
+      "tasks": 8,
+      "wall_seconds": 135.30660033295862,
+      "path_accuracy": 0.875,
+      "failures": 0,
+      "model_calls": 34,
+      "prompt_tokens": 103926,
+      "generated_tokens": 2069,
+      "model_seconds_sum": 119.39877787500154,
+      "logical_tool_calls": 31,
+      "physical_tool_calls": 31,
+      "reused_tool_calls": 0,
+      "routed_peer_records": 0,
+      "routed_peer_tokens": 0
+    },
+    {
+      "condition": "parallel_isolated",
+      "seed": 37,
+      "tasks": 8,
+      "wall_seconds": 87.18554616707843,
+      "path_accuracy": 0.875,
+      "failures": 0,
+      "model_calls": 34,
+      "prompt_tokens": 103926,
+      "generated_tokens": 1992,
+      "model_seconds_sum": 271.71975721162744,
+      "logical_tool_calls": 31,
+      "physical_tool_calls": 31,
+      "reused_tool_calls": 0,
+      "routed_peer_records": 0,
+      "routed_peer_tokens": 0
+    },
+    {
+      "condition": "sequential_completed",
+      "seed": 37,
+      "tasks": 8,
+      "wall_seconds": 180.97090904205106,
+      "path_accuracy": 0.875,
+      "failures": 0,
+      "model_calls": 31,
+      "prompt_tokens": 152538,
+      "generated_tokens": 1910,
+      "model_seconds_sum": 167.65938212664332,
+      "logical_tool_calls": 25,
+      "physical_tool_calls": 19,
+      "reused_tool_calls": 6,
+      "routed_peer_records": 7,
+      "routed_peer_tokens": 11120
+    },
+    {
+      "condition": "parallel_completed",
+      "seed": 37,
+      "tasks": 8,
+      "wall_seconds": 150.6326660409104,
+      "path_accuracy": 1.0,
+      "failures": 0,
+      "model_calls": 32,
+      "prompt_tokens": 121039,
+      "generated_tokens": 1843,
+      "model_seconds_sum": 464.2229623347521,
+      "logical_tool_calls": 24,
+      "physical_tool_calls": 20,
+      "reused_tool_calls": 4,
+      "routed_peer_records": 4,
+      "routed_peer_tokens": 6980
+    }
+  ]
+}
