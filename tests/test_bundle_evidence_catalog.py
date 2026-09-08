@@ -61,6 +61,7 @@ def test_extended_family_qualification_queue_preserves_requested_gates() -> None
         "PRA_NATIVE_MEMORY_BUNDLE",
     ]
     assert queue["profile_policy"]["reduced_profiles"] == "CALIBRATION_PENDING"
+    assert all(len(row["revision"]) == 40 for row in rows)
     assert all(row["measurement_status"] == "PENDING" for row in rows)
     assert all(row["publication_status"] == "PENDING" for row in rows)
     qwen30 = rows[0]
