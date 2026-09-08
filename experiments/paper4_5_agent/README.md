@@ -194,6 +194,13 @@ native PRA at 50%, frozen G11 equivalence, G11 end to end at 50%, matched 50%
 truncation, and G10 at 50%. The 25% and 12.5% frontier remains later-stage work
 and runs only when the 50% comparison is informative.
 
+The frozen local-Qwen runner pre-pulls each official evaluator image before
+starting mini-swe-agent. On Apple Silicon it requests `linux/amd64` explicitly
+and allows one hour for acquisition, avoiding mini-swe-agent's 120-second
+container-start timeout. Image acquisition has a separate receipt and is
+excluded from model and grader wall time. Use `--skip-image-prepull` only when
+all exact task images are already local.
+
 ```bash
 export PRA_AGENT_NATIVE_ENGINE_URL=http://PRA_ENGINE_HOST:8000/v1
 export PRA_AGENT_NATIVE_GATEWAY_URL=http://PRA_GATEWAY_HOST:8080/v1

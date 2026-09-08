@@ -88,6 +88,9 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     package_versions,
     treatment_placement,
 )
+from experiments.paper4_5_agent.runners.local_qwen_swebench import (
+    official_image_platform,
+)
 from experiments.agents.schema import BenchmarkManifest
 
 
@@ -105,6 +108,12 @@ EASY20_RESULT = ROOT / (
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/"
     "swebench_verified_easy20/no_pra/official_result.json"
 )
+
+
+def test_local_qwen_runner_requests_official_x86_images_on_arm() -> None:
+    assert official_image_platform("arm64") == "linux/amd64"
+    assert official_image_platform("aarch64") == "linux/amd64"
+    assert official_image_platform("x86_64") is None
 
 
 def test_fixed50_card_is_exact_unique_and_digest_protected() -> None:

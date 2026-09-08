@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 from pathlib import Path
 
 from ..context_treatment import ContextTreatment
@@ -12,6 +13,13 @@ from .swebench_verified import PINNED_DATASET_REVISION, run
 
 MODEL = "qwen3-coder:30b"
 MODEL_REVISION = "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
+
+
+def official_image_platform(machine: str | None = None) -> str | None:
+    """Request the official x86 evaluator images explicitly on ARM hosts."""
+
+    architecture = (machine or platform.machine()).lower()
+    return "linux/amd64" if architecture in {"arm64", "aarch64"} else None
 
 
 def main() -> None:
@@ -33,6 +41,14 @@ def main() -> None:
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--selection-replay", type=Path)
+    parser.add_argument(
+        "--skip-image-prepull",
+        action="store_true",
+        help="Skip explicit task-image acquisition before mini-swe-agent starts.",
+    )
+    parser.add_argument(
+        "--image-pull-timeout-seconds", type=int, default=3600,
+    )
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--recover-timeout-chunk", type=int)
     options = parser.parse_args()
@@ -69,6 +85,9 @@ def main() -> None:
         recover_timeout_chunk=options.recover_timeout_chunk,
         selection_record=options.selection_record,
         selection_replay=options.selection_replay,
+        prepull_images=not options.skip_image_prepull,
+        docker_platform=official_image_platform(),
+        image_pull_timeout_seconds=options.image_pull_timeout_seconds,
     )
     print(run(args))
 
