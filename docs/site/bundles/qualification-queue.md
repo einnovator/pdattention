@@ -4,7 +4,7 @@ A passing family contract only establishes structural compatibility. Model loadi
 
 | Order | Exact base model | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |
 | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `Qwen/Qwen3-30B-A3B` | qwen3_moe | attention-only MoE isolation (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 1 | `Qwen/Qwen3-30B-A3B` | qwen3_moe | attention-only MoE isolation (`CONTRACT_TESTED`) | hf, mlx, vllm | `MODEL_LOADED` | `PENDING` | NO_PRA=`PENDING` / PRA_NATIVE_MEMORY_NO_ADAPTOR=`MEASURED` ([artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/mac_scaling/qwen3_30b_a3b_mlx_profiles.json)) mlx-lm / PRA_NATIVE_MEMORY_BUNDLE=`PENDING` | `PENDING` |
 | 2 | `google/gemma-3-12b-it` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
 | 3 | `google/gemma-3-27b-it` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
 | 4 | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` | mistral3 | nested text decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |

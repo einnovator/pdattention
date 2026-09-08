@@ -379,6 +379,18 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert baseline.evidence_role == "baseline_admission"
     assert all(cell.baseline_cell == baseline.cell_id for cell in treatments)
     assert all(cell.minimum_baseline_score == 0.2 for cell in treatments)
+    gateway_passthrough = next(
+        cell for cell in treatments if cell.mode.value == "gateway_passthrough"
+    )
+    gateway_treatments = [
+        cell for cell in treatments
+        if cell.connection == "gateway" and cell is not gateway_passthrough
+    ]
+    assert gateway_treatments
+    assert all(
+        cell.prerequisite_cells == (gateway_passthrough.cell_id,)
+        for cell in gateway_treatments
+    )
     truncation = {
         cell.cell_id.rsplit("-", 1)[-1]: cell
         for cell in treatments if cell.mode.value == "truncation"

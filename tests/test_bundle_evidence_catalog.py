@@ -55,10 +55,19 @@ def test_extended_family_qualification_queue_preserves_requested_gates() -> None
     assert queue["profile_policy"]["reduced_profiles"] == "CALIBRATION_PENDING"
     assert all(row["measurement_status"] == "PENDING" for row in rows)
     assert all(row["publication_status"] == "PENDING" for row in rows)
+    qwen30 = rows[0]
+    assert qwen30["load_status"] == "MODEL_LOADED"
+    assert qwen30["condition_status"]["NO_PRA"]["status"] == "PENDING"
+    assert (
+        qwen30["condition_status"]["PRA_NATIVE_MEMORY_NO_ADAPTOR"]["status"]
+        == "MEASURED"
+    )
+    assert qwen30["condition_status"]["PRA_NATIVE_MEMORY_BUNDLE"]["status"] == "PENDING"
 
     rendered = render_qualification_queue(queue)
     assert "structural compatibility" in rendered
     assert "No PRA / no adapter / adapter evidence" in rendered
+    assert "qwen3_30b_a3b_mlx_profiles.json" in rendered
     assert "`CALIBRATION_PENDING`" in rendered
 
 

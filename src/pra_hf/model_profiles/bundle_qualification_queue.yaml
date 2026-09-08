@@ -14,10 +14,24 @@ targets:
     contract: attention-only MoE isolation
     engines: [hf, mlx, vllm]
     contract_status: CONTRACT_TESTED
-    load_status: PENDING
+    load_status: MODEL_LOADED
     adapter_status: PENDING
     measurement_status: PENDING
     publication_status: PENDING
+    condition_status:
+      NO_PRA:
+        status: PENDING
+      PRA_NATIVE_MEMORY_NO_ADAPTOR:
+        status: MEASURED
+        engine: mlx-lm
+        model: mlx-community/Qwen3-30B-A3B-4bit
+        revision: d388dead1515f5e085ef7a0431dd8fadf0886c57
+        artifact: docs/papers/shared/results/mac_scaling/qwen3_30b_a3b_mlx_profiles.json
+        evidence_tier: MODEL_BACKED_NATURAL_QA_CALIBRATION
+        datasets: [qasper, hotpotqa, 2wikimultihopqa]
+        seeds: [11, 23, 37, 53, 71]
+      PRA_NATIVE_MEMORY_BUNDLE:
+        status: PENDING
   - order: 2
     model: google/gemma-3-12b-it
     family: gemma3

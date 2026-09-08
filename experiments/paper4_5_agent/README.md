@@ -62,6 +62,10 @@ Port 8080 preserves the ordinary OpenAI payload. Port 8081 realizes selected
 typed records as visible text through G10. The latter is PRA Selected Context,
 not native attention-level PRA.
 
+Every G10 or G11 cell names the G00 pass-through cell as an explicit
+prerequisite. A failed transport qualification therefore blocks gateway
+treatments while leaving independent direct truncation controls resumable.
+
 The runner probes gateway health, mode, model identity, and one live generation
 before launching Docker tasks. After a gateway implementation or deployment
 change, first run the three-task

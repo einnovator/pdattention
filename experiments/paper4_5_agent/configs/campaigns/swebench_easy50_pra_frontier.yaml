@@ -91,6 +91,7 @@ cells:
     evidence_role: efficacy
     priority: 20
     baseline_cell: easy50-no-pra
+    prerequisite_cells: [easy50-gateway-passthrough]
     agent_id: mini-swe-agent-2.4.6
     connection: gateway
     engine_pra_enabled: false
@@ -132,6 +133,7 @@ cells:
     gateway_mode: G11
     comparison_group: native-pra-50
     paired_cell: easy50-native-pra-direct-50
+    prerequisite_cells: [easy50-gateway-passthrough]
     minimum_baseline_score: 0.20
     command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/native_pra_gateway_50, --run-id, easy50-native-pra-gateway-50, --mode, gateway-native-pra, --budget-fraction, "0.5", --base-url, "${PRA_AGENT_NATIVE_GATEWAY_URL}"]
     timeout_seconds: 64800
@@ -151,6 +153,7 @@ cells:
     gateway_mode: G11
     comparison_group: native-pra-50
     paired_cell: easy50-native-pra-direct-50
+    prerequisite_cells: [easy50-gateway-passthrough]
     minimum_baseline_score: 0.20
     command: [python, -m, experiments.paper4_5_agent.runners.local_qwen_swebench, --benchmark-card, experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json, --output, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/native_pra_gateway_equivalence_50, --run-id, easy50-native-pra-gateway-equivalence-50, --mode, gateway-native-pra, --budget-fraction, "0.5", --selection-replay, docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/native_pra_direct_50/selection_fixture.jsonl, --base-url, "${PRA_AGENT_NATIVE_GATEWAY_URL}"]
     timeout_seconds: 64800
@@ -175,6 +178,7 @@ cells:
     baseline_id: qwen3-coder-30b-easy50-local
     evidence_role: efficacy
     baseline_cell: easy50-no-pra
+    prerequisite_cells: [easy50-gateway-passthrough]
     agent_id: mini-swe-agent-2.4.6
     connection: gateway
     engine_pra_enabled: false
@@ -206,6 +210,7 @@ cells:
     evidence_role: efficacy
     priority: 60
     baseline_cell: easy50-no-pra
+    prerequisite_cells: [easy50-gateway-passthrough]
     agent_id: mini-swe-agent-2.4.6
     connection: gateway
     engine_pra_enabled: false

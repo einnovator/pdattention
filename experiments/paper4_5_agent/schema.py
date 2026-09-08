@@ -109,6 +109,7 @@ class CampaignCell(StrictModel):
     gateway_mode: Literal["G00", "G10", "G01", "G11"] | None = None
     comparison_group: str | None = None
     paired_cell: str | None = None
+    prerequisite_cells: tuple[str, ...] = ()
     evidence_role: Literal[
         "baseline_admission",
         "transport_qualification",
@@ -190,6 +191,14 @@ class CampaignConfig(StrictModel):
                     raise ValueError(f"{cell.cell_id} and paired_cell use different baselines")
                 if not cell.comparison_group or pair.comparison_group != cell.comparison_group:
                     raise ValueError(f"{cell.cell_id} and paired_cell require one comparison_group")
+            for prerequisite_id in cell.prerequisite_cells:
+                prerequisite = known_cells.get(prerequisite_id)
+                if prerequisite is None:
+                    raise ValueError(
+                        f"{cell.cell_id} references unknown prerequisite {prerequisite_id}"
+                    )
+                if prerequisite_id == cell.cell_id:
+                    raise ValueError(f"{cell.cell_id} cannot depend on itself")
         return self
 
     @classmethod

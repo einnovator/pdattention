@@ -62,6 +62,9 @@ def load_qualification_queue(
         "PENDING", "CONTRACT_TESTED", "MODEL_LOADED", "ADAPTER_TRAINED",
         "MEASURED", "QUALIFIED", "PUBLISHED", "BLOCKED",
     }
+    conditions = value.get("comparison_conditions", [])
+    if not isinstance(conditions, list) or not conditions:
+        raise ValueError("Bundle qualification queue requires comparison conditions.")
     for row in rows:
         missing = [
             key for key in (
@@ -85,6 +88,26 @@ def load_qualification_queue(
                 )
         if not isinstance(row["engines"], list) or not row["engines"]:
             raise ValueError(f"Qualification target {row['model']!r} needs engines.")
+        condition_status = row.get("condition_status", {})
+        if condition_status:
+            if not isinstance(condition_status, Mapping):
+                raise ValueError(
+                    f"Qualification target {row['model']!r} has invalid condition status."
+                )
+            if set(condition_status) != set(conditions):
+                raise ValueError(
+                    f"Qualification target {row['model']!r} must report every "
+                    "comparison condition."
+                )
+            for condition, receipt in condition_status.items():
+                if (
+                    not isinstance(receipt, Mapping)
+                    or receipt.get("status") not in allowed_states
+                ):
+                    raise ValueError(
+                        f"Qualification target {row['model']!r} has invalid "
+                        f"condition receipt for {condition}."
+                    )
     return value
 
 
@@ -99,11 +122,20 @@ def render_qualification_queue(queue: Mapping[str, Any]) -> str:
         "| ---: | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in queue["targets"]:
+        condition_status = row.get("condition_status")
+        if condition_status:
+            evidence = " / ".join(
+                f"{condition}="
+                + _qualification_condition_cell(condition_status[condition])
+                for condition in queue["comparison_conditions"]
+            )
+        else:
+            evidence = f"`{row['measurement_status']}`"
         lines.append(
             f"| {row['order']} | `{row['model']}` | {row['family']} | "
             f"{row['contract']} (`{row['contract_status']}`) | "
             f"{', '.join(row['engines'])} | `{row['load_status']}` | "
-            f"`{row['adapter_status']}` | `{row['measurement_status']}` | "
+            f"`{row['adapter_status']}` | {evidence} | "
             f"`{row['publication_status']}` |"
         )
     lines += [
@@ -112,6 +144,22 @@ def render_qualification_queue(queue: Mapping[str, Any]) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def _qualification_condition_cell(receipt: Mapping[str, Any]) -> str:
+    """Render one condition without promoting an artifact into a bundle claim."""
+
+    status = f"`{receipt['status']}`"
+    artifact = receipt.get("artifact")
+    if artifact:
+        status += (
+            " ([artifact](https://github.com/einnovator/pdattention/blob/"
+            f"research/paper4-5-runtime/{artifact}))"
+        )
+    engine = receipt.get("engine")
+    if engine:
+        status += f" {engine}"
+    return status
 
 
 def validate_collection_membership(catalog: Mapping[str, Any], repo_ids: set[str]) -> None:

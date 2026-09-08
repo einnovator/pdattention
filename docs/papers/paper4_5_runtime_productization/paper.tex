@@ -651,10 +651,14 @@ The pre-publication queue therefore keeps five gates separate: contract test,
 exact model load, optional adaptor training, matched No-PRA/PRA-without-adaptor/
 PRA-with-adaptor measurement, and immutable bundle publication.  Its order is
 Qwen3-30B-A3B, Gemma~3 12B and 27B, Mistral Small~3.2 24B, GPT-OSS 20B,
-QwQ 32B, and Llama~3.3 70B.  At this revision only the first gate is closed;
-the remaining cells are explicitly pending.  Reduced consumer-layer profiles
-remain \texttt{CALIBRATION\_PENDING}; \texttt{BALANCED} retains all eligible
-consumer layers.
+QwQ 32B, and Llama~3.3 70B.  Qwen3-30B-A3B additionally has an exact loaded
+MLX 4-bit identity and five-seed native-no-adaptor measurements on QASPER,
+HotpotQA, and 2Wiki.  That receipt does not close the three-way gate: its
+No-PRA and trained-adaptor arms, qualification, and publication remain
+pending.  The other targets currently establish only their structural
+contracts.  Reduced consumer-layer profiles remain
+\texttt{CALIBRATION\_PENDING}; \texttt{BALANCED} retains all eligible consumer
+layers.
 
 \subsection{Corrected layer-profile calibration}
 

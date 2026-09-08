@@ -181,6 +181,13 @@ def _treatment_gate(cell: Any, cells: dict[str, Any]) -> str | None:
             f"Treatment requires baseline score >= {cell.minimum_baseline_score:.3f}; "
             f"observed {observed_score!r}."
         )
+    for prerequisite_id in cell.prerequisite_cells:
+        prerequisite = cells.get(prerequisite_id, {})
+        if prerequisite.get("state") != "COMPLETED":
+            return (
+                f"Treatment requires prerequisite {prerequisite_id}=COMPLETED; "
+                f"observed {prerequisite.get('state', 'PENDING')}."
+            )
     if cell.paired_cell:
         paired = cells.get(cell.paired_cell, {})
         if paired.get("state") != "COMPLETED":
