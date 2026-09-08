@@ -58,9 +58,12 @@ It is diagnostic only and supports no runtime-benefit claim.
 
 - `selection_cache.jsonl`: frozen ten-question selected contexts.
 - `region_layer_diagnostics.jsonl`: 360 singleton selection measurements.
-- `rows.jsonl`: 70 generation rows across seven conditions.
 - `summary.json`: run metadata and aggregate condition means.
 - `publication/region_layer_publication_summary.json`: strict paired reduction.
+
+The 70-row `rows.jsonl` generation file is retained on the experiment host and
+excluded by the repository's raw-row policy. Its digest is preserved below;
+the tracked publication summary contains its paired reductions.
 
 SHA-256 digests copied from the experiment host:
 
