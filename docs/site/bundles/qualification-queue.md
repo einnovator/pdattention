@@ -2,14 +2,14 @@
 
 A passing family contract only establishes structural compatibility. Model loading, adapter training, three-condition measurement, qualification, and publication are separate gates.
 
-| Order | Exact base model | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |
+| Order | Exact base identity | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |
 | ---: | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `Qwen/Qwen3-30B-A3B` | qwen3_moe | attention-only MoE isolation (`CONTRACT_TESTED`) | hf, mlx, vllm | `MODEL_LOADED` | `PENDING` | NO_PRA=`PENDING` / PRA_NATIVE_MEMORY_NO_ADAPTOR=`MEASURED` ([artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/mac_scaling/qwen3_30b_a3b_mlx_profiles.json)) mlx-lm / PRA_NATIVE_MEMORY_BUNDLE=`PENDING` | `PENDING` |
-| 2 | `google/gemma-3-12b-it` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
-| 3 | `google/gemma-3-27b-it` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
-| 4 | `mistralai/Mistral-Small-3.2-24B-Instruct-2506` | mistral3 | nested text decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
-| 5 | `openai/gpt-oss-20b` | gpt_oss | full-attention-only MoE with learned sinks (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
-| 6 | `Qwen/QwQ-32B` | qwen2 | dense Qwen decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
-| 7 | `meta-llama/Llama-3.3-70B-Instruct` | llama3 | dense Llama decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 1 | `Qwen/Qwen3-30B-A3B`<br>`ad44e777bcd18fa416d9da3bd8f70d33ebb85d39` | qwen3_moe | attention-only MoE isolation (`CONTRACT_TESTED`) | hf, mlx, vllm | `MODEL_LOADED` | `PENDING` | NO_PRA=`PENDING` / PRA_NATIVE_MEMORY_NO_ADAPTOR=`MEASURED` ([artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/mac_scaling/qwen3_30b_a3b_mlx_profiles.json)) mlx-lm / PRA_NATIVE_MEMORY_BUNDLE=`PENDING` | `PENDING` |
+| 2 | `google/gemma-3-12b-it`<br>`96b6f1eccf38110c56df3a15bffe176da04bfd80` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 3 | `google/gemma-3-27b-it`<br>`005ad3404e59d6023443cb575daa05336842228a` | gemma3 | mixed full/sliding attention (`CONTRACT_TESTED`) | hf, mlx | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 4 | `mistralai/Mistral-Small-3.2-24B-Instruct-2506`<br>`95a6d26c4bfb886c58daf9d3f7332c857cb27b43` | mistral3 | nested text decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 5 | `openai/gpt-oss-20b`<br>`6cee5e81ee83917806bbde320786a8fb61efebee` | gpt_oss | full-attention-only MoE with learned sinks (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 6 | `Qwen/QwQ-32B`<br>`976055f8c83f394f35dbd3ab09a285a984907bd0` | qwen2 | dense Qwen decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
+| 7 | `meta-llama/Llama-3.3-70B-Instruct`<br>`6f6073b423013f6a7d4d9f39144961bfbfbc386b` | llama3 | dense Llama decoder (`CONTRACT_TESTED`) | hf, mlx, vllm | `PENDING` | `PENDING` | `PENDING` | `PENDING` |
 
 Reduced consumer-layer profiles remain `CALIBRATION_PENDING` until held-out workload-scale quality supports promotion. The queue does not create a catalog entry or a public-bundle claim.

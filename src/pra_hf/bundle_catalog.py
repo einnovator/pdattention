@@ -118,10 +118,11 @@ def render_qualification_queue(queue: Mapping[str, Any]) -> str:
         "# Bundle Qualification Queue", "",
         "A passing family contract only establishes structural compatibility. Model loading, adapter training, three-condition measurement, qualification, and publication are separate gates.",
         "",
-        "| Order | Exact base model | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |",
+        "| Order | Exact base identity | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |",
         "| ---: | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in queue["targets"]:
+        identity = f"`{row['model']}`<br>`{row['revision']}`"
         condition_status = row.get("condition_status")
         if condition_status:
             evidence = " / ".join(
@@ -132,7 +133,7 @@ def render_qualification_queue(queue: Mapping[str, Any]) -> str:
         else:
             evidence = f"`{row['measurement_status']}`"
         lines.append(
-            f"| {row['order']} | `{row['model']}` | {row['family']} | "
+            f"| {row['order']} | {identity} | {row['family']} | "
             f"{row['contract']} (`{row['contract_status']}`) | "
             f"{', '.join(row['engines'])} | `{row['load_status']}` | "
             f"`{row['adapter_status']}` | {evidence} | "

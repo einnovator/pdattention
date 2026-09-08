@@ -77,6 +77,7 @@ def test_extended_family_qualification_queue_preserves_requested_gates() -> None
     assert "structural compatibility" in rendered
     assert "No PRA / no adapter / adapter evidence" in rendered
     assert "qwen3_30b_a3b_mlx_profiles.json" in rendered
+    assert "96b6f1eccf38110c56df3a15bffe176da04bfd80" in rendered
     assert "`CALIBRATION_PENDING`" in rendered
 
 
