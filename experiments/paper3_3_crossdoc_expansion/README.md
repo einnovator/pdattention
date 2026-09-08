@@ -103,3 +103,50 @@ The reducer rejects duplicate rows, incomplete condition cohorts, mismatched
 frozen identities, and model mismatches. It records each run's environment and
 immutable revisions and emits absolute-quality and paired-effect plots with
 conservative bootstrap envelopes.
+
+## Task-aware boundary-region-layer oracle
+
+The coarse document-pair selector is closed by the powered Paper 3.3 gate. The
+next mechanism audit therefore holds retrieval links fixed and scores a finer
+consumption unit:
+
+```text
+equal-width source token region
+  x equal-width target token region
+  x contiguous decoder-layer band
+```
+
+Prefix, middle, and suffix windows are geometrically matched. In particular,
+source-suffix to target-prefix is the boundary hypothesis, while the other
+eight region pairs are equal-cost controls. Each singleton cell executes the
+original model attention and is scored by its incremental gold-answer NLL gain
+from the no-cross-document packed state. The best positive cells are then
+unioned and decoded as `TASK_ORACLE_REGION_LAYER`.
+
+Run the first locked 1,024-token validation smoke on Apple Silicon:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.run_expansion_generation \
+  --cache-dir .cache/rag_eval --split-name validation --max-examples 1 \
+  --model mlx-community/Qwen3-1.7B-4bit \
+  --mode dense --no-query-conditioned --top-k 1 --cross-token-budget 64 \
+  --token-budget 1024 \
+  --interaction-audit-only --region-layer-audit \
+  --region-tokens 8 --layer-band-count 4 --oracle-cells 4 \
+  --selection-cache .runs/paper3_3_region_layer_validation_1024.jsonl \
+  --resume --output .runs/paper3_3_region_layer_validation_smoke
+```
+
+This is a gold-answer oracle headroom experiment, not selector training or a
+deployable policy. `region_layer_diagnostics.jsonl` keeps selection-signal
+measurements separate from the generated consumption outcomes in `rows.jsonl`.
+Gold-answer log probabilities are reduced in float32 even when the quantized
+model emits lower-precision logits, preventing small causal effects from being
+rounded into coarse NLL steps. Per-question checkpoints are configuration-bound
+and make `--resume` safe after a host or SSH interruption.
+The logical masks currently execute through a dense host kernel, so latency is
+diagnostic only. Do not begin learned-policy training unless this finer oracle
+recovers a useful fraction of the locked 1,024-token packed deficit. Independent
+training seeds apply only after that gate; the oracle uses paired question
+bootstrap intervals and must later transfer to the reduced Qwen3-4B/Qwen3-8B
+and Llama-3.1-8B cohorts before any systems claim.

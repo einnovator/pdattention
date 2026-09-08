@@ -328,12 +328,16 @@ class PersistentMLXBackend:
         started = time.perf_counter()
         logits = self.model(mx.array(inputs, dtype=mx.int32)[None], cache=cache)
         start = len(query_tokens) - 1
-        answer_logits = logits[0, start : start + len(answer_tokens), :]
+        # Reduce answer probabilities in float32. Quantized MLX models may emit
+        # lower-precision logits; casting only after logsumexp makes small
+        # paired intervention effects collapse to coarse 0.125-NLL steps.
+        answer_logits = logits[0, start : start + len(answer_tokens), :].astype(
+            mx.float32
+        )
         targets = mx.array(answer_tokens, dtype=mx.int32)[:, None]
         selected_logits = mx.take_along_axis(answer_logits, targets, axis=-1).squeeze(-1)
         log_probabilities = selected_logits - mx.logsumexp(answer_logits, axis=-1)
-        log_probabilities = log_probabilities.astype(mx.float32)
-        first_logits = answer_logits[0].astype(mx.float32)
+        first_logits = answer_logits[0]
         mx.eval(log_probabilities, first_logits)
         values = np.asarray(log_probabilities, dtype=np.float64)
         first = np.asarray(first_logits, dtype="<f4")

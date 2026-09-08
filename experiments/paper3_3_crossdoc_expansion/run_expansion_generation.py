@@ -36,6 +36,7 @@ from experiments.paper3_3_sparse_crossdoc.run_oracle_sparsity import (
     _condition_row,
     _encode_sparse_plan,
     _resolve_reranker_device,
+    _score_only,
     _select_split_cohort,
 )
 from experiments.rag_vs_pra.datasets import load_multihop_rag
@@ -77,12 +78,16 @@ from pra_hf.rag_mlx_native import (
 from pra_hf.rag_retrieval import SentenceTransformerEmbedder
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
+    balanced_layer_bands,
+    combine_interaction_plans,
     linked_pair_interaction_plan,
     linked_top_attention_edge_plan,
+    region_layer_interaction_plan,
 )
 
 
-SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v2"
+SCHEMA_VERSION = "paper3.3-crossdoc-expansion-generation-v3"
+TOKEN_REGIONS = ("prefix", "middle", "suffix")
 
 
 def _git_commit() -> str:
@@ -90,6 +95,15 @@ def _git_commit() -> str:
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
     )
     return result.stdout.strip() if result.returncode == 0 else "UNKNOWN"
+
+
+def _atomic_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    temporary.replace(path)
 
 
 def _encode_independent(
@@ -168,6 +182,203 @@ def _summarize(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
     return result
 
 
+def _summarize_region_layer(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Aggregate causal cell scores without mixing them with generation rows."""
+
+    grouped: dict[tuple[int, str, str], list[Mapping[str, object]]] = {}
+    for row in rows:
+        key = (
+            int(row["band_index"]),
+            str(row["source_region"]),
+            str(row["target_region"]),
+        )
+        grouped.setdefault(key, []).append(row)
+    result = []
+    for (band, source, target), values in grouped.items():
+        gains = [float(row["incremental_gold_nll_gain"]) for row in values]
+        result.append(
+            {
+                "band_index": band,
+                "layers": list(values[0]["layers"]),
+                "source_region": source,
+                "target_region": target,
+                "examples": len(values),
+                "incremental_gold_nll_gain_mean": statistics.fmean(gains),
+                "positive_gain_fraction": sum(value > 0.0 for value in gains)
+                / len(gains),
+                "selected_physical_edge_fraction_mean": statistics.fmean(
+                    float(row["selected_physical_edge_fraction"])
+                    for row in values
+                ),
+            }
+        )
+    return sorted(
+        result,
+        key=lambda row: (
+            -float(row["incremental_gold_nll_gain_mean"]),
+            int(row["band_index"]),
+            str(row["source_region"]),
+            str(row["target_region"]),
+        ),
+    )
+
+
+def _region_layer_audit(
+    *,
+    backend: PersistentMLXBackend,
+    question: object,
+    packed_tokens: Sequence[int],
+    blocked_mask: Sequence[Sequence[bool]],
+    revision: str,
+    graph: object,
+    linked_pairs: Sequence[tuple[str, str]],
+    selection_receipt_id: str,
+    packed_logits: object,
+    region_tokens: int,
+    layer_band_count: int,
+    oracle_cells: int,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Score matched region/layer cells, then decode a gold-NLL oracle union.
+
+    Cell selection uses the gold answer and is therefore an oracle headroom
+    measurement, not a deployable selector. Every consumed cell executes the
+    frozen model's original attention under an explicit sparse logical mask.
+    """
+
+    empty_plan = combine_interaction_plans(
+        graph, (), mode="NO_CROSS_DOC_PACKED"
+    )
+    blocked_memory, blocked_encode_ms = _encode_sparse_plan(
+        backend=backend,
+        packed_tokens=packed_tokens,
+        blocked_mask=blocked_mask,
+        revision=revision,
+        graph=graph,
+        plan=empty_plan,
+    )
+    blocked_scoring, _ = _score_only(backend, question, blocked_memory)
+    blocked_nll = float(blocked_scoring["gold_answer_mean_nll"])
+    bands = balanced_layer_bands(graph.layer_count, layer_band_count)
+    diagnostics: list[dict[str, object]] = []
+    candidates: list[tuple[float, object, dict[str, object]]] = []
+    total_cells = len(bands) * len(TOKEN_REGIONS) ** 2
+    cell_index = 0
+    print(f"  measuring {total_cells} region/layer cells", flush=True)
+    for band_index, layers in enumerate(bands):
+        for source_region in TOKEN_REGIONS:
+            for target_region in TOKEN_REGIONS:
+                cell_index += 1
+                if cell_index == 1 or cell_index % 6 == 0 or cell_index == total_cells:
+                    print(f"    region/layer {cell_index}/{total_cells}", flush=True)
+                plan = region_layer_interaction_plan(
+                    graph,
+                    linked_pairs,
+                    layer_indices=layers,
+                    source_region=source_region,
+                    target_region=target_region,
+                    region_tokens=region_tokens,
+                    mode="REGION_LAYER_CELL",
+                )
+                memory, encode_ms = _encode_sparse_plan(
+                    backend=backend,
+                    packed_tokens=packed_tokens,
+                    blocked_mask=blocked_mask,
+                    revision=revision,
+                    graph=graph,
+                    plan=plan,
+                )
+                scoring, _ = _score_only(backend, question, memory)
+                nll = float(scoring["gold_answer_mean_nll"])
+                gain = blocked_nll - nll
+                identity = {
+                    "band_index": band_index,
+                    "layers": list(layers),
+                    "source_region": source_region,
+                    "target_region": target_region,
+                    "region_tokens": region_tokens,
+                }
+                diagnostics.append(
+                    {
+                        "schema_version": "paper3.3-region-layer-cell-v1",
+                        "example_id": getattr(question, "example_id"),
+                        "selection_receipt_id": selection_receipt_id,
+                        "graph_digest": graph.graph_digest,
+                        "plan_digest": plan.plan_digest,
+                        **identity,
+                        "selected_physical_head_edges": (
+                            plan.selected_physical_head_edges
+                        ),
+                        "selected_physical_edge_fraction": (
+                            plan.selected_physical_edge_fraction
+                        ),
+                        "blocked_gold_answer_mean_nll": blocked_nll,
+                        "cell_gold_answer_mean_nll": nll,
+                        "incremental_gold_nll_gain": gain,
+                        "encode_ms": encode_ms,
+                        "gold_scoring_ms": scoring.get("gold_scoring_ms"),
+                    }
+                )
+                candidates.append((gain, plan, identity))
+    candidates.sort(
+        key=lambda row: (
+            -row[0],
+            row[2]["band_index"],
+            row[2]["source_region"],
+            row[2]["target_region"],
+        )
+    )
+    selected = [row for row in candidates if row[0] > 0.0][:oracle_cells]
+    selected_plans = [row[1] for row in selected]
+    oracle_plan = combine_interaction_plans(
+        graph, selected_plans, mode="TASK_ORACLE_REGION_LAYER"
+    )
+    oracle_memory, oracle_encode_ms = _encode_sparse_plan(
+        backend=backend,
+        packed_tokens=packed_tokens,
+        blocked_mask=blocked_mask,
+        revision=revision,
+        graph=graph,
+        plan=oracle_plan,
+    )
+    oracle_row = _condition_row(
+        condition="TASK_ORACLE_REGION_LAYER",
+        question=question,
+        backend=backend,
+        memory=oracle_memory,
+        encode_ms=oracle_encode_ms,
+        selection_receipt_id=selection_receipt_id,
+        reference_logits=packed_logits,
+        reference_condition="PACKED_RAG",
+        plan=oracle_plan,
+    )
+    oracle_row.update(
+        {
+            "selection_signal": "per_example_gold_answer_nll",
+            "selection_scope": "oracle_only",
+            "region_tokens": region_tokens,
+            "layer_band_count": layer_band_count,
+            "maximum_oracle_cells": oracle_cells,
+            "selected_oracle_cells": [row[2] for row in selected],
+            "positive_candidate_cells": sum(row[0] > 0.0 for row in candidates),
+            "blocked_gold_answer_mean_nll": blocked_nll,
+        }
+    )
+    blocked_row = _condition_row(
+        condition="NO_CROSS_DOC_PACKED",
+        question=question,
+        backend=backend,
+        memory=blocked_memory,
+        encode_ms=blocked_encode_ms,
+        selection_receipt_id=selection_receipt_id,
+        reference_logits=packed_logits,
+        reference_condition="PACKED_RAG",
+        plan=empty_plan,
+    )
+    return [blocked_row, oracle_row], diagnostics
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, default=Path(".cache/rag_eval"))
@@ -211,6 +422,22 @@ def main() -> None:
     parser.add_argument("--boundary-tokens", type=int, default=8)
     parser.add_argument("--linked-edge-fraction", type=float, default=0.001)
     parser.add_argument(
+        "--region-layer-audit",
+        action="store_true",
+        help=(
+            "Score matched prefix/middle/suffix windows by layer band and decode "
+            "a per-example gold-NLL oracle union."
+        ),
+    )
+    parser.add_argument("--region-tokens", type=int, default=8)
+    parser.add_argument("--layer-band-count", type=int, default=4)
+    parser.add_argument("--oracle-cells", type=int, default=4)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume only configuration-matched per-question checkpoints.",
+    )
+    parser.add_argument(
         "--interaction-audit-only",
         action="store_true",
         help="Emit packed, independent, pair-SA, and boundary-SA without encoding expanded spans.",
@@ -224,6 +451,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.max_examples <= 0 or args.top_k <= 0 or args.cross_token_budget < 0:
         parser.error("example/top-k counts must be positive and budget non-negative")
+    if args.region_tokens <= 0 or args.layer_band_count <= 0 or args.oracle_cells <= 0:
+        parser.error("region tokens, layer bands, and oracle cells must be positive")
+    if args.region_layer_audit and not args.interaction_audit_only:
+        parser.error("--region-layer-audit requires --interaction-audit-only")
 
     model_revision = _resolve_hf_revision(args.model, args.model_revision)
     reranker_revision = _resolve_hf_revision(args.reranker, args.reranker_revision)
@@ -283,11 +514,67 @@ def main() -> None:
         "query_relevance_weight": args.query_relevance_weight,
         "minimum_pair_query_score": args.minimum_pair_query_score,
     }
+    run_configuration = {
+        "schema_version": SCHEMA_VERSION,
+        "model": args.model,
+        "model_revision": model_revision,
+        "split_name": args.split_name,
+        "seed": args.seed,
+        "candidate_count": args.candidate_count,
+        "token_budget": args.token_budget,
+        "chunk_tokens": args.chunk_tokens,
+        "chunk_overlap": args.chunk_overlap,
+        "max_resources": args.max_resources,
+        "max_new_tokens": args.max_new_tokens,
+        "reranker": args.reranker,
+        "reranker_revision": reranker_revision,
+        "mode": args.mode.value,
+        "query_conditioned": args.query_conditioned,
+        "direction": args.direction.value,
+        "granularity": args.granularity.value,
+        "top_k": args.top_k,
+        "cross_token_budget": args.cross_token_budget,
+        "boundary_tokens": args.boundary_tokens,
+        "linked_edge_fraction": args.linked_edge_fraction,
+        "interaction_audit_only": args.interaction_audit_only,
+        "region_layer_audit": args.region_layer_audit,
+        "region_tokens": args.region_tokens,
+        "layer_band_count": args.layer_band_count,
+        "oracle_cells": args.oracle_cells,
+        "selection_cache": str(args.selection_cache) if args.selection_cache else None,
+        **policy_parameters,
+    }
+    run_configuration_digest = hashlib.sha256(
+        json.dumps(
+            run_configuration, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
+    args.output.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = args.output / "checkpoints"
     rows: list[dict[str, object]] = []
+    region_layer_diagnostics: list[dict[str, object]] = []
     started = time.time()
 
     for index, question in enumerate(questions, 1):
         print(f"[{index}/{len(questions)}] {question.example_id}", flush=True)
+        checkpoint_path = checkpoint_dir / (
+            hashlib.sha256(question.example_id.encode()).hexdigest()[:16] + ".json"
+        )
+        if args.resume and checkpoint_path.exists():
+            checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            if checkpoint.get("run_configuration_digest") != run_configuration_digest:
+                raise RuntimeError(
+                    f"checkpoint configuration mismatch for {question.example_id}; "
+                    "use a different output directory"
+                )
+            rows.extend(checkpoint["rows"])
+            region_layer_diagnostics.extend(
+                checkpoint.get("region_layer_diagnostics", [])
+            )
+            print("  resumed completed question", flush=True)
+            continue
+        row_start = len(rows)
+        diagnostic_start = len(region_layer_diagnostics)
         candidate = make_candidate_receipt(
             dataset="multihoprag",
             dataset_revision=metadata["dataset_revision"],
@@ -469,8 +756,31 @@ def main() -> None:
                 )
             )
 
+        region_layer_rows: list[dict[str, object]] = []
+        if args.region_layer_audit:
+            region_layer_rows, diagnostics = _region_layer_audit(
+                backend=backend,
+                question=question,
+                packed_tokens=packed_tokens,
+                blocked_mask=initial_blocked_mask,
+                revision=model_revision,
+                graph=initial_graph,
+                linked_pairs=original_linked_pairs,
+                selection_receipt_id=selection.receipt_id,
+                packed_logits=packed_execution[2],
+                region_tokens=args.region_tokens,
+                layer_band_count=args.layer_band_count,
+                oracle_cells=args.oracle_cells,
+            )
+            region_layer_diagnostics.extend(diagnostics)
+
         if args.interaction_audit_only:
-            for row in (packed_row, independent_row, *interaction_only_rows):
+            for row in (
+                packed_row,
+                independent_row,
+                *interaction_only_rows,
+                *region_layer_rows,
+            ):
                 row["schema_version"] = SCHEMA_VERSION
                 row["expansion_receipt_id"] = expansion.receipt.receipt_id
                 row["expansion_mode"] = args.mode.value
@@ -484,6 +794,16 @@ def main() -> None:
                 row["new_cross_kv_tokens"] = 0
                 row["source_token_budget"] = args.token_budget
                 rows.append(row)
+            _atomic_json(
+                checkpoint_path,
+                {
+                    "run_configuration_digest": run_configuration_digest,
+                    "rows": rows[row_start:],
+                    "region_layer_diagnostics": region_layer_diagnostics[
+                        diagnostic_start:
+                    ],
+                },
+            )
             continue
 
         extra_texts = tuple(row.text for row in expansion.spans)
@@ -594,12 +914,23 @@ def main() -> None:
             row["source_token_budget"] = args.token_budget
             rows.append(row)
 
-    args.output.mkdir(parents=True, exist_ok=True)
+        _atomic_json(
+            checkpoint_path,
+            {
+                "run_configuration_digest": run_configuration_digest,
+                "rows": rows[row_start:],
+                "region_layer_diagnostics": region_layer_diagnostics[
+                    diagnostic_start:
+                ],
+            },
+        )
+
     (args.output / "rows.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
     )
     run = {
         "schema_version": SCHEMA_VERSION,
+        "run_configuration_digest": run_configuration_digest,
         "git_commit": _git_commit(),
         "model": args.model,
         "model_revision": model_revision,
@@ -625,13 +956,27 @@ def main() -> None:
             "boundary_tokens": args.boundary_tokens,
             "linked_edge_fraction": args.linked_edge_fraction,
             "interaction_audit_only": args.interaction_audit_only,
+            "region_layer_audit": args.region_layer_audit,
+            "region_tokens": args.region_tokens,
+            "layer_band_count": args.layer_band_count,
+            "oracle_cells": args.oracle_cells,
             **policy_parameters,
         },
         "examples": len({row["example_id"] for row in rows}),
         "elapsed_s": time.time() - started,
         "environment": environment_metadata(),
         "summary": _summarize(rows),
+        "region_layer_diagnostic_rows": len(region_layer_diagnostics),
+        "region_layer_summary": _summarize_region_layer(region_layer_diagnostics),
     }
+    if region_layer_diagnostics:
+        (args.output / "region_layer_diagnostics.jsonl").write_text(
+            "".join(
+                json.dumps(row, sort_keys=True) + "\n"
+                for row in region_layer_diagnostics
+            ),
+            encoding="utf-8",
+        )
     (args.output / "summary.json").write_text(
         json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

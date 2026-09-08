@@ -12,6 +12,9 @@ from experiments.paper3_3_crossdoc_expansion.run_expansion_frontier import (
 from experiments.paper3_3_crossdoc_expansion.aggregate_generation_ladder import (
     build_ladder,
 )
+from experiments.paper3_3_crossdoc_expansion.run_expansion_generation import (
+    _summarize_region_layer,
+)
 from experiments.paper3_3_crossdoc_expansion.summarize_expansion import (
     build_fixed_evaluation_summary,
     build_publication_summary,
@@ -423,3 +426,34 @@ def test_generation_ladder_requires_one_frozen_selection() -> None:
 
     assert result["selection_cache_sha256"] == "frozen"
     assert len(result["models"]) == 2
+
+
+def test_region_layer_summary_keeps_geometry_and_task_signal_separate() -> None:
+    rows = [
+        {
+            "band_index": 0,
+            "layers": [0, 1],
+            "source_region": "suffix",
+            "target_region": "prefix",
+            "incremental_gold_nll_gain": gain,
+            "selected_physical_edge_fraction": 0.001,
+        }
+        for gain in (0.2, -0.1)
+    ]
+    rows.append(
+        {
+            "band_index": 1,
+            "layers": [2, 3],
+            "source_region": "middle",
+            "target_region": "middle",
+            "incremental_gold_nll_gain": 0.3,
+            "selected_physical_edge_fraction": 0.001,
+        }
+    )
+
+    summary = _summarize_region_layer(rows)
+
+    assert summary[0]["band_index"] == 1
+    boundary = next(row for row in summary if row["band_index"] == 0)
+    assert boundary["incremental_gold_nll_gain_mean"] == pytest.approx(0.05)
+    assert boundary["positive_gain_fraction"] == 0.5

@@ -10,6 +10,8 @@ from pra_hf.rag_causal_decomposition import (
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
     CrossDocumentOracleGraph,
+    balanced_layer_bands,
+    combine_interaction_plans,
     cumulative_attention_mass_plan,
     full_interaction_plan,
     interaction_group_ablation_plan,
@@ -21,6 +23,7 @@ from pra_hf.sparse_crossdoc import (
     ranked_physical_prefix,
     ranked_physical_indices_by_group_utility,
     ranked_physical_prefix_by_group_utility,
+    region_layer_interaction_plan,
     selected_interaction_localization,
     top_attention_edge_plan,
 )
@@ -230,3 +233,58 @@ def test_retrieval_link_plan_rejects_unknown_or_self_pairs() -> None:
         linked_pair_interaction_plan(graph, (("D1", "D1"),))
     with pytest.raises(ValueError, match="distinct graph record IDs"):
         linked_pair_interaction_plan(graph, (("D1", "missing"),))
+
+
+def test_balanced_layer_bands_cover_layers_once() -> None:
+    assert balanced_layer_bands(5, 2) == ((0, 1, 2), (3, 4))
+    with pytest.raises(ValueError):
+        balanced_layer_bands(2, 3)
+
+
+def test_region_layer_plan_matches_geometry_and_layer_band() -> None:
+    graph = _three_record_graph()
+    plan = region_layer_interaction_plan(
+        graph,
+        (("D1", "D3"),),
+        layer_indices=(0,),
+        source_region="suffix",
+        target_region="prefix",
+        region_tokens=1,
+    )
+    chosen = {
+        (
+            int(graph.source_tokens[pair]),
+            int(graph.target_tokens[pair]),
+        )
+        for _, _, pair in zip(*np.nonzero(plan.selected_mask))
+    }
+    assert chosen == {(1, 4)}
+    assert plan.selected_physical_head_edges == 1
+
+
+def test_region_layer_plan_controls_are_matched_and_composable() -> None:
+    graph = _graph()
+    boundary = region_layer_interaction_plan(
+        graph,
+        (("D1", "D2"),),
+        layer_indices=(0,),
+        source_region="suffix",
+        target_region="prefix",
+        region_tokens=1,
+    )
+    control = region_layer_interaction_plan(
+        graph,
+        (("D1", "D2"),),
+        layer_indices=(1,),
+        source_region="prefix",
+        target_region="suffix",
+        region_tokens=1,
+    )
+    assert boundary.selected_physical_head_edges == control.selected_physical_head_edges
+    combined = combine_interaction_plans(
+        graph, (boundary, control), mode="TASK_ORACLE_REGION_LAYER"
+    )
+    assert combined.selected_physical_head_edges == (
+        boundary.selected_physical_head_edges + control.selected_physical_head_edges
+    )
+    assert combined.target == combined.selected_physical_edge_fraction

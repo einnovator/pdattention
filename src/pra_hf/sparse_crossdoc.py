@@ -647,6 +647,146 @@ def interaction_localization(graph: CrossDocumentOracleGraph) -> dict[str, objec
 
 InteractionGroupKind = Literal["document_pair", "layer", "layer_head"]
 InteractionGroupKey = tuple[int, ...]
+TokenRegion = Literal["prefix", "middle", "suffix"]
+
+
+def balanced_layer_bands(
+    layer_count: int, band_count: int
+) -> tuple[tuple[int, ...], ...]:
+    """Partition decoder layers into deterministic, non-empty contiguous bands."""
+
+    if layer_count <= 0:
+        raise ValueError("layer count must be positive")
+    if band_count <= 0 or band_count > layer_count:
+        raise ValueError("band count must lie in [1, layer_count]")
+    return tuple(
+        tuple(int(layer) for layer in band)
+        for band in np.array_split(np.arange(layer_count, dtype=np.int64), band_count)
+    )
+
+
+def _token_region_mask(
+    graph: CrossDocumentOracleGraph,
+    *,
+    token_indices: np.ndarray,
+    record_indices: np.ndarray,
+    region: TokenRegion,
+    region_tokens: int,
+) -> np.ndarray:
+    """Identify one equal-width record-relative token window per graph edge."""
+
+    if region_tokens <= 0:
+        raise ValueError("region token count must be positive")
+    if region not in {"prefix", "middle", "suffix"}:
+        raise ValueError(f"unsupported token region: {region}")
+    starts = np.asarray(
+        [graph.document_boundaries[int(index)].start for index in record_indices],
+        dtype=np.int32,
+    )
+    ends = np.asarray(
+        [graph.document_boundaries[int(index)].end for index in record_indices],
+        dtype=np.int32,
+    )
+    widths = np.minimum(region_tokens, ends - starts)
+    if region == "prefix":
+        window_starts = starts
+    elif region == "suffix":
+        window_starts = ends - widths
+    else:
+        window_starts = starts + ((ends - starts - widths) // 2)
+    return (token_indices >= window_starts) & (
+        token_indices < window_starts + widths
+    )
+
+
+def region_layer_interaction_plan(
+    graph: CrossDocumentOracleGraph,
+    linked_record_pairs: Sequence[tuple[str, str]],
+    *,
+    layer_indices: Sequence[int],
+    source_region: TokenRegion,
+    target_region: TokenRegion,
+    region_tokens: int,
+    mode: str = "REGION_LAYER_INTERACTION",
+) -> SparseInteractionPlan:
+    """Select a matched token-region cell in a bounded set of decoder layers.
+
+    Every region is an equal-width prefix, middle, or suffix window. This keeps
+    geometric controls matched while testing whether source-suffix to
+    target-prefix boundary attention is special. Links provide discovery; the
+    plan changes only consumption through the host model's original attention.
+    """
+
+    layers = tuple(dict.fromkeys(int(layer) for layer in layer_indices))
+    if not layers or any(layer < 0 or layer >= graph.layer_count for layer in layers):
+        raise ValueError("layer indices must be a non-empty subset of graph layers")
+    known = set(graph.record_ids)
+    links = {frozenset(pair) for pair in linked_record_pairs}
+    if any(len(pair) != 2 or not pair.issubset(known) for pair in links):
+        raise ValueError("linked pairs must contain two distinct graph record IDs")
+    pair_mask = np.asarray(
+        [
+            frozenset(
+                (
+                    graph.record_ids[int(source)],
+                    graph.record_ids[int(target)],
+                )
+            )
+            in links
+            for source, target in zip(graph.source_records, graph.target_records)
+        ],
+        dtype=np.bool_,
+    )
+    pair_mask &= _token_region_mask(
+        graph,
+        token_indices=graph.source_tokens,
+        record_indices=graph.source_records,
+        region=source_region,
+        region_tokens=region_tokens,
+    )
+    pair_mask &= _token_region_mask(
+        graph,
+        token_indices=graph.target_tokens,
+        record_indices=graph.target_records,
+        region=target_region,
+        region_tokens=region_tokens,
+    )
+    token_pair_indices = np.flatnonzero(pair_mask)
+    selected_mask = np.zeros(graph.edge_scores.shape, dtype=np.bool_)
+    if token_pair_indices.size:
+        selected_mask[
+            np.ix_(
+                np.asarray(layers, dtype=np.int64),
+                np.arange(graph.head_count, dtype=np.int64),
+                token_pair_indices,
+            )
+        ] = True
+    selected = np.flatnonzero(selected_mask.reshape(-1))
+    fraction = float(selected.size / graph.physical_edge_count)
+    return _plan(graph, mode=mode, target=fraction, selected=selected)
+
+
+def combine_interaction_plans(
+    graph: CrossDocumentOracleGraph,
+    plans: Sequence[SparseInteractionPlan],
+    *,
+    mode: str,
+) -> SparseInteractionPlan:
+    """Union compatible sparse cells into one auditable request-local plan."""
+
+    if not plans:
+        return _plan(
+            graph,
+            mode=mode,
+            target=0.0,
+            selected=np.asarray([], dtype=np.int64),
+        )
+    if any(plan.graph_digest != graph.graph_digest for plan in plans):
+        raise ValueError("all interaction plans must belong to the supplied graph")
+    selected_mask = np.logical_or.reduce([plan.selected_mask for plan in plans])
+    selected = np.flatnonzero(selected_mask.reshape(-1))
+    fraction = float(selected.size / graph.physical_edge_count)
+    return _plan(graph, mode=mode, target=fraction, selected=selected)
 
 
 def interaction_group_keys(
