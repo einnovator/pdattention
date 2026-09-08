@@ -126,6 +126,33 @@ python -m experiments.paper4_5_runtime.build_engine_qualification
 python -m experiments.paper4_5_runtime.summarize_runtime
 ```
 
+Qualify the first MoE queue target on an MLX host with one exact model identity:
+
+```bash
+MODEL=mlx-community/Qwen3-30B-A3B-4bit
+REVISION=d388dead1515f5e085ef7a0431dd8fadf0886c57
+ROOT=docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3-30b-a3b
+
+python -m experiments.paper4_5_runtime.extract_mlx_catalog_features \
+  --model-id "$MODEL" --model-revision "$REVISION" \
+  --output-dir "$ROOT/features"
+python -m experiments.paper4_5_runtime.compare_catalog_router \
+  --feature-dir "$ROOT/features" --output-router "$ROOT/router" \
+  --output-json "$ROOT/router_comparison.json" --base-model "$MODEL" \
+  --base-model-revision "$REVISION" --model-family qwen
+python -m experiments.paper4_5_runtime.run_mlx_router_native_qualification \
+  --feature-dir "$ROOT/features" --router "$ROOT/router" \
+  --model "$MODEL" --revision "$REVISION" --selected-fraction 0.20 \
+  --output "$ROOT/native_qualification.json" --resume
+```
+
+The final runner freezes each generic or learned selection and replays it as
+both visible selected text and native K/V. Its five conditions distinguish
+full No-PRA, selected/native generic routing, and selected/native learned
+routing. Publication remains blocked until the exact receipt passes the
+catalog gates; merely loading the checkpoint or training router weights is not
+qualification.
+
 The cross-model command is restartable with `--model qwen`, `--model llama`,
 `--model gemma`, and `--model finalize`. The official Meta Llama checkpoint was
 access-blocked during this run, so the checked-in Llama row names the exact

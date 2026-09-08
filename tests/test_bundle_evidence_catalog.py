@@ -27,6 +27,14 @@ from pra_hf.bundle_evidence import (
 from pra_hf.canonical_evidence import EvidenceCondition, MeasurementState
 from experiments.paper4_5_runtime.build_canonical_evidence_audit import build_audit
 from experiments.paper4_5_runtime.run_exact_identity_qualification import build_command
+from experiments.paper4_5_runtime.run_mlx_router_native_qualification import (
+    NATIVE_BUNDLE,
+    NATIVE_GENERIC,
+    SELECTED_BUNDLE,
+    SELECTED_GENERIC,
+    annotate_transport_pairs,
+    selected_token_ids,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +77,23 @@ def test_extended_family_qualification_queue_preserves_requested_gates() -> None
     assert "No PRA / no adapter / adapter evidence" in rendered
     assert "qwen3_30b_a3b_mlx_profiles.json" in rendered
     assert "`CALIBRATION_PENDING`" in rendered
+
+
+def test_mlx_router_native_qualification_preserves_selection_order_and_parity() -> None:
+    assert selected_token_ids(
+        [10, 11, 12, 13, 14, 15],
+        [(0, 2), (2, 4), (4, 6)],
+        [2, 0, 2],
+    ) == [10, 11, 14, 15]
+    rows = [
+        {"example_id": "a", "condition": SELECTED_GENERIC, "output_token_ids": [1, 2]},
+        {"example_id": "a", "condition": NATIVE_GENERIC, "output_token_ids": [1, 2]},
+        {"example_id": "a", "condition": SELECTED_BUNDLE, "output_token_ids": [3]},
+        {"example_id": "a", "condition": NATIVE_BUNDLE, "output_token_ids": [4]},
+    ]
+    annotate_transport_pairs(rows)
+    assert rows[1]["sequence_agreement_vs_selected_text"] == 1.0
+    assert rows[3]["sequence_agreement_vs_selected_text"] == 0.0
 
 
 def _identity(**overrides: str) -> EvidenceIdentity:
