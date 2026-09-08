@@ -211,6 +211,11 @@ def main() -> None:
     parser.add_argument("--boundary-tokens", type=int, default=8)
     parser.add_argument("--linked-edge-fraction", type=float, default=0.001)
     parser.add_argument(
+        "--interaction-audit-only",
+        action="store_true",
+        help="Emit packed, independent, pair-SA, and boundary-SA without encoding expanded spans.",
+    )
+    parser.add_argument(
         "--selection-cache",
         type=Path,
         help="Frozen first-stage selections produced by the expansion frontier.",
@@ -464,6 +469,23 @@ def main() -> None:
                 )
             )
 
+        if args.interaction_audit_only:
+            for row in (packed_row, independent_row, *interaction_only_rows):
+                row["schema_version"] = SCHEMA_VERSION
+                row["expansion_receipt_id"] = expansion.receipt.receipt_id
+                row["expansion_mode"] = args.mode.value
+                row["initial_native_tokens"] = sum(
+                    len(segment) for segment in initial_segments
+                )
+                row["extra_native_tokens"] = 0
+                row["requested_cross_tokens"] = expansion.receipt.requested_tokens
+                row["deduplicated_cross_tokens"] = 0
+                row["reused_cross_kv_tokens"] = 0
+                row["new_cross_kv_tokens"] = 0
+                row["source_token_budget"] = args.token_budget
+                rows.append(row)
+            continue
+
         extra_texts = tuple(row.text for row in expansion.spans)
         extra_ids = tuple(
             f"{row.target_chunk_id}:{row.start}:{row.end}" for row in expansion.spans
@@ -602,6 +624,7 @@ def main() -> None:
             "cross_token_budget": args.cross_token_budget,
             "boundary_tokens": args.boundary_tokens,
             "linked_edge_fraction": args.linked_edge_fraction,
+            "interaction_audit_only": args.interaction_audit_only,
             **policy_parameters,
         },
         "examples": len({row["example_id"] for row in rows}),

@@ -84,3 +84,7 @@ sparse-kernel speed measurements.
 Run the same frozen test identities at both audit budgets by changing only
 `--token-budget 512` to `--token-budget 1024`. Each output row records
 `source_token_budget` and immutable selection and expansion receipt identities.
+For the larger-budget interaction matrix, `--interaction-audit-only` skips the
+already-qualified expansion-only and linked-expansion arms while retaining the
+same frozen link discovery, packed reference, independent baseline, pair-SA,
+and boundary-SA conditions.

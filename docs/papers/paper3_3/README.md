@@ -33,7 +33,7 @@ The canonical split is in
 final Paper 3.2 residual-evaluation identities from Paper 3.3 train,
 validation, and test data.
 
-## Inception Decision
+## Mechanism Decision
 
 The ten-question Qwen3-1.7B-4bit mechanism cohort found:
 

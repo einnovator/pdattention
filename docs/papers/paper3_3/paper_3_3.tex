@@ -269,7 +269,7 @@ Our primary quality target is to recover at least 80\% of the
 independent-to-packed RAG gap under a request-specific interaction budget of at
 most 10\% of dense cross-document interaction.
 
-\section{Oracle Sparse Interaction}
+\section{Part I: Selecting Useful Dependencies}
 
 \subsection{Teacher graph extraction}
 
@@ -390,7 +390,7 @@ further.
 \section{Learned Interaction Selection}
 
 This section specifies the next-stage design; it is not evaluated in the
-present paper. Training is deliberately locked by the failed inception gate.
+present paper. Training is deliberately locked by the failed mechanism gate.
 
 \subsection{Pair selector}
 
@@ -441,7 +441,7 @@ states through the remaining decoder.
 
 Persistent record K/V remains immutable. All corrections are request-local.
 
-\section{Retrieval-Guided Cross-Document Expansion}
+\section{Part II: Evidence Exposure and Consumption}
 
 Physical-edge selection asks which neural interactions to replay. A cheaper
 alternative asks an earlier question: whether one selected record identifies a
@@ -889,9 +889,9 @@ latency, TTFT, total latency, and memory.
 Five-seed intervals, order sensitivity, model-scale transfer, family transfer,
 and precision sensitivity.
 
-\section{Inception Results}
+\section{Causal Dependency Results}
 
-\subsection{Scope and endpoint validity}
+\subsection{Mechanism scope and endpoint validity}
 
 We ran the complete oracle grid on ten deterministically selected MultiHop-RAG
 questions with Qwen3-1.7B-4bit on an Apple M4 Pro with 48~GiB unified memory.
@@ -901,7 +901,7 @@ revisions are pinned in the manifest. This is a one-seed mechanism cohort, not
 a population estimate. A post-freeze provenance check places all ten identities
 in the Paper~3.3 training partition, with no overlap with the Paper~3.2 final
 evaluation identities. The validation diagnostic and powered test confirmation
-therefore remain disjoint from this inception result.
+therefore remain disjoint from this mechanism result.
 
 Observer instrumentation matched ordinary host execution on all 10 questions.
 The 100\% physical-edge plan also matched the instrumented packed teacher on all
@@ -1015,7 +1015,7 @@ Layer JS & .5\% & .1525 & .500 & 3.739 \\
 \end{tabular}
 \end{table}
 
-This cohort reverses the inception endpoint: independent PRA exceeds packed
+This cohort reverses the small-cohort endpoint: independent PRA exceeds packed
 F1 by .0579, although packed retains .100 more official score. It therefore
 does not define a packed advantage that sparse edges can meaningfully recover.
 The apparent improvements are also uncertain. Relative to the packed teacher,
@@ -1027,7 +1027,7 @@ from generated-answer metrics, so lower teacher-forced loss is not treated as
 proof of better task behavior.
 
 No ranking has a non-decreasing F1 frontier through 1\%. The result therefore
-strengthens, rather than resolves, the inception warning: raw magnitude is not
+strengthens, rather than resolves, the earlier warning: raw magnitude is not
 a causal utility signal, and coarse leave-one-group-out NLL or first-step JS is
 not sufficient by itself. The powered test carries raw attention, pair NLL,
 pair JS, and pair-NLL-times-attention forward. Layer-only policies are dropped
@@ -1189,6 +1189,22 @@ without rebuilding a dense packed prefix. Neither can be inferred from gold
 NLL alone, and the model ladder shows that neither has a model-independent
 sign.
 
+Taken together, the two experiment families support a narrower claim than
+``more retrieval'' or ``more attention'':
+\[
+\boxed{
+\text{useful composition}
+=
+\text{dependency selection}
++
+\text{decoder-consumable execution}.
+}
+\]
+The physical-edge study varies the first term while holding evidence fixed.
+The expansion study varies evidence exposure, then restores a bounded form of
+the second term. Raw attention is a weak proxy for the first; independently
+appended gold support is insufficient for the second.
+
 This would change the role of PRA from a cache/retrieval mechanism into a
 composable native-memory substrate:
 \[
@@ -1203,18 +1219,20 @@ recover cheaply after independent encoding.
 
 \section{Conclusion}
 
-Paper~3.2 established that position transport and persistent native memory can
-be separated from the cross-document causal computation induced by packed RAG.
-Paper~3.3 targets that remaining computation directly. Exact endpoint checks
-show that the observer and physical-edge masks isolate this variable. The
+The matched audit establishes a context-scale transition: independent PRA and
+packed RAG are tied near 512 selected source tokens, while packed causal
+composition is significantly stronger near 1,024. Paper~3.3 targets the
+inter-record dependencies behind that transition. Exact endpoint checks show
+that the observer and physical-edge masks isolate this variable. The
 ten-question smoke finds a promising 0.1\% point but also a sharply
 non-monotonic frontier, so attention mass alone is not a reliable selector
 target. The 150-question frozen test confirms all endpoints and finds that
 document-pair causal rankings improve mean sparse quality over raw magnitude:
 pair NLL reaches .1243 F1 at 1\% edges versus .1119 packed. The paired F1
 interval nevertheless includes zero, the packed endpoint is not stronger than
-independent PRA, every frontier remains non-monotonic, and the absolute gate is
-missed. Sparse causal headroom is credible; a qualified selector is not.
+independent PRA at this 512-token budget, every frontier remains non-monotonic,
+and the absolute gate is missed. Sparse causal headroom is credible; a
+qualified selector is not.
 Learned-selector training remains locked until a finer task-aware utility signal
 produces a stable frontier.
 
