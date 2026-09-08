@@ -16,13 +16,14 @@ dependency structure behind this context-scale transition.
 - `ESTABLISHED_INHERITED`: Paper 3.2 packed, independent PRA, and rank-8
   residual endpoints, cited with their original provenance.
 - `MEASURED_SMOKE`: Paper 3.3 host-observer parity, 0%/100% mask endpoints,
-  oracle edge/mass sweeps, interaction localization on the inception cohort,
+  oracle edge/mass sweeps, interaction localization on the mechanism cohort,
   and interventional target selection on ten frozen validation questions.
 - `MEASURED_POWERED`: the 150-question frozen-test comparison of raw attention,
   pair-NLL, pair-JS, and pair-NLL-times-attention rankings; the corrected
   BM25-v2 cross-document expansion validation/test frontiers; and the
   150-question Qwen3-1.7B frozen generation and gold-support-oracle replays;
-  plus the inherited 780-row matched 512/1,024-token protocol audit.
+  plus the inherited 780-row matched 512/1,024-token protocol audit and the
+  new same-host expansion-by-interaction factorial and budget replay.
 - `MEASURED_REDUCED`: matched 30-question Qwen3-4B, Qwen3-8B, and
   Llama-3.1-8B generation replays using the same frozen selection-cache digest.
 - `DESIGN_ONLY`: the query-conditioned learned pair selector. Training remains
@@ -98,6 +99,31 @@ linked attention, recursive depth, and learned selection therefore remain
 research-only. The tracked artifacts are under
 `../shared/results/paper3_3_crossdoc_expansion/`; all model runs carry the
 same frozen selection-cache SHA-256.
+
+## Factorial and Budget Decision
+
+The matched 512-token factorial separates evidence admission from linked
+self-attention:
+
+| Condition | F1 | Official |
+| --- | ---: | ---: |
+| Independent PRA | 0.0896 | 0.4333 |
+| Pair SA only | 0.0917 | 0.4600 |
+| Expansion only | 0.0761 | 0.3733 |
+| Expansion + pair SA | 0.0874 | 0.4400 |
+
+Pair SA recovers 84.1% of the expansion-induced F1 loss, but the factorial
+interaction is `+0.0092` with interval `[-0.0090, 0.0280]`. At 1,024 source
+tokens, full-pair and boundary-only SA improve F1 over independent PRA by
+`0.0112 [0.0016, 0.0220]` and `0.0126 [0.0023, 0.0240]`, recovering 37.1% and
+41.8% of the packed deficit. Boundary-only replay selects just `0.0083%` of
+physical edges, but official-score recovery remains weak and no condition
+reaches packed quality. These are logical-edge measurements on dense kernels.
+
+The canonical 512/1,024 runs share one M5 host environment and model revision.
+A complete 512-token replay from a second Apple host is retained as a
+non-pooled robustness artifact. See
+`../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/`.
 
 ## Reproduce
 

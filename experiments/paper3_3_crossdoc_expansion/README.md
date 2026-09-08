@@ -88,3 +88,18 @@ For the larger-budget interaction matrix, `--interaction-audit-only` skips the
 already-qualified expansion-only and linked-expansion arms while retaining the
 same frozen link discovery, packed reference, independent baseline, pair-SA,
 and boundary-SA conditions.
+
+Reduce the two canonical runs and retain an optional second-host replay with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.summarize_factorial \
+  --run-512 <same-host-512-run> \
+  --run-1024 <same-host-1024-run> \
+  --replication-512 <optional-second-host-512-run> \
+  --output docs/papers/shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit
+```
+
+The reducer rejects duplicate rows, incomplete condition cohorts, mismatched
+frozen identities, and model mismatches. It records each run's environment and
+immutable revisions and emits absolute-quality and paired-effect plots with
+conservative bootstrap envelopes.

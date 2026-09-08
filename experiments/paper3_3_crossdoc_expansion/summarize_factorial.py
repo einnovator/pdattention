@@ -51,10 +51,17 @@ def _interval(values: Sequence[float], *, replicates: int) -> list[float]:
     return [min(row[0] for row in intervals), max(row[1] for row in intervals)]
 
 
-def _index(rows: Sequence[Mapping[str, object]]) -> dict[str, dict[str, Mapping[str, object]]]:
+def _index(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, dict[str, Mapping[str, object]]]:
     result: dict[str, dict[str, Mapping[str, object]]] = {}
     for row in rows:
-        result.setdefault(str(row["condition"]), {})[str(row["example_id"])] = row
+        condition = str(row["condition"])
+        example_id = str(row["example_id"])
+        by_id = result.setdefault(condition, {})
+        if example_id in by_id:
+            raise ValueError(f"duplicate row for {condition}/{example_id}")
+        by_id[example_id] = row
     return result
 
 
@@ -81,6 +88,10 @@ def build_factorial_summary(
 ) -> dict[str, object]:
     """Build paired budget rows and the expansion-by-interaction decomposition."""
 
+    models = {str(run["model"]) for run, _rows in runs.values()}
+    if len(models) != 1:
+        raise ValueError("budget runs do not use the same model")
+
     budget_rows = []
     indices = {}
     cohort_ids = None
@@ -96,6 +107,11 @@ def build_factorial_summary(
             by_id = index.get(condition)
             if not by_id:
                 continue
+            if set(by_id) != current_ids:
+                raise ValueError(
+                    f"budget {budget} condition {condition} does not contain "
+                    "the complete frozen cohort"
+                )
             item: dict[str, object] = {
                 "budget": budget,
                 "condition": condition,
@@ -137,7 +153,9 @@ def build_factorial_summary(
     if all(condition in index for condition in required.values()):
         for metric in METRICS:
             common = sorted(
-                set.intersection(*(set(index[condition]) for condition in required.values()))
+                set.intersection(
+                    *(set(index[condition]) for condition in required.values())
+                )
             )
             values = []
             for key in common:
@@ -159,16 +177,33 @@ def build_factorial_summary(
         "schema_version": SCHEMA_VERSION,
         "budgets": sorted(runs),
         "examples": len(cohort_ids or ()),
-        "model": next(iter(runs.values()))[0]["model"],
+        "model": models.pop(),
+        "run_provenance": {
+            str(budget): {
+                key: run.get(key)
+                for key in (
+                    "git_commit",
+                    "model_revision",
+                    "selection_cache_sha256",
+                    "environment",
+                )
+            }
+            for budget, (run, _rows) in sorted(runs.items())
+        },
         "budget_rows": budget_rows,
         "factorial_at_smallest_budget": factorial,
-        "bootstrap": {"seeds": list(BOOTSTRAP_SEEDS), "replicates_per_seed": replicates},
+        "bootstrap": {
+            "seeds": list(BOOTSTRAP_SEEDS),
+            "replicates_per_seed": replicates,
+        },
     }
 
 
 def _write_tables(summary: Mapping[str, object], output: Path) -> None:
     rows = summary["budget_rows"]
-    with (output / "budget_conditions.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (output / "budget_conditions.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
         writer = csv.DictWriter(
             stream,
             fieldnames=(
@@ -197,11 +232,11 @@ def _write_tables(summary: Mapping[str, object], output: Path) -> None:
     ]
     for row in selected:
         lines.append(
-            f'{int(row["budget"]):,} & {DISPLAY[str(row["condition"])]} & '
-            f'{int(row["examples"])} & '
-            f'{100.0 * float(row["selected_physical_edge_fraction"]):.2f}\\% & '
-            f'{float(row["token_f1"]):.4f} & '
-            f'{float(row["official_multihop_rag_score"]):.4f} \\\\'
+            f"{int(row['budget']):,} & {DISPLAY[str(row['condition'])]} & "
+            f"{int(row['examples'])} & "
+            f"{100.0 * float(row['selected_physical_edge_fraction']):.2f}\\% & "
+            f"{float(row['token_f1']):.4f} & "
+            f"{float(row['official_multihop_rag_score']):.4f} \\\\"
         )
     lines.extend(("\\bottomrule", "\\end{tabular}"))
     (output / "generated_budget_interaction_table.tex").write_text(
@@ -216,9 +251,7 @@ def _write_tables(summary: Mapping[str, object], output: Path) -> None:
         "CROSSDOC_EXPANSION_PAIR_SA",
     )
     factorial_rows = {
-        str(row["condition"]): row
-        for row in rows
-        if int(row["budget"]) == smallest
+        str(row["condition"]): row for row in rows if int(row["budget"]) == smallest
     }
     lines = [
         "\\begin{tabular}{lccrr}",
@@ -229,11 +262,11 @@ def _write_tables(summary: Mapping[str, object], output: Path) -> None:
     for condition in factorial_conditions:
         row = factorial_rows[condition]
         lines.append(
-            f'{DISPLAY[condition]} & '
-            f'{"yes" if "EXPANSION" in condition else "no"} & '
-            f'{"yes" if "PAIR_SA" in condition else "no"} & '
-            f'{float(row["token_f1"]):.4f} & '
-            f'{float(row["official_multihop_rag_score"]):.4f} \\\\'
+            f"{DISPLAY[condition]} & "
+            f"{'yes' if 'EXPANSION' in condition else 'no'} & "
+            f"{'yes' if 'PAIR_SA' in condition else 'no'} & "
+            f"{float(row['token_f1']):.4f} & "
+            f"{float(row['official_multihop_rag_score']):.4f} \\\\"
         )
     lines.extend(("\\bottomrule", "\\end{tabular}"))
     (output / "generated_factorial_table.tex").write_text(
@@ -245,7 +278,12 @@ def _plot(summary: Mapping[str, object], output: Path) -> None:
     import matplotlib.pyplot as plt
 
     rows = summary["budget_rows"]
-    conditions = ("PACKED_RAG", "INDEPENDENT_PRA", "PAIR_SA_ONLY", "PAIR_SA_ONLY_BOUNDARY")
+    conditions = (
+        "PACKED_RAG",
+        "INDEPENDENT_PRA",
+        "PAIR_SA_ONLY",
+        "PAIR_SA_ONLY_BOUNDARY",
+    )
     figure, axes = plt.subplots(1, 2, figsize=(9.5, 3.8), constrained_layout=True)
     for axis, metric, ylabel in zip(
         axes,
@@ -257,25 +295,92 @@ def _plot(summary: Mapping[str, object], output: Path) -> None:
                 (row for row in rows if row["condition"] == condition),
                 key=lambda row: int(row["budget"]),
             )
-            axis.plot(
-                [int(row["budget"]) for row in points],
-                [float(row[metric]) for row in points],
+            x = [int(row["budget"]) for row in points]
+            y = [float(row[metric]) for row in points]
+            intervals = [row[metric + "_ci95"] for row in points]
+            axis.errorbar(
+                x,
+                y,
+                yerr=(
+                    [
+                        value - float(interval[0])
+                        for value, interval in zip(y, intervals)
+                    ],
+                    [
+                        float(interval[1]) - value
+                        for value, interval in zip(y, intervals)
+                    ],
+                ),
                 marker="o",
+                capsize=3,
                 label=DISPLAY[condition],
             )
         axis.set_xlabel("Selected source-token budget")
         axis.set_ylabel(ylabel)
+        axis.set_xticks(summary["budgets"])
         axis.grid(alpha=0.25)
     axes[1].legend(fontsize=8, loc="best")
     figure.savefig(output / "budget_interaction_quality.pdf", bbox_inches="tight")
-    figure.savefig(output / "budget_interaction_quality.png", dpi=180, bbox_inches="tight")
+    figure.savefig(
+        output / "budget_interaction_quality.png", dpi=180, bbox_inches="tight"
+    )
+    plt.close(figure)
+
+    effect_conditions = ("PACKED_RAG", "PAIR_SA_ONLY", "PAIR_SA_ONLY_BOUNDARY")
+    figure, axes = plt.subplots(1, 2, figsize=(9.5, 3.8), constrained_layout=True)
+    for axis, metric, ylabel in zip(
+        axes,
+        METRICS,
+        ("F1 change vs independent PRA", "Official-score change vs independent PRA"),
+    ):
+        for condition in effect_conditions:
+            points = sorted(
+                (row for row in rows if row["condition"] == condition),
+                key=lambda row: int(row["budget"]),
+            )
+            effects = [row[metric + "_vs_independent"] for row in points]
+            x = [int(row["budget"]) for row in points]
+            y = [float(effect["mean"]) for effect in effects]
+            intervals = [effect["ci95"] for effect in effects]
+            axis.errorbar(
+                x,
+                y,
+                yerr=(
+                    [
+                        value - float(interval[0])
+                        for value, interval in zip(y, intervals)
+                    ],
+                    [
+                        float(interval[1]) - value
+                        for value, interval in zip(y, intervals)
+                    ],
+                ),
+                marker="o",
+                capsize=3,
+                label=DISPLAY[condition],
+            )
+        axis.axhline(0.0, color="black", linewidth=0.8, alpha=0.7)
+        axis.set_xlabel("Selected source-token budget")
+        axis.set_ylabel(ylabel)
+        axis.set_xticks(summary["budgets"])
+        axis.grid(alpha=0.25)
+    axes[1].legend(fontsize=8, loc="best")
+    figure.savefig(output / "budget_interaction_effects.pdf", bbox_inches="tight")
+    figure.savefig(
+        output / "budget_interaction_effects.png", dpi=180, bbox_inches="tight"
+    )
     plt.close(figure)
 
 
-def _load_run(path: Path) -> tuple[Mapping[str, object], Sequence[Mapping[str, object]]]:
+def _load_run(
+    path: Path,
+) -> tuple[Mapping[str, object], Sequence[Mapping[str, object]]]:
     return (
         json.loads((path / "summary.json").read_text(encoding="utf-8")),
-        [json.loads(line) for line in (path / "rows.jsonl").read_text(encoding="utf-8").splitlines()],
+        [
+            json.loads(line)
+            for line in (path / "rows.jsonl").read_text(encoding="utf-8").splitlines()
+        ],
     )
 
 
@@ -283,6 +388,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-512", type=Path, required=True)
     parser.add_argument("--run-1024", type=Path, required=True)
+    parser.add_argument(
+        "--replication-512",
+        type=Path,
+        help="Optional second-host 512-token run retained as a robustness audit.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--bootstrap-replicates", type=int, default=2_000)
     args = parser.parse_args()
@@ -290,6 +400,11 @@ def main() -> None:
         {512: _load_run(args.run_512), 1024: _load_run(args.run_1024)},
         replicates=args.bootstrap_replicates,
     )
+    if args.replication_512 is not None:
+        summary["secondary_512_replication"] = build_factorial_summary(
+            {512: _load_run(args.replication_512)},
+            replicates=args.bootstrap_replicates,
+        )
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "publication_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"

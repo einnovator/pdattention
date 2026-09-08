@@ -50,11 +50,14 @@ The selected dense policy gains 2.94 support-span points on validation but only
 0.89 on frozen test, where 95.3\% of admitted tokens are distractors.
 Expansion-only native generation lowers F1 from .0896 to .0761. More decisively,
 a gold-support expansion also lowers F1 when its spans remain independently
-contextualized. Restricting real self-attention to retrieval-linked record pairs
-restores most of this loss (.0874 F1), but does not improve reliably over
-independent PRA. Thus finding evidence and making it usable are distinct causal
-requirements. Neither raw attention mass nor retrieval alone supplies both, and
-the current mechanisms remain research controls rather than deployment defaults.
+contextualized. A matched $2\times2$ control shows that pair attention alone is
+neutral near 512 tokens, while applying it after expansion recovers 84.1\% of
+the expansion-induced F1 loss; the factorial interaction estimate is positive
+but uncertain. Near 1,024 tokens, full-pair and boundary-only attention recover
+37.1\% and 41.8\% of the packed F1 deficit. Both paired F1 intervals exclude
+zero, but neither method reaches packed quality. Thus finding dependencies and
+making their effects usable are distinct causal requirements. The current
+mechanisms remain research controls rather than deployment defaults.
 \end{abstract}
 
 \section{Introduction}
@@ -132,8 +135,9 @@ This study makes six contributions:
     \item \textbf{Evidence exposure is insufficient.} Even gold support fails to
     improve answers when added records remain independently contextualized.
     \item \textbf{Linked neural interaction repairs consumption failure.}
-    Pair and boundary self-attention recover most expansion-induced degradation,
-    while leaving the deployment gate closed because gains are not robust.
+    Pair and boundary self-attention recover expansion-induced degradation near
+    512 tokens and part of the packed deficit near 1,024, while leaving the
+    deployment gate closed because gains are incomplete and metric dependent.
 \end{enumerate}
 
 \section{Related Work}
@@ -719,6 +723,88 @@ identified missing support does not improve absolute answer quality when it is
 merely appended as independently encoded native memory. The mechanism gate is
 therefore closed for both parameter-free and oracle expansion-only execution.
 
+\subsection{Factorial control and budget transition}
+
+The preceding expansion result still combines two interventions: admitting
+additional evidence and allowing retrieval-linked records to interact. We
+therefore replay the same 150 frozen identities in a $2\times2$ design at the
+512-source-token budget. The interaction-only cell projects the fixed dense
+router's source--target links onto the original selected records; it introduces
+no new span. Table~\ref{tab:factorial-512} shows the four cells.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Matched expansion-by-interaction factorial at 512 selected source
+tokens. Pair SA uses the same discovered record links with or without admitted
+evidence.}
+\label{tab:factorial-512}
+\input{../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/generated_factorial_table.tex}
+\end{table}
+
+Pair SA alone differs from independent PRA by only $+.0021$ F1
+($[-.0081,.0126]$) and $+.0267$ official score
+($[-.0333,.0867]$). Expansion alone instead changes F1 by $-.0135$ and
+official score by $-.0600$. Adding pair SA after expansion restores F1 from
+.0761 to .0874, or 84.1\% of that loss. The difference-in-differences is
+$+.0092$ F1 with interval $[-.0090,.0280]$ and $+.0400$ official score with
+interval $[-.0600,.1333]$. The direction supports an interaction role, but the
+intervals do not establish a factorial effect.
+
+We next change only the frozen source-token budget and replay packed,
+independent, full-pair, and boundary-pair conditions. Both runs use the same
+model revision, 150 identities, operating-system image, and package versions;
+the selection receipt necessarily changes because the 1,024-token condition
+contains more source evidence. Table~\ref{tab:budget-interaction} and
+Figures~\ref{fig:budget-interaction-quality}--\ref{fig:budget-interaction-effects}
+report the result.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Cross-document interaction at matched 512- and 1,024-source-token
+budgets. ``Physical edges'' is the selected layer/head/token edge fraction;
+the implementation still executes dense kernels.}
+\label{tab:budget-interaction}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/generated_budget_interaction_table.tex}}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.98\linewidth]{../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/budget_interaction_quality.pdf}
+\caption{Absolute answer quality across the context-budget transition. Error
+bars are conservative envelopes over five paired bootstrap calculations, not
+five independently trained models.}
+\label{fig:budget-interaction-quality}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.98\linewidth]{../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/budget_interaction_effects.pdf}
+\caption{Paired effects relative to independent PRA. Interaction is neutral or
+negative near 512 tokens; near 1,024, both interaction modes improve F1, but
+neither closes the packed gap and the official-score evidence is weaker.}
+\label{fig:budget-interaction-effects}
+\end{figure}
+
+At 1,024 tokens, packed RAG exceeds independent PRA by $+.0301$ F1
+($[.0145,.0462]$) and $+.1933$ official score ($[.1000,.2800]$). Full-pair SA
+recovers $+.0112$ F1 over independent PRA ($[.0016,.0220]$), or 37.1\% of the
+packed deficit, while selecting 3.69\% of physical edges. Boundary-only SA
+recovers $+.0126$ F1 ($[.0023,.0240]$), or 41.8\%, with only .0083\% of edges.
+Its official-score change is only $+.0067$ ($[-.0400,.0533]$); full-pair SA
+changes official score by $+.0533$ with an interval touching zero. Sparse
+interaction therefore recovers a measurable part of the newly visible F1 gap,
+not packed equivalence. It also remains a logical sparsity result because the
+prototype has no sparse attention kernel.
+
+A secondary 512-token replay on a different Apple host produces the same
+positive factorial direction but a modest endpoint shift. We retain that
+aggregate and provenance summary as a robustness artifact rather than pooling
+it with the same-host budget comparison. This sensitivity reinforces the
+decision to keep linked interaction outside the deployment default.
+\FloatBarrier
+
 \subsection{Reduced scale and family replication}
 
 We replay the identical selection-cache digest on 30 matched test questions
@@ -727,7 +813,7 @@ directional transfer; they do not have the power of the 150-question 1.7B run.
 Table~\ref{tab:expansion-ladder} reports paired percentage-point effects
 against each model's independent-PRA condition.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \caption{Model ladder effects versus independent PRA. Columns report F1
@@ -755,7 +841,7 @@ also uncertain. These results reject a universal larger-model consumption
 claim and keep both expansion and linked attention outside the SDK default
 surface.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.96\linewidth]{../shared/results/paper3_3_crossdoc_expansion/model_ladder_dense64/model_ladder_effects.pdf}
 \caption{Paired generation effects across model scale and family. Error bars
@@ -1183,11 +1269,15 @@ parameter-free router finds a statistically positive but small amount of
 missing support, with poor precision. Replacing it with a support oracle
 substantially improves evidence recovery but still does not improve
 expansion-only answers. Retrieval-linked pair or boundary attention then
-restores much of the lost quality. The sequence locates two distinct research
-problems: selecting useful peer intervals and contextualizing those intervals
-without rebuilding a dense packed prefix. Neither can be inferred from gold
-NLL alone, and the model ladder shows that neither has a model-independent
-sign.
+restores much of the lost quality. The direct factorial sharpens the claim:
+pair SA alone is neutral near 512 tokens, and its positive interaction with
+expansion remains uncertain. At 1,024 tokens, however, both pair and boundary
+SA produce positive paired F1 effects. Boundary SA obtains the larger mean
+recovery with far fewer logical edges, but barely changes official score. The
+sequence locates two distinct research problems: selecting useful peer
+intervals and contextualizing those intervals without rebuilding a dense
+packed prefix. Neither can be inferred from gold NLL alone, and the model
+ladder shows that neither has a model-independent sign.
 
 Taken together, the two experiment families support a narrower claim than
 ``more retrieval'' or ``more attention'':
@@ -1240,12 +1330,16 @@ The complementary expansion study reaches the same operational decision by a
 different route. Dense selected-only search gains 0.89 support-span points on
 held-out test at 12.65\% extra source tokens, but admits 95.3\% distractors and
 lowers 1.7B answer F1 when materialized independently. Gold-support expansion
-also lowers F1; retrieval-linked attention repairs the deficit but does not
-beat independent PRA within uncertainty. Qwen scale points and Llama-8B do not
-share a consistent effect. Paper~3.3 therefore establishes auditable sparse
-interaction and expansion candidates, not a deployable cross-document
-controller. The SDK default remains no expansion, oracle access remains
-experiment-only, and learned or recursive policies remain locked.
+also lowers F1. The 512-token factorial shows that retrieval-linked attention
+repairs 84.1\% of the expansion loss, but its interaction interval includes
+zero. At 1,024 tokens, pair and boundary attention recover 37.1\% and 41.8\%
+of the packed F1 deficit with positive paired intervals, yet neither reaches
+packed F1 and official-score recovery remains weak. Qwen scale points and
+Llama-8B do not share a consistent effect. Paper~3.3 therefore establishes
+auditable sparse interaction and expansion candidates, not a deployable
+cross-document controller. The SDK default remains no expansion, oracle
+access remains experiment-only, and learned or recursive policies remain
+locked.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
@@ -1364,12 +1458,5 @@ the adjacent \url{summarize_expansion.py},
 \url{aggregate_generation_ladder.py}; each checks or propagates the frozen
 selection-cache digest. Exact commands and
 evidence labels appear in the experiment and paper README files.
-
-The tracked publication summary named in the README contains aggregate metrics,
-parity counts, monotonicity diagnostics, paired intervals, runtime metadata,
-localization summaries, and a SHA-256 digest of the full run manifest. The
-larger per-question manifest, regenerable teacher graphs, and recovery
-checkpoints remain on the experiment host rather than in Git. Group
-interventions and publication figures are tracked separately.
 
 \end{document}

@@ -104,7 +104,9 @@ def test_selection_cache_replays_without_reranking(tmp_path) -> None:
         chunker=ChunkerConfig(32, 4),
         seed=11,
     )
-    prepared = prepare_candidate_context(candidate, {row.document_id: row for row in documents})
+    prepared = prepare_candidate_context(
+        candidate, {row.document_id: row for row in documents}
+    )
 
     class CountingSelector:
         name = "frozen-selector@test"
@@ -231,7 +233,9 @@ def test_bm25_receipt_scores_are_nonnegative_and_repeatable() -> None:
     assert max(retriever.document_frequency.values()) <= len(documents)
 
 
-def test_fixed_evaluation_summary_replays_validation_config_without_test_selection() -> None:
+def test_fixed_evaluation_summary_replays_validation_config_without_test_selection() -> (
+    None
+):
     config = {
         "mode": "dense",
         "query_conditioned": False,
@@ -275,7 +279,10 @@ def test_fixed_evaluation_summary_replays_validation_config_without_test_selecti
     assert result["selected_policy"] == aggregate
     assert result["selection_rule"]["split"] == "validation"
     assert result["selection_rule"]["evaluation_split"] == "test"
-    assert result["selection_rule"]["objective"] == "frozen_validation_selected_policy_replay"
+    assert (
+        result["selection_rule"]["objective"]
+        == "frozen_validation_selected_policy_replay"
+    )
 
 
 def test_generation_summary_uses_paired_examples() -> None:
@@ -337,15 +344,50 @@ def test_factorial_summary_keeps_budget_and_interaction_effects_separate() -> No
                         "official_multihop_rag_score": base + delta,
                     }
                 )
-        runs[budget] = ({"model": "model"}, rows)
+        runs[budget] = (
+            {
+                "model": "model",
+                "git_commit": f"commit-{budget}",
+                "model_revision": "model-revision",
+                "selection_cache_sha256": f"selection-{budget}",
+                "environment": {"machine": "test"},
+            },
+            rows,
+        )
 
     result = build_factorial_summary(runs, replicates=50)
 
     assert result["budgets"] == [512, 1024]
     assert result["examples"] == 2
+    assert result["run_provenance"]["512"]["git_commit"] == "commit-512"
     assert result["factorial_at_smallest_budget"]["token_f1"][
         "interaction_effect"
     ] == pytest.approx(0.02)
+
+
+def test_factorial_summary_rejects_incomplete_condition_cohort() -> None:
+    rows = []
+    for example_id in ("a", "b"):
+        for condition in ("PACKED_RAG", "INDEPENDENT_PRA"):
+            rows.append(
+                {
+                    "condition": condition,
+                    "example_id": example_id,
+                    "token_f1": 0.1,
+                    "official_multihop_rag_score": 0.2,
+                }
+            )
+    rows.append(
+        {
+            "condition": "PAIR_SA_ONLY",
+            "example_id": "a",
+            "token_f1": 0.1,
+            "official_multihop_rag_score": 0.2,
+        }
+    )
+
+    with pytest.raises(ValueError, match="complete frozen cohort"):
+        build_factorial_summary({512: ({"model": "model"}, rows)}, replicates=10)
 
 
 def test_generation_ladder_requires_one_frozen_selection() -> None:
