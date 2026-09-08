@@ -71,7 +71,7 @@ explicit expansion-by-interaction factorial:
 | Condition | Added evidence | Cross-record interaction |
 | --- | --- | --- |
 | `INDEPENDENT_PRA` | no | no |
-| `PAIR_SA_ONLY` | no | all causally valid selected-record pairs |
+| `PAIR_SA_ONLY` | no | retrieval-linked original record pairs |
 | `EXPANSION_ONLY` | yes | no |
 | `CROSSDOC_EXPANSION_PAIR_SA` | yes | retrieval-linked pairs |
 

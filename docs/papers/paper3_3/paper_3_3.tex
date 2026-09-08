@@ -500,6 +500,23 @@ inside retrieval-linked pairs. These masks execute through the unchanged host
 attention implementation, so their edge fractions describe logical sparsity,
 not kernel acceleration.
 
+To identify which intervention matters, we also project the same discovered
+source--target record links onto the original selected spans and replay pair SA
+without adding evidence. This gives the factorial design
+\[
+\begin{array}{c|cc}
+ & \text{no cross-record SA} & \text{pair SA} \\
+\hline
+\text{original evidence} & \text{independent PRA} & \text{pair-SA only} \\
+\text{expanded evidence} & \text{expansion only} & \text{expansion + pair SA}.
+\end{array}
+\]
+A matched boundary-only arm restricts interaction to eight tokens at each record
+boundary. The same frozen test identities are replayed at 512 and 1,024 source
+tokens. This separates evidence acquisition from neural consumption and ties the
+interaction study directly to the budget transition in
+Figure~\ref{fig:prior-budget-audit}.
+
 The public abstraction is fail-closed. Parameter-free modes have stable
 configuration and plugin contracts, while oracle and weighted modes require an
 explicit experiment flag. Runtime authorization, deduplication, budget

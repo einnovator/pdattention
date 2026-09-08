@@ -77,7 +77,6 @@ from pra_hf.rag_mlx_native import (
 from pra_hf.rag_retrieval import SentenceTransformerEmbedder
 from pra_hf.sparse_crossdoc import (
     CrossDocumentAttentionCollector,
-    all_record_pair_interaction_plan,
     linked_pair_interaction_plan,
     linked_top_attention_edge_plan,
 )
@@ -417,12 +416,30 @@ def main() -> None:
             attention_observer=initial_collector.observe,
         )
         initial_graph = initial_collector.finalize()
+        selected_id_by_uri = {
+            record.record_uri: record.spans[0].chunk_id for record in selected_records
+        }
+        original_linked_pairs = tuple(
+            dict.fromkeys(
+                (
+                    selected_id_by_uri[row.source_record_uri],
+                    selected_id_by_uri[row.target_record_uri],
+                )
+                for row in expansion.spans
+            )
+        )
         interaction_only_rows = []
         for sparse_plan in (
-            all_record_pair_interaction_plan(initial_graph),
-            all_record_pair_interaction_plan(
+            linked_pair_interaction_plan(
                 initial_graph,
+                original_linked_pairs,
+                mode="PAIR_SA_ONLY",
+            ),
+            linked_pair_interaction_plan(
+                initial_graph,
+                original_linked_pairs,
                 boundary_tokens=args.boundary_tokens,
+                mode="PAIR_SA_ONLY",
             ),
         ):
             memory, encode_ms = _encode_sparse_plan(
@@ -495,9 +512,6 @@ def main() -> None:
             attention_observer=collector.observe,
         )
         graph = collector.finalize()
-        selected_id_by_uri = {
-            record.record_uri: record.spans[0].chunk_id for record in selected_records
-        }
         linked_pairs = tuple(
             (
                 selected_id_by_uri[row.source_record_uri],
