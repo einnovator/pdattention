@@ -49,7 +49,9 @@ a harder multi-hop boundary: frozen routed PRA remains positive at 6.56\% active
 relation-near misses and routed-adapter brittleness motivate iterative retrieval. The official
 Gemma path preserves its native local/global organization and shows a positive routed likelihood
 effect. The shared execution core, thin family adapters, router artifacts, wheel, and Python API
-make this cross-family boundary directly testable.
+make this cross-family boundary directly testable. Weight-free qualification additionally covers
+Mistral~3 and GPT-OSS adapters and maps Qwen3.8's hybrid GDN/QSA boundary, without presenting
+those structural checks as loaded-checkpoint results.
 \end{abstract}
 
 \section{Introduction}
@@ -146,7 +148,8 @@ sparse discovery as a recall--sparsity frontier and shows that a tiny supervised
 improves frozen semantic routing. Fourth, it establishes depth-dependent causal memory use,
 audits why oracle replay differs from native context, and separates a clean-memory integration
 ceiling from the routed end-to-end robustness boundary.
-Fifth, it implements the contract as a shared core, thin Qwen, Llama-family, and Gemma adapters,
+Fifth, it implements the contract as a shared core, thin Qwen, Llama-family, Gemma, Mistral~3,
+and GPT-OSS adapters,
 router artifacts, accounting, a wheel, and a public Python API. The contribution is a working
 boundary, not a new pretrained model or a solved long-context QA system.
 
@@ -293,6 +296,19 @@ no learned parameter. Its family-specific branches distinguish Qwen2-style proje
 Qwen3's Q/K normalization; routing, budgeting, materialization, residency, and metrics remain
 outside the file. This is a portability measurement, not a code-minimization target.
 
+The Qwen3-MoE extension makes a second boundary explicit. PRA replaces only
+the selected \texttt{Qwen3MoeAttention} objects; sparse MLP gates, expert
+containers, router logits, auxiliary losses, and expert execution remain owned
+by the unchanged host model. A family-neutral topology descriptor records the
+expert count, experts selected per token, sparse/dense layer partition, and
+ownership policy. Injection snapshots every sparse MLP, gate, and expert
+container and fails if any identity changes. Offline tests require exact
+disabled logits, hidden states, greedy generation, native GQA reference K/V,
+active-memory execution, and unchanged expert modules. The official
+\texttt{Qwen/Qwen3-30B-A3B} configuration is pinned separately: 48 layers, 32
+query heads, four native K/V heads, 128 experts, and eight experts per token.
+This is a structural contract, not yet a loaded-30B HF quality or timing result.
+
 The Gemma adapter is narrower. It reuses the same projection and capture path but rejects any
 layer whose native \texttt{is\_sliding} flag is true. The wrapper republishes this metadata because
 \texttt{Gemma3DecoderLayer} chooses local versus global rotary embeddings before calling its
@@ -300,6 +316,23 @@ attention child. Local layers therefore retain their 512-token window, local RoP
 and hybrid-cache behavior. At global layers, the adapter invokes Gemma's installed eager kernel
 with its attention-logit soft cap and leaves the native one-head MQA payload unexpanded in storage.
 No Gemma branch was added to routing, budgeting, materialization, or reference publication.
+
+Mistral~3 and GPT-OSS test two additional boundaries. A family-neutral decoder-anatomy resolver
+finds Mistral~3's text stack below the multimodal shell at
+\texttt{model.language\_model}; the vision tower and projector remain untouched. GPT-OSS
+alternates sliding and full attention and adds learned sink logits. Its adapter therefore admits
+only the 12 full-attention layers of the pinned 20B configuration, passes the original sinks to
+the native eager kernel, and leaves all 32 experts and their top-four router host-owned. Tiny
+structurally faithful models pass exact PRA-off logits and hidden states; both adapters pass active
+native-GQA memory tests. These are implementation gates rather than full-checkpoint measurements.
+
+Qwen3.8 Flash Next requires a different split. Its published 48-layer text schedule repeats three
+Gated DeltaNet layers followed by one Qwen Sparse Attention layer. GDN owns recurrent state, not a
+token-addressable K/V sequence, so the reusable contract marks those 36 layers ineligible and
+retains only the 12 QSA layers as potential PRA consumers. The host QSA indexer also remains
+unchanged. The resulting topology receipt is fail-closed and structural-only: the installed
+Transformers release lacks the published \texttt{qwen4\_exp} implementation, and the 125B-total,
+6B-active FP8 checkpoint exceeds the present local memory and disk budget.
 
 This organization suggests a compatible hybrid pattern: native local computation plus
 PRA-enabled global integration. More cautiously, the host model's learned attention-scope
@@ -812,6 +845,11 @@ routing-interface, and bounded functional portability, not equal quality or univ
 Detailed family and systems tables are in Appendices~\ref{app:cross-family-details}
 and~\ref{app:product-details}.
 
+Mistral~3 and GPT-OSS extend the tested software boundary on tiny offline configurations, but they
+do not join this measured three-checkpoint comparison. Qwen3.8 contributes only a pinned topology
+and ownership plan. Keeping these evidence tiers separate prevents architecture compatibility from
+being mistaken for retrieval quality, causal benefit, or serving performance.
+
 The released \texttt{pra-hf} package provides reference publication/removal, fraction-based
 selection, serializable router artifacts, bounded accounting, a wheel, CLI, notebook, and public
 Python API.  In the measured product path, approximately 20\% requested parents become 6--7\%
@@ -829,6 +867,11 @@ attention and divergence measurements are diagnostic.  Blind judges improve sema
 but are not ground truth.  No experiment supplies a fused-kernel or matched dense-serving
 baseline.  Extended protocol limits and all negative controls are retained in
 Appendix~\ref{app:extended-limitations}.
+
+The Mistral~3 and GPT-OSS adapters still require loaded-checkpoint parity, quality, memory, and
+latency runs. Qwen3.8 additionally requires an installed implementation of its
+\texttt{qwen4\_exp} QSA kernel and substantially larger memory and disk. Its GDN layers are outside
+the current token-K/V PRA contract rather than silently approximated.
 
 The paper series assigns the remaining interventions to distinct variables. Paper~2.5 isolates
 whether the Hotpot boundary arises from entry discovery, associative propagation, or bounded
@@ -1659,6 +1702,29 @@ QASPER identity R@20\% & $.454\pm.007$ & $.447\pm.051$ & $.432\pm.025$ \\
 Routed causal $\Delta\log p$ & +.227 & -- & +.135 \\
 Zero native-limit violations & Yes & Yes & Yes \\
 Wheel / public API smoke & Yes & Yes & Yes \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:structural-family-contracts} records later family qualification separately from
+the measured checkpoint table. Configuration receipts pin the public revisions without fetching
+weights; tiny synthetic models exercise executable contracts where the installed Transformers
+release provides the implementation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\textbf{Extended families are structurally qualified, not reported as measured quality
+results.} ``Tiny exact'' covers disabled logits and hidden states plus active native-K/V execution.}
+\label{tab:structural-family-contracts}
+\begin{tabularx}{\linewidth}{L{0.20\linewidth}L{0.22\linewidth}L{0.28\linewidth}Y}
+\toprule
+Published checkpoint & Pinned structure & PRA boundary & Evidence tier \\
+\midrule
+Qwen3-30B-A3B & 48L; 128 experts; top 8 & Attention only; all expert routing host-owned & Tiny exact; public config \\
+Mistral Small 3.2 24B & Nested 40L Mistral text decoder & Text self-attention below multimodal shell & Tiny exact; public config \\
+GPT-OSS 20B & 24L; 32 experts; top 4 & 12 full layers; sliding layers and sinks preserved & Tiny exact; public config \\
+Qwen3.8 Flash Next & 48L; 36 GDN + 12 QSA & QSA candidate only; GDN state and indexer host-owned & Structural plan only \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -2602,6 +2668,18 @@ the same local token twice. Passing transport and parity tests establishes a fai
 it does not establish that the router selects causally useful evidence, which requires the
 separate quality controls reported in the main paper.
 
+For an MoE family, add one more invariant before model-backed experiments:
+snapshot the identity of every sparse MLP, routing gate, and expert container,
+inject PRA only into attention, and require the snapshot to remain exact. The
+portable descriptor in \texttt{hf/moe.py} accepts common Hugging Face expert-
+count aliases but does not infer attention compatibility from the presence of
+experts. Qwen3 MoE therefore has its own thin symbol resolver in
+\texttt{hf/qwen3\_moe.py}. GPT-OSS independently validates that boundary in
+\texttt{hf/gpt\_oss.py}: only full-attention layers are eligible, learned sink
+logits are passed to the native kernel, and alternating sliding layers remain
+unchanged. A future Llama~4 port must repeat these checks rather than inherit
+MoE support merely from the presence of experts.
+
 \subsection{Llama port and product API}
 
 The release implementation is pinned at
@@ -2796,6 +2874,14 @@ Qwen projections, RoPE, native kernel, and output & \texttt{src/pra\_torch/hf/qw
 Llama native-symbol binding and eager invocation & \texttt{src/pra\_torch/hf/llama.py}, 8--48 \\
 Gemma global-layer policy, native MQA, and eager invocation &
 \texttt{src/pra\_torch/hf/gemma3.py}, 8--91 \\
+Nested causal/multimodal decoder discovery &
+\texttt{src/pra\_torch/hf/anatomy.py}, 10--58 \\
+Mistral~3 native text-decoder binding &
+\texttt{src/pra\_torch/hf/mistral.py}, 8--55 \\
+GPT-OSS full-layer, sink, and expert-isolation contract &
+\texttt{src/pra\_torch/hf/gpt\_oss.py}, 8--75; \texttt{src/pra\_torch/hf/moe.py}, 16--121 \\
+Qwen3.8 GDN/QSA ownership plan &
+\texttt{src/pra\_torch/hf/qwen3\_hybrid.py}, 13--57 \\
 Matched routing/detail capture & \texttt{src/pra\_torch/hf/qwen.py}, 109--244;
 \texttt{src/pra\_torch/hf/injection.py}, 80--210 \\
 Disabled and active runtime paths & \texttt{src/pra\_torch/hf/qwen.py}, 248--432 \\

@@ -8,6 +8,10 @@ API. A thin Gemma 3 adapter and pinned official-checkpoint run preserve Gemma's 
 local/global attention schedule. The official 1B checkpoint passes exact disabled parity,
 five-seed routing, public API, bounded-memory, and causal-use smoke gates. Its global-capable
 layers are 5, 11, 17, and 23; the measured routed path consumes memory at 17 and 23.
+Weight-free extension gates now cover attention-only Qwen3-MoE, Mistral 3's nested text
+decoder, and GPT-OSS full-attention layers. A pinned Qwen3.8 Flash Next receipt separates its
+12 QSA layers from 36 host-owned GDN layers. These additions are structural and tiny-model
+evidence, not loaded-checkpoint quality or serving measurements.
 Serving-optimized kernels remain future work.
 
 ## Research freeze

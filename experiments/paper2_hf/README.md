@@ -1,5 +1,58 @@
 # Paper 2 Hugging Face Experiments
 
+## Qwen3-30B-A3B MoE adapter contract
+
+The Qwen3 MoE port is deliberately attention-only. PRA wraps
+`Qwen3MoeAttention` and reuses the family's native projections, QK norms, RoPE,
+GQA cache update, eager kernel, and output projection. The sparse MLP gate,
+experts, router logits, auxiliary loss, and expert execution remain owned by
+the unchanged host model. A family-neutral topology receipt makes this
+boundary inspectable and gives later MoE families one isolation contract to
+reuse.
+
+Run the offline dense/MoE/family parity gates:
+
+```powershell
+python -m pytest -q tests/test_hf_qwen3_moe_integration.py `
+  tests/test_hf_integration.py tests/test_hf_llama_integration.py `
+  tests/test_hf_gemma3_integration.py
+```
+
+Pin and validate the official 30B-A3B configuration without downloading its
+weights:
+
+```powershell
+python -m experiments.paper2_hf.qwen_moe.validate_contract
+```
+
+The resulting receipt is structural evidence only. Loaded-checkpoint disabled
+parity, active-memory quality, latency, and memory remain separate gates.
+
+## Extended family contracts
+
+Mistral 3 and GPT-OSS now have concrete thin adapters. The shared decoder
+anatomy resolver reaches Mistral 3's nested `model.language_model` text stack.
+The GPT-OSS adapter admits only native full-attention layers, preserves learned
+attention sinks, and verifies that its sparse routers and experts keep their
+original identities. Qwen3.8 Flash Next is deliberately structural-only: its
+QSA layers are token-K/V candidates, while Gated DeltaNet recurrent state and
+the QSA indexer remain host-owned.
+
+Run the offline parity and ownership gates:
+
+```powershell
+python -m pytest -q tests/test_hf_extended_family_contracts.py
+```
+
+Pin the three public configurations without downloading model weights:
+
+```powershell
+python -m experiments.paper2_hf.family_contracts.validate_contracts
+```
+
+The generated receipt records exact model revisions and keeps structural
+qualification separate from loaded-checkpoint quality and systems evidence.
+
 ## Gemma 3 1B portability validation
 
 The Gemma runner pins the official `google/gemma-3-1b-it` checkpoint and tokenizer to revision

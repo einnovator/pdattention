@@ -76,9 +76,10 @@ class PRAConfig:
         else:
             model_config = model_config_or_layer_count
             layer_count = int(model_config.num_hidden_layers)
+            model_type = getattr(model_config, "model_type", None)
             layer_types = (
                 tuple(getattr(model_config, "layer_types", ()) or ())
-                if getattr(model_config, "model_type", None) == "gemma3_text"
+                if model_type in {"gemma3_text", "gpt_oss"}
                 else ()
             )
 
@@ -97,8 +98,9 @@ class PRAConfig:
             index for index, layer_type in enumerate(layer_types)
             if layer_type == "full_attention"
         )
+        family_name = "GPT-OSS" if model_type == "gpt_oss" else "Gemma 3"
         if not global_layers:
-            raise ValueError("Gemma 3 exposes no native full-attention layers.")
+            raise ValueError(f"{family_name} exposes no native full-attention layers.")
         routing = (
             global_layers[-1]
             if self.routing_layer == -1
@@ -106,7 +108,7 @@ class PRAConfig:
         )
         if routing not in global_layers:
             raise ValueError(
-                f"Gemma 3 routing layer {routing} is sliding attention; "
+                f"{family_name} routing layer {routing} is sliding attention; "
                 f"choose one of the native global layers {global_layers}."
             )
         if self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
@@ -119,7 +121,7 @@ class PRAConfig:
             local = tuple(layer for layer in requested if layer not in global_layers)
             if local:
                 raise ValueError(
-                    f"Gemma 3 PRA consumption layers {local} are sliding attention; "
+                    f"{family_name} PRA consumption layers {local} are sliding attention; "
                     f"choose native global layers from {global_layers}."
                 )
             consumption = requested

@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 import torch
 
-from pra_torch.hf import inject_pra
+from pra_torch.hf import inject_pra, resolve_decoder_anatomy
 from pra_torch.memory import SelectedChunk
 
 from .config import PRAConfig
@@ -54,11 +54,14 @@ class PRAForCausalLM:
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
-        layer_count = len(model.model.layers)
-        self.routing_layer, self.consumption_layers = config.resolved_layers(model.config)
+        anatomy = resolve_decoder_anatomy(model)
+        self._text_config = anatomy.config
+        self.routing_layer, self.consumption_layers = config.resolved_layers(
+            self._text_config
+        )
         self._handle = inject_pra(
             model,
-            config.to_internal(model.config),
+            config.to_internal(self._text_config),
             routing_projection=router,
         )
         self.router = router
@@ -81,7 +84,7 @@ class PRAForCausalLM:
         tokenizer_name_or_path: str | None = None,
         **model_kwargs,
     ) -> "PRAForCausalLM":
-        """Load a supported Qwen, Llama, or Gemma 3 LM and inject PRA."""
+        """Load a supported Qwen, Llama, Gemma 3, Mistral 3, or GPT-OSS LM."""
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         config = (
@@ -142,7 +145,7 @@ class PRAForCausalLM:
     ) -> None:
         if self.router is None:
             return
-        hidden = int(self.model.config.hidden_size)
+        hidden = int(self._text_config.hidden_size)
         if self.router.input_width != hidden:
             raise ValueError(
                 f"Router input width {self.router.input_width} does not match model hidden size {hidden}."
@@ -457,6 +460,11 @@ class PRAForCausalLM:
         return {
             "enabled": self.config.enabled,
             "family": next(iter(self._handle.adapters.values())).family,
+            "moe_topology": (
+                asdict(self._handle.moe_topology)
+                if self._handle.moe_topology is not None
+                else None
+            ),
             "routing_layer": self.routing_layer,
             "consumption_layers": list(self.consumption_layers),
             "router_parameters": self.router.parameter_count if self.router else 0,
