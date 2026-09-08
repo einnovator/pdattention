@@ -69,6 +69,7 @@ class PRAHFExecutionBridge:
         self.controller = PRASelectionController()
         self._native_rows: dict[tuple[int, int], list[list[SelectedChunk]]] = {}
         self._rankings: dict[tuple[int, int], list[list[dict]]] = {}
+        self._seeded_prefill_handoff_recorded = False
 
     def seed_shared_plan(self, plan, selected, rankings) -> None:
         """Seed a probe-derived shared plan before the cache-producing prefill.
@@ -197,6 +198,23 @@ class PRAHFExecutionBridge:
                 "cache_hit": False,
             }
         )
+        if (
+            seeded_prefill
+            and layer_id == self.active_layers[-1]
+            and not self._seeded_prefill_handoff_recorded
+        ):
+            self.context.trace.append(
+                {
+                    "event": "prefill_cache_handoff",
+                    "epoch_id": plan.epoch_id,
+                    "source_layer": plan.source_layer,
+                    "consumer_layers": list(self.active_layers),
+                    "probe_use_cache": False,
+                    "generation_prefill_owns_local_cache": True,
+                    "selected_detail_in_local_cache": False,
+                }
+            )
+            self._seeded_prefill_handoff_recorded = True
         if layer_id == self.active_layers[-1]:
             self.context.token_index += 1
         return prepared

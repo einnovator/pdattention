@@ -4,8 +4,10 @@ from pathlib import Path
 
 from pra_hf.bundle_catalog import (
     load_bundle_catalog,
+    load_qualification_queue,
     render_canonical_evidence_catalog,
     render_catalog,
+    render_qualification_queue,
     render_qualification_matrix,
 )
 
@@ -15,9 +17,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main() -> None:
     catalog = load_bundle_catalog()
+    queue = load_qualification_queue()
     target = ROOT / "docs/site/bundles"
     (target / "catalog.md").write_text(render_catalog(catalog), encoding="utf-8")
     (target / "qualification-matrix.md").write_text(render_qualification_matrix(catalog), encoding="utf-8")
+    (target / "qualification-queue.md").write_text(render_qualification_queue(queue), encoding="utf-8")
     (target / "evidence-matrix.md").write_text(render_canonical_evidence_catalog(catalog), encoding="utf-8")
     print(target)
 

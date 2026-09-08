@@ -8,8 +8,10 @@ import pytest
 from pra_hf.bundle import BundleBuilder, BundleValidationError, PRAModelBundle
 from pra_hf.bundle_catalog import (
     load_bundle_catalog,
+    load_qualification_queue,
     render_canonical_evidence_catalog,
     render_catalog,
+    render_qualification_queue,
     render_qualification_matrix,
     validate_collection_membership,
 )
@@ -29,6 +31,35 @@ from experiments.paper4_5_runtime.run_exact_identity_qualification import build_
 
 ROOT = Path(__file__).resolve().parents[1]
 MLX_32B = ROOT / "docs/papers/shared/results/mac_scaling/qwen3_32b_mlx_profiles.json"
+
+
+def test_extended_family_qualification_queue_preserves_requested_gates() -> None:
+    queue = load_qualification_queue()
+    rows = queue["targets"]
+
+    assert [row["order"] for row in rows] == list(range(1, 8))
+    assert [row["model"] for row in rows] == [
+        "Qwen/Qwen3-30B-A3B",
+        "google/gemma-3-12b-it",
+        "google/gemma-3-27b-it",
+        "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+        "openai/gpt-oss-20b",
+        "Qwen/QwQ-32B",
+        "meta-llama/Llama-3.3-70B-Instruct",
+    ]
+    assert queue["comparison_conditions"] == [
+        "NO_PRA",
+        "PRA_NATIVE_MEMORY_NO_ADAPTOR",
+        "PRA_NATIVE_MEMORY_BUNDLE",
+    ]
+    assert queue["profile_policy"]["reduced_profiles"] == "CALIBRATION_PENDING"
+    assert all(row["measurement_status"] == "PENDING" for row in rows)
+    assert all(row["publication_status"] == "PENDING" for row in rows)
+
+    rendered = render_qualification_queue(queue)
+    assert "structural compatibility" in rendered
+    assert "No PRA / no adapter / adapter evidence" in rendered
+    assert "`CALIBRATION_PENDING`" in rendered
 
 
 def _identity(**overrides: str) -> EvidenceIdentity:

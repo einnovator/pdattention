@@ -248,6 +248,8 @@ class SGLangMLXNativeBridge:
         memory: MLXNativeMemory | None = None,
         *,
         logical_keys: tuple[str, ...] = (),
+        tenant_id: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         identifier = str(req_id)
         storage_pinned = False
@@ -281,7 +283,12 @@ class SGLangMLXNativeBridge:
             raise ValueError("Selected memory does not match SGLang model layers.")
         if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
             raise ValueError("Selected memory token geometry disagrees with its position base.")
-        self.isolation.open_request(identifier, logical_keys)
+        self.isolation.open_request(
+            identifier,
+            logical_keys,
+            tenant_id=tenant_id,
+            session_id=session_id,
+        )
         self._requests[identifier] = SGLangNativeRequest(
             memory, logical_keys, storage_pinned
         )

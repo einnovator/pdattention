@@ -24,8 +24,13 @@ from .config import (
     canonical_routing_representation,
 )
 from .qwen import QwenPRAAttentionAdapter
+from .qwen3_moe import Qwen3MoePRAAttentionAdapter
 from .llama import LlamaPRAAttentionAdapter
 from .gemma3 import Gemma3PRAAttentionAdapter
+from .mistral import MistralPRAAttentionAdapter
+from .gpt_oss import GptOssPRAAttentionAdapter
+from .anatomy import resolve_decoder_anatomy
+from .moe import assert_moe_isolation, describe_moe_topology, snapshot_moe_isolation
 from .memory_gate import PRAHFMemoryGate
 from .residual_adapter import PRAHFResidualAdapterBank
 from .late_band_lora import PRAHFConditionalOutputLoRABank
@@ -55,6 +60,7 @@ class PRAHFModel:
         memory_gate=None,
         residual_adapter=None,
         late_band_lora=None,
+        moe_topology=None,
     ) -> None:
         self.model = model
         self.adapters: dict[int, PRAHFAttentionAdapter] = adapters
@@ -65,6 +71,7 @@ class PRAHFModel:
         self.memory_gate = memory_gate
         self.residual_adapter = residual_adapter
         self.late_band_lora = late_band_lora
+        self.moe_topology = moe_topology
         self.address_layers = tuple(hf_config.address_layer_ids or hf_config.layer_ids)
         self.detail_kv_layers = tuple(hf_config.detail_kv_layer_ids or hf_config.layer_ids)
         self.routing_layers = tuple(hf_config.routing_layer_ids or hf_config.layer_ids[-1:])
@@ -576,11 +583,13 @@ def inject_pra(
 ) -> PRAHFModel:
     """Wrap selected supported attention modules while reusing pretrained parameters."""
     config = config or PRAHFConfig()
-    if not hasattr(model, "model") or not hasattr(model.model, "layers"):
-        raise TypeError("Expected a Hugging Face decoder model exposing model.layers.")
-    if getattr(model.config, "_attn_implementation", "eager") != "eager":
+    anatomy = resolve_decoder_anatomy(model)
+    hf_config = anatomy.config
+    if getattr(hf_config, "_attn_implementation", "eager") != "eager":
         raise ValueError("Paper 2 correctness integration requires attn_implementation='eager'.")
-    layers = model.model.layers
+    layers = anatomy.layers
+    moe_topology = describe_moe_topology(model)
+    moe_isolation = snapshot_moe_isolation(model)
     selected = _normalize_layer_ids(config.layer_ids, len(layers))
     config.address_layer_ids = (
         selected
@@ -615,11 +624,11 @@ def inject_pra(
         and not set(config.routing_layer_ids).issubset(config.address_layer_ids)
     ):
         raise ValueError("Every native PRA router requires a stored address index.")
-    pra_config = config.build_pra_config(model.config)
+    pra_config = config.build_pra_config(hf_config)
     if routing_projection is not None:
         if config.routing_representation != ATTENTION_INPUT_HIDDEN_STATE:
             raise ValueError("Learned routing projections require hidden-state routing.")
-        if routing_projection.input_width != int(model.config.hidden_size):
+        if routing_projection.input_width != int(hf_config.hidden_size):
             raise ValueError("Routing projection input width must match the HF hidden size.")
     pra_config.pra_layer_ids = selected
     cache = PRASimpleMemoryCache()
@@ -630,7 +639,7 @@ def inject_pra(
     ).to(model.get_input_embeddings().weight.device)
     model.add_module("pra_memory_gate", memory_gate)
     residual_adapter = PRAHFResidualAdapterBank(
-        int(model.config.hidden_size),
+        int(hf_config.hidden_size),
         selected,
         bottleneck=config.residual_adapter_bottleneck,
     ).to(model.get_input_embeddings().weight.device)
@@ -649,23 +658,29 @@ def inject_pra(
     for layer_id in selected:
         original = layers[layer_id].self_attn
         module_name = original.__class__.__module__
-        if ".qwen2." in module_name or ".qwen3." in module_name:
+        if ".qwen3_moe." in module_name:
+            adapter_class = Qwen3MoePRAAttentionAdapter
+        elif ".qwen2." in module_name or ".qwen3." in module_name:
             adapter_class = QwenPRAAttentionAdapter
         elif ".llama." in module_name:
             adapter_class = LlamaPRAAttentionAdapter
         elif ".gemma3." in module_name:
             adapter_class = Gemma3PRAAttentionAdapter
+        elif ".mistral." in module_name:
+            adapter_class = MistralPRAAttentionAdapter
+        elif ".gpt_oss." in module_name:
+            adapter_class = GptOssPRAAttentionAdapter
         else:
             raise TypeError(
-                "PRA-HF supports Qwen2/Qwen2.5/Qwen3, Llama, and Gemma 3 "
-                "global attention modules; "
+                "PRA-HF supports Qwen2/Qwen2.5/Qwen3/Qwen3-MoE, Llama, Gemma 3, "
+                "Mistral 3 text decoders, and GPT-OSS full-attention modules; "
                 f"received {original.__class__.__qualname__}."
             )
         adapter = adapter_class(
             original,
             cache,
             pra_config,
-            model.model.rotary_emb,
+            anatomy.rotary_embedding,
             routing_representation=config.routing_representation,
             query_strategy=config.query_strategy,
             query_window=config.query_window,
@@ -677,6 +692,7 @@ def inject_pra(
         )
         layers[layer_id].self_attn = adapter
         adapters[layer_id] = adapter
+    assert_moe_isolation(model, moe_isolation)
     return PRAHFModel(
         model,
         adapters,
@@ -687,4 +703,5 @@ def inject_pra(
         memory_gate,
         residual_adapter,
         late_band_lora,
+        moe_topology,
     )

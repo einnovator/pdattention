@@ -41,9 +41,15 @@ The implementation adds:
 - permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
+- request attachment guards that bind native selections to tenant/session scope
+  and reject cross-scope reuse or duplicate attachment under concurrency;
 - atomic tenant/scope revalidation during both storage promotion and request pinning;
 - source-revision, position, materialization, and scope-safe physical payload reuse;
 - pinned Qwen3-0.6B, Llama-3.2-1B mirror, and Gemma-3-1B cross-model gates;
+- attention-only MoE contracts for Qwen3-MoE and GPT-OSS, nested Mistral 3
+  decoder discovery, and a fail-closed Qwen hybrid GDN/QSA structural plan;
+- an ordered pre-publication queue that keeps contract, model-load, adapter,
+  three-condition evidence, qualification, and publication gates distinct;
 - the canonical `pra` model-onboarding, profile, bundle, runtime-provider,
   agent, gateway, and Hub command tree, with `pra-hf` retained as a deprecated
   alias;

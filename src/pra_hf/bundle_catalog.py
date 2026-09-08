@@ -12,6 +12,9 @@ from .precision import PRECISION_FAMILIES
 
 
 DEFAULT_CATALOG = Path(__file__).parent / "model_profiles" / "bundle_catalog.yaml"
+DEFAULT_QUALIFICATION_QUEUE = (
+    Path(__file__).parent / "model_profiles" / "bundle_qualification_queue.yaml"
+)
 DEFAULT_BUNDLES = Path(__file__).parents[2] / "artifacts" / "pra_hf" / "bundles"
 
 
@@ -41,6 +44,74 @@ def load_bundle_catalog(path: str | Path = DEFAULT_CATALOG) -> dict[str, Any]:
         if str(row["precision_family"]).upper() not in PRECISION_FAMILIES:
             raise ValueError(f"Catalog row {row['repo']!r} has an invalid precision family.")
     return value
+
+
+def load_qualification_queue(
+    path: str | Path = DEFAULT_QUALIFICATION_QUEUE,
+) -> dict[str, Any]:
+    """Load the ordered pre-publication queue without implying qualification."""
+
+    value = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    rows = value.get("targets", [])
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Bundle qualification queue requires a non-empty targets list.")
+    orders = [row.get("order") for row in rows if isinstance(row, Mapping)]
+    if orders != list(range(1, len(rows) + 1)):
+        raise ValueError("Qualification target order must be contiguous from one.")
+    allowed_states = {
+        "PENDING", "CONTRACT_TESTED", "MODEL_LOADED", "ADAPTER_TRAINED",
+        "MEASURED", "QUALIFIED", "PUBLISHED", "BLOCKED",
+    }
+    for row in rows:
+        missing = [
+            key for key in (
+                "model", "family", "contract", "engines", "contract_status",
+                "load_status", "adapter_status", "measurement_status",
+                "publication_status",
+            ) if not row.get(key)
+        ]
+        if missing:
+            raise ValueError(
+                f"Qualification target {row.get('model')!r} is missing: "
+                + ", ".join(missing)
+            )
+        for key in (
+            "contract_status", "load_status", "adapter_status",
+            "measurement_status", "publication_status",
+        ):
+            if row[key] not in allowed_states:
+                raise ValueError(
+                    f"Qualification target {row['model']!r} has invalid {key}."
+                )
+        if not isinstance(row["engines"], list) or not row["engines"]:
+            raise ValueError(f"Qualification target {row['model']!r} needs engines.")
+    return value
+
+
+def render_qualification_queue(queue: Mapping[str, Any]) -> str:
+    """Render rollout state while keeping structural support distinct from evidence."""
+
+    lines = [
+        "# Bundle Qualification Queue", "",
+        "A passing family contract only establishes structural compatibility. Model loading, adapter training, three-condition measurement, qualification, and publication are separate gates.",
+        "",
+        "| Order | Exact base model | Family | Contract | Engines | Load | Adapter | No PRA / no adapter / adapter evidence | Publication |",
+        "| ---: | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in queue["targets"]:
+        lines.append(
+            f"| {row['order']} | `{row['model']}` | {row['family']} | "
+            f"{row['contract']} (`{row['contract_status']}`) | "
+            f"{', '.join(row['engines'])} | `{row['load_status']}` | "
+            f"`{row['adapter_status']}` | `{row['measurement_status']}` | "
+            f"`{row['publication_status']}` |"
+        )
+    lines += [
+        "",
+        "Reduced consumer-layer profiles remain `CALIBRATION_PENDING` until held-out workload-scale quality supports promotion. The queue does not create a catalog entry or a public-bundle claim.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def validate_collection_membership(catalog: Mapping[str, Any], repo_ids: set[str]) -> None:

@@ -387,6 +387,19 @@ def test_phase_shared_uses_probe_prefill_then_completion_reselection():
     ] == ["prefill", "decode"]
     assert all(adapter.last_selected_chunks[0] for adapter in pra._handle.adapters.values())
     assert all(adapter.execution_bridge is None for adapter in pra._handle.adapters.values())
+    handoffs = [
+        row for row in execution["trace"]
+        if row["event"] == "prefill_cache_handoff"
+    ]
+    assert handoffs == [{
+        "event": "prefill_cache_handoff",
+        "epoch_id": 1,
+        "source_layer": 0,
+        "consumer_layers": [0, 1],
+        "probe_use_cache": False,
+        "generation_prefill_owns_local_cache": True,
+        "selected_detail_in_local_cache": False,
+    }]
 
 
 def test_phase_shared_rejects_routing_after_an_earlier_consumer_layer():

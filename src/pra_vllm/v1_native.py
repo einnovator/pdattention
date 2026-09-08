@@ -344,6 +344,8 @@ class VLLMMetalV1NativeBridge:
         selected_token_count: int,
         source_position_base: int,
         consumer_layers: Sequence[int] | None = None,
+        tenant_id: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         """Bind materialized pages to one forthcoming vLLM request ID."""
 
@@ -376,7 +378,9 @@ class VLLMMetalV1NativeBridge:
                 "vLLM PRA selected_token_count must cover every registered page."
             )
         self.registry.register(request_id, selected)
-        self.isolation.open_request(request_id, keys)
+        self.isolation.open_request(
+            request_id, keys, tenant_id=tenant_id, session_id=session_id
+        )
 
     def unregister(self, request_id: str) -> None:
         self.registry.unregister(request_id)

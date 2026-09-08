@@ -1,0 +1,82 @@
+schema_version: 1
+comparison_conditions:
+  - NO_PRA
+  - PRA_NATIVE_MEMORY_NO_ADAPTOR
+  - PRA_NATIVE_MEMORY_BUNDLE
+profile_policy:
+  balanced: all eligible consumer layers
+  reduced_profiles: CALIBRATION_PENDING
+targets:
+  - order: 1
+    model: Qwen/Qwen3-30B-A3B
+    revision: ad44e777bcd18fa416d9da3bd8f70d33ebb85d39
+    family: qwen3_moe
+    contract: attention-only MoE isolation
+    engines: [hf, mlx, vllm]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 2
+    model: google/gemma-3-12b-it
+    family: gemma3
+    contract: mixed full/sliding attention
+    engines: [hf, mlx]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 3
+    model: google/gemma-3-27b-it
+    family: gemma3
+    contract: mixed full/sliding attention
+    engines: [hf, mlx]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 4
+    model: mistralai/Mistral-Small-3.2-24B-Instruct-2506
+    revision: 95a6d26c4bfb886c58daf9d3f7332c857cb27b43
+    family: mistral3
+    contract: nested text decoder
+    engines: [hf, mlx, vllm]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 5
+    model: openai/gpt-oss-20b
+    revision: 6cee5e81ee83917806bbde320786a8fb61efebee
+    family: gpt_oss
+    contract: full-attention-only MoE with learned sinks
+    engines: [hf, mlx, vllm]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 6
+    model: Qwen/QwQ-32B
+    family: qwen2
+    contract: dense Qwen decoder
+    engines: [hf, mlx, vllm]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING
+  - order: 7
+    model: meta-llama/Llama-3.3-70B-Instruct
+    family: llama3
+    contract: dense Llama decoder
+    engines: [hf, mlx, vllm]
+    contract_status: CONTRACT_TESTED
+    load_status: PENDING
+    adapter_status: PENDING
+    measurement_status: PENDING
+    publication_status: PENDING

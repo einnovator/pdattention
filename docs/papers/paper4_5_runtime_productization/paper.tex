@@ -636,6 +636,26 @@ mean absolute logit error. The one-token top answers remain unchanged, but that
 coarse agreement is not full-prefix equivalence. We therefore report
 \emph{partial topology}, not cross-family semantic parity.
 
+The runtime now also carries an attention-only MoE contract inherited from the
+HF mechanism study.  Injection resolves ordinary and nested text decoders,
+snapshots every sparse MLP, router, and expert-container identity, replaces
+only eligible attention modules, and rejects the result if any host-owned MoE
+object changed.  Tiny structurally faithful tests cover Qwen3-MoE, nested
+Mistral~3, and GPT-OSS; GPT-OSS sliding layers remain untouched and its learned
+attention sinks are forwarded to the native kernel.  Qwen's hybrid GDN/QSA
+family is described by a fail-closed structural plan: QSA layers are eligible,
+whereas recurrent GDN state and the sparse indexer remain host-owned.  These
+are implementation contracts, not model-scale qualification results.
+
+The pre-publication queue therefore keeps five gates separate: contract test,
+exact model load, optional adaptor training, matched No-PRA/PRA-without-adaptor/
+PRA-with-adaptor measurement, and immutable bundle publication.  Its order is
+Qwen3-30B-A3B, Gemma~3 12B and 27B, Mistral Small~3.2 24B, GPT-OSS 20B,
+QwQ 32B, and Llama~3.3 70B.  At this revision only the first gate is closed;
+the remaining cells are explicitly pending.  Reduced consumer-layer profiles
+remain \texttt{CALIBRATION\_PENDING}; \texttt{BALANCED} retains all eligible
+consumer layers.
+
 \subsection{Corrected layer-profile calibration}
 
 The earlier sparse column was a diagnostic, not a calibrated deployment
@@ -3272,8 +3292,8 @@ Qwen3-Coder-30B, 30 trials & Unique tasks solved & 1/10 & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, 30 trials & Input tokens$^{\dagger}$ & 6.72M & BLOCKED & BLOCKED \\
 Qwen3-Coder-30B, Easy-20 & Official success & 9/20 & ADMITTED & ADMITTED \\
 Qwen3-Coder-30B, Easy-20 & Input tokens & 4.29M & ADMITTED & ADMITTED \\
-Qwen3-Coder-30B, Easy-50 & Official success & 14/50 & RUNNING & RUNNING \\
-Qwen3-Coder-30B, Easy-50 & Input tokens & 10.12M & RUNNING & RUNNING \\
+Qwen3-Coder-30B, Easy-50 & Official success & 14/50 & PENDING & PENDING \\
+Qwen3-Coder-30B, Easy-50 & Input tokens & 10.12M & PENDING & PENDING \\
 FIM-7B Q4, two tasks & Official success & 1/2 attempted & BLOCKED & BLOCKED \\
 \bottomrule
 \end{tabular}
@@ -3463,9 +3483,13 @@ and reload amplification together.
 The next policy experiment should expand the trained-model retrieval smoke,
 hold selected-token budgets fixed, and compare answer quality, TTFT, inter-token
 latency, selection churn, and routing-layer disagreement over a powered cohort.
-The implemented phase/shared handoff closes the cache-correctness prerequisite;
-its remaining gate is workload-scale calibration rather than mechanism
-availability.
+The implemented phase/shared handoff closes the cache-correctness prerequisite:
+the routing probe sets \texttt{use\_cache=false}, the seeded selection is
+consumed by one cache-producing prefill, and selected detail is never inserted
+into the ordinary local cache.  A request guard binds selected keys to tenant
+and session identity and rejects cross-scope or duplicate attachment.  Its
+remaining gate is workload-scale calibration and production multi-tenant
+throughput rather than mechanism availability.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
 have established SGLang and MLX native mechanism baselines and controlled vLLM

@@ -315,7 +315,7 @@ class PRAConfig:
             consumption_spec = self.consumption_layers
         elif "consumption" in profile:
             consumption_spec = profile["consumption"]
-        elif family == "gemma3" and self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
+        elif family in {"gemma3", "gpt_oss"} and self.consumption_layers == _DEFAULT_CONSUMPTION_LAYERS:
             consumption_spec = tuple(
                 layer for layer in range(max(0, layer_count - 8), layer_count)
                 if layer in allowed

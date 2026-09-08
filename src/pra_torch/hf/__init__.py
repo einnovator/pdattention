@@ -7,6 +7,7 @@ from .config import (
     canonical_routing_representation,
 )
 from .injection import PRAHFModel, inject_pra
+from .anatomy import HFDecoderAnatomy, resolve_decoder_anatomy
 from .memory_gate import (
     MEMORY_GATE_FIXED,
     MEMORY_GATE_PER_LAYER,
@@ -20,6 +21,11 @@ from .late_band_lora import (
 )
 from .llama import LlamaPRAAttentionAdapter
 from .gemma3 import Gemma3PRAAttentionAdapter, gemma3_global_layer_ids
+from .qwen3_moe import Qwen3MoePRAAttentionAdapter
+from .mistral import MistralPRAAttentionAdapter
+from .gpt_oss import GptOssPRAAttentionAdapter
+from .moe import HFMoETopology, describe_moe_topology
+from .qwen3_hybrid import Qwen3HybridPRAPlan, describe_qwen3_hybrid_plan
 from .query import (
     QUERY_EXPONENTIAL,
     QUERY_LAST,
@@ -42,6 +48,8 @@ __all__ = [
     "PRAHFModel",
     "canonical_routing_representation",
     "inject_pra",
+    "HFDecoderAnatomy",
+    "resolve_decoder_anatomy",
     "MEMORY_GATE_FIXED",
     "MEMORY_GATE_SINGLE",
     "MEMORY_GATE_PER_LAYER",
@@ -53,6 +61,13 @@ __all__ = [
     "LlamaPRAAttentionAdapter",
     "Gemma3PRAAttentionAdapter",
     "gemma3_global_layer_ids",
+    "Qwen3MoePRAAttentionAdapter",
+    "MistralPRAAttentionAdapter",
+    "GptOssPRAAttentionAdapter",
+    "HFMoETopology",
+    "describe_moe_topology",
+    "Qwen3HybridPRAPlan",
+    "describe_qwen3_hybrid_plan",
     "QUERY_EXPONENTIAL",
     "QUERY_LAST",
     "QUERY_LINEAR",

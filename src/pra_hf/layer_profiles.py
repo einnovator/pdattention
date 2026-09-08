@@ -244,15 +244,16 @@ def eligible_layers(model_config_or_layer_count: Any) -> tuple[int, tuple[int, .
     config = model_config_or_layer_count
     count = int(config.num_hidden_layers)
     model_type = str(getattr(config, "model_type", "generic"))
-    if model_type == "gemma3_text":
+    if model_type in {"gemma3_text", "gpt_oss"}:
         layer_types = tuple(getattr(config, "layer_types", ()) or ())
         allowed = tuple(
             index for index, layer_type in enumerate(layer_types)
             if layer_type == "full_attention"
         )
+        family = "gpt_oss" if model_type == "gpt_oss" else "gemma3"
         if not allowed:
-            raise ValueError("Gemma 3 exposes no native full-attention layers.")
-        return count, allowed, "gemma3"
+            raise ValueError(f"{family} exposes no native full-attention layers.")
+        return count, allowed, family
     if "qwen" in model_type:
         family = "qwen"
     elif "llama" in model_type:

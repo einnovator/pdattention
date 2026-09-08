@@ -1115,7 +1115,17 @@ class MLXInProcessNativeExecutor:
             # stream as decode, so it belongs to the model-runner critical
             # section together with cache construction and generation.
             memory, keys, selected_tokens = self._resolve_memory(request)
-            self.isolation.open_request(request.request_id, keys)
+            self.isolation.open_request(
+                request.request_id,
+                keys,
+                tenant_id=request.tenant_id,
+                session_id=request.session_id,
+            )
+            self.isolation.assert_request_scope(
+                request.request_id,
+                tenant_id=request.tenant_id,
+                session_id=request.session_id,
+            )
             try:
                 self.isolation.attach_once(request.request_id, keys)
                 detail_layers = request.pra_policy.get("detail_kv_layers")
