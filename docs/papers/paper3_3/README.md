@@ -17,7 +17,8 @@ dependency structure behind this context-scale transition.
   residual endpoints, cited with their original provenance.
 - `MEASURED_SMOKE`: Paper 3.3 host-observer parity, 0%/100% mask endpoints,
   oracle edge/mass sweeps, interaction localization on the mechanism cohort,
-  and interventional target selection on ten frozen validation questions.
+  interventional target selection on ten frozen validation questions, and the
+  ten-question 1,024-token task-aware region/layer validation audit.
 - `MEASURED_POWERED`: the 150-question frozen-test comparison of raw attention,
   pair-NLL, pair-JS, and pair-NLL-times-attention rankings; the corrected
   BM25-v2 cross-document expansion validation/test frontiers; and the
@@ -124,6 +125,31 @@ The canonical 512/1,024 runs share one M5 host environment and model revision.
 A complete 512-token replay from a second Apple host is retained as a
 non-pooled robustness artifact. See
 `../shared/results/paper3_3_crossdoc_expansion/factorial_budget_audit/`.
+
+## Task-Aware Region/Layer Decision
+
+A ten-question validation audit replaces scalar document-pair utility with 36
+matched token-region-by-layer cells: four contiguous layer bands crossed with
+prefix, middle, and suffix source/target windows. Per-example gold-answer NLL
+selects the best singleton; a separate condition consumes the union of the four
+best positive singleton cells.
+
+The singleton oracle reduces NLL by `0.1548 [0.0748, 0.2416]` relative to a
+no-cross-document packed control, but changes F1 by
+`-0.0010 [-0.0029, 0]` and official score by exactly zero. The ranked union's
+predicted additive NLL gain is `0.4382`, while only
+`0.0941 [0.0058, 0.1918]` is realized; F1 changes by
+`-0.0023 [-0.0048, 0]`. The singleton and union use `0.0082%` and `0.0328%`
+of physical edges on average. No suffix-to-prefix boundary cell is the best
+cell on any question. In layers 0--6, the boundary-minus-control contrast is
+`-0.3344 [-0.6836, -0.0731]`.
+
+This smoke separates the failure modes: a local NLL selection signal exists,
+but it neither transfers to answer quality nor composes additively. It does not
+unlock a powered test or learned-selector training. The next useful work is a
+consumption/calibration intervention evaluated on validation data, not more
+training of the current pair selector. The artifact is under
+`../shared/results/paper3_3_crossdoc_expansion/region_layer_validation_n10/`.
 
 ## Reproduce
 

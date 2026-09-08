@@ -805,6 +805,56 @@ it with the same-host budget comparison. This sensitivity reinforces the
 decision to keep linked interaction outside the deployment default.
 \FloatBarrier
 
+\subsection{Task-aware region--layer validation}
+
+The 1,024-token factorial motivates a finer signal than one scalar per document
+pair. On ten validation questions, we therefore cross four contiguous decoder-
+layer bands with equal-width prefix, middle, and suffix windows on both sides
+of each retrieval-linked record pair. The resulting 36 cells have matched
+geometry. Per-example gold-answer NLL ranks singleton cells against a packed
+no-cross-document control. We decode the best singleton and, separately, the
+union of the four best positive singletons. This is a gold-answer oracle
+headroom audit, not selector training.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Task-aware validation consumption at 1,024 source tokens. NLL gain,
+F1 change, and official-score change are paired against no-cross packed; higher
+NLL gain is better. Intervals are conservative bootstrap envelopes over ten
+questions.}
+\label{tab:region-layer-validation}
+\begin{tabular}{lrrr}
+\toprule
+Condition & NLL gain & F1 change & Official change \\
+\midrule
+Best singleton & $.1548\ [ .0748, .2416]$ & $-.0010\ [-.0029,0]$ & $.0000\ [0,0]$ \\
+Ranked four-cell union & $.0941\ [ .0058, .1918]$ & $-.0023\ [-.0048,0]$ & $.0000\ [0,0]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The singleton's measured NLL gain exactly matches its ranking signal, but does
+not transfer to answer F1. The union makes the separation sharper: its summed
+singleton prediction is $+.4382$ NLL, while only $+.0941$ is realized. Useful
+local effects are therefore strongly non-additive. The singleton and union use
+.0082\% and .0328\% of physical edges on average. No suffix-to-prefix boundary
+cell is selected as the best singleton on any question. In layers 0--6, the
+boundary cell itself has mean NLL gain $-.4308$ with interval
+$[-.9197,-.0891]$, and its contrast against the eight equal-cost geometries is
+$-.3344$ with interval $[-.6836,-.0731]$. The other boundary-band contrasts
+are negative or near zero.
+
+This development cohort does not reproduce the powered test's packed advantage,
+so it cannot estimate deficit recovery. It does answer the validation gate:
+token-region-by-layer NLL localization exposes local causal sensitivity, but
+neither a boundary-specific rule nor improved answer consumption. A powered
+test and learned-selector training remain locked. The next mechanism study
+must target composition or calibration on validation identities. All masks in
+this audit still execute through the dense host kernel; timings support no
+sparse-runtime claim.
+\FloatBarrier
+
 \subsection{Reduced scale and family replication}
 
 We replay the identical selection-cache digest on 30 matched test questions
@@ -1323,8 +1373,11 @@ interval nevertheless includes zero, the packed endpoint is not stronger than
 independent PRA at this 512-token budget, every frontier remains non-monotonic,
 and the absolute gate is missed. Sparse causal headroom is credible; a
 qualified selector is not.
-Learned-selector training remains locked until a finer task-aware utility signal
-produces a stable frontier.
+The finer validation-only token-region-by-layer oracle reduces answer NLL but
+does not improve F1, its singleton utilities compose poorly, and the
+suffix-to-prefix boundary is not preferred. Learned-selector training therefore
+remains locked; the remaining problem is interaction consumption and
+calibration rather than another approximation of the current pair target.
 
 The complementary expansion study reaches the same operational decision by a
 different route. Dense selected-only search gains 0.89 support-span points on
@@ -1440,6 +1493,7 @@ Each run should persist:
 
 \section{Reproduction Map}
 
+{\small
 The physical graph, plan, and localization implementation is in
 \url{src/pra_hf/sparse_crossdoc.py}. The host-preserving observer and sparse
 mask seam is in \url{src/pra_hf/rag_mlx_native.py}. The complete frozen
@@ -1455,8 +1509,10 @@ evidence frontier and native answer replay are respectively
 Held-out retrieval, paired generation, and cross-model figures are reduced by
 the adjacent \url{summarize_expansion.py},
 \url{summarize_generation.py}, and
-\url{aggregate_generation_ladder.py}; each checks or propagates the frozen
-selection-cache digest. Exact commands and
+\url{aggregate_generation_ladder.py}; the region--layer selection/consumption
+audit is reduced independently by \url{summarize_region_layer.py}. These tools
+check or propagate the frozen selection-cache digest. Exact commands and
 evidence labels appear in the experiment and paper README files.
+\par}
 
 \end{document}
