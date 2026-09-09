@@ -1,0 +1,195 @@
+{
+  "protocol": "paper9-frozen-cross-model-consumption-factorial-v1",
+  "evidence_scope": "read-only answer/path task; not autonomous patch utility",
+  "manifest_schema": "paper9.consumption_factorial_manifest.v1",
+  "selection_policy": "frozen fielded-BM25 top-1 from router_transfer_v1",
+  "models": [
+    "qwen3-coder:30b",
+    "qwen3:14b",
+    "gemma3:4b-it-qat"
+  ],
+  "runtime_before": {
+    "engine": "ollama",
+    "engine_version": "0.32.7",
+    "base_url": "http://127.0.0.1:11435",
+    "runner_host": "FY937P29W4-PT002726.local",
+    "runner_platform": "macOS-26.6.2-arm64-arm-64bit",
+    "models": {
+      "qwen3-coder:30b": {
+        "digest": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+        "size": 18556700761,
+        "modified_at": "2026-09-02T22:21:22.2942652+01:00"
+      },
+      "qwen3:14b": {
+        "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+        "size": 9276198565,
+        "modified_at": "2026-09-01T02:59:17.486669361+01:00"
+      },
+      "gemma3:4b-it-qat": {
+        "digest": "d01ad0579247579135cd4d4b156cab36613d1936ccfd9b81e4be6f4ef05416fe",
+        "size": 4006630865,
+        "modified_at": "2025-09-13T17:19:05.557146936+01:00"
+      }
+    }
+  },
+  "runtime_after": {
+    "engine": "ollama",
+    "engine_version": "0.32.7",
+    "base_url": "http://127.0.0.1:11435",
+    "runner_host": "FY937P29W4-PT002726.local",
+    "runner_platform": "macOS-26.6.2-arm64-arm-64bit",
+    "models": {
+      "qwen3-coder:30b": {
+        "digest": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+        "size": 18556700761,
+        "modified_at": "2026-09-02T22:21:22.2942652+01:00"
+      },
+      "qwen3:14b": {
+        "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+        "size": 9276198565,
+        "modified_at": "2026-09-01T02:59:17.486669361+01:00"
+      },
+      "gemma3:4b-it-qat": {
+        "digest": "d01ad0579247579135cd4d4b156cab36613d1936ccfd9b81e4be6f4ef05416fe",
+        "size": 4006630865,
+        "modified_at": "2025-09-13T17:19:05.557146936+01:00"
+      }
+    }
+  },
+  "model_digests_stable": true,
+  "conditions": [
+    "direct_injection",
+    "attribution_aware",
+    "mandatory_tool_verification"
+  ],
+  "case_count": 16,
+  "selected_record_hashes_identical_across_arms": true,
+  "summaries": [
+    {
+      "model": "gemma3:4b-it-qat",
+      "condition": "attribution_aware",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.875,
+      "conditional_consumption_accuracy": 1.0,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 59466,
+      "generated_tokens": 873,
+      "wall_seconds": 89.77314920770004
+    },
+    {
+      "model": "gemma3:4b-it-qat",
+      "condition": "direct_injection",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.6875,
+      "conditional_consumption_accuracy": 0.7857142857142857,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 57289,
+      "generated_tokens": 1117,
+      "wall_seconds": 94.81737304304261
+    },
+    {
+      "model": "gemma3:4b-it-qat",
+      "condition": "mandatory_tool_verification",
+      "cases": 16,
+      "failures": 16,
+      "path_accuracy": 0.0,
+      "conditional_consumption_accuracy": 0.0,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 0,
+      "generated_tokens": 0,
+      "wall_seconds": 117.41352070774883
+    },
+    {
+      "model": "qwen3-coder:30b",
+      "condition": "attribution_aware",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.875,
+      "conditional_consumption_accuracy": 1.0,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 50539,
+      "generated_tokens": 2738,
+      "wall_seconds": 165.23709095583763
+    },
+    {
+      "model": "qwen3-coder:30b",
+      "condition": "direct_injection",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.875,
+      "conditional_consumption_accuracy": 1.0,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 48377,
+      "generated_tokens": 1897,
+      "wall_seconds": 120.99769045924768
+    },
+    {
+      "model": "qwen3-coder:30b",
+      "condition": "mandatory_tool_verification",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.875,
+      "conditional_consumption_accuracy": 1.0,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 1.0,
+      "tool_calls": 16,
+      "prompt_tokens": 169362,
+      "generated_tokens": 5311,
+      "wall_seconds": 284.1514470850816
+    },
+    {
+      "model": "qwen3:14b",
+      "condition": "attribution_aware",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.75,
+      "conditional_consumption_accuracy": 0.8571428571428571,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 50571,
+      "generated_tokens": 5939,
+      "wall_seconds": 569.2718878351152
+    },
+    {
+      "model": "qwen3:14b",
+      "condition": "direct_injection",
+      "cases": 16,
+      "failures": 0,
+      "path_accuracy": 0.8125,
+      "conditional_consumption_accuracy": 0.9285714285714286,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.0,
+      "tool_calls": 0,
+      "prompt_tokens": 48409,
+      "generated_tokens": 5069,
+      "wall_seconds": 522.0914577058284
+    },
+    {
+      "model": "qwen3:14b",
+      "condition": "mandatory_tool_verification",
+      "cases": 16,
+      "failures": 2,
+      "path_accuracy": 0.6875,
+      "conditional_consumption_accuracy": 0.7857142857142857,
+      "wrong_selection_recovery": 0.0,
+      "verification_compliance": 0.875,
+      "tool_calls": 14,
+      "prompt_tokens": 231553,
+      "generated_tokens": 20171,
+      "wall_seconds": 1478.23907525104
+    }
+  ]
+}

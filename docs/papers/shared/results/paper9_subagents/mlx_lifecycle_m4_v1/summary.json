@@ -1,0 +1,463 @@
+{
+  "protocol": "paper9-direct-mlx-lifecycle-v1",
+  "scope": "direct MLX model-forward concurrency and cooperative pre-forward cancellation; not HTTP cancellation or mid-kernel preemption",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "requested_model_revision": "73e3e38d",
+  "resolved_model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "engine": "mlx-lm",
+  "mlx_version": "0.32.2",
+  "host": "FY937P29W4-PT002726.local",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "shared_tokens": 2048,
+  "query_tokens": 12,
+  "native_bytes_per_session": 234881024,
+  "encode_ms": {
+    "session_a": 392.5104580121115,
+    "session_b": 348.1683749705553
+  },
+  "concurrent_sessions": {
+    "repetitions": 5,
+    "sequential_wall_ms": [
+      40.30637501273304,
+      39.23891601152718,
+      39.15658302139491,
+      39.477291982620955,
+      39.70325004775077
+    ],
+    "concurrent_wall_ms": [
+      27.052333927713335,
+      27.55945804528892,
+      27.565375086851418,
+      27.274583000689745,
+      25.28712502680719
+    ],
+    "mean_speedup": 1.4686363972368077,
+    "exact_logit_parity": true,
+    "errors": []
+  },
+  "isolation": {
+    "cross_session_lookup_blocked": true
+  },
+  "cancellation": {
+    "lease_released": true,
+    "forward_executed_after_cancel": false,
+    "boundary": "cooperative_before_model_submission"
+  },
+  "tier_transition": {
+    "demote_ms": 27.877917047590017,
+    "promote_ms": 14.640916953794658,
+    "baseline_forward_ms": 20.15016705263406,
+    "restored_forward_ms": 19.465917022898793,
+    "exact_logit_parity": true,
+    "max_abs_logit_delta": 0.0
+  },
+  "termination": {
+    "records_removed": 1,
+    "session_scoped": true
+  },
+  "eviction": {
+    "record_capacity": 2,
+    "record_capacity_evictions": 1,
+    "active_eviction_blocked": true
+  },
+  "final_pool": {
+    "device_capacity_bytes": 469762048,
+    "device_bytes": 469762048,
+    "records": [
+      {
+        "session_uuid": "session-c",
+        "record_uuid": "shared",
+        "tier": "device",
+        "active_leases": 0
+      },
+      {
+        "session_uuid": "session-d",
+        "record_uuid": "shared",
+        "tier": "device",
+        "active_leases": 0
+      }
+    ],
+    "active_leases": 0,
+    "events": [
+      {
+        "action": "put",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "tier": "device",
+        "bytes": 234881024
+      },
+      {
+        "action": "put",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "tier": "device",
+        "bytes": 234881024
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-0-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-0-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-0-session-b"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-0-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-0-session-b"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-0-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-0-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-0-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-1-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-1-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-1-session-b"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-1-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-1-session-b"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-1-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-1-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-1-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-2-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-2-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-2-session-b"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-2-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-2-session-b"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-2-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-2-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-2-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-3-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-3-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-3-session-b"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-3-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-3-session-b"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-3-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-3-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-3-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-4-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-4-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-4-session-b"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "seq-4-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-4-session-b"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-4-session-a"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-4-session-a",
+        "reason": "complete"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "par-4-session-b",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "eviction-guard"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "eviction-guard",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "cancel-target"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "cancel-target",
+        "reason": "cancel"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "tier-baseline"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "tier-baseline",
+        "reason": "complete"
+      },
+      {
+        "action": "demote",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "tier": "host",
+        "bytes": 234881024
+      },
+      {
+        "action": "promote",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "tier": "device",
+        "bytes": 234881024
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "tier-restored"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "target_agent_uuid": "tier-restored",
+        "reason": "complete"
+      },
+      {
+        "action": "acquire",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "terminate-target"
+      },
+      {
+        "action": "release",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "target_agent_uuid": "terminate-target",
+        "reason": "session_terminate"
+      },
+      {
+        "action": "evict",
+        "session_uuid": "session-b",
+        "record_uuid": "shared",
+        "reason": "session_terminate"
+      },
+      {
+        "action": "put",
+        "session_uuid": "session-c",
+        "record_uuid": "shared",
+        "tier": "device",
+        "bytes": 234881024
+      },
+      {
+        "action": "evict",
+        "session_uuid": "session-a",
+        "record_uuid": "shared",
+        "reason": "record_capacity"
+      },
+      {
+        "action": "put",
+        "session_uuid": "session-d",
+        "record_uuid": "shared",
+        "tier": "device",
+        "bytes": 234881024
+      }
+    ]
+  }
+}

@@ -84,6 +84,46 @@ PYTHONPATH=src python experiments/paper9_subagents/run_mlx_live_reuse.py \
   --output docs/papers/shared/results/paper9_subagents/mlx_live_m4_final
 ```
 
+The follow-up consumption factorial freezes the 16 fielded-BM25 top-1 records
+from that transfer artifact, including its two routing misses. Every model and
+arm receives byte-identical selected text. Only presentation changes: direct
+injection, provenance/attribution-aware presentation, or mandatory read-only
+tool verification against the embedded pinned candidate snapshot. Output is
+checkpointed per model, condition, repository, and query. The run manifest
+captures each Ollama model digest before execution, refuses an incompatible
+resume, and verifies that those digests remain unchanged through completion:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper9_subagents.run_consumption_factorial \
+  --manifest experiments/paper9_subagents/benchmarks/consumption_factorial_v1.json \
+  --output .runs/consumption_factorial_v1 \
+  --base-url http://127.0.0.1:11435 \
+  --models qwen3-coder:30b,qwen3:14b,gemma3:4b-it-qat
+```
+
+The direct-MLX lifecycle follow-up uses session-scoped state identities and
+exercises simultaneous model-forward requests, cooperative cancellation before
+model submission, scoped session termination, inactive LRU eviction, and
+device-to-host-to-device state transitions. The supplied Hub revision is
+resolved to a concrete snapshot before MLX-LM loads it. The experiment must be
+described as direct model-forward evidence, not HTTP cancellation or mid-kernel
+preemption:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper9_subagents.run_mlx_lifecycle \
+  --model mlx-community/Qwen3-0.6B-4bit --revision 73e3e38d \
+  --shared-tokens 2048 --repetitions 5 \
+  --output .runs/mlx_lifecycle_m5_v1
+```
+
+The remote launchers preserve other campaigns: `run_mlx_lifecycle_medium.sh`
+waits for the Paper 3.3 and Paper 4.5 controllers on the M5, while
+`run_mlx_lifecycle_bigmac_after_factorial.sh` waits for the digest-pinned
+consumption factorial to finish successfully on the M4. Running both produces
+the primary result sooner and retains a cross-host replication.
+The Big Mac factorial launcher uses the same explicit Python 3.12 environment
+as its lifecycle run; do not fall back to the macOS system Python.
+
 For 32K sources, omit the diagnostic one-shot arm and restrict the measured
 fan-out when device memory is constrained:
 

@@ -280,9 +280,13 @@ from .subagent_routing import (
     visible_routing_candidates,
 )
 from .subagent_mlx_native import (
+    MLXHostSubagentMemory,
+    MLXStateLease,
+    MLXStatePoolError,
     MLXSubagentKVCache,
     MLXSubagentMemory,
     MLXSubagentNativePort,
+    MLXSubagentStatePool,
     encode_mlx_subagent_memory,
     make_mlx_subagent_cache,
 )
@@ -564,9 +568,13 @@ __all__ = [
     "DescendantRoutingMode",
     "RoutingCandidate",
     "visible_routing_candidates",
+    "MLXHostSubagentMemory",
+    "MLXStateLease",
+    "MLXStatePoolError",
     "MLXSubagentKVCache",
     "MLXSubagentMemory",
     "MLXSubagentNativePort",
+    "MLXSubagentStatePool",
     "encode_mlx_subagent_memory",
     "make_mlx_subagent_cache",
 ]

@@ -58,12 +58,22 @@ but reduces exact source-path accuracy by 12.5 percentage points, exposing a
 selection--consumption failure rather than a reuse failure. A frozen transfer
 to 16 questions in two unrelated repositories lowers fielded-BM25 top-1 recall
 to 87.5\%, versus 81.25\% for lexical and learned selectors and 100\% for the
-oracle. Finally, live MLX measurements with
+oracle. Holding those selected records fixed across three model families and
+three presentation modes shows that consumption is model--presentation
+specific: attribution raises Gemma path accuracy from 68.75\% to 87.5\%, has
+no effect on Qwen3-Coder at 87.5\%, and lowers Qwen3-14B from 81.25\% to
+75.0\%. Mandatory verification is reliable only for Qwen3-Coder in this
+adapter; the Gemma tool arm is invalid because the serving API rejects every
+request. Finally, live MLX measurements with
 Qwen3-0.6B-4bit preserve host split-prefill logits exactly, including five of
 five 16-token greedy generations. Native reuse is strongly amortized when K/V
 fits comfortably, but reverses under a 32K-token memory-pressure condition on
-a 16 GB host. Selectively permeable contexts are therefore operational, while
-their economic value depends on routing quality, fan-out, and residency.
+a 16 GB host. A direct-MLX lifecycle campaign further obtains a $1.47\times$
+two-session model-forward speedup with exact logits and validates isolation,
+cooperative pre-forward cancellation, task termination, capacity eviction,
+and exact host-tier round trips. Selectively permeable contexts are therefore
+operational, while their economic value depends on routing quality,
+presentation, fan-out, and residency.
 \end{abstract}
 
 \section{Introduction}
@@ -96,8 +106,9 @@ This paper contributes:
     \item controlled consistency semantics for sequential, parallel, shared-workspace, and externally mutable resources;
     \item a benchmark suite designed specifically to quantify when cross-agent reuse produces a performance benefit;
     \item natural-source, autonomous sequential/parallel, frozen routing-transfer,
-    and live MLX experiments that separate correctness, selection quality,
-    consumption quality, and residency-dependent economics.
+    cross-model consumption, and live MLX lifecycle experiments that separate
+    correctness, selection quality, consumption quality, and
+    residency-dependent economics.
 \end{enumerate}
 
 \section{Background and Position in the PRA Series}
@@ -599,6 +610,8 @@ Explicit DAG joins and peer visibility & Experimental & Cycle, isolation, and re
 Validity-first descendant selectors & Experimental & Lexical, learned, fielded BM25, and oracle cohort \\
 Live MLX native K/V reuse & Experimental & Cross-host prefill and greedy-generation parity \\
 Autonomous multi-harness campaign & Experimental & Three-seed, 96-agent read-only cohort \\
+Frozen consumption presentation & Experimental & Three-model, 144-run factorial \\
+Direct-MLX lifecycle and tier manager & Experimental & Two-session M4 model-forward campaign \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -881,6 +894,52 @@ Pooled & 0.812 & 0.812 & 0.875 & 1.000 \\
 \end{tabular}
 \end{table}
 
+\subsection{Frozen cross-model consumption factorial}
+
+Routing recall alone does not reveal whether a model will use the selected
+record correctly. We therefore reuse the frozen 16-question transfer manifest
+and hold each fielded-BM25 top-1 record byte-identical while crossing three
+digest-pinned Ollama models with three consumption modes: direct injection,
+attribution-aware presentation, and mandatory tool verification. The resulting
+144 runs use the same selected-record hashes in every arm. This is a read-only
+answer/path task, not an autonomous patch-utility result.
+
+Table~\ref{tab:consumption-factorial} shows a strong model--presentation
+interaction. Attribution-aware presentation repairs all correctly selected
+Gemma cases, increasing overall exact-path accuracy by 18.75 points, but it
+reduces Qwen3-14B accuracy by 6.25 points and leaves Qwen3-Coder unchanged.
+Mandatory verification is fully compliant for Qwen3-Coder but neither improves
+nor recovers either of the two routing misses. Qwen3-14B makes 14 of 16 required
+tool calls, with two failed runs, and falls to 68.75\% accuracy. The Gemma tool
+arm is not a quality measurement: Ollama rejects all 16 tool-enabled requests
+with HTTP 400 before generation, so it is reported as invalid rather than as
+zero task accuracy. No model recovers a wrongly selected record.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen selected-record consumption factorial. Accuracy requires the
+exact expected source path. Conditional accuracy is restricted to the 14
+queries for which fielded BM25 selected the relevant record. \emph{Invalid} marks
+an adapter/API failure before generation.}
+\label{tab:consumption-factorial}
+\begin{tabular}{llrrr}
+\toprule
+Model & Presentation & Path acc. & Conditional acc. & Verification \\
+\midrule
+Qwen3-Coder 30B & Direct & 0.875 & 1.000 & --- \\
+Qwen3-Coder 30B & Attribution & 0.875 & 1.000 & --- \\
+Qwen3-Coder 30B & Mandatory tool & 0.875 & 1.000 & 1.000 \\
+Qwen3 14B & Direct & 0.812 & 0.929 & --- \\
+Qwen3 14B & Attribution & 0.750 & 0.857 & --- \\
+Qwen3 14B & Mandatory tool & 0.688 & 0.786 & 0.875 \\
+Gemma3 4B & Direct & 0.688 & 0.786 & --- \\
+Gemma3 4B & Attribution & 0.875 & 1.000 & --- \\
+Gemma3 4B & Mandatory tool & Invalid & Invalid & Invalid \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Live native reuse and the residency boundary}
 
 The live experiment freezes the selected source and query token IDs, then
@@ -963,6 +1022,27 @@ match token for token and the maximum observed logit delta remains zero. This
 validates short output trajectories, but it is not an answer-quality or
 autonomous-agent evaluation.
 
+\subsection{Direct-MLX concurrent lifecycle and tier transitions}
+
+The initial direct-MLX lifecycle campaign pins Qwen3-0.6B-4bit revision
+\texttt{73e3e38d} (the fully resolved revision is recorded in the artifact)
+under MLX 0.32.2 on the 48 GB M4 Pro. Two isolated sessions each retain a
+2,048-token native record.
+Across five repetitions, concurrent model forwards take 25.3--27.6 ms versus
+39.2--40.3 ms sequentially, a $1.47\times$ mean wall-time speedup, with exact
+next-token logits in every comparison. This is direct model-forward
+concurrency, not an HTTP serving or end-to-end agent throughput result.
+
+The same run exercises lifecycle safety and residency mechanics. Cross-session
+lookup is blocked; cooperative cancellation releases the lease and prevents a
+cancelled forward from being submitted; session termination removes only that
+session's record; an active lease prevents eviction; and a two-record capacity
+limit produces one recorded eviction. Demoting a 224 MiB native state to host
+takes 27.9 ms and promotion takes 14.6 ms. The restored forward is exactly
+logit-identical to the baseline, with maximum absolute delta zero. Cancellation
+is tested only before model submission, not as mid-kernel preemption, and the
+cross-capacity M5 replication remains pending.
+
 \subsection{Natural trace opportunity audit}
 
 We scanned 12 existing Paper 4.5 coding-agent trajectories containing 90 tool
@@ -1002,17 +1082,23 @@ reuse, and the 12-trace audit is small and single-agent. The autonomous cohort
 closes the callback-only gap but remains a read-only, eight-question exact-path
 task on the Paper 9 repository, with one quantized model, one serving engine,
 one host, and three seeds. It does not measure autonomous patch quality. Its
-context arm also combines selection and consumption; a larger factorial should
-hold the selected record fixed and vary how it is presented to the model.
+context arm also combines selection and consumption. The follow-up factorial
+separates them, but it remains a small, deterministic 16-question path task
+rather than a multi-step coding campaign. Its Gemma verification arm is invalid
+because of a serving-adapter incompatibility, and presentation effects have not
+yet been replicated across seeds or additional model families.
 Fielded BM25 closes the oracle gap only on a post-hoc 11-module diagnostic and
 reaches 87.5\%, not 100\%, on frozen cross-repository transfer. The two external
 repositories and 16 questions are still too small to establish broad transfer.
 
-The live experiment covers one quantized model family and direct MLX forwards.
-It omits queueing, transfer, tier eviction, multi-session serving concurrency,
-cancellation, task termination, and end-task answer quality. The Ollama
-campaign exercises concurrent model requests but not the direct MLX native-K/V
-path. Its two MLX hosts deliberately reveal rather than resolve a
+The live reuse and lifecycle experiments cover one quantized model family and
+direct MLX forwards. The lifecycle campaign now covers two concurrent sessions,
+cooperative pre-forward cancellation, task termination, eviction, and host-tier
+round trips, but still omits HTTP queueing, network transfer, mid-kernel
+preemption, sustained multi-tenant load, and end-task answer quality. Its M5
+cross-capacity replication is pending. The Ollama campaign exercises concurrent
+model requests but not the direct MLX native-K/V path. The reuse sweep's two MLX
+hosts deliberately reveal rather than resolve a
 memory-capacity interaction. Segmented attention or another zero-copy host seam
 is needed to test whether the 16 GB reversal is fundamental or merely an
 implementation cost.
@@ -1020,11 +1106,11 @@ implementation cost.
 Correctness depends on declared consistency assumptions. External mutation can
 invalidate local state even when no write appears in the session tree. The
 runtime therefore rejects \texttt{UNKNOWN} effects and requires a validator for
-\texttt{EXTERNAL} resources. The next gates are cross-model and broader
-cross-repository autonomous transfer, direct-MLX concurrent sessions,
-cancellation and task termination, eviction and memory-tier transitions, and a
-segmented zero-copy implementation. Cross-session memory remains explicitly
-outside Paper 9.
+\texttt{EXTERNAL} resources. The next gates are broader cross-repository
+autonomous patch transfer, cross-capacity lifecycle replication, a compatible
+Gemma tool adapter, sustained direct-MLX serving concurrency, and a segmented
+zero-copy implementation. Cross-session memory remains explicitly outside
+Paper 9.
 
 The present result is architectural, controlled, and live at the model-forward
 level, with an initial real-model autonomous cohort: subagent isolation and
@@ -1050,12 +1136,16 @@ cross-repository evaluation retains a measurable oracle gap. The autonomous
 campaign shows both sides of permeable context: parallel scheduling can reduce
 wall time, and completed-peer reuse can avoid physical tool executions, but a
 selected record can also propagate a bad answer and reduce task accuracy. Live
-MLX results establish exact short-trajectory parity and show both sides of the
+consumption results confirm that identical selected records can help, hurt, or
+fail depending on model and presentation. Live MLX results establish exact
+short-trajectory parity and show both sides of the
 systems tradeoff: fan-out amortizes native K/V when the record fits comfortably,
 while memory pressure can erase the gain even though physical input tokens fall
-sharply. The remaining empirical question is therefore not whether cross-stream
-native reuse can work, but when routing, consumption, residency, engine
-implementation, and real agent behavior make it worthwhile.
+sharply. Direct-MLX lifecycle tests add exact concurrent-session, cancellation,
+termination, eviction, and tier-transition evidence on the M4. The remaining
+empirical question is therefore not whether cross-stream native reuse can work,
+but when routing, consumption, residency, engine implementation, and real agent
+behavior make it worthwhile.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}

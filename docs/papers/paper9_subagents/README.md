@@ -23,7 +23,9 @@ compatibility receipts.
 | Validity-first lexical/learned/fielded-BM25/oracle routing | Experimental |
 | Autonomous sequential/parallel model campaign | Experimental benchmark |
 | Frozen cross-repository router transfer | Experimental benchmark |
+| Frozen cross-model consumption factorial | Experimental benchmark; 144 live runs complete |
 | Live MLX native K/V reuse | Experimental benchmark |
+| Direct-MLX session lifecycle and tier manager | Experimental benchmark; M4 campaign complete |
 | Cross-session memory | Out of scope; Paper 10 |
 
 The safe default is a hard boundary: ancestor and descendant visibility are
@@ -94,7 +96,18 @@ separately, not a coding-patch success claim.
 Frozen transfer to DynaSpike and Cognitive Coprocessors gives 87.5% pooled
 fielded-BM25 top-1 recall, versus 81.25% for lexical and learned routing and
 100% for the oracle. Candidate revisions and hashes are recorded in the
-artifact; broader cross-repository and cross-model transfer remain open.
+artifact.
+
+The frozen consumption factorial holds those selected-record hashes identical
+across 144 runs: 16 questions, three presentation modes, and three
+digest-pinned model families. Attribution changes exact-path accuracy from
+68.75% to 87.5% for Gemma3 4B, leaves Qwen3-Coder 30B at 87.5%, and changes
+Qwen3 14B from 81.25% to 75.0%. Mandatory verification is fully compliant for
+Qwen3-Coder without improving its accuracy; Qwen3 14B is 87.5% compliant and
+falls to 68.75%. Gemma's mandatory-tool arm is invalid because Ollama rejects
+all tool-enabled requests before generation. No arm recovers either frozen
+routing miss. This establishes a model--presentation interaction on a small
+read-only task, not broad transfer or coding-patch utility.
 
 The live MLX sweep uses immutable Qwen3-0.6B-4bit revision `73e3e38d`. On an
 M4 Pro with 48 GB, fan-out 16 yields `5.03x`, `8.74x`, and `11.69x` amortized
@@ -108,3 +121,12 @@ claim that native reuse is uniformly faster.
 A separate five-seed, 16-token greedy generation check at 8K matches all five
 host split-prefill sequences exactly with zero observed logit delta. These are
 direct model-forward measurements, not HTTP TTFT or autonomous-agent quality.
+
+The direct-MLX lifecycle run adds two isolated 2K-record sessions on the 48 GB
+M4 Pro. Five paired repetitions yield a 1.47x mean concurrent model-forward
+speedup with exact logits. Cross-session lookup, cooperative pre-forward
+cancellation, session-scoped termination, active-lease eviction protection,
+capacity eviction, and host-tier demotion/promotion all pass. A 224 MiB record
+demotes in 27.9 ms and promotes in 14.6 ms with zero restored-logit delta. The
+M5 cross-capacity replication remains queued behind Paper 3.3; mid-kernel
+preemption and sustained HTTP serving concurrency remain open.
