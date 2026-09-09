@@ -523,6 +523,72 @@ def test_region_layer_audit_separates_selection_from_consumption() -> None:
     singleton, union = result["consumption_quality"]
     assert singleton["realized_gold_nll_gain"]["mean"] == pytest.approx(0.3)
     assert union["realized_gold_nll_gain"]["mean"] == pytest.approx(-0.1)
+    gate = result["controller_training_gate"]
+    assert gate["decision"] == "fail"
+    assert not gate["controller_training_authorized"]
+    assert gate["checks"]["singleton_f1_mean_above_zero"]
+    assert not gate["checks"]["frozen_partition_is_test"]
+    assert not gate["checks"]["minimum_150_examples"]
+    assert not gate["nll_can_satisfy_gate"]
+
+
+def test_region_layer_gate_requires_positive_held_out_f1_interval() -> None:
+    diagnostics = []
+    rows = []
+    example_ids = [f"test:{index:03d}" for index in range(150)]
+    for example_id in example_ids:
+        for source_region in ("prefix", "middle", "suffix"):
+            for target_region in ("prefix", "middle", "suffix"):
+                diagnostics.append(
+                    {
+                        "example_id": example_id,
+                        "band_index": 0,
+                        "layers": [0, 1],
+                        "source_region": source_region,
+                        "target_region": target_region,
+                        "incremental_gold_nll_gain": 0.2,
+                        "selected_physical_edge_fraction": 0.001,
+                    }
+                )
+        for condition, nll, f1 in (
+            ("NO_CROSS_DOC_PACKED", 2.0, 0.1),
+            ("TASK_ORACLE_REGION_LAYER_SINGLETON", 1.8, 0.2),
+            ("TASK_ORACLE_REGION_LAYER_UNION", 1.7, 0.05),
+        ):
+            rows.append(
+                {
+                    "example_id": example_id,
+                    "condition": condition,
+                    "gold_answer_mean_nll": nll,
+                    "token_f1": f1,
+                    "exact_match": 0.0,
+                    "official_multihop_rag_score": 0.0,
+                    "additive_predicted_gold_nll_gain": 0.2,
+                }
+            )
+    run = {
+        "git_commit": "abc",
+        "model": "model",
+        "model_revision": "revision",
+        "split": {
+            "train_ids": [],
+            "validation_ids": [],
+            "test_ids": example_ids,
+        },
+        "selection_cache_sha256": "digest",
+        "policy": {"layer_band_count": 1},
+        "examples": 150,
+        "summary": [],
+    }
+
+    result = summarize_region_layer_audit(run, rows, diagnostics, replicates=50)
+
+    gate = result["controller_training_gate"]
+    assert gate["decision"] == "pass"
+    assert gate["controller_training_authorized"]
+    assert gate["cohort_partition"] == "test"
+    assert all(gate["checks"].values())
+    assert gate["observed_f1"]["conservative_ci95"][0] > 0.0
 
 
 def test_region_layer_audit_rejects_incomplete_cell_matrix() -> None:

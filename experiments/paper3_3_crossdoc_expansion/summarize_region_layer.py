@@ -15,8 +15,10 @@ from experiments.paper3_3_crossdoc_expansion.summarize_generation import (
 )
 
 
-SCHEMA_VERSION = "paper3.3-region-layer-audit-publication-v1"
+SCHEMA_VERSION = "paper3.3-region-layer-audit-publication-v2"
 REGIONS = ("prefix", "middle", "suffix")
+PRIMARY_GATE_CONDITION = "TASK_ORACLE_REGION_LAYER_SINGLETON"
+MINIMUM_GATE_EXAMPLES = 150
 
 
 def _estimate(values: Sequence[float], *, replicates: int) -> dict[str, object]:
@@ -33,6 +35,71 @@ def _estimate(values: Sequence[float], *, replicates: int) -> dict[str, object]:
             max(interval[1] for interval in intervals),
         ],
         "examples": len(values),
+    }
+
+
+def _cohort_partition(
+    split: Mapping[str, object], example_ids: Sequence[str]
+) -> str | None:
+    """Resolve the frozen partition from identities, not a mutable run label."""
+
+    cohort = set(example_ids)
+    matches = []
+    for partition in ("train", "validation", "test"):
+        partition_ids = split.get(f"{partition}_ids")
+        if (
+            isinstance(partition_ids, Sequence)
+            and not isinstance(partition_ids, (str, bytes))
+            and cohort.issubset(str(value) for value in partition_ids)
+        ):
+            matches.append(partition)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _controller_training_gate(
+    *,
+    split: Mapping[str, object],
+    example_ids: Sequence[str],
+    consumption: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Apply the predeclared held-out F1 gate for controller training."""
+
+    primary = next(
+        row for row in consumption if row["condition"] == PRIMARY_GATE_CONDITION
+    )
+    f1 = primary["realized_token_f1_gain"]
+    partition = _cohort_partition(split, example_ids)
+    checks = {
+        "frozen_partition_is_test": partition == "test",
+        "minimum_150_examples": len(example_ids) >= MINIMUM_GATE_EXAMPLES,
+        "singleton_f1_mean_above_zero": float(f1["mean"]) > 0.0,
+        "singleton_f1_ci95_lower_above_zero": float(
+            f1["conservative_ci95"][0]
+        )
+        > 0.0,
+    }
+    passed = all(checks.values())
+    return {
+        "decision": "pass" if passed else "fail",
+        "controller_training_authorized": passed,
+        "primary_condition": PRIMARY_GATE_CONDITION,
+        "primary_endpoint": "paired realized token-F1 gain versus NO_CROSS_DOC_PACKED",
+        "criterion": (
+            "on at least 150 frozen test examples, the conservative paired "
+            "bootstrap 95% interval for singleton token-F1 gain must lie "
+            "strictly above zero"
+        ),
+        "cohort_partition": partition,
+        "examples": len(example_ids),
+        "observed_f1": f1,
+        "checks": checks,
+        "nll_can_satisfy_gate": False,
+        "next_action": (
+            "train the compact region-boundary-layer controller with multiple "
+            "independent seeds"
+            if passed
+            else "keep controller training locked; do not promote favorable NLL"
+        ),
     }
 
 
@@ -196,6 +263,11 @@ def summarize_region_layer_audit(
             }
         )
 
+    example_ids = sorted(rows_by_example)
+    split = run["split"]
+    if not isinstance(split, Mapping):
+        raise ValueError("run split metadata must be a mapping")
+
     return {
         "schema_version": SCHEMA_VERSION,
         "source": {
@@ -218,6 +290,11 @@ def summarize_region_layer_audit(
             "boundary_specificity": boundary_specificity,
         },
         "consumption_quality": consumption,
+        "controller_training_gate": _controller_training_gate(
+            split=split,
+            example_ids=example_ids,
+            consumption=consumption,
+        ),
         "generation_quality": summarize_generation(
             run, rows, replicates=replicates
         ),

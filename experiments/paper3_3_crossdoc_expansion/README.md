@@ -161,8 +161,18 @@ PYTHONPATH=src python -m experiments.paper3_3_crossdoc_expansion.summarize_regio
   --output .runs/paper3_3_region_layer_validation_n10/publication
 ```
 
+For the long remote test cohort,
+`reduce_region_layer_after_audit.sh` waits for the runner's final
+`summary.json`, refuses a partial/failed run, and then invokes the same strict
+reducer.
+
 The reducer reports `selection_quality` (singleton NLL utility and the
 suffix-to-prefix boundary contrast against eight equal-cost controls) separately
 from `consumption_quality` (realized NLL, F1, and official-score changes for the
 singleton and ranked union). Bootstrap seeds are resampling seeds, not model
-training trials.
+training trials. Its predeclared `controller_training_gate` passes only when
+the primary singleton condition is evaluated on at least 150 identities from
+the frozen test partition and the conservative paired-bootstrap 95% interval
+for token-F1 gain lies strictly above zero. NLL is explicitly ineligible to
+satisfy this gate. A pass authorizes multi-seed compact-controller training; a
+failure keeps training locked.
