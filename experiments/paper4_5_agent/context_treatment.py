@@ -39,7 +39,12 @@ class FrozenReplayDivergence(RuntimeError):
     """The paired trajectory no longer has a recorded exact request."""
 
 
-CONSUMPTION_POLICIES = ("standard", "verification-guard-v1")
+CONSUMPTION_POLICIES = (
+    "standard",
+    "verification-guard-v1",
+    "verification-enforced-v1",
+)
+
 
 @dataclass(frozen=True)
 class TreatmentTrace:
@@ -86,7 +91,7 @@ def apply_consumption_policy(
             None,
         )
         tagged = (
-            '<pra_consumption_policy name="verification-guard-v1">\n'
+            f'<pra_consumption_policy name="{policy}">\n'
             f"{guidance}\n</pra_consumption_policy>"
         )
         if current_index is None:
@@ -433,7 +438,10 @@ def _verification_guidance(messages: Sequence[Mapping[str, Any]]) -> str:
         )
     verification = tests[-1]
     if "<returncode>0</returncode>" not in verification[2]:
-        return ""
+        return (
+            "Focused verification failed. Diagnose the reported failure and repair the "
+            "source before creating patch.txt or submitting."
+        )
     patch_creations = [
         row for row in after_mutation
         if row[0] > verification[0] and _PATCH_CREATE.search(row[1])
@@ -461,6 +469,94 @@ def _verification_guidance(messages: Sequence[Mapping[str, Any]]) -> str:
         "The submission patch has been inspected. Submit it now with the exact completion "
         "command required by the task; do not resume exploration."
     )
+
+
+def enforce_consumption_action(
+    response_payload: Mapping[str, Any], policy: str,
+    *, logical_messages: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Enforce mechanical boundaries without choosing task-specific edits or tests.
+
+    This is deliberately a separate PRA-agent treatment. The engine still produces the
+    candidate response, but deterministic boundary actions replace candidates that skip
+    a required diff, test, patch inspection, or submission step.
+    """
+
+    transformed = json.loads(json.dumps(response_payload, default=str))
+    metadata = {
+        "policy": policy,
+        "action_enforced": False,
+        "enforcement_reason": None,
+        "original_content_sha256": None,
+        "enforced_command": None,
+    }
+    if policy != "verification-enforced-v1":
+        return transformed, metadata
+    choices = transformed.get("choices") or ()
+    if not choices or not isinstance(choices[0], Mapping):
+        return transformed, metadata
+    message = choices[0].get("message") or {}
+    if not isinstance(message, Mapping) or not isinstance(message.get("content"), str):
+        return transformed, metadata
+
+    content = str(message["content"])
+    blocks = _COMMAND_BLOCK.findall(content)
+    proposed = blocks[-1] if blocks else content
+    guidance = _verification_guidance(logical_messages)
+    replacement: str | None = None
+    reason: str | None = None
+    if "source mutation is still unverified" in guidance:
+        if not re.search(r"\bgit\s+diff\b", proposed, re.IGNORECASE):
+            replacement = "git diff"
+            reason = "diff_required_after_mutation"
+    elif "silent no-op" in guidance:
+        if not _MUTATION.search(proposed):
+            replacement = (
+                "echo 'PRA_AGENT_BLOCKED: reapply the intended source edit with a "
+                "content-matched mutation before continuing'"
+            )
+            reason = "repair_required_after_empty_diff"
+    elif "nonempty source diff is still unverified" in guidance:
+        if not _FOCUSED_TEST.search(proposed):
+            replacement = (
+                "echo 'PRA_AGENT_BLOCKED: run the narrowest relevant test before "
+                "continuing'"
+            )
+            reason = "focused_test_required"
+    elif "Focused verification passed" in guidance:
+        if not _PATCH_CREATE.search(proposed):
+            replacement = "git diff > patch.txt"
+            reason = "patch_creation_required"
+    elif "Inspect patch.txt" in guidance:
+        if not _PATCH_INSPECT.search(proposed):
+            replacement = "cat patch.txt"
+            reason = "patch_inspection_required"
+    elif "submission patch has been inspected" in guidance:
+        if "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" not in proposed:
+            replacement = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+            reason = "submission_required"
+
+    if replacement is None:
+        return transformed, metadata
+    original_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    enforced_content = (
+        f"THOUGHT: PRA-agent enforced workflow boundary ({reason}).\n"
+        f"```mswea_bash_command\n{replacement}\n```"
+    )
+    transformed["choices"][0]["message"]["content"] = enforced_content
+    pra = dict(transformed.get("pra") or {})
+    pra_agent = dict(pra.get("agent") or {})
+    pra_agent.update({
+        "policy": policy,
+        "action_enforced": True,
+        "enforcement_reason": reason,
+        "original_content_sha256": original_hash,
+        "enforced_command": replacement,
+    })
+    pra["agent"] = pra_agent
+    transformed["pra"] = pra
+    metadata.update(pra_agent)
+    return transformed, metadata
 
 
 def _progress_pinned_indices(
@@ -959,11 +1055,20 @@ class TreatmentProxy:
                 response_payload: Any = json.loads(response_body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 response_payload = {"raw_body_sha256": hashlib.sha256(response_body).hexdigest()}
+            enforcement = None
+            if isinstance(response_payload, Mapping):
+                response_payload, enforcement = enforce_consumption_action(
+                    response_payload,
+                    self.consumption_policy,
+                    logical_messages=logical_payload.get("messages", ()),
+                )
+                response_body = json.dumps(response_payload).encode("utf-8")
             self._record_interaction_event({
                 "event": "response",
                 "request_index": request_index,
                 "request_input_sha256": input_digest,
                 "payload": response_payload,
+                "pra_agent_enforcement": enforcement,
             })
         handler.send_header("Content-Length", str(len(response_body)))
         handler.end_headers()

@@ -53,6 +53,7 @@ from experiments.paper4_5_agent.context_treatment import (
     _load_selection_fixture,
     _selection_digest,
     apply_consumption_policy,
+    enforce_consumption_action,
     transform_chat_payload,
 )
 from experiments.paper4_5_agent.serve_llamacpp_pra import (
@@ -206,6 +207,86 @@ def test_verification_guard_advances_only_at_completed_boundaries(
 
     assert expected in transformed["messages"][0]["content"]
     assert overhead > 0
+
+
+def _response(command: str) -> dict[str, object]:
+    return {
+        "id": "test",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": f"THOUGHT: next\n```mswea_bash_command\n{command}\n```",
+            },
+        }],
+    }
+
+
+def _history(steps: list[tuple[str, str]]) -> list[dict[str, str]]:
+    logical = [{"role": "user", "content": "task"}]
+    for command, observation in steps:
+        logical.extend((
+            {
+                "role": "assistant",
+                "content": f"THOUGHT: next\n```mswea_bash_command\n{command}\n```",
+            },
+            {"role": "user", "content": observation},
+        ))
+    return logical
+
+
+@pytest.mark.parametrize(("steps", "proposal", "expected", "reason"), [
+    ([_MUTATION_STEP], "sed -n '1,20p' source.py", "git diff",
+     "diff_required_after_mutation"),
+    ([_MUTATION_STEP, ("git diff", "<returncode>0</returncode><output></output>")],
+     "sed -n '1,20p' source.py", "PRA_AGENT_BLOCKED",
+     "repair_required_after_empty_diff"),
+    ([_MUTATION_STEP, _DIFF_STEP], "grep -R symbol .", "PRA_AGENT_BLOCKED",
+     "focused_test_required"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP], "grep -R symbol .", "git diff > patch.txt",
+     "patch_creation_required"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP, _PATCH_STEP], "git status", "cat patch.txt",
+     "patch_inspection_required"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP, _PATCH_STEP,
+      ("cat patch.txt", "<returncode>0</returncode>")], "git status",
+     "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT", "submission_required"),
+])
+def test_enforced_policy_replaces_out_of_order_boundary_action(
+    steps: list[tuple[str, str]], proposal: str, expected: str, reason: str,
+) -> None:
+    original = _response(proposal)
+    transformed, metadata = enforce_consumption_action(
+        original, "verification-enforced-v1", logical_messages=_history(steps),
+    )
+
+    content = transformed["choices"][0]["message"]["content"]
+    assert expected in content
+    assert metadata["action_enforced"] is True
+    assert metadata["enforcement_reason"] == reason
+    assert metadata["original_content_sha256"]
+    assert transformed["pra"]["agent"]["enforced_command"]
+    assert "pra" not in original
+
+
+def test_enforced_policy_preserves_compliant_or_semantic_action() -> None:
+    compliant = _response("git diff -- source.py")
+    transformed, metadata = enforce_consumption_action(
+        compliant, "verification-enforced-v1", logical_messages=_history([_MUTATION_STEP]),
+    )
+    assert transformed == compliant
+    assert metadata["action_enforced"] is False
+
+    failed_test = _history([
+        _MUTATION_STEP,
+        _DIFF_STEP,
+        ("pytest tests/test_source.py -q", "<returncode>1</returncode>"),
+    ])
+    repair = _response("sed -i 's/new/fixed/' source.py")
+    transformed, metadata = enforce_consumption_action(
+        repair, "verification-enforced-v1", logical_messages=failed_test,
+    )
+    assert transformed == repair
+    assert metadata["action_enforced"] is False
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
 SWEBENCH_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml"
@@ -2199,6 +2280,67 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     assert interactions[0]["logical_payload"]["messages"][1]["content"] == "task alpha"
     assert interactions[0]["physical_payload"]["pra"]["resources"]
     assert interactions[1]["payload"]["choices"][0]["message"]["content"] == "ok"
+
+
+def test_treatment_proxy_enforces_and_traces_agent_boundary(tmp_path: Path) -> None:
+    class Target(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            body = json.dumps({
+                "choices": [{"message": {
+                    "role": "assistant",
+                    "content": (
+                        "THOUGHT: explore\n```mswea_bash_command\n"
+                        "sed -n '1,20p' source.py\n```"
+                    ),
+                }}],
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+    target_thread = threading.Thread(target=target.serve_forever, daemon=True)
+    target_thread.start()
+    interaction_path = tmp_path / "interaction_history.jsonl"
+    proxy = TreatmentProxy(
+        f"http://127.0.0.1:{target.server_port}/v1",
+        mode=ContextTreatment.PASSTHROUGH,
+        budget_fraction=1.0,
+        trace_path=tmp_path / "trace.jsonl",
+        interaction_trace_path=interaction_path,
+        consumption_policy="verification-enforced-v1",
+    )
+    proxy_url = proxy.start()
+    try:
+        payload = json.dumps({"messages": _history([_MUTATION_STEP])}).encode()
+        request = urllib.request.Request(
+            f"{proxy_url}/chat/completions", data=payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            delivered = json.loads(response.read())
+    finally:
+        proxy.close()
+        target.shutdown()
+        target.server_close()
+        target_thread.join(timeout=5)
+
+    assert "git diff" in delivered["choices"][0]["message"]["content"]
+    assert delivered["pra"]["agent"]["action_enforced"] is True
+    interactions = [
+        json.loads(line) for line in interaction_path.read_text(encoding="utf-8").splitlines()
+    ]
+    response_event = interactions[-1]
+    assert response_event["pra_agent_enforcement"]["enforcement_reason"] == (
+        "diff_required_after_mutation"
+    )
+    assert response_event["payload"] == delivered
 
 
 def test_treatment_proxy_returns_structured_frozen_replay_divergence(

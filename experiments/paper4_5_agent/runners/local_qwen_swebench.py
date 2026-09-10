@@ -7,7 +7,7 @@ import os
 import platform
 from pathlib import Path
 
-from ..context_treatment import ContextTreatment
+from ..context_treatment import CONSUMPTION_POLICIES, ContextTreatment
 from .swebench_verified import PINNED_DATASET_REVISION, run
 
 
@@ -49,7 +49,7 @@ def main() -> None:
     parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument(
         "--consumption-policy",
-        choices=("standard", "verification-guard-v1"),
+        choices=CONSUMPTION_POLICIES,
         default="standard",
         help="Hold PRA selection fixed while varying how the agent consumes retained state.",
     )
