@@ -380,51 +380,87 @@ _PATCH_INSPECT = re.compile(
 
 
 def _verification_guidance(messages: Sequence[Mapping[str, Any]]) -> str:
-    """Return one phase-specific instruction only at a verified workflow boundary."""
+    """Return persistent phase guidance derived from the complete causal workflow."""
 
-    assistant_index = next((
-        index for index in range(len(messages) - 1, -1, -1)
-        if messages[index].get("role") == "assistant"
-    ), None)
-    if assistant_index is None:
-        return ""
-    content = str(messages[assistant_index].get("content") or "")
-    blocks = _COMMAND_BLOCK.findall(content)
-    command = blocks[-1] if blocks else content
-    observation = "\n".join(
-        str(row.get("content") or "") for row in messages[assistant_index + 1:]
-        if row.get("role") != "assistant"
-    )
-    if _PATCH_INSPECT.search(command):
-        return (
-            "The submission patch has been inspected. Submit it now with the exact "
-            "completion command required by the task; do not resume exploration."
+    assistant_indices = [
+        index for index, row in enumerate(messages) if row.get("role") == "assistant"
+    ]
+    actions: list[tuple[int, str, str]] = []
+    for position, index in enumerate(assistant_indices):
+        content = str(messages[index].get("content") or "")
+        blocks = _COMMAND_BLOCK.findall(content)
+        command = blocks[-1] if blocks else content
+        end = (
+            assistant_indices[position + 1]
+            if position + 1 < len(assistant_indices) else len(messages)
         )
-    if _PATCH_CREATE.search(command):
-        return "Inspect patch.txt now as the required separate verification command."
-    if _FOCUSED_TEST.search(command) and "<returncode>0</returncode>" in observation:
+        observation = "\n".join(
+            str(row.get("content") or "") for row in messages[index + 1:end]
+            if row.get("role") != "assistant"
+        )
+        actions.append((index, command, observation))
+    mutations = [row for row in actions if _MUTATION.search(row[1])]
+    if not mutations:
+        return ""
+    mutation = mutations[-1]
+    after_mutation = [row for row in actions if row[0] > mutation[0]]
+    diffs = [
+        row for row in after_mutation
+        if re.search(r"\bgit\s+diff\b", row[1], re.IGNORECASE)
+        and not _PATCH_CREATE.search(row[1])
+    ]
+    if not diffs:
+        return (
+            "A source mutation is still unverified. Before any other exploration, inspect "
+            "only the changed source diff with `git diff -- <changed source files>`."
+        )
+    diff = diffs[-1]
+    output = re.search(r"<output>\s*(.*?)\s*</output>", diff[2], re.DOTALL)
+    if output is not None and not output.group(1).strip():
+        return (
+            "The source diff is empty, so the prior mutation was a silent no-op. "
+            "Reapply the intended edit with a content-matched operation rather than "
+            "a line-number-only command, then inspect the diff again."
+        )
+    tests = [
+        row for row in after_mutation
+        if row[0] > diff[0] and _FOCUSED_TEST.search(row[1])
+    ]
+    if not tests:
+        return (
+            "The nonempty source diff is still unverified. Run the narrowest relevant "
+            "reproduction or test now; do not resume source exploration."
+        )
+    verification = tests[-1]
+    if "<returncode>0</returncode>" not in verification[2]:
+        return ""
+    patch_creations = [
+        row for row in after_mutation
+        if row[0] > verification[0] and _PATCH_CREATE.search(row[1])
+    ]
+    if not patch_creations:
         return (
             "Focused verification passed. Create patch.txt now from only the modified "
             "source files; do not resume source discovery."
         )
-    if re.search(r"\bgit\s+diff\b", command, re.IGNORECASE):
-        output = re.search(r"<output>\s*(.*?)\s*</output>", observation, re.DOTALL)
-        if output is not None and not output.group(1).strip():
-            return (
-                "The source diff is empty, so the prior mutation was a silent no-op. "
-                "Reapply the intended edit with a content-matched operation rather than "
-                "a line-number-only command, then inspect the diff again."
-            )
-        return (
-            "The source diff has been inspected. Run the narrowest relevant reproduction "
-            "or test now; repair the edit only if that check exposes a concrete defect."
-        )
-    if _MUTATION.search(command):
-        return (
-            "A source mutation just completed. Before any other exploration, inspect only "
-            "the changed source diff with `git diff -- <changed source files>`."
-        )
-    return ""
+    patch_creation = patch_creations[-1]
+    inspections = [
+        row for row in after_mutation
+        if row[0] > patch_creation[0] and _PATCH_INSPECT.search(row[1])
+    ]
+    if not inspections:
+        return "Inspect patch.txt now as the required separate verification command."
+    inspection = inspections[-1]
+    submitted = any(
+        row[0] > inspection[0] and "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in row[1]
+        for row in after_mutation
+    )
+    if submitted:
+        return ""
+    return (
+        "The submission patch has been inspected. Submit it now with the exact completion "
+        "command required by the task; do not resume exploration."
+    )
 
 
 def _progress_pinned_indices(

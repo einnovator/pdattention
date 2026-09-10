@@ -156,7 +156,7 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
     assert transformed["pra"]["metadata"]["consumption_policy"] == (
         "verification-guard-v1"
     )
-    assert "source mutation just completed" in transformed["messages"][-1]["content"]
+    assert "source mutation is still unverified" in transformed["messages"][-1]["content"]
     assert transformed["messages"][0]["content"] == "base system"
     assert overhead > 0
 
@@ -167,35 +167,40 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
     assert no_overhead == 0
 
 
-@pytest.mark.parametrize(("command", "observation", "expected"), [
-    (
-        "git diff -- source.py",
-        "<returncode>0</returncode><output>diff --git a/source.py b/source.py</output>",
-        "narrowest relevant",
-    ),
-    (
-        "git diff -- source.py",
-        "<returncode>0</returncode><output>\n</output>",
-        "silent no-op",
-    ),
-    ("python -m pytest tests/test_source.py -q", "<returncode>0</returncode>", "Create patch.txt"),
-    ("git diff -- source.py > patch.txt", "<returncode>0</returncode>", "Inspect patch.txt"),
-    ("cat patch.txt", "<returncode>0</returncode>", "Submit it now"),
+_MUTATION_STEP = ("sed -i 's/old/new/' source.py", "<returncode>0</returncode>")
+_DIFF_STEP = (
+    "git diff -- source.py",
+    "<returncode>0</returncode><output>diff --git a/source.py b/source.py</output>",
+)
+_TEST_STEP = ("python -m pytest tests/test_source.py -q", "<returncode>0</returncode>")
+_PATCH_STEP = ("git diff -- source.py > patch.txt", "<returncode>0</returncode>")
+
+
+@pytest.mark.parametrize(("steps", "expected"), [
+    ([_MUTATION_STEP, ("sed -n '1,20p' source.py", "<returncode>0</returncode>")],
+     "still unverified"),
+    ([_MUTATION_STEP, _DIFF_STEP], "narrowest relevant"),
+    ([
+        _MUTATION_STEP,
+        ("git diff -- source.py", "<returncode>0</returncode><output>\n</output>"),
+    ], "silent no-op"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP], "Create patch.txt"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP, _PATCH_STEP], "Inspect patch.txt"),
+    ([_MUTATION_STEP, _DIFF_STEP, _TEST_STEP, _PATCH_STEP,
+      ("cat patch.txt", "<returncode>0</returncode>")], "Submit it now"),
 ])
 def test_verification_guard_advances_only_at_completed_boundaries(
-    command: str, observation: str, expected: str,
+    steps: list[tuple[str, str]], expected: str,
 ) -> None:
-    logical = [
-        {"role": "user", "content": "task"},
-        {
+    logical = [{"role": "user", "content": "task"}]
+    for command, observation in steps:
+        logical.extend(({
             "role": "assistant",
             "content": f"THOUGHT: next\n```mswea_bash_command\n{command}\n```",
-        },
-        {"role": "user", "content": observation},
-    ]
+        }, {"role": "user", "content": observation}))
 
     transformed, overhead = apply_consumption_policy(
-        {"messages": [{"role": "user", "content": observation}]},
+        {"messages": [{"role": "user", "content": steps[-1][1]}]},
         "verification-guard-v1", logical_messages=logical,
     )
 
