@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import Any
 
 from ..benchmark import load_benchmark_card
-from ..context_treatment import ContextTreatment, TreatmentProxy, session_id_for_messages
+from ..context_treatment import (
+    CONSUMPTION_POLICIES,
+    ContextTreatment,
+    TreatmentProxy,
+    session_id_for_messages,
+)
 
 
 EXPECTED_PACKAGES = {
@@ -419,6 +424,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "harness": "mini-swe-agent",
         "harness_version": args.harness_version,
         "harness_config": args.scaffold,
+        "consumption_policy": getattr(args, "consumption_policy", "standard"),
         "model_class": "litellm_textbased",
         "official_grader": args.grading,
         "grader_version": args.grader_version,
@@ -439,6 +445,13 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
 def run(args: argparse.Namespace) -> Path:
     """Execute all fixed IDs in resumable chunks and normalize official grading."""
 
+    consumption_policy = getattr(args, "consumption_policy", "standard")
+    if consumption_policy != "standard" and args.mode not in {
+        ContextTreatment.PRA_SELECTED_CONTEXT.value,
+        ContextTreatment.DIRECT_NATIVE_PRA.value,
+        ContextTreatment.GATEWAY_NATIVE_PRA.value,
+    }:
+        raise ValueError("nonstandard consumption policies require a PRA treatment")
     selection_record = getattr(args, "selection_record", None)
     selection_replay = getattr(args, "selection_replay", None)
     if selection_record and selection_replay:
@@ -483,6 +496,7 @@ def run(args: argparse.Namespace) -> Path:
             recent_completed_turns=getattr(args, "recent_completed_turns", 2),
             recent_mutation_turns=getattr(args, "recent_mutation_turns", 1),
             recent_verification_turns=getattr(args, "recent_verification_turns", 1),
+            consumption_policy=getattr(args, "consumption_policy", "standard"),
             request_overrides={
                 "prefix_caching": bool(getattr(args, "prefix_caching", False))
             },
@@ -635,6 +649,7 @@ def _execute_chunks(
             "quantization": args.quantization,
             "kv_cache_dtype": args.kv_cache_dtype,
             "scaffold": args.scaffold,
+            "consumption_policy": getattr(args, "consumption_policy", "standard"),
             "context_limit": args.context_limit,
             "max_steps": args.max_steps,
             "max_completion_tokens": getattr(args, "max_completion_tokens", None),
@@ -686,6 +701,7 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "context_budget_fraction", "context_limit", "max_steps",
                 "retention_policy",
                 "max_completion_tokens",
+                "consumption_policy",
                 "chat_template_no_thinking",
                 "prefix_caching",
                 "docker_platform",
@@ -1241,6 +1257,12 @@ def main() -> None:
     parser.add_argument("--recent-completed-turns", type=int, default=2)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
+    parser.add_argument(
+        "--consumption-policy",
+        choices=tuple(CONSUMPTION_POLICIES),
+        default="standard",
+        help="Vary the agent consumption contract without changing PRA retention settings.",
+    )
     parser.add_argument(
         "--selection-record", type=Path,
         help="Record exact ordered selected resources for a later transport-equivalence replay.",

@@ -11,7 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +39,21 @@ class FrozenReplayDivergence(RuntimeError):
     """The paired trajectory no longer has a recorded exact request."""
 
 
+CONSUMPTION_POLICIES = ("standard", "verification-guard-v1")
+
+_VERIFICATION_GUARD = """
+<pra_consumption_policy name="verification-guard-v1">
+A command that changes a source file starts a mandatory verification sequence.
+Your next command MUST inspect the source diff with `git diff -- <changed source files>`.
+If the intended change is absent or malformed, repair it before doing anything else.
+If the diff is sound, your next command MUST run the narrowest relevant reproduction or test.
+Once focused verification passes, do not resume source discovery: create the submission patch,
+inspect it in a separate command, and submit it exactly as the task instructions require.
+Return to exploration only when the diff or focused verification identifies a concrete defect.
+</pra_consumption_policy>
+""".strip()
+
+
 @dataclass(frozen=True)
 class TreatmentTrace:
     """One request's disjoint logical, selected, and visible context accounting."""
@@ -58,6 +73,37 @@ class TreatmentTrace:
     selected_resource_digest: str | None
     route_time_s: float
     token_estimator: str = "whitespace_v1"
+
+
+def apply_consumption_policy(
+    payload: Mapping[str, Any], policy: str,
+) -> tuple[dict[str, Any], int]:
+    """Change model presentation only after routing, preserving selected records."""
+
+    if policy not in CONSUMPTION_POLICIES:
+        raise ValueError(
+            f"unknown consumption policy {policy!r}; expected one of {CONSUMPTION_POLICIES}"
+        )
+    transformed = dict(payload)
+    if policy == "standard":
+        return transformed, 0
+    messages = [dict(row) for row in transformed.get("messages", ())]
+    system_index = next(
+        (index for index, row in enumerate(messages) if row.get("role") == "system"),
+        None,
+    )
+    if system_index is None:
+        messages.insert(0, {"role": "system", "content": _VERIFICATION_GUARD})
+    else:
+        content = str(messages[system_index].get("content") or "")
+        messages[system_index]["content"] = f"{content}\n\n{_VERIFICATION_GUARD}"
+    transformed["messages"] = messages
+    envelope = dict(transformed.get("pra") or {})
+    metadata = dict(envelope.get("metadata") or {})
+    metadata["consumption_policy"] = policy
+    envelope["metadata"] = metadata
+    transformed["pra"] = envelope
+    return transformed, _count_tokens(_VERIFICATION_GUARD)
 
 
 def transform_chat_payload(
@@ -633,6 +679,7 @@ class TreatmentProxy:
         recent_completed_turns: int = 2,
         recent_mutation_turns: int = 1,
         recent_verification_turns: int = 1,
+        consumption_policy: str = "standard",
     ) -> None:
         if selection_record_path is not None and selection_replay_path is not None:
             raise ValueError("selection recording and replay are mutually exclusive")
@@ -647,6 +694,12 @@ class TreatmentProxy:
         self.recent_completed_turns = recent_completed_turns
         self.recent_mutation_turns = recent_mutation_turns
         self.recent_verification_turns = recent_verification_turns
+        if consumption_policy not in CONSUMPTION_POLICIES:
+            raise ValueError(
+                f"unknown consumption policy {consumption_policy!r}; "
+                f"expected one of {CONSUMPTION_POLICIES}"
+            )
+        self.consumption_policy = consumption_policy
         self._frozen_selections = _load_selection_fixture(selection_replay_path)
         self._lock = threading.Lock()
         self._request_index = 0
@@ -765,6 +818,23 @@ class TreatmentProxy:
                 recent_mutation_turns=self.recent_mutation_turns,
                 recent_verification_turns=self.recent_verification_turns,
             )
+            payload, policy_tokens = apply_consumption_policy(
+                payload, self.consumption_policy,
+            )
+            if policy_tokens:
+                physical_tokens = trace.physical_input_tokens_estimate + policy_tokens
+                avoided_tokens = max(
+                    0, trace.logical_input_tokens_estimate - physical_tokens,
+                )
+                trace = replace(
+                    trace,
+                    physical_input_tokens_estimate=physical_tokens,
+                    tokens_avoided_estimate=avoided_tokens,
+                    token_saving_fraction_estimate=(
+                        avoided_tokens / trace.logical_input_tokens_estimate
+                        if trace.logical_input_tokens_estimate else 0.0
+                    ),
+                )
             if self.selection_record_path is not None:
                 resources = (payload.get("pra") or {}).get("resources") or ()
                 self._record_selection(input_digest, trace, resources)

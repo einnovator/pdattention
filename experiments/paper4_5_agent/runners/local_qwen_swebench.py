@@ -48,6 +48,12 @@ def main() -> None:
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument(
+        "--consumption-policy",
+        choices=("standard", "verification-guard-v1"),
+        default="standard",
+        help="Hold PRA selection fixed while varying how the agent consumes retained state.",
+    )
+    parser.add_argument(
         "--max-completion-tokens",
         type=int,
         default=4096,
@@ -113,6 +119,7 @@ def main() -> None:
         recent_completed_turns=options.recent_completed_turns,
         recent_mutation_turns=options.recent_mutation_turns,
         recent_verification_turns=options.recent_verification_turns,
+        consumption_policy=options.consumption_policy,
         workers=1,
         grader_workers=2,
         chunk_size=1,

@@ -52,6 +52,7 @@ from experiments.paper4_5_agent.context_treatment import (
     TreatmentProxy,
     _load_selection_fixture,
     _selection_digest,
+    apply_consumption_policy,
     transform_chat_payload,
 )
 from experiments.paper4_5_agent.serve_llamacpp_pra import (
@@ -118,6 +119,33 @@ from experiments.agents.schema import BenchmarkManifest
 
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_verification_guard_changes_presentation_after_selection_only() -> None:
+    resources = [{"resource_id": "m1-0-user", "text": "retained history"}]
+    payload = {
+        "messages": [
+            {"role": "system", "content": "base system"},
+            {"role": "user", "content": "current observation"},
+        ],
+        "pra": {
+            "resources": resources,
+            "metadata": {"selection_complete": False},
+        },
+    }
+
+    transformed, overhead = apply_consumption_policy(
+        payload, "verification-guard-v1",
+    )
+
+    assert payload["messages"][0]["content"] == "base system"
+    assert transformed["pra"]["resources"] == resources
+    assert transformed["pra"]["metadata"]["selection_complete"] is False
+    assert transformed["pra"]["metadata"]["consumption_policy"] == (
+        "verification-guard-v1"
+    )
+    assert "next command MUST inspect" in transformed["messages"][0]["content"]
+    assert overhead > 0
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"
 SWEBENCH_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_pra_frontier.yaml"
