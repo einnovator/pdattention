@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-09-10",
+  "status": "implementation_gate_active_experiments_stopped",
+  "agent_history_invariant": {
+    "definition": "Selected agent-history K/V must be an exact subset of cells already encoded in the session's live prefix cache.",
+    "required": [
+      "stable record and causal-group identity",
+      "source-prefix token ranges",
+      "zero selected-text re-encoding after capture",
+      "original logical positions",
+      "multiple selected records in one attention normalization",
+      "request membership removal without deleting source membership",
+      "100% retention exact live-state continuation"
+    ],
+    "disallowed_as_agent_history_evidence": [
+      "re-tokenizing selected records and prefilling them into a new cache",
+      "longest-common-prefix reuse of a changing composite selected-text resource",
+      "ordinary sequential state restore labeled as arbitrary selected K/V",
+      "fresh-prefill equivalence used as a substitute for same-state continuation"
+    ]
+  },
+  "engines": {
+    "llama.cpp": {
+      "status": "live_range_attach_implemented_qualification_incomplete",
+      "previous_path": "Selected record text was rendered into one composite resource; a changed suffix was re-prefilled.",
+      "current_path": "pra_source_slot plus pra_selected_ranges adds request sequence membership to existing unified-cache cells with llama_memory_seq_cp.",
+      "selected_text_reencoded_tokens": 0,
+      "physical_kv_copy": false,
+      "multiple_selected_records": true,
+      "source_positions_preserved": true,
+      "same_state_smoke": {
+        "model": "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
+        "turns": 2,
+        "exact_turns": 2,
+        "commit_and_reattach_exact": true
+      },
+      "kernel_constraint": "The selected set must include the live prefix's last resident position so new positions remain consecutive.",
+      "remaining_gates": [
+        "registered record lifecycle rather than client-trusted raw ranges",
+        "rejected-action and transcript-backtrack repair",
+        "cancellation and concurrent commit conflict tests",
+        "per-record eviction/offload and reload",
+        "multi-seed and multi-model stateful qualification"
+      ]
+    },
+    "HuggingFace": {
+      "status": "not_live_prefix_qualified",
+      "current_behavior": "HuggingFaceEngineAdapter.add_reference encodes detached resource text independently of the agent's conversational past_key_values.",
+      "required_repair": "Capture per-record views/slices from the live past_key_values and consume selected views with explicit source cache_position semantics and one attention normalization."
+    },
+    "MLX": {
+      "status": "not_live_prefix_qualified",
+      "current_behavior": "The native executor tokenizes each resource, calls encode_native_memory, then concatenates selected K/V arrays.",
+      "required_repair": "Snapshot immutable record views from the live prompt cache and use segmented selected attention without re-encoding or concatenating selected arrays."
+    },
+    "vLLM": {
+      "status": "partial_capture_primitive_not_agent_qualified",
+      "current_behavior": "capture_paged_memory can read live prefill pages, but the active adapter does not bind stable agent records to scheduler-owned source pages; the hot bridge copies/rematerializes pages.",
+      "required_repair": "Pin source prefix blocks by session/record identity and build request block tables from selected existing block IDs, with copy and newly encoded token telemetry kept separate."
+    },
+    "SGLang": {
+      "status": "not_live_prefix_qualified",
+      "current_behavior": "The current executor tokenizes detached resource text and encodes it through an MLX-backed bridge; stock RadixAttention only reuses matching prefixes.",
+      "required_repair": "Bind record ranges to live RadixAttention cache nodes/pages and attach selected existing blocks to the request without resource-text encoding."
+    }
+  },
+  "experiment_restart_gate": {
+    "required_before_easy50": [
+      "100% same-state continuation exactness",
+      "zero selected-text re-encoding telemetry",
+      "multiple record attachment",
+      "record-aware causal selection",
+      "rejected-action/backtrack regression",
+      "cache-on versus cache-off semantics reported without conflating fresh-prefill numerical reproducibility"
+    ]
+  }
+}

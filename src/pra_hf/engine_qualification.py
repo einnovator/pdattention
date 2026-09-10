@@ -34,6 +34,118 @@ class Representation(str, Enum):
     SOURCE = "SOURCE"
 
 
+class SelectedKVSource(str, Enum):
+    """Where selected K/V came from before the current request consumed it."""
+
+    TEXT_REMATERIALIZED = "text_rematerialized"
+    DETACHED_RESOURCE_ENCODING = "detached_resource_encoding"
+    LIVE_PREFIX_CAPTURE = "live_prefix_capture"
+
+
+@dataclass(frozen=True)
+class SelectedKVRange:
+    """Stable logical record mapped to an interval in one live prefix."""
+
+    record_id: str
+    parent_record_id: str
+    causal_group_id: str
+    start: int
+    end: int
+
+    def __post_init__(self) -> None:
+        if not self.record_id or not self.parent_record_id or not self.causal_group_id:
+            raise ValueError("Selected K/V ranges require stable record and causal IDs.")
+        if self.start < 0 or self.end <= self.start:
+            raise ValueError("Selected K/V ranges must be non-empty half-open intervals.")
+
+
+@dataclass(frozen=True)
+class LivePrefixKVObservation:
+    """Machine-checkable provenance for one agent-history K/V attachment.
+
+    Token counts alone cannot distinguish true live-cache reuse from selected
+    text that an engine silently encoded again. A qualifying observation names
+    the source prefix, lists selected record intervals, and reports re-encoding
+    and physical-copy work separately.
+    """
+
+    source: SelectedKVSource | str
+    source_prefix_id: str
+    source_token_count: int
+    ranges: tuple[SelectedKVRange, ...]
+    selected_kv_tokens: int
+    reused_kv_tokens: int
+    selected_text_reencoded_tokens: int
+    physical_kv_copy_tokens: int = 0
+    source_positions_preserved: bool = False
+    single_attention_normalization: bool = False
+    exact_live_prefix_continuation: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source", SelectedKVSource(self.source))
+        object.__setattr__(self, "ranges", tuple(self.ranges))
+        for name in (
+            "source_token_count",
+            "selected_kv_tokens",
+            "reused_kv_tokens",
+            "selected_text_reencoded_tokens",
+            "physical_kv_copy_tokens",
+        ):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} cannot be negative.")
+
+    @property
+    def interval_tokens(self) -> int:
+        return sum(span.end - span.start for span in self.ranges)
+
+    @property
+    def full_retention(self) -> bool:
+        if self.source_token_count == 0:
+            return False
+        merged = sorted((span.start, span.end) for span in self.ranges)
+        cursor = 0
+        for start, end in merged:
+            if start != cursor:
+                return False
+            cursor = end
+        return cursor == self.source_token_count
+
+    def qualification_gaps(
+        self, *, require_full_retention: bool = False
+    ) -> tuple[str, ...]:
+        gaps: list[str] = []
+        if self.source is not SelectedKVSource.LIVE_PREFIX_CAPTURE:
+            gaps.append(f"source:{self.source.value}")
+        if not self.source_prefix_id:
+            gaps.append("source_prefix_id")
+        if not self.ranges:
+            gaps.append("selected_ranges")
+        ordered = sorted(self.ranges, key=lambda span: (span.start, span.end))
+        cursor = -1
+        for span in ordered:
+            if span.end > self.source_token_count:
+                gaps.append(f"range_out_of_bounds:{span.record_id}")
+            if span.start < cursor:
+                gaps.append(f"overlapping_range:{span.record_id}")
+            cursor = max(cursor, span.end)
+        if self.selected_kv_tokens != self.interval_tokens:
+            gaps.append("selected_token_count")
+        if self.reused_kv_tokens != self.selected_kv_tokens:
+            gaps.append("reused_token_count")
+        if self.selected_text_reencoded_tokens:
+            gaps.append(f"selected_text_reencoded:{self.selected_text_reencoded_tokens}")
+        if not self.source_positions_preserved:
+            gaps.append("source_positions_preserved")
+        if not self.single_attention_normalization:
+            gaps.append("single_attention_normalization")
+        if require_full_retention:
+            if not self.full_retention:
+                gaps.append("full_retention_coverage")
+            if not self.exact_live_prefix_continuation:
+                gaps.append("full_retention_prefix_equivalence")
+        return tuple(dict.fromkeys(gaps))
+
+
 @dataclass(frozen=True)
 class FrozenSelection:
     """One selector result reused verbatim by E0, E2, and E3 execution."""
@@ -139,6 +251,19 @@ E2_REQUIRED_INVARIANTS = frozenset(
 E3_REQUIRED_INVARIANTS = frozenset(
     {"scheduler_owned_lifecycle", "promotion_eviction_reload", "concurrent_batching"}
 )
+STATEFUL_AGENT_REQUIRED_INVARIANTS = frozenset(
+    {
+        "generated_history_replay_exact",
+        "live_state_continuation_exact",
+        "boundary_token_preserved",
+        "multi_turn_cleanup",
+        "live_prefix_kv_subset",
+        "zero_selected_text_reencoding",
+        "source_positions_preserved",
+        "multiple_record_attach",
+        "full_retention_prefix_equivalence",
+    }
+)
 
 
 def qualification_gaps(
@@ -188,6 +313,33 @@ def claimed_level_is_supported(row: ProductMatrixRow) -> bool:
     """Return whether the row closes every gate for its claimed level."""
 
     return not qualification_gaps(row, row.integration_level)
+
+
+def stateful_agent_qualification_gaps(
+    *,
+    exact_pairs: int,
+    total_pairs: int,
+    verified_invariants: Sequence[str],
+) -> tuple[str, ...]:
+    """Gate stateful agent reuse beyond ordinary static E2 parity.
+
+    Dense-vs-native parity on an immutable document does not establish that a
+    generated multi-turn trajectory can be transferred safely.  Stateful
+    agents additionally require exact live continuation, preservation of the
+    sampled-but-not-yet-evaluated boundary token, and lifecycle cleanup.
+    """
+
+    gaps = [
+        f"invariant:{name}"
+        for name in sorted(
+            STATEFUL_AGENT_REQUIRED_INVARIANTS - set(verified_invariants)
+        )
+    ]
+    if total_pairs <= 0:
+        gaps.append("sequential_state_pairs")
+    elif exact_pairs != total_pairs:
+        gaps.append(f"sequential_state_exact:{exact_pairs}/{total_pairs}")
+    return tuple(gaps)
 
 
 def assert_selector_frozen(rows: Sequence[ProductMatrixRow]) -> None:

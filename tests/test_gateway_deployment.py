@@ -124,6 +124,32 @@ def test_hf_capability_contract_names_supported_runtime_boundaries():
     assert not capabilities.supports("scheduler_hints")
 
 
+def test_agent_history_kv_qualification_cannot_be_advertised_partially():
+    with pytest.raises(ValueError, match="Qualified agent-history K/V requires"):
+        PRAEngineCapabilities(
+            adapter="broken-agent-engine",
+            integration_level="E2",
+            native_kv=True,
+            agent_history_kv_qualified=True,
+        )
+
+    qualified = PRAEngineCapabilities(
+        adapter="qualified-agent-engine",
+        integration_level="E2",
+        native_kv=True,
+        session_state=True,
+        live_prefix_kv_capture=True,
+        live_prefix_kv_subset=True,
+        zero_selected_text_reencoding=True,
+        stable_record_kv_identity=True,
+        multiple_selected_records=True,
+        source_positions_preserved=True,
+        request_membership_attach=True,
+        agent_history_kv_qualified=True,
+    )
+    assert qualified.agent_history_kv_qualified
+
+
 def test_g10_is_an_explicit_text_fallback_not_native_pra():
     adapter = RecordingAdapter()
     request = _request(

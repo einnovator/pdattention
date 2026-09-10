@@ -79,9 +79,15 @@ class VLLMEngineAdapter(OpenAICompatibleEngineAdapter):
             integration_level="E2",
             prefix_cache_mode=PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
             automatic_prefix_cache=True,
-            session_state=True,
-            resource_delta=True,
-            cache_affinity=True,
+            # APC reuses matching full prefixes but this adapter does not
+            # expose append-only live conversational state.
+            session_state=False,
+            # The native-executor protocol receives complete PRAWireRequests;
+            # it does not define replay of resource_ops against engine-owned
+            # session state. Keep descriptors on every turn so unchanged
+            # resources cannot disappear at the gateway boundary.
+            resource_delta=False,
+            cache_affinity=False,
             logical_refs=True,
             typed_records=True,
             text_fallback=True,

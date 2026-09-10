@@ -67,11 +67,18 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
             adapter="sglang_pra",
             engine_type=EngineType.SGLANG,
             integration_level="E2",
-            prefix_cache_mode=PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
-            automatic_prefix_cache=True,
-            session_state=True,
-            resource_delta=True,
-            cache_affinity=True,
+            # The current in-process executor removes each local runner
+            # request after decode. Only detached PRA resource memory remains;
+            # local conversational K/V is not a reusable live session.
+            prefix_cache_mode=PrefixCacheMode.STATELESS,
+            automatic_prefix_cache=False,
+            session_state=False,
+            # Cached native objects are reused by logical key, but this
+            # executor still resolves that key from the full resource
+            # descriptor on each request. It cannot consume descriptor-free
+            # UNCHANGED operations yet.
+            resource_delta=False,
+            cache_affinity=False,
             logical_refs=True,
             typed_records=True,
             text_fallback=True,

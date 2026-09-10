@@ -67,12 +67,19 @@ class MLXEngineAdapter(OpenAICompatibleEngineAdapter):
             adapter="mlx_lm_native",
             engine_type=EngineType.MLX,
             integration_level="E2",
-            prefix_cache_mode=PrefixCacheMode.EXPLICIT_PREFIX_HANDLE,
-            explicit_prefix_cache=True,
-            session_state=True,
-            resource_delta=True,
-            cache_affinity=True,
-            prefix_cache_handle=True,
+            # The native executor creates a fresh local sequential prompt
+            # cache for every request. Persisted selected-resource K/V is not
+            # an explicit conversational prefix handle.
+            prefix_cache_mode=PrefixCacheMode.STATELESS,
+            explicit_prefix_cache=False,
+            session_state=False,
+            # Native memory survives across requests, but the current
+            # executor does not reconstruct selected resources from bare
+            # resource_ops. Preserve full descriptors until that protocol is
+            # implemented and qualified.
+            resource_delta=False,
+            cache_affinity=False,
+            prefix_cache_handle=False,
             logical_refs=True,
             typed_records=True,
             text_fallback=True,
