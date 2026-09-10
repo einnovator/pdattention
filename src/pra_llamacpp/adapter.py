@@ -241,7 +241,11 @@ class LlamaCppNativeServerExecutor:
         return prompt
 
     def _erase_request_slot(self, slot: int) -> None:
-        self._request_json(f"/slots/{int(slot)}?action=erase", {})
+        # The current upstream server exposes slot actions as a non-POST
+        # control route; sending an empty JSON POST yields HTTP 501. The PRA
+        # release endpoint is method-stable and clears both sequence
+        # membership and prompt bookkeeping for request and source slots.
+        self._delete_resource(int(slot))
 
     def _resource_identity(
         self, request: PRAWireRequest, digest: str

@@ -148,6 +148,14 @@ class FakeNativeServerExecutor(LlamaCppNativeServerExecutor):
         return {"success": True}
 
 
+def test_request_slot_erase_uses_method_stable_pra_release_endpoint() -> None:
+    executor = FakeNativeServerExecutor()
+
+    executor._erase_request_slot(3)
+
+    assert executor.calls[-1] == ("/pra/resources/3", None)
+
+
 def test_native_server_executor_negotiates_encodes_once_and_attaches() -> None:
     executor = FakeNativeServerExecutor()
     adapter = LlamaCppEngineAdapter(
