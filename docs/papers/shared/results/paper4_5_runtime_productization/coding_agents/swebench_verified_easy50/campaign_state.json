@@ -114,7 +114,8 @@
       "priority": 0
     },
     "easy50-gateway-passthrough": {
-      "state": "PENDING",
+      "state": "BLOCKED",
+      "reason": "Campaign-wide correctness reset: experiments remain stopped until live-prefix selected-K/V qualification passes.",
       "command": [
         "python",
         "-m",
@@ -143,7 +144,8 @@
       "priority": 10
     },
     "easy50-native-pra-direct-50": {
-      "state": "PENDING",
+      "state": "BLOCKED",
+      "reason": "Composite selected-text rematerialization is not agent-history PRA; live-prefix selected-K/V qualification is incomplete.",
       "command": [
         "python",
         "-m",
@@ -177,7 +179,7 @@
     },
     "easy50-native-pra-gateway-50": {
       "state": "BLOCKED",
-      "reason": "Treatment requires prerequisite easy50-gateway-passthrough=COMPLETED; observed PENDING.",
+      "reason": "Campaign-wide correctness reset: direct live-prefix selected-K/V must qualify before gateway testing.",
       "command": [
         "python",
         "-m",
@@ -207,7 +209,8 @@
       "priority": 31
     },
     "easy50-truncation-50": {
-      "state": "PENDING",
+      "state": "BLOCKED",
+      "reason": "Campaign-wide correctness reset keeps every comparison arm stopped until the engine invariant passes.",
       "command": [
         "python",
         "-m",
@@ -265,7 +268,7 @@
       "evidence_role": "efficacy",
       "selection_contract": "not_applicable",
       "priority": 30,
-      "reason": "Treatment requires prerequisite easy50-gateway-passthrough=COMPLETED; observed PENDING."
+      "reason": "Campaign-wide correctness reset: selected-text gateway rows are not substitutes for live-prefix selected-K/V."
     },
     "easy50-truncation-25": {
       "state": "SKIPPED",
@@ -393,7 +396,7 @@
     },
     "easy50-native-pra-gateway-equivalence-50": {
       "state": "BLOCKED",
-      "reason": "Treatment requires prerequisite easy50-gateway-passthrough=COMPLETED; observed PENDING.",
+      "reason": "Campaign-wide correctness reset: direct live-prefix selected-K/V must qualify before frozen gateway equivalence.",
       "command": [
         "python",
         "-m",

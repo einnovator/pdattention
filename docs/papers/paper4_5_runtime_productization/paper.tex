@@ -2984,14 +2984,25 @@ requests total). This validates template grammar, not causal completeness or
 task efficacy; both fragment-level runs and profile attempts made before the
 active-tail correction are excluded from solve-rate and efficiency deltas and
 must be rerun.
+The revised segmenter also treats message/tool records as the first physical
+boundary. Short records remain intact; overlap never crosses records; and an
+oversized observation splits at file headers, stack frames, test cases, or diff
+hunks before falling back to token windows. Every child retains a stable parent
+record and causal-group ID plus return-code, mutation, and result metadata.
+Child slices are disjoint before budget accounting, while physical engine
+packing preserves their logical identities. Once engine correctness qualifies,
+the matched segmentation ablation will compare fixed token windows,
+record-aligned messages, causal bundles, and hierarchical causal bundles with
+selective regions inside oversized observations.
 The engine path also stopped deleting the pinned selected-history sequence when
-its digest changes. It now submits the replacement to the same owned slot and
-lets llama.cpp retain the exact common token prefix while trimming the
-divergent tail. A physical M4 probe cached 2,450 of 2,455 replacement-prefix
-tokens, evaluated only five tokens versus 2,455 under cold materialization, and
-then produced the same 32 sampled tokens as the cold reference with no physical
-K/V copy. This qualifies the delta mechanism; agent-level runtime benefit still
-requires the matched profile and prefix-cache factorial.
+its digest changes. It submitted the replacement text to the same owned slot
+and let llama.cpp retain the exact common token prefix while trimming and
+re-evaluating the divergent tail. A physical M4 probe cached 2,450 of 2,455
+replacement-prefix tokens and evaluated five tokens versus 2,455 under cold
+materialization. This is useful composite-prefix reuse, but it does
+\emph{not} qualify agent-history PRA: any selected text after the common prefix
+is encoded again, and several selected records are collapsed into one physical
+resource. We therefore reclassify this path as a rematerialization diagnostic.
 
 The first corrected active-tail efficacy result separates those layers. On
 task 01, both the same-engine plain control and the 100\% live-prefix PRA arm
@@ -3002,9 +3013,11 @@ nonempty one-line patch fails to apply, for 0/1 officially resolved. Estimated
 logical-to-physical context falls by 23.2\%. Independently, resource-delta
 telemetry records 83,644 selected-prefix token-exposures but only 33,600 newly
 evaluated resource tokens, with 43,852 exact common-prefix cache hits, three
-identity hits, 18 delta updates, and no physical K/V copy. Thus native reuse is
-working while this selector profile fails its task-quality gate. This single
-negative probe does not admit an end-to-end gateway quality claim. The task-01
+identity hits, 18 delta updates, and no physical K/V copy. These counters
+describe ordinary longest-common-prefix reuse of changing selected text, not
+arbitrary selected-record K/V reuse. This selector profile also fails its
+task-quality gate. The row is retained only as a diagnostic and does not admit
+an end-to-end gateway or PRA efficiency claim. The task-01
 50\% arm also resolves 0/1: it reaches the 50-step limit with no patch while
 reducing estimated logical context by 47.0\%. Its 167,908 resource-managed
 selected-prefix token-exposures require 57,301 newly evaluated tokens; 83,775
@@ -3013,8 +3026,8 @@ updates, and no K/V copy occurs. The 25\% arm likewise resolves 0/1 at the
 50-step limit with no patch. Its pinned active tail limits realized estimated
 savings to 67.6\%, but delta/identity reuse reduces newly evaluated resource
 tokens to 19,193 across 116,572 resource token-exposures. A frozen-selection
-cache on/off factorial can still isolate engine reuse, followed by the direct
-task-major matrix over the remaining 13 baseline-success tasks.
+cache on/off factorial was planned, but the Easy-50 matrix is now stopped until
+the live-prefix subset implementation passes the correctness gate below.
 
 An initial frozen factorial appeared to fail a stricter consumption gate. The
 cache-off 50\% anchor submitted an unresolved nonempty patch after 44 model
@@ -3038,7 +3051,51 @@ digests, and complete responses. Both arms emit the same 689-byte, 14-line
 patch and resolve under the official grader. Cache-on retains 120,848 of
 126,772 physical prompt tokens (95.3\%) and completes the agent in 100.3~s,
 versus 2,792.5~s cache-off, a 27.85$\times$ single-task speedup. This is a
-qualified strict llama.cpp control, not yet a population-level latency claim.
+qualified strict \emph{prefix-cache versus cold-prefill} control, not a PRA
+speedup: 100\% retention selects no subset and the cache-on arm remains on its
+ordinary live slot.
+
+\paragraph{Agent-history K/V correctness reset.}
+We stopped the Easy-50 treatment matrix after recognizing that the composite
+resource design violated the product invariant. For an agent trajectory, PRA
+must select cells already encoded in the session's live prefix cache; it must
+not tokenize and prefill the selected transcript again. The replacement
+llama.cpp path names one pinned live source sequence plus multiple stable
+record ranges. Unified-cache \texttt{seq\_cp} adds request membership to those
+existing cells without copying K/V, preserves their original positions, and
+removes request membership without deleting source membership. Newly evaluated
+query and generation cells are committed back to the source. The final sampled
+token, which llama.cpp returns before evaluating it into K/V, is explicitly
+reported as pending and bridged in the next suffix.
+
+On an M4 Pro with Qwen2.5-0.5B-Instruct Q4\_K\_M, a 20-turn same-state gate
+forked the control and treatment from identical source K/V on every turn. All
+20 continuations matched token-for-token as the source grew from 11 to 343
+tokens; zero selected tokens were re-encoded and every suffix commit succeeded.
+The record-aware agent wrapper then exercised a genuinely sparse turn: from a
+531-token live source it attached 26 K/V tokens (4.90\%), evaluated none of the
+selected history text, copied no K/V, and returned the pinned key correctly.
+A separate rejected-action path removed the discarded branch by rolling the
+source from 27 to its 23-token common prefix, then committed the recovery suffix
+with zero selected-text re-encoding and returned the correct recovery answer.
+These are mechanism gates, not Easy-50 efficacy or latency evidence. The engine
+deliberately reports \texttt{agent\_history\_kv\_qualified=false} until a real
+mini-swe-agent frozen replay, concurrent commit isolation, cancellation,
+eviction/offload, and multi-model qualification pass. A campaign-level lock
+prevents the resumable Easy-50 scheduler from launching treatment cells before
+that status is explicitly promoted to \texttt{QUALIFIED}.
+
+This also changes the comparison with ordinary prefix caching. Prefix caching
+can reuse only the common leading run and must either keep every middle turn or
+evaluate a replacement suffix when selection changes. Live-record PRA keeps
+the canonical full session once, adds request membership to selected existing
+cells, and in the sparse smoke exposes only 26 of 531 source cells to the new
+request. Thus a selection change no longer implies thousands of re-prefill
+tokens. It may still change the number of K/V cells read by attention and the
+amount of resident memory, so four quantities remain disjoint: logical token
+retention, selected K/V attachment, newly evaluated tokens, and wall time. The
+first three now have physical telemetry; no speedup is claimed until a matched
+agent run shows that reduced K/V reads dominate membership and residency costs.
 
 The same frozen agent history also shows why transcript rematerialization
 cannot be assumed equivalent across engines. Table~\ref{tab:agent-cache-smoke}
@@ -3087,14 +3144,15 @@ consumption policy---post-mutation diff inspection, focused verification, and
 submission after a successful check---rather than more selector training.
 
 Exact interaction-history audit localizes the reduced-context failure more
-sharply.  The 100\% native-PRA arm is response-for-response identical to the
+sharply.  The legacy 100\% live-prefix-cache arm is response-for-response identical to the
 successful plain trajectory.  In every legacy active-tail arm, however, the
 first changed command is action 4: the selector retains the five task segments
 and current action--observation tail but drops the first two completed causal
 turns.  The plain agent advances to locating \texttt{Value}; the treated agent
 re-inspects \texttt{CharField} and later repeats similar source views.  Thus the
-early loss is a progress-memory selection bug, not a chat-template failure or
-evidence that native K/V attachment is intrinsically incorrect.
+early loss is a progress-memory selection bug, not a chat-template failure.
+Because the reduced arms rematerialized selected text, this audit does not test
+the replacement selected-live-K/V mechanism.
 
 We repaired that policy with a v4 \emph{progress spine}.  In addition to the
 pinned task and active tail, it pins the two latest completed causal turns and
@@ -3112,9 +3170,10 @@ whole-tree searches and later corrupts a method boundary while editing.  This
 is a consumption/edit-execution failure with the required state present, so
 the 25\% arm is withheld by the predeclared quality gate.
 
-The v4 runs also preserve the systems boundary.  At 75\%, 135,757 selected
+The v4 runs also expose the rematerialization boundary.  At 75\%, 135,757 selected
 resource-token exposures require 57,754 newly evaluated tokens while 78,003
-tokens hit exact resource-prefix deltas; no physical K/V copy is observed.
+tokens hit exact composite-prefix deltas; no physical K/V copy is observed.
+These are not selected-live-K/V reuse metrics.
 Nevertheless, the run takes 608.0 seconds under severe host memory pressure,
 so it is not admitted as a latency improvement over the earlier plain run.
 The runtime now writes a paired JSONL history for every call containing the
@@ -3137,7 +3196,7 @@ It closed the live engine session, preserving outputs but losing the 2,293,
 projection is now explicit; G11 retains that session while the native adapter
 still compares exact token IDs and backtracks safely on a genuine rewrite.
 
-The corrected frozen G11 replay is exact against direct native PRA on all 33
+The corrected frozen G11 replay is exact against the direct composite-resource path on all 33
 requests: logical-request digests, ordered selected records, response text,
 prefix-hit state, cached-token counts, native-token counts, wire-token counts,
 and the no-K/V-copy flag all match.  Aggregate engine accounting is consequently
@@ -3151,7 +3210,7 @@ patch application; regrading the unchanged prediction under the declared
 \texttt{linux/amd64} platform resolved it.  The runner now propagates that
 platform contract to both agent and grader.  Because the G11 run took 1,189.7
 seconds on the already swap-saturated host versus 608.0 seconds for direct, no
-gateway latency ratio is claimed from this pair.
+gateway latency ratio or native selected-K/V claim is admitted from this pair.
 
 \begin{table}[H]
 \centering

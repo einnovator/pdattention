@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-09-10",
+  "status": "MECHANISM_SMOKE_PASS",
+  "campaigns_armed": false,
+  "qualified_engine": null,
+  "evidence": [
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/live_agent_kv_smoke_qwen25_05b.json",
+    "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_same_state_smoke_qwen25_05b.json",
+    "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_long_same_state_qwen25_05b.json"
+  ],
+  "passed": [
+    "same-state two-turn exactness smoke",
+    "20-turn full-retention same-state exactness",
+    "sparse multi-record live-prefix K/V attachment",
+    "zero selected-history token re-encoding",
+    "rejected-action source rollback smoke",
+    "stable source positions and no physical K/V copy"
+  ],
+  "still_required": [
+    "multi-seed cache-on versus fresh-prefill behavioral equivalence",
+    "real mini-swe-agent single-task frozen replay",
+    "cancellation and concurrent-session isolation",
+    "record eviction and lifecycle telemetry",
+    "cross-model smoke"
+  ],
+  "reason": "A mechanism smoke is necessary but insufficient to restart the Easy-50 matrix."
+}

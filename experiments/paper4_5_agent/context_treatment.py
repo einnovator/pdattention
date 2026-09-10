@@ -22,6 +22,11 @@ from pra_hf.large_record_index import LargeRecordIndex, LargeRecordSearchPolicy
 
 
 _TOKEN = re.compile(r"\S+")
+_NATURAL_OBSERVATION_BOUNDARY = re.compile(
+    r"^(?:diff --git |@@ |Traceback \(most recent call last\):|"
+    r"\s*File \"|(?:FAILED|ERROR|PASSED)\s+|={3,}\s*(?:FAILURES|ERRORS)|"
+    r"\*{3,}\s*(?:FAILURES|ERRORS)|---\s+a/|\+\+\+\s+b/)",
+)
 
 
 class ContextTreatment(str, Enum):
@@ -246,7 +251,7 @@ def transform_chat_payload(
                 "version": "v4-progress-spine",
                 "source_fingerprint": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 "authorization_scope": "swebench-agent-visible",
-                "metadata": _segment_metadata(segment_id),
+                "metadata": _segment_metadata(segment_id, messages),
             }
             for segment_id, text in selected_texts
         ]
@@ -285,8 +290,25 @@ def transform_chat_payload(
                 # not a destructive rewrite of the logical agent history.
                 # G11 uses this marker to retain the engine session and lets
                 # the native adapter validate/backtrack the exact token prefix.
-                "history_projection": "detached-agent-trajectory-v1",
+                "history_projection": "live-agent-kv-v1",
                 "selection_complete": selected_segments == candidate_segments,
+                # The engine needs stable logical record coordinates to bind
+                # selected records to K/V cells captured when those records
+                # were first evaluated.  Content remains in the ordinary
+                # mandatory messages or the selected resource bodies; this
+                # manifest carries only identities and hashes, so omitted
+                # history cannot be silently re-materialized from it.
+                "logical_message_manifest": [
+                    {
+                        "message_index": index,
+                        "role": str(message.get("role", "")),
+                        "content_sha256": hashlib.sha256(
+                            str(message.get("content", "")).encode("utf-8")
+                        ).hexdigest(),
+                    }
+                    for index, message in enumerate(messages)
+                ],
+                "mandatory_message_indices": sorted(mandatory_indices),
                 "pinned_task_segments": [
                     segment_id for segment_id, _ in _segments(
                         messages, sorted(task_indices), segment_tokens,
@@ -661,22 +683,57 @@ def _segments(
     for index in candidate_indices:
         role = str(messages[index].get("role", "unknown"))
         content = str(messages[index].get("content", ""))
-        words = list(_TOKEN.finditer(content))
-        for offset in range(0, len(words), segment_tokens):
-            final = min(offset + segment_tokens, len(words)) - 1
-            # Include the separator following a complete segment. Rejoining
-            # every segment from one message therefore reconstructs its exact
-            # original text, including newlines at segment boundaries.
-            end = (
-                words[offset + segment_tokens].start()
-                if offset + segment_tokens < len(words)
-                else len(content)
-            )
-            start = 0 if offset == 0 else words[offset].start()
-            text = content[start:end]
+        for segment_index, text in enumerate(
+            _split_record_text(content, segment_tokens, natural=(role in {"tool", "user"}))
+        ):
             if text:
-                segments.append((f"m{index}-{offset // segment_tokens}-{role}", text))
+                segments.append((f"m{index}-{segment_index}-{role}", text))
     return segments
+
+
+def _split_record_text(
+    content: str, segment_tokens: int, *, natural: bool,
+) -> list[str]:
+    """Split one record without allowing a child or overlap to cross records.
+
+    Short records stay intact. Oversized tool/user observations first break at
+    file, diff-hunk, stack-frame, or test-case boundaries; only an oversized
+    natural region falls back to token windows. The slices are disjoint and
+    rejoin byte-for-byte, so budget accounting never charges overlap twice.
+    """
+
+    words = list(_TOKEN.finditer(content))
+    if not words:
+        return [content] if content else []
+    if len(words) <= segment_tokens:
+        return [content]
+
+    region_starts = [0]
+    if natural:
+        cursor = 0
+        for line in content.splitlines(keepends=True):
+            if cursor and _NATURAL_OBSERVATION_BOUNDARY.match(line):
+                region_starts.append(cursor)
+            cursor += len(line)
+    region_starts.append(len(content))
+
+    result: list[str] = []
+    for region_start, region_end in zip(region_starts, region_starts[1:]):
+        region = content[region_start:region_end]
+        region_words = list(_TOKEN.finditer(region))
+        for offset in range(0, len(region_words), segment_tokens):
+            end = (
+                region_words[offset + segment_tokens].start()
+                if offset + segment_tokens < len(region_words)
+                else len(region)
+            )
+            start = 0 if offset == 0 else region_words[offset].start()
+            text = region[start:end]
+            if text:
+                result.append(text)
+    if "".join(result) != content:
+        raise AssertionError("record-aligned segmentation changed observation text")
+    return result
 
 
 def _turn_bundles(
@@ -750,7 +807,9 @@ def _turn_index_bundles(
     return complete
 
 
-def _segment_metadata(segment_id: str) -> dict[str, Any]:
+def _segment_metadata(
+    segment_id: str, messages: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Expose causal position without relying on resource retrieval order."""
 
     metadata: dict[str, Any] = {"selection_policy": "typed_bm25_embedding_rrf"}
@@ -760,8 +819,35 @@ def _segment_metadata(segment_id: str) -> dict[str, Any]:
             message_index=int(match.group(1)),
             segment_index=int(match.group(2)),
             role=match.group(3),
+            parent_record_id=f"m{match.group(1)}",
         )
+        if messages is not None:
+            message_index = int(match.group(1))
+            metadata["causal_group_id"] = _causal_group_id(messages, message_index)
+            record = messages[message_index]
+            for name in (
+                "tool_call_id", "name", "return_code", "exit_code",
+                "mutation_status", "result_metadata", "status",
+            ):
+                if name in record:
+                    metadata[name] = record[name]
     return metadata
+
+
+def _causal_group_id(
+    messages: Sequence[Mapping[str, Any]], message_index: int,
+) -> str:
+    """Give an assistant action and its observations one stable causal ID."""
+
+    if str(messages[message_index].get("role")) == "assistant":
+        return f"turn:m{message_index}"
+    for index in range(message_index - 1, -1, -1):
+        role = str(messages[index].get("role"))
+        if role == "assistant":
+            return f"turn:m{index}"
+        if role == "system":
+            break
+    return f"record:m{message_index}"
 
 
 def _select_turn_bundles(

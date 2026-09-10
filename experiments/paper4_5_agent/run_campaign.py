@@ -53,7 +53,9 @@ def run_campaign(
             record.update(state="SKIPPED", reason="Cell disabled in campaign config.")
             _persist(config, state, root, state_path)
             continue
-        gate = _treatment_gate(cell, cells)
+        gate = _agent_history_correctness_gate(repository, config, cell)
+        if gate is None:
+            gate = _treatment_gate(cell, cells)
         if gate:
             record.update(state="BLOCKED", reason=gate)
             _persist(config, state, root, state_path)
@@ -137,7 +139,9 @@ def record_result(config_path: Path, *, cell_id: str, result_path: Path) -> dict
         cell = next(row for row in config.cells if row.cell_id == cell_id)
     except StopIteration as exc:
         raise ValueError(f"unknown campaign cell {cell_id}") from exc
-    gate = _treatment_gate(cell, state.setdefault("cells", {}))
+    gate = _agent_history_correctness_gate(repository, config, cell)
+    if gate is None:
+        gate = _treatment_gate(cell, state.setdefault("cells", {}))
     if gate:
         raise ValueError(gate)
     result = OfficialResult.load(result_path)
@@ -198,6 +202,30 @@ def _treatment_gate(cell: Any, cells: dict[str, Any]) -> str | None:
                 f"Treatment requires paired cell {cell.paired_cell}=COMPLETED; "
                 f"observed {paired.get('state', 'PENDING')}."
             )
+    return None
+
+
+def _agent_history_correctness_gate(
+    repository: Path, config: CampaignConfig, cell: Any,
+) -> str | None:
+    """Keep Easy-50 treatments stopped until the product gate is explicit."""
+
+    if config.campaign_id != "paper4-5-swebench-verified-easy50-pra-prefix-factorial-v2":
+        return None
+    if cell.mode == CampaignMode.NATIVE:
+        return None
+    path = repository / (
+        "docs/papers/shared/results/paper4_5_runtime_productization/"
+        "coding_agents/agent_history_kv_gate.json"
+    )
+    if not path.is_file():
+        return "Easy-50 treatments require the agent-history K/V qualification gate."
+    gate = json.loads(path.read_text(encoding="utf-8"))
+    if gate.get("status") != "QUALIFIED" or not gate.get("campaigns_armed", False):
+        return (
+            "Easy-50 treatments remain stopped by the agent-history K/V "
+            f"correctness gate ({gate.get('status', 'UNKNOWN')})."
+        )
     return None
 
 

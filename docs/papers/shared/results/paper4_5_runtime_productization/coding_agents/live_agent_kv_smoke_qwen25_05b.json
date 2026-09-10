@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-09-10",
+  "purpose": "Correctness smoke only; not a task-quality or speed result.",
+  "engine": "llama.cpp",
+  "model": "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
+  "hardware": "Apple M4 Pro 48 GB",
+  "history_projection": "live-agent-kv-v1",
+  "turns": [
+    {
+      "turn": 1,
+      "phase": "sparse",
+      "selected_resource_ids": [],
+      "logical_tokens_estimate": 10,
+      "selected_tokens_estimate": 0,
+      "model_text": "Alpha optimization",
+      "kv_source": null,
+      "source_tokens": null,
+      "selected_kv_tokens": null,
+      "selected_text_reencoded_tokens": null,
+      "commit_succeeded": null
+    },
+    {
+      "turn": 2,
+      "phase": "sparse",
+      "selected_resource_ids": ["m1-0-user"],
+      "logical_tokens_estimate": 133,
+      "selected_tokens_estimate": 5,
+      "model_text": "Alpha",
+      "kv_source": "live_prefix_capture",
+      "source_tokens": 27,
+      "selected_kv_tokens": 27,
+      "selected_text_reencoded_tokens": 0,
+      "physical_kv_copy": false,
+      "commit_succeeded": true
+    },
+    {
+      "turn": 3,
+      "phase": "sparse",
+      "selected_resource_ids": ["m1-0-user"],
+      "logical_tokens_estimate": 138,
+      "selected_tokens_estimate": 5,
+      "model_text": "ALPHA",
+      "kv_source": "live_prefix_capture",
+      "source_tokens": 531,
+      "selected_kv_tokens": 26,
+      "selected_text_reencoded_tokens": 0,
+      "physical_kv_copy": false,
+      "commit_succeeded": true
+    },
+    {
+      "turn": 4,
+      "phase": "rollback",
+      "selected_resource_ids": [],
+      "logical_tokens_estimate": 10,
+      "selected_tokens_estimate": 0,
+      "model_text": "Alpha optimization",
+      "kv_source": null,
+      "source_tokens": null,
+      "selected_kv_tokens": null,
+      "selected_text_reencoded_tokens": null,
+      "commit_succeeded": null
+    },
+    {
+      "turn": 5,
+      "phase": "rollback",
+      "selected_resource_ids": ["m1-0-user"],
+      "logical_tokens_estimate": 19,
+      "selected_tokens_estimate": 5,
+      "model_text": "ALPHA",
+      "kv_source": "live_prefix_capture",
+      "source_tokens": 23,
+      "selected_kv_tokens": 23,
+      "selected_text_reencoded_tokens": 0,
+      "physical_kv_copy": false,
+      "commit_succeeded": true
+    }
+  ],
+  "rejected_action_rollback": {
+    "discarded_model_text": "Alpha optimization",
+    "source_tokens_before": 27,
+    "source_prefix_tokens_after": 23,
+    "source_was_rolled_back": true,
+    "selected_text_reencoded_tokens": 0,
+    "commit_succeeded": true,
+    "recovery_text": "ALPHA"
+  },
+  "summary": {
+    "zero_selected_text_reencoding": true,
+    "sparse_turn_observed": true,
+    "sparse_source_tokens": 531,
+    "sparse_selected_kv_tokens": 26,
+    "sparse_kv_retention_fraction": 0.048963,
+    "physical_kv_copy": false,
+    "pinned_key_answer_correct": true,
+    "qualification_status": "mechanism_smoke_pass_only"
+  }
+}

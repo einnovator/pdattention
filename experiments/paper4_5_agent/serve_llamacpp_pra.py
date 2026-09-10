@@ -336,6 +336,12 @@ class HybridLlamaCppAdapter:
         # after the first native hand-off to fall back to rematerialization,
         # while comparing only lengths missed boundary-token substitutions.
         self._live_session_tokens: dict[str, tuple[int, ...]] = {}
+        # Complete accepted logical transcripts are reconstructed from a
+        # hash-only manifest plus records already observed by this endpoint.
+        # They are never reconstructed from omitted selected text.  This is
+        # what lets record IDs be mapped to the K/V positions at which the
+        # model originally evaluated them.
+        self._logical_session_messages: dict[str, list[dict[str, Any]]] = {}
 
     def capabilities(self):
         return replace(
@@ -422,6 +428,7 @@ class HybridLlamaCppAdapter:
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
         request = self._hydrate_resource_delta(request)
+        logical_messages = self._hydrate_logical_messages(request)
         openai_fields = dict(request.openai_fields)
         requested = openai_fields.get("prefix_caching")
         if requested is not None and bool(requested) != self.prefix_cache_enabled:
@@ -443,9 +450,29 @@ class HybridLlamaCppAdapter:
             native = self.native_adapter.native_executor
             live_slot = self._live_session_slots.get(str(request.session_id))
             selection_complete = bool(request.metadata.get("selection_complete", False))
-            if self.prefix_cache_enabled and live_slot is not None and (
-                selection_complete or self._live_prefix_matches(request, live_slot)
+            if (
+                self.prefix_cache_enabled
+                and live_slot is not None
+                and logical_messages is not None
             ):
+                result = self._generate_from_live_records(
+                    request, live_slot, logical_messages,
+                )
+                # The patched server commits the newly evaluated suffix back
+                # into the source sequence.  The destination is disposable;
+                # source remains the canonical full live transcript.
+                self._live_session_slots[str(request.session_id)] = live_slot
+                self._remember_resident_tokens(request, result, logical_messages)
+                self._logical_session_messages[str(request.session_id)] = logical_messages
+                return result
+            if request.metadata.get("history_projection") == "live-agent-kv-v1":
+                raise RuntimeError(
+                    "live agent-history PRA requires an existing prefix-cache source, "
+                    "a valid logical manifest, and prefix caching enabled"
+                )
+            if self.prefix_cache_enabled and live_slot is not None and selection_complete:
+                # Backward-compatible control path for old fixtures that do
+                # not claim the live-agent-kv contract.
                 result, destination = self._generate_from_live_slot(request, live_slot)
                 self._live_session_slots[str(request.session_id)] = destination
                 self._remember_resident_tokens(request, result)
@@ -455,18 +482,95 @@ class HybridLlamaCppAdapter:
                 self._live_session_slots[str(request.session_id)] = (
                     self.plain.native.request_slot
                 )
-                self._remember_resident_tokens(request, result)
+                if logical_messages is None:
+                    self._remember_resident_tokens(request, result)
+                else:
+                    self._remember_resident_tokens(request, result, logical_messages)
+                if logical_messages is not None:
+                    self._logical_session_messages[str(request.session_id)] = logical_messages
                 return result
             native._erase_request_slot(native.request_slot)
             result = self.native_adapter.generate(request)
             self._live_session_slots[str(request.session_id)] = native.request_slot
-            self._remember_resident_tokens(request, result)
+            self._remember_resident_tokens(request, result, logical_messages)
+            if logical_messages is not None:
+                self._logical_session_messages[str(request.session_id)] = logical_messages
             return result
         result = self.plain.generate(request)
         if request.session_id is not None:
             self._live_session_slots[str(request.session_id)] = self.plain.native.request_slot
-            self._remember_resident_tokens(request, result)
+            self._remember_resident_tokens(request, result, logical_messages)
+            if logical_messages is not None:
+                self._logical_session_messages[str(request.session_id)] = logical_messages
         return result
+
+    @staticmethod
+    def _content_sha256(message: Mapping[str, Any]) -> str:
+        return __import__("hashlib").sha256(
+            str(message.get("content", "")).encode("utf-8")
+        ).hexdigest()
+
+    def _hydrate_logical_messages(
+        self, request: PRAWireRequest,
+    ) -> list[dict[str, Any]] | None:
+        """Recover the full logical transcript without omitted text fallback."""
+
+        metadata = getattr(request, "metadata", {})
+        manifest = metadata.get("logical_message_manifest")
+        mandatory_indices = metadata.get("mandatory_message_indices")
+        if manifest is None and mandatory_indices is None:
+            return None
+        if not isinstance(manifest, list) or not isinstance(mandatory_indices, list):
+            raise ValueError("live agent-history metadata requires manifest and indices")
+        if len(mandatory_indices) != len(request.messages):
+            raise ValueError("mandatory message indices do not match physical messages")
+
+        known: dict[int, dict[str, Any]] = {}
+        prior = self._logical_session_messages.get(str(request.session_id), [])
+        for index, message in enumerate(prior):
+            known[index] = dict(message)
+        for index, message in zip(mandatory_indices, request.messages):
+            known[int(index)] = dict(message)
+
+        resource_parts: dict[int, list[tuple[int, str, str]]] = {}
+        for resource in request.resources:
+            metadata = dict(resource.metadata)
+            if "message_index" not in metadata or "segment_index" not in metadata:
+                raise ValueError(
+                    f"live history resource {resource.resource_id!r} lacks record coordinates"
+                )
+            resource_parts.setdefault(int(metadata["message_index"]), []).append(
+                (
+                    int(metadata["segment_index"]),
+                    str(metadata.get("role", "")),
+                    str(resource.text or ""),
+                )
+            )
+        for index, parts in resource_parts.items():
+            parts.sort()
+            roles = {role for _, role, _ in parts}
+            if len(roles) != 1:
+                raise ValueError(f"record m{index} has inconsistent child roles")
+            known.setdefault(index, {
+                "role": next(iter(roles)),
+                "content": "".join(text for _, _, text in parts),
+            })
+
+        logical: list[dict[str, Any]] = []
+        for expected_index, row in enumerate(manifest):
+            if int(row.get("message_index", -1)) != expected_index:
+                raise ValueError("logical message manifest is not contiguous")
+            message = known.get(expected_index)
+            if message is None:
+                raise ValueError(
+                    f"logical record m{expected_index} was neither resident nor supplied"
+                )
+            if str(message.get("role", "")) != str(row.get("role", "")):
+                raise ValueError(f"logical record m{expected_index} changed role")
+            if self._content_sha256(message) != str(row.get("content_sha256", "")):
+                raise ValueError(f"logical record m{expected_index} changed content")
+            logical.append(message)
+        return logical
 
     def _logical_prompt_tokens(self, request: PRAWireRequest) -> tuple[int, ...]:
         native = self.native_adapter.native_executor
@@ -478,15 +582,167 @@ class HybridLlamaCppAdapter:
         return tuple(int(token) for token in result.get("tokens", ()))
 
     def _remember_resident_tokens(
-        self, request: PRAWireRequest, result: PRAEngineResult,
+        self,
+        request: PRAWireRequest,
+        result: PRAEngineResult,
+        logical_messages: list[dict[str, Any]] | None = None,
     ) -> None:
         generated = tuple(int(token) for token in result.raw.get("tokens", ()))
         # The final sampled token is returned but has not yet been evaluated
         # into KV.  It must be sent as a bridge on the following request.
-        resident = self._logical_prompt_tokens(request) + (
+        prompt_tokens = (
+            self._full_logical_tokens(request, logical_messages)
+            if logical_messages is not None
+            else self._logical_prompt_tokens(request)
+        )
+        resident = prompt_tokens + (
             generated[:-1] if generated else ()
         )
         self._live_session_tokens[str(request.session_id)] = resident
+
+    def _full_logical_tokens(
+        self, request: PRAWireRequest, messages: list[dict[str, Any]],
+    ) -> tuple[int, ...]:
+        native = self.native_adapter.native_executor
+        prompt = native._render_chat(messages, request, generate=True)
+        return tuple(int(token) for token in native._request_json(
+            "/tokenize", {"content": prompt, "add_special": True}
+        ).get("tokens", ()))
+
+    def _message_token_boundaries(
+        self, request: PRAWireRequest, messages: list[dict[str, Any]],
+        full_tokens: tuple[int, ...],
+    ) -> list[int]:
+        native = self.native_adapter.native_executor
+        boundaries: list[int] = []
+        for end in range(1, len(messages) + 1):
+            prompt = native._render_chat(messages[:end], request, generate=False)
+            tokens = tuple(int(token) for token in native._request_json(
+                "/tokenize", {"content": prompt, "add_special": True}
+            ).get("tokens", ()))
+            if full_tokens[:len(tokens)] != tokens:
+                raise RuntimeError(
+                    "chat template is not record-prefix-separable at "
+                    f"logical message {end - 1}"
+                )
+            boundaries.append(len(tokens))
+        return boundaries
+
+    def _generate_from_live_records(
+        self,
+        request: PRAWireRequest,
+        source: int,
+        logical_messages: list[dict[str, Any]],
+    ) -> PRAEngineResult:
+        """Attach selected record K/V ranges from the canonical live source."""
+
+        from pra_llamacpp import (
+            LlamaCppLivePrefixPlan,
+            LlamaCppLivePrefixRange,
+        )
+
+        native = self.native_adapter.native_executor
+        resident = self._live_session_tokens.get(str(request.session_id))
+        if not resident:
+            raise RuntimeError("live history source has no recorded resident tokens")
+        full_tokens = self._full_logical_tokens(request, logical_messages)
+        common = 0
+        for cached_token, prompt_token in zip(resident, full_tokens):
+            if cached_token != prompt_token:
+                break
+            common += 1
+        if common <= 0:
+            raise RuntimeError("logical transcript shares no K/V prefix with its source")
+        boundaries = self._message_token_boundaries(
+            request, logical_messages, full_tokens,
+        )
+        selected_indices = sorted({
+            int(resource.metadata["message_index"])
+            for resource in request.resources
+        })
+        mandatory = [int(index) for index in request.metadata["mandatory_message_indices"]]
+        system_indices = [
+            index for index, message in enumerate(logical_messages)
+            if str(message.get("role")) == "system"
+        ]
+        active_non_system = [
+            index for index in mandatory
+            if str(logical_messages[index].get("role")) != "system"
+        ]
+        active_start = min(active_non_system) if active_non_system else len(logical_messages)
+
+        ranges: list[Any] = []
+        for index in [*system_indices, *selected_indices]:
+            start = 0 if index == 0 else boundaries[index - 1]
+            end = min(boundaries[index], common)
+            if end <= start:
+                continue
+            metadata = next(
+                (
+                    dict(resource.metadata) for resource in request.resources
+                    if int(resource.metadata.get("message_index", -1)) == index
+                ),
+                {},
+            )
+            ranges.append(LlamaCppLivePrefixRange(
+                record_id=("system-prefix" if index in system_indices else f"m{index}"),
+                parent_record_id=str(metadata.get("parent_record_id", f"m{index}")),
+                causal_group_id=str(metadata.get("causal_group_id", f"record:m{index}")),
+                start=start,
+                end=end,
+            ))
+        active_token_start = (
+            0 if active_start == 0 else boundaries[active_start - 1]
+        )
+        if active_token_start < common:
+            ranges.append(LlamaCppLivePrefixRange(
+                record_id=f"active-tail:m{active_start}",
+                parent_record_id=f"active-tail:m{active_start}",
+                causal_group_id=f"active-tail:m{active_start}",
+                start=active_token_start,
+                end=common,
+            ))
+        ranges.sort(key=lambda row: (row.start, row.end))
+        for left, right in zip(ranges, ranges[1:]):
+            if right.start < left.end:
+                raise RuntimeError(
+                    f"selected live record ranges overlap: {left.record_id}, {right.record_id}"
+                )
+        if not ranges or ranges[-1].end < common:
+            # llama.cpp requires the newest retained position to be the
+            # predecessor of the suffix. A single boundary cell is enough;
+            # it does not pull an omitted historical record back into view.
+            ranges.append(LlamaCppLivePrefixRange(
+                record_id=f"source-tail:p{common}",
+                parent_record_id=f"source-tail:p{common}",
+                causal_group_id=f"source-tail:p{common}",
+                start=common - 1,
+                end=common,
+            ))
+        plan = LlamaCppLivePrefixPlan(
+            source_slot=source,
+            source_tokens=common,
+            ranges=tuple(ranges),
+            commit_to_source=True,
+        )
+        destination = (
+            native.request_slot if native.request_slot != source else native.resource_slot
+        )
+        result = native.generate_live_prefix(
+            request,
+            prompt_suffix=list(full_tokens[common:]),
+            plan=plan,
+            request_slot=destination,
+        )
+        raw = dict(result.raw)
+        raw.update(
+            prefix_cache_enabled=True,
+            prefix_cached_tokens=plan.selected_tokens,
+            engine_cached_tokens_total=plan.selected_tokens,
+            prefix_cache_hit=bool(plan.selected_tokens),
+            native_attached_resources=[resource.resource_id for resource in request.resources],
+        )
+        return PRAEngineResult(result.text, raw, result.trace)
 
     @staticmethod
     def _resident_token_count(raw: Mapping[str, Any]) -> int:
@@ -594,6 +850,7 @@ class HybridLlamaCppAdapter:
     def close_session(self, session_id: str) -> None:
         self._live_session_slots.pop(str(session_id), None)
         self._live_session_tokens.pop(str(session_id), None)
+        self._logical_session_messages.pop(str(session_id), None)
         self.native_adapter.close_session(session_id)
 
 

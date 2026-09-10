@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -17,6 +18,7 @@ import yaml
 
 from pra_hf.deployment import (
     PRAEngineCapabilities,
+    PRAEngineResult,
     PRAGatewayMode,
     PRAWireRequest,
     PRAWireResource,
@@ -526,6 +528,18 @@ def test_full_budget_selection_preserves_causal_order_and_formatting() -> None:
 
     resources = transformed["pra"]["resources"]
     assert transformed["pra"]["metadata"]["selection_complete"] is True
+    assert transformed["pra"]["metadata"]["history_projection"] == "live-agent-kv-v1"
+    assert transformed["pra"]["metadata"]["mandatory_message_indices"] == [0, 2, 3]
+    assert transformed["pra"]["metadata"]["logical_message_manifest"] == [
+        {
+            "message_index": index,
+            "role": message["role"],
+            "content_sha256": hashlib.sha256(
+                message["content"].encode("utf-8")
+            ).hexdigest(),
+        }
+        for index, message in enumerate(payload["messages"])
+    ]
     assert [row["resource_id"] for row in resources] == ["m1-0-user"]
     assert resources[0]["text"] == payload["messages"][1]["content"]
     assert transformed["messages"] == [
@@ -536,7 +550,61 @@ def test_full_budget_selection_preserves_causal_order_and_formatting() -> None:
         "message_index": 1,
         "segment_index": 0,
         "role": "user",
+        "parent_record_id": "m1",
+        "causal_group_id": "record:m1",
     }
+
+
+def test_record_aligned_children_keep_causal_and_result_metadata() -> None:
+    observation = (
+        "return code: 1\n"
+        "Traceback (most recent call last):\n"
+        "  File \"a.py\", line 1\n"
+        "ValueError: bad\n"
+        "diff --git a/a.py b/a.py\n"
+        "@@ -1 +1 @@\n"
+        "-bad\n+good\n"
+    )
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "run failing test"},
+            {
+                "role": "tool",
+                "content": observation,
+                "tool_call_id": "call-1",
+                "return_code": 1,
+                "mutation_status": "changed",
+                "result_metadata": {"test": "test_a"},
+            },
+            {"role": "assistant", "content": "inspect latest"},
+            {"role": "user", "content": "current result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0,
+        segment_tokens=4,
+    )
+    children = [
+        row for row in transformed["pra"]["resources"]
+        if row["metadata"]["message_index"] == 3
+    ]
+
+    assert "".join(row["text"] for row in children) == observation
+    assert len(children) > 1
+    assert {row["metadata"]["parent_record_id"] for row in children} == {"m3"}
+    assert {row["metadata"]["causal_group_id"] for row in children} == {"turn:m2"}
+    assert all(row["metadata"]["tool_call_id"] == "call-1" for row in children)
+    assert all(row["metadata"]["return_code"] == 1 for row in children)
+    assert all(row["metadata"]["mutation_status"] == "changed" for row in children)
+    assert all(
+        row["metadata"]["result_metadata"] == {"test": "test_a"}
+        for row in children
+    )
 
 
 def test_partial_selection_keeps_assistant_observation_turns_atomic() -> None:
@@ -1186,6 +1254,92 @@ def test_complete_selection_continues_live_slot_without_detached_prefix_check() 
     adapter._remember_resident_tokens = lambda *_: None
 
     assert adapter.generate(request) is continued
+
+
+def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill() -> None:
+    calls = []
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+
+        @staticmethod
+        def _render_chat(messages, request, *, generate):
+            del request, generate
+            return "".join(str(message["content"]) for message in messages)
+
+        @staticmethod
+        def _request_json(path, body=None):
+            assert path == "/tokenize"
+            return {"tokens": [ord(char) for char in body["content"]]}
+
+        @staticmethod
+        def generate_live_prefix(request, *, prompt_suffix, plan, request_slot):
+            calls.append((tuple(prompt_suffix), plan, request_slot))
+            return PRAEngineResult(
+                "answer",
+                {
+                    "tokens": [ord("Z")],
+                    "pra": {
+                        "kv_source": "live_prefix_capture",
+                        "selected_kv_tokens": plan.selected_tokens,
+                        "selected_text_reencoded_tokens": 0,
+                        "commit_succeeded": True,
+                    },
+                },
+                (),
+            )
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    # The canonical source contains S(system), T(task), an old A/O turn, and
+    # the active B action. The policy selects only S, T, and active B. C is the
+    # new observation and is the only prompt token evaluated this turn.
+    adapter._live_session_tokens["session"] = tuple(map(ord, "STAOB"))
+    logical = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "T"},
+        {"role": "assistant", "content": "A"},
+        {"role": "user", "content": "O"},
+        {"role": "assistant", "content": "B"},
+        {"role": "user", "content": "C"},
+    ]
+    resource = PRAWireResource(
+        resource_id="m1-0-user",
+        uri="pra://agent-trajectory/m1-0-user",
+        text="T",
+        metadata={
+            "message_index": 1,
+            "segment_index": 0,
+            "role": "user",
+            "parent_record_id": "m1",
+            "causal_group_id": "record:m1",
+        },
+    )
+    request = PRAWireRequest(
+        model="model",
+        messages=(logical[0], logical[4], logical[5]),
+        resources=(resource,),
+        session_id="session",
+        metadata={"mandatory_message_indices": [0, 4, 5]},
+    )
+
+    result = adapter._generate_from_live_records(request, 1, logical)
+
+    assert result.text == "answer"
+    suffix, plan, destination = calls[0]
+    assert suffix == (ord("C"),)
+    assert destination == 0
+    assert plan.source_tokens == 5
+    assert plan.selected_tokens == 3
+    assert [(row.record_id, row.start, row.end) for row in plan.ranges] == [
+        ("system-prefix", 0, 1),
+        ("m1", 1, 2),
+        ("active-tail:m4", 4, 5),
+    ]
+    assert result.raw["pra"]["selected_text_reencoded_tokens"] == 0
 
 
 def test_live_llamacpp_prefix_backtracks_after_rejected_agent_output() -> None:
