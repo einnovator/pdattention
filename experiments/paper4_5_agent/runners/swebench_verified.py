@@ -411,6 +411,11 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         ),
         **treatment_placement(args.mode),
         "context_budget_fraction": args.budget_fraction,
+        "retention_policy": {
+            "recent_completed_turns": getattr(args, "recent_completed_turns", 2),
+            "recent_mutation_turns": getattr(args, "recent_mutation_turns", 1),
+            "recent_verification_turns": getattr(args, "recent_verification_turns", 1),
+        },
         "harness": "mini-swe-agent",
         "harness_version": args.harness_version,
         "harness_config": args.scaffold,
@@ -475,6 +480,9 @@ def run(args: argparse.Namespace) -> Path:
             interaction_trace_path=output / "interaction_history.jsonl",
             selection_record_path=getattr(args, "selection_record", None),
             selection_replay_path=getattr(args, "selection_replay", None),
+            recent_completed_turns=getattr(args, "recent_completed_turns", 2),
+            recent_mutation_turns=getattr(args, "recent_mutation_turns", 1),
+            recent_verification_turns=getattr(args, "recent_verification_turns", 1),
             request_overrides={
                 "prefix_caching": bool(getattr(args, "prefix_caching", False))
             },
@@ -676,6 +684,7 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "benchmark_ids_sha256", "benchmark_execution_revision", "model",
                 "model_revision", "engine", "engine_version", "campaign_mode",
                 "context_budget_fraction", "context_limit", "max_steps",
+                "retention_policy",
                 "max_completion_tokens",
                 "chat_template_no_thinking",
                 "prefix_caching",
@@ -1229,6 +1238,9 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--recent-completed-turns", type=int, default=2)
+    parser.add_argument("--recent-mutation-turns", type=int, default=1)
+    parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument(
         "--selection-record", type=Path,
         help="Record exact ordered selected resources for a later transport-equivalence replay.",

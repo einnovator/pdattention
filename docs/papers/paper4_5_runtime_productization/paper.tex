@@ -3016,16 +3016,61 @@ tokens to 19,193 across 116,572 resource token-exposures. A frozen-selection
 cache on/off factorial can still isolate engine reuse, followed by the direct
 task-major matrix over the remaining 13 baseline-success tasks.
 
-That frozen factorial also fails a stricter consumption gate. The cache-off
-50\% anchor submits an unresolved nonempty patch after 44 model calls and
-507.9~s, with the live endpoint explicitly reporting
-\texttt{prefix\_cache\_enabled=false}. The cache-on arm replays exactly the
-anchor's selected records and logical requests for three calls, but its third
-response differs; request 4 consequently has no matching frozen trajectory
-digest and replay stops. We report \texttt{CONSUMPTION\_PARITY\_FAILED}, not a
-partial SWE-bench score or runtime ratio. Thus re-prefilling an agent transcript
-and continuing its live prefix-cache state are not behaviorally interchangeable
-for this quantized llama.cpp workload even when selected records are identical.
+An initial frozen factorial appeared to fail a stricter consumption gate. The
+cache-off 50\% anchor submitted an unresolved nonempty patch after 44 model
+calls and 507.9~s. The cache-on arm replayed the same selected records and
+logical requests for three calls, but its third response differed and request
+4 consequently had no matching frozen digest. A subsequent 100\% audit found
+that this was not yet a pure prefix-cache factorial: cache-on continued the
+live full-prefix slot, whereas cache-off routed the lossless selected history
+through detached resource materialization. We therefore retain the run only as
+an implementation diagnostic and exclude its partial score and runtime ratio.
+
+The repaired adapter treats 100\% retention as a semantic no-op. If no live
+slot is consumed, it validates and reconstructs the complete ordinary chat
+prompt and cold-prefills that prompt directly; it does not enter detached
+resource materialization. With llama.cpp revision \texttt{458681e1}, batch 256,
+microbatch 1, and Qwen3-Coder-30B Q4\_K\_M, a frozen 30-turn trajectory then
+matched cache-on and cache-off on all 30 continuations while all 29 eligible
+cache-on requests reported physical hits. More importantly, the autonomous
+task-01 control now matches on all 24 logical-request hashes, ordered-selection
+digests, and complete responses. Both arms emit the same 689-byte, 14-line
+patch and resolve under the official grader. Cache-on retains 120,848 of
+126,772 physical prompt tokens (95.3\%) and completes the agent in 100.3~s,
+versus 2,792.5~s cache-off, a 27.85$\times$ single-task speedup. This is a
+qualified strict llama.cpp control, not yet a population-level latency claim.
+
+The same frozen agent history also shows why transcript rematerialization
+cannot be assumed equivalent across engines. Table~\ref{tab:agent-cache-smoke}
+reports diagnostic token parity; continuation scopes differ and the rows are
+neither speed nor quality rankings. The bounded HF arm is exact despite small
+logit changes, while MLX, vLLM, and SGLang each expose prompt-dependent token
+changes. MLX precision is non-monotonic, so quantization alone does not explain
+the effect. Product adapters must preserve the live K/V state that generated
+the trajectory, or explicitly qualify a strict rematerialization mode; they
+must not silently substitute one for the other.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen real-agent cache/rematerialization diagnostics. ``Scope'' is
+the number of agent turns and continuation cap. Different models and scopes
+make these correctness probes, not engine comparisons.}
+\begin{tabular}{llllr}
+\toprule
+Engine & Model & Scope & Exact turns & First divergence \\
+\midrule
+llama.cpp 458681e1 & Qwen3-Coder-30B Q4 & 30, $\leq$4096 & 30/30 & --- \\
+HF 5.17 / PyTorch 2.13 & Qwen2.5-1.5B BF16 & 6, 8 & 6/6 & --- \\
+MLX 0.31.3 & Qwen3-0.6B BF16 & 10, 16 & 6/10 & 2 \\
+MLX 0.31.3 & Qwen3-0.6B 8-bit & 10, 16 & 9/10 & 6 \\
+MLX 0.31.3 & Qwen3-0.6B 4-bit & 10, 16 & 8/10 & 7 \\
+vLLM 0.29.0 V1 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 5/10 & 4 \\
+SGLang 0.5.19 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 3/10 & 2 \\
+\bottomrule
+\end{tabular}
+\label{tab:agent-cache-smoke}
+\end{table}
 
 Exact interaction-history audit localizes the reduced-context failure more
 sharply.  The 100\% native-PRA arm is response-for-response identical to the

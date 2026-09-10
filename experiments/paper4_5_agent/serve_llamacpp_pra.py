@@ -261,8 +261,7 @@ class PlainSlotExecutor:
         self.native = native_executor
         self.prefix_caching = bool(prefix_caching)
 
-    def generate(self, request: PRAWireRequest) -> PRAEngineResult:
-        prompt = self.native._query_text(request)
+    def _generate_prompt(self, request: PRAWireRequest, prompt: str) -> PRAEngineResult:
         if not self.prefix_caching:
             self.native._erase_request_slot(self.native.request_slot)
         raw = dict(self.native._request_json(
@@ -294,6 +293,22 @@ class PlainSlotExecutor:
                 "native_kv": False,
             },),
         )
+
+    def generate(self, request: PRAWireRequest) -> PRAEngineResult:
+        return self._generate_prompt(request, self.native._query_text(request))
+
+    def generate_complete_selection(self, request: PRAWireRequest) -> PRAEngineResult:
+        """Consume a lossless selected trajectory as an ordinary full prompt.
+
+        At 100% retention PRA is a semantic no-op.  Sending the selected prefix
+        through the detached-resource path would change execution from ordinary
+        full prefill into resource-slot materialization even when prefix caching
+        is disabled, invalidating the cache-on/off control.
+        """
+
+        pair = self.native._causal_prompt_pair(request)
+        prompt = "".join(pair) if pair is not None else self.native._query_text(request)
+        return self._generate_prompt(request, prompt)
 
 
 class HybridLlamaCppAdapter:
@@ -433,6 +448,13 @@ class HybridLlamaCppAdapter:
             ):
                 result, destination = self._generate_from_live_slot(request, live_slot)
                 self._live_session_slots[str(request.session_id)] = destination
+                self._remember_resident_tokens(request, result)
+                return result
+            if selection_complete:
+                result = self.plain.generate_complete_selection(request)
+                self._live_session_slots[str(request.session_id)] = (
+                    self.plain.native.request_slot
+                )
                 self._remember_resident_tokens(request, result)
                 return result
             native._erase_request_slot(native.request_slot)

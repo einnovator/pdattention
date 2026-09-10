@@ -57,6 +57,7 @@ from experiments.paper4_5_agent.context_treatment import (
 from experiments.paper4_5_agent.serve_llamacpp_pra import (
     CausalChatNativePromptMixin,
     HybridLlamaCppAdapter,
+    PlainSlotExecutor,
     parse_args as parse_llamacpp_server_args,
 )
 from experiments.paper4_5_agent.summarize_easy50_strata import stratified_outcomes
@@ -479,6 +480,87 @@ def test_progress_spine_keeps_latest_mutation_outside_recency_window() -> None:
     assert {2, 3, 6, 7, 8, 9}.issubset(resource_indices)
 
 
+def test_progress_spine_retention_counts_are_explicit_and_auditable() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "sed -i 's/a/b/' one.py"},
+            {"role": "user", "content": "mutation one"},
+            {"role": "assistant", "content": "sed -i 's/b/c/' two.py"},
+            {"role": "user", "content": "mutation two"},
+            {"role": "assistant", "content": "pytest test_one.py"},
+            {"role": "user", "content": "verification one"},
+            {"role": "assistant", "content": "pytest test_two.py"},
+            {"role": "user", "content": "verification two"},
+            {"role": "assistant", "content": "inspect latest"},
+            {"role": "user", "content": "latest inspection"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+        segment_tokens=32,
+        recent_completed_turns=1,
+        recent_mutation_turns=2,
+        recent_verification_turns=2,
+    )
+
+    resource_indices = {
+        row["metadata"]["message_index"]
+        for row in transformed["pra"]["resources"]
+    }
+    assert resource_indices == set(range(1, 12))
+    assert transformed["pra"]["metadata"]["retention_policy"] == {
+        "recent_completed_turns": 1,
+        "recent_mutation_turns": 2,
+        "recent_verification_turns": 2,
+    }
+
+
+def test_progress_spine_rejects_negative_retention_counts() -> None:
+    payload = {"messages": [{"role": "user", "content": "task"}]}
+
+    with pytest.raises(ValueError, match="non-negative"):
+        transform_chat_payload(
+            payload,
+            mode=ContextTreatment.DIRECT_NATIVE_PRA,
+            budget_fraction=1,
+            recent_completed_turns=-1,
+        )
+
+
+def test_zero_progress_retention_does_not_accidentally_pin_all_history() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "old inspection"},
+            {"role": "user", "content": "old result"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+        recent_completed_turns=0,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+    )
+
+    assert [
+        row["metadata"]["message_index"]
+        for row in transformed["pra"]["resources"]
+    ] == [1]
+
+
 def test_causal_chat_validation_rejects_adjacent_assistant_messages() -> None:
     messages = [
         {"role": "system", "content": "system"},
@@ -799,7 +881,9 @@ def test_llamacpp_wrapper_exposes_same_engine_g00_and_g11_modes(
         assert parse_llamacpp_server_args().mode == mode
 
 
-def test_prefix_cache_off_never_enters_live_session_continuation() -> None:
+def test_prefix_cache_off_complete_selection_uses_full_plain_prompt() -> None:
+    calls = []
+
     class Native:
         request_slot = 1
 
@@ -807,12 +891,19 @@ def test_prefix_cache_off_never_enters_live_session_continuation() -> None:
         def _erase_request_slot(slot):
             assert slot == 1
 
-    native_adapter = SimpleNamespace(
-        native_executor=Native(),
-        generate=lambda request: SimpleNamespace(text="cold", raw={"tokens": []}, trace=()),
-    )
+        @staticmethod
+        def _causal_prompt_pair(request):
+            return "selected-prefix", "current-suffix"
+
+        @staticmethod
+        def _request_json(path, body):
+            calls.append((path, body))
+            return {"content": "cold", "tokens": [], "timings": {"cache_n": 0}}
+
+    native_adapter = SimpleNamespace(native_executor=Native())
+    plain = PlainSlotExecutor(native_adapter.native_executor, prefix_caching=False)
     adapter = HybridLlamaCppAdapter(
-        native_adapter, SimpleNamespace(), prefix_caching=False,
+        native_adapter, plain, prefix_caching=False,
     )
     adapter._live_session_slots["session"] = 1
     adapter._generate_from_live_slot = lambda request, source: (_ for _ in ()).throw(
@@ -838,6 +929,18 @@ def test_prefix_cache_off_never_enters_live_session_continuation() -> None:
     result = adapter.generate(request)
 
     assert result.text == "cold"
+    assert calls == [(
+        "/completion",
+        {
+            "prompt": "selected-prefixcurrent-suffix",
+            "id_slot": 1,
+            "n_predict": 64,
+            "cache_prompt": False,
+            "temperature": 0.0,
+            "seed": 0,
+            "return_tokens": True,
+        },
+    )]
 
 
 def test_live_llamacpp_prefix_uses_resident_tokens_not_last_prompt_length() -> None:

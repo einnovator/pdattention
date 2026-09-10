@@ -44,6 +44,9 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--recent-completed-turns", type=int, default=2)
+    parser.add_argument("--recent-mutation-turns", type=int, default=1)
+    parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument(
         "--max-completion-tokens",
         type=int,
@@ -107,6 +110,9 @@ def main() -> None:
         run_id=options.run_id,
         mode=options.mode,
         budget_fraction=options.budget_fraction,
+        recent_completed_turns=options.recent_completed_turns,
+        recent_mutation_turns=options.recent_mutation_turns,
+        recent_verification_turns=options.recent_verification_turns,
         workers=1,
         grader_workers=2,
         chunk_size=1,

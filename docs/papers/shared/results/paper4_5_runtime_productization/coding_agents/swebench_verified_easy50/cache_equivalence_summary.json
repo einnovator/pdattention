@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "experiment": "paper4_5_agent_cache_equivalence",
+  "date": "2026-09-10",
+  "claim_boundary": "Single-task llama.cpp qualification plus cross-engine frozen-agent diagnostics; cross-engine rows are not a speed or quality ranking.",
+  "llamacpp_autonomous_task01": {
+    "instance_id": "django__django-15277",
+    "model": "qwen3-coder:30b",
+    "quantization": "Q4_K_M",
+    "engine_revision": "llama.cpp-458681e1-pra-ub1-strict-fullprompt",
+    "n_batch": 256,
+    "n_ubatch": 1,
+    "cache_on_off_exact_responses": 24,
+    "cache_on_off_total_responses": 24,
+    "exact_logical_request_hashes": 24,
+    "exact_selected_resource_digests": 24,
+    "official_resolved_cache_on": true,
+    "official_resolved_cache_off": true,
+    "model_calls_each": 24,
+    "physical_prompt_tokens_each": 126772,
+    "completion_tokens_each": 2318,
+    "patch_bytes_each": 689,
+    "patch_lines_each": 14,
+    "cache_on_prefix_cached_tokens": 120848,
+    "cache_off_prefix_cached_tokens": 0,
+    "cache_on_cached_prompt_fraction": 0.9532704382671252,
+    "cache_on_wall_time_s": 100.25428771972656,
+    "cache_off_wall_time_s": 2792.5196800231934,
+    "cache_on_speedup_over_cache_off": 27.854366566645332,
+    "cache_on_wall_time_reduction": 0.9640989861461267,
+    "source_sha256": {
+      "cache_on_results_jsonl": "dbfc95f69d59834d805f6f5f245537725c944407202863ce310d086802fecb93",
+      "cache_off_results_jsonl": "1ea4034b1f14a2f3770c366d8869aadf686900ad6f4bdf179a675547cecf010f"
+    }
+  },
+  "frozen_agent_diagnostics": [
+    {
+      "engine": "llama.cpp",
+      "engine_version": "458681e1",
+      "model": "qwen3-coder:30b Q4_K_M",
+      "turns": 30,
+      "continuation_scope": "up to 4096 tokens",
+      "exact_turns": 30,
+      "first_divergent_turn": null,
+      "cache_physically_exercised": true,
+      "configuration": "n_batch=256,n_ubatch=1",
+      "source_sha256": "2ccd5f6c3936c87c04c8558e145c9d5411bbd1783e614f2aa0b72d7928261822"
+    },
+    {
+      "engine": "transformers-pytorch",
+      "engine_version": "transformers-5.17.0,torch-2.13.0+cu130",
+      "model": "Qwen/Qwen2.5-1.5B-Instruct BF16",
+      "turns": 6,
+      "continuation_scope": "8 greedy tokens",
+      "exact_turns": 6,
+      "first_divergent_turn": null,
+      "maximum_abs_logit_delta": 0.484375,
+      "limitation": "The 8 GB host could not admit the ten-turn long-context arm.",
+      "source_sha256": "e2f3d24663257fd1d09c43c640e3a70bafdbfc17c6499960dc9d913507f07a75"
+    },
+    {
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model": "Qwen/Qwen3-0.6B BF16",
+      "turns": 10,
+      "continuation_scope": "16 greedy tokens",
+      "exact_turns": 6,
+      "first_divergent_turn": 2,
+      "maximum_abs_logit_delta": 24.25,
+      "source_sha256": "691960ba01ccd074de65913cd805f092c7c2d287dd33d5e0e38fec0a5f20b8f3"
+    },
+    {
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model": "mlx-community/Qwen3-0.6B-8bit",
+      "turns": 10,
+      "continuation_scope": "16 greedy tokens",
+      "exact_turns": 9,
+      "first_divergent_turn": 6,
+      "maximum_abs_logit_delta": 12.716796875,
+      "source_sha256": "1d80ec068a5b4e1911090c96bf41372293c825b94e08630ee744838140ee8867"
+    },
+    {
+      "engine": "mlx-lm",
+      "engine_version": "0.31.3",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "turns": 10,
+      "continuation_scope": "16 greedy tokens",
+      "exact_turns": 8,
+      "first_divergent_turn": 7,
+      "maximum_abs_logit_delta": 1.75,
+      "source_sha256": "a03f7813f7841b2cc76dad65989b07fddf8d0e39de0e5462f152c6c5db08a76f"
+    },
+    {
+      "engine": "vllm",
+      "engine_version": "0.29.0 V1 runner",
+      "model": "Qwen/Qwen2.5-1.5B-Instruct BF16",
+      "turns": 10,
+      "continuation_scope": "complete greedy response, capped at 256 tokens",
+      "exact_turns": 5,
+      "first_divergent_turn": 4,
+      "configuration": "automatic prefix caching on; fully locked sampler",
+      "source_sha256": {
+        "cache_on": "16f24066fe689a01e23bbd841d459256f14c88b62e13aba9a4ed0479d65c8685",
+        "cache_off": "d34f3f4d9194e676720e126134043115795c040862bbb04e5691f92c40d0c2ac"
+      }
+    },
+    {
+      "engine": "vllm",
+      "engine_version": "0.29.0 V1 runner",
+      "model": "Qwen/Qwen2.5-1.5B-Instruct BF16",
+      "turns": 10,
+      "continuation_scope": "complete greedy response, capped at 256 tokens",
+      "exact_turns": 6,
+      "first_divergent_turn": 2,
+      "configuration": "automatic prefix caching on; fully locked sampler; chunked prefill disabled",
+      "source_sha256": {
+        "cache_on": "79418aacc909e3383c8fea66381c5746ad30272e49ae65576e68881e9f2b3b85",
+        "cache_off": "5f8af2c22358a431c6ad99070fc56cec40438074f56315f2d25611013ed6177c"
+      }
+    },
+    {
+      "engine": "sglang",
+      "engine_version": "0.5.19",
+      "model": "Qwen/Qwen2.5-1.5B-Instruct BF16",
+      "turns": 10,
+      "continuation_scope": "complete greedy response, capped at 256 tokens",
+      "exact_turns": 3,
+      "first_divergent_turn": 2,
+      "configuration": "Radix cache on versus disabled; fully locked sampler",
+      "source_sha256": {
+        "cache_on": "d14b635ed5313b5ba73eb3ea1575ea24585fc8f9c9bf789480e64058f4fffd98",
+        "cache_off": "d961a85e81cd8c4fc25b0dc7acfaba16d2c84493266f069c247090fd9c5a3a04"
+      }
+    }
+  ]
+}

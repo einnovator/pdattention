@@ -67,6 +67,9 @@ def transform_chat_payload(
     budget_fraction: float,
     request_index: int = 0,
     segment_tokens: int = 256,
+    recent_completed_turns: int = 2,
+    recent_mutation_turns: int = 1,
+    recent_verification_turns: int = 1,
     frozen_selection: Sequence[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, Any], TreatmentTrace]:
     """Apply a matched budget, optionally replaying an exact recorded selection."""
@@ -76,6 +79,12 @@ def transform_chat_payload(
         raise ValueError("budget_fraction must be in (0, 1]")
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
+    retention_counts = (
+        recent_completed_turns, recent_mutation_turns,
+        recent_verification_turns,
+    )
+    if any(count < 0 for count in retention_counts):
+        raise ValueError("retained turn counts must be non-negative")
     transformed = dict(payload)
     messages = [dict(row) for row in payload.get("messages", ())]
     if not messages:
@@ -94,6 +103,9 @@ def transform_chat_payload(
     task_indices = _pinned_task_indices(messages, mandatory_indices)
     progress_indices = _progress_pinned_indices(
         messages, mandatory_indices | task_indices,
+        recent_turns=recent_completed_turns,
+        mutation_turns=recent_mutation_turns,
+        verification_turns=recent_verification_turns,
     )
     pinned_indices = task_indices | progress_indices
     mandatory_tokens = sum(_count_tokens(messages[index].get("content")) for index in mandatory_indices)
@@ -215,6 +227,11 @@ def transform_chat_payload(
                 ),
                 "benchmark_fairness": "agent-visible-messages-only",
                 "budget_fraction": float(budget_fraction),
+                "retention_policy": {
+                    "recent_completed_turns": recent_completed_turns,
+                    "recent_mutation_turns": recent_mutation_turns,
+                    "recent_verification_turns": recent_verification_turns,
+                },
                 # Moving completed chat turns from the inline message list to
                 # typed resources is an intentional representation change,
                 # not a destructive rewrite of the logical agent history.
@@ -313,6 +330,8 @@ _VERIFICATION = re.compile(
 def _progress_pinned_indices(
     messages: Sequence[Mapping[str, Any]], excluded_indices: set[int],
     *, recent_turns: int = 2,
+    mutation_turns: int = 1,
+    verification_turns: int = 1,
 ) -> set[int]:
     """Keep a small causal progress spine independently of lexical retrieval.
 
@@ -327,21 +346,26 @@ def _progress_pinned_indices(
     ]
     bundles = _turn_index_bundles(messages, candidates)
     pinned = {
-        index for bundle in bundles[-recent_turns:] for index in bundle
+        index
+        for bundle in (bundles[-recent_turns:] if recent_turns else ())
+        for index in bundle
     }
-    for pattern in (_MUTATION, _VERIFICATION):
-        matched = next(
-            (
-                bundle for bundle in reversed(bundles)
-                if any(
-                    messages[index].get("role") == "assistant"
-                    and pattern.search(str(messages[index].get("content", "")))
-                    for index in bundle
-                )
-            ),
-            (),
-        )
-        pinned.update(matched)
+    for pattern, keep in (
+        (_MUTATION, mutation_turns),
+        (_VERIFICATION, verification_turns),
+    ):
+        if keep == 0:
+            continue
+        matched = [
+            bundle for bundle in bundles
+            if any(
+                messages[index].get("role") == "assistant"
+                and pattern.search(str(messages[index].get("content", "")))
+                for index in bundle
+            )
+        ]
+        for bundle in matched[-keep:]:
+            pinned.update(bundle)
     return pinned
 
 
@@ -606,6 +630,9 @@ class TreatmentProxy:
         selection_replay_path: Path | None = None,
         interaction_trace_path: Path | None = None,
         request_overrides: Mapping[str, Any] | None = None,
+        recent_completed_turns: int = 2,
+        recent_mutation_turns: int = 1,
+        recent_verification_turns: int = 1,
     ) -> None:
         if selection_record_path is not None and selection_replay_path is not None:
             raise ValueError("selection recording and replay are mutually exclusive")
@@ -617,6 +644,9 @@ class TreatmentProxy:
         self.selection_replay_path = selection_replay_path
         self.interaction_trace_path = interaction_trace_path
         self.request_overrides = dict(request_overrides or {})
+        self.recent_completed_turns = recent_completed_turns
+        self.recent_mutation_turns = recent_mutation_turns
+        self.recent_verification_turns = recent_verification_turns
         self._frozen_selections = _load_selection_fixture(selection_replay_path)
         self._lock = threading.Lock()
         self._request_index = 0
@@ -731,6 +761,9 @@ class TreatmentProxy:
             payload, trace = transform_chat_payload(
                 payload, mode=self.mode, budget_fraction=self.budget_fraction,
                 request_index=request_index, frozen_selection=frozen,
+                recent_completed_turns=self.recent_completed_turns,
+                recent_mutation_turns=self.recent_mutation_turns,
+                recent_verification_turns=self.recent_verification_turns,
             )
             if self.selection_record_path is not None:
                 resources = (payload.get("pra") or {}).get("resources") or ()
