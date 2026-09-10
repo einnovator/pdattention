@@ -156,7 +156,8 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
     assert transformed["pra"]["metadata"]["consumption_policy"] == (
         "verification-guard-v1"
     )
-    assert "source mutation just completed" in transformed["messages"][0]["content"]
+    assert "source mutation just completed" in transformed["messages"][-1]["content"]
+    assert transformed["messages"][0]["content"] == "base system"
     assert overhead > 0
 
     unchanged, no_overhead = apply_consumption_policy(

@@ -78,19 +78,22 @@ def apply_consumption_policy(
     guidance = _verification_guidance(logical_messages or payload.get("messages", ()))
     messages = [dict(row) for row in transformed.get("messages", ())]
     if guidance:
-        system_index = next(
-            (index for index, row in enumerate(messages) if row.get("role") == "system"),
+        current_index = next(
+            (
+                index for index in range(len(messages) - 1, -1, -1)
+                if messages[index].get("role") != "system"
+            ),
             None,
         )
         tagged = (
             '<pra_consumption_policy name="verification-guard-v1">\n'
             f"{guidance}\n</pra_consumption_policy>"
         )
-        if system_index is None:
-            messages.insert(0, {"role": "system", "content": tagged})
+        if current_index is None:
+            messages.append({"role": "user", "content": tagged})
         else:
-            content = str(messages[system_index].get("content") or "")
-            messages[system_index]["content"] = f"{content}\n\n{tagged}"
+            content = str(messages[current_index].get("content") or "")
+            messages[current_index]["content"] = f"{content}\n\n{tagged}"
         transformed["messages"] = messages
     envelope = dict(transformed.get("pra") or {})
     metadata = dict(envelope.get("metadata") or {})
