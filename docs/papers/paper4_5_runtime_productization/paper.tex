@@ -3072,6 +3072,20 @@ SGLang 0.5.19 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 3/10 & 2 \\
 \label{tab:agent-cache-smoke}
 \end{table}
 
+The first 90\% retention-window diagnostic keeps two mutation and two
+verification turns fixed while varying completed-turn recency. The H10 and H5
+arms reproduce the same first seven commands; H5 first removes history on
+request 8 and immediately takes a different, unproductive source view. H4
+first selects on request 7, and H3 on request 6. H10 is the strongest selection
+candidate: it reaches the target edit and realizes 10.0\% estimated context
+saving, but then repeats source inspection instead of verifying or submitting.
+H5 also enters a discovery cycle, while H4 and H3 were stopped once their
+boundary was localized. These intentionally terminated diagnostics are not
+solve-rate rows. They show that shortening the history window does not repair
+the task and can lose progress earlier; the next controlled variable is
+consumption policy---post-mutation diff inspection, focused verification, and
+submission after a successful check---rather than more selector training.
+
 Exact interaction-history audit localizes the reduced-context failure more
 sharply.  The 100\% native-PRA arm is response-for-response identical to the
 successful plain trajectory.  In every legacy active-tail arm, however, the

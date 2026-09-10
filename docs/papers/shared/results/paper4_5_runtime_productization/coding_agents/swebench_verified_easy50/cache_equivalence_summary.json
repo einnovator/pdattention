@@ -33,6 +33,49 @@
       "cache_off_results_jsonl": "1ea4034b1f14a2f3770c366d8869aadf686900ad6f4bdf179a675547cecf010f"
     }
   },
+  "retention_window_diagnostics": {
+    "budget_fraction": 0.9,
+    "recent_mutation_turns": 2,
+    "recent_verification_turns": 2,
+    "common_initial_actions": 6,
+    "arms": [
+      {
+        "recent_completed_turns": 10,
+        "first_incomplete_selection_request": 13,
+        "first_active_saving_fraction": 0.039122137404580155,
+        "maximum_observed_saving_fraction": 0.10006009615384616,
+        "completed_actions": 26,
+        "observation": "Made the target edit, then entered a repeated source-inspection cycle without verification or submission.",
+        "status": "diagnostic_cycle_terminated"
+      },
+      {
+        "recent_completed_turns": 5,
+        "first_incomplete_selection_request": 8,
+        "first_active_saving_fraction": 0.061,
+        "completed_actions": 16,
+        "observation": "Matched H10 for seven actions, diverged when selection first activated, and entered a source-discovery cycle.",
+        "status": "diagnostic_cycle_terminated"
+      },
+      {
+        "recent_completed_turns": 4,
+        "first_incomplete_selection_request": 7,
+        "first_active_saving_fraction": 0.068,
+        "completed_actions": 7,
+        "observation": "First command variation coincided with the first incomplete selection; stopped after boundary localization.",
+        "status": "diagnostic_boundary_only"
+      },
+      {
+        "recent_completed_turns": 3,
+        "first_incomplete_selection_request": 6,
+        "first_active_saving_fraction": 0.07,
+        "completed_actions": 8,
+        "observation": "Remained command-exact through action 7, then returned to the distracting char.py source view.",
+        "status": "diagnostic_boundary_only"
+      }
+    ],
+    "admission": "No arm is an official solve-rate observation because cycle and boundary diagnostics were intentionally terminated.",
+    "next_gate": "Keep H10 as the selection-quality candidate and test a separate consumption arm that requires post-mutation diff inspection, focused verification, and immediate submission after success."
+  },
   "frozen_agent_diagnostics": [
     {
       "engine": "llama.cpp",
