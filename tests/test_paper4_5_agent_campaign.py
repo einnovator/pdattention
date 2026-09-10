@@ -264,7 +264,9 @@ def test_enforced_policy_replaces_out_of_order_boundary_action(
     assert metadata["action_enforced"] is True
     assert metadata["enforcement_reason"] == reason
     assert metadata["original_content_sha256"]
+    assert proposal in metadata["original_content"]
     assert transformed["pra"]["agent"]["enforced_command"]
+    assert "original_content" not in transformed["pra"]["agent"]
     assert "pra" not in original
 
 
@@ -2340,6 +2342,10 @@ def test_treatment_proxy_enforces_and_traces_agent_boundary(tmp_path: Path) -> N
     assert response_event["pra_agent_enforcement"]["enforcement_reason"] == (
         "diff_required_after_mutation"
     )
+    assert "sed -n '1,20p' source.py" in (
+        response_event["pra_agent_enforcement"]["original_content"]
+    )
+    assert "original_content" not in delivered["pra"]["agent"]
     assert response_event["payload"] == delivered
 
 

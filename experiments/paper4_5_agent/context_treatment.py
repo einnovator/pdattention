@@ -556,6 +556,10 @@ def enforce_consumption_action(
     pra["agent"] = pra_agent
     transformed["pra"] = pra
     metadata.update(pra_agent)
+    # Keep the rejected candidate in the private interaction trace, not in the
+    # response delivered to the agent. This makes causal divergence auditable
+    # without giving the next turn access to an action that was not executed.
+    metadata["original_content"] = content
     return transformed, metadata
 
 
