@@ -1,0 +1,111 @@
+From 7f0bae28b102930a2fa145abf6e8c7ab2e69e266 Mon Sep 17 00:00:00 2001
+From: "Jorge Simao (Mindera)" <jorge.simao+1701@2k.com>
+Date: Thu, 10 Sep 2026 23:29:03 +0100
+Subject: [PATCH 2/2] server-pra-support-live-prefix-rollback
+
+---
+ tools/server/server-context.cpp | 32 ++++++++++++++++++++++++++++++--
+ tools/server/server-task.h      |  2 ++
+ 2 files changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index e685462..5039d8b 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1772,6 +1772,14 @@ private:
+                 return false;
+             }
+ 
++            const int32_t source_prefix_tokens = task.pra_source_prefix_tokens >= 0
++                    ? task.pra_source_prefix_tokens
++                    : source.prompt.n_tokens();
++            if (source_prefix_tokens <= 0 || source_prefix_tokens > source.prompt.n_tokens()) {
++                send_error(task, "PRA source-prefix rollback is outside the live source", ERROR_TYPE_INVALID_REQUEST);
++                return false;
++            }
++
+             auto ranges = task.pra_selected_ranges;
+             auto & registered = pra_record_ranges[source.id];
+             for (auto & range : ranges) {
+@@ -1806,7 +1814,7 @@ private:
+                     send_error(task, "PRA ranges require record, parent, and causal-group IDs", ERROR_TYPE_INVALID_REQUEST);
+                     return false;
+                 }
+-                if (range.start < 0 || range.end <= range.start || range.end > source.prompt.n_tokens()) {
++                if (range.start < 0 || range.end <= range.start || range.end > source_prefix_tokens) {
+                     send_error(task, "PRA selected range is outside the live source prefix", ERROR_TYPE_INVALID_REQUEST);
+                     return false;
+                 }
+@@ -1821,6 +1829,24 @@ private:
+                 registered.emplace(range.record_id, range);
+             }
+ 
++            if (source_prefix_tokens < source.prompt.n_tokens()) {
++                // A rejected agent action is absent from the next logical
++                // transcript. Roll the canonical source back to the exact
++                // common prefix before attaching the replacement suffix.
++                // This removes sequence membership only; retained K/V cells
++                // are not copied or re-evaluated.
++                source.mem.seq_rm(source.id, source_prefix_tokens, -1);
++                source.prompt.tokens.keep_first(source_prefix_tokens);
++                source.prompt.checkpoints.clear();
++                for (auto it = registered.begin(); it != registered.end();) {
++                    if (it->second.end > source_prefix_tokens) {
++                        it = registered.erase(it);
++                    } else {
++                        ++it;
++                    }
++                }
++            }
++
+             source.pra_resource_pinned = true;
+             llama_tokens query = task.tokens.get_text_tokens();
+             const llama_token bos = llama_vocab_bos(vocab);
+@@ -1847,7 +1873,7 @@ private:
+             server_tokens query_tokens(query, false);
+             merged.push_back(query_tokens);
+             task.tokens = std::move(merged);
+-            task.pra_source_tokens = source.prompt.n_tokens();
++            task.pra_source_tokens = source_prefix_tokens;
+             task.pra_native_tokens = selected_tokens;
+ 
+             SLT_INF(slot, "attached %d PRA live-prefix records from slot %d: selected_kv_tokens = %d, source_tokens = %d, wire_tokens = %d\n",
+@@ -4564,6 +4590,7 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
+             task.id_slot = json_value(data, "id_slot", -1);
+             task.pra_resource_slot = json_value(data, "pra_resource_slot", -1);
+             task.pra_source_slot = json_value(data, "pra_source_slot", -1);
++            task.pra_source_prefix_tokens = json_value(data, "pra_source_prefix_tokens", -1);
+             task.pra_commit_to_source = json_value(data, "pra_commit_to_source", false);
+             const json pra_ranges = json_value(data, "pra_selected_ranges", json::array());
+             if (!pra_ranges.is_array()) {
+@@ -5087,6 +5114,7 @@ void server_routes::init_routes() {
+             {"native_sequence_attach", params.kv_unified},
+             {"live_prefix_kv_capture", params.kv_unified},
+             {"live_prefix_kv_subset", params.kv_unified},
++            {"live_prefix_source_rollback", params.kv_unified},
+             {"zero_selected_text_reencoding", params.kv_unified},
+             {"stable_record_kv_identity", params.kv_unified},
+             {"multiple_selected_records", params.kv_unified},
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 2b444ae..ed1f2b1 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -173,6 +173,7 @@ struct server_task {
+     // membership to those cells; it never re-tokenizes or re-evaluates them.
+     int32_t pra_source_slot   = -1;
+     int32_t pra_source_tokens = 0;
++    int32_t pra_source_prefix_tokens = -1;
+     bool    pra_commit_to_source = false;
+     std::vector<server_pra_kv_range> pra_selected_ranges;
+ 
+@@ -262,6 +263,7 @@ struct server_task {
+         copy.pra_pin_resource  = pra_pin_resource;
+         copy.pra_source_slot   = pra_source_slot;
+         copy.pra_source_tokens = pra_source_tokens;
++        copy.pra_source_prefix_tokens = pra_source_prefix_tokens;
+         copy.pra_commit_to_source = pra_commit_to_source;
+         copy.pra_selected_ranges = pra_selected_ranges;
+ 
+-- 
+2.50.1 (Apple Git-155)
+
