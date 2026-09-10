@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -45,6 +46,9 @@ def run_campaign(
         record = cells.setdefault(cell.cell_id, {"state": "PENDING"})
         if record.get("state") == "COMPLETED":
             continue
+        record.update(_cell_definition(cell))
+        if not dry_run:
+            record.pop("dry_run", None)
         if not cell.enabled:
             record.update(state="SKIPPED", reason="Cell disabled in campaign config.")
             _persist(config, state, root, state_path)
@@ -59,23 +63,19 @@ def run_campaign(
             _persist(config, state, root, state_path)
             break
         if dry_run:
-            record.update(
-                state="PENDING", command=_expand_command(cell.command), dry_run=True,
-                agent_id=cell.agent_id, connection=cell.connection,
-                engine_pra_enabled=cell.engine_pra_enabled,
-                gateway_pra_enabled=cell.gateway_pra_enabled,
-                gateway_mode=cell.gateway_mode, comparison_group=cell.comparison_group,
-                paired_cell=cell.paired_cell,
-                evidence_role=cell.evidence_role,
-                selection_contract=cell.selection_contract,
-                priority=cell.priority,
-            )
+            record.update(state="PENDING", dry_run=True)
             record.pop("reason", None)
             record.pop("error", None)
             _persist(config, state, root, state_path)
             continue
 
-        command = _expand_command(cell.command)
+        try:
+            command = _expand_command(cell.command, require_resolved=True)
+        except ValueError as exc:
+            record.update(state="BLOCKED", reason=str(exc))
+            record.pop("error", None)
+            _persist(config, state, root, state_path)
+            continue
         record.update(
             state="RUNNING", started_at=_now(), command=command,
             agent_id=cell.agent_id, connection=cell.connection,
@@ -156,6 +156,9 @@ def record_result(config_path: Path, *, cell_id: str, result_path: Path) -> dict
         "engine_pra_enabled": cell.engine_pra_enabled,
         "gateway_pra_enabled": cell.gateway_pra_enabled,
         "gateway_mode": cell.gateway_mode,
+        "engine_target_id": cell.engine_target_id,
+        "prefix_caching": cell.prefix_caching,
+        "factorial_group": cell.factorial_group,
         "comparison_group": cell.comparison_group,
         "paired_cell": cell.paired_cell,
         "evidence_role": cell.evidence_role,
@@ -210,6 +213,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _cell_definition(cell: Any) -> dict[str, Any]:
+    """Refresh resumable state from the current campaign declaration."""
+
+    return {
+        "command": _expand_command(cell.command),
+        "agent_id": cell.agent_id,
+        "connection": cell.connection,
+        "engine_pra_enabled": cell.engine_pra_enabled,
+        "gateway_pra_enabled": cell.gateway_pra_enabled,
+        "gateway_mode": cell.gateway_mode,
+        "comparison_group": cell.comparison_group,
+        "paired_cell": cell.paired_cell,
+        "evidence_role": cell.evidence_role,
+        "selection_contract": cell.selection_contract,
+        "priority": cell.priority,
+    }
+
+
 def _campaign_environment(overrides: dict[str, str]) -> dict[str, str]:
     """Keep child cells on the interpreter selected for the scheduler."""
 
@@ -225,10 +246,22 @@ def _campaign_environment(overrides: dict[str, str]) -> dict[str, str]:
     return environment
 
 
-def _expand_command(command: tuple[str, ...]) -> list[str]:
-    """Expand endpoint variables without invoking a shell or exposing credentials."""
+def _expand_command(
+    command: tuple[str, ...], *, require_resolved: bool = False,
+) -> list[str]:
+    """Expand endpoint variables and optionally reject unresolved placeholders."""
 
-    return [os.path.expandvars(value) for value in command]
+    expanded = [os.path.expandvars(value) for value in command]
+    if require_resolved:
+        missing = sorted({
+            match.group(1)
+            for value in expanded
+            for match in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", value)
+        })
+        if missing:
+            names = ", ".join(missing)
+            raise ValueError(f"Required campaign environment variable(s) are unset: {names}.")
+    return expanded
 
 
 def _repository_root(config_path: Path) -> Path:

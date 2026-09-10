@@ -147,8 +147,8 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
         "No PRA frontier is interpreted before a compatible official baseline exists.", "",
         "Transport qualification, efficacy, equivalence, and product end-to-end rows are "
         "reported separately; none is silently promoted into another evidence class.", "",
-        "| Cell | Agent | Evidence role | Selection | Mode | Connection | Engine PRA | Gateway PRA | State | Baseline gate |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Cell | Agent | Evidence role | Selection | Mode | Connection | Engine target | Engine PRA | Gateway PRA | Prefix cache | Factorial | State | Baseline gate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for cell in treatments:
         value = cells.get(cell.cell_id, {})
@@ -156,8 +156,10 @@ def write_reports(config: CampaignConfig, state: Mapping[str, Any], root: Path) 
             f"| `{cell.cell_id}` | `{cell.agent_id or baselines[cell.baseline_id].harness}` | "
             f"`{cell.evidence_role}` | `{cell.selection_contract}` | "
             f"`{cell.mode.value}` | `{cell.connection or 'unspecified'}` | "
+            f"`{cell.engine_target_id or 'unspecified'}` | "
             f"{cell.engine_pra_enabled if cell.engine_pra_enabled is not None else '-'} | "
             f"{cell.gateway_pra_enabled if cell.gateway_pra_enabled is not None else '-'} | "
+            f"{cell.prefix_caching} | `{cell.factorial_group or '-'}` | "
             f"{value.get('state', 'PENDING')} | "
             f"`{cell.baseline_cell}` |"
         )

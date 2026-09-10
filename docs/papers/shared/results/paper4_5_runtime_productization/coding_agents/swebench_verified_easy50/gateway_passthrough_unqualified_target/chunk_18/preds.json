@@ -1,0 +1,7 @@
+{
+  "django__django-13933": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-13933",
+    "model_patch": "diff --git a/django/forms/models.py b/django/forms/models.py\nindex 422bc5d178..64b5cc1239 100755\n--- a/django/forms/models.py\n+++ b/django/forms/models.py\n@@ -3,7 +3,7 @@ Helper functions for creating Form classes from Django models\n and database field objects.\n \"\"\"\n from itertools import chain\n-\n+        \"invalid_choice\": _(\"Select a valid choice. %(value)s is not one of the available choices.\"),\n from django.core.exceptions import (\n     NON_FIELD_ERRORS, FieldError, ImproperlyConfigured, ValidationError,\n )\n@@ -1188,8 +1188,8 @@ class ModelChoiceField(ChoiceField):\n     # This class is a subclass of ChoiceField for purity, but it doesn't\n     # actually use any of ChoiceField's implementation.\n     default_error_messages = {\n-        'invalid_choice': _('Select a valid choice. That choice is not one of'\n-                            ' the available choices.'),\n+        \"invalid_choice\": _(\"Select a valid choice. %(value)s is not one of the available choices.\"),\n+    }\n     }\n     iterator = ModelChoiceIterator\n \n"
+  }
+}

@@ -151,3 +151,12 @@ tokens, 9,503 output tokens, no timeouts, and no grader errors. This
 selected-on-success gate validates transport, not population accuracy or
 latency. Its retained evidence is under `gateway_parity3_fixed_mac4/`; a fresh
 Easy-50 pass-through run is the next quality comparison.
+
+A later M5 worktree audit recovered a nominal 17/50 pass-through result, a
+0/50 selected-context result, and five interrupted 25%-truncation chunks. Those
+runs preflighted only an ephemeral local treatment proxy and did not bind its
+upstream route. They are therefore retained as diagnostics rather than imported
+into the canonical campaign. In particular, the 0/50 row does not establish
+G10 consumption of the selected resources. See
+`swebench_verified_easy50/recovered_remote_diagnostics.md` for the evidence
+disposition and recovered artifact locations.

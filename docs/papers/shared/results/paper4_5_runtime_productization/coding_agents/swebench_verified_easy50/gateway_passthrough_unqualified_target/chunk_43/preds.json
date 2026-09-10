@@ -1,0 +1,7 @@
+{
+  "sympy__sympy-18189": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sympy__sympy-18189",
+    "model_patch": "        if syms:\n            if not is_sequence(syms):\n                raise TypeError(\n                    'syms should be given as a sequence, e.g. a list')\n            syms = [i for i in syms if i in var]\n            if syms != var and not permute:\n                dict_sym_index = dict(zip(syms, range(len(syms))))\n                return {tuple([t[dict_sym_index[i]] for i in var])\n                            for t in diophantine(eq, param)}\n        n, d = eq.as_numer_denom()\n        if n.is_number:\n"
+  }
+}

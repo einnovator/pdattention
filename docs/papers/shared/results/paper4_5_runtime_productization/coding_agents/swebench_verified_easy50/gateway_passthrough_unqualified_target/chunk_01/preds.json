@@ -1,0 +1,7 @@
+{
+  "sympy__sympy-21847": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sympy__sympy-21847",
+    "model_patch": "diff --git a/sympy/polys/monomials.py b/sympy/polys/monomials.py\nindex 0e84403307..af7097fb84 100755\n--- a/sympy/polys/monomials.py\n+++ b/sympy/polys/monomials.py\n@@ -127,7 +127,7 @@ def itermonomials(variables, max_degrees, min_degrees=None):\n                 for variable in item:\n                     if variable != 1:\n                         powers[variable] += 1\n-                if max(powers.values()) >= min_degree:\n+                if min_degree <= sum(powers.values()) <= max_degree:\n                     monomials_list_comm.append(Mul(*item))\n             yield from set(monomials_list_comm)\n         else:\n"
+  }
+}

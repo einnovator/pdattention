@@ -1,0 +1,34 @@
+{
+  "schema": "paper4.5.swebench.docker_phantom_workaround.v1",
+  "recorded_at_utc": "2026-09-09T08:57:56.8642330Z",
+  "host": "medium-mac-m5-16gb",
+  "docker": {
+    "desktop_version": "4.68.0 (223695)",
+    "engine_version": "29.3.1",
+    "api_version": "1.54"
+  },
+  "failure": {
+    "phase": "official_swebench_cleanup_reporting",
+    "phantom_container_id": "1e86446fe8168a15b457e1dac1304151358f9b7eb3cd4427a04793a22f655d17",
+    "behavior": "The daemon listed the container ID but returned HTTP 404 when the Docker SDK inspected it.",
+    "affected_task_index_zero_based": 22,
+    "affected_instance_id": "scikit-learn__scikit-learn-12585"
+  },
+  "workaround": {
+    "implementation": "experiments/paper4_5_agent/runners/docker_phantom_sitecustomize.py",
+    "sha256": "e21c87ed98135b8785c0b0c0655087aca30ea06b956df343e9951471bb638761",
+    "activation_environment": "PAPER45_SKIP_PHANTOM_DOCKER_CONTAINERS=1",
+    "subprocess_pythonpath": "/private/tmp/pdattention-paper4-agent-eval/src:/private/tmp/pdattention-paper4-agent-eval",
+    "scope": "Only Docker high-level container enumeration during cleanup/reporting is changed. Entries that return NotFound on reload are omitted.",
+    "official_test_execution_modified": false,
+    "official_result_parsing_modified": false
+  },
+  "validation": {
+    "phantom_entry_skipped": true,
+    "valid_containers_returned": 8,
+    "absolute_pythonpath_required_for_grader_subprocess": true,
+    "official_harness_cleanup_passed": true,
+    "resumed_instance_id": "scikit-learn__scikit-learn-12585",
+    "resumed_instance_resolved": true
+  }
+}

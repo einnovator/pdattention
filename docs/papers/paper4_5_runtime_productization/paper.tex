@@ -56,21 +56,12 @@ on 32 held-out QASPER and HotpotQA questions. Its learned router helps QASPER
 but hurts HotpotQA, and detached native K/V is unavailable because 48 of 64
 layers require DeltaNet recurrent state beyond K/V.
 
-The same evidence discipline applies above the engine. On 50 MultiHop-RAG
-questions, a powered Qwen3-4B decomposition finds that generic PRA selection
-does not beat a strong conventional reranker, while selector-frozen contiguous
-Native Memory preserves every output. Retaining one 2K selection reduces warm
-total latency from 3.031 to 0.638~s; at 4K it reduces 6.121 to 0.799~s, but
-these comparisons deliberately re-prefill selected text and are not ordinary
-prefix-cache-hit controls. Independently cached chunks avoid 20.8\% of source
-materialization and reduce cumulative runtime by 12.8\%, yet source-local
-positional composition changes outputs. The robust product contribution is
-therefore selective logical context with explicit provenance. Native Memory
-and Native Serving remain engine-, representation-, and workload-qualified
-optimizations. A Qwen3-8B replication improves absolute F1 but preserves the
-same selector ordering, so larger generation alone does not repair retrieval.
-Stronger selection, position-aware chunk composition, and production-scale
-profile calibration remain open.
+Using MultiHop-RAG only as a locked engine workload, MLX-LM contiguous Native
+Memory preserves every selector-frozen output. Retained K/V reduces warm total
+latency from 3.031 to 0.638~s at 2K and from 6.121 to 0.799~s at 4K, while cold
+native execution remains 1.8--3.3\% slower across Qwen3-4B/8B. Independently
+cached chunks reduce runtime but change outputs, so they remain unqualified.
+Papers~3.2 and~3.3 own the corresponding retrieval and selector conclusions.
 \end{abstract}
 
 \section{Introduction}
@@ -519,23 +510,12 @@ it avoids request-time rotation when positions are fixed; pre-RoPE is an
 experimental composition facility, not a claim that rotation alone restores
 the causal history missing from independently encoded records.
 
-Paper~3.2 now measures that distinction directly. In a tiny unquantized Qwen
-fixture, independently encoded pre-RoPE records rebound to packed positions
-match a document-isolated packed computation at every K/V layer and in final
-logits within $2\times10^{-5}$. Across five 30-question Qwen3-1.7B 4-bit
-cohorts, the same comparison remains close at task level (.108 versus .110 F1;
-mean first-step JS $8.80\times10^{-4}$), but only 101/150 generated outputs
-match and no first-step logit hash is exact. Value-state error grows through the
-decoder, consistent with shape-dependent finite-precision projection and
-attention paths. Reduced one-seed checks reproduce close B/C behavior at larger
-scale: generated outputs agree in 8/10 Qwen3-4B, 10/10 Qwen3-8B, and 10/10
-Llama-3.1-8B cases. Their numerical residual is architecture-dependent:
-first-step JS is $(3.14\text{--}4.05)\times10^{-4}$ for Qwen and
-$1.41\times10^{-6}$ for Llama, while no exact logit hash matches. Pre-RoPE
-storage therefore remains
-\texttt{CALIBRATION\_PENDING}: an adapter must qualify the host RoPE contract
-and numerical runtime separately, and neither qualification establishes the
-cross-record causal contextualization supplied by fresh packed encoding.
+Papers~3.2 and~3.3 own the detailed document-selection, positional-rebinding,
+and answer-quality studies.  Paper~4.5 imports only their runtime decision:
+independently encoded pre-RoPE records remain
+\texttt{CALIBRATION\_PENDING}.  An engine adapter must qualify its RoPE contract
+and numerical path, and that qualification does not recreate cross-record
+causal contextualization.
 
 \begin{table}[H]
 \centering
@@ -1474,59 +1454,17 @@ execution semantics and relative routing work, not language quality or
 production latency. EOS can terminate before three tokens, so token-level
 operation counts are averaged over the actual forwards.
 
-\subsection{Matched-candidate document-RAG protocol}
+\subsection{RAG engine-mode protocol}
 
-We evaluate PRA after, rather than in place of, first-stage corpus retrieval.
-The official MultiHop-RAG release contains 2,556 questions and 609 news
-documents, with evidence distributed over two to four documents per
-question~\cite{tang2024multihoprag}. We select 50 questions with seed 11. For
-each question and candidate count $N\in\{5,10,20,50\}$, BM25 produces one
-ordered candidate receipt. The receipt includes dataset, corpus, retriever, and
-index revisions; document IDs, ranks, scores, and content digests; a 256-token,
-32-token-overlap chunker; and the seed. Both conditions reject a changed or
-missing document before selection.
-
-Standard RAG ranks all candidate chunks by BM25 and packs whole chunks until
-the physical budget. Parameter-free PRA retains the same documents as typed,
-versioned resources and rank-fuses BM25 with a deterministic hashed-semantic
-view before materializing exact source intervals. We evaluate 2K, 4K, 8K, and
-16K budgets. L1 inserts any missing gold documents after first-stage retrieval,
-isolating context selection. L2 preserves unmodified BM25 candidates, exposing
-first-stage misses. Gold-document packing is an oracle diagnostic and is
-excluded from headline deltas.
-
-The broad grid uses a deterministic answer-availability probe: success means
-that an accepted answer string occurs in selected context. It measures whether
-selection exposes an answer, not whether a model generates it. We therefore
-report it separately from strict EM, token F1, and the official MultiHop-RAG
-token-intersection score. Detailed gzip artifacts retain every question,
-candidate receipt, selected character interval, metric, and failure class.
-
-The powered extension does not treat PRA as one arm. It names five execution
-conditions: \texttt{NO\_PRA\_STANDARD\_RAG}, selected context and native memory
-without an adaptor, and the corresponding two bundle conditions.  The latter
-remain \texttt{NO\_QUALIFIED\_ADAPTER} unless the exact model, precision, and
-MultiHop-RAG profile are qualified.  The unmodified BM25 candidate receipt is
-shared throughout.  Standard RAG uses global BM25 chunk packing; a stronger
-conventional control reranks the same chunks with the pinned
-\path{cross-encoder/ms-marco-MiniLM-L-6-v2}. Generic PRA uses its deterministic
-BM25/hashed-semantic fusion, while a stronger PRA control consumes the same
-cross-encoder ordering.  This is a selector comparison, not a retriever race.
-
-For each PRA ordering, one condition-independent selection receipt freezes
-document IDs, chunk IDs, character intervals, scores, order, and physical-token
-budget.  Selected Context serializes exactly that receipt as visible text;
-Native Memory encodes exactly the same text as detached MLX K/V.  A digest
-mismatch aborts the pair.  Cold rows include source ingestion.  Warm native
-rows reuse the retained immutable K/V, whereas the visible-text control
-re-prefills its selected text; the regimes are never averaged.  The primary
-powered cell is the fixed 50-question, seed-11 cohort at $N=20$ and 2K tokens;
-the boundary cell uses $N=50$ and 4K.  All generated rows retain normalized EM,
-token F1, the upstream lowercased token-intersection score, answer availability,
-evidence coverage, TTFT/ITL, completion and end-to-end latency, selected native
-tokens, K/V bytes, and peak unified memory.  Failure labels identify first-stage
-misses, RAG packing, PRA selection or distractors, materialization, generation,
-formatting, native realization, and bundle regression separately.
+Retrieval and selector quality belong to Papers~3.2 and~3.3.  Here MultiHop-RAG
+is only a controlled engine workload: a fixed 50-question, seed-11 cohort and a
+tamper-evident receipt hold selected document intervals and token budgets fixed
+between realizations~\cite{tang2024multihoprag}.  The engine comparison is
+Selected Context (visible text re-prefilled per request) versus Native Memory
+(the same selected text encoded as detached MLX K/V), each measured cold and
+warm.  We report TTFT, total latency, throughput, ingestion time, visible and
+native tokens, retained K/V bytes, peak memory, and output parity.  Selector and
+answer-quality artifacts remain available for audit but are not repeated here.
 
 \section{Results}
 
@@ -1586,148 +1524,21 @@ CUDA row passes its quality gate, useful throughput equals 56.25 requests/s for
 E0, 45.46 for HOT E2, and 42.44 for WARM E2. Context and Native Gain therefore
 do not imply a throughput win.
 
-\subsection{Matched RAG candidates expose a budget-sensitive selection signal}
+\subsection{RAG results: engine realization only}
 
-Table~\ref{tab:rag-selection} reports the 2K-budget probe. At five and twenty
-gold-present candidates, PRA improves both answer availability and supporting
-document/span coverage. At fifty candidates, answer availability remains
-higher, but the span advantage disappears. The real-retrieval condition is
-stricter: at $N=50$, PRA raises answer availability from 0.64 to 0.76 while
-supporting-document coverage falls from 0.515 to 0.505 and false selection
-rises from 0.776 to 0.795. The latter row is not evidence of better grounded
-answering. It shows why answer presence, evidence coverage, and distractor
-exposure must remain separate.
-
-\begin{table}[H]
-\centering
-\small
-\caption{MultiHop-RAG 50-question selection probe at a 2K physical-token
-budget. ``Avail.'' is answer-string availability, not generated-answer EM.}
-\label{tab:rag-selection}
-\begin{tabular}{llrrrrr}
-\toprule
-Stage & $N$ & Condition & Avail. & Support docs & Support spans & False docs \\
-\midrule
-Gold present & 5  & RAG & .64 & .670 & .368 & .518 \\
-Gold present & 5  & PRA & .74 & .818 & .525 & .468 \\
-Gold present & 20 & RAG & .60 & .508 & .315 & .736 \\
-Gold present & 20 & PRA & .70 & .618 & .385 & .721 \\
-Gold present & 50 & RAG & .64 & .522 & .345 & .774 \\
-Gold present & 50 & PRA & .76 & .538 & .310 & .785 \\
-\midrule
-Real BM25 & 5  & RAG & .58 & .405 & .247 & .684 \\
-Real BM25 & 5  & PRA & .68 & .472 & .327 & .701 \\
-Real BM25 & 20 & RAG & .56 & .430 & .268 & .769 \\
-Real BM25 & 20 & PRA & .68 & .493 & .318 & .777 \\
-Real BM25 & 50 & RAG & .64 & .515 & .338 & .776 \\
-Real BM25 & 50 & PRA & .76 & .505 & .300 & .795 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{multihoprag_fixed_candidate_curves.pdf}
-\caption{Gold-present candidate and physical-budget curves. Parameter-free PRA
-has its clearest advantage under the 2K bottleneck; the conditions converge as
-most useful chunks fit. The vertical quantity is answer availability, not
-model accuracy.}
-\label{fig:rag-curves}
-\end{figure}
-
-The multi-query diagnostic asks 50 questions against one persistent corpus at
-$N=20$ and 2K. Standard RAG serializes 101,730 selected tokens cumulatively.
-Counting a PRA chunk only on first materialization yields 80,535 tokens across
-349 unique chunks, avoiding 21,195 repeated tokens (20.8\%). Figure
-~\ref{fig:rag-reuse} also exposes the boundary: these questions share little
-evidence, so PRA does not approach a one-time-ingestion asymptote. This is token
-accounting, not an engine speed result.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.76\linewidth]{multihoprag_reuse_curve.pdf}
-\caption{Cumulative selected-text transmission versus unique newly materialized
-PRA chunks over 50 real-retrieval questions. Physical cache hits and wall time
-remain for engine qualification.}
-\label{fig:rag-reuse}
-\end{figure}
-
-A ten-question L1 smoke then executes the product conditions with the exact
-\path{mlx-community/Qwen3-4B-4bit} revision on a 48~GiB M4 Pro. At $N=20$,
-Standard RAG scores 0.90 under MultiHop-RAG's official token-intersection metric
-and 0.094 token F1; generic PRA scores 0.70 and 0.077. At $N=50$, the scores are
-0.90/0.091 and 0.80/0.081. Strict EM is zero throughout because the model emits
-explanatory sentences rather than only the short target. PRA reduces mean
-visible prompt width from 2,110 to 82 tokens, but retains about 300~MB of
-all-layer native K/V. Mean cold source ingestion is 2.39--2.46~s in both modes;
-TTFT is 165--172~ms for Standard RAG and 173--175~ms for PRA, while completion
-rises from 557--563~ms to 647~ms. This is a negative quality and economic gate,
-not a native-E2 win. Because the product conditions also use different context
-selectors, this run does not attribute the loss between selection and native
-transport; selector-frozen engine parity remains a separate control.
-
-\subsection{Powered decomposition separates selection from realization}
-
-The powered qualification repeats the experiment on 50 fixed held-out
-questions at $N=20$ and a 2K physical-token budget. It pins the Qwen3-4B
-4-bit model, cross-encoder revision, candidate receipts, chunker, prompt,
-generation parameters, and seed. Each Selected Context/Native Memory pair uses
-one tamper-evident selection receipt; the run aborts if its document, chunk,
-interval, score, order, or budget fields differ. The exact model/precision
-combination has no qualified MultiHop-RAG adaptor, so both bundle conditions
-are recorded as \texttt{NO\_QUALIFIED\_ADAPTER}, not approximated with an
-adaptor trained for another workload.
+Papers~3.2 and~3.3 report retrieval, selection, evidence coverage, and answer
+quality.  Their current policy keeps generic document selection unqualified.
+Paper~4.5 therefore asks only what the runtime does after a selection is frozen.
+On the 50-question 2K cohort, Selected Context and Native Memory match every
+output and quality metric; detached MLX K/V introduces no additional quality
+change in this comparison.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Powered MultiHop-RAG decomposition ($n=50$, seed 11, $N=20$, 2K).
-Quality and selection columns are invariant across cold/warm realization, so
-the table reports each condition once. ``Official'' is the upstream
-lowercased token-intersection score; answer availability is not generation.}
-\resizebox{\linewidth}{!}{%
-\input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_quality_table.tex}}
-\label{tab:powered-rag-quality}
-\end{table}
-
-\begin{table}[H]
-\centering
-\small
-\caption{Final powered-RAG qualification decisions. A passing realization or
-economic gate does not override the failed upstream selection gate.}
-\input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_gate_table.tex}
-\label{tab:powered-rag-gates}
-\end{table}
-
-Standard BM25 obtains 0.500 official score and 0.082 token F1. The generic PRA
-selector raises supporting-document coverage from 0.400 to 0.468 and gold
-chunk recall from 0.0448 to 0.0484, but generated score falls to 0.440 and F1
-to 0.071. The stronger reranker raises answer availability from 0.56 to 0.70
-and lowers false selected-document fraction from 0.752 to 0.691, yet its
-generated score remains 0.440. Better evidence exposure therefore does not by
-itself imply better answer generation. Against both the standard and stronger
-conventional controls, the selection gate is closed.
-
-Answer-normalization diagnostics also rule out malformed output as the cause:
-all 50 primary-arm generations satisfy the predeclared format check. None is a
-normalized exact short answer; 34 standard-BM25 and 29 generic-PRA generations
-have nonzero normalized token overlap with an accepted answer. The reported
-zero EM therefore reflects verbose or partial model answers rather than an
-unrecorded scoring transformation.
-
-The realization result is different. The strong conventional control and the
-strong PRA Selected Context arm have identical receipts and outputs. Within
-both generic and strong PRA pairs, Selected Context and Native Memory also
-match every generated output and every quality metric. This establishes that
-the observed quality deficit is selected before native K/V realization; it is
-not caused by detached MLX K/V in this cohort.
-
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{Generic-PRA realization economics for the same 50 frozen selections.
-Cold includes native encoding; warm reuses retained immutable K/V. Visible
-Selected Context is deliberately re-prefilled on each question.}
+\caption{MLX-LM Qwen3-4B 4-bit realization metrics for 50 frozen 2K RAG
+selections on a 48~GiB M4 Pro. Times are milliseconds; cold includes native
+encoding, while warm Native Memory reuses retained immutable K/V.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/paper_runtime_table.tex}}
 \label{tab:powered-rag-runtime}
@@ -1740,40 +1551,19 @@ regression. Once the same selection is retained, mean TTFT falls from 2.640~s
 to 0.166~s and total latency from 3.031~s to 0.638~s; throughput rises from
 10.56 to 50.21 tokens/s. Warm native active detail is 299~MB, while measured
 peak unified memory is 0.63~GB lower than the repeatedly prefilled Selected
-Context path. The native-memory and economic gates pass for this repeated-
-selection regime, even though the end-to-end RAG qualification remains closed
-by selection quality.
+Context path. The native-memory and economic gates pass only for this repeated-
+selection regime; they do not override the selector qualification owned by
+Papers~3.2 and~3.3.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
-\caption{Selector-frozen generic-PRA TTFT p95. Native realization is near the
-Selected Context control when cold and much faster after retained-K/V reuse;
-cold and warm measurements are not averaged.}
-\label{fig:powered-rag-ttft}
-\end{figure}
-
-\subsection{Budget boundary and physical chunk reuse}
-
-The secondary powered cell increases both distractor pressure and selected
-width: the same 50 questions use $N=50$ and a 4K budget. Standard BM25, the
-strong conventional reranker, generic PRA, and strong-reranker PRA all obtain
-0.460 official score. Their token F1 values are 0.075, 0.081, 0.080, and
-0.081, respectively. Generic PRA exposes the answer in 0.76 of examples, but
-its 0.080 F1 does not beat the strong control. The point estimates therefore
-converge without opening the selection gate; the bootstrap quality intervals
-also overlap substantially.
-
-Contiguous selector-frozen realization remains exact at 4K. Cold Native
+At the 4K boundary, contiguous selector-frozen realization remains exact. Cold Native
 Memory costs 6.313~s versus 6.109~s for Selected Context, a 3.3\% regression.
 After retaining the exact selection, Native Memory costs 0.799~s versus
 6.121~s, an 86.9\% reduction, while moving 4,084 selected tokens out of the
 visible prompt. The cost is approximately 602~MB of active all-layer K/V.
-Figure~\ref{fig:powered-rag-ttft} and this 4K replication therefore describe
-a repeated-selection benefit, not an unconditional RAG speedup and not a
-comparison with a selected-text prefix-cache hit.
+This is a repeated-selection benefit, not a comparison with a selected-text
+prefix-cache hit.
 
-The physical persistent-corpus run changes the reuse unit from a complete
+The MLX persistent-corpus mode changes the reuse unit from a complete
 selection to independently encoded 256-token chunks. Across 50 changing
 questions it reuses 22.0\% of chunk lookups, materializes 80,117 unique native
 tokens rather than about 101,294 selected tokens, and reduces cumulative
@@ -1786,45 +1576,16 @@ source-local post-RoPE positions; concatenated Selected Context assigns one
 global sequence of positions. The experiment consequently measures a real
 chunk-resident representation policy, not transport parity. We mark the
 selection, native-parity, and economic decomposition gates
-\texttt{NOT\_APPLICABLE\_PERSISTENT\_CORPUS} and require position-aware chunk
-composition before promoting this policy.
+\texttt{NOT\_APPLICABLE\_PERSISTENT\_CORPUS}; position-aware composition remains
+required.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_persistent_n20_2k_50/plots/cumulative_repeated_query_tokens.pdf}
-\caption{Physical persistent-corpus accounting over 50 changing selections.
-Chunk-native residency reduces newly encoded source tokens, but this curve
-must be read with the source-local positional and retained-memory caveats.}
-\label{fig:powered-rag-persistent}
-\end{figure}
-
-\subsection{Qwen3-8B replication}
-
-The prespecified cross-scale replication uses the same 50 question IDs,
-$N=20$, 2K budget, candidate receipts, selectors, prompt, and greedy decoding
-with pinned \path{mlx-community/Qwen3-8B-4bit}. Standard BM25 obtains 0.520
-official score and 0.093 F1; the strong conventional reranker obtains 0.480
-and 0.096; generic PRA obtains 0.440 and 0.081. Absolute F1 rises modestly
-relative to Qwen3-4B, but the ordering does not change and the selection gate
-remains closed. The bootstrap intervals overlap, so the cohort supports a
-negative qualification decision rather than a precise model-size effect.
-
-Both generic and strong-reranker Selected Context/Native Memory pairs remain
-output-exact. Generic cold native execution costs 5.636~s versus 5.535~s, a
+On the same M4 host, pinned MLX-LM Qwen3-8B 4-bit repeats the engine result:
+both selector-frozen text/native pairs are output-exact. Generic cold Native
+Memory costs 5.636~s versus 5.535~s, a
 1.8\% total-latency regression. Retaining the same native selection reduces
 warm total latency from 5.541 to 0.990~s (82.1\%) and TTFT from 4.908 to
 0.276~s. Active detail is approximately 285~MB. The 8B run therefore repeats
-the native-memory and repeated-selection economic results, but does not rescue
-the unadapted selector or qualify a bundle card.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_8b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
-\caption{Qwen3-8B selector-frozen TTFT p95 over the same 50 questions. The
-cold paths remain close; retained native K/V removes repeated selected-text
-prefill.}
-\label{fig:powered-rag-8b-ttft}
-\end{figure}
+the native-memory and repeated-selection result across model scale.
 
 \subsection{Stable prefix and session-delta contract}
 
@@ -2716,21 +2477,13 @@ LaTeX table from one record.  Every current local bundle now declares
 engine, mode, profile, datasets, and evidence tier.  No learned-adaptor arm is
 inferred from the presence of a structural bundle.
 
-A new matched M5 study covers three deployable rungs for Qwen3-4B.  The BF16,
-INT8, and INT4 runs use the same 10 MultiHop-RAG questions, seed, candidate
-counts, 2,048-token budget, generation settings, and physical host.  A direct
-load audit finds 398 BF16 parameter arrays and no quantized layers in the
-pinned source revision.
-Table~\ref{tab:precision-rag} and Figure~\ref{fig:precision-rag} compare each
-precision's ordinary non-PRA RAG pipeline with its generic-PRA native-K/V
-pipeline.  This Native-Memory-versus-No-PRA delta combines selection and
-transport because the historical cohort did not capture an intervening PRA
-Selected Context arm.  At 20 candidates, the total token-F1 change improves from $-0.0176$
-for INT4 to $-0.0035$ for INT8 and $-0.0019$ for BF16; at 50 candidates it
-improves from $-0.0091$ to $+0.0036$ and $+0.0072$.  BF16 and INT8 preserve
-the dataset task score in both settings, whereas INT4 loses one or two of the
-ten answers.  Native execution costs 5.8--6.1\% more total latency for BF16,
-10.0--10.7\% for INT8, and 14.8--16.1\% for INT4 in this one-shot path.
+A matched M5 study isolates precision-specific MLX cost on ten fixed
+MultiHop-RAG questions. Table~\ref{tab:precision-rag} reports the deployed
+No-PRA and Native-Memory pipelines: one-shot native execution costs 5.8--6.1\%
+more total latency for BF16, 10.0--10.7\% for INT8, and 14.8--16.1\% for INT4.
+The row retains the quality delta only as a guardrail. Because this historical
+cohort changed both selector and representation, it is not a selector-frozen
+transport comparison; Papers~3.2 and~3.3 own its retrieval interpretation.
 
 \begin{table}[H]
 \centering
@@ -2745,27 +2498,10 @@ Context arm is qualified.}
 \label{tab:precision-rag}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=.92\linewidth]{../shared/results/paper4_5_runtime_productization/precision_rag/precision_rag_comparison.pdf}
-\caption{Quality and latency changes for the matched BF16, INT8, and INT4 deployed
-pipelines.  The small one-seed cohort is directional evidence, not a precision
-invariance claim.}
-\label{fig:precision-rag}
-\end{figure}
-
-This comparison deliberately reports deployed pipelines: the baseline uses
-the standard selector and visible text, while PRA uses the hybrid selector and
-detached native K/V.  Candidate generation is matched, but selector output and
-transport are not independently frozen.  The result therefore shows a
-monotonic directional improvement in this cohort from INT4 through INT8 to
-BF16; it does not isolate whether that difference comes from selection,
-representation, or their interaction.  The published source checkpoint is
-BF16, so a float32 serving cast would not constitute an independent FP32
-weight reference.  A selector-frozen study, a
-matched non-Qwen replication, Qwen3-14B BF16, peak-memory measurement, and
-cross-precision adaptor transfer remain \texttt{NEEDS\_RUN}.  The absent
-learned-adaptor arms remain \texttt{NO\_QUALIFIED\_ADAPTER}.
+The small, one-seed cohort is directional engine evidence. A selector-frozen
+non-Qwen replication, Qwen3-14B BF16, and peak-memory measurement remain
+\texttt{NEEDS\_RUN}; absent adaptor arms remain
+\texttt{NO\_QUALIFIED\_ADAPTER}.
 
 The expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs
@@ -3226,6 +2962,138 @@ zero, and gateway latency was confounded by network placement and a shared
 single-slot model server. It clears the transport gate for a fresh corrected
 Easy-50 comparison.
 
+Native profile qualification then exposed three agent-history correctness bugs.
+First, mini-swe-agent can reject a malformed assistant action and append a
+format-error user observation without retaining the rejected action; the live
+KV sequence must therefore support exact-prefix backtracking rather than assume
+append-only history. Second, independently selecting message fragments can
+retain two assistant actions while omitting the intervening tool observation,
+which Qwen's chat template rejects. Third, treating only the latest observation
+as mandatory can still discard the assistant command that produced it. On the
+task-01 trajectory this changed the second generated response and immediately
+caused a format error. The corrected selector ranks historical atomic causal
+turn bundles: one assistant action plus all following user/tool observations up
+to the next action, while the complete active action--observation tail is
+mandatory. The task statement remains pinned, selected bundles retain causal
+presentation order, and the complete reconstructed request must pass the
+physical model's chat template before resource materialization. Intermediate
+frozen replay
+of the admitted task-01 trajectory validated every one of its 31 user-ending
+request prefixes at each of the 75\%, 50\%, and 25\% profiles (93 rendered
+requests total). This validates template grammar, not causal completeness or
+task efficacy; both fragment-level runs and profile attempts made before the
+active-tail correction are excluded from solve-rate and efficiency deltas and
+must be rerun.
+The engine path also stopped deleting the pinned selected-history sequence when
+its digest changes. It now submits the replacement to the same owned slot and
+lets llama.cpp retain the exact common token prefix while trimming the
+divergent tail. A physical M4 probe cached 2,450 of 2,455 replacement-prefix
+tokens, evaluated only five tokens versus 2,455 under cold materialization, and
+then produced the same 32 sampled tokens as the cold reference with no physical
+K/V copy. This qualifies the delta mechanism; agent-level runtime benefit still
+requires the matched profile and prefix-cache factorial.
+
+The first corrected active-tail efficacy result separates those layers. On
+task 01, both the same-engine plain control and the 100\% live-prefix PRA arm
+resolve the task in 31 model calls with exact trajectories. The 75\% selector
+matches them through two generated actions, then diverges when it drops the
+oldest completed turn on request 3; it submits after 23 model calls but its
+nonempty one-line patch fails to apply, for 0/1 officially resolved. Estimated
+logical-to-physical context falls by 23.2\%. Independently, resource-delta
+telemetry records 83,644 selected-prefix token-exposures but only 33,600 newly
+evaluated resource tokens, with 43,852 exact common-prefix cache hits, three
+identity hits, 18 delta updates, and no physical K/V copy. Thus native reuse is
+working while this selector profile fails its task-quality gate. This single
+negative probe does not admit an end-to-end gateway quality claim. The task-01
+50\% arm also resolves 0/1: it reaches the 50-step limit with no patch while
+reducing estimated logical context by 47.0\%. Its 167,908 resource-managed
+selected-prefix token-exposures require 57,301 newly evaluated tokens; 83,775
+tokens hit exact delta prefixes, 13 requests are identity hits, 34 are delta
+updates, and no K/V copy occurs. The 25\% arm likewise resolves 0/1 at the
+50-step limit with no patch. Its pinned active tail limits realized estimated
+savings to 67.6\%, but delta/identity reuse reduces newly evaluated resource
+tokens to 19,193 across 116,572 resource token-exposures. A frozen-selection
+cache on/off factorial can still isolate engine reuse, followed by the direct
+task-major matrix over the remaining 13 baseline-success tasks.
+
+That frozen factorial also fails a stricter consumption gate. The cache-off
+50\% anchor submits an unresolved nonempty patch after 44 model calls and
+507.9~s, with the live endpoint explicitly reporting
+\texttt{prefix\_cache\_enabled=false}. The cache-on arm replays exactly the
+anchor's selected records and logical requests for three calls, but its third
+response differs; request 4 consequently has no matching frozen trajectory
+digest and replay stops. We report \texttt{CONSUMPTION\_PARITY\_FAILED}, not a
+partial SWE-bench score or runtime ratio. Thus re-prefilling an agent transcript
+and continuing its live prefix-cache state are not behaviorally interchangeable
+for this quantized llama.cpp workload even when selected records are identical.
+
+Exact interaction-history audit localizes the reduced-context failure more
+sharply.  The 100\% native-PRA arm is response-for-response identical to the
+successful plain trajectory.  In every legacy active-tail arm, however, the
+first changed command is action 4: the selector retains the five task segments
+and current action--observation tail but drops the first two completed causal
+turns.  The plain agent advances to locating \texttt{Value}; the treated agent
+re-inspects \texttt{CharField} and later repeats similar source views.  Thus the
+early loss is a progress-memory selection bug, not a chat-template failure or
+evidence that native K/V attachment is intrinsically incorrect.
+
+We repaired that policy with a v4 \emph{progress spine}.  In addition to the
+pinned task and active tail, it pins the two latest completed causal turns and
+the latest mutation and verification turns, queries retrieval with both the
+task and active state, and restores all records to causal presentation order.
+All 31 baseline request prefixes again pass the physical Qwen chat template at
+75\%, 50\%, and 25\%.  On the same admitted task, v4 at 75\% resolves 1/1:
+the first four commands remain exact, action 5 merely takes a narrower source
+view, a failed stale-line edit is recovered, the patch is created at action 31,
+and the exact submission occurs at action 33.  Estimated logical-context saving
+is 22.3\%.  By contrast, v4 at 50\% resolves 0/1 after 50 actions with no
+submitted patch despite 45.9\% estimated saving.  Its selected records contain
+the exact earlier \texttt{CharField} path, yet the model launches redundant
+whole-tree searches and later corrupts a method boundary while editing.  This
+is a consumption/edit-execution failure with the required state present, so
+the 25\% arm is withheld by the predeclared quality gate.
+
+The v4 runs also preserve the systems boundary.  At 75\%, 135,757 selected
+resource-token exposures require 57,754 newly evaluated tokens while 78,003
+tokens hit exact resource-prefix deltas; no physical K/V copy is observed.
+Nevertheless, the run takes 608.0 seconds under severe host memory pressure,
+so it is not admitted as a latency improvement over the earlier plain run.
+The runtime now writes a paired JSONL history for every call containing the
+exact logical payload, transformed physical payload, selected-resource digest,
+and model response.  This makes future plain, G00, direct-native, and G11
+deviations attributable at the first differing interaction rather than only at
+the final SWE-bench score.
+
+That trace then exposed two G11 integration faults before they could be counted
+as task failures.  First, the llama.cpp wrapper advertised resource-delta
+support but rendered only the newly supplied ADD/UPDATE bodies; on request 3
+the native prefix therefore collapsed from the complete 2,576-token trajectory
+to the 565-token new turn and the response diverged.  The wrapper now retains a
+tenant--session--model resource inventory, reconstructs every ordered active
+record before chat rendering, and fails closed when an unchanged body is
+missing.  Second, G11 treated the intentional movement of completed chat turns
+from inline messages into detached records as a destructive history rewrite.
+It closed the live engine session, preserving outputs but losing the 2,293,
+2,576, and 2,684 cached tokens observed on requests 2--4.  The selected-history
+projection is now explicit; G11 retains that session while the native adapter
+still compares exact token IDs and backtracks safely on a genuine rewrite.
+
+The corrected frozen G11 replay is exact against direct native PRA on all 33
+requests: logical-request digests, ordered selected records, response text,
+prefix-hit state, cached-token counts, native-token counts, wire-token counts,
+and the no-K/V-copy flag all match.  Aggregate engine accounting is consequently
+identical: 135,757 selected-resource token exposures, 57,754 evaluated resource
+tokens, 78,003 resource-prefix hits, 7,553 sequential-prefix hits, 143,310
+native tokens, and 8,950 wire tokens.  It emits the same 689-byte patch and the
+official grader resolves the task, for direct/G11 transport parity at 1/1 and
+22.3\% estimated logical-context saving.  The grader initially attempted to
+repull the x86-only evaluator image as ARM after agent cleanup and failed before
+patch application; regrading the unchanged prediction under the declared
+\texttt{linux/amd64} platform resolved it.  The runner now propagates that
+platform contract to both agent and grader.  Because the G11 run took 1,189.7
+seconds on the already swap-saturated host versus 608.0 seconds for direct, no
+gateway latency ratio is claimed from this pair.
+
 \begin{table}[H]
 \centering
 \small
@@ -3446,22 +3314,11 @@ open. The G01 parser recognizes explicit
 system, tool, and attachment boundaries; it does not claim semantic recovery
 from arbitrary opaque traffic.
 
-The companion Paper~3.2 study now closes the main document-RAG decomposition.
-Five natural cohorts include strong lexical, dense, hybrid, and learned
-rerankers; selector-frozen text/native transport; ordinary exact-prefix cache;
-position and repair sweeps; changing-query reuse; and Qwen/Llama replication.
-Contiguous native realization remains exact. An exact repeated prefix remains
-faster than PRA, while changed selections expose 28.1\% reusable selected K/V
-where exact-prefix caching reuses no evidence tokens. Independently encoded
-records remain unqualified: the five-seed Qwen3-4B comparison changes token F1
-from .133 to .112 (mean paired delta $-.021$, bootstrap 95\% CI
-$[-.055,.007]$). A held-out query-conditioned repair policy uses 16.0\% fewer
-repaired tokens than the best fixed action at nearly the same output recovery,
-but lowers answer F1 and therefore fails the product-quality gate. Paper 4.5
-consequently qualifies immutable contiguous-block reuse only; changed-record
-composition and reduced materialization remain
-\texttt{CALIBRATION\_PENDING}. KILT Natural Questions and HotpotQA remain
-unmeasured rather than being approximated from answer provenance.
+Papers~3.2 and~3.3 own the document-RAG retrieval, routing, transfer, and quality
+evidence. Paper~4.5 imports their product boundary without reproducing those
+experiments: immutable contiguous-block reuse is qualified, while independent
+record composition and reduced materialization remain
+\texttt{CALIBRATION\_PENDING}.
 
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
 experiments. They do not by themselves measure physical prefix-cache hits,
@@ -3570,22 +3427,12 @@ missing detail can never trigger a silent profile downgrade. The eager
 primitives are exact and inexpensive in isolation, but
 off-device transfer multiplies their cost on the measured host.  Compilation
 remains a negative gate. Companion engine runs establish pinned native
-realizations but still leave portable E2/E3 integration unmeasured. The new
-document-RAG ladder adds auditable same-candidate comparisons, a strong
-reranker, and powered selector-frozen controls. Generic selection remains
-unqualified, while contiguous native realization is output-exact and sharply
-faster when an identical retained selection replaces re-prefill. Paper~3.2's
-five-seed 4B replication rejects the apparent one-seed record-quality gain, and
-its held-out repair controller improves fidelity per repaired token without
-preserving answer quality. Reusable source-local chunks therefore remain an
-experimental composition mode, not a free cache win. Qwen3-8B and Llama
-replications preserve the successful contiguous-native gate while leaving the
-independent-record gate closed. Its newer pre-RoPE decomposition further shows
-that rebinding can closely reproduce a causally isolated packed control, but a
-production 4-bit checkpoint does not provide exact numerical parity and
-rebinding does not restore cross-record contextual history. The runtime thus
-keeps post-RoPE contiguous reuse as the qualified default and exposes pre-RoPE
-only behind explicit compatibility and evidence-tier metadata. The practical
+realizations but still leave portable E2/E3 integration unmeasured. Under the
+RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
+cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
+Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks
+remain an experimental composition mode because their outputs are not exact.
+The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.

@@ -1,0 +1,7 @@
+{
+  "django__django-16116": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-16116",
+    "model_patch": "=== DIFF ===\n--- a/django/core/management/commands/makemigrations.py\n+++ b/django/core/management/commands/makemigrations.py\n@@ -250,6 +250,7 @@        else:\n            if self.update:\n                self.write_to_last_migration_files(changes)\n            else:\n                self.write_migration_files(changes)\n+            if check_changes:\n+                sys.exit(1)\n        if check_changes:\n            sys.exit(1)\n    def write_to_last_migration_files(self, changes):\n=== END DIFF ===\n"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "django__django-13417": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-13417",
+    "model_patch": "diff --git a/django/db/models/query.py b/django/db/models/query.py\nindex 85cd8311a7..57288d0109 100644\n--- a/django/db/models/query.py\n+++ b/django/db/models/query.py\n@@ -1215,6 +1215,7 @@ class QuerySet:\n     ###################################\n \n     @property\n+\n     def ordered(self):\n         \"\"\"\n         Return True if the QuerySet is ordered -- i.e. has an order_by()\n@@ -1224,11 +1225,14 @@ class QuerySet:\n             return True\n         if self.query.extra_order_by or self.query.order_by:\n             return True\n-        elif self.query.default_ordering and self.query.get_meta().ordering:\n+        # Check for GROUP BY clause - if present, default ordering cannot be applied\n+        if self.query.default_ordering and self.query.get_meta().ordering:\n+            # If there is a GROUP BY clause, the default ordering doesn't apply\n+            if self.query.group_by is not None:\n+                return False\n             return True\n         else:\n             return False\n-\n     @property\n     def db(self):\n         \"\"\"Return the database used if this query is executed now.\"\"\"\n"
+  }
+}

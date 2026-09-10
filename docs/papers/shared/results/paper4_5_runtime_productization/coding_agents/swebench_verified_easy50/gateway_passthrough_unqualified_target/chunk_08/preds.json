@@ -1,0 +1,7 @@
+{
+  "django__django-16145": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-16145",
+    "model_patch": "diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py\nindex 3c39f57e4d..1b1a846906 100644\n--- a/django/core/management/commands/runserver.py\n+++ b/django/core/management/commands/runserver.py\n@@ -147,7 +147,7 @@ class Command(BaseCommand):\n                 \"version\": self.get_version(),\n                 \"settings\": settings.SETTINGS_MODULE,\n                 \"protocol\": self.protocol,\n-                \"addr\": \"[%s]\" % self.addr if self._raw_ipv6 else self.addr,\n+                \"addr\": \"[%s]\" % self.addr if self._raw_ipv6 else (self.addr if self.addr != \"0\" else \"0.0.0.0\"),\n                 \"port\": self.port,\n                 \"quit_command\": quit_command,\n             }\n"
+  }
+}

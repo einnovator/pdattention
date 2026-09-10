@@ -1,0 +1,7 @@
+{
+  "sympy__sympy-24562": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sympy__sympy-24562",
+    "model_patch": "diff --git a/sympy/core/numbers.py b/sympy/core/numbers.py\nindex 52f7ea45ad..1df397ffd9 100644\n--- a/sympy/core/numbers.py\n+++ b/sympy/core/numbers.py\n@@ -1627,14 +1627,14 @@ def __new__(cls, p, q=None, gcd=None):\n \n         if not isinstance(p, SYMPY_INTS):\n             p = Rational(p)\n-            q *= p.q\n+            q = int(q) * p.q\n             p = p.p\n         else:\n             p = int(p)\n \n         if not isinstance(q, SYMPY_INTS):\n             q = Rational(q)\n-            p *= q.q\n+            p = p * int(q)\n             q = q.p\n         else:\n             q = int(q)\n"
+  }
+}

@@ -30,6 +30,42 @@ EXPECTED_PACKAGES = {
 PINNED_DATASET_REVISION = "c104f840cc67f8b6eec6f759ebc8b2693d585d4a"
 
 
+def derive_task_card(
+    card: dict[str, Any], task_index: int | None, *, source: str | Path,
+) -> dict[str, Any]:
+    """Derive one ordered task from a locked parent card without resampling."""
+
+    if task_index is None:
+        return card
+    instance_ids = list(card["instance_ids"])
+    if task_index < 1 or task_index > len(instance_ids):
+        raise ValueError(
+            f"task index must be in 1..{len(instance_ids)}, observed {task_index}"
+        )
+    instance_id = instance_ids[task_index - 1]
+    digest = hashlib.sha256(f"{instance_id}\n".encode("utf-8")).hexdigest()
+    return {
+        **card,
+        "benchmark": f"{card['benchmark']}: task {task_index:02d}",
+        "expected_count": 1,
+        "parent_cohort": card.get("parent_cohort", card["benchmark"]),
+        "parent_cohort_ids_sha256": card["canonical_ids_sha256"],
+        "stratum": f"{card.get('stratum', 'cohort')}_task",
+        "stratum_definition": (
+            f"Predeclared task {task_index} in the locked parent cohort; "
+            "no outcome-dependent resampling."
+        ),
+        "stratum_reference": str(source),
+        "canonical_ids_sha256": digest,
+        "instance_ids": [instance_id],
+        "task_metadata": [
+            row for row in card.get("task_metadata", ())
+            if row.get("instance_id") == instance_id
+        ],
+        "task_index": task_index,
+    }
+
+
 def treatment_placement(mode: str) -> dict[str, Any]:
     """Describe transport and PRA ownership independently for one treatment."""
 
@@ -45,6 +81,10 @@ def treatment_placement(mode: str) -> dict[str, Any]:
         ContextTreatment.PASSTHROUGH.value: {
             "connection": "gateway", "engine_pra_enabled": False,
             "gateway_pra_enabled": False, "gateway_mode": "G00",
+        },
+        ContextTreatment.HEADROOM.value: {
+            "connection": "gateway", "engine_pra_enabled": False,
+            "gateway_pra_enabled": False, "gateway_mode": "HEADROOM",
         },
         ContextTreatment.PRA_SELECTED_CONTEXT.value: {
             "connection": "gateway", "engine_pra_enabled": False,
@@ -75,18 +115,31 @@ def gateway_preflight(
         ContextTreatment.DIRECT_NATIVE_PRA.value,
         ContextTreatment.GATEWAY_NATIVE_PRA.value,
     }
-    if expected_mode is None and not native_required:
+    if (
+        expected_mode is None
+        and not native_required
+        and not bool(getattr(args, "require_endpoint_preflight", False))
+    ):
         return None
     root = (base_url or args.base_url).rstrip("/").removesuffix("/v1")
 
     def read(path: str) -> dict[str, Any]:
-        try:
-            with urllib.request.urlopen(f"{root}{path}", timeout=15) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-            raise RuntimeError(
-                f"gateway preflight failed for {root}{path}: {error}"
-            ) from error
+        """Read an idempotent qualification endpoint with bounded LAN retries."""
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(f"{root}{path}", timeout=15) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except (
+                urllib.error.URLError, TimeoutError, json.JSONDecodeError,
+            ) as error:
+                last_error = error
+                if attempt < 2:
+                    time.sleep(attempt + 1)
+        raise RuntimeError(
+            f"gateway preflight failed for {root}{path} after 3 attempts: {last_error}"
+        ) from last_error
 
     health = read("/health")
     if health.get("status") != "ok":
@@ -100,6 +153,38 @@ def gateway_preflight(
     engine = health.get("engine") or {}
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
+    prefix_mode = str(
+        engine.get("prefix_cache_mode", effective.get("prefix_cache_mode", "unknown"))
+    )
+    prefix_supported = bool(
+        engine.get("automatic_prefix_cache")
+        or engine.get("explicit_prefix_cache")
+        or effective.get("automatic_prefix_cache")
+        or effective.get("explicit_prefix_cache")
+        or prefix_mode in {
+            "automatic_prefix_cache", "explicit_prefix_handle", "session_state"
+        }
+    )
+    prefix_active = health.get("prefix_cache_enabled")
+    if prefix_active is None:
+        prefix_active = engine.get("prefix_cache_enabled", effective.get("prefix_cache_enabled"))
+    if bool(getattr(args, "prefix_caching", False)):
+        if not prefix_supported:
+            raise RuntimeError("prefix-cache treatment requires an advertised cache capability")
+        if prefix_active is not True:
+            raise RuntimeError(
+                "prefix-cache treatment requires prefix_cache_enabled=true, not capability alone"
+            )
+    elif (
+        native_required
+        or (
+            bool(getattr(args, "require_endpoint_preflight", False))
+            and expected_mode is None
+        )
+    ) and prefix_active is not False:
+        raise RuntimeError(
+            "cache-off engine treatment requires prefix_cache_enabled=false"
+        )
     catalog = read("/v1/models")
     model_ids = tuple(
         str(row.get("id"))
@@ -111,7 +196,32 @@ def gateway_preflight(
             "gateway must pin and advertise the frozen backend model: "
             f"expected {args.served_model!r}, observed {list(model_ids)!r}"
         )
-    probe_payload = json.dumps({
+    prior_receipt_path = getattr(args, "endpoint_preflight_receipt", None)
+    if prior_receipt_path:
+        prior_payload = json.loads(
+            Path(prior_receipt_path).read_text(encoding="utf-8")
+        )
+        prior = prior_payload.get("gateway_preflight", prior_payload)
+        if not isinstance(prior, dict) or prior.get("generation_probe") != "passed":
+            raise RuntimeError("endpoint preflight receipt lacks a passed generation probe")
+        if prior.get("advertised_model") != args.served_model:
+            raise RuntimeError("endpoint preflight receipt model does not match this run")
+        if native_required and prior.get("native_consumption_probe") != "passed":
+            raise RuntimeError("endpoint preflight receipt lacks native consumption proof")
+        if expected_mode is not None and prior.get("gateway_mode") != expected_mode:
+            raise RuntimeError("endpoint preflight receipt gateway mode does not match this run")
+        return {
+            **prior,
+            "url": root,
+            "prefix_cache_mode": prefix_mode,
+            "prefix_cache_supported": prefix_supported,
+            "prefix_cache_enabled": prefix_active,
+            "replayed_from": str(Path(prior_receipt_path).resolve()),
+            "post_restart_health_rechecked": True,
+            "post_restart_model_rechecked": True,
+            "generation_probe_replayed": True,
+        }
+    probe: dict[str, Any] = {
         "model": args.served_model,
         "messages": [{"role": "user", "content": "Reply with OK."}],
         "temperature": 0,
@@ -121,7 +231,32 @@ def gateway_preflight(
         "prefix_caching": bool(getattr(args, "prefix_caching", False)),
         "max_tokens": 1,
         "stream": False,
-    }).encode("utf-8")
+    }
+    if expected_mode == "G10" or native_required:
+        probe["pra"] = {
+            "tenant_id": "paper4-5-preflight",
+            "session_id": "selected-context-consumption-probe",
+            "resources": [{
+                "resource_id": "preflight-resource",
+                "uri": "pra://preflight/selected-context",
+                "record_type": "preflight_fact",
+                "text": "PRA selected-context consumption probe.",
+                "version": "v1",
+                "source_fingerprint": hashlib.sha256(
+                    b"PRA selected-context consumption probe."
+                ).hexdigest(),
+                "authorization_scope": "paper4-5-preflight",
+                "metadata": {"purpose": "live_consumption_probe"},
+            }],
+            "budget": {"max_resources": 1, "max_selected_tokens": 8},
+            "allow_text_fallback": not native_required,
+            "required_capabilities": ["logical_refs", "native_kv"] if native_required else [],
+            "pra_policy": {"profile": "swebench-balanced-v1"},
+            "metadata": {
+                "requested_mode": "native-memory" if native_required else "selected-context"
+            },
+        }
+    probe_payload = json.dumps(probe).encode("utf-8")
     probe_request = urllib.request.Request(
         f"{root}/v1/chat/completions",
         data=probe_payload,
@@ -140,12 +275,39 @@ def gateway_preflight(
         raise RuntimeError(
             "gateway generation probe returned no OpenAI-compatible choices"
         )
+    selected_context_probe = None
+    if expected_mode == "G10":
+        selected_ids = (completion.get("pra") or {}).get("selected_resource_ids")
+        if selected_ids != ["preflight-resource"]:
+            raise RuntimeError(
+                "G10 consumption probe did not acknowledge the selected resource: "
+                f"observed {selected_ids!r}"
+            )
+        selected_context_probe = "passed"
+    native_consumption_probe = None
+    if native_required:
+        pra = completion.get("pra") or {}
+        native_trace = completion.get("pra_trace") or ()
+        attached = any(
+            row.get("stage") in {"llama_cpp_native_attach", "native_attach"}
+            for row in native_trace if isinstance(row, dict)
+        )
+        if pra.get("native_kv") is not True or not attached:
+            raise RuntimeError(
+                "native PRA consumption probe did not prove physical native attachment"
+            )
+        native_consumption_probe = "passed"
     return {
         "url": root,
         "gateway_mode": expected_mode,
         "advertised_model": args.served_model,
         "protocol_version": health.get("protocol_version"),
         "generation_probe": "passed",
+        "selected_context_probe": selected_context_probe,
+        "native_consumption_probe": native_consumption_probe,
+        "prefix_cache_mode": prefix_mode,
+        "prefix_cache_supported": prefix_supported,
+        "prefix_cache_enabled": prefix_active,
     }
 
 
@@ -217,6 +379,10 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "benchmark_source_revision": card["source_revision"],
         "benchmark_execution_revision": args.benchmark_revision,
         "benchmark_ids_sha256": card["canonical_ids_sha256"],
+        "benchmark_parent_ids_sha256": card.get("parent_cohort_ids_sha256"),
+        "benchmark_stratum": card.get("stratum"),
+        "benchmark_stratum_definition": card.get("stratum_definition"),
+        "benchmark_stratum_reference": card.get("stratum_reference"),
         "instance_count": len(card["instance_ids"]),
         "model": args.model,
         "served_model": args.served_model,
@@ -278,29 +444,43 @@ def run(args: argparse.Namespace) -> Path:
     }:
         raise ValueError("selection fixtures are restricted to native-PRA treatments")
     card = load_benchmark_card(args.benchmark_card)
+    card = derive_task_card(
+        card, getattr(args, "task_index", None), source=args.benchmark_card,
+    )
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     receipt = preflight(args, card)
+    receipt["interaction_history_path"] = str(output / "interaction_history.jsonl")
+    receipt["interaction_history_contract"] = "logical-physical-response-v1"
+    # Validate the actual configured gateway or native engine before inserting
+    # the local treatment/telemetry proxy. Preflighting the temporary proxy
+    # would only prove that the wrapper started and could mask a G00/G10 route
+    # accidentally pointed at an ordinary OpenAI-compatible model endpoint.
+    receipt["gateway_preflight"] = gateway_preflight(args)
     proxy = None
     agent_base_url = args.base_url.rstrip("/")
     if args.mode in {
         ContextTreatment.PASSTHROUGH.value,
+        ContextTreatment.HEADROOM.value,
         ContextTreatment.TRUNCATION.value,
         ContextTreatment.PRA_SELECTED_CONTEXT.value,
+        ContextTreatment.DIRECT_NATIVE_PRA.value,
+        ContextTreatment.GATEWAY_NATIVE_PRA.value,
     }:
         proxy = TreatmentProxy(
             agent_base_url,
             mode=ContextTreatment(args.mode),
             budget_fraction=args.budget_fraction,
             trace_path=output / "request_telemetry.jsonl",
+            interaction_trace_path=output / "interaction_history.jsonl",
             selection_record_path=getattr(args, "selection_record", None),
             selection_replay_path=getattr(args, "selection_replay", None),
+            request_overrides={
+                "prefix_caching": bool(getattr(args, "prefix_caching", False))
+            },
         )
         agent_base_url = proxy.start()
     try:
-        receipt["gateway_preflight"] = gateway_preflight(
-            args, base_url=agent_base_url,
-        )
         receipt["execution_fingerprint"] = _execution_fingerprint(receipt)
         _write_json(output / "run_manifest.json", receipt)
         if args.preflight_only:
@@ -367,7 +547,7 @@ def _execute_chunks(
                     "-c",
                     'model.model_kwargs.extra_body={"chat_template_kwargs":{"enable_thinking":false}}',
                 ])
-            dataset_environment = {"HF_DATASETS_CACHE": str(output / "hf_datasets_cache")}
+            dataset_environment = _container_environment(args, output)
             timed_out = False
             if getattr(args, "recover_timeout_chunk", None) == chunk_number:
                 _write_empty_predictions(predictions, chunk_ids, args.served_model)
@@ -381,6 +561,7 @@ def _execute_chunks(
                 except subprocess.TimeoutExpired:
                     _write_empty_predictions(predictions, chunk_ids, args.served_model)
                     timed_out = True
+            _raise_on_agent_infrastructure_error(chunk_dir, chunk_ids)
             if not predictions.is_file():
                 raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
             if timed_out:
@@ -431,6 +612,9 @@ def _execute_chunks(
         "grader_artifact": str(output / "official_aggregate.json"),
         "execution_identity": {
             "cohort_sha256": card["canonical_ids_sha256"],
+            "parent_cohort_sha256": card.get("parent_cohort_ids_sha256"),
+            "stratum": card.get("stratum"),
+            "stratum_reference": card.get("stratum_reference"),
             "benchmark_revision": args.benchmark_revision,
             "harness": "mini-swe-agent",
             "harness_version": args.harness_version,
@@ -572,6 +756,20 @@ def _prepull_swebench_images(
     })
 
 
+def _container_environment(
+    args: argparse.Namespace, output: Path,
+) -> dict[str, str]:
+    """Pin dataset cache and evaluator platform across agent and grader."""
+
+    environment = {"HF_DATASETS_CACHE": str(output / "hf_datasets_cache")}
+    # The official evaluator images are x86-only.  The pre-pull happens before
+    # the agent, whose cleanup may remove that image; the grader must retain
+    # the same platform contract for its own fallback pull on Apple Silicon.
+    if getattr(args, "docker_platform", None):
+        environment["DOCKER_DEFAULT_PLATFORM"] = str(args.docker_platform)
+    return environment
+
+
 def _dataset_revision() -> str | None:
     try:
         from huggingface_hub import HfApi
@@ -657,6 +855,41 @@ def _cleanup_owned_containers(process_output: str) -> list[str]:
         if completed.returncode == 0:
             cleaned.append(name)
     return cleaned
+
+
+def _raise_on_agent_infrastructure_error(
+    chunk_dir: Path, instance_ids: Sequence[str],
+) -> None:
+    """Reject mini-swe-agent's zero-exit empty-patch normalization of run errors.
+
+    The benchmark command can return success after logging an exception for an
+    instance and emitting an empty patch.  Such rows are infrastructure/model
+    execution failures, not legitimate unsuccessful solutions, and must not be
+    passed to the official grader as scientific observations.
+    """
+
+    log = chunk_dir / "minisweagent.log"
+    if not log.is_file():
+        return
+    text = log.read_text(encoding="utf-8", errors="replace")
+    failed = [
+        instance_id for instance_id in instance_ids
+        if f"Error processing instance {instance_id}:" in text
+    ]
+    if not failed:
+        return
+    receipt = {
+        "schema_version": 1,
+        "classification": "agent_execution_failure",
+        "instance_ids": failed,
+        "source_log": str(log),
+        "admitted_as_benchmark_result": False,
+    }
+    _write_json(chunk_dir / "infrastructure_failure.json", receipt)
+    raise RuntimeError(
+        "mini-swe-agent reported execution failure for "
+        f"{failed}; refusing to grade an infrastructure-generated empty patch"
+    )
 
 
 def _write_empty_predictions(
@@ -765,6 +998,17 @@ def _write_task_rows(
             "token_saving_fraction_estimate": trace.get("token_saving_fraction_estimate"),
             "token_estimator": trace.get("token_estimator"),
             "selected_resource_digests": trace.get("selected_resource_digests"),
+            "prefix_caching": bool(getattr(args, "prefix_caching", False)),
+            "prefix_cached_tokens": trace.get("prefix_cached_tokens"),
+            "engine_cached_tokens_total": trace.get("engine_cached_tokens_total"),
+            "prefix_cache_observed_requests": trace.get("prefix_cache_observed_requests"),
+            "native_tokens": trace.get("native_tokens"),
+            "wire_tokens": trace.get("wire_tokens"),
+            "physical_kv_copy_observed": trace.get("physical_kv_copy_observed"),
+            "resource_update_counts": trace.get("resource_update_counts"),
+            "resource_prefix_cached_tokens": trace.get("resource_prefix_cached_tokens"),
+            "resource_evaluated_tokens": trace.get("resource_evaluated_tokens"),
+            "resource_total_tokens": trace.get("resource_total_tokens"),
             "output_tokens": trajectory.get("output_tokens"),
             "materialized_tokens": None,
             "selected_tokens": None,
@@ -891,6 +1135,11 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return {}
     logical = sum(int(row.get("logical_input_tokens_estimate") or 0) for row in rows)
     physical = sum(int(row.get("physical_input_tokens_estimate") or 0) for row in rows)
+    update_counts: dict[str, int] = {}
+    for row in rows:
+        mode = row.get("resource_update_mode")
+        if mode:
+            update_counts[str(mode)] = update_counts.get(str(mode), 0) + 1
     return {
         "logical_input_tokens_estimate": logical,
         "physical_input_tokens_estimate": physical,
@@ -903,6 +1152,28 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
             row["selected_resource_digest"]
             for row in rows if row.get("selected_resource_digest")
         ],
+        "prefix_cached_tokens": sum(int(row.get("prefix_cached_tokens") or 0) for row in rows),
+        "engine_cached_tokens_total": sum(
+            int(row.get("engine_cached_tokens_total") or 0) for row in rows
+        ),
+        "prefix_cache_observed_requests": sum(
+            int(row.get("prefix_cache_observed") is True) for row in rows
+        ),
+        "native_tokens": sum(int(row.get("native_tokens") or 0) for row in rows),
+        "wire_tokens": sum(int(row.get("wire_tokens") or 0) for row in rows),
+        "physical_kv_copy_observed": any(
+            row.get("physical_kv_copy") is True for row in rows
+        ),
+        "resource_update_counts": update_counts,
+        "resource_prefix_cached_tokens": sum(
+            int(row.get("resource_prefix_cached_tokens") or 0) for row in rows
+        ),
+        "resource_evaluated_tokens": sum(
+            int(row.get("resource_evaluated_tokens") or 0) for row in rows
+        ),
+        "resource_total_tokens": sum(
+            int(row.get("resource_total_tokens") or 0) for row in rows
+        ),
     }
 
 

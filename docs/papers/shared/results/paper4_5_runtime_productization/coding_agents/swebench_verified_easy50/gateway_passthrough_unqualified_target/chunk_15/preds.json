@@ -1,0 +1,7 @@
+{
+  "django__django-16899": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-16899",
+    "model_patch": "diff --git a/django/contrib/admin/checks.py b/django/contrib/admin/checks.py\nindex 1234567..89abcde 100644\n--- a/django/contrib/admin/checks.py\n+++ b/django/contrib/admin/checks.py\n@@ -768,12 +768,7 @@ def _check_readonly_fields_item(self, obj, field_name, label):\n         else:\n             try:\n                 obj.model._meta.get_field(field_name)\n-            except FieldDoesNotExist:\n-                return [\n-                    checks.Error(\n-                        \"The value of '%s' is not a callable, an attribute of \"\n-                        \"'%s', or an attribute of '%s'.\"\n-                        % (\n-                            label,\n-                            obj.__class__.__name__,\n-                            obj.model._meta.label,\n-                        ),\n-                        obj=obj.__class__,\n-                        id=\"admin.E035\",\n-                    )\n-                ]\n+            except FieldDoesNotExist:\n+                return refer_to_missing_field(\n+                    field=field_name, option=label, obj=obj, id=\"admin.E035\"\n+                )\n             else:\n                 return []\n"
+  }
+}

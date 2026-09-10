@@ -15,6 +15,14 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from pra_hf.deployment import (
+    PRAEngineCapabilities,
+    PRAGatewayMode,
+    PRAWireRequest,
+    PRAWireResource,
+)
+from pra_hf.gateway_session import ResourceDelta, ResourceOperation
+from pra_hf.gateway import PRAGateway
 from experiments.paper4_5_agent.reproduction import OfficialResult, review_result
 from experiments.paper4_5_agent.reports import _next_tier, _success_band
 from experiments.paper4_5_agent.benchmark import (
@@ -36,12 +44,22 @@ from experiments.paper4_5_agent.analyze_easy_frontier import (
     _bucket_effects,
     summarize as summarize_frontier,
 )
+from experiments.paper4_5_agent.analyze_transport_equivalence import (
+    compare as compare_transport_histories,
+)
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     TreatmentProxy,
     _load_selection_fixture,
+    _selection_digest,
     transform_chat_payload,
 )
+from experiments.paper4_5_agent.serve_llamacpp_pra import (
+    CausalChatNativePromptMixin,
+    HybridLlamaCppAdapter,
+    parse_args as parse_llamacpp_server_args,
+)
+from experiments.paper4_5_agent.summarize_easy50_strata import stratified_outcomes
 from experiments.paper4_5_agent.harness_matrix import (
     HarnessMatrixConfig,
     MatrixModel,
@@ -78,11 +96,14 @@ from experiments.paper4_5_agent.runners.swebench_verified import (
     _chunk_receipt_reusable,
     _completion_token_overrides,
     _cleanup_owned_containers,
+    _container_environment,
+    derive_task_card,
     _execute_chunks,
     _grader_error_type,
     _is_h100_80gb,
     _normalize_report,
     _prepull_swebench_images,
+    _raise_on_agent_infrastructure_error,
     _trajectory_metrics,
     _write_empty_predictions,
     gateway_preflight,
@@ -114,6 +135,27 @@ EASY20_RESULT = ROOT / (
 def test_local_qwen_runner_requests_official_x86_images_on_arm() -> None:
     assert official_image_platform("arm64") == "linux/amd64"
     assert official_image_platform("aarch64") == "linux/amd64"
+
+
+def test_task_major_runner_derives_locked_single_task_without_resampling() -> None:
+    parent = load_benchmark_card(
+        ROOT / "experiments/paper4_5_agent/benchmarks/"
+        "swebench_verified_easy50_baseline_success14.json"
+    )
+
+    task = derive_task_card(parent, 2, source="success14.json")
+
+    assert task["instance_ids"] == ["django__django-15368"]
+    assert task["expected_count"] == 1
+    assert task["parent_cohort_ids_sha256"] == parent["canonical_ids_sha256"]
+    assert task["canonical_ids_sha256"] == ids_digest(task["instance_ids"])
+    assert task["task_index"] == 2
+
+
+def test_task_major_runner_rejects_out_of_range_index() -> None:
+    parent = {"instance_ids": ["repo__task-1"], "canonical_ids_sha256": "digest"}
+    with pytest.raises(ValueError, match="1..1"):
+        derive_task_card(parent, 2, source="parent.json")
     assert official_image_platform("x86_64") is None
 
 
@@ -284,26 +326,697 @@ def test_selected_context_trace_has_stable_resource_digest() -> None:
     assert first.selected_resource_digest == second.selected_resource_digest
 
 
+def test_full_budget_selection_preserves_causal_order_and_formatting() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task alpha\n\nkeep spacing"},
+            {
+                "role": "assistant",
+                "content": "THOUGHT: inspect alpha\n\n```mswea_bash_command\nls -la\n```",
+            },
+            {"role": "user", "content": "latest observation"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA, budget_fraction=1.0,
+    )
+
+    resources = transformed["pra"]["resources"]
+    assert transformed["pra"]["metadata"]["selection_complete"] is True
+    assert [row["resource_id"] for row in resources] == ["m1-0-user"]
+    assert resources[0]["text"] == payload["messages"][1]["content"]
+    assert transformed["messages"] == [
+        payload["messages"][0], payload["messages"][2], payload["messages"][3],
+    ]
+    assert resources[0]["metadata"] == {
+        "selection_policy": "typed_bm25_embedding_rrf",
+        "message_index": 1,
+        "segment_index": 0,
+        "role": "user",
+    }
+
+
+def test_partial_selection_keeps_assistant_observation_turns_atomic() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "old action short"},
+            {"role": "user", "content": "old observation short"},
+            {"role": "assistant", "content": "needle action"},
+            {"role": "user", "content": "needle observation"},
+            # mini-swe-agent can append this without retaining the malformed
+            # assistant response that caused it.
+            {"role": "user", "content": "needle format error"},
+            {"role": "assistant", "content": "latest action"},
+            {"role": "user", "content": "find needle"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.75, segment_tokens=2,
+    )
+    resources = transformed["pra"]["resources"]
+    selected_indices = {
+        row["metadata"]["message_index"] for row in resources
+    }
+
+    # Any selected historical action brings its causal observation(s).  The
+    # active action and current observation are both mandatory rather than
+    # splitting the causal tail between resources and visible messages.
+    assert 4 in selected_indices
+    assert {5, 6}.issubset(selected_indices)
+    assert (2 in selected_indices) == (3 in selected_indices)
+    assert transformed["messages"][-2:] == payload["messages"][-2:]
+
+
+def test_active_assistant_tool_tail_is_mandatory() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "run command"},
+            {"role": "tool", "content": "command output"},
+        ]
+    }
+
+    transformed, trace = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.25,
+    )
+
+    assert transformed["messages"] == [
+        payload["messages"][0], payload["messages"][2], payload["messages"][3],
+    ]
+    assert [row["resource_id"] for row in transformed["pra"]["resources"]] == [
+        "m1-0-user"
+    ]
+    assert trace.token_saving_fraction_estimate == 0
+
+
+def test_reduced_agent_history_keeps_two_completed_progress_turns() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "old action"},
+            {"role": "user", "content": "old result"},
+            {"role": "assistant", "content": "recent action one"},
+            {"role": "user", "content": "recent result one"},
+            {"role": "assistant", "content": "recent action two"},
+            {"role": "user", "content": "recent result two"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.25, segment_tokens=16,
+    )
+
+    resource_indices = [
+        row["metadata"]["message_index"] for row in transformed["pra"]["resources"]
+    ]
+    assert resource_indices == [1, 4, 5, 6, 7]
+    assert transformed["messages"] == [
+        payload["messages"][0], payload["messages"][8], payload["messages"][9],
+    ]
+    assert transformed["pra"]["metadata"]["pinned_progress_segments"] == [
+        "m4-0-assistant", "m5-0-user", "m6-0-assistant", "m7-0-user",
+    ]
+
+
+def test_progress_spine_keeps_latest_mutation_outside_recency_window() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "sed -i 's/a/b/' source.py"},
+            {"role": "user", "content": "mutation completed"},
+            {"role": "assistant", "content": "inspect one"},
+            {"role": "user", "content": "inspection one"},
+            {"role": "assistant", "content": "inspect two"},
+            {"role": "user", "content": "inspection two"},
+            {"role": "assistant", "content": "inspect three"},
+            {"role": "user", "content": "inspection three"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.25, segment_tokens=16,
+    )
+
+    resource_indices = {
+        row["metadata"]["message_index"] for row in transformed["pra"]["resources"]
+    }
+    assert {2, 3, 6, 7, 8, 9}.issubset(resource_indices)
+
+
+def test_causal_chat_validation_rejects_adjacent_assistant_messages() -> None:
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "first"},
+        {"role": "assistant", "content": "second"},
+        {"role": "user", "content": "observation"},
+    ]
+
+    with pytest.raises(ValueError, match="adjacent assistant"):
+        CausalChatNativePromptMixin._validate_causal_messages(messages)
+
+
+def test_turn_bundle_selection_has_exact_frozen_replay() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task alpha"},
+            {"role": "assistant", "content": "inspect alpha"},
+            {"role": "user", "content": "alpha output"},
+            {"role": "assistant", "content": "inspect beta"},
+            {"role": "user", "content": "beta output"},
+            {"role": "user", "content": "format error guidance"},
+            {"role": "assistant", "content": "retry beta"},
+            {"role": "user", "content": "find beta"},
+        ]
+    }
+    selected, first_trace = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.75, segment_tokens=2,
+    )
+    frozen = [
+        (row["resource_id"], row["text"])
+        for row in selected["pra"]["resources"]
+    ]
+
+    replayed, replay_trace = transform_chat_payload(
+        payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+        budget_fraction=0.75, segment_tokens=2,
+        frozen_selection=frozen,
+    )
+
+    assert [
+        (row["resource_id"], row["text"])
+        for row in replayed["pra"]["resources"]
+    ] == frozen
+    assert replay_trace.selected_resource_digest == first_trace.selected_resource_digest
+
+
+def test_frozen_replay_rejects_stale_duplicate_or_reordered_resources() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task alpha"},
+            {"role": "assistant", "content": "inspect alpha"},
+            {"role": "user", "content": "alpha output"},
+            {"role": "assistant", "content": "inspect beta"},
+            {"role": "user", "content": "beta output"},
+            {"role": "user", "content": "current observation"},
+        ]
+    }
+    selected, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0, segment_tokens=8,
+    )
+    frozen = [
+        (row["resource_id"], row["text"])
+        for row in selected["pra"]["resources"]
+    ]
+
+    with pytest.raises(ValueError, match="duplicate resource IDs"):
+        transform_chat_payload(
+            payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+            budget_fraction=1.0, segment_tokens=8,
+            frozen_selection=[*frozen, frozen[-1]],
+        )
+    with pytest.raises(ValueError, match="exact subset"):
+        transform_chat_payload(
+            payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+            budget_fraction=1.0, segment_tokens=8,
+            frozen_selection=[*frozen[:-1], ("m999-0-user", "stale")],
+        )
+    with pytest.raises(ValueError, match="causal resource order"):
+        transform_chat_payload(
+            payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+            budget_fraction=1.0, segment_tokens=8,
+            frozen_selection=[frozen[0], *reversed(frozen[1:])],
+        )
+
+
+def test_native_agent_split_is_an_exact_causal_chat_template_prefix() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "alpha  beta\n\ngamma delta"},
+            {"role": "assistant", "content": "inspect\n```tool\nls\n```"},
+            {"role": "user", "content": "latest observation"},
+        ]
+    }
+    transformed, _ = transform_chat_payload(
+        payload, mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0, segment_tokens=2,
+    )
+
+    render_calls = []
+
+    class FakeNativeBase:
+        def _request_json(self, path, body):
+            assert path == "/apply-template"
+            render_calls.append((len(body["messages"]), body["add_generation_prompt"]))
+            prompt = "<chat>" + "".join(
+                f"<{row['role']}>{row['content']}</{row['role']}>"
+                for row in body["messages"]
+            )
+            if body["add_generation_prompt"]:
+                prompt += "<assistant>"
+            return {"prompt": prompt}
+
+    class Executor(CausalChatNativePromptMixin, FakeNativeBase):
+        pass
+
+    resources = tuple(
+        SimpleNamespace(
+            resource_id=row["resource_id"], text=row["text"],
+            metadata=row["metadata"],
+        )
+        for row in transformed["pra"]["resources"]
+    )
+    request = SimpleNamespace(
+        request_id="causal-prefix-test",
+        resources=resources,
+        messages=tuple(transformed["messages"]),
+        tools=(),
+    )
+    executor = Executor()
+    prefix, suffix = executor._causal_prompt_pair(request)
+    assert executor._causal_prompt_pair(request) == (prefix, suffix)
+    expected = Executor()._render_chat(payload["messages"], request, generate=True)
+
+    assert prefix + suffix == expected
+    assert payload["messages"][1]["content"] in prefix
+    assert payload["messages"][2]["content"] not in prefix
+    assert payload["messages"][2]["content"] in suffix
+    assert "latest observation" not in prefix
+    assert "latest observation" in suffix
+    # The physical model validates the complete request before the resource
+    # prefix is rendered for materialization, and repeated adapter accessors
+    # reuse that validated pair instead of issuing duplicate template calls.
+    assert render_calls[:2] == [(4, True), (2, False)]
+    assert len(render_calls) == 3
+
+
+def test_changed_resource_uses_in_place_prefix_delta_without_delete() -> None:
+    calls = []
+
+    class FakeNativeBase:
+        def __init__(self):
+            self._slot_identities = {0: SimpleNamespace(resource_digest="old")}
+
+        @staticmethod
+        def _resource_text(request):
+            return request.text
+
+        @staticmethod
+        def _resource_digest(request, text):
+            return text
+
+        def _request_json(self, path, body):
+            calls.append((path, body))
+            return {"timings": {"cache_n": 11, "prompt_n": 17}}
+
+        def _delete_resource(self, slot):
+            raise AssertionError("prefix-delta update must not delete the resource slot")
+
+    class Executor(CausalChatNativePromptMixin, FakeNativeBase):
+        pass
+
+    executor = Executor()
+    identity = SimpleNamespace(resource_digest="new")
+    lease = SimpleNamespace(resource_slot=0, identity=identity)
+    request = SimpleNamespace(text="new", resources=())
+
+    assert executor._ensure_resource(request, lease) == ("new", True)
+    assert calls == [(
+        "/completion",
+        {
+            "prompt": "new",
+            "id_slot": 0,
+            "n_predict": 0,
+            "cache_prompt": True,
+            "temperature": 0,
+            "pra_pin_resource": True,
+        },
+    )]
+    assert executor._resource_update_metrics["new"] == {
+        "resource_update_mode": "prefix_delta",
+        "resource_prefix_cached_tokens": 11,
+        "resource_evaluated_tokens": 17,
+        "resource_total_tokens": 28,
+    }
+    assert executor._ensure_resource(request, lease) == ("new", False)
+    assert len(calls) == 1
+    assert executor._resource_update_metrics["new"]["resource_update_mode"] == "identity_hit"
+    assert executor._resource_update_metrics["new"]["resource_evaluated_tokens"] == 0
+    assert executor._resource_update_metrics["new"]["resource_total_tokens"] == 28
+
+
+def test_hybrid_llamacpp_advertises_implemented_resource_delta() -> None:
+    native = SimpleNamespace(
+        capabilities=lambda: PRAEngineCapabilities(
+            adapter="llama_cpp_pra", integration_level="E2", native_kv=True,
+        ),
+    )
+    adapter = HybridLlamaCppAdapter(native, SimpleNamespace(), prefix_caching=True)
+
+    capabilities = adapter.capabilities()
+
+    assert capabilities.native_kv is True
+    assert capabilities.resource_delta is True
+    assert capabilities.cache_affinity is True
+
+
+def test_hybrid_llamacpp_reconstructs_complete_ordered_g11_resource_delta() -> None:
+    task = PRAWireResource(
+        resource_id="m1-0-user", uri="pra://m1", text="pinned task",
+    )
+    action = PRAWireResource(
+        resource_id="m2-0-assistant", uri="pra://m2", text="first command",
+    )
+    observation = PRAWireResource(
+        resource_id="m3-0-user", uri="pra://m3", text="first result",
+    )
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(capabilities=lambda: PRAEngineCapabilities(
+            adapter="llama_cpp_pra", integration_level="E2", native_kv=True,
+        )),
+        SimpleNamespace(),
+        prefix_caching=True,
+    )
+    first = PRAWireRequest(
+        model="model", messages=({"role": "user", "content": "next"},),
+        tenant_id="tenant", session_id="session", resources=(task,),
+    )
+    adapter._hydrate_resource_delta(first)
+    delta = PRAWireRequest(
+        model="model", messages=({"role": "user", "content": "next"},),
+        tenant_id="tenant", session_id="session",
+        resources=(action, observation),
+        resource_ops=(
+            ResourceDelta(ResourceOperation.UNCHANGED, task.resource_id, task.uri, "1"),
+            ResourceDelta(ResourceOperation.ADD, action.resource_id, action.uri, "1", resource=action),
+            ResourceDelta(
+                ResourceOperation.ADD, observation.resource_id, observation.uri, "1",
+                resource=observation,
+            ),
+        ),
+    )
+
+    hydrated = adapter._hydrate_resource_delta(delta)
+
+    assert [row.resource_id for row in hydrated.resources] == [
+        task.resource_id, action.resource_id, observation.resource_id,
+    ]
+    assert [row.text for row in hydrated.resources] == [
+        task.text, action.text, observation.text,
+    ]
+    assert hydrated.resource_ops == ()
+
+
+def test_hybrid_llamacpp_resource_delta_fails_closed_without_prior_body() -> None:
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(), SimpleNamespace(), prefix_caching=True,
+    )
+    request = PRAWireRequest(
+        model="model", messages=({"role": "user", "content": "next"},),
+        tenant_id="tenant", session_id="session",
+        resource_ops=(ResourceDelta(
+            ResourceOperation.UNCHANGED, "missing", "pra://missing", "1",
+        ),),
+    )
+
+    with pytest.raises(ValueError, match="cannot reconstruct"):
+        adapter._hydrate_resource_delta(request)
+
+
+def test_g11_keeps_session_for_declared_detached_history_projection() -> None:
+    gateway = object.__new__(PRAGateway)
+    gateway.mode = PRAGatewayMode.G11_MEDIATION
+    state = SimpleNamespace(
+        turns=2,
+        model_revision=None,
+        chat_template_digest=None,
+        visible_prefix_profile=None,
+    )
+    turn = SimpleNamespace(
+        state=state, prefix_changed_reason="history_rewrite",
+    )
+    request = SimpleNamespace(metadata={
+        "history_projection": "detached-agent-trajectory-v1",
+    })
+
+    assert gateway._invalidation_reason(turn, request) is None
+
+    request.metadata = {}
+    assert gateway._invalidation_reason(
+        turn, request,
+    ) == "system_prefix_or_history_rewrite"
+
+
+def test_llamacpp_wrapper_exposes_same_engine_g00_and_g11_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for mode in ("g00", "g11"):
+        monkeypatch.setattr(sys, "argv", [
+            "serve_llamacpp_pra", "--port", "18101", "--mode", mode,
+            "--model", "model", "--model-fingerprint", "fingerprint",
+        ])
+        assert parse_llamacpp_server_args().mode == mode
+
+
+def test_prefix_cache_off_never_enters_live_session_continuation() -> None:
+    class Native:
+        request_slot = 1
+
+        @staticmethod
+        def _erase_request_slot(slot):
+            assert slot == 1
+
+    native_adapter = SimpleNamespace(
+        native_executor=Native(),
+        generate=lambda request: SimpleNamespace(text="cold", raw={"tokens": []}, trace=()),
+    )
+    adapter = HybridLlamaCppAdapter(
+        native_adapter, SimpleNamespace(), prefix_caching=False,
+    )
+    adapter._live_session_slots["session"] = 1
+    adapter._generate_from_live_slot = lambda request, source: (_ for _ in ()).throw(
+        AssertionError("cache-off endpoint must not continue a live request slot")
+    )
+    adapter._remember_resident_tokens = lambda request, result: None
+    request = SimpleNamespace(
+        openai_fields={},
+        to_dict=lambda: {
+            "model": "model",
+            "messages": [{"role": "user", "content": "current"}],
+            "session_id": "session",
+            "resources": [{
+                "resource_id": "m1-0-user",
+                "uri": "pra://agent-trajectory/m1-0-user",
+                "text": "task",
+                "metadata": {"message_index": 1, "segment_index": 0, "role": "user"},
+            }],
+            "metadata": {"selection_complete": True},
+        },
+    )
+
+    result = adapter.generate(request)
+
+    assert result.text == "cold"
+
+
+def test_live_llamacpp_prefix_uses_resident_tokens_not_last_prompt_length() -> None:
+    class Native:
+        request_slot = 1
+
+        @staticmethod
+        def _causal_prompt_pair(request):
+            return "resident prefix", "suffix"
+
+        @staticmethod
+        def _request_json(path, body=None):
+            if path == "/tokenize":
+                return {"tokens": list(range(23))}
+            assert path == "/slots"
+            # This is intentionally the most recent wire-prompt length, which
+            # is unrelated to the full sequence length after native attach.
+            return [{"id": 0, "n_prompt_tokens": 4, "is_processing": False}]
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    adapter._live_session_tokens["session"] = tuple(range(23))
+
+    assert adapter._live_prefix_matches(SimpleNamespace(session_id="session"), 0)
+
+
+def test_complete_selection_continues_live_slot_without_detached_prefix_check() -> None:
+    class Native:
+        request_slot = 1
+
+    class Adapter:
+        native_executor = Native()
+
+    adapter = HybridLlamaCppAdapter(
+        Adapter(), SimpleNamespace(), prefix_caching=True,
+    )
+    adapter._live_session_slots["session"] = 1
+    request = SimpleNamespace(
+        session_id="session",
+        resources=(SimpleNamespace(resource_id="history"),),
+        metadata={"selection_complete": True},
+        openai_fields={"prefix_caching": True},
+        to_dict=lambda: {
+            "model": "model",
+            "session_id": "session",
+            "resources": [{
+                "resource_id": "history", "uri": "memory://history",
+                "text": "history",
+            }],
+            "messages": [{"role": "user", "content": "continue"}],
+            "tools": [],
+            "metadata": {"selection_complete": True},
+            "openai_fields": {"prefix_caching": True},
+        },
+    )
+    continued = SimpleNamespace(raw={"tokens": []})
+    adapter._live_prefix_matches = lambda *_: (_ for _ in ()).throw(
+        AssertionError("complete selection must not enter detached-prefix qualification")
+    )
+    adapter._generate_from_live_slot = lambda req, slot: (continued, slot)
+    adapter._remember_resident_tokens = lambda *_: None
+
+    assert adapter.generate(request) is continued
+
+
+def test_live_llamacpp_prefix_backtracks_after_rejected_agent_output() -> None:
+    calls = []
+
+    class Native:
+        request_slot = 1
+
+        @staticmethod
+        def _request_json(path, body=None):
+            calls.append((path, body))
+            return {
+                "content": "recovered",
+                "tokens": [30, 31],
+                "timings": {"cache_n": 2},
+            }
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    # The live slot contains a sampled assistant response (3, 4) that the
+    # agent parser rejected. Its next logical prompt backtracks after token 2
+    # and replaces that response with a format-error observation (9, 10).
+    adapter._live_session_tokens["session"] = (1, 2, 3, 4)
+    adapter._logical_prompt_tokens = lambda request: (1, 2, 9, 10)
+    request = SimpleNamespace(
+        session_id="session",
+        resources=(SimpleNamespace(resource_id="history"),),
+        resolved_max_new_tokens=64,
+        openai_fields={"temperature": 0, "seed": 0},
+    )
+
+    result, slot = adapter._generate_from_live_slot(request, 1)
+
+    assert slot == 1
+    assert result.text == "recovered"
+    assert calls == [(
+        "/completion",
+        {
+            "prompt": [1, 2, 9, 10],
+            "id_slot": 1,
+            "n_predict": 64,
+            "cache_prompt": True,
+            "temperature": 0.0,
+            "seed": 0,
+            "return_tokens": True,
+        },
+    )]
+    assert result.raw["pra"]["wire_tokens"] == 2
+
+
+def test_llamacpp_resident_token_count_includes_native_prefix_and_excludes_unevaluated_last_token() -> None:
+    raw = {
+        "tokens_evaluated": 78,
+        "tokens_predicted": 2384,
+        "pra": {"native_tokens": 2263},
+    }
+
+    assert HybridLlamaCppAdapter._resident_token_count(raw) == 4724
+
+
+def test_llamacpp_live_state_retains_exact_ids_and_leaves_last_sample_as_bridge() -> None:
+    class Native:
+        request_slot = 1
+
+        @staticmethod
+        def _query_text(request):
+            return "prompt"
+
+        @staticmethod
+        def _request_json(path, body=None):
+            assert path == "/tokenize"
+            return {"tokens": [10, 11, 12]}
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    request = SimpleNamespace(resources=(), session_id="session")
+    result = SimpleNamespace(raw={"tokens": [20, 21, 22]})
+
+    adapter._remember_resident_tokens(request, result)
+
+    assert adapter._live_session_tokens["session"] == (10, 11, 12, 20, 21)
+
+
 def test_frozen_selection_replays_exact_order_and_content() -> None:
     payload = {
         "messages": [
             {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
             {"role": "assistant", "content": "alpha beta gamma"},
+            {"role": "user", "content": "alpha output"},
+            {"role": "assistant", "content": "beta"},
             {"role": "user", "content": "find alpha"},
         ]
     }
-    frozen = [("record-b", "beta"), ("record-a", "alpha")]
+    frozen = [
+        ("m1-0-user", "task"),
+        ("m2-0-assistant", "alpha beta gamma"),
+        ("m3-0-user", "alpha output"),
+    ]
 
     transformed, trace = transform_chat_payload(
         payload, mode=ContextTreatment.GATEWAY_NATIVE_PRA,
-        budget_fraction=0.75, frozen_selection=frozen,
+        budget_fraction=1.0, frozen_selection=frozen,
     )
 
     assert [
         (row["resource_id"], row["text"])
         for row in transformed["pra"]["resources"]
     ] == frozen
-    assert trace.selected_segments == 2
+    assert trace.selected_segments == 3
     assert trace.selected_resource_digest
 
 
@@ -383,7 +1096,7 @@ def test_calibration_next_tier_follows_admission_policy() -> None:
 def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     campaign = CampaignConfig.load(EASY50_CONFIG)
     assert len(campaign.baselines[0].task_ids) == 50
-    assert len(campaign.cells) == 11
+    assert len(campaign.cells) == 16
     baseline, *treatments = campaign.cells
     assert baseline.cell_id == "easy50-no-pra"
     assert baseline.evidence_role == "baseline_admission"
@@ -398,7 +1111,7 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     ]
     assert gateway_treatments
     assert all(
-        cell.prerequisite_cells == (gateway_passthrough.cell_id,)
+        gateway_passthrough.cell_id in cell.prerequisite_cells
         for cell in gateway_treatments
     )
     truncation = {
@@ -418,14 +1131,29 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
             selected[key].command.index("--budget-fraction") + 1
         ]
         assert truncation_budget == selected_budget
-    direct = next(cell for cell in treatments if cell.mode.value == "native_pra")
+    direct = next(
+        cell for cell in treatments
+        if cell.mode.value == "native_pra" and not cell.prefix_caching
+    )
+    direct_cached = next(
+        cell for cell in treatments
+        if cell.mode.value == "native_pra" and cell.prefix_caching
+    )
     gateway = next(
         cell for cell in treatments
         if cell.mode.value == "gateway_native_pra" and cell.selection_contract == "route_owned"
     )
     equivalence = next(
         cell for cell in treatments
-        if cell.mode.value == "gateway_native_pra" and cell.selection_contract == "frozen_replay"
+        if cell.mode.value == "gateway_native_pra"
+        and cell.selection_contract == "frozen_replay"
+        and not cell.prefix_caching
+    )
+    equivalence_cached = next(
+        cell for cell in treatments
+        if cell.mode.value == "gateway_native_pra"
+        and cell.selection_contract == "frozen_replay"
+        and cell.prefix_caching
     )
     assert direct.connection == "direct"
     assert gateway.connection == "gateway"
@@ -433,7 +1161,7 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert direct.gateway_pra_enabled is False
     assert gateway.gateway_pra_enabled is True
     assert gateway.paired_cell == direct.cell_id
-    assert gateway.comparison_group == direct.comparison_group == "native-pra-50"
+    assert gateway.comparison_group == direct.comparison_group == "native-pra-prefix-50"
     assert direct.evidence_role == "efficacy"
     assert gateway.evidence_role == "product_end_to_end"
     assert direct.selection_contract == gateway.selection_contract == "route_owned"
@@ -441,6 +1169,26 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
     assert equivalence.paired_cell == direct.cell_id
     assert "--selection-record" in direct.command
     assert "--selection-replay" in equivalence.command
+    assert direct_cached.evidence_role == "prefix_cache_effect"
+    assert direct_cached.paired_cell == direct.cell_id
+    assert direct_cached.factorial_group == direct.factorial_group
+    assert "--prefix-caching" in direct_cached.command
+    assert equivalence_cached.paired_cell == direct_cached.cell_id
+    assert equivalence_cached.factorial_group == direct.factorial_group
+    assert "--prefix-caching" in equivalence_cached.command
+    engine_controls = [
+        cell for cell in treatments if cell.mode.value == "engine_control"
+    ]
+    assert len(engine_controls) == 2
+    assert {cell.prefix_caching for cell in engine_controls} == {False, True}
+    assert {cell.engine_target_id for cell in engine_controls + [direct, direct_cached]} == {
+        "qwen3-coder-30b-q4-k-m-llamacpp-pra-v1"
+    }
+    headroom = next(cell for cell in treatments if cell.mode.value == "headroom")
+    assert headroom.gateway_mode == "HEADROOM"
+    assert headroom.engine_pra_enabled is headroom.gateway_pra_enabled is False
+    assert "${PRA_AGENT_HEADROOM_URL}" in headroom.command
+    assert direct_cached.cell_id in headroom.prerequisite_cells
     stage_order = {"A": 0, "B": 1, "C": 2, "D": 3}
     declared_order = {cell.cell_id: index for index, cell in enumerate(campaign.cells)}
 
@@ -450,6 +1198,7 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
 
     text_frontier = [
         "easy50-gateway-passthrough",
+        "easy50-truncation-50",
         "easy50-pra-selected-50",
         "easy50-truncation-25",
         "easy50-pra-selected-25",
@@ -467,6 +1216,13 @@ def test_easy50_frontier_is_nested_gated_and_budget_matched() -> None:
         command = next(cell.command for cell in campaign.cells if cell.cell_id == cell_id)
         assert "http://127.0.0.1:8080/v1" not in command
         assert "http://127.0.0.1:8081/v1" not in command
+    assert "${PRA_AGENT_G00_URL}" in gateway_passthrough.command
+    assert all(
+        "${PRA_AGENT_G10_URL}" in cell.command for cell in selected.values()
+    )
+    assert not truncation["50"].enabled and selected["50"].enabled
+    assert all(not truncation[key].enabled and not selected[key].enabled
+               for key in ("25", "5"))
 
 
 def test_fixed50_campaign_hydrates_ids_and_keeps_treatments_locked() -> None:
@@ -722,6 +1478,35 @@ def test_timeout_cleanup_targets_only_emitted_owned_containers(
     ]
 
 
+def test_agent_execution_failure_is_not_admitted_as_empty_patch(tmp_path: Path) -> None:
+    chunk = tmp_path / "chunk_00"
+    chunk.mkdir()
+    (chunk / "minisweagent.log").write_text(
+        "ERROR - Error processing instance django__django-15277: docker exit 125\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="refusing to grade"):
+        _raise_on_agent_infrastructure_error(chunk, ["django__django-15277"])
+
+    receipt = json.loads(
+        (chunk / "infrastructure_failure.json").read_text(encoding="utf-8")
+    )
+    assert receipt["instance_ids"] == ["django__django-15277"]
+    assert receipt["admitted_as_benchmark_result"] is False
+
+
+def test_agent_execution_failure_gate_ignores_clean_log(tmp_path: Path) -> None:
+    chunk = tmp_path / "chunk_00"
+    chunk.mkdir()
+    (chunk / "minisweagent.log").write_text(
+        "INFO - Instance django__django-15277 completed\n", encoding="utf-8"
+    )
+
+    _raise_on_agent_infrastructure_error(chunk, ["django__django-15277"])
+    assert not (chunk / "infrastructure_failure.json").exists()
+
+
 def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Path) -> None:
     log = tmp_path / "grader.log"
     log.write_text(
@@ -730,6 +1515,19 @@ def test_swebench_patch_apply_failure_is_not_a_generic_grader_error(tmp_path: Pa
     )
     assert _grader_error_type(log, "sympy__sympy-21847") == "patch_apply_failed"
     assert _grader_error_type(log, "another__task-1") == "official_grader_error"
+
+
+def test_swebench_agent_and_grader_share_locked_container_platform(
+    tmp_path: Path,
+) -> None:
+    environment = _container_environment(
+        SimpleNamespace(docker_platform="linux/amd64"), tmp_path,
+    )
+
+    assert environment == {
+        "HF_DATASETS_CACHE": str(tmp_path / "hf_datasets_cache"),
+        "DOCKER_DEFAULT_PLATFORM": "linux/amd64",
+    }
 
 
 def test_swebench_package_probe_uses_null_for_missing_distributions() -> None:
@@ -761,10 +1559,11 @@ def test_h100_preflight_accepts_nvidia_smi_mib_format() -> None:
 def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
     class Handler(BaseHTTPRequestHandler):
         model_ids = ["qwen3-coder:30b"]
+        gateway_mode = "G00"
 
         def do_GET(self) -> None:  # noqa: N802
             payload = (
-                {"status": "ok", "gateway_mode": "G00", "protocol_version": "1"}
+                {"status": "ok", "gateway_mode": self.gateway_mode, "protocol_version": "1"}
                 if self.path == "/health"
                 else {"data": [{"id": model_id} for model_id in self.model_ids]}
             )
@@ -780,9 +1579,13 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
             assert self.path == "/v1/chat/completions"
             assert body["model"] == "qwen3-coder:30b"
             assert body["temperature"] == 0
-            encoded = json.dumps({
+            response = {
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}]
-            }).encode()
+            }
+            if self.gateway_mode == "G10":
+                assert body["pra"]["resources"][0]["resource_id"] == "preflight-resource"
+                response["pra"] = {"selected_resource_ids": ["preflight-resource"]}
+            encoded = json.dumps(response).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))
@@ -806,6 +1609,90 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
         assert result["generation_probe"] == "passed"
         Handler.model_ids = []
         with pytest.raises(RuntimeError, match="must pin and advertise"):
+            gateway_preflight(args)
+        Handler.model_ids = ["qwen3-coder:30b"]
+        Handler.gateway_mode = "G10"
+        args.mode = "gateway-pra"
+        result = gateway_preflight(args)
+        assert result["selected_context_probe"] == "passed"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path: Path) -> None:
+    class Handler(BaseHTTPRequestHandler):
+        prefix_enabled = True
+        post_count = 0
+
+        def do_GET(self) -> None:  # noqa: N802
+            payload = (
+                {
+                    "status": "ok",
+                    "prefix_cache_enabled": self.prefix_enabled,
+                    "effective_capabilities": {
+                        "native_kv": True,
+                        "explicit_prefix_cache": True,
+                        "prefix_cache_mode": "explicit_prefix_handle",
+                    },
+                }
+                if self.path == "/health"
+                else {"data": [{"id": "qwen3-coder:30b"}]}
+            )
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_POST(self) -> None:  # noqa: N802
+            Handler.post_count += 1
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            assert body["pra"]["required_capabilities"] == ["logical_refs", "native_kv"]
+            encoded = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}],
+                "pra": {"native_kv": True},
+                "pra_trace": [{"stage": "llama_cpp_native_attach", "native_tokens": 4}],
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    args = SimpleNamespace(
+        mode="direct-native-pra",
+        base_url=f"http://127.0.0.1:{server.server_port}/v1",
+        served_model="qwen3-coder:30b",
+        prefix_caching=True,
+    )
+    try:
+        result = gateway_preflight(args)
+        assert result["native_consumption_probe"] == "passed"
+        assert result["prefix_cache_enabled"] is True
+        receipt = tmp_path / "preflight.json"
+        receipt.write_text(json.dumps({"gateway_preflight": result}), encoding="utf-8")
+        args.endpoint_preflight_receipt = receipt
+        replayed = gateway_preflight(args)
+        assert replayed["generation_probe_replayed"] is True
+        assert Handler.post_count == 1
+        args.endpoint_preflight_receipt = None
+        Handler.prefix_enabled = False
+        with pytest.raises(RuntimeError, match="prefix_cache_enabled=true"):
+            gateway_preflight(args)
+        args.prefix_caching = False
+        result = gateway_preflight(args)
+        assert result["prefix_cache_enabled"] is False
+        Handler.prefix_enabled = True
+        with pytest.raises(RuntimeError, match="prefix_cache_enabled=false"):
             gateway_preflight(args)
     finally:
         server.shutdown()
@@ -852,7 +1739,7 @@ def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> Non
         base_url="http://raw-engine.invalid/v1",
         served_model="model",
         chat_template_no_thinking=False,
-        prefix_caching=True,
+        prefix_caching=False,
     )
     try:
         result = gateway_preflight(args, base_url=proxy_url)
@@ -863,6 +1750,16 @@ def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> Non
         target.shutdown()
         target.server_close()
         target_thread.join(timeout=5)
+
+
+def test_campaign_command_expansion_can_fail_closed_on_missing_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PRA_TEST_REQUIRED_URL", raising=False)
+    command = ("runner", "--base-url", "${PRA_TEST_REQUIRED_URL}")
+    assert _expand_command(command) == list(command)
+    with pytest.raises(ValueError, match="PRA_TEST_REQUIRED_URL"):
+        _expand_command(command, require_resolved=True)
 
 
 def test_context_treatments_share_budget_and_keep_mandatory_messages() -> None:
@@ -878,14 +1775,19 @@ def test_context_treatments_share_budget_and_keep_mandatory_messages() -> None:
         ],
     }
     truncated, truncation = transform_chat_payload(
-        payload, mode=ContextTreatment.TRUNCATION, budget_fraction=0.5,
+        payload, mode=ContextTreatment.TRUNCATION, budget_fraction=1.0,
     )
     selected, pra = transform_chat_payload(
-        payload, mode=ContextTreatment.PRA_SELECTED_CONTEXT, budget_fraction=0.5,
+        payload, mode=ContextTreatment.PRA_SELECTED_CONTEXT, budget_fraction=1.0,
     )
     assert truncated["messages"][0] == payload["messages"][0]
     assert truncated["messages"][-1] == payload["messages"][-1]
-    assert selected["messages"] == [payload["messages"][0], payload["messages"][-1]]
+    assert selected["messages"] == [
+        payload["messages"][0], payload["messages"][-2], payload["messages"][-1],
+    ]
+    assert selected["pra"]["resources"][0]["resource_id"] == "m1-0-user"
+    assert selected["pra"]["resources"][0]["text"] == payload["messages"][1]["content"]
+    assert selected["pra"]["metadata"]["pinned_task_segments"] == ["m1-0-user"]
     assert any("needle_value" in row["text"] for row in selected["pra"]["resources"])
     assert truncation.logical_input_tokens_estimate == pra.logical_input_tokens_estimate
     assert truncation.session_id == pra.session_id == selected["pra"]["session_id"]
@@ -902,6 +1804,27 @@ def test_passthrough_does_not_rewrite_openai_payload() -> None:
     assert transformed == payload
     assert trace.tokens_avoided_estimate == 0
     assert trace.selected_tokens_estimate == 0
+
+
+def test_headroom_mode_leaves_compression_to_the_pinned_external_proxy() -> None:
+    payload = {"model": "m", "messages": [{"role": "user", "content": "hello world"}]}
+    transformed, trace = transform_chat_payload(
+        payload, mode=ContextTreatment.HEADROOM, budget_fraction=1.0,
+    )
+    assert transformed == payload
+    assert trace.mode == "headroom"
+    assert trace.tokens_avoided_estimate == 0
+    assert trace.selected_tokens_estimate == 0
+
+
+def test_stratified_outcomes_does_not_hide_regressions_behind_net_score() -> None:
+    baseline = {"submitted_ids": ["a", "b", "c", "d"], "resolved_ids": ["a", "b"]}
+    treatment = {"submitted_ids": ["a", "b", "c", "d"], "resolved_ids": ["a", "c", "d"]}
+    result = stratified_outcomes(baseline, treatment)
+    assert result["retained_count"] == 1
+    assert result["regressed_count"] == 1
+    assert result["acquired_count"] == 2
+    assert result["net_solve_delta"] == 1
 
 
 def test_minisweagent_trajectory_metrics_preserve_exact_usage(tmp_path: Path) -> None:
@@ -953,6 +1876,15 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "selected_tokens_estimate": 30,
             "route_time_s": 0.1,
             "token_estimator": "whitespace_v1",
+            "prefix_cache_observed": True,
+            "prefix_cached_tokens": 40,
+            "native_tokens": 30,
+            "wire_tokens": 12,
+            "physical_kv_copy": False,
+            "resource_update_mode": "cold_prefill",
+            "resource_prefix_cached_tokens": 0,
+            "resource_evaluated_tokens": 30,
+            "resource_total_tokens": 30,
         },
         {
             "logical_input_tokens_estimate": 200,
@@ -960,6 +1892,15 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "selected_tokens_estimate": 50,
             "route_time_s": 0.2,
             "token_estimator": "whitespace_v1",
+            "prefix_cache_observed": True,
+            "prefix_cached_tokens": 80,
+            "native_tokens": 50,
+            "wire_tokens": 20,
+            "physical_kv_copy": False,
+            "resource_update_mode": "prefix_delta",
+            "resource_prefix_cached_tokens": 40,
+            "resource_evaluated_tokens": 10,
+            "resource_total_tokens": 50,
         },
     ]
 
@@ -971,6 +1912,17 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
     assert aggregate["tokens_avoided_estimate"] == 140
     assert aggregate["token_saving_fraction_estimate"] == pytest.approx(140 / 300)
     assert aggregate["route_time_s"] == pytest.approx(0.3)
+    assert aggregate["prefix_cached_tokens"] == 120
+    assert aggregate["prefix_cache_observed_requests"] == 2
+    assert aggregate["native_tokens"] == 80
+    assert aggregate["wire_tokens"] == 32
+    assert aggregate["physical_kv_copy_observed"] is False
+    assert aggregate["resource_update_counts"] == {
+        "cold_prefill": 1, "prefix_delta": 1,
+    }
+    assert aggregate["resource_prefix_cached_tokens"] == 40
+    assert aggregate["resource_evaluated_tokens"] == 40
+    assert aggregate["resource_total_tokens"] == 80
 
 
 def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Path) -> None:
@@ -980,7 +1932,16 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length", "0"))
             observed.update(json.loads(self.rfile.read(length)))
-            body = b'{"choices":[{"message":{"content":"ok"}}]}'
+            body = json.dumps({
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens_details": {"cached_tokens": 7}},
+                "pra": {
+                    "native_kv": True,
+                    "native_tokens": 11,
+                    "wire_tokens": 3,
+                    "physical_kv_copy": False,
+                },
+            }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -995,12 +1956,15 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     target_thread.start()
     trace_path = tmp_path / "request_telemetry.jsonl"
     selection_path = tmp_path / "selection_fixture.jsonl"
+    interaction_path = tmp_path / "interaction_history.jsonl"
     proxy = TreatmentProxy(
         f"http://127.0.0.1:{target.server_port}/v1",
         mode=ContextTreatment.DIRECT_NATIVE_PRA,
         budget_fraction=0.5,
         trace_path=trace_path,
         selection_record_path=selection_path,
+        interaction_trace_path=interaction_path,
+        request_overrides={"prefix_caching": True},
     )
     proxy_url = proxy.start()
     try:
@@ -1025,12 +1989,116 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
         target.server_close()
         target_thread.join(timeout=5)
     assert observed["pra"]["metadata"]["benchmark_fairness"] == "agent-visible-messages-only"
+    assert observed["prefix_caching"] is True
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
     assert trace["mode"] == "direct-native-pra"
     assert trace["physical_input_tokens_estimate"] <= trace["logical_input_tokens_estimate"]
+    assert trace["prefix_cache_observed"] is True
+    assert trace["prefix_cached_tokens"] == 7
+    assert trace["native_tokens"] == 11
+    assert trace["wire_tokens"] == 3
+    assert trace["physical_kv_copy"] is False
     fixture = _load_selection_fixture(selection_path)
     assert len(fixture) == 1
     assert next(iter(fixture.values()))
+    interactions = [
+        json.loads(line) for line in interaction_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["event"] for row in interactions] == ["request", "response"]
+    assert interactions[0]["logical_payload"]["messages"][1]["content"] == "task alpha"
+    assert interactions[0]["physical_payload"]["pra"]["resources"]
+    assert interactions[1]["payload"]["choices"][0]["message"]["content"] == "ok"
+
+
+def test_treatment_proxy_returns_structured_frozen_replay_divergence(
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "selection.jsonl"
+    resources: list[dict[str, str]] = []
+    fixture.write_text(json.dumps({
+        "request_input_sha256": "not-the-live-request",
+        "selected_resource_digest": _selection_digest([]),
+        "resources": resources,
+    }) + "\n", encoding="utf-8")
+    interaction_path = tmp_path / "interaction_history.jsonl"
+    proxy = TreatmentProxy(
+        "http://unused.invalid/v1",
+        mode=ContextTreatment.GATEWAY_NATIVE_PRA,
+        budget_fraction=0.5,
+        trace_path=tmp_path / "trace.jsonl",
+        selection_replay_path=fixture,
+        interaction_trace_path=interaction_path,
+    )
+    url = proxy.start()
+    request = urllib.request.Request(
+        url + "/chat/completions",
+        data=json.dumps({
+            "model": "model",
+            "messages": [{"role": "user", "content": "live request"}],
+        }).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with pytest.raises(urllib.error.HTTPError) as captured:
+            urllib.request.urlopen(request, timeout=5)
+        assert captured.value.code == 409
+        body = json.loads(captured.value.read().decode("utf-8"))
+        assert body["error"] == "frozen_replay_diverged"
+        assert "paired trajectories have diverged" in body["message"]
+        interaction = json.loads(interaction_path.read_text(encoding="utf-8"))
+        assert interaction["event"] == "frozen_replay_divergence"
+        assert interaction["error"] == "frozen_replay_diverged"
+        assert interaction["logical_payload"]["messages"][0]["content"] == "live request"
+    finally:
+        proxy.close()
+
+
+def test_transport_history_audit_requires_requests_responses_and_engine_metrics(
+    tmp_path: Path,
+) -> None:
+    request = {
+        "event": "request",
+        "request_index": 1,
+        "request_input_sha256": "logical",
+        "physical_payload": {
+            "pra": {"resources": [{"resource_id": "task", "text": "body"}]},
+        },
+    }
+    response = {
+        "event": "response",
+        "request_index": 1,
+        "payload": {
+            "choices": [{"message": {"content": "same"}}],
+            "pra": {
+                "prefix_cache_hit": True,
+                "prefix_cached_tokens": 10,
+                "engine_cached_tokens_total": 10,
+                "native_tokens": 10,
+                "wire_tokens": 2,
+                "physical_kv_copy": False,
+            },
+        },
+    }
+    reference = tmp_path / "reference.jsonl"
+    candidate = tmp_path / "candidate.jsonl"
+    content = "\n".join(json.dumps(row) for row in (request, response)) + "\n"
+    reference.write_text(content, encoding="utf-8")
+    candidate.write_text(content, encoding="utf-8")
+
+    result = compare_transport_histories(reference, candidate)
+
+    assert result["transport_equivalent"] is True
+    assert result["exact_paired_responses"] == 1
+    modified = dict(response)
+    modified["payload"] = json.loads(json.dumps(response["payload"]))
+    modified["payload"]["pra"]["wire_tokens"] = 3
+    candidate.write_text(
+        "\n".join(json.dumps(row) for row in (request, modified)) + "\n",
+        encoding="utf-8",
+    )
+    result = compare_transport_histories(reference, candidate)
+    assert result["transport_equivalent"] is False
+    assert result["first_difference"] == 1
 
 
 def test_fim14b_campaign_pins_published_identity_and_orders_treatments() -> None:

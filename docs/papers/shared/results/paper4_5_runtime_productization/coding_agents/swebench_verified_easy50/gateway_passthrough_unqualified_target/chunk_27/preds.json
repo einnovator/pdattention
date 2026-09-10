@@ -1,0 +1,7 @@
+{
+  "astropy__astropy-14995": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "astropy__astropy-14995",
+    "model_patch": "diff --git a/astropy/nddata/mixins/ndarithmetic.py b/astropy/nddata/mixins/ndarithmetic.py\nindex 4153dfccb..fcb9467a7 100755\n--- a/astropy/nddata/mixins/ndarithmetic.py\n+++ b/astropy/nddata/mixins/ndarithmetic.py\n@@ -523,6 +523,10 @@ class NDArithmeticMixin:\n         elif operand is None:\n             return deepcopy(self.mask)\n         else:\n+            # Check if either mask is None before calling handle_mask\n+            if self.mask is None or operand.mask is None:\n+                # If only one mask is present, return that mask\n+                return deepcopy(self.mask) if operand.mask is None else deepcopy(operand.mask)\n             # Now lets calculate the resulting mask (operation enforces copy)\n             return handle_mask(self.mask, operand.mask, **kwds)\n \n"
+  }
+}

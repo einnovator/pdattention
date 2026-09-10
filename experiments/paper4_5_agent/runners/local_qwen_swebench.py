@@ -27,6 +27,11 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark-card", type=Path, required=True)
+    parser.add_argument(
+        "--task-index",
+        type=int,
+        help="Run one 1-based task from the locked benchmark card without resampling.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
@@ -48,6 +53,18 @@ def main() -> None:
     parser.add_argument("--selection-record", type=Path)
     parser.add_argument("--selection-replay", type=Path)
     parser.add_argument(
+        "--prefix-caching",
+        action="store_true",
+        help="Require and record an endpoint with active sequential-prefix caching.",
+    )
+    parser.add_argument("--engine", default="ollama")
+    parser.add_argument("--engine-version", default="0.32.7")
+    parser.add_argument(
+        "--require-endpoint-preflight",
+        action="store_true",
+        help="Validate a direct engine control endpoint before running the cohort.",
+    )
+    parser.add_argument(
         "--skip-image-prepull",
         action="store_true",
         help="Skip explicit task-image acquisition before mini-swe-agent starts.",
@@ -56,10 +73,18 @@ def main() -> None:
         "--image-pull-timeout-seconds", type=int, default=3600,
     )
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument(
+        "--endpoint-preflight-receipt", type=Path,
+        help=(
+            "Reuse a previously completed generation-probe receipt after a clean "
+            "engine restart; health, capabilities, and model identity are rechecked."
+        ),
+    )
     parser.add_argument("--recover-timeout-chunk", type=int)
     options = parser.parse_args()
     args = argparse.Namespace(
         benchmark_card=options.benchmark_card,
+        task_index=options.task_index,
         output=options.output,
         model=MODEL,
         served_model=MODEL,
@@ -67,8 +92,8 @@ def main() -> None:
         tokenizer_revision=MODEL_REVISION,
         benchmark_revision=PINNED_DATASET_REVISION,
         base_url=options.base_url,
-        engine="ollama",
-        engine_version="0.32.7",
+        engine=options.engine,
+        engine_version=options.engine_version,
         dtype="mixed",
         quantization="Q4_K_M",
         kv_cache_dtype="f16",
@@ -87,11 +112,14 @@ def main() -> None:
         chunk_size=1,
         timeout_seconds=3600,
         preflight_only=options.preflight_only,
+        endpoint_preflight_receipt=options.endpoint_preflight_receipt,
         allow_partial_reproduction=False,
         local_calibration=True,
         recover_timeout_chunk=options.recover_timeout_chunk,
         selection_record=options.selection_record,
         selection_replay=options.selection_replay,
+        prefix_caching=options.prefix_caching,
+        require_endpoint_preflight=options.require_endpoint_preflight,
         prepull_images=not options.skip_image_prepull,
         docker_platform=official_image_platform(),
         image_pull_timeout_seconds=options.image_pull_timeout_seconds,

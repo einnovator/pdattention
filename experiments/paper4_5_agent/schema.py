@@ -20,11 +20,13 @@ class CampaignMode(str, Enum):
     """Execution modes ordered from ordinary inference to native PRA."""
 
     NATIVE = "native"
+    ENGINE_CONTROL = "engine_control"
     TRUNCATION = "truncation"
     GATEWAY_PASSTHROUGH = "gateway_passthrough"
     GATEWAY_PRA = "gateway_pra"
     NATIVE_PRA = "native_pra"
     GATEWAY_NATIVE_PRA = "gateway_native_pra"
+    HEADROOM = "headroom"
 
 
 class ReproductionStatus(str, Enum):
@@ -106,7 +108,10 @@ class CampaignCell(StrictModel):
     connection: Literal["direct", "gateway"] | None = None
     engine_pra_enabled: bool | None = None
     gateway_pra_enabled: bool | None = None
-    gateway_mode: Literal["G00", "G10", "G01", "G11"] | None = None
+    gateway_mode: Literal["G00", "G10", "G01", "G11", "HEADROOM"] | None = None
+    engine_target_id: str | None = None
+    prefix_caching: bool = False
+    factorial_group: str | None = None
     comparison_group: str | None = None
     paired_cell: str | None = None
     prerequisite_cells: tuple[str, ...] = ()
@@ -115,6 +120,8 @@ class CampaignCell(StrictModel):
         "transport_qualification",
         "efficacy",
         "transport_equivalence",
+        "prefix_cache_effect",
+        "engine_control",
         "product_end_to_end",
     ]
     selection_contract: Literal[
@@ -143,6 +150,13 @@ class CampaignCell(StrictModel):
         if self.mode in {CampaignMode.NATIVE_PRA, CampaignMode.GATEWAY_NATIVE_PRA}:
             if self.engine_pra_enabled is not True:
                 raise ValueError("native PRA campaign cells require engine_pra_enabled=true")
+            if not self.engine_target_id:
+                raise ValueError("native PRA campaign cells require engine_target_id")
+        if self.mode == CampaignMode.ENGINE_CONTROL:
+            if self.connection != "direct" or self.engine_pra_enabled or self.gateway_pra_enabled:
+                raise ValueError("engine_control must be direct with PRA disabled")
+            if not self.engine_target_id:
+                raise ValueError("engine_control requires engine_target_id")
         if self.evidence_role == "baseline_admission" and self.mode != CampaignMode.NATIVE:
             raise ValueError("baseline_admission is reserved for native no-PRA cells")
         if self.evidence_role == "transport_equivalence":
@@ -150,6 +164,13 @@ class CampaignCell(StrictModel):
                 raise ValueError(
                     "transport_equivalence requires paired_cell and frozen_replay"
                 )
+        if self.evidence_role == "prefix_cache_effect":
+            if not self.paired_cell or self.selection_contract != "frozen_replay":
+                raise ValueError(
+                    "prefix_cache_effect requires paired_cell and frozen_replay"
+                )
+            if not self.prefix_caching:
+                raise ValueError("prefix_cache_effect requires prefix_caching=true")
         if self.evidence_role == "product_end_to_end" and self.selection_contract != "route_owned":
             raise ValueError("product_end_to_end requires route_owned selection")
         return self

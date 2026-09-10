@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "instance_id": "django__django-15277",
+  "engine": "llama.cpp",
+  "engine_revision": "458681e1",
+  "model": "qwen3-coder:30b",
+  "quantization": "Q4_K_M",
+  "cache_off": {
+    "arm": "plain_llamacpp_cache_off_active_tail_v29",
+    "prefix_caching": false,
+    "official_score": 0.0,
+    "resolved": false,
+    "api_calls": 16,
+    "retained_assistant_actions": 15,
+    "prompt_tokens_evaluated": 72235,
+    "completion_tokens": 1837,
+    "wall_time_s": 672.2853989601135,
+    "termination_reason": "Submitted",
+    "grader_outcome": "error",
+    "error_type": "patch_apply_failed",
+    "patch_bytes": 453
+  },
+  "cache_on": {
+    "arm": "plain_llamacpp_cache_on_active_tail_v30",
+    "prefix_caching": true,
+    "official_score": 1.0,
+    "resolved": true,
+    "api_calls": 31,
+    "retained_assistant_actions": 30,
+    "prompt_tokens_evaluated": 7214,
+    "completion_tokens": 3145,
+    "wall_time_s": 177.481938123703,
+    "termination_reason": "Submitted",
+    "grader_outcome": "resolved",
+    "patch_bytes": 676
+  },
+  "cache_on_baseline_reproduction": {
+    "reference_arm": "plain_clean_receipt",
+    "role_content_trajectory_exact": true,
+    "messages": 63,
+    "official_score_exact": true,
+    "patch_exact": true
+  },
+  "cross_cache_behavior": {
+    "shared_assistant_actions_exact": 7,
+    "first_divergent_assistant_action": 8,
+    "role_content_trajectory_exact": false,
+    "runtime_ratio_admitted": false,
+    "interpretation": "Prefix-cache ON and OFF alter the numerical execution path of quantized llama.cpp and do not preserve the autonomous trajectory. The score difference is therefore a behavioral consumption result, not a valid matched-trajectory speed comparison."
+  }
+}

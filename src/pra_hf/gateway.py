@@ -78,6 +78,7 @@ class PRAGateway:
 
     def capabilities(self) -> dict[str, Any]:
         engine = self.adapter.capabilities()
+        prefix_cache_enabled = getattr(self.adapter, "prefix_cache_enabled", None)
         accepts_typed = self.mode in {
             PRAGatewayMode.G10_TEXT_FALLBACK,
             PRAGatewayMode.G11_MEDIATION,
@@ -95,6 +96,8 @@ class PRAGateway:
             ),
             "streaming": engine.streaming,
         }
+        if prefix_cache_enabled is not None:
+            effective["prefix_cache_enabled"] = bool(prefix_cache_enabled)
         return {
             "protocol": "pra",
             "protocol_version": "1",
@@ -111,7 +114,15 @@ class PRAGateway:
             "engine": {
                 **engine.to_dict(),
                 "type": engine.engine_type.value,
+                **(
+                    {"prefix_cache_enabled": bool(prefix_cache_enabled)}
+                    if prefix_cache_enabled is not None else {}
+                ),
             },
+            **(
+                {"prefix_cache_enabled": bool(prefix_cache_enabled)}
+                if prefix_cache_enabled is not None else {}
+            ),
             "fallback_injection": self.fallback_injection.value,
             "streaming_implemented": engine.streaming,
             "pra_bundle": self.bundle_source,
@@ -358,10 +369,20 @@ class PRAGateway:
             invalidation,
         )
 
-    @staticmethod
-    def _invalidation_reason(turn: ResolvedSessionTurn, request: PRAWireRequest) -> str | None:
+    def _invalidation_reason(
+        self, turn: ResolvedSessionTurn, request: PRAWireRequest,
+    ) -> str | None:
         state = turn.state
-        if turn.prefix_changed_reason == "history_rewrite" and state.turns:
+        selected_history_projection = (
+            self.mode == PRAGatewayMode.G11_MEDIATION
+            and request.metadata.get("history_projection")
+            == "detached-agent-trajectory-v1"
+        )
+        if (
+            turn.prefix_changed_reason == "history_rewrite"
+            and state.turns
+            and not selected_history_projection
+        ):
             return "system_prefix_or_history_rewrite"
         checks = (
             ("model_revision", "model_revision_changed"),
@@ -858,6 +879,16 @@ def _handler(gateway: PRAGateway):
                 ),
                 "materialized_tokens": result.raw.get("materialized_tokens", 0),
                 "native_kv": protocol_trace.get("native_kv", False),
+                "prefix_cache_hit": result.raw.get("prefix_cache_hit"),
+                "prefix_cached_tokens": result.raw.get("prefix_cached_tokens"),
+                "engine_cached_tokens_total": result.raw.get(
+                    "engine_cached_tokens_total"
+                ),
+                "native_tokens": (result.raw.get("pra") or {}).get("native_tokens"),
+                "wire_tokens": (result.raw.get("pra") or {}).get("wire_tokens"),
+                "physical_kv_copy": (result.raw.get("pra") or {}).get(
+                    "physical_kv_copy"
+                ),
                 "trace_id": request.correlation_id,
             }
             response["pra_trace"] = list(result.trace)

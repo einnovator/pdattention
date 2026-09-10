@@ -53,6 +53,8 @@ pra gateway serve --mode passthrough --backend ollama \
 pra gateway serve --mode selected-context --backend ollama \
   --backend-url http://192.168.1.102:11435/v1 --backend-timeout 3600 \
   --model qwen3-coder:30b --host 127.0.0.1 --port 8081
+export PRA_AGENT_G00_URL=http://127.0.0.1:8080/v1
+export PRA_AGENT_G10_URL=http://127.0.0.1:8081/v1
 python -m experiments.paper4_5_agent.run_campaign \
   --config experiments/paper4_5_agent/configs/campaigns/swebench_easy50_pra_frontier.yaml \
   --max-hours 18 --resume
@@ -199,10 +201,14 @@ request-digest matches from that fixture and fails closed as soon as the paired
 trajectories diverge. The separate `G11-end-to-end` cell remains `route_owned`
 and must not be described as frozen-selection transport equivalence.
 
-The Easy-50 scheduler uses explicit priorities: No PRA, corrected G00, direct
-native PRA at 50%, frozen G11 equivalence, G11 end to end at 50%, matched 50%
-truncation, and G10 at 50%. The 25% and 12.5% frontier remains later-stage work
-and runs only when the 50% comparison is informative.
+The immediately executable Easy-50 text frontier uses explicit priorities: No
+PRA, corrected G00, matched 50% truncation, and G10 at 50%. G00 and G10 require
+their route-specific endpoint variables above; the scheduler blocks rather than
+silently falling back to the ordinary model endpoint. The 25% and 12.5%
+frontier and the native direct/frozen-G11/end-to-end-G11 cells remain
+later-stage work and run only when the 50% comparison is informative and their
+qualified endpoints are available. The 25% and 12.5% cells are disabled in the
+checked-in campaign until those reviews explicitly promote them.
 
 The frozen local-Qwen runner pre-pulls each official evaluator image before
 starting mini-swe-agent. On Apple Silicon it requests `linux/amd64` explicitly

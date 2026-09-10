@@ -1,0 +1,7 @@
+{
+  "sympy__sympy-17139": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sympy__sympy-17139",
+    "model_patch": "diff --git a/sympy/simplify/fu.py b/sympy/simplify/fu.py\nold mode 100755\nnew mode 100644\nindex ad1130ef9..a2524542f\n--- a/sympy/simplify/fu.py\n+++ b/sympy/simplify/fu.py\n@@ -501,9 +501,19 @@ def _f(rv):\n         if not (rv.is_Pow and rv.base.func == f):\n             return rv\n \n-        if (rv.exp < 0) == True:\n+        try:\n+            _less_than_zero = rv.exp < 0\n+        except (TypeError, NotImplementedError):\n+            _less_than_zero = False\n+        if _less_than_zero == True:\n+            return rv\n+            return rv\n+        try:\n+            _greater_than_max = rv.exp > max\n+        except (TypeError, NotImplementedError):\n+            _greater_than_max = False\n+        if _greater_than_max == True:\n             return rv\n-        if (rv.exp > max) == True:\n             return rv\n         if rv.exp == 2:\n             return h(g(rv.base.args[0])**2)\n"
+  }
+}

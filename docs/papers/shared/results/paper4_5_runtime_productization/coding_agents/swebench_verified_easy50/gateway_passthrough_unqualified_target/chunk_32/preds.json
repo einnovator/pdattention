@@ -1,0 +1,7 @@
+{
+  "sympy__sympy-24539": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sympy__sympy-24539",
+    "model_patch": "diff --git a/sympy/polys/rings.py b/sympy/polys/rings.py\nindex 12bd2fc920..d7ac69da9f 100644\n--- a/sympy/polys/rings.py\n+++ b/sympy/polys/rings.py\n@@ -615,14 +615,14 @@ def set_ring(self, new_ring):\n         else:\n             return new_ring.from_dict(self, self.ring.domain)\n \n+\n     def as_expr(self, *symbols):\n         if symbols and len(symbols) != self.ring.ngens:\n             raise ValueError(\"not enough symbols, expected %s got %s\" % (self.ring.ngens, len(symbols)))\n-        else:\n+        if not symbols:\n             symbols = self.ring.symbols\n \n         return expr_from_dict(self.as_expr_dict(), *symbols)\n-\n     def as_expr_dict(self):\n         to_sympy = self.ring.domain.to_sympy\n         return {monom: to_sympy(coeff) for monom, coeff in self.iterterms()}\n"
+  }
+}

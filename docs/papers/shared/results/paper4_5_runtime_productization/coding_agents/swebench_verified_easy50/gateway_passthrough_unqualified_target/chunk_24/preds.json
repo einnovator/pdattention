@@ -1,0 +1,7 @@
+{
+  "django__django-11555": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-11555",
+    "model_patch": "diff --git a/django/db/models/sql/compiler.py b/django/db/models/sql/compiler.py\nindex eaccc96d7d..1fd517162e 100644\n--- a/django/db/models/sql/compiler.py\n+++ b/django/db/models/sql/compiler.py\n@@ -293,7 +293,16 @@ class SQLCompiler:\n                 order_by.append((OrderBy(Random()), False))\n                 continue\n \n-            col, order = get_order_dir(field, asc)\n+            # Handle OrderBy objects properly\n+            if isinstance(field, OrderBy):\n+                # Extract field name from OrderBy expression\n+                if hasattr(field.expression, \"__str__\"):\n+                    col = str(field.expression)\n+                else:\n+                    col = field.expression\n+                order = \"DESC\" if field.descending else \"ASC\"\n+            else:\n+                col, order = get_order_dir(field, asc)\n             descending = order == 'DESC'\n \n             if col in self.query.annotation_select:\n"
+  }
+}

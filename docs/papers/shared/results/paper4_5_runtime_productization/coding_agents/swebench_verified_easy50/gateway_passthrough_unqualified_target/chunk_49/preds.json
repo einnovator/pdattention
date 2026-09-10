@@ -1,0 +1,7 @@
+{
+  "pylint-dev__pylint-4970": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "pylint-dev__pylint-4970",
+    "model_patch": "diff --git a/pylint/checkers/similar.py b/pylint/checkers/similar.py\nindex c65b1c89..37382fe4 100644\n--- a/pylint/checkers/similar.py\n+++ b/pylint/checkers/similar.py\n@@ -470,6 +470,9 @@ class Similar:\n         the couple of corresponding starting and ending lines in both files.\n         Last regroups all successive couples in a bigger one. It allows to take into account common chunk of lines that have more\n         than the minimal number of successive lines required.\n+        if self.min_lines == 0:\n+            return\n+\n         \"\"\"\n         hash_to_index_1: HashToIndex_T\n         hash_to_index_2: HashToIndex_T\n"
+  }
+}

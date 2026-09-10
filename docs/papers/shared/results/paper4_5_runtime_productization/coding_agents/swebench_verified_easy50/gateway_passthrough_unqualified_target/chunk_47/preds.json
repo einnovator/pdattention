@@ -1,0 +1,7 @@
+{
+  "sphinx-doc__sphinx-9230": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "sphinx-doc__sphinx-9230",
+    "model_patch": "def smart_split_field_name(field_name):\n    # Split on spaces but be smart about parentheses in type annotations\n    if not field_name.startswith(\"param \"):\n        return re.split(\" +\", field_name)\n    \n    # For param directives, we want to parse: param <type> <name>\n    # We need to find where the type specification ends and name begins\n    parts = field_name.split(\" \", 1)  # Split only on first space\n    if len(parts) < 2:\n        return [field_name]\n    \n    # The second part is like 'dict(str, str) opc_meta'\n    # We need to find where the type ends (matching parentheses)\n    type_and_name = parts[1]\n    \n    # Count parentheses to find where type ends\n    paren_count = 0\n    type_end_pos = 0\n    \n    for i, char in enumerate(type_and_name):\n"
+  }
+}
