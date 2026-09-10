@@ -41,19 +41,6 @@ class FrozenReplayDivergence(RuntimeError):
 
 CONSUMPTION_POLICIES = ("standard", "verification-guard-v1")
 
-_VERIFICATION_GUARD = """
-<pra_consumption_policy name="verification-guard-v1">
-A command that changes a source file starts a mandatory verification sequence.
-Your next command MUST inspect the source diff with `git diff -- <changed source files>`.
-If the intended change is absent or malformed, repair it before doing anything else.
-If the diff is sound, your next command MUST run the narrowest relevant reproduction or test.
-Once focused verification passes, do not resume source discovery: create the submission patch,
-inspect it in a separate command, and submit it exactly as the task instructions require.
-Return to exploration only when the diff or focused verification identifies a concrete defect.
-</pra_consumption_policy>
-""".strip()
-
-
 @dataclass(frozen=True)
 class TreatmentTrace:
     """One request's disjoint logical, selected, and visible context accounting."""
@@ -77,6 +64,7 @@ class TreatmentTrace:
 
 def apply_consumption_policy(
     payload: Mapping[str, Any], policy: str,
+    *, logical_messages: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Change model presentation only after routing, preserving selected records."""
 
@@ -87,23 +75,29 @@ def apply_consumption_policy(
     transformed = dict(payload)
     if policy == "standard":
         return transformed, 0
+    guidance = _verification_guidance(logical_messages or payload.get("messages", ()))
     messages = [dict(row) for row in transformed.get("messages", ())]
-    system_index = next(
-        (index for index, row in enumerate(messages) if row.get("role") == "system"),
-        None,
-    )
-    if system_index is None:
-        messages.insert(0, {"role": "system", "content": _VERIFICATION_GUARD})
-    else:
-        content = str(messages[system_index].get("content") or "")
-        messages[system_index]["content"] = f"{content}\n\n{_VERIFICATION_GUARD}"
-    transformed["messages"] = messages
+    if guidance:
+        system_index = next(
+            (index for index, row in enumerate(messages) if row.get("role") == "system"),
+            None,
+        )
+        tagged = (
+            '<pra_consumption_policy name="verification-guard-v1">\n'
+            f"{guidance}\n</pra_consumption_policy>"
+        )
+        if system_index is None:
+            messages.insert(0, {"role": "system", "content": tagged})
+        else:
+            content = str(messages[system_index].get("content") or "")
+            messages[system_index]["content"] = f"{content}\n\n{tagged}"
+        transformed["messages"] = messages
     envelope = dict(transformed.get("pra") or {})
     metadata = dict(envelope.get("metadata") or {})
     metadata["consumption_policy"] = policy
     envelope["metadata"] = metadata
     transformed["pra"] = envelope
-    return transformed, _count_tokens(_VERIFICATION_GUARD)
+    return transformed, _count_tokens(guidance)
 
 
 def transform_chat_payload(
@@ -371,6 +365,56 @@ _VERIFICATION = re.compile(
     r"\bgit\s+diff\b|\bpatch\.txt\b|COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT)",
     re.IGNORECASE,
 )
+_COMMAND_BLOCK = re.compile(r"```(?:mswea_bash_command)?\s*\n(.*?)\n```", re.DOTALL)
+_FOCUSED_TEST = re.compile(
+    r"(?:\bpytest\b|\btox\b|\bmake\s+test\b|\bpython(?:3)?\s+-m\s+(?:test|pytest))",
+    re.IGNORECASE,
+)
+_PATCH_CREATE = re.compile(r"\bgit\s+diff\b[^\n]*>\s*patch\.txt\b", re.IGNORECASE)
+_PATCH_INSPECT = re.compile(
+    r"(?:\bcat\b|\bsed\b|\bhead\b|\btail\b)[^\n]*\bpatch\.txt\b", re.IGNORECASE,
+)
+
+
+def _verification_guidance(messages: Sequence[Mapping[str, Any]]) -> str:
+    """Return one phase-specific instruction only at a verified workflow boundary."""
+
+    assistant_index = next((
+        index for index in range(len(messages) - 1, -1, -1)
+        if messages[index].get("role") == "assistant"
+    ), None)
+    if assistant_index is None:
+        return ""
+    content = str(messages[assistant_index].get("content") or "")
+    blocks = _COMMAND_BLOCK.findall(content)
+    command = blocks[-1] if blocks else content
+    observation = "\n".join(
+        str(row.get("content") or "") for row in messages[assistant_index + 1:]
+        if row.get("role") != "assistant"
+    )
+    if _PATCH_INSPECT.search(command):
+        return (
+            "The submission patch has been inspected. Submit it now with the exact "
+            "completion command required by the task; do not resume exploration."
+        )
+    if _PATCH_CREATE.search(command):
+        return "Inspect patch.txt now as the required separate verification command."
+    if _FOCUSED_TEST.search(command) and "<returncode>0</returncode>" in observation:
+        return (
+            "Focused verification passed. Create patch.txt now from only the modified "
+            "source files; do not resume source discovery."
+        )
+    if re.search(r"\bgit\s+diff\b", command, re.IGNORECASE):
+        return (
+            "The source diff has been inspected. Run the narrowest relevant reproduction "
+            "or test now; repair the edit only if that check exposes a concrete defect."
+        )
+    if _MUTATION.search(command):
+        return (
+            "A source mutation just completed. Before any other exploration, inspect only "
+            "the changed source diff with `git diff -- <changed source files>`."
+        )
+    return ""
 
 
 def _progress_pinned_indices(
@@ -820,6 +864,7 @@ class TreatmentProxy:
             )
             payload, policy_tokens = apply_consumption_policy(
                 payload, self.consumption_policy,
+                logical_messages=logical_payload.get("messages", ()),
             )
             if policy_tokens:
                 physical_tokens = trace.physical_input_tokens_estimate + policy_tokens

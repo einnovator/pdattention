@@ -133,9 +133,21 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
             "metadata": {"selection_complete": False},
         },
     }
+    logical_messages = [
+        {"role": "system", "content": "base system"},
+        {"role": "user", "content": "task"},
+        {
+            "role": "assistant",
+            "content": (
+                "THOUGHT: edit\n```mswea_bash_command\n"
+                "sed -i 's/old/new/' source.py\n```"
+            ),
+        },
+        {"role": "user", "content": "<returncode>0</returncode>"},
+    ]
 
     transformed, overhead = apply_consumption_policy(
-        payload, "verification-guard-v1",
+        payload, "verification-guard-v1", logical_messages=logical_messages,
     )
 
     assert payload["messages"][0]["content"] == "base system"
@@ -144,7 +156,40 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
     assert transformed["pra"]["metadata"]["consumption_policy"] == (
         "verification-guard-v1"
     )
-    assert "next command MUST inspect" in transformed["messages"][0]["content"]
+    assert "source mutation just completed" in transformed["messages"][0]["content"]
+    assert overhead > 0
+
+    unchanged, no_overhead = apply_consumption_policy(
+        payload, "verification-guard-v1", logical_messages=logical_messages[:2],
+    )
+    assert unchanged["messages"] == payload["messages"]
+    assert no_overhead == 0
+
+
+@pytest.mark.parametrize(("command", "observation", "expected"), [
+    ("git diff -- source.py", "<returncode>0</returncode>", "narrowest relevant"),
+    ("python -m pytest tests/test_source.py -q", "<returncode>0</returncode>", "Create patch.txt"),
+    ("git diff -- source.py > patch.txt", "<returncode>0</returncode>", "Inspect patch.txt"),
+    ("cat patch.txt", "<returncode>0</returncode>", "Submit it now"),
+])
+def test_verification_guard_advances_only_at_completed_boundaries(
+    command: str, observation: str, expected: str,
+) -> None:
+    logical = [
+        {"role": "user", "content": "task"},
+        {
+            "role": "assistant",
+            "content": f"THOUGHT: next\n```mswea_bash_command\n{command}\n```",
+        },
+        {"role": "user", "content": observation},
+    ]
+
+    transformed, overhead = apply_consumption_policy(
+        {"messages": [{"role": "user", "content": observation}]},
+        "verification-guard-v1", logical_messages=logical,
+    )
+
+    assert expected in transformed["messages"][0]["content"]
     assert overhead > 0
 CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/fim14b_r2egym.yaml"
 MATRIX_CONFIG = ROOT / "experiments/paper4_5_agent/configs/harness_matrices/qwen3_coder_30b_pilot.yaml"

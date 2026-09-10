@@ -17,6 +17,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .context_treatment import CONSUMPTION_POLICIES, apply_consumption_policy
+
 
 def _post(base_url: str, path: str, payload: Mapping[str, Any]) -> Any:
     request = urllib.request.Request(
@@ -113,13 +115,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         index for index, message in enumerate(messages)
         if message.get("role") == "assistant"
     ][:args.turns]
-    prompts = [
-        _post(args.base_url, "/apply-template", {
-            "messages": messages[:index],
+    prompts: list[str] = []
+    policy_tokens: list[int] = []
+    for index in assistant_indexes:
+        prefix = messages[:index]
+        presented, overhead = apply_consumption_policy(
+            {"messages": prefix}, args.consumption_policy,
+            logical_messages=prefix,
+        )
+        prompts.append(_post(args.base_url, "/apply-template", {
+            "messages": presented["messages"],
             "add_generation_prompt": True,
-        })["prompt"]
-        for index in assistant_indexes
-    ]
+        })["prompt"])
+        policy_tokens.append(overhead)
 
     cached = _run_phase(
         base_url=args.base_url,
@@ -205,6 +213,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "seed": args.seed,
         "temperature": 0,
         "max_tokens": args.max_tokens,
+        "consumption_policy": args.consumption_policy,
+        "consumption_policy_tokens_estimate_by_turn": policy_tokens,
         "requested_turns": args.turns,
         "completed_turns": len(comparisons),
         "positive_cached_requests_after_first": positive_cache_hits,
@@ -231,6 +241,9 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--n-probs", type=int, default=5)
+    parser.add_argument(
+        "--consumption-policy", choices=CONSUMPTION_POLICIES, default="standard",
+    )
     parser.add_argument(
         "--compare-only-turn", type=int,
         help="Run the cached prefix through this turn but cold-prefill only this turn.",
