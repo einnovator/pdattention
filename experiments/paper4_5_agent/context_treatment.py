@@ -408,6 +408,13 @@ def _verification_guidance(messages: Sequence[Mapping[str, Any]]) -> str:
             "source files; do not resume source discovery."
         )
     if re.search(r"\bgit\s+diff\b", command, re.IGNORECASE):
+        output = re.search(r"<output>\s*(.*?)\s*</output>", observation, re.DOTALL)
+        if output is not None and not output.group(1).strip():
+            return (
+                "The source diff is empty, so the prior mutation was a silent no-op. "
+                "Reapply the intended edit with a content-matched operation rather than "
+                "a line-number-only command, then inspect the diff again."
+            )
         return (
             "The source diff has been inspected. Run the narrowest relevant reproduction "
             "or test now; repair the edit only if that check exposes a concrete defect."

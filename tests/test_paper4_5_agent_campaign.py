@@ -168,7 +168,16 @@ def test_verification_guard_changes_presentation_after_selection_only() -> None:
 
 
 @pytest.mark.parametrize(("command", "observation", "expected"), [
-    ("git diff -- source.py", "<returncode>0</returncode>", "narrowest relevant"),
+    (
+        "git diff -- source.py",
+        "<returncode>0</returncode><output>diff --git a/source.py b/source.py</output>",
+        "narrowest relevant",
+    ),
+    (
+        "git diff -- source.py",
+        "<returncode>0</returncode><output>\n</output>",
+        "silent no-op",
+    ),
     ("python -m pytest tests/test_source.py -q", "<returncode>0</returncode>", "Create patch.txt"),
     ("git diff -- source.py > patch.txt", "<returncode>0</returncode>", "Inspect patch.txt"),
     ("cat patch.txt", "<returncode>0</returncode>", "Submit it now"),
