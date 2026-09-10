@@ -278,6 +278,15 @@ def test_enforced_policy_preserves_compliant_or_semantic_action() -> None:
     assert transformed == compliant
     assert metadata["action_enforced"] is False
 
+    reproduction = _response("python -c \"from source import reproduce; reproduce()\"")
+    transformed, metadata = enforce_consumption_action(
+        reproduction,
+        "verification-enforced-v1",
+        logical_messages=_history([_MUTATION_STEP, _DIFF_STEP]),
+    )
+    assert transformed == reproduction
+    assert metadata["action_enforced"] is False
+
     failed_test = _history([
         _MUTATION_STEP,
         _DIFF_STEP,

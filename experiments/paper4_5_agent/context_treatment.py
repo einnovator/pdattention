@@ -375,7 +375,8 @@ _VERIFICATION = re.compile(
 )
 _COMMAND_BLOCK = re.compile(r"```(?:mswea_bash_command)?\s*\n(.*?)\n```", re.DOTALL)
 _FOCUSED_TEST = re.compile(
-    r"(?:\bpytest\b|\btox\b|\bmake\s+test\b|\bpython(?:3)?\s+-m\s+(?:test|pytest))",
+    r"(?:\bpytest\b|\btox\b|\bmake\s+test\b|"
+    r"\bpython(?:3)?\s+(?:-m\s+(?:test|pytest)|-c\s+))",
     re.IGNORECASE,
 )
 _PATCH_CREATE = re.compile(r"\bgit\s+diff\b[^\n]*>\s*patch\.txt\b", re.IGNORECASE)
