@@ -5,7 +5,23 @@ from types import SimpleNamespace
 import pytest
 
 from pra_hf.hf_live_kv import select_dynamic_cache
-from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
+from pra_hf.live_history import (
+    LiveKVInterval,
+    LiveKVSelectionPlan,
+    LiveKVSourceRegistry,
+)
+from experiments.paper4_5_agent.sparse_gate_common import sparse_causal_plan
+
+
+class _ChatTokenizer:
+    def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
+        text = "".join(
+            f"<{message['role']}>{message['content']}</{message['role']}>"
+            for message in messages
+        )
+        if add_generation_prompt:
+            text += "<assistant>"
+        return [ord(value) for value in text] if tokenize else text
 
 
 def test_live_plan_keeps_selected_width_and_position_extent_separate() -> None:
@@ -55,3 +71,127 @@ def test_hf_full_selection_is_a_view_and_sparse_selection_reports_pack_copy() ->
     assert sparse.cache.layers[0].keys.shape[-2] == 4
     assert sparse.cache.layers[0].keys[0, 0, :, 0].tolist() == [0, 4, 16, 20]
 
+
+def test_live_kv_registry_isolates_concurrent_sessions_and_rejects_stale_forks() -> None:
+    registry = LiveKVSourceRegistry[bytes]()
+    registry.register(
+        "source-a", b"A", tenant_id="tenant", session_id="session-a", generation=3
+    )
+    registry.register(
+        "source-b", b"B", tenant_id="tenant", session_id="session-b", generation=7
+    )
+
+    assert registry.borrow(
+        "request-a",
+        ("source-a",),
+        tenant_id="tenant",
+        session_id="session-a",
+        expected_generations=(3,),
+    ) == (b"A",)
+    assert registry.borrow(
+        "request-b",
+        ("source-b",),
+        tenant_id="tenant",
+        session_id="session-b",
+        expected_generations=(7,),
+    ) == (b"B",)
+    assert registry.view("source-a").active_request_ids == ("request-a",)
+    assert registry.view("source-b").active_request_ids == ("request-b",)
+
+    with pytest.raises(RuntimeError, match="scope"):
+        registry.borrow(
+            "cross-session",
+            ("source-a",),
+            tenant_id="tenant",
+            session_id="session-b",
+            expected_generations=(3,),
+        )
+    with pytest.raises(RuntimeError, match="Stale"):
+        registry.borrow(
+            "stale",
+            ("source-a",),
+            tenant_id="tenant",
+            session_id="session-a",
+            expected_generations=(2,),
+        )
+
+    assert registry.cancel("request-a")
+    assert registry.view("source-a").active_request_ids == ()
+    assert registry.view("source-b").active_request_ids == ("request-b",)
+
+
+def test_live_kv_registry_offload_restore_and_termination_tombstone() -> None:
+    registry = LiveKVSourceRegistry[bytes](
+        dump=lambda value: b"disk:" + value,
+        load=lambda value: bytes(value).removeprefix(b"disk:"),
+    )
+    registry.register(
+        "source", b"resident", tenant_id="tenant", session_id="session", generation=1
+    )
+    registry.borrow(
+        "active",
+        ("source",),
+        tenant_id="tenant",
+        session_id="session",
+        expected_generations=(1,),
+    )
+    with pytest.raises(RuntimeError, match="while requests borrow"):
+        registry.offload("source")
+
+    registry.release("active")
+    assert registry.offload("source") == b"disk:resident"
+    assert registry.view("source").tier == "offloaded"
+    assert registry.borrow(
+        "restored",
+        ("source",),
+        tenant_id="tenant",
+        session_id="session",
+        expected_generations=(1,),
+    ) == (b"resident",)
+    assert registry.view("source").tier == "hot"
+
+    assert registry.terminate_session("tenant", "session") == 1
+    assert registry.view("source") is None
+    with pytest.raises(RuntimeError, match="terminated"):
+        registry.register(
+            "replacement",
+            b"new",
+            tenant_id="tenant",
+            session_id="session",
+            generation=2,
+        )
+
+
+def test_sparse_gate_drops_whole_old_causal_group_and_keeps_original_extent() -> None:
+    messages = [
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "find"},
+        {"role": "user", "content": "path"},
+        {"role": "assistant", "content": "read"},
+        {"role": "user", "content": "source"},
+        {"role": "assistant", "content": "test"},
+        {"role": "user", "content": "failure"},
+        {"role": "assistant", "content": "edit"},
+        {"role": "user", "content": "diff"},
+    ]
+    tokenizer = _ChatTokenizer()
+    prompt = tokenizer.apply_chat_template(
+        messages, tokenize=True, add_generation_prompt=True
+    )
+    source_tokens = len(prompt) - len("<assistant>")
+    plan = sparse_causal_plan(
+        tokenizer,
+        messages,
+        prompt,
+        source_tokens=source_tokens,
+        retention_fraction=0.9,
+    )
+
+    assert plan.has_holes
+    assert plan.source_position_base == source_tokens
+    groups = {row.causal_group_id for row in plan.intervals}
+    assert "preamble" in groups
+    assert "turn:6" in groups
+    assert "turn:8" in groups
+    assert "turn:2" not in groups
