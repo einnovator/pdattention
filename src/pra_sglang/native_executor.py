@@ -187,6 +187,7 @@ class SGLangInProcessNativeExecutor:
             with self._runner_lock:
                 self.bridge.register(request_id, logical_keys=keys)
                 started = time.perf_counter()
+                outcome = "cancelled"
                 try:
                     pending = self.runner.prefill_start(
                         request_id, query, query, [], [], 0
@@ -213,9 +214,16 @@ class SGLangInProcessNativeExecutor:
                             "selected_native_tokens": selected_tokens,
                             "native_kv_used": True,
                         }
+                    outcome = "finished"
+                except GeneratorExit:
+                    outcome = "cancelled"
+                    raise
+                except BaseException:
+                    outcome = "error"
+                    raise
                 finally:
+                    self.bridge.set_terminal_outcome(request_id, outcome)
                     self.runner.remove_request(request_id)
-                    self.bridge.unregister(request_id)
 
         return rows()
 

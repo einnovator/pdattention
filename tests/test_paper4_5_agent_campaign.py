@@ -690,6 +690,7 @@ def test_causal_bundle_budget_rounds_retention_up_instead_of_underfilling() -> N
         budget_fraction=0.5,
         recent_completed_turns=0,
         recent_source_turns=0,
+        recent_progress_turns=0,
         recent_mutation_turns=0,
         recent_verification_turns=0,
     )
@@ -834,6 +835,7 @@ def test_progress_spine_retention_counts_are_explicit_and_auditable() -> None:
     assert policy["recent_completed_turns"] == 1
     assert policy["recent_records_per_turn"] == 2
     assert policy["recent_source_turns"] == 1
+    assert policy["recent_progress_turns"] == 1
     assert policy["recent_mutation_turns"] == 2
     assert policy["recent_verification_turns"] == 2
     assert policy["large_record_chunk_tokens"] == 32
@@ -886,6 +888,7 @@ def test_request_metadata_controls_dense_turn_record_floor_and_chunk_size() -> N
         "recent_completed_turns": 1,
         "recent_records_per_turn": 2,
         "recent_source_turns": 0,
+        "recent_progress_turns": 1,
         "recent_mutation_turns": 0,
         "recent_verification_turns": 0,
         "large_record_chunk_tokens": 2,
@@ -964,6 +967,7 @@ def test_zero_progress_retention_does_not_accidentally_pin_all_history() -> None
         budget_fraction=0.01,
         recent_completed_turns=0,
         recent_source_turns=0,
+        recent_progress_turns=0,
         recent_mutation_turns=0,
         recent_verification_turns=0,
     )
@@ -1005,6 +1009,113 @@ def test_latest_source_evidence_turn_is_pinned_beyond_recency_window() -> None:
         for row in transformed["pra"]["resources"]
     }
     assert {2, 3}.issubset(resource_indices)
+
+
+def test_task04_request5_progress_state_and_source_survive_at_90_percent() -> None:
+    task04_request5 = (
+        "THOUGHT: Let me look at how lazy objects are typically handled in Django. "
+        "The issue is that `get_format` function is called with a lazy object (like "
+        "from `_()` function) as the `format_type` parameter, but `getattr()` expects "
+        "a string. \n\nLooking at the `get_format_lazy` definition, it seems like it's "
+        "meant to handle lazy objects, but the problem is that `get_format_lazy` is a "
+        "lazy wrapper around `get_format`, not the `get_format` function itself.\n\n"
+        "The issue occurs when someone calls `get_format(_('Y-m-d'))` directly, not "
+        "when using `get_format_lazy`. The fix should be to ensure that `format_type` "
+        "is converted to a string before being used in `getattr()` calls.\n\nLet me "
+        "create a simple test to reproduce the issue first:\n\n"
+        "```mswea_bash_command\ncd /testbed && python -c \"\n"
+        "from django.utils.formats import get_format\n"
+        "from django.utils.translation import gettext_lazy as _\n"
+        "try:\n    result = get_format(_('Y-m-d'))\n"
+        "    print('Success:', result)\nexcept Exception as e:\n"
+        "    print('Error:', type(e).__name__, str(e))\n\"\n```\n"
+    )
+    assert hashlib.sha256(task04_request5.encode()).hexdigest() == (
+        "313c708e78de9ca9d768011bb2fecc6fa1658fd92761bef98733ac589f5c56ad"
+    )
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "fix lazy get_format " + "task " * 80},
+            {
+                "role": "assistant",
+                "content": "THOUGHT: inspect source\n```mswea_bash_command\n"
+                "cat /testbed/django/utils/formats.py\n```",
+            },
+            {"role": "user", "content": "source evidence " * 120},
+            {
+                "role": "assistant",
+                "content": "THOUGHT: I will inspect another file in detail.\n"
+                "```mswea_bash_command\nfind /testbed -name '*.py'\n```",
+            },
+            {"role": "user", "content": "unrelated paths " * 120},
+            {"role": "assistant", "content": task04_request5},
+            {"role": "user", "content": "ModuleNotFoundError: asgiref"},
+            {
+                "role": "assistant",
+                "content": "THOUGHT: inspect environment\n"
+                "```mswea_bash_command\nenv\n```",
+            },
+            {"role": "user", "content": "environment output " * 120},
+            {"role": "assistant", "content": "THOUGHT: current action"},
+            {"role": "user", "content": "current observation"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.90,
+        recent_completed_turns=0,
+        recent_records_per_turn=2,
+        recent_source_turns=1,
+        recent_progress_turns=1,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+        causal_bundle_round_up=False,
+    )
+
+    by_index = {
+        row["metadata"]["message_index"]: row
+        for row in transformed["pra"]["resources"]
+    }
+    assert {2, 3, 6, 7}.issubset(by_index)
+    assert by_index[6]["text"] == task04_request5
+    assert transformed["pra"]["metadata"]["pinned_progress_state_segments"] == [
+        "m6-0-assistant", "m7-0-user",
+    ]
+
+
+def test_verbose_reasoning_without_explicit_progress_state_is_not_pinned() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {
+                "role": "assistant",
+                "content": "THOUGHT: I will carefully explore the repository and read "
+                "several files before deciding what to do next.\n"
+                "```mswea_bash_command\nfind /testbed -type f\n```",
+            },
+            {"role": "user", "content": "paths"},
+            {"role": "assistant", "content": "active"},
+            {"role": "user", "content": "result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+        recent_completed_turns=0,
+        recent_source_turns=0,
+        recent_progress_turns=1,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+        causal_bundle_round_up=False,
+    )
+
+    assert transformed["pra"]["metadata"]["pinned_progress_state_segments"] == []
 
 
 def test_causal_chat_validation_rejects_adjacent_assistant_messages() -> None:
@@ -3009,12 +3120,14 @@ def test_proxy_request_retention_metadata_overrides_process_defaults(
         trace_path=tmp_path / "trace.jsonl",
         recent_completed_turns=4,
         recent_records_per_turn=4,
+        recent_progress_turns=3,
         max_records_per_turn_before_chunking=8,
     )
     proxy_url = proxy.start()
     request_policy = {
         "recent_completed_turns": 1,
         "recent_records_per_turn": 1,
+        "recent_progress_turns": 0,
         "large_record_chunk_tokens": 3,
         "max_records_per_turn_before_chunking": 4,
     }
@@ -3048,6 +3161,7 @@ def test_proxy_request_retention_metadata_overrides_process_defaults(
     effective = captured_payloads[0]["pra"]["metadata"]["retention_policy"]
     assert effective["recent_completed_turns"] == 1
     assert effective["recent_records_per_turn"] == 1
+    assert effective["recent_progress_turns"] == 0
     assert effective["large_record_chunk_tokens"] == 3
     assert effective["max_records_per_turn_before_chunking"] == 4
     # Request fields omitted by the caller inherit process policy defaults.

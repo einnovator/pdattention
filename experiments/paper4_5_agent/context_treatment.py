@@ -124,6 +124,7 @@ def transform_chat_payload(
     recent_completed_turns: int | None = None,
     recent_records_per_turn: int | None = None,
     recent_source_turns: int | None = None,
+    recent_progress_turns: int | None = None,
     recent_mutation_turns: int | None = None,
     recent_verification_turns: int | None = None,
     max_records_per_turn_before_chunking: int | None = None,
@@ -153,6 +154,10 @@ def transform_chat_payload(
         recent_source_turns=(
             policy.recent_source_turns
             if recent_source_turns is None else recent_source_turns
+        ),
+        recent_progress_turns=(
+            policy.recent_progress_turns
+            if recent_progress_turns is None else recent_progress_turns
         ),
         recent_mutation_turns=(
             policy.recent_mutation_turns
@@ -202,11 +207,12 @@ def transform_chat_payload(
 
     mandatory_indices = _mandatory_indices(messages)
     task_indices = _pinned_task_indices(messages, mandatory_indices)
-    progress_indices = _progress_pinned_indices(
+    progress_indices, progress_classes = _progress_pinned_indices(
         messages, mandatory_indices | task_indices,
         recent_turns=policy.recent_completed_turns,
         recent_records_per_turn=policy.recent_records_per_turn,
         source_turns=policy.recent_source_turns,
+        progress_turns=policy.recent_progress_turns,
         mutation_turns=policy.recent_mutation_turns,
         verification_turns=policy.recent_verification_turns,
         max_records_per_turn_before_chunking=(
@@ -391,6 +397,13 @@ def transform_chat_payload(
                         messages, sorted(progress_indices), segment_tokens,
                     )
                 ],
+                "pinned_progress_state_segments": [
+                    segment_id for segment_id, _ in _segments(
+                        messages,
+                        sorted(progress_classes["progress_state"]),
+                        segment_tokens,
+                    )
+                ],
             },
         })
         transformed["pra"] = envelope
@@ -474,6 +487,13 @@ _SOURCE_EVIDENCE = re.compile(
     # path-only search can evict the actual source view it depends on.
     r"(?:cat|head|tail|sed\s+-n)\b",
     re.IGNORECASE | re.MULTILINE,
+)
+_PROGRESS_STATE = re.compile(
+    r"(?:\b(?:root cause|working hypothesis|current hypothesis|proposed fix|"
+    r"intended fix)\b|\b(?:the|this)\s+(?:issue|problem|bug)\s+"
+    r"(?:is|occurs|comes from|stems from)\b|\b(?:the|this)\s+fix\s+"
+    r"(?:should|requires?|is to)\b)",
+    re.IGNORECASE,
 )
 _COMMAND_BLOCK = re.compile(r"```(?:mswea_bash_command)?\s*\n(.*?)\n```", re.DOTALL)
 _FOCUSED_TEST = re.compile(
@@ -671,17 +691,21 @@ def _progress_pinned_indices(
     *, recent_turns: int = 2,
     recent_records_per_turn: int = 2,
     source_turns: int = 1,
+    progress_turns: int = 1,
     mutation_turns: int = 1,
     verification_turns: int = 1,
     max_records_per_turn_before_chunking: int = 8,
     preserve_action_observation_pairs: bool = True,
-) -> set[int]:
+) -> tuple[set[int], dict[str, set[int]]]:
     """Keep a small causal progress spine independently of lexical retrieval.
 
     Agent history is state, not a document collection. The latest two completed
     action/observation turns preserve local plan continuity. The most recent
-    source-evidence, mutation, and verification turns preserve durable task
-    progress even after they leave that recency window.
+    source-evidence, explicit hypothesis/progress-state, mutation, and
+    verification turns preserve durable task progress even after they leave
+    that recency window. Progress-state matching only inspects the narrative
+    before a command block and requires explicit diagnostic or fix language;
+    an ordinary verbose THOUGHT block is not sufficient.
     """
 
     candidates = [
@@ -689,8 +713,15 @@ def _progress_pinned_indices(
     ]
     bundles = _turn_index_bundles(messages, candidates)
     pinned: set[int] = set()
+    classes: dict[str, set[int]] = {
+        "recent": set(),
+        "source": set(),
+        "progress_state": set(),
+        "mutation": set(),
+        "verification": set(),
+    }
 
-    def pin_bundle(bundle: Sequence[int]) -> None:
+    def pin_bundle(bundle: Sequence[int], category: str) -> None:
         retained = list(bundle)
         if len(retained) > max_records_per_turn_before_chunking:
             retained = retained[-recent_records_per_turn:] if recent_records_per_turn else []
@@ -705,13 +736,15 @@ def _progress_pinned_indices(
                 if action_index is not None and retained:
                     retained.insert(0, action_index)
         pinned.update(retained)
+        classes[category].update(retained)
 
     for bundle in (bundles[-recent_turns:] if recent_turns else ()):
-        pin_bundle(bundle)
-    for pattern, keep in (
-        (_SOURCE_EVIDENCE, source_turns),
-        (_MUTATION, mutation_turns),
-        (_VERIFICATION, verification_turns),
+        pin_bundle(bundle, "recent")
+    for category, pattern, keep in (
+        ("source", _SOURCE_EVIDENCE, source_turns),
+        ("progress_state", _PROGRESS_STATE, progress_turns),
+        ("mutation", _MUTATION, mutation_turns),
+        ("verification", _VERIFICATION, verification_turns),
     ):
         if keep == 0:
             continue
@@ -719,13 +752,17 @@ def _progress_pinned_indices(
             bundle for bundle in bundles
             if any(
                 messages[index].get("role") == "assistant"
-                and pattern.search(str(messages[index].get("content", "")))
+                and pattern.search(
+                    str(messages[index].get("content", "")).split("```", 1)[0]
+                    if category == "progress_state"
+                    else str(messages[index].get("content", ""))
+                )
                 for index in bundle
             )
         ]
         for bundle in matched[-keep:]:
-            pin_bundle(bundle)
-    return pinned
+            pin_bundle(bundle, category)
+    return pinned, classes
 
 
 def _task_aware_query(
@@ -1059,6 +1096,7 @@ class TreatmentProxy:
         recent_completed_turns: int = 2,
         recent_records_per_turn: int = 2,
         recent_source_turns: int = 1,
+        recent_progress_turns: int = 1,
         recent_mutation_turns: int = 1,
         recent_verification_turns: int = 1,
         large_record_chunk_tokens: int = 256,
@@ -1081,6 +1119,7 @@ class TreatmentProxy:
             recent_completed_turns=recent_completed_turns,
             recent_records_per_turn=recent_records_per_turn,
             recent_source_turns=recent_source_turns,
+            recent_progress_turns=recent_progress_turns,
             recent_mutation_turns=recent_mutation_turns,
             recent_verification_turns=recent_verification_turns,
             large_record_chunk_tokens=large_record_chunk_tokens,
@@ -1219,6 +1258,7 @@ class TreatmentProxy:
                 recent_completed_turns=effective_retention.recent_completed_turns,
                 recent_records_per_turn=effective_retention.recent_records_per_turn,
                 recent_source_turns=effective_retention.recent_source_turns,
+                recent_progress_turns=effective_retention.recent_progress_turns,
                 recent_mutation_turns=effective_retention.recent_mutation_turns,
                 recent_verification_turns=effective_retention.recent_verification_turns,
                 max_records_per_turn_before_chunking=(

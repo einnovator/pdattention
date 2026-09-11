@@ -436,6 +436,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
             "recent_completed_turns": getattr(args, "recent_completed_turns", 2),
             "recent_records_per_turn": getattr(args, "recent_records_per_turn", 2),
             "recent_source_turns": getattr(args, "recent_source_turns", 1),
+            "recent_progress_turns": getattr(args, "recent_progress_turns", 1),
             "recent_mutation_turns": getattr(args, "recent_mutation_turns", 1),
             "recent_verification_turns": getattr(args, "recent_verification_turns", 1),
             "large_record_chunk_tokens": getattr(
@@ -524,6 +525,7 @@ def run(args: argparse.Namespace) -> Path:
             recent_completed_turns=getattr(args, "recent_completed_turns", 2),
             recent_records_per_turn=getattr(args, "recent_records_per_turn", 2),
             recent_source_turns=getattr(args, "recent_source_turns", 1),
+            recent_progress_turns=getattr(args, "recent_progress_turns", 1),
             recent_mutation_turns=getattr(args, "recent_mutation_turns", 1),
             recent_verification_turns=getattr(args, "recent_verification_turns", 1),
             large_record_chunk_tokens=getattr(
@@ -1327,6 +1329,7 @@ def main() -> None:
     parser.add_argument("--recent-completed-turns", type=int, default=2)
     parser.add_argument("--recent-records-per-turn", type=int, default=2)
     parser.add_argument("--recent-source-turns", type=int, default=1)
+    parser.add_argument("--recent-progress-turns", type=int, default=1)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument("--large-record-chunk-tokens", type=int, default=256)

@@ -216,6 +216,7 @@ def test_agent_sdk_sends_typed_request_retention_policy() -> None:
         policy = PRAAgentRetentionPolicy(
             recent_completed_turns=4,
             recent_records_per_turn=3,
+            recent_progress_turns=2,
             large_record_chunk_tokens=512,
             max_records_per_turn_before_chunking=9,
         )
@@ -226,6 +227,9 @@ def test_agent_sdk_sends_typed_request_retention_policy() -> None:
         )
 
         assert adapter.requests[0].metadata["retention_policy"] == policy.to_dict()
+        assert adapter.requests[0].metadata["retention_policy"][
+            "recent_progress_turns"
+        ] == 2
     finally:
         server.shutdown()
         server.server_close()

@@ -68,6 +68,7 @@ def main() -> None:
             budget_fraction=0.25,
             frozen_selection=frozen,
             recent_completed_turns=0,
+            recent_progress_turns=0,
             recent_mutation_turns=0,
             recent_verification_turns=0,
         )

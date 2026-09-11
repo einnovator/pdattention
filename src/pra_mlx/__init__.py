@@ -14,6 +14,7 @@ from .native import (
     MLXSegmentedSelectedKVCache,
     MLXSelectedKVCache,
     capture_live_native_memory,
+    select_live_native_memory,
     combine_native_memories,
     dequantize_native_memory,
     deserialize_native_memory,
@@ -25,6 +26,12 @@ from .native import (
     compiled_segmented_selected_attention,
     segmented_selected_attention,
     serialize_native_memory,
+)
+from .mlx_live_kv import (
+    MLXLiveKVGeneration,
+    MLXLiveKVRequest,
+    MLXLiveKVRequestCancelled,
+    MLXLiveKVRuntime,
 )
 from .qwen3_segmented import install_qwen3_segmented_attention
 from .native_storage import MLXNativeSegmentStore
@@ -45,6 +52,11 @@ __all__ = [
     "MLXSegmentedSelectedKVCache",
     "MLXSelectedKVCache",
     "capture_live_native_memory",
+    "select_live_native_memory",
+    "MLXLiveKVGeneration",
+    "MLXLiveKVRequest",
+    "MLXLiveKVRequestCancelled",
+    "MLXLiveKVRuntime",
     "combine_native_memories",
     "dequantize_native_memory",
     "deserialize_native_memory",

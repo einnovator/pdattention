@@ -36,7 +36,7 @@
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
       "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "registry contract 8/8; engine scheduler callbacks and scheduler-owned source-page offload pending",
+      "lifecycle": "passed for request-owned MLX runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstone checks",
       "agent_campaign": "blocked"
     },
     "vllm": {
@@ -66,7 +66,7 @@
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
       "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "registry contract 8/8; engine scheduler callbacks and scheduler-owned source-page offload pending",
+      "lifecycle": "passed for request-owned SGLang-MLX/Radix runtime: 22/22 concurrent, finish/cancel/error, stale-generation, Radix isolation, offload/restore, termination, and tombstone checks",
       "agent_campaign": "blocked"
     }
   },
@@ -111,6 +111,8 @@
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_sparse_lifecycle_task02_qwen15_v2.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_sparse_lifecycle_task02_090_cbf190e2.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_zero_copy_alias_audit_v028.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_sparse_lifecycle_task02_090_5990ec30.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_sparse_lifecycle_task02_090_5990ec30.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -131,12 +133,15 @@
     "task-04 restore-only causal replay: restoring the source-view bundle deterministically changes whole-file rereading to target-specific localization, but is insufficient to recover the separate full-history immediate edit"
     ,"bounded vLLM CUDA lifecycle on native-window Qwen2.5-1.5B: 7/7 exact sparse continuations with concurrent borrowing, real cancellation isolation, stale-generation rejection, and exact HOT eviction/restore"
     ,"request-owned HF sparse lifecycle on real Task02 K/V: same-subset and post-restore logit exactness, exact-once terminal release, stale-generation rejection, and termination tombstone"
+    ,"request-owned MLX sparse lifecycle on real Task02 K/V: same-subset and post-restore logit exactness, exact-once terminal release, stale-generation rejection, and termination tombstone"
+    ,"typed recent_progress_turns policy propagation and frozen task-04 source-plus-progress retention regression at 90%"
+    ,"request-owned SGLang-MLX/Radix sparse lifecycle on real Task02 K/V: 22/22 checks including exact-once finish/cancel/error, Radix isolation, stale-generation rejection, and exact offload/restore"
     ,"request-scoped typed agent-retention policy round-trip and runtime consumption"
   ],
   "still_required": [
-    "HF zero-copy sparse materialization; corrected 90% retention-floor semantics and synchronous request-owned lifecycle pass",
+    "HF and MLX zero-copy sparse materialization; corrected 90% retention-floor semantics and request-owned lifecycle pass",
     "vLLM-Metal lifecycle qualification and a new upstream existing-block alias contract for zero-copy CUDA selection; the bounded copying CUDA sparse/lifecycle gate now passes",
-    "SGLang lifecycle qualification plus zero-copy sparse materialization; corrected 90% retention-floor semantic probe passes",
+    "SGLang zero-copy sparse materialization; corrected 90% retention-floor semantics and request-owned Radix lifecycle pass",
     "locked three-task no-PRA/PRA-100/PRA-90 matrix, with no-adaptor and frozen model-adaptor PRA arms",
     "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],
@@ -150,7 +155,7 @@
     "tasks_entering_75_percent_treatment": 1,
     "tasks_resolved_at_75_percent": 0,
     "lower_retention_rows_withheld_by_quality_gate": 2,
-    "next_action": "finish engine lifecycle qualification, add current-hypothesis/progress-state protection motivated by task 04, then rerun the locked three-task no-PRA/PRA-100/PRA-90 matrix"
+    "next_action": "finish vLLM-Metal lifecycle qualification, then rerun the locked three-task no-PRA/PRA-100/PRA-90 matrix with source and progress-state protection"
   },
   "reason": "The tested llama.cpp configuration clears the predeclared mechanism gates. Qualification does not transfer to other engines or cache-off/rematerializing paths."
 }

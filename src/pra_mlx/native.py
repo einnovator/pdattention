@@ -609,6 +609,48 @@ def capture_live_native_memory(
     return MLXResidentKVSelection(memory, plan, packed)
 
 
+def select_live_native_memory(
+    source: MLXNativeMemory, plan: LiveKVSelectionPlan
+) -> MLXResidentKVSelection:
+    """Select request K/V from one canonical, already evaluated MLX memory.
+
+    The canonical source remains independently owned by the session runtime.
+    A contiguous interval is exposed as an MLX slice; disjoint intervals are
+    packed with ``concatenate`` because the portable mlx-lm cache protocol
+    accepts one dense K/V array per layer.  In both cases no selected token is
+    sent through the model again, and the query position remains the source's
+    original logical extent through :class:`LiveKVSelectionPlan`.
+    """
+
+    if source.source_tokens != plan.source_tokens:
+        raise ValueError(
+            "MLX canonical source length does not match the selection plan."
+        )
+    import mlx.core as mx
+
+    layers = []
+    packed = len(plan.intervals) > 1
+    for layer in source.layers:
+        keys, values = layer.keys, layer.values
+        if int(keys.shape[2]) < plan.source_tokens:
+            raise ValueError("MLX canonical source K/V is shorter than its manifest.")
+        key_parts = tuple(keys[:, :, row.start : row.end, :] for row in plan.intervals)
+        value_parts = tuple(values[:, :, row.start : row.end, :] for row in plan.intervals)
+        if not key_parts:
+            chosen_keys = keys[:, :, :0, :]
+            chosen_values = values[:, :, :0, :]
+        elif len(key_parts) == 1:
+            chosen_keys = key_parts[0]
+            chosen_values = value_parts[0]
+        else:
+            chosen_keys = mx.concatenate(key_parts, axis=2)
+            chosen_values = mx.concatenate(value_parts, axis=2)
+        layers.append(MLXNativeLayerKV(chosen_keys, chosen_values))
+    selected = MLXNativeMemory(tuple(layers), plan.selected_tokens)
+    mx.eval(*(array for layer in selected.layers for array in (layer.keys, layer.values)))
+    return MLXResidentKVSelection(selected, plan, packed)
+
+
 def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMemory:
     """Concatenate immutable resource K/V without changing source-local positions."""
 

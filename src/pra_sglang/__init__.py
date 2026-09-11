@@ -11,6 +11,9 @@ from .hicache import (
 )
 from .hicache_backend import SGLangHiCacheByteBackend, SGLangHiCacheStorageBackend
 from .mlx_native import (
+    SGLangMLXLiveKVRequest,
+    SGLangMLXLiveKVRuntime,
+    SGLangMLXLiveKVSource,
     SGLangMLXNativeBridge,
     SGLangNativeRequest,
     SGLangSelectedKVCache,
@@ -23,6 +26,9 @@ __all__ = [
     "HTTPHiCacheStorageClient",
     "PRAHiCacheMetrics",
     "PRAHiCacheTier",
+    "SGLangMLXLiveKVRequest",
+    "SGLangMLXLiveKVRuntime",
+    "SGLangMLXLiveKVSource",
     "SGLangMLXNativeBridge",
     "SGLangNativeExecutor",
     "SGLangNativeRequest",

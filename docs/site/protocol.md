@@ -82,6 +82,7 @@ PRA-aware requests retain ordinary top-level chat fields:
         "recent_completed_turns": 3,
         "recent_records_per_turn": 2,
         "recent_source_turns": 1,
+        "recent_progress_turns": 1,
         "recent_mutation_turns": 1,
         "recent_verification_turns": 1,
         "large_record_chunk_tokens": 2048,
@@ -109,6 +110,7 @@ to flatten the transcript into fixed token windows:
 | `recent_completed_turns` | Keep at least the newest `N` completed turns in full. A completed turn includes the assistant action and its resulting tool or user observation. |
 | `recent_records_per_turn` | Within an earlier or oversized turn, preserve at least the newest `M` logical records. Action/observation pairing can increase the physical record count. |
 | `recent_source_turns` | Keep the newest `N` completed turns that established source-localization evidence, even after they leave the recency window. |
+| `recent_progress_turns` | Keep the newest `N` completed assistant turns that state an explicit diagnosis, working hypothesis, or proposed fix, together with their resulting observations. This is independent of source, mutation, and verification recency. |
 | `recent_mutation_turns` | Keep the newest `N` completed code-mutation turns. |
 | `recent_verification_turns` | Keep the newest `N` completed verification or submission turns. |
 | `large_record_chunk_tokens` | Subdivide an individual oversized record near this token size. Split tool output at natural boundaries such as files, test cases, stack frames, diff hunks, or lines before falling back to token boundaries. |
@@ -128,6 +130,13 @@ record is retained as record-local child spans. In a dense turn, the newest
 `recent_records_per_turn` records—and any action needed to make their
 observations causal—remain protected; only records earlier than that protected
 tail enter ordinary selection.
+
+Progress-state retention is intentionally conservative. A generic or verbose
+reasoning preamble is not enough to make a turn mandatory: the assistant must
+state explicit diagnostic or decision language such as a root cause, current
+hypothesis, identified issue, or proposed fix. Matching is limited to narrative
+text before the tool-command block. The trace reports the resulting causal
+records in `pinned_progress_state_segments` so callers can audit the heuristic.
 
 Because full turns and causal pairs are indivisible, realized retention can be
 higher than the requested fraction. A trace for a retention-aware request

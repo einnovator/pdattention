@@ -10,16 +10,21 @@ from __future__ import annotations
 
 import contextvars
 import types
-from dataclasses import dataclass
-from typing import Any, Mapping
+from dataclasses import dataclass, field
+from threading import RLock
+from typing import Any, Callable, Mapping, Sequence
 
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
+from pra_hf.live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 from pra_hf.storage_lifecycle import PRAStorageManager
 from pra_mlx.native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
     MLXResidentKVSelection,
+    capture_live_native_memory,
     combine_native_memories,
+    deserialize_native_memory,
+    serialize_native_memory,
 )
 from pra_sglang.hicache import SGLangPRAHiCache
 
@@ -202,6 +207,50 @@ class SGLangNativeRequest:
     storage_pinned: bool = False
 
 
+@dataclass(frozen=True)
+class SGLangMLXLiveKVSource:
+    """Canonical live-history K/V and the SGLang request that owns it."""
+
+    memory: MLXNativeMemory
+    owner_request_id: str
+
+
+@dataclass
+class SGLangMLXLiveKVRequest:
+    """One request-scoped borrow of a canonical SGLang-MLX K/V source."""
+
+    runtime: "SGLangMLXLiveKVRuntime"
+    request_id: str
+    source_id: str
+    tenant_id: str
+    session_id: str
+    generation: int
+    selection: MLXResidentKVSelection
+    owner_request_id: str
+    _closed: bool = field(default=False, init=False, repr=False)
+    _outcome: str | None = field(default=None, init=False, repr=False)
+
+    @property
+    def active(self) -> bool:
+        return not self._closed
+
+    @property
+    def outcome(self) -> str | None:
+        return self._outcome
+
+    def _close(self, outcome: str) -> bool:
+        return self.runtime._terminate_request(self, outcome)
+
+    def finish(self) -> bool:
+        return self._close("finished")
+
+    def cancel(self) -> bool:
+        return self._close("cancelled")
+
+    def fail(self) -> bool:
+        return self._close("error")
+
+
 class SGLangMLXNativeBridge:
     """Install selected K/V into SGLang MLX runner-owned request caches.
 
@@ -231,6 +280,10 @@ class SGLangMLXNativeBridge:
                 "SGLang PRA batched decode does not yet support sliding-window layers."
             )
         self._requests: dict[str, SGLangNativeRequest] = {}
+        self._release_callbacks: dict[str, Callable[[str, str], None]] = {}
+        self._terminal_outcomes: dict[str, str] = {}
+        self._source_owner_pins: dict[str, set[str]] = {}
+        self._lifecycle_lock = RLock()
         self.isolation = EnginePRAIsolationGuard()
         self._active_req: contextvars.ContextVar[str | None] = contextvars.ContextVar(
             "sglang_pra_request", default=None
@@ -241,6 +294,7 @@ class SGLangMLXNativeBridge:
         self._original_build_context = runner._build_batched_decode_context
         self._original_cache_from_prefix = runner._cache_with_pool_backed_attention
         self._original_materialize_prefix = runner._materialize_pool_backed_attention
+        self._original_remove_request = runner.remove_request
         self.patched_layers = install_selected_kv_attention(runner.model)
         self._install_hooks()
 
@@ -253,6 +307,7 @@ class SGLangMLXNativeBridge:
         tenant_id: str | None = None,
         session_id: str | None = None,
         source_position_base: int | None = None,
+        on_release: Callable[[str, str], None] | None = None,
     ) -> None:
         identifier = str(req_id)
         storage_pinned = False
@@ -292,36 +347,103 @@ class SGLangMLXNativeBridge:
                 raise ValueError(
                     "SGLang PRA logical-key registration requires shared storage or HiCache."
                 )
-        if len(memory.layers) != self.runner._cache_layout.num_layers:
-            raise ValueError("Selected memory does not match SGLang model layers.")
-        if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
-            raise ValueError("Selected memory token geometry disagrees with its position base.")
-        position_base = int(
-            memory.source_tokens
-            if source_position_base is None
-            else source_position_base
-        )
-        if position_base < memory.source_tokens:
-            raise ValueError(
-                "SGLang source_position_base cannot be smaller than selected K/V."
+        try:
+            if len(memory.layers) != self.runner._cache_layout.num_layers:
+                raise ValueError("Selected memory does not match SGLang model layers.")
+            if any(
+                int(layer.keys.shape[2]) != memory.source_tokens
+                for layer in memory.layers
+            ):
+                raise ValueError(
+                    "Selected memory token geometry disagrees with its position base."
+                )
+            position_base = int(
+                memory.source_tokens
+                if source_position_base is None
+                else source_position_base
             )
-        self.isolation.open_request(
-            identifier,
-            logical_keys,
-            tenant_id=tenant_id,
-            session_id=session_id,
-        )
-        self._requests[identifier] = SGLangNativeRequest(
-            memory, position_base, logical_keys, storage_pinned
-        )
+            if position_base < memory.source_tokens:
+                raise ValueError(
+                    "SGLang source_position_base cannot be smaller than selected K/V."
+                )
+            with self._lifecycle_lock:
+                self.isolation.open_request(
+                    identifier,
+                    logical_keys,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                )
+                self._requests[identifier] = SGLangNativeRequest(
+                    memory, position_base, logical_keys, storage_pinned
+                )
+                if on_release is not None:
+                    self._release_callbacks[identifier] = on_release
+        except BaseException:
+            if storage_pinned and self.storage is not None:
+                for key in logical_keys:
+                    self.storage.unpin(key, identifier)
+            raise
 
-    def unregister(self, req_id: str) -> None:
+    def unregister(self, req_id: str, *, outcome: str = "finished") -> bool:
+        """Release bridge and source ownership once for one terminal request.
+
+        ``MlxModelRunner.remove_request`` is the native completion/cancellation
+        teardown point.  The installed wrapper calls this method in ``finally``
+        so an engine cleanup error cannot strand a live-source borrow.
+        """
+
         identifier = str(req_id)
-        request = self._requests.pop(identifier, None)
-        if request is not None and request.storage_pinned and self.storage is not None:
-            for key in request.logical_keys:
-                self.storage.unpin(key, identifier)
-        self.isolation.close_request(identifier, require_attached=False)
+        if outcome not in {"finished", "cancelled", "error"}:
+            raise ValueError(f"Unknown SGLang request outcome {outcome!r}.")
+        with self._lifecycle_lock:
+            request = self._requests.pop(identifier, None)
+            callback = self._release_callbacks.pop(identifier, None)
+            self._terminal_outcomes.pop(identifier, None)
+            if request is None:
+                return False
+            if request.storage_pinned and self.storage is not None:
+                for key in request.logical_keys:
+                    self.storage.unpin(key, identifier)
+            self.isolation.close_request(identifier, require_attached=False)
+        # Do not call an owner callback under the bridge lock. A concurrent
+        # begin path takes the runtime lock before the bridge lock; reversing
+        # that order here would permit teardown/registration deadlock.
+        if callback is not None:
+            callback(identifier, outcome)
+        return True
+
+    def set_terminal_outcome(self, req_id: str, outcome: str) -> None:
+        """Annotate the next native removal as finish, cancellation, or error."""
+
+        if outcome not in {"finished", "cancelled", "error"}:
+            raise ValueError(f"Unknown SGLang request outcome {outcome!r}.")
+        identifier = str(req_id)
+        with self._lifecycle_lock:
+            if identifier not in self._requests:
+                raise KeyError(f"SGLang PRA request {identifier!r} is not active.")
+            self._terminal_outcomes[identifier] = outcome
+
+    def pin_source_owner(self, owner_req_id: str, borrower_req_id: str) -> None:
+        """Prevent Radix/request-pool teardown of a borrowed source owner."""
+
+        owner = str(owner_req_id)
+        borrower = str(borrower_req_id)
+        if not owner or not borrower:
+            raise ValueError("SGLang source owner and borrower IDs cannot be empty.")
+        with self._lifecycle_lock:
+            self._source_owner_pins.setdefault(owner, set()).add(borrower)
+
+    def unpin_source_owner(self, owner_req_id: str, borrower_req_id: str) -> bool:
+        owner = str(owner_req_id)
+        borrower = str(borrower_req_id)
+        with self._lifecycle_lock:
+            borrowers = self._source_owner_pins.get(owner)
+            if borrowers is None or borrower not in borrowers:
+                return False
+            borrowers.remove(borrower)
+            if not borrowers:
+                del self._source_owner_pins[owner]
+            return True
 
     def _wrap_cache(self, req_id: str, caches: list[object]) -> list[object]:
         request = self._requests.get(req_id)
@@ -410,6 +532,26 @@ class SGLangMLXNativeBridge:
             ctx._padding_by_window = {}
             return ctx
 
+        def remove_request(_runner, req_id, *args, **kwargs):
+            identifier = str(req_id)
+            with bridge._lifecycle_lock:
+                borrowers = tuple(
+                    sorted(bridge._source_owner_pins.get(identifier, ()))
+                )
+                outcome = bridge._terminal_outcomes.get(identifier, "finished")
+            if borrowers:
+                raise RuntimeError(
+                    "Cannot remove a SGLang source owner while live-K/V requests "
+                    f"borrow it: {borrowers!r}."
+                )
+            try:
+                result = bridge._original_remove_request(req_id, *args, **kwargs)
+            except BaseException:
+                bridge.unregister(identifier, outcome="error")
+                raise
+            bridge.unregister(identifier, outcome=outcome)
+            return result
+
         self.runner._acquire_cache = types.MethodType(acquire, self.runner)
         self.runner._release_cache = types.MethodType(release, self.runner)
         self.runner.prefill_start = types.MethodType(prefill, self.runner)
@@ -422,6 +564,7 @@ class SGLangMLXNativeBridge:
         self.runner._build_batched_decode_context = types.MethodType(
             build_context, self.runner
         )
+        self.runner.remove_request = types.MethodType(remove_request, self.runner)
 
     def close(self) -> None:
         self.runner._acquire_cache = self._original_acquire
@@ -430,8 +573,10 @@ class SGLangMLXNativeBridge:
         self.runner._cache_with_pool_backed_attention = self._original_cache_from_prefix
         self.runner._materialize_pool_backed_attention = self._original_materialize_prefix
         self.runner._build_batched_decode_context = self._original_build_context
+        self.runner.remove_request = self._original_remove_request
         for request_id in tuple(self._requests):
-            self.unregister(request_id)
+            self.unregister(request_id, outcome="cancelled")
+        self._source_owner_pins.clear()
         self.isolation.close()
 
     def capabilities(self) -> Mapping[str, object]:
@@ -449,8 +594,280 @@ class SGLangMLXNativeBridge:
             "source_positions_preserved": True,
             "zero_selected_text_reencoding": True,
             "disjoint_selection_requires_pack_copy": True,
+            "physical_kv_copy_reported": True,
+            "native_remove_request_terminal_hook": True,
+            "source_owner_pin_guard": True,
+            "request_activation_callback": "MlxModelRunner.prefill_start",
+            "selected_cache_callbacks": (
+                "MlxModelRunner._acquire_cache",
+                "MlxModelRunner._cache_with_pool_backed_attention",
+            ),
+            "request_teardown_callback": "MlxModelRunner.remove_request",
+            "radix_pool_release_strips_selected_memory": True,
             "hicache_metrics": (
                 None if self.hicache is None else self.hicache.metrics().to_dict()
             ),
             "patched_layers": self.patched_layers,
         }
+
+
+def _select_live_source_memory(
+    source: MLXNativeMemory, plan: LiveKVSelectionPlan
+) -> MLXResidentKVSelection:
+    """Select existing MLX K/V cells without evaluating their source tokens."""
+
+    if source.source_tokens != plan.source_tokens:
+        raise ValueError(
+            "SGLang live-K/V plan does not describe the complete source cache: "
+            f"plan={plan.source_tokens}, source={source.source_tokens}."
+        )
+    packed = len(plan.intervals) > 1
+    layers: list[MLXNativeLayerKV] = []
+    for layer in source.layers:
+        if int(layer.keys.shape[2]) < plan.source_tokens:
+            raise ValueError("SGLang live K/V source is shorter than its selection plan.")
+        key_parts = tuple(
+            layer.keys[:, :, interval.start : interval.end, :]
+            for interval in plan.intervals
+        )
+        value_parts = tuple(
+            layer.values[:, :, interval.start : interval.end, :]
+            for interval in plan.intervals
+        )
+        if not key_parts:
+            keys = layer.keys[:, :, :0, :]
+            values = layer.values[:, :, :0, :]
+        elif len(key_parts) == 1:
+            keys = key_parts[0]
+            values = value_parts[0]
+        else:
+            import mlx.core as mx
+
+            keys = mx.concatenate(key_parts, axis=2)
+            values = mx.concatenate(value_parts, axis=2)
+        layers.append(MLXNativeLayerKV(keys, values))
+    memory = MLXNativeMemory(tuple(layers), plan.selected_tokens)
+    if packed:
+        import mlx.core as mx
+
+        mx.eval(*(value for layer in memory.layers for value in (layer.keys, layer.values)))
+    return MLXResidentKVSelection(
+        memory,
+        plan,
+        physical_kv_copy=packed,
+        selected_text_reencoded_tokens=0,
+    )
+
+
+class SGLangMLXLiveKVRuntime:
+    """Bind canonical SGLang-MLX history K/V to native request teardown.
+
+    The live registry owns the canonical source independently from RadixCache.
+    A request borrow and source-owner pin are established before a selected
+    cache can be constructed.  The bridge's ``remove_request`` hook drives the
+    one terminal callback for normal completion, cancellation, and failures.
+    """
+
+    def __init__(
+        self,
+        bridge: SGLangMLXNativeBridge,
+        *,
+        dump: Callable[[SGLangMLXLiveKVSource], object] | None = None,
+        load: Callable[[object], SGLangMLXLiveKVSource] | None = None,
+    ) -> None:
+        if dump is None and load is None:
+            dump = self._dump_source
+            load = self._load_source
+        self.bridge = bridge
+        self.registry = LiveKVSourceRegistry[SGLangMLXLiveKVSource](
+            dump=dump, load=load
+        )
+        self._requests: dict[str, SGLangMLXLiveKVRequest] = {}
+        self._terminal_counts = {"finished": 0, "cancelled": 0, "error": 0}
+        self._lock = RLock()
+
+    @staticmethod
+    def _dump_source(source: SGLangMLXLiveKVSource) -> object:
+        return (source.owner_request_id, serialize_native_memory(source.memory))
+
+    @staticmethod
+    def _load_source(payload: object) -> SGLangMLXLiveKVSource:
+        if not isinstance(payload, tuple) or len(payload) != 2:
+            raise TypeError("Malformed offloaded SGLang live-K/V source.")
+        owner, encoded = payload
+        if not isinstance(encoded, bytes):
+            raise TypeError("SGLang live-K/V offload payload must contain bytes.")
+        return SGLangMLXLiveKVSource(
+            deserialize_native_memory(encoded), str(owner)
+        )
+
+    def register_source(
+        self,
+        source_id: str,
+        caches: Sequence[object] | MLXNativeMemory,
+        *,
+        owner_request_id: str,
+        tenant_id: str,
+        session_id: str,
+        generation: int,
+        source_tokens: int | None = None,
+    ) -> None:
+        """Capture a full live cache once under a persistent source identity."""
+
+        owner = str(owner_request_id)
+        if not owner:
+            raise ValueError("SGLang live-K/V source owner ID cannot be empty.")
+        runner_requests = getattr(self.bridge.runner, "_req_caches", None)
+        if runner_requests is not None and owner not in runner_requests:
+            raise KeyError(
+                f"SGLang live-K/V source owner {owner!r} is not resident."
+            )
+        if isinstance(caches, MLXNativeMemory):
+            memory = caches
+            if source_tokens is not None and int(source_tokens) != memory.source_tokens:
+                raise ValueError("Explicit source_tokens disagree with native memory.")
+        else:
+            cache_rows = tuple(caches)
+            if not cache_rows:
+                raise ValueError("SGLang live-K/V source caches cannot be empty.")
+            if source_tokens is None:
+                first = self.bridge.runner._cache_layout.first_attention_layer_index
+                source_tokens = int(cache_rows[first].offset)
+            full_plan = LiveKVSelectionPlan.full(int(source_tokens))
+            memory = capture_live_native_memory(cache_rows, full_plan).memory
+        self.registry.register(
+            source_id,
+            SGLangMLXLiveKVSource(memory, owner),
+            tenant_id=tenant_id,
+            session_id=session_id,
+            generation=generation,
+        )
+
+    def begin_request(
+        self,
+        request_id: str,
+        source_id: str,
+        plan: LiveKVSelectionPlan,
+        *,
+        tenant_id: str,
+        session_id: str,
+        expected_generation: int,
+    ) -> SGLangMLXLiveKVRequest:
+        """Borrow and pin the source before constructing selected request K/V."""
+
+        request_key = str(request_id)
+        with self._lock:
+            if request_key in self._requests:
+                raise RuntimeError(
+                    f"SGLang live-K/V request {request_key!r} is already active."
+                )
+            (source,) = self.registry.borrow(
+                request_key,
+                (source_id,),
+                tenant_id=tenant_id,
+                session_id=session_id,
+                expected_generations=(expected_generation,),
+            )
+            self.bridge.pin_source_owner(source.owner_request_id, request_key)
+            try:
+                selection = _select_live_source_memory(source.memory, plan)
+                request = SGLangMLXLiveKVRequest(
+                    self,
+                    request_key,
+                    str(source_id),
+                    str(tenant_id),
+                    str(session_id),
+                    int(expected_generation),
+                    selection,
+                    source.owner_request_id,
+                )
+                self._requests[request_key] = request
+                self.bridge.register(
+                    request_key,
+                    selection,
+                    logical_keys=(str(source_id),),
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    on_release=self._native_released,
+                )
+            except BaseException:
+                self._requests.pop(request_key, None)
+                self.bridge.unpin_source_owner(source.owner_request_id, request_key)
+                self.registry.release(request_key)
+                raise
+            return request
+
+    def _native_released(self, request_id: str, outcome: str) -> None:
+        """Complete the registry transition behind the native teardown hook."""
+
+        with self._lock:
+            request = self._requests.pop(request_id, None)
+            if request is None:
+                return
+            if not self.registry.release(request_id):
+                raise RuntimeError("SGLang live-K/V registry lost an active borrow.")
+            if not self.bridge.unpin_source_owner(
+                request.owner_request_id, request_id
+            ):
+                raise RuntimeError("SGLang live-K/V source-owner pin was lost.")
+            request._closed = True
+            request._outcome = outcome
+            self._terminal_counts[outcome] += 1
+
+    def _terminate_request(
+        self, request: SGLangMLXLiveKVRequest, outcome: str
+    ) -> bool:
+        with self._lock:
+            if request._closed:
+                return False
+            if self._requests.get(request.request_id) is not request:
+                raise RuntimeError("SGLang live-K/V request ownership is inconsistent.")
+            self.bridge.set_terminal_outcome(request.request_id, outcome)
+            view = self.bridge.isolation.view(request.request_id)
+            if view is not None and view.attached:
+                self.bridge.runner.remove_request(request.request_id)
+            else:
+                # A queued request may be cancelled before SGLang constructs
+                # its cache.  There is then no native cache to remove, but the
+                # same bridge callback still owns exact-once release.
+                self.bridge.unregister(request.request_id, outcome=outcome)
+            return True
+
+    def cancel_request(self, request_id: str) -> bool:
+        with self._lock:
+            request = self._requests.get(str(request_id))
+            return False if request is None else request.cancel()
+
+    def offload_source(self, source_id: str) -> object:
+        return self.registry.offload(source_id)
+
+    evict_source = offload_source
+
+    def terminate_session(self, tenant_id: str, session_id: str) -> int:
+        """Cancel native borrowers before installing a session tombstone."""
+
+        with self._lock:
+            affected = tuple(
+                request
+                for request in self._requests.values()
+                if (request.tenant_id, request.session_id)
+                == (str(tenant_id), str(session_id))
+            )
+            for request in affected:
+                request.cancel()
+            return self.registry.terminate_session(tenant_id, session_id)
+
+    def snapshot(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "active_request_ids": tuple(sorted(self._requests)),
+                "terminal_counts": dict(self._terminal_counts),
+                "physical_kv_copy_policy": "disjoint_interval_pack_only",
+                "selected_text_reencoded_tokens": 0,
+            }
+
+    def close(self) -> None:
+        with self._lock:
+            for request in tuple(self._requests.values()):
+                request.cancel()
+            self.registry.close()

@@ -3463,8 +3463,16 @@ the same 90.32--95.66\% range (92.88\% mean) as HF and MLX, confirming that the
 three adapters consume one frozen logical plan.  Like those implementations,
 SGLang physically concatenates the selected K/V on all seven turns.  It
 therefore clears semantic sparse-position, planner, and radix-interoperation
-probes, but remains provisional for zero-copy materialization and lifecycle
-controls.
+probes.  A real request-owned SGLang-MLX/Radix lifecycle run then passes all
+22 checks on task-02 turn 4: 2,907/3,081 selected tokens (94.35\%), zero selected-
+history re-encoding, identical reference, concurrent-survivor, and restored
+token IDs, and exact restored K/V hash.  Finish/cancel/error release is exact-
+once; source-owner removal, eviction, and offload are rejected while borrowed;
+stale generation and termination tombstones are enforced; and request-local
+selected wrappers never enter RadixCache.  Original position base 3,081,
+39 local suffix tokens, and attention position 3,120 remain distinct.  The
+706,726,451-byte lossless payload and disjoint pack still copy K/V, so lifecycle
+is qualified while zero-copy materialization remains provisional.
 
 The shared lifecycle registry has now been exercised over real task-02 selected
 cache objects for HF, MLX, and SGLang.  Each engine passes all eight registry-
@@ -3484,21 +3492,31 @@ finish and cooperative cancellation, stale-generation rejection, active
 termination, and tombstone rejection all pass while selected-history re-
 encoding remains zero.  The 37,874,707-byte lossless payload and sparse tensor
 selection still involve physical K/V copying, so this qualifies request-owned
-lifecycle correctness, not zero-copy sparse materialization.  MLX and SGLang
-remain at registry feasibility because their registries are not yet wired to
-native request callbacks and operate on already materialized selected caches
-rather than scheduler-owned source K/V.
+lifecycle correctness, not zero-copy sparse materialization.
+
+MLX-LM now passes the analogous real request-owned gate on the same frozen
+task-02 turn.  Qwen3-0.6B 4-bit retains 2,907/3,081 tokens (94.35\%) with
+original position base 3,081 and no selected-history re-encoding.  Same-subset
+and post-restore generations are token- and logit-exact; concurrent borrowing,
+exact-once finish/cancel/error release, stale-generation rejection, termination,
+and tombstone checks all pass.  Portable disjoint selection still packs K/V,
+and lossless offload serializes 706,726,451 bytes, so MLX lifecycle correctness
+also remains distinct from zero-copy materialization.
 
 The agent SDK now carries a typed, request-scoped retention contract under
 \path{pra.metadata.retention_policy}.  It controls the minimum number of
 recent complete turns, the minimum newest records retained inside dense turns,
-separate source/mutation/verification recency floors, the oversized-record
+separate source/progress/mutation/verification recency floors, the oversized-record
 chunk target, the dense-turn threshold, causal action--observation pairing, and
 causal-bundle round-up.  Short records remain intact; large tool observations
 split at natural file, test, stack, diff-hunk, or line boundaries; child spans
 retain stable parent-record and causal-group identities.  This makes target and
 realized retention distinct protocol fields rather than undocumented proxy
-behavior.
+behavior.  The new \texttt{recent\_progress\_turns} control conservatively pins
+explicit diagnoses, hypotheses, root causes, and proposed fixes together with
+their causal observations; generic verbose reasoning is not promoted.  A
+frozen task-04 regression verifies that its exact request-5 progress state and
+latest source evidence both survive the 90\% policy.
 
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
@@ -3941,13 +3959,14 @@ insufficient for multi-turn state, while causal action--observation bundles,
 source evidence, mutation state, and verification state require explicit
 identities and recency floors.  Restoring one omitted source-view bundle
 causally recovers task 03's efficient command and directionally improves task
-04, where current-hypothesis state is additionally required.  HF now passes a
-request-owned sparse lifecycle gate, and bounded vLLM CUDA passes native-window
-same-subset, cancellation, stale-generation, and eviction/restore gates.
-Neither is yet a general zero-copy product path: HF concatenates disjoint
-tensors, and vLLM 0.28 lacks a scheduler-supported existing-block alias
-contract.  MLX and SGLang remain registry-feasible but not request-callback
-qualified. Under the
+04, where current-hypothesis state is additionally required; the typed
+\texttt{recent\_progress\_turns} floor now preserves that state in the frozen
+90\% regression.  HF, MLX, and SGLang-MLX/Radix now pass request-owned sparse
+lifecycle gates, and bounded vLLM CUDA passes native-window same-subset,
+cancellation, stale-generation, and eviction/restore gates.  None of these
+copying paths is yet a general zero-copy product: HF, MLX, and SGLang pack
+disjoint selected tensors, while vLLM 0.28 lacks a scheduler-supported
+existing-block alias contract. Under the
 RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
 cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
 Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks

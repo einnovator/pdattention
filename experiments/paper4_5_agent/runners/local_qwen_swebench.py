@@ -47,6 +47,7 @@ def main() -> None:
     parser.add_argument("--recent-completed-turns", type=int, default=2)
     parser.add_argument("--recent-records-per-turn", type=int, default=2)
     parser.add_argument("--recent-source-turns", type=int, default=1)
+    parser.add_argument("--recent-progress-turns", type=int, default=1)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
     parser.add_argument("--large-record-chunk-tokens", type=int, default=256)
@@ -135,6 +136,7 @@ def main() -> None:
         recent_completed_turns=options.recent_completed_turns,
         recent_records_per_turn=options.recent_records_per_turn,
         recent_source_turns=options.recent_source_turns,
+        recent_progress_turns=options.recent_progress_turns,
         recent_mutation_turns=options.recent_mutation_turns,
         recent_verification_turns=options.recent_verification_turns,
         large_record_chunk_tokens=options.large_record_chunk_tokens,

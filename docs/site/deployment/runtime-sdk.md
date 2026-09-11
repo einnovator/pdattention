@@ -43,6 +43,7 @@ request = PRAWireRequest(
         recent_completed_turns=3,
         recent_records_per_turn=2,
         recent_source_turns=1,
+        recent_progress_turns=1,
         recent_mutation_turns=1,
         recent_verification_turns=1,
         large_record_chunk_tokens=2048,
@@ -63,6 +64,12 @@ over an untyped `metadata["retention_policy"]` value on that turn.
 For earlier or oversized turns, `recent_records_per_turn` protects at least the
 newest `M` logical records. Assistant tool calls and their observations remain
 one causal bundle, so satisfying either minimum may keep additional records.
+`recent_progress_turns` separately protects the newest completed turns whose
+assistant narrative states an explicit diagnosis, working hypothesis, or
+proposed fix. The runtime does not classify a turn merely because it contains a
+long THOUGHT section, and it ignores matching words inside the command block.
+The selected action and observation identities are exposed in
+`pinned_progress_state_segments` for audit.
 
 Large tool observations are split within the record at natural structure—files,
 test cases, stack frames, diff hunks, then lines—before token fallback. A turn

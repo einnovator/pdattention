@@ -196,6 +196,7 @@ class PRAAgentRetentionPolicy:
     recent_completed_turns: int = 2
     recent_records_per_turn: int = 2
     recent_source_turns: int = 1
+    recent_progress_turns: int = 1
     recent_mutation_turns: int = 1
     recent_verification_turns: int = 1
     large_record_chunk_tokens: int = 256
@@ -208,6 +209,7 @@ class PRAAgentRetentionPolicy:
             self.recent_completed_turns,
             self.recent_records_per_turn,
             self.recent_source_turns,
+            self.recent_progress_turns,
             self.recent_mutation_turns,
             self.recent_verification_turns,
         )
