@@ -531,6 +531,7 @@ class HybridLlamaCppAdapter:
         self._session_cancel_events: dict[str, threading.Event] = {}
         self._active_upstream_responses: dict[str, Any] = {}
         self._offloaded_session_files: dict[str, str] = {}
+        self._session_restore_receipts: dict[str, dict[str, int]] = {}
         self._slot_save_path = (
             None if slot_save_path is None else Path(slot_save_path).resolve()
         )
@@ -693,6 +694,7 @@ class HybridLlamaCppAdapter:
                 "source_slot": self._live_session_slots.get(session_id),
                 "request_slot": self._live_session_request_slots.get(session_id),
                 "offloaded": session_id in self._offloaded_session_files,
+                "last_restore": self._session_restore_receipts.get(session_id),
             }
 
     def _slot_action(
@@ -765,12 +767,29 @@ class HybridLlamaCppAdapter:
         if filename is None:
             return
         source, _ = self._allocate_live_pair(str(session_id))
-        self._slot_action(source, "restore", filename, pin_resource=True)
+        restored = self._slot_action(
+            source, "restore", filename, pin_resource=True,
+        )
         resident = self._live_session_tokens.get(str(session_id))
         if not resident:
             raise RuntimeError("offloaded session has no resident-token manifest")
         with self._live_state_lock:
             self._offloaded_session_files.pop(str(session_id), None)
+            self._session_restore_receipts[str(session_id)] = {
+                "restored_tokens": int(
+                    restored.get("n_restored", restored.get("n_tokens", 0)) or 0
+                ),
+                "restored_bytes": int(
+                    restored.get("n_read", restored.get("n_bytes", 0)) or 0
+                ),
+                "source_slot": source,
+            }
+        if self._slot_save_path is not None:
+            root = self._slot_save_path.resolve()
+            target = (root / filename).resolve()
+            if target.parent != root:
+                raise RuntimeError("refusing to remove restored state outside save path")
+            target.unlink(missing_ok=True)
 
     def _generate_serialized(self, request: PRAWireRequest) -> PRAEngineResult:
         key = self._resource_session_key(request)
@@ -1464,6 +1483,7 @@ class HybridLlamaCppAdapter:
                 self._session_cancel_events.pop(session_id, None)
                 self._active_upstream_responses.pop(session_id, None)
                 offloaded_filename = self._offloaded_session_files.pop(session_id, None)
+                self._session_restore_receipts.pop(session_id, None)
             if slot is not None:
                 self.native_adapter.native_executor._erase_request_slot(slot)
             if request_slot is not None and request_slot != slot:
