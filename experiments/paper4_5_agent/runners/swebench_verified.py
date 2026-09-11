@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -248,7 +249,10 @@ def gateway_preflight(
     if expected_mode == "G10" or native_required:
         probe["pra"] = {
             "tenant_id": "paper4-5-preflight",
-            "session_id": "selected-context-consumption-probe",
+            # Session DELETE creates a deliberate tombstone.  Reusing a fixed
+            # readiness-probe identity after a clean retry therefore produces
+            # HTTP 410 and can block a valid campaign before its first task.
+            "session_id": f"selected-context-consumption-probe-{uuid.uuid4().hex}",
             "resources": [{
                 "resource_id": "preflight-resource",
                 "uri": "pra://preflight/selected-context",

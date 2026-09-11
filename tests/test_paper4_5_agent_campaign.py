@@ -2592,6 +2592,7 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
     class Handler(BaseHTTPRequestHandler):
         prefix_enabled = True
         post_count = 0
+        session_ids = []
 
         def do_GET(self) -> None:  # noqa: N802
             payload = (
@@ -2620,6 +2621,7 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["pra"]["required_capabilities"] == ["logical_refs", "native_kv"]
             assert body["pra"]["metadata"]["ephemeral_session"] is True
+            Handler.session_ids.append(body["pra"]["session_id"])
             encoded = json.dumps({
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}],
                 "pra": {"native_kv": True},
@@ -2645,14 +2647,17 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
     )
     try:
         result = gateway_preflight(args)
+        repeated = gateway_preflight(args)
         assert result["native_consumption_probe"] == "passed"
+        assert repeated["native_consumption_probe"] == "passed"
+        assert len(set(Handler.session_ids)) == 2
         assert result["prefix_cache_enabled"] is True
         receipt = tmp_path / "preflight.json"
         receipt.write_text(json.dumps({"gateway_preflight": result}), encoding="utf-8")
         args.endpoint_preflight_receipt = receipt
         replayed = gateway_preflight(args)
         assert replayed["generation_probe_replayed"] is True
-        assert Handler.post_count == 1
+        assert Handler.post_count == 2
         args.endpoint_preflight_receipt = None
         Handler.prefix_enabled = False
         with pytest.raises(RuntimeError, match="prefix_cache_enabled=true"):
