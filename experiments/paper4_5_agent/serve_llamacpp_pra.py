@@ -1532,6 +1532,8 @@ def _completion(
     usage = _usage(raw)
     if usage is not None:
         response["usage"] = usage
+    if isinstance(raw.get("timings"), Mapping):
+        response["engine_timings"] = dict(raw["timings"])
     native_raw = raw.get("pra") if isinstance(raw.get("pra"), Mapping) else {}
     response["pra"] = {
         "native_kv": bool(native_raw.get("native_kv", native)),
