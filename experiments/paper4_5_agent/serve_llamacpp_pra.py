@@ -305,23 +305,31 @@ class PlainSlotExecutor:
         self.prefix_caching = bool(prefix_caching)
 
     def _generate_prompt(
-        self, request: PRAWireRequest, prompt: str, *, slot: int | None = None,
+        self,
+        request: PRAWireRequest,
+        prompt: str,
+        *,
+        slot: int | None = None,
+        pin_resource: bool = False,
     ) -> PRAEngineResult:
         active_slot = self.native.request_slot if slot is None else int(slot)
         if not self.prefix_caching:
             self.native._erase_request_slot(active_slot)
-        raw = dict(self.native._request_json(
-            "/completion",
-            {
-                "prompt": prompt,
-                "id_slot": active_slot,
-                "n_predict": request.resolved_max_new_tokens,
-                "cache_prompt": self.prefix_caching,
-                "temperature": float(request.openai_fields.get("temperature", 0)),
-                "seed": int(request.openai_fields.get("seed", 0)),
-                "return_tokens": True,
-            },
-        ))
+        body = {
+            "prompt": prompt,
+            "id_slot": active_slot,
+            "n_predict": request.resolved_max_new_tokens,
+            "cache_prompt": self.prefix_caching,
+            "temperature": float(request.openai_fields.get("temperature", 0)),
+            "seed": int(request.openai_fields.get("seed", 0)),
+            "return_tokens": True,
+        }
+        if pin_resource:
+            # Live agent histories are canonical K/V sources.  Under
+            # --kv-unified llama.cpp may otherwise purge an idle source while
+            # another session is decoded, making sparse attach nondeterministic.
+            body["pra_pin_resource"] = True
+        raw = dict(self.native._request_json("/completion", body))
         cached = (raw.get("timings") or {}).get("cache_n")
         raw["prefix_cache_enabled"] = self.prefix_caching
         raw["prefix_cached_tokens"] = cached
@@ -342,14 +350,25 @@ class PlainSlotExecutor:
         )
 
     def generate(
-        self, request: PRAWireRequest, *, slot: int | None = None,
+        self,
+        request: PRAWireRequest,
+        *,
+        slot: int | None = None,
+        pin_resource: bool = False,
     ) -> PRAEngineResult:
         return self._generate_prompt(
-            request, self.native._query_text(request), slot=slot,
+            request,
+            self.native._query_text(request),
+            slot=slot,
+            pin_resource=pin_resource,
         )
 
     def generate_complete_selection(
-        self, request: PRAWireRequest, *, slot: int | None = None,
+        self,
+        request: PRAWireRequest,
+        *,
+        slot: int | None = None,
+        pin_resource: bool = False,
     ) -> PRAEngineResult:
         """Consume a lossless selected trajectory as an ordinary full prompt.
 
@@ -361,7 +380,9 @@ class PlainSlotExecutor:
 
         pair = self.native._causal_prompt_pair(request)
         prompt = "".join(pair) if pair is not None else self.native._query_text(request)
-        return self._generate_prompt(request, prompt, slot=slot)
+        return self._generate_prompt(
+            request, prompt, slot=slot, pin_resource=pin_resource,
+        )
 
 
 class HybridLlamaCppAdapter:
@@ -601,7 +622,9 @@ class HybridLlamaCppAdapter:
                 if self.prefix_cache_enabled:
                     source, _ = self._allocate_live_pair(str(request.session_id))
                 result = self.plain.generate_complete_selection(
-                    request, slot=source,
+                    request,
+                    slot=source,
+                    pin_resource=bool(self.prefix_cache_enabled and source is not None),
                 )
                 if logical_messages is None:
                     self._remember_resident_tokens(request, result)
@@ -623,7 +646,9 @@ class HybridLlamaCppAdapter:
             and request.session_id is not None
         ):
             source, _ = self._allocate_live_pair(str(request.session_id))
-            result = self.plain.generate(request, slot=source)
+            result = self.plain.generate(
+                request, slot=source, pin_resource=True,
+            )
         else:
             result = self.plain.generate(request)
         if request.session_id is not None:
@@ -1040,6 +1065,7 @@ class HybridLlamaCppAdapter:
                 "temperature": float(request.openai_fields.get("temperature", 0)),
                 "seed": int(request.openai_fields.get("seed", 0)),
                 "return_tokens": True,
+                "pra_pin_resource": True,
             },
         ))
         cached = (raw.get("timings") or {}).get("cache_n")

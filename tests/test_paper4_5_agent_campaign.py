@@ -1747,6 +1747,7 @@ def test_live_llamacpp_prefix_backtracks_after_rejected_agent_output() -> None:
             "temperature": 0.0,
             "seed": 0,
             "return_tokens": True,
+            "pra_pin_resource": True,
         },
     )]
     assert result.raw["pra"]["wire_tokens"] == 2
