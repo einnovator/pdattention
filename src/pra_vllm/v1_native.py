@@ -241,6 +241,7 @@ class VLLMMetalV1NativeBridge:
         self._scheduler_observations: list[VLLMSchedulerObservation] = []
         self._prefill_page_observations: list[VLLMPrefillPageObservation] = []
         self._handles: dict[str, tuple[int, ...]] = {}
+        self._borrowed_handles: set[str] = set()
         self._free = list(
             range(self.scheduler_blocks, self.scheduler_blocks + self.reserve_blocks)
         )
@@ -328,11 +329,53 @@ class VLLMMetalV1NativeBridge:
         self._handles[key] = block_ids
         return block_ids
 
+    def borrow_resident_pages(
+        self,
+        logical_key: str,
+        block_ids: Sequence[int],
+        *,
+        selected_token_count: int,
+    ) -> tuple[int, ...]:
+        """Name scheduler-owned live-prefix pages without copying their K/V.
+
+        This is the vLLM analogue of adding request membership to llama.cpp
+        unified-cache cells. The scheduler remains the owner and must keep the
+        source prefix resident for the borrow lifetime; :meth:`release` removes
+        only the PRA name and never returns these blocks to the reserved pool.
+
+        The current Metal attention metadata can prepend only complete pages.
+        Record selections ending inside a page keep that tail in the ordinary
+        request suffix until segmented-page metadata is implemented.
+        """
+
+        key = str(logical_key)
+        if key in self._handles:
+            raise ValueError(f"vLLM PRA logical key is already registered: {key}")
+        blocks = tuple(map(int, block_ids))
+        if not blocks:
+            raise ValueError("A resident-page borrow requires at least one page.")
+        if len(blocks) != len(set(blocks)):
+            raise ValueError("A resident-page borrow cannot repeat a page.")
+        if any(block < 0 or block >= self.scheduler_blocks for block in blocks):
+            raise ValueError("Borrowed vLLM pages must belong to the scheduler pool.")
+        expected = len(blocks) * self.block_size
+        if int(selected_token_count) != expected:
+            raise ValueError(
+                "Borrowed vLLM pages must be complete; keep a partial tail in "
+                "the ordinary request suffix."
+            )
+        self._handles[key] = blocks
+        self._borrowed_handles.add(key)
+        return blocks
+
     def release(self, logical_key: str) -> None:
         """Release reserved pages after no active request can reference them."""
 
-        blocks = self._handles.pop(str(logical_key), None)
-        if blocks is not None:
+        key = str(logical_key)
+        blocks = self._handles.pop(key, None)
+        borrowed = key in self._borrowed_handles
+        self._borrowed_handles.discard(key)
+        if blocks is not None and not borrowed:
             self._free.extend(blocks)
             self._free.sort()
 
@@ -507,6 +550,9 @@ class VLLMMetalV1NativeBridge:
             "consumer_layers": "all",
             "scheduler_prefix_observability": True,
             "native_apc_identity_required": True,
+            "live_prefix_page_borrow": True,
+            "live_prefix_page_borrow_copy": False,
+            "live_prefix_page_borrow_requires_complete_pages": True,
         }
 
 

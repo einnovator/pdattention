@@ -178,6 +178,7 @@ def test_prefill_page_observation_keeps_groups_and_physical_scope() -> None:
 def test_release_returns_reserved_pages_and_is_idempotent() -> None:
     bridge = object.__new__(VLLMMetalV1NativeBridge)
     bridge._handles = {"resource": (7, 5)}
+    bridge._borrowed_handles = set()
     bridge._free = [6]
 
     bridge.release("resource")
@@ -185,6 +186,37 @@ def test_release_returns_reserved_pages_and_is_idempotent() -> None:
 
     assert bridge._free == [5, 6, 7]
     assert bridge._handles == {}
+
+
+def test_borrowed_live_prefix_pages_are_never_returned_to_reserved_pool() -> None:
+    bridge = object.__new__(VLLMMetalV1NativeBridge)
+    bridge.scheduler_blocks = 8
+    bridge.block_size = 4
+    bridge._handles = {}
+    bridge._borrowed_handles = set()
+    bridge._free = [8, 9]
+
+    assert bridge.borrow_resident_pages(
+        "live-turns", (2, 5), selected_token_count=8
+    ) == (2, 5)
+    bridge.release("live-turns")
+
+    assert bridge._handles == {}
+    assert bridge._borrowed_handles == set()
+    assert bridge._free == [8, 9]
+
+
+def test_borrowed_live_prefix_pages_fail_closed_on_partial_or_reserved_pages() -> None:
+    bridge = object.__new__(VLLMMetalV1NativeBridge)
+    bridge.scheduler_blocks = 8
+    bridge.block_size = 4
+    bridge._handles = {}
+    bridge._borrowed_handles = set()
+
+    with pytest.raises(ValueError, match="complete"):
+        bridge.borrow_resident_pages("partial", (2, 3), selected_token_count=7)
+    with pytest.raises(ValueError, match="scheduler pool"):
+        bridge.borrow_resident_pages("reserved", (2, 8), selected_token_count=8)
 
 
 def test_storage_hot_bridge_prevents_release_while_request_is_pinned() -> None:
