@@ -42,6 +42,14 @@ def _delete(url: str, session_id: str) -> tuple[int, dict[str, Any]]:
         return response.status, json.loads(response.read().decode())
 
 
+def _status(url: str, session_id: str) -> dict[str, Any]:
+    with urllib.request.urlopen(
+        f"{url.rstrip('/')}/v1/pra/sessions/{urllib.parse.quote(session_id)}",
+        timeout=30,
+    ) as response:
+        return json.loads(response.read().decode())
+
+
 def _content(response: dict[str, Any]) -> str:
     return str(response["choices"][0]["message"]["content"])
 
@@ -112,6 +120,29 @@ def run(output: Path, *, wrapper_url: str, model: str) -> dict[str, Any]:
     delete_elapsed_s = time.perf_counter() - delete_started
     late_status, late_response = _post(wrapper_url, initial)
 
+    cancel_session = "active-cancellation-gate"
+    cancel_payload = _payload(
+        model,
+        initial_messages,
+        session_id=cancel_session,
+        request_index=1,
+        seed=0,
+        max_tokens=512,
+    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        active_future = executor.submit(_post, wrapper_url, cancel_payload)
+        active_seen = False
+        for _ in range(200):
+            state = _status(wrapper_url, cancel_session)
+            if state.get("upstream_stream_open"):
+                active_seen = True
+                break
+            time.sleep(0.01)
+        cancel_started = time.perf_counter()
+        cancel_delete_status, _ = _delete(wrapper_url, cancel_session)
+        cancel_elapsed_s = time.perf_counter() - cancel_started
+        cancelled_status, cancelled_response = active_future.result()
+
     successful_forks = [row for row in fork_results if row[0] == 200]
     conflicting_forks = [row for row in fork_results if row[0] == 409]
     retry_trace = retry_response.get("pra_trace", [])
@@ -147,10 +178,16 @@ def run(output: Path, *, wrapper_url: str, model: str) -> dict[str, Any]:
             and late_status == 410
             and late_response.get("error") == "session_closed"
         ),
-        "active_cancellation_qualified": False,
-        "active_cancellation_reason": (
-            "the non-streaming wrapper drains an in-flight generation before erase; "
-            "it does not yet propagate cancellation to llama.cpp"
+        "active_stream_seen": active_seen,
+        "active_cancel_delete_status": cancel_delete_status,
+        "active_cancel_request_status": cancelled_status,
+        "active_cancel_request_error": cancelled_response.get("error"),
+        "active_cancel_elapsed_s": cancel_elapsed_s,
+        "active_cancellation_qualified": (
+            active_seen
+            and cancel_delete_status == 200
+            and cancelled_status == 499
+            and cancelled_response.get("error") == "generation_cancelled"
         ),
     }
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -17,6 +17,7 @@ import threading
 import traceback
 import urllib.error
 import urllib.parse
+import urllib.request
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +36,10 @@ class SessionCommitConflict(RuntimeError):
 
 class SessionClosedError(RuntimeError):
     """A request addressed a session whose termination already began."""
+
+
+class GenerationCancelled(RuntimeError):
+    """An active llama.cpp generation was cancelled by session termination."""
 
 
 def _load_llamacpp_types():
@@ -58,6 +63,74 @@ class CausalChatNativePromptMixin:
     system-plus-history prefix and the request slot receives only the exact
     rendered suffix containing the latest observation and generation marker.
     """
+
+    def _request_json(
+        self, path: str, payload: Mapping[str, object] | None = None,
+    ) -> Mapping[str, object]:
+        local = getattr(self, "_pra_cancellation_local", None)
+        cancel_event = getattr(local, "cancel_event", None)
+        if path == "/completion" and payload is not None and cancel_event is not None:
+            return self._request_json_cancellable(
+                path,
+                payload,
+                cancel_event=cancel_event,
+                response_callback=getattr(local, "response_callback", None),
+            )
+        return super()._request_json(path, payload)
+
+    def _request_json_cancellable(
+        self,
+        path: str,
+        payload: Mapping[str, object],
+        *,
+        cancel_event: threading.Event,
+        response_callback: Any = None,
+    ) -> Mapping[str, object]:
+        """Aggregate llama.cpp SSE while retaining a cancellable connection."""
+
+        body = dict(payload)
+        body["stream"] = True
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        response = None
+        content: list[str] = []
+        tokens: list[int] = []
+        final: dict[str, Any] = {}
+        try:
+            response = urllib.request.urlopen(request, timeout=self.timeout_seconds)
+            if response_callback is not None:
+                response_callback(response)
+            for encoded in response:
+                if cancel_event.is_set():
+                    raise GenerationCancelled("session termination cancelled generation")
+                line = encoded.decode("utf-8").strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                row = json.loads(line[6:])
+                if isinstance(row, Mapping):
+                    final.update(row)
+                    content.append(str(row.get("content", "")))
+                    tokens.extend(int(token) for token in row.get("tokens", ()))
+            if cancel_event.is_set():
+                raise GenerationCancelled("session termination cancelled generation")
+        except (OSError, ValueError) as error:
+            if cancel_event.is_set():
+                raise GenerationCancelled(
+                    "session termination cancelled generation"
+                ) from error
+            raise
+        finally:
+            if response is not None:
+                response.close()
+            if response_callback is not None:
+                response_callback(None)
+        final["content"] = "".join(content)
+        final["tokens"] = tokens
+        return final
 
     def _render_chat(
         self, messages: list[dict[str, Any]], request: PRAWireRequest, *, generate: bool,
@@ -448,6 +521,10 @@ class HybridLlamaCppAdapter:
         # request from the same logical parent is rejected as a stale commit.
         self._pending_generations: dict[str, dict[str, Any]] = {}
         self._closed_sessions: set[str] = set()
+        self._session_cancel_events: dict[str, threading.Event] = {}
+        self._active_upstream_responses: dict[str, Any] = {}
+        if native is not None:
+            native._pra_cancellation_local = threading.local()
 
     def _session_lock(self, session_id: str) -> threading.RLock:
         with self._live_state_lock:
@@ -569,7 +646,41 @@ class HybridLlamaCppAdapter:
                     raise SessionClosedError(
                         f"live agent session {session_id!r} is closed"
                     )
-            return self._generate_serialized(request)
+                cancel_event = threading.Event()
+                self._session_cancel_events[session_id] = cancel_event
+            native = self.native_adapter.native_executor
+            local = native._pra_cancellation_local
+            local.cancel_event = cancel_event
+            local.response_callback = (
+                lambda response: self._set_active_response(session_id, response)
+            )
+            try:
+                return self._generate_serialized(request)
+            finally:
+                local.cancel_event = None
+                local.response_callback = None
+                with self._live_state_lock:
+                    self._session_cancel_events.pop(session_id, None)
+                    self._active_upstream_responses.pop(session_id, None)
+
+    def _set_active_response(self, session_id: str, response: Any) -> None:
+        with self._live_state_lock:
+            if response is None:
+                self._active_upstream_responses.pop(str(session_id), None)
+            else:
+                self._active_upstream_responses[str(session_id)] = response
+
+    def session_status(self, session_id: str) -> dict[str, Any]:
+        session_id = str(session_id)
+        with self._live_state_lock:
+            return {
+                "session_id": session_id,
+                "closed": session_id in self._closed_sessions,
+                "active_generation": session_id in self._session_cancel_events,
+                "upstream_stream_open": session_id in self._active_upstream_responses,
+                "source_slot": self._live_session_slots.get(session_id),
+                "request_slot": self._live_session_request_slots.get(session_id),
+            }
 
     def _generate_serialized(self, request: PRAWireRequest) -> PRAEngineResult:
         key = self._resource_session_key(request)
@@ -1242,9 +1353,15 @@ class HybridLlamaCppAdapter:
         session_id = str(session_id)
         with self._live_state_lock:
             self._closed_sessions.add(session_id)
+            cancel_event = self._session_cancel_events.get(session_id)
+            if cancel_event is not None:
+                cancel_event.set()
+            active_response = self._active_upstream_responses.get(session_id)
             session_lock = self._live_session_locks.setdefault(
                 session_id, threading.RLock(),
             )
+        if active_response is not None:
+            active_response.close()
         # Drain an in-flight generation before erasing its K/V.  Marking the
         # tombstone first prevents queued requests from reopening the session.
         with session_lock:
@@ -1254,6 +1371,8 @@ class HybridLlamaCppAdapter:
                 self._live_session_tokens.pop(session_id, None)
                 self._logical_session_messages.pop(session_id, None)
                 self._pending_generations.pop(session_id, None)
+                self._session_cancel_events.pop(session_id, None)
+                self._active_upstream_responses.pop(session_id, None)
             if slot is not None:
                 self.native_adapter.native_executor._erase_request_slot(slot)
             if request_slot is not None and request_slot != slot:
@@ -1340,6 +1459,17 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                     "object": "list",
                     "data": [{"id": model, "object": "model", "owned_by": "llama.cpp-pra"}],
                 })
+            elif urllib.parse.urlsplit(self.path).path.startswith(
+                "/v1/pra/sessions/"
+            ):
+                prefix = "/v1/pra/sessions/"
+                session_id = urllib.parse.unquote(
+                    urllib.parse.urlsplit(self.path).path[len(prefix):]
+                )
+                if not session_id or "/" in session_id:
+                    self._json(400, {"error": "invalid_session_id"})
+                else:
+                    self._json(200, adapter.session_status(session_id))
             else:
                 self._json(404, {"error": "not_found"})
 
@@ -1360,6 +1490,10 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                 if bool(request.metadata.get("ephemeral_session", False)):
                     adapter.close_session(str(request.session_id))
                 self._json(200, completion)
+            except GenerationCancelled as error:
+                self._json(499, {
+                    "error": "generation_cancelled", "message": str(error),
+                })
             except SessionCommitConflict as error:
                 self._json(409, {
                     "error": "session_commit_conflict", "message": str(error),
