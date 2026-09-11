@@ -12,6 +12,7 @@ from pra_hf.hf_live_kv import (
     dense_reference_attention_mask,
     enable_qwen_sparse_live_kv,
     pack_dynamic_cache_reference,
+    pack_segmented_dynamic_cache_reference,
     segmented_qwen_attention,
     select_dynamic_cache,
 )
@@ -96,6 +97,19 @@ def test_hf_full_and_sparse_selection_are_source_views_without_pack_copy() -> No
     assert packed.interval_pack_bytes == 2 * 4 * 4 * 4
     assert packed.cache.layers[0].keys[0, 0, :, 0].tolist() == [0, 4, 16, 20]
 
+    segmented_oracle = pack_segmented_dynamic_cache_reference(
+        source,
+        LiveKVSelectionPlan.create(6, ((0, 2), (4, 6))),
+    )
+    assert segmented_oracle.physical_kv_copy
+    assert segmented_oracle.interval_pack_bytes == packed.interval_pack_bytes
+    oracle_segments = segmented_oracle.cache.layers[0].source_segments
+    assert [row.position_start for row in oracle_segments] == [0, 4]
+    assert [row.keys[0, 0, :, 0].tolist() for row in oracle_segments] == [
+        [0, 4],
+        [16, 20],
+    ]
+
 
 def test_hf_segmented_qwen_attention_matches_identical_dense_subset() -> None:
     torch = pytest.importorskip("torch")
@@ -136,7 +150,7 @@ def test_hf_segmented_qwen_attention_matches_identical_dense_subset() -> None:
     )
 
 
-def test_hf_half_precision_reports_bounded_transient_kv_tiles() -> None:
+def test_hf_half_precision_keeps_selected_kv_in_native_storage() -> None:
     torch = pytest.importorskip("torch")
     query = torch.randn(1, 2, 1, 4, dtype=torch.float16)
     keys = torch.randn(1, 1, 5, 4, dtype=torch.float16)
@@ -152,9 +166,9 @@ def test_hf_half_precision_reports_bounded_transient_kv_tiles() -> None:
     )
     assert torch.isfinite(output).all()
     assert metrics.interval_pack_bytes == 0
-    assert metrics.transient_kv_copy_bytes == 2 * keys.numel() * 4
-    assert metrics.max_transient_kv_tile_bytes == 2 * 1 * 2 * 4 * 4
-    assert metrics.max_transient_kv_tile_bytes < metrics.transient_kv_copy_bytes
+    assert metrics.transient_kv_copy_bytes == 0
+    assert metrics.max_transient_kv_tile_bytes == 0
+    assert metrics.transient_attention_bytes > 0
 
 
 @pytest.mark.parametrize("family", ["qwen2", "qwen3"])

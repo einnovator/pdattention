@@ -542,7 +542,10 @@ def segmented_qwen_attention(
         raise ValueError("Qwen query heads must be divisible by K/V heads.")
     groups = query_heads // kv_heads
     grouped_query = query.reshape(batch, kv_heads, groups, query_tokens, head_dim)
-    query32 = grouped_query.float()
+    # Scale before the native-dtype dot product.  Scaling the fp16 result after
+    # reduction can overflow even when the final score is representable.  The
+    # query is request-local and small; selected K/V must remain storage views.
+    scaled_query = grouped_query * float(scaling)
     accumulator = torch.zeros(
         (batch, kv_heads, groups, query_tokens, head_dim),
         dtype=torch.float32,
@@ -556,96 +559,129 @@ def segmented_qwen_attention(
     running_max = torch.full_like(denominator, -torch.inf)
     transient_peak = accumulator.numel() * accumulator.element_size()
     transient_peak += denominator.numel() * denominator.element_size() * 2
-    transient_peak += query32.numel() * query32.element_size()
+    transient_peak += scaled_query.numel() * scaled_query.element_size()
 
     if score_tile_tokens <= 0:
         raise ValueError("score_tile_tokens must be positive.")
-    for segment in rows:
-        keys, values = segment.keys, segment.values
-        if keys.ndim != 4 or values.shape != keys.shape:
-            raise ValueError("Every sparse K/V segment must contain equal rank-four tensors.")
-        if tuple(keys.shape[:2]) != (batch, kv_heads) or int(keys.shape[-1]) != head_dim:
-            raise ValueError("Sparse K/V segment geometry does not match the query.")
-        key_tokens = int(keys.shape[-2])
-        if key_tokens != segment.tokens:
-            raise ValueError("Sparse K/V tensor width does not match its position interval.")
+    def tiles():
+        """Yield validated K/V views and their original source positions."""
 
-        for tile_start in range(0, key_tokens, score_tile_tokens):
-            tile_end = min(tile_start + score_tile_tokens, key_tokens)
-            key_tile = keys[..., tile_start:tile_end, :]
-            value_tile = values[..., tile_start:tile_end, :]
-            # FP16 scores overflow on the qualified Qwen2.5 checkpoint. Cast
-            # one bounded tile (never a selected interval or packed cache) so
-            # score accumulation and the online softmax remain finite.
-            key32 = key_tile.float()
-            value32 = value_tile.float()
-            kv_tile_copy_bytes = 0
-            if key32.data_ptr() != key_tile.data_ptr():
-                kv_tile_copy_bytes += key32.numel() * key32.element_size()
-            if value32.data_ptr() != value_tile.data_ptr():
-                kv_tile_copy_bytes += value32.numel() * value32.element_size()
-            if metrics is not None:
-                metrics.transient_kv_copy_bytes += int(kv_tile_copy_bytes)
-                metrics.max_transient_kv_tile_bytes = max(
-                    metrics.max_transient_kv_tile_bytes,
-                    int(kv_tile_copy_bytes),
+        for segment in rows:
+            keys, values = segment.keys, segment.values
+            if keys.ndim != 4 or values.shape != keys.shape:
+                raise ValueError(
+                    "Every sparse K/V segment must contain equal rank-four tensors."
                 )
-            logits32 = torch.einsum(
-                "bhgqd,bhkd->bhgqk", query32, key32
-            ) * float(scaling)
-            if not bool(torch.all(torch.isfinite(logits32))):
-                raise RuntimeError(
-                    "Sparse HF Qwen fp32 score kernel produced a non-finite value."
+            if tuple(keys.shape[:2]) != (batch, kv_heads) or int(keys.shape[-1]) != head_dim:
+                raise ValueError("Sparse K/V segment geometry does not match the query.")
+            key_tokens = int(keys.shape[-2])
+            if key_tokens != segment.tokens:
+                raise ValueError(
+                    "Sparse K/V tensor width does not match its position interval."
                 )
-            tile_tokens = tile_end - tile_start
-            key_positions = torch.arange(
-                segment.position_start + tile_start,
-                segment.position_start + tile_end,
-                dtype=query_positions.dtype,
-                device=query_positions.device,
+            for tile_start in range(0, key_tokens, score_tile_tokens):
+                tile_end = min(tile_start + score_tile_tokens, key_tokens)
+                yield (
+                    keys[..., tile_start:tile_end, :],
+                    values[..., tile_start:tile_end, :],
+                    segment.position_start + tile_start,
+                    segment.position_start + tile_end,
+                )
+
+    # First pass computes one global normalization without copying or casting
+    # selected K/V.  Only bounded score tiles and small reduction tensors are
+    # materialized.  The second pass recomputes scores and applies normalized
+    # native-dtype probabilities to the resident value views.  This mirrors
+    # eager Qwen attention more closely than accumulating fp32 value copies.
+    for key_tile, _value_tile, position_start, position_end in tiles():
+        logits32 = torch.einsum(
+            "bhgqd,bhkd->bhgqk", scaled_query, key_tile
+        ).float()
+        if not bool(torch.all(torch.isfinite(logits32))):
+            raise RuntimeError(
+                "Sparse HF Qwen native score kernel produced a non-finite value."
             )
-            visible = key_positions.view(1, 1, 1, 1, tile_tokens) <= query_positions.view(
-                1, 1, 1, query_tokens, 1
-            )
-            masked_logits = logits32.masked_fill(~visible, -torch.inf)
-            segment_max = masked_logits.amax(dim=-1, keepdim=True)
-            new_max = torch.maximum(running_max, segment_max)
-            finite_new_max = torch.isfinite(new_max)
-            safe_new_max = torch.where(finite_new_max, new_max, 0.0)
-            prior_scale = torch.where(
-                torch.isfinite(running_max) & finite_new_max,
-                torch.exp(running_max - safe_new_max),
-                0.0,
-            )
-            weights = torch.exp(masked_logits - safe_new_max)
-            weights = torch.where(visible & finite_new_max, weights, 0.0)
-            segment_sum = weights.sum(dim=-1, keepdim=True)
-            segment_output = torch.einsum(
-                "bhgqk,bhkd->bhgqd", weights, value32
-            )
-            accumulator = accumulator * prior_scale + segment_output
-            denominator = denominator * prior_scale + segment_sum
-            running_max = new_max
-            transient_peak = max(
-                transient_peak,
-                key32.numel() * key32.element_size()
-                + value32.numel() * value32.element_size()
-                + logits32.numel() * logits32.element_size()
-                + masked_logits.numel() * masked_logits.element_size()
-                + weights.numel() * weights.element_size()
-                + segment_output.numel() * segment_output.element_size(),
-            )
+        tile_tokens = position_end - position_start
+        key_positions = torch.arange(
+            position_start,
+            position_end,
+            dtype=query_positions.dtype,
+            device=query_positions.device,
+        )
+        visible = key_positions.view(1, 1, 1, 1, tile_tokens) <= query_positions.view(
+            1, 1, 1, query_tokens, 1
+        )
+        masked_logits = logits32.masked_fill(~visible, -torch.inf)
+        segment_max = masked_logits.amax(dim=-1, keepdim=True)
+        new_max = torch.maximum(running_max, segment_max)
+        finite_new_max = torch.isfinite(new_max)
+        safe_new_max = torch.where(finite_new_max, new_max, 0.0)
+        prior_scale = torch.where(
+            torch.isfinite(running_max) & finite_new_max,
+            torch.exp(running_max - safe_new_max),
+            0.0,
+        )
+        weights = torch.exp(masked_logits - safe_new_max)
+        weights = torch.where(visible & finite_new_max, weights, 0.0)
+        denominator = denominator * prior_scale + weights.sum(dim=-1, keepdim=True)
+        running_max = new_max
+        transient_peak = max(
+            transient_peak,
+            logits32.numel() * logits32.element_size()
+            + masked_logits.numel() * masked_logits.element_size()
+            + weights.numel() * weights.element_size(),
+        )
 
     if not bool(torch.all(torch.isfinite(denominator))) or bool(torch.any(denominator <= 0)):
         raise RuntimeError("Sparse causal attention produced a non-finite or empty denominator.")
-    if not bool(torch.all(torch.isfinite(accumulator))):
-        raise RuntimeError("Sparse causal attention produced a non-finite numerator.")
+
+    for key_tile, value_tile, position_start, position_end in tiles():
+        logits32 = torch.einsum(
+            "bhgqd,bhkd->bhgqk", scaled_query, key_tile
+        ).float()
+        tile_tokens = position_end - position_start
+        key_positions = torch.arange(
+            position_start,
+            position_end,
+            dtype=query_positions.dtype,
+            device=query_positions.device,
+        )
+        visible = key_positions.view(1, 1, 1, 1, tile_tokens) <= query_positions.view(
+            1, 1, 1, query_tokens, 1
+        )
+        unnormalized = torch.where(
+            visible, torch.exp(logits32 - running_max), 0.0
+        )
+        tile_mass = unnormalized.sum(dim=-1, keepdim=True) / denominator
+        # Let PyTorch's native SDPA perform the value reduction for this view.
+        # Five-dimensional batch geometry expresses GQA without repeat_kv:
+        # [B,Hkv,G,Q,D] attends to [B,Hkv,1,K,D] through a stride-only view.
+        segment_output = torch.nn.functional.scaled_dot_product_attention(
+            grouped_query,
+            key_tile.unsqueeze(2),
+            value_tile.unsqueeze(2),
+            attn_mask=visible,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=float(scaling),
+        )
+        accumulator = accumulator + segment_output.float() * tile_mass
+        transient_peak = max(
+            transient_peak,
+            logits32.numel() * logits32.element_size()
+            + unnormalized.numel() * unnormalized.element_size()
+            + tile_mass.numel() * tile_mass.element_size()
+            + segment_output.numel() * segment_output.element_size(),
+        )
+
+    # No selected K/V tensor is cast, packed, or copied by this consumer.
     if metrics is not None:
         metrics.transient_attention_bytes += int(transient_peak)
-    return (accumulator / denominator).to(query.dtype).reshape(
+    if not bool(torch.all(torch.isfinite(accumulator))):
+        raise RuntimeError("Sparse causal attention produced a non-finite numerator.")
+    return accumulator.to(query.dtype).reshape(
         batch, query_heads, query_tokens, head_dim
     )
-
 
 def _qwen_sparse_forward(original_forward):
     def forward(
@@ -809,6 +845,44 @@ def pack_dynamic_cache_reference(source_cache: object, plan: LiveKVSelectionPlan
         plan,
         copied,
         interval_pack_bytes=int(packed_bytes),
+    )
+
+
+def pack_segmented_dynamic_cache_reference(
+    source_cache: object, plan: LiveKVSelectionPlan
+) -> HFResidentKVSelection:
+    """Pack oracle values but preserve segment boundaries and source positions.
+
+    Qualification must compare alias-backed and copied K/V with the identical
+    attention consumer.  Otherwise backend-specific reduction order is
+    incorrectly attributed to selection.  This oracle is never a PRA path.
+    """
+
+    packed = pack_dynamic_cache_reference(source_cache, plan)
+    selected_layers: list[_HFSparseKVLayer] = []
+    for packed_layer in packed.cache.layers:
+        keys, values, _key_name, _value_name = _layer_pair(packed_layer)
+        cursor = 0
+        segments = []
+        for interval in plan.intervals:
+            width = interval.end - interval.start
+            segments.append(
+                HFSparseKVSegment(
+                    keys[..., cursor : cursor + width, :],
+                    values[..., cursor : cursor + width, :],
+                    interval.start,
+                    interval.end,
+                    interval.record_id,
+                    interval.causal_group_id,
+                )
+            )
+            cursor += width
+        selected_layers.append(_HFSparseKVLayer(tuple(segments)))
+    return HFResidentKVSelection(
+        HFSparseDynamicCache(selected_layers, plan),
+        plan,
+        packed.physical_kv_copy,
+        interval_pack_bytes=packed.interval_pack_bytes,
     )
 
 

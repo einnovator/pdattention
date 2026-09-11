@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import platform
 import threading
 import time
 from dataclasses import dataclass
@@ -75,10 +76,23 @@ class MLXDisjointLayerKV:
     """
 
     segments: tuple[MLXNativeLayerKV, ...]
+    source_keys: object | None = None
+    source_values: object | None = None
+    intervals: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.segments:
             raise ValueError("Disjoint MLX K/V requires at least one interval.")
+        supplied = self.source_keys is not None or self.source_values is not None
+        if supplied and (
+            self.source_keys is None
+            or self.source_values is None
+            or len(self.intervals) != len(self.segments)
+        ):
+            raise ValueError(
+                "Source-backed disjoint MLX K/V requires both parents and one "
+                "interval per segment."
+            )
 
     @property
     def tokens(self) -> int:
@@ -525,6 +539,9 @@ def disjoint_segmented_selected_attention(
     *,
     scale: float,
     mask: object | None = None,
+    source_keys: object | None = None,
+    source_values: object | None = None,
+    source_intervals: Sequence[tuple[int, int]] = (),
 ) -> object:
     """Attend to disjoint resident K/V views without packing selected history.
 
@@ -554,12 +571,31 @@ def disjoint_segmented_selected_attention(
     if int(local_keys.shape[1]) != kv_heads or int(local_values.shape[1]) != kv_heads:
         raise ValueError("Selected and local K/V must use the same head count.")
 
+    if (
+        platform.system() == "Darwin"
+        and hasattr(mx.fast, "metal_kernel")
+        and source_keys is not None
+        and source_values is not None
+        and source_intervals
+    ):
+        return _metal_disjoint_selected_attention(
+            queries,
+            source_keys,
+            source_values,
+            source_intervals,
+            local_keys,
+            local_values,
+            scale=scale,
+            mask=mask,
+        )
+
     groups = query_heads // kv_heads
     grouped_queries = mx.unflatten(queries, 1, (kv_heads, groups))
+    scaled_queries = grouped_queries * scale
 
     def scores(keys):
         expanded = mx.expand_dims(keys, axis=2)
-        return (grouped_queries @ mx.swapaxes(expanded, -1, -2)) * scale
+        return scaled_queries @ mx.swapaxes(expanded, -1, -2)
 
     score_segments = [scores(keys).astype(mx.float32) for keys in key_segments]
     score_segments.append(scores(local_keys).astype(mx.float32))
@@ -588,22 +624,203 @@ def disjoint_segmented_selected_attention(
         maximum = mx.maximum(maximum, mx.max(values, axis=-1, keepdims=True))
 
     denominator = None
-    numerator = None
-    all_values = (*value_segments, local_values)
-    for score, values in zip(score_segments, all_values):
-        weights = mx.exp(score - maximum)
-        partial_denominator = mx.sum(weights, axis=-1, keepdims=True)
-        expanded_values = mx.expand_dims(values, axis=2).astype(mx.float32)
-        partial_numerator = weights @ expanded_values
+    for score in score_segments:
+        partial_denominator = mx.sum(
+            mx.exp(score - maximum), axis=-1, keepdims=True
+        )
         denominator = (
             partial_denominator
             if denominator is None
             else denominator + partial_denominator
         )
+
+    numerator = None
+    all_values = (*value_segments, local_values)
+    for score, values in zip(score_segments, all_values):
+        # Normalize globally before narrowing weights to the model dtype.  This
+        # avoids casting the resident value segment to fp32 (which materialized
+        # a selected-K/V-sized temporary) while following the native attention
+        # contract: high-precision softmax, model-dtype value product, and a
+        # small fp32 output accumulation across intervals.
+        weights = (mx.exp(score - maximum) / denominator).astype(values.dtype)
+        expanded_values = mx.expand_dims(values, axis=2)
+        partial_numerator = (weights @ expanded_values).astype(mx.float32)
         numerator = (
             partial_numerator if numerator is None else numerator + partial_numerator
         )
-    return mx.flatten(numerator / denominator, 1, 2).astype(queries.dtype)
+    return mx.flatten(numerator, 1, 2).astype(queries.dtype)
+
+
+_DISJOINT_METAL_KERNELS: dict[float, object] = {}
+
+
+def _metal_disjoint_selected_attention(
+    queries: object,
+    source_keys: object,
+    source_values: object,
+    source_intervals: Sequence[tuple[int, int]],
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+    mask: object | None,
+) -> object:
+    """Fused Metal attention over interval-addressed source K/V and local K/V."""
+
+    import mlx.core as mx
+
+    if int(queries.shape[0]) != 1:
+        raise ValueError("Metal disjoint attention currently supports batch size one.")
+    head_dim = int(queries.shape[-1])
+    if head_dim <= 0 or head_dim > 256:
+        raise ValueError("Metal disjoint attention supports head dimensions 1..256.")
+    query_heads = int(queries.shape[1])
+    query_tokens = int(queries.shape[2])
+    kv_heads = int(source_keys.shape[1])
+    if query_heads % kv_heads:
+        raise ValueError("Query head count must be divisible by K/V head count.")
+    arrays = (source_keys, source_values, local_keys, local_values)
+    if any(array.dtype != queries.dtype for array in arrays):
+        raise ValueError("Metal disjoint attention requires one model-native dtype.")
+    intervals = tuple((int(start), int(end)) for start, end in source_intervals)
+    if not intervals or any(start < 0 or end <= start for start, end in intervals):
+        raise ValueError("Metal disjoint attention requires non-empty ordered intervals.")
+    selected_tokens = sum(end - start for start, end in intervals)
+    total_tokens = selected_tokens + int(local_keys.shape[2])
+    if mask is None:
+        mask = mx.ones((query_tokens, total_tokens), dtype=mx.bool_)
+    if mask.ndim != 2 or mask.dtype != mx.bool_ or int(mask.shape[-1]) != total_tokens:
+        raise ValueError("Metal disjoint attention requires a matching rank-two bool mask.")
+    interval_array = mx.array(intervals, dtype=mx.uint32)
+
+    kernel_key = float(scale)
+    kernel = _DISJOINT_METAL_KERNELS.get(kernel_key)
+    if kernel is None:
+        source = f"""
+    uint d = thread_index_in_threadgroup;
+    uint row = threadgroup_position_in_grid.x;
+    uint query_tokens = q_shape[2];
+    uint qhead = row / query_tokens;
+    uint qi = row - qhead * query_tokens;
+    uint head_dim = q_shape[3];
+    uint groups = q_shape[1] / source_k_shape[1];
+    uint kvhead = qhead / groups;
+    uint simdgroups = (head_dim + 31) / 32;
+    threadgroup float partials[8];
+    threadgroup float shared_score;
+    float running_max = -INFINITY;
+    float denominator = 0.0f;
+    float accumulator = 0.0f;
+    uint compact_k = 0;
+    float scale_value = {float(scale):.17g}f;
+
+    for (uint interval = 0; interval < intervals_shape[0]; ++interval) {{
+        uint begin = intervals[interval * 2];
+        uint end = intervals[interval * 2 + 1];
+        for (uint kt = begin; kt < end; ++kt, ++compact_k) {{
+            bool visible = mask[qi * mask_strides[0] + compact_k * mask_strides[1]];
+            if (!visible) {{ continue; }}
+            float product = 0.0f;
+            if (d < head_dim) {{
+                uint q_index = qhead * q_strides[1] + qi * q_strides[2]
+                    + d * q_strides[3];
+                uint k_index = kvhead * source_k_strides[1]
+                    + kt * source_k_strides[2] + d * source_k_strides[3];
+                product = float(q[q_index]) * float(source_k[k_index]);
+            }}
+            float lane_sum = simd_sum(product);
+            if (thread_index_in_simdgroup == 0) {{
+                partials[simdgroup_index_in_threadgroup] = lane_sum;
+            }}
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            if (d == 0) {{
+                float dot = 0.0f;
+                for (uint sg = 0; sg < simdgroups; ++sg) {{ dot += partials[sg]; }}
+                shared_score = dot * scale_value;
+            }}
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            float score = shared_score;
+            float next_max = metal::max(running_max, score);
+            float prior_scale = isinf(running_max)
+                ? 0.0f : metal::precise::exp(running_max - next_max);
+            float weight = metal::precise::exp(score - next_max);
+            if (d < head_dim) {{
+                uint v_index = kvhead * source_v_strides[1]
+                    + kt * source_v_strides[2] + d * source_v_strides[3];
+                accumulator = accumulator * prior_scale
+                    + weight * float(source_v[v_index]);
+            }}
+            denominator = denominator * prior_scale + weight;
+            running_max = next_max;
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }}
+    }}
+
+    for (uint kt = 0; kt < local_k_shape[2]; ++kt, ++compact_k) {{
+        bool visible = mask[qi * mask_strides[0] + compact_k * mask_strides[1]];
+        if (!visible) {{ continue; }}
+        float product = 0.0f;
+        if (d < head_dim) {{
+            uint q_index = qhead * q_strides[1] + qi * q_strides[2]
+                + d * q_strides[3];
+            uint k_index = kvhead * local_k_strides[1]
+                + kt * local_k_strides[2] + d * local_k_strides[3];
+            product = float(q[q_index]) * float(local_k[k_index]);
+        }}
+        float lane_sum = simd_sum(product);
+        if (thread_index_in_simdgroup == 0) {{
+            partials[simdgroup_index_in_threadgroup] = lane_sum;
+        }}
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (d == 0) {{
+            float dot = 0.0f;
+            for (uint sg = 0; sg < simdgroups; ++sg) {{ dot += partials[sg]; }}
+            shared_score = dot * scale_value;
+        }}
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float score = shared_score;
+        float next_max = metal::max(running_max, score);
+        float prior_scale = isinf(running_max)
+            ? 0.0f : metal::precise::exp(running_max - next_max);
+        float weight = metal::precise::exp(score - next_max);
+        if (d < head_dim) {{
+            uint v_index = kvhead * local_v_strides[1]
+                + kt * local_v_strides[2] + d * local_v_strides[3];
+            accumulator = accumulator * prior_scale + weight * float(local_v[v_index]);
+        }}
+        denominator = denominator * prior_scale + weight;
+        running_max = next_max;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }}
+    if (d < head_dim) {{
+        uint out_index = (qhead * query_tokens + qi) * head_dim + d;
+        out[out_index] = accumulator / denominator;
+    }}
+"""
+        kernel = mx.fast.metal_kernel(
+            name="pra_interval_addressed_attention",
+            input_names=(
+                "q", "source_k", "source_v", "local_k", "local_v",
+                "intervals", "mask",
+            ),
+            output_names=("out",),
+            source=source,
+            ensure_row_contiguous=False,
+            compile_options={"math_mode": "safe"},
+        )
+        _DISJOINT_METAL_KERNELS[kernel_key] = kernel
+
+    threadgroup_width = 32 * ((head_dim + 31) // 32)
+    return kernel(
+        inputs=(
+            queries, source_keys, source_values, local_keys, local_values,
+            interval_array, mask,
+        ),
+        grid=(query_heads * query_tokens * threadgroup_width, 1, 1),
+        threadgroup=(threadgroup_width, 1, 1),
+        output_shapes=(queries.shape,),
+        output_dtypes=(mx.float32,),
+    )[0].astype(queries.dtype)
 
 
 def _segmented_selected_attention_impl(
@@ -632,10 +849,11 @@ def _segmented_selected_attention_impl(
     # ``unflatten`` and ``flatten`` infer untouched dimensions from the input;
     # constructing Python reshape tuples would freeze the first query length.
     grouped_queries = mx.unflatten(queries, 1, (kv_heads, groups))
+    scaled_queries = grouped_queries * scale
 
     def scores(keys):
         expanded = mx.expand_dims(keys, axis=2)
-        return (grouped_queries @ mx.swapaxes(expanded, -1, -2)) * scale
+        return scaled_queries @ mx.swapaxes(expanded, -1, -2)
 
     # Accumulate the split normalization in fp32. MLX's fused SDPA also uses
     # higher-precision reduction internally; retaining fp16 exponentials here
@@ -660,18 +878,20 @@ def _segmented_selected_attention_impl(
         mx.max(memory_scores, axis=-1, keepdims=True),
         mx.max(local_scores, axis=-1, keepdims=True),
     )
-    memory_weights = mx.exp(memory_scores - maximum)
-    local_weights = mx.exp(local_scores - maximum)
-    denominator = mx.sum(memory_weights, axis=-1, keepdims=True) + mx.sum(
-        local_weights, axis=-1, keepdims=True
+    memory_exp = mx.exp(memory_scores - maximum)
+    local_exp = mx.exp(local_scores - maximum)
+    denominator = mx.sum(memory_exp, axis=-1, keepdims=True) + mx.sum(
+        local_exp, axis=-1, keepdims=True
     )
-    expanded_memory_values = mx.expand_dims(memory_values, axis=2).astype(mx.float32)
-    expanded_local_values = mx.expand_dims(local_values, axis=2).astype(mx.float32)
+    memory_weights = (memory_exp / denominator).astype(memory_values.dtype)
+    local_weights = (local_exp / denominator).astype(local_values.dtype)
+    expanded_memory_values = mx.expand_dims(memory_values, axis=2)
+    expanded_local_values = mx.expand_dims(local_values, axis=2)
     numerator = (
-        memory_weights @ expanded_memory_values
-        + local_weights @ expanded_local_values
+        (memory_weights @ expanded_memory_values).astype(mx.float32)
+        + (local_weights @ expanded_local_values).astype(mx.float32)
     )
-    return mx.flatten(numerator / denominator, 1, 2).astype(queries.dtype)
+    return mx.flatten(numerator, 1, 2).astype(queries.dtype)
 
 
 _COMPILED_SEGMENTED_ATTENTION: dict[bool, object] = {}
@@ -910,7 +1130,12 @@ def select_live_native_memory_disjoint(
                         layer.values[:, :, interval.start : interval.end, :],
                     )
                     for interval in plan.intervals
-                )
+                ),
+                source_keys=layer.keys,
+                source_values=layer.values,
+                intervals=tuple(
+                    (interval.start, interval.end) for interval in plan.intervals
+                ),
             )
         )
     selected = MLXDisjointNativeMemory(tuple(layers), plan.source_tokens)

@@ -15,7 +15,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from pra_hf.hf_live_kv import (
     dense_reference_attention_mask,
     enable_qwen_sparse_live_kv,
-    pack_dynamic_cache_reference,
+    pack_segmented_dynamic_cache_reference,
     select_dynamic_cache,
 )
 from pra_hf.live_history import LiveKVSelectionPlan
@@ -114,6 +114,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         args.model,
         torch_dtype=dtype,
         local_files_only=args.local_files_only,
+        attn_implementation=args.attn_implementation,
     ).to(device).eval()
     enable_qwen_sparse_live_kv(model)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
@@ -165,7 +166,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             continue
         selected = select_dynamic_cache(source_cache, plan)
         if wire_tail:
-            reference = pack_dynamic_cache_reference(_clone_cache(source_cache), plan)
+            reference = pack_segmented_dynamic_cache_reference(
+                _clone_cache(source_cache), plan
+            )
             ordinary_tokens, ordinary_logits = _positioned_tail_generation(
                 model,
                 reference.cache,
@@ -173,7 +176,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 position_base=plan.source_position_base,
                 continuation_tokens=args.continuation_tokens,
                 device=device,
-                dense_reference_plan=plan,
+                dense_reference_plan=None,
             )
             pra_tokens, pra_logits = _positioned_tail_generation(
                 model,
@@ -244,6 +247,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "python_version": platform.python_version(),
         "device": str(device),
         "dtype": args.dtype,
+        "attention_implementation": args.attn_implementation,
         "trajectory": str(args.trajectory),
         "trajectory_sha256": hashlib.sha256(args.trajectory.read_bytes()).hexdigest(),
         "implementation_sha256": hashlib.sha256(
@@ -279,8 +283,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["token_exact"]), None
         ),
-        "reference_condition": "dense packed oracle consuming the identical selected K/V subset under an explicit original-position causal mask",
-        "sparse_numerical_policy": "256-token tiled fp32 score/value accumulation with online softmax",
+        "reference_condition": "packed-value oracle preserving the candidate segment boundaries and original positions under the identical sparse consumer",
+        "sparse_numerical_policy": "two-pass native SDPA over storage-alias K/V views with fp32 cross-segment normalization and zero K/V casts",
         "sparse_turns": sum(int(row["has_holes"]) for row in rows),
         "rows": rows,
     }
@@ -331,6 +335,11 @@ def main() -> None:
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-logit-delta", type=float, default=1e-3)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--attn-implementation",
+        choices=("eager", "sdpa"),
+        default="sdpa",
+    )
     parser.add_argument(
         "--dtype",
         choices=("float32", "float16", "bfloat16"),

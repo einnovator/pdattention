@@ -244,6 +244,9 @@ def _disjoint_qwen_attention(
         local_v,
         scale=float(base.scale),
         mask=layer_mask,
+        source_keys=cache.memory.source_keys,
+        source_values=cache.memory.source_values,
+        source_intervals=cache.memory.intervals,
     )
     output = output.transpose(0, 2, 1, 3).reshape(x.shape[0], length, -1)
     return base.o_proj(output)
@@ -281,6 +284,9 @@ def _disjoint_qwen_batched_attention(
                 local_v,
                 scale=float(base.scale),
                 mask=mask,
+                source_keys=cache.memory.source_keys,
+                source_values=cache.memory.source_values,
+                source_intervals=cache.memory.intervals,
             )
         )
     output = mx.concatenate(rows, axis=0)

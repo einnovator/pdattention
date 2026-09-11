@@ -52,6 +52,7 @@ from .hf_live_kv import (
     dense_reference_attention_mask,
     enable_qwen_sparse_live_kv,
     pack_dynamic_cache_reference,
+    pack_segmented_dynamic_cache_reference,
     segmented_qwen_attention,
     select_dynamic_cache,
 )
@@ -597,6 +598,7 @@ __all__ = [
     "dense_reference_attention_mask",
     "enable_qwen_sparse_live_kv",
     "pack_dynamic_cache_reference",
+    "pack_segmented_dynamic_cache_reference",
     "segmented_qwen_attention",
     "select_dynamic_cache",
 ]

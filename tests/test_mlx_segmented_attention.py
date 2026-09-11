@@ -57,14 +57,11 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
     from pra_mlx.native import disjoint_segmented_selected_attention
 
     query = mx.random.normal((1, 4, 2, 8)).astype(mx.float16)
-    memory_k = (
-        mx.random.normal((1, 2, 3, 8)).astype(mx.float16),
-        mx.random.normal((1, 2, 2, 8)).astype(mx.float16),
-    )
-    memory_v = (
-        mx.random.normal((1, 2, 3, 8)).astype(mx.float16),
-        mx.random.normal((1, 2, 2, 8)).astype(mx.float16),
-    )
+    source_k = mx.random.normal((1, 2, 8, 8)).astype(mx.float16)
+    source_v = mx.random.normal((1, 2, 8, 8)).astype(mx.float16)
+    intervals = ((0, 3), (5, 7))
+    memory_k = tuple(source_k[:, :, start:end, :] for start, end in intervals)
+    memory_v = tuple(source_v[:, :, start:end, :] for start, end in intervals)
     local_k = mx.random.normal((1, 2, 2, 8)).astype(mx.float16)
     local_v = mx.random.normal((1, 2, 2, 8)).astype(mx.float16)
     dense_k = mx.repeat(mx.concatenate((*memory_k, local_k), axis=2), 2, axis=1)
@@ -85,6 +82,9 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
         local_v,
         scale=8**-0.5,
         mask=mask,
+        source_keys=source_k,
+        source_values=source_v,
+        source_intervals=intervals,
     )
     mx.eval(reference, actual)
 

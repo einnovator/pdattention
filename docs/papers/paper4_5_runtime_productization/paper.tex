@@ -1425,6 +1425,14 @@ bytes.  These rows may support same-subset semantics, but not zero-copy or
 prefix-cache reuse. & Exact source block/storage identities plus independent
 counters for K/V copy, host--device transfer, re-encoded tokens, transient
 attention bytes, and offload/restore traffic. \\
+\addlinespace
+Cross-consumer comparator & Sparse-versus-packed rows that changed both K/V
+storage and the attention reduction implementation.  The earlier HF 0.029785,
+MLX 1.0, and SGLang 1.109375 final-logit deltas confound selection with
+backend-specific rounding. & Alias-backed and packed-value paths retain the
+same logical segment boundaries and original positions and execute the same
+consumer.  Cross-consumer drift remains a diagnostic, not a selection-
+correctness failure. \\
 \bottomrule
 \end{tabularx}
 \caption{Superseded agent-cache evidence.  ``Superseded'' removes a systems
@@ -1537,9 +1545,11 @@ and 100\% is a semantic no-op. & Fresh-prefill/cache-reconstruction rows are
 diagnostics, not evidence of resident reuse. \\
 Engine portability contract & vLLM-Metal passes 24/24 lifecycle checks; bounded
 vLLM CUDA adopts scheduler-owned pages with zero K/V copy, H2D transfer, or
-history re-encoding. & HF, MLX, and SGLang remain blocked by numerical and/or
-selected-K/V-sized consumption allocations; CUDA scope excludes partial pages,
-hybrid groups, and multiprocess execution. \\
+history re-encoding.  HF, MLX, and SGLang now also pass their declared sparse
+consumer/lifecycle scopes. & HF remains an unfused batch-one Qwen path; the
+Metal kernel is limited to head dimension at most 256 and direct MLX batch one,
+while SGLang evaluates batched rows independently.  CUDA still excludes partial
+pages, hybrid groups, and multiprocess execution. \\
 Agent retention semantics & Task-03 restore-only replay recovers the efficient
 action in 3/3; task-04 changes whole-file rereading to targeted localization in
 3/3.  Typed causal policies preserve source and progress records. & Superiority
@@ -3438,8 +3448,9 @@ semantic no-op, selected history is never tokenized or prefilled again, source
 positions and stable causal-record identities survive, and request membership
 does not mutate source ownership.  HF and vLLM-Metal now clear request-owned
 lifecycle controls; the bounded vLLM CUDA scheduler alias clears them in its
-declared scope.  The newest MLX and SGLang disjoint-consumption candidates remain
-blocked by numerical and allocation gates.
+declared scope.  The newest MLX and SGLang disjoint-consumption candidates also
+clear their declared numerical, allocation, and lifecycle gates through the
+shared interval-addressed Metal consumer described below.
 The earlier rows in
 Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
 independently reconstructed cache and consequently remain rematerialization
@@ -3499,55 +3510,64 @@ homogeneous K/V group.  Partial pages, hybrid groups, multiprocess
 scheduler/worker execution, the full seven-turn trajectory, and runtime
 economics remain unqualified.
 
-SGLang-MLX likewise matches the earlier full-retention and packed same-subset
-references while keeping selected-history re-encoding at zero.  Its real
-request-owned task-02 lifecycle checks also preserve Radix/source-owner
-isolation, reject removal, eviction, or offload while borrowed, and enforce
+SGLang-MLX likewise keeps selected-history re-encoding at zero while preserving
+Radix/source-owner isolation, borrower-safe removal, eviction and offload,
 exact-once terminal release, stale-generation rejection, restoration, and
-tombstones.  The stronger disjoint-selection experiment reveals the remaining
-boundary.  For six intervals and 2,907/3,081 selected tokens (94.35\%), selection
-constructs source aliases with zero pack bytes and zero allocator delta in
-0.581~ms, versus 8.303~ms and 333,398,016 bytes for the dense packed reference.
-Consumption is not yet qualified: first-layer attention peaks 12,199,774 bytes
-for 11,907,072 bytes of selected layer K/V, and its maximum same-subset logit
-delta is 1.109375 against the predeclared 0.005 tolerance.  Thus 24/24
-non-consumption checks pass, but the two strict consumption gates fail.  A fused
-interval-addressed SGLang-MLX Metal kernel is required before this path can be
-called zero-copy.
+tombstones.  Its replacement consumer is a fused interval-addressed Metal
+kernel.  Rather than passing six selected slices as independent buffers, the
+kernel receives the canonical source K/V once plus a compact interval table,
+keeps original source positions in the cache contract, and performs one online
+softmax while reading only admitted ranges.  For 2,907/3,081 selected tokens
+(94.35\%), selection pack bytes remain zero.  First-layer peak delta falls from
+12,199,774 to 19,371 bytes, only 0.163\% of the 11,907,072-byte selected layer,
+and the candidate is final-logit exact against a packed-value oracle preserving
+the same segment boundaries and using the identical consumer.  All combined
+consumption and lifecycle checks now pass.  This qualification remains bounded:
+SGLang's multi-request path evaluates each selected row separately and rejects a
+batch that mixes ordinary and disjoint cache protocols.
 
 The shared lifecycle registry has been exercised over real task-02 selected
 cache objects for HF, MLX, and SGLang.  Two borrowers share one canonical
 object; eviction is rejected while borrowed; cancelling one borrower preserves
 the other; idle objects offload; lossless restore reproduces their fingerprints;
 active termination cleans up; and tombstones prevent stale recreation.  These
-ownership results are independent of the stricter numerical and allocation
-gate imposed on the attention consumer.
+ownership results remain independent of consumer numerical and allocation
+gates even though all three declared scopes now pass them.
 
 HF wires ownership into its synchronous model request and passes concurrent
 borrowing, exact-once finish/cancel/error release, stale-generation,
-offload/restore, termination, and tombstone controls.  Its stronger non-packing
-consumer is nevertheless a strict negative result.  On Qwen2.5-1.5B FP16 on
+offload/restore, termination, and tombstone controls.  On Qwen2.5-1.5B FP16 on
 the RTX host, task-02 turn 4 retains 2,907/3,081 tokens (94.35\%), preserves
 original positions, re-encodes no history, and uses zero persistent interval-
-pack bytes.  The single greedy token matches, but maximum logit delta is
-0.029785 against the predeclared 0.001 tolerance.  Direct FP16 score products
-overflow; the stable portable workaround casts bounded 256-token K/V tiles to
-FP32 and therefore copies 337,125,376 cumulative scratch bytes, with a
-524,288-byte maximum tile and 69,099,520 transient-attention bytes.  HF remains
-blocked until a fused/native disjoint consumer, or an equally strict no-copy
-formulation, clears the numerical gate.
+pack bytes.  The corrected two-pass consumer scales the request-local query,
+uses native SDPA on each storage-alias K/V view, and combines their probability
+mass in FP32.  It casts or copies no selected K/V: cumulative K/V scratch and
+maximum K/V tile bytes both fall from 337,125,376 and 524,288 to zero.  Bounded
+score/probability state remains explicit at 34,062,336 logical bytes.  Against a
+packed-value oracle with the identical causal segments, positions, and consumer,
+maximum logit delta is 0.0, clearing the predeclared 0.001 gate.  The path is
+correct but unfused; no latency advantage is claimed.
 
-MLX-LM shows the same separation on Qwen3-0.6B 4-bit.  For task-02 turn 4,
-six disjoint interval views retain 2,907/3,081 tokens with zero selected-history
-re-encoding, zero selection pack bytes, and zero allocator delta.  Alias
-construction takes 0.639~ms; the dense packed reference takes 6.578~ms and
-allocates 333,398,016 bytes.  Yet first-layer consumption peaks 12,511,756 bytes
-for 11,907,072 bytes of selected layer K/V and reaches maximum logit delta 1.0
-against the 0.005 gate.  The ordinary ownership, exact-once release,
-stale-generation, offload/restore, termination, and tombstone checks pass, but
-the engine gate correctly remains false until a fused interval-addressed Metal
-attention kernel removes both the selected-K/V-sized transient and numerical
-drift.  Lossless offload separately serializes 706,726,451 bytes.
+MLX-LM uses the same Metal consumer directly on Qwen3-0.6B 4-bit.  For task-02
+turn 4, six intervals retain 2,907/3,081 tokens with zero selected-history
+re-encoding, zero selection pack bytes, and zero allocator delta.  The kernel
+addresses those intervals in the original canonical arrays and reduces
+first-layer peak delta from 12,511,756 to 19,371 bytes (0.163\% of the
+11,907,072-byte selected layer).  The packed-value matched-consumer oracle is
+final-logit exact (0.0 versus the 0.005 gate), and ownership, exact-once release,
+stale-generation, offload/restore, termination, and tombstone checks all pass.
+Lossless offload separately serializes 706,726,451 bytes.  The earlier 1.0
+cross-consumer logit delta remains a useful warning: changing from MLX's dense
+SDPA to a different reduction while also changing storage did not isolate
+selection correctness.
+
+This correction adds a fifth entry to the superseded-evidence ledger.  A
+same-subset comparison must hold the consumer fixed.  The older HF, MLX, and
+SGLang rows simultaneously changed storage realization and attention reduction;
+their logit deltas therefore diagnose cross-kernel rounding, while their measured
+K/V copies and transients remain valid implementation defects.  The replacement
+oracles are intentionally allowed to pack values, but preserve the candidate's
+logical segment boundaries and original positions and execute the same consumer.
 
 The agent SDK now carries a typed, request-scoped retention contract under
 \path{pra.metadata.retention_policy}.  It controls the minimum number of
@@ -4023,18 +4043,18 @@ identities and recency floors.  Restoring one omitted source-view bundle
 causally recovers task 03's efficient command and directionally improves task
 04, where current-hypothesis state is additionally required; the typed
 \texttt{recent\_progress\_turns} floor now preserves that state in the frozen
-90\% regression.  HF ownership lifecycle and vLLM-Metal's complete engine
-lifecycle gate pass.  HF's portable non-packing consumer remains blocked by
-logit drift and bounded FP32 K/V tile copies.  A bounded vLLM 0.28 CUDA scheduler
-hook additionally demonstrates genuine
+90\% regression.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
+consumer and lifecycle scopes.  HF's two-pass path eliminates K/V casts and is
+matched-consumer logit exact, but remains unfused and carries bounded score
+state.  A bounded vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
 existing-page aliasing with zero K/V copy, host-to-device transfer, or selected-
 history re-encoding on task-02 turn 4 and its lifecycle smoke.  It is not yet a
 general product path: multiprocess execution, hybrid K/V groups, partial pages,
 full-trajectory coverage, and runtime economics remain open.  MLX and SGLang
-construct disjoint source aliases without selection-time packing, but their
-current attention consumers allocate approximately one selected layer's K/V
-and exceed the strict same-subset logit tolerance; their combined gates remain
-closed pending fused interval-addressed Metal kernels.  Under the
+now consume the canonical source plus interval descriptors through one fused
+Metal kernel: their measured first-layer transient falls from roughly one
+selected K/V layer to 19,371 bytes and both are matched-consumer logit exact.
+End-to-end agent runs and broader batch/model geometry remain open.  Under the
 RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
 cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
 Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks

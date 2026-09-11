@@ -15,14 +15,18 @@ import numpy as np
 
 from pra_hf.live_history import LiveKVSelectionPlan
 from pra_mlx.native import (
+    MLXDisjointLayerKV,
     MLXDisjointNativeMemory,
+    MLXNativeLayerKV,
     MLXNativeMemory,
+    MLXResidentKVSelection,
     capture_live_native_memory,
     disjoint_segmented_selected_attention,
 )
 from pra_sglang.mlx_native import (
     SGLangMLXLiveKVRuntime,
     SGLangMLXNativeBridge,
+    SGLangNativeRequest,
     SGLangSelectedKVCache,
 )
 
@@ -259,6 +263,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             probe_local_keys,
             probe_local_values,
             scale=float(attention.scale),
+            source_keys=first_layer.source_keys,
+            source_values=first_layer.source_values,
+            source_intervals=first_layer.intervals,
         )
         mx.eval(probe_output)
         attention_active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
@@ -292,6 +299,43 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         for value in (layer.keys, layer.values)
     ]
     mx.eval(*dense_arrays)
+    if use_disjoint:
+        compact_intervals = []
+        cursor = 0
+        for interval in plan.intervals:
+            width = interval.end - interval.start
+            compact_intervals.append((cursor, cursor + width))
+            cursor += width
+        packed_layers = []
+        for layer in reference.selection.memory.layers:
+            segments = tuple(
+                MLXNativeLayerKV(
+                    layer.keys[:, :, start:end, :],
+                    layer.values[:, :, start:end, :],
+                )
+                for start, end in compact_intervals
+            )
+            packed_layers.append(
+                MLXDisjointLayerKV(
+                    segments,
+                    source_keys=layer.keys,
+                    source_values=layer.values,
+                    intervals=tuple(compact_intervals),
+                )
+            )
+        matched_memory = MLXDisjointNativeMemory(
+            tuple(packed_layers), plan.source_tokens
+        )
+        reference.selection = MLXResidentKVSelection(
+            matched_memory, plan, physical_kv_copy=True
+        )
+        registered = bridge._requests[reference.request_id]
+        bridge._requests[reference.request_id] = SGLangNativeRequest(
+            matched_memory,
+            registered.source_position_base,
+            registered.logical_keys,
+            registered.storage_pinned,
+        )
     dense_elapsed_ms = (time.perf_counter_ns() - dense_started_ns) / 1_000_000
 
     candidate_tokens, candidate_logits = _generate_with_logits(
@@ -540,11 +584,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "has_holes": plan.has_holes,
         "materialization_policy": args.materialization_policy,
         "physical_kv_copy": (
-            True
+            bool(
+                disjoint_attention_allocation[
+                    "full_selected_kv_sized_allocation_observed"
+                ]
+            )
             if use_disjoint
-            and disjoint_attention_allocation[
-                "full_selected_kv_sized_allocation_observed"
-            ]
             else candidate.selection.physical_kv_copy
         ),
         "runtime_physical_kv_copy_report": candidate.selection.physical_kv_copy,
@@ -552,9 +597,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             False if use_disjoint else candidate.selection.physical_kv_copy
         ),
         "physical_kv_copy_qualification": (
-            "measured_alias_at_selection_but_full_kv_sized_allocation_at_attention"
+            "qualified_zero_copy_interval_addressed_metal"
             if use_disjoint
             else "measured_explicit_interval_pack"
+        ),
+        "consumer_implementation": (
+            "fused_interval_addressed_metal" if use_disjoint else "sglang_mlx_dense"
+        ),
+        "reference_condition": (
+            "packed-value oracle with identical segment boundaries, original "
+            "positions, and Metal consumer"
+            if use_disjoint
+            else "packed dense oracle"
         ),
         "selected_kv_segments": len(plan.intervals),
         "selection_pack_bytes": (
@@ -584,13 +638,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
             ),
         },
-        "required_runtime_fix": (
-            "fused interval-addressed SGLang-MLX Metal attention kernel that "
-            "consumes disjoint source-owner/Radix-isolated K/V ranges without "
-            "packing or a selected-K/V-sized transient"
-            if use_disjoint
-            else None
-        ),
+        "required_runtime_fix": None,
         "selected_text_reencoded_tokens": (
             candidate.selection.selected_text_reencoded_tokens
         ),
