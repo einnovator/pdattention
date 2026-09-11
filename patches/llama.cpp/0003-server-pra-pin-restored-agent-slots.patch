@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: PRA Runtime <pra-runtime@example.invalid>
+Date: Fri, 11 Sep 2026 00:00:00 +0000
+Subject: [PATCH] server: restore PRA slot ownership atomically
+
+Allow a slot restore request to mark the restored sequence as a pinned PRA
+resource before it becomes visible to unified-KV idle-slot reclamation.  This
+avoids a token-evaluation request whose sole purpose would be to reassert the
+pin after disk offload.
+---
+ tools/server/server-context.cpp | 3 +++
+ tools/server/server-task.h      | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -188,5 +188,6 @@ struct server_task {
+     struct slot_action {
+         int id_slot;
+         std::string filename;
+         std::string filepath;
++        bool pra_pin_resource = false;
+     };
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -2888,3 +2888,4 @@ struct server_context {
+                         slot->prompt.clear();
+                         slot->prompt.tokens = std::move(restored);
++                        slot->pra_resource_pinned = task.slot_action.pra_pin_resource;
+                     } catch (const std::exception & err) {
+@@ -5657,17 +5658,19 @@ std::unique_ptr<server_res_generator> server_routes::handle_slots_restore(const
+     auto res = create_response();
+     const json request_data = json::parse(req.body);
+     std::string filename = request_data.at("filename");
++    const bool pra_pin_resource = json_value(request_data, "pra_pin_resource", false);
+     if (!fs_validate_filename(filename)) {
+         res->error(format_error_response("Invalid filename", ERROR_TYPE_INVALID_REQUEST));
+         return res;
+     }
+     std::string filepath = params.slot_save_path + filename;
+ 
+     auto & rd = res->rd;
+     {
+         server_task task(SERVER_TASK_TYPE_SLOT_RESTORE);
+         task.id = rd.get_new_id();
+         task.slot_action.id_slot  = id_slot;
+         task.slot_action.filename = filename;
+         task.slot_action.filepath = filepath;
++        task.slot_action.pra_pin_resource = pra_pin_resource;
+         rd.post_task(std::move(task));
+-- 
+2.50.1
