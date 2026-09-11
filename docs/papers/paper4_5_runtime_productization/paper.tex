@@ -3374,18 +3374,21 @@ large observation, motivating both a \texttt{recent\_source\_turns} floor and
 hierarchical within-record selection rather than either dropping or retaining
 the entire source view.
 
-The next expansion is deliberately frozen.  HF, MLX, vLLM, and SGLang must
-complete the same engine-qualification ladder already required of llama.cpp.
-Its first rung requires that the ordinary and PRA continuations fork from the
-same engine-resident K/V, 100\% selection is a semantic no-op, selected history
-is never tokenized or prefilled again, source positions and stable causal-record
-identities survive, and request membership does not mutate source ownership.
+The cross-engine expansion follows the same qualification ladder already
+required of llama.cpp.  Its first rung requires that ordinary and PRA
+continuations fork from the same engine-resident K/V, 100\% selection is a
+semantic no-op, selected history is never tokenized or prefilled again, source
+positions and stable causal-record identities survive, and request membership
+does not mutate source ownership.  HF and vLLM-Metal now clear request-owned
+lifecycle controls; the bounded vLLM CUDA scheduler alias clears them in its
+declared scope.  The newest MLX and SGLang disjoint-consumption candidates remain
+blocked by numerical and allocation gates.
 The earlier rows in
 Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
 independently reconstructed cache and consequently remain rematerialization
 diagnostics, not this qualification.
 
-The corrected same-state probes now pass for HF and MLX.
+The corrected same-state probes pass for HF and MLX.
 On the frozen task-02 agent transcript, Transformers 5.17/PyTorch 2.14 with
 Qwen2.5-0.5B-Instruct FP16 on MPS and MLX-LM 0.31.3 with Qwen3-0.6B 4-bit each
 match the ordinary continuation on all 10 tested turns with zero maximum logit
@@ -3398,110 +3401,96 @@ reference consuming the identical selected K/V and original source positions:
 re-encoding.  A corrected causal-floor rerun at the same repository revision
 also passes 7/7 for each engine.  Its selected/source ratios range from
 90.32\% to 95.66\% (mean 92.88\%), so the nominal 90\% setting is now a floor
-rather than the 67.1--94.4\% ceiling behavior of the superseded planner.  Both
-implementations currently concatenate disjoint K/V tensors, however, so all
-seven sparse turns incur a physical K/V copy.  They clear semantic sparse-
-position correctness and cross-engine logical-selection agreement, not the
-zero-copy or lifecycle gates.
+rather than the 67.1--94.4\% ceiling behavior of the superseded planner.  The
+packed reference paths clear semantic sparse-position correctness and
+cross-engine logical-selection agreement; selection, consumption, and
+lifecycle are evaluated separately below rather than inheriting qualification
+from those results.
 
 The corrected vLLM-Metal bridge now runs matched release packages: vLLM
 0.29.0+cpu and vLLM-Metal 0.29.0, with native shared-library and Metal-library
 hashes captured from the active environment and source revision
-\texttt{73908058}.  Full retention matches 10/10 turns.  At requested 90\%, all
-seven eligible sparse turns match an independent request borrowing the same
-scheduler-owned pages at the same original position extent.  Logical realized
-retention ranges from 90.36\% to 95.68\% (mean 92.92\%); complete-page physical
-retention ranges from 90.48\% to 96.03\% (mean 93.15\%).  The bridge re-encodes
-no selected-history tokens and copies no K/V.  This removes the earlier mixed-
-package blocker; explicit cancellation, eviction, and shared-page lifetime
-tests still block vLLM-Metal promotion.  A parallel bounded vLLM 0.28 CUDA gate
-on an RTX 5060 now runs Qwen2.5-1.5B within its native 32,768-token window.  All
-seven eligible task-02 turns preserve genuine positional holes and the original
-source extent, realize 90.48--96.03\% retention, and match a reference borrowing
-the identical selected resident pages, with zero selected-text re-encoding.
-The 56 continuation tokens contain 24 distinct token IDs, excluding the
-degenerate out-of-window behavior found in an earlier TinyLlama diagnostic.
-Two simultaneous borrowers share the resident pages.  A real mid-generation
-cancellation changes the reference count from two to one, leaves the survivor
-exactly equal to a standalone control, and releases the final borrower at
-completion.  Stale-generation attachment is rejected, while HOT eviction and
-lossless restore preserve the K/V hash, reuse the same page identities, and
-reproduce the continuation on 7/7 turns.  Initial selection still gathers and
-copies K/V; across the seven turns materialization and later restore each move
-804,651,008 bytes.  The hook is version bounded, synchronous host persistence
-is not a full asynchronous tier manager, and vLLM 0.28's deferred offline
-finish callbacks require reconciliation against an authoritative scheduler
-snapshot.  This therefore qualifies the bounded CUDA mechanism and lifecycle,
-not an upstream production integration or a zero-copy selector.
+\texttt{73908058}.  Full retention matches 10/10 turns, and the seven eligible
+requested-90\% turns match an identical selected-page reference.  A real
+request-owned lifecycle gate on task-02 turn 4 retains 2,944/3,104 page tokens
+(94.85\%) with holes and original position extent 3,104.  All 24 checks pass:
+two requests alias the exact source block IDs, active memory does not increase,
+request attachment records zero copy events, selected history is not
+re-encoded, finish/cancel/error release is exact-once, stale generations are
+rejected, and termination and tombstones are enforced.  Lossless offload and
+restore move 712,002,099 bytes and preserve the source fingerprint and output;
+that residency transfer is reported separately from zero-copy request
+attachment.
 
-A source-level audit of pinned vLLM 0.28 establishes why the remaining CUDA
-copy cannot be removed inside the connector alone.  The connector may pin
-\texttt{BlockPool} pages and observe reference counts, but its external-match
-contract returns only a token count.  \texttt{KVCacheManager} then allocates
-fresh destination blocks, connector metadata is explicitly forbidden from
-modifying \texttt{SchedulerOutput}, and worker block tables are populated only
-from scheduler-owned request block IDs.  Rewriting a worker table would leave
-the scheduler's ownership map unaware and is therefore rejected as a product
-implementation.  True zero-copy needs an upstream existing-block alias
-contract that atomically pins supplied pages, installs them in the request's
-authoritative block table, carries selected length separately from original
-position extent, and releases borrower references on every terminal path.
-Until that contract exists, the 804,651,008-byte first materialization is a
-measured limitation rather than a hidden zero-copy claim.
+The first vLLM 0.28 CUDA worker-side prototype was useful but copied
+804,651,008 bytes across the seven-turn frozen probe.  Source audit localized
+the problem: an external connector match returns only a token count, after
+which \texttt{KVCacheManager} ordinarily allocates a fresh request table.  The
+replacement integration therefore runs one boundary earlier, at
+\texttt{Scheduler.\_get\_local\_prefix\_cache\_hit} before
+\texttt{allocate\_slots}, and installs the source request's existing
+\texttt{KVCacheBlock} objects in the authoritative scheduler table.  On an RTX
+5060 with vLLM 0.28 and Qwen2.5-1.5B, task-02 turn 4 retains 2,944/3,104 tokens
+(94.85\%); two consumers are same-subset exact and K/V-copy, host-to-device,
+and selected-history-re-encoding counters are all zero.  A separate three-page
+mechanism smoke exercises concurrent completion, real cancellation, injected
+scheduler error, stale-generation rejection, borrowed and deferred eviction,
+and exact-once release: five aliases are installed and five are released, with
+final page reference counts zero.  This is a bounded zero-copy result, not a
+general vLLM claim: it requires in-process V1, complete pages, and one
+homogeneous K/V group.  Partial pages, hybrid groups, multiprocess
+scheduler/worker execution, the full seven-turn trajectory, and runtime
+economics remain unqualified.
 
-SGLang-MLX likewise now matches all 10 turns with zero selected-history
-re-encoding and zero K/V copy.  This gate exposed a comparison bug first: an
-ordinary full re-prefill matched only 7/10 continuations and diverged after 9 or
-more generated tokens in the other three.  Continuing the ordinary fork from
-the captured source request, while pinning that source owner until both forks
-complete, restores 10/10 exactness.  Thus the 7/10 result diagnoses
-rematerialization drift rather than selected-K/V corruption.  With RadixCache
-enabled, its requested-90\% sparse probe now also matches 7/7 same-subset
-reference continuations at original positions and performs no selected-text
-re-encoding.  The corrected causal-floor rerun again matches 7/7 and realizes
-the same 90.32--95.66\% range (92.88\% mean) as HF and MLX, confirming that the
-three adapters consume one frozen logical plan.  Like those implementations,
-SGLang physically concatenates the selected K/V on all seven turns.  It
-therefore clears semantic sparse-position, planner, and radix-interoperation
-probes.  A real request-owned SGLang-MLX/Radix lifecycle run then passes all
-22 checks on task-02 turn 4: 2,907/3,081 selected tokens (94.35\%), zero selected-
-history re-encoding, identical reference, concurrent-survivor, and restored
-token IDs, and exact restored K/V hash.  Finish/cancel/error release is exact-
-once; source-owner removal, eviction, and offload are rejected while borrowed;
-stale generation and termination tombstones are enforced; and request-local
-selected wrappers never enter RadixCache.  Original position base 3,081,
-39 local suffix tokens, and attention position 3,120 remain distinct.  The
-706,726,451-byte lossless payload and disjoint pack still copy K/V, so lifecycle
-is qualified while zero-copy materialization remains provisional.
+SGLang-MLX likewise matches the earlier full-retention and packed same-subset
+references while keeping selected-history re-encoding at zero.  Its real
+request-owned task-02 lifecycle checks also preserve Radix/source-owner
+isolation, reject removal, eviction, or offload while borrowed, and enforce
+exact-once terminal release, stale-generation rejection, restoration, and
+tombstones.  The stronger disjoint-selection experiment reveals the remaining
+boundary.  For six intervals and 2,907/3,081 selected tokens (94.35\%), selection
+constructs source aliases with zero pack bytes and zero allocator delta in
+0.581~ms, versus 8.303~ms and 333,398,016 bytes for the dense packed reference.
+Consumption is not yet qualified: first-layer attention peaks 12,199,774 bytes
+for 11,907,072 bytes of selected layer K/V, and its maximum same-subset logit
+delta is 1.109375 against the predeclared 0.005 tolerance.  Thus 24/24
+non-consumption checks pass, but the two strict consumption gates fail.  A fused
+interval-addressed SGLang-MLX Metal kernel is required before this path can be
+called zero-copy.
 
-The shared lifecycle registry has now been exercised over real task-02 selected
-cache objects for HF, MLX, and SGLang.  Each engine passes all eight registry-
-level checks: two borrowers share one canonical object; eviction is rejected
-with either two or one active borrower; cancelling one borrower preserves the
-other; an idle object offloads; lossless restore reproduces its fingerprint;
-active termination cleans up; and a tombstone prevents stale recreation.  The
-lossless host payload is 35,736,595 bytes for HF and 666,815,027 bytes for each
-MLX-derived path.
+The shared lifecycle registry has been exercised over real task-02 selected
+cache objects for HF, MLX, and SGLang.  Two borrowers share one canonical
+object; eviction is rejected while borrowed; cancelling one borrower preserves
+the other; idle objects offload; lossless restore reproduces their fingerprints;
+active termination cleans up; and tombstones prevent stale recreation.  These
+ownership results are independent of the stricter numerical and allocation
+gate imposed on the attention consumer.
 
-HF now goes one rung further by wiring ownership into its synchronous model
-request.  On a real requested-90\% task-02 turn it retains 2,907/3,081 source
-tokens (94.35\%) with holes and original position base 3,081.  Two independent
-same-subset generations, and another after byte offload and restore, are token-
-exact with zero maximum logit delta.  Concurrent borrowing, exact-once normal
-finish and cooperative cancellation, stale-generation rejection, active
-termination, and tombstone rejection all pass while selected-history re-
-encoding remains zero.  The 37,874,707-byte lossless payload and sparse tensor
-selection still involve physical K/V copying, so this qualifies request-owned
-lifecycle correctness, not zero-copy sparse materialization.
+HF wires ownership into its synchronous model request and passes concurrent
+borrowing, exact-once finish/cancel/error release, stale-generation,
+offload/restore, termination, and tombstone controls.  Its stronger non-packing
+consumer is nevertheless a strict negative result.  On Qwen2.5-1.5B FP16 on
+the RTX host, task-02 turn 4 retains 2,907/3,081 tokens (94.35\%), preserves
+original positions, re-encodes no history, and uses zero persistent interval-
+pack bytes.  The single greedy token matches, but maximum logit delta is
+0.029785 against the predeclared 0.001 tolerance.  Direct FP16 score products
+overflow; the stable portable workaround casts bounded 256-token K/V tiles to
+FP32 and therefore copies 337,125,376 cumulative scratch bytes, with a
+524,288-byte maximum tile and 69,099,520 transient-attention bytes.  HF remains
+blocked until a fused/native disjoint consumer, or an equally strict no-copy
+formulation, clears the numerical gate.
 
-MLX-LM now passes the analogous real request-owned gate on the same frozen
-task-02 turn.  Qwen3-0.6B 4-bit retains 2,907/3,081 tokens (94.35\%) with
-original position base 3,081 and no selected-history re-encoding.  Same-subset
-and post-restore generations are token- and logit-exact; concurrent borrowing,
-exact-once finish/cancel/error release, stale-generation rejection, termination,
-and tombstone checks all pass.  Portable disjoint selection still packs K/V,
-and lossless offload serializes 706,726,451 bytes, so MLX lifecycle correctness
-also remains distinct from zero-copy materialization.
+MLX-LM shows the same separation on Qwen3-0.6B 4-bit.  For task-02 turn 4,
+six disjoint interval views retain 2,907/3,081 tokens with zero selected-history
+re-encoding, zero selection pack bytes, and zero allocator delta.  Alias
+construction takes 0.639~ms; the dense packed reference takes 6.578~ms and
+allocates 333,398,016 bytes.  Yet first-layer consumption peaks 12,511,756 bytes
+for 11,907,072 bytes of selected layer K/V and reaches maximum logit delta 1.0
+against the 0.005 gate.  The ordinary ownership, exact-once release,
+stale-generation, offload/restore, termination, and tombstone checks pass, but
+the engine gate correctly remains false until a fused interval-addressed Metal
+attention kernel removes both the selected-K/V-sized transient and numerical
+drift.  Lossless offload separately serializes 706,726,451 bytes.
 
 The agent SDK now carries a typed, request-scoped retention contract under
 \path{pra.metadata.retention_policy}.  It controls the minimum number of
@@ -3528,6 +3517,20 @@ identity and task outcome rather than assumed to be response-identical.  The
 two 75\% rows (without and with the adaptor) are admitted independently only
 when all three predeclared tasks pass at 90\% in their matching engine,
 selector, materializer, and adaptor cell.
+
+The executable Easy-3 card freezes the first three historical baseline-success
+instances and expands them task-major into 15 cells: one No-PRA control and
+four PRA cells (100\% and 90\%, each without and with a frozen adaptor) per
+task.  Temperature is zero, seed is zero, top-$p$ is one, the direct llama.cpp
+engine runs on the 48~GiB M4 host, and mini-swe-agent runs separately.  Receipt
+preparation yields nine configuration-qualified no-adaptor cells and six
+blocked adaptor cells; no task execution is counted by this preparation step.
+Here ``adaptor'' has the narrow scientific meaning of a learned causal-record
+routing/selection model applied before the K/V subset is frozen.  Structural
+model mapping, prompt guidance, memory-consumption LoRA, and frozen replay are
+not adaptor arms.  Because no certified Qwen3-Coder-30B bundle or typed
+injection path exists, the six learned-adaptor cells fail closed rather than
+silently falling back to the no-adaptor policy.
 
 The first 90\% retention-window diagnostic keeps two mutation and two
 verification turns fixed while varying completed-turn recency. The H10 and H5
@@ -3961,12 +3964,18 @@ identities and recency floors.  Restoring one omitted source-view bundle
 causally recovers task 03's efficient command and directionally improves task
 04, where current-hypothesis state is additionally required; the typed
 \texttt{recent\_progress\_turns} floor now preserves that state in the frozen
-90\% regression.  HF, MLX, and SGLang-MLX/Radix now pass request-owned sparse
-lifecycle gates, and bounded vLLM CUDA passes native-window same-subset,
-cancellation, stale-generation, and eviction/restore gates.  None of these
-copying paths is yet a general zero-copy product: HF, MLX, and SGLang pack
-disjoint selected tensors, while vLLM 0.28 lacks a scheduler-supported
-existing-block alias contract. Under the
+90\% regression.  HF ownership lifecycle and vLLM-Metal's complete engine
+lifecycle gate pass.  HF's portable non-packing consumer remains blocked by
+logit drift and bounded FP32 K/V tile copies.  A bounded vLLM 0.28 CUDA scheduler
+hook additionally demonstrates genuine
+existing-page aliasing with zero K/V copy, host-to-device transfer, or selected-
+history re-encoding on task-02 turn 4 and its lifecycle smoke.  It is not yet a
+general product path: multiprocess execution, hybrid K/V groups, partial pages,
+full-trajectory coverage, and runtime economics remain open.  MLX and SGLang
+construct disjoint source aliases without selection-time packing, but their
+current attention consumers allocate approximately one selected layer's K/V
+and exceed the strict same-subset logit tolerance; their combined gates remain
+closed pending fused interval-addressed Metal kernels.  Under the
 RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
 cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
 Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks
@@ -3976,7 +3985,6 @@ conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
 
-\appendix
 \appendix
 \section{Reimplementation Guide}
 

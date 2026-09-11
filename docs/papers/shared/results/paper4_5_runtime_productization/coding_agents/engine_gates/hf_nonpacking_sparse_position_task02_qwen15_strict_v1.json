@@ -1,0 +1,114 @@
+{
+  "schema_version": "paper4.5.agent-history-kv-gate.v1",
+  "probe": "hf_same_state_live_agent_kv",
+  "engine": "transformers-pytorch",
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "model_source": "C:\\Users\\killu\\.cache\\huggingface\\hub\\models--Qwen--Qwen2.5-1.5B-Instruct\\snapshots\\989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "torch_version": "2.13.0+cu130",
+  "transformers_version": "4.57.6",
+  "python_version": "3.10.11",
+  "device": "cuda",
+  "dtype": "float16",
+  "trajectory": "C:\\Users\\killu\\task02.traj.json",
+  "trajectory_sha256": "e6b58ba69831b1356422ede459dbb947a8c108dfdad14cc0606754645b41bff3",
+  "implementation_sha256": "9ca5f80703c0dbe1140c70a589cbb1a2fa033c4512c54b531e5f730cbfb761d1",
+  "retention_fraction": 0.9,
+  "adaptor": "none",
+  "same_resident_kv_fork": true,
+  "completed_turns": 1,
+  "exact_turns": 1,
+  "all_exact": true,
+  "zero_selected_text_reencoding": true,
+  "zero_physical_kv_copy": false,
+  "zero_persistent_interval_pack": true,
+  "zero_interval_pack_bytes": true,
+  "transient_attention_bytes": 69099520,
+  "transient_kv_copy_bytes": 337125376,
+  "max_transient_kv_tile_bytes": 524288,
+  "first_divergent_turn": null,
+  "reference_condition": "dense packed oracle consuming the identical selected K/V subset under an explicit original-position causal mask",
+  "sparse_numerical_policy": "256-token tiled fp32 score/value accumulation with online softmax",
+  "sparse_turns": 1,
+  "rows": [
+    {
+      "turn": 4,
+      "source_tokens": 3081,
+      "wire_suffix_tokens": 32,
+      "source_prefix_reused_tokens": 2072,
+      "selected_kv_tokens": 2907,
+      "source_position_base": 3081,
+      "decode_position_start": 3081,
+      "decode_position_end": 3113,
+      "has_holes": true,
+      "selection_plan": {
+        "source_tokens": 3081,
+        "source_position_base": 3081,
+        "selected_tokens": 2907,
+        "full_retention": false,
+        "has_holes": true,
+        "intervals": [
+          {
+            "start": 0,
+            "end": 116,
+            "record_id": "message:0:system",
+            "causal_group_id": "preamble"
+          },
+          {
+            "start": 116,
+            "end": 1680,
+            "record_id": "message:1:user",
+            "causal_group_id": "preamble"
+          },
+          {
+            "start": 1854,
+            "end": 1946,
+            "record_id": "message:4:assistant",
+            "causal_group_id": "turn:4"
+          },
+          {
+            "start": 1946,
+            "end": 2101,
+            "record_id": "message:5:user",
+            "causal_group_id": "turn:4"
+          },
+          {
+            "start": 2101,
+            "end": 2176,
+            "record_id": "message:6:assistant",
+            "causal_group_id": "turn:6"
+          },
+          {
+            "start": 2176,
+            "end": 3081,
+            "record_id": "message:7:user",
+            "causal_group_id": "turn:6"
+          }
+        ]
+      },
+      "selected_text_reencoded_tokens": 0,
+      "physical_kv_copy": true,
+      "persistent_interval_pack": false,
+      "interval_pack_bytes": 0,
+      "transient_attention_bytes": 69099520,
+      "transient_kv_copy_bytes": 337125376,
+      "max_transient_kv_tile_bytes": 524288,
+      "token_exact": true,
+      "max_abs_logit_delta": 0.02978515625,
+      "ordinary_token_ids": [
+        3617
+      ],
+      "pra_token_ids": [
+        3617
+      ]
+    }
+  ],
+  "max_abs_logit_delta": 0.02978515625,
+  "logit_tolerance": 0.001,
+  "logits_within_tolerance": false,
+  "sparse_position_gate_valid": false,
+  "zero_copy_engine_gate_valid": false,
+  "qualification_blockers": [
+    "max_abs_logit_delta_exceeds_tolerance",
+    "bounded_fp32_kv_tile_copy_requires_fused_native_sparse_attention"
+  ]
+}

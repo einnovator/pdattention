@@ -18,12 +18,16 @@ from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_hf.live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 from pra_hf.storage_lifecycle import PRAStorageManager
 from pra_mlx.native import (
+    MLXDisjointLayerKV,
+    MLXDisjointNativeMemory,
     MLXNativeLayerKV,
     MLXNativeMemory,
     MLXResidentKVSelection,
     capture_live_native_memory,
     combine_native_memories,
     deserialize_native_memory,
+    disjoint_segmented_selected_attention,
+    select_live_native_memory_disjoint,
     serialize_native_memory,
 )
 from pra_sglang.hicache import SGLangPRAHiCache
@@ -61,7 +65,7 @@ class SGLangSelectedKVCache:
     def __init__(
         self,
         local_cache: object,
-        memory: MLXNativeLayerKV,
+        memory: MLXNativeLayerKV | MLXDisjointLayerKV,
         *,
         position_base: int,
     ) -> None:
@@ -86,7 +90,13 @@ class SGLangSelectedKVCache:
 
     @property
     def memory_tokens(self) -> int:
+        if isinstance(self.memory, MLXDisjointLayerKV):
+            return self.memory.tokens
         return int(self.memory.keys.shape[2])
+
+    @property
+    def disjoint(self) -> bool:
+        return isinstance(self.memory, MLXDisjointLayerKV)
 
     @property
     def keys(self):
@@ -103,6 +113,13 @@ class SGLangSelectedKVCache:
         local = self.local_cache.state
         if not isinstance(local, tuple):
             local = tuple(local)
+        if self.disjoint:
+            selected = tuple(
+                value
+                for segment in self.memory.segments
+                for value in (segment.keys, segment.values)
+            )
+            return (*selected, *local)
         return (self.memory.keys, self.memory.values, *local)
 
     def reset(self) -> None:
@@ -110,6 +127,11 @@ class SGLangSelectedKVCache:
 
     def update_and_fetch(self, keys, values):
         import mlx.core as mx
+
+        if self.disjoint:
+            raise RuntimeError(
+                "Disjoint SGLang PRA cache requires interval-addressed attention."
+            )
 
         prior_offset = self.offset
         local_k, local_v = self.local_cache.update_and_fetch(keys, values)
@@ -125,12 +147,30 @@ class SGLangSelectedKVCache:
             mx.concatenate((self.memory.values, local_v), axis=2),
         )
 
+    def update_and_fetch_segments(self, keys, values):
+        """Update request-local K/V while retaining source intervals separately."""
+
+        if not self.disjoint:
+            raise RuntimeError("Dense SGLang PRA cache has no disjoint segments.")
+        local_k, local_v = self.local_cache.update_and_fetch(keys, values)
+        return (
+            tuple(segment.keys for segment in self.memory.segments),
+            tuple(segment.values for segment in self.memory.segments),
+            local_k,
+            local_v,
+        )
+
     def write_token(self, keys, values) -> None:
         self.local_cache.write_token(keys, values)
 
     def get_kv(self, window: int | None = None):
         import mlx.core as mx
 
+        if self.disjoint:
+            raise RuntimeError(
+                "Disjoint SGLang PRA cache cannot materialize get_kv(); "
+                "use interval-addressed attention."
+            )
         local_k, local_v = self.local_cache.get_kv(window)
         return (
             mx.concatenate((self.memory.keys, local_k), axis=2),
@@ -157,6 +197,97 @@ class SGLangSelectedKVCache:
         return mx.concatenate((selected, local), axis=1)
 
 
+def _base_attention(attention: object) -> object:
+    """Return the mlx-lm attention wrapped by SGLang's decode adapter."""
+
+    return getattr(attention, "_inner", attention)
+
+
+def _qwen_projections(attention: object, x: object):
+    """Project and normalize Qwen3 Q/K/V without changing model weights."""
+
+    base = _base_attention(attention)
+    batch, length, _ = x.shape
+    queries = base.q_proj(x)
+    keys = base.k_proj(x)
+    values = base.v_proj(x)
+    queries = base.q_norm(
+        queries.reshape(batch, length, base.n_heads, -1)
+    ).transpose(0, 2, 1, 3)
+    keys = base.k_norm(
+        keys.reshape(batch, length, base.n_kv_heads, -1)
+    ).transpose(0, 2, 1, 3)
+    values = values.reshape(batch, length, base.n_kv_heads, -1).transpose(
+        0, 2, 1, 3
+    )
+    return base, queries, keys, values
+
+
+def _disjoint_qwen_attention(
+    attention: object, x: object, cache: SGLangSelectedKVCache
+):
+    """Consume an unbatched SGLang request without packing source intervals."""
+
+    base, queries, keys, values = _qwen_projections(attention, x)
+    length = int(x.shape[1])
+    queries = base.rope(queries, offset=cache.rope_offset)
+    keys = base.rope(keys, offset=cache.rope_offset)
+    layer_mask = cache.make_mask(length, return_array=True)
+    memory_k, memory_v, local_k, local_v = cache.update_and_fetch_segments(
+        keys, values
+    )
+    output = disjoint_segmented_selected_attention(
+        queries,
+        memory_k,
+        memory_v,
+        local_k,
+        local_v,
+        scale=float(base.scale),
+        mask=layer_mask,
+    )
+    output = output.transpose(0, 2, 1, 3).reshape(x.shape[0], length, -1)
+    return base.o_proj(output)
+
+
+def _disjoint_qwen_batched_attention(
+    attention: object,
+    x: object,
+    context: object,
+    layer_caches: Sequence[SGLangSelectedKVCache],
+):
+    """Consume an all-disjoint SGLang decode batch one request at a time."""
+
+    import mlx.core as mx
+
+    base, queries, keys, values = _qwen_projections(attention, x)
+    offsets = context.offsets
+    queries = base.rope(queries, offset=offsets)
+    keys = base.rope(keys, offset=offsets)
+    rows = []
+    for index, cache in enumerate(layer_caches):
+        # SGLang normally uses write_token/get_kv during batched decode. The
+        # local cache protocol's update_and_fetch is equivalent here and lets
+        # the selected source intervals remain separate.
+        mask = cache.make_mask(1, return_array=True)
+        memory_k, memory_v, local_k, local_v = cache.update_and_fetch_segments(
+            keys[index : index + 1], values[index : index + 1]
+        )
+        rows.append(
+            disjoint_segmented_selected_attention(
+                queries[index : index + 1],
+                memory_k,
+                memory_v,
+                local_k,
+                local_v,
+                scale=float(base.scale),
+                mask=mask,
+            )
+        )
+    output = mx.concatenate(rows, axis=0)
+    output = output.transpose(0, 2, 1, 3).reshape(x.shape[0], 1, -1)
+    return base.o_proj(output)
+
+
 def install_selected_kv_attention(model: object) -> int:
     """Patch supported mlx-lm attention modules to consume the PRA cache view.
 
@@ -173,7 +304,38 @@ def install_selected_kv_attention(model: object) -> int:
 
         def __call__(self, x, mask=None, cache=None):
             if isinstance(cache, SGLangSelectedKVCache):
+                if cache.disjoint:
+                    return _disjoint_qwen_attention(self._inner, x, cache)
                 cache = cache.attention_view
+            # SGLang's batched decode passes shim caches through the model and
+            # keeps the real per-request caches in a thread-local context.
+            # Intercept an all-disjoint batch before MLXAttentionWrapper calls
+            # get_kv(), which would otherwise pack selected history.
+            try:
+                from sglang.srt.hardware_backend.mlx.kv_cache.attention_wrapper import (
+                    get_context,
+                )
+
+                context = get_context()
+            except (ImportError, AttributeError):
+                context = None
+            layer_index = getattr(self._inner, "_layer_idx", None)
+            if context is not None and layer_index is not None:
+                cache_index = context.attention_pool_index_by_layer[layer_index]
+                layer_caches = context.attention_layer_caches[cache_index]
+                disjoint = [
+                    isinstance(row, SGLangSelectedKVCache) and row.disjoint
+                    for row in layer_caches
+                ]
+                if any(disjoint):
+                    if not all(disjoint):
+                        raise RuntimeError(
+                            "A SGLang PRA decode batch cannot mix disjoint and "
+                            "ordinary cache protocols."
+                        )
+                    return _disjoint_qwen_batched_attention(
+                        self._inner, x, context, layer_caches
+                    )
             return self._inner(x, mask=mask, cache=cache)
 
     root = getattr(model, "model", model)
@@ -201,7 +363,7 @@ def install_selected_kv_attention(model: object) -> int:
 class SGLangNativeRequest:
     """Selected immutable memory registered for one SGLang request ID."""
 
-    memory: MLXNativeMemory
+    memory: MLXNativeMemory | MLXDisjointNativeMemory
     source_position_base: int
     logical_keys: tuple[str, ...] = ()
     storage_pinned: bool = False
@@ -301,7 +463,9 @@ class SGLangMLXNativeBridge:
     def register(
         self,
         req_id: str,
-        memory: MLXNativeMemory | MLXResidentKVSelection | None = None,
+        memory: (
+            MLXNativeMemory | MLXDisjointNativeMemory | MLXResidentKVSelection | None
+        ) = None,
         *,
         logical_keys: tuple[str, ...] = (),
         tenant_id: str | None = None,
@@ -350,8 +514,18 @@ class SGLangMLXNativeBridge:
         try:
             if len(memory.layers) != self.runner._cache_layout.num_layers:
                 raise ValueError("Selected memory does not match SGLang model layers.")
+            expected_tokens = (
+                live_selection.plan.selected_tokens
+                if live_selection is not None
+                else memory.source_tokens
+            )
             if any(
-                int(layer.keys.shape[2]) != memory.source_tokens
+                (
+                    layer.tokens
+                    if isinstance(layer, MLXDisjointLayerKV)
+                    else int(layer.keys.shape[2])
+                )
+                != expected_tokens
                 for layer in memory.layers
             ):
                 raise ValueError(
@@ -362,7 +536,7 @@ class SGLangMLXNativeBridge:
                 if source_position_base is None
                 else source_position_base
             )
-            if position_base < memory.source_tokens:
+            if position_base < expected_tokens:
                 raise ValueError(
                     "SGLang source_position_base cannot be smaller than selected K/V."
                 )
@@ -593,7 +767,8 @@ class SGLangMLXNativeBridge:
             "live_prefix_kv_subset": True,
             "source_positions_preserved": True,
             "zero_selected_text_reencoding": True,
-            "disjoint_selection_requires_pack_copy": True,
+            "disjoint_selection_requires_pack_copy": False,
+            "disjoint_attention_runtime_qualification_required": True,
             "physical_kv_copy_reported": True,
             "native_remove_request_terminal_hook": True,
             "source_owner_pin_guard": True,
@@ -752,6 +927,7 @@ class SGLangMLXLiveKVRuntime:
         tenant_id: str,
         session_id: str,
         expected_generation: int,
+        disjoint: bool = False,
     ) -> SGLangMLXLiveKVRequest:
         """Borrow and pin the source before constructing selected request K/V."""
 
@@ -770,7 +946,11 @@ class SGLangMLXLiveKVRuntime:
             )
             self.bridge.pin_source_owner(source.owner_request_id, request_key)
             try:
-                selection = _select_live_source_memory(source.memory, plan)
+                selection = (
+                    select_live_native_memory_disjoint(source.memory, plan)
+                    if disjoint
+                    else _select_live_source_memory(source.memory, plan)
+                )
                 request = SGLangMLXLiveKVRequest(
                     self,
                     request_key,
@@ -862,7 +1042,9 @@ class SGLangMLXLiveKVRuntime:
             return {
                 "active_request_ids": tuple(sorted(self._requests)),
                 "terminal_counts": dict(self._terminal_counts),
-                "physical_kv_copy_policy": "disjoint_interval_pack_only",
+                "physical_kv_copy_policy": (
+                    "dense_interval_pack_or_unqualified_disjoint_views"
+                ),
                 "selected_text_reencoded_tokens": 0,
             }
 

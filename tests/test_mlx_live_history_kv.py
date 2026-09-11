@@ -105,7 +105,13 @@ def _runtime() -> MLXLiveKVRuntime:
     return MLXLiveKVRuntime(dump=lambda value: value, load=lambda value: value)
 
 
-def _begin(runtime: MLXLiveKVRuntime, request_id: str, *, generation: int = 1):
+def _begin(
+    runtime: MLXLiveKVRuntime,
+    request_id: str,
+    *,
+    generation: int = 1,
+    segmented: bool = False,
+):
     return runtime.begin_request(
         request_id,
         "source",
@@ -113,6 +119,7 @@ def _begin(runtime: MLXLiveKVRuntime, request_id: str, *, generation: int = 1):
         tenant_id="tenant",
         session_id="session",
         expected_generation=generation,
+        segmented=segmented,
     )
 
 
@@ -136,6 +143,9 @@ def test_mlx_request_owns_borrow_through_decode_and_releases_once(fake_mlx) -> N
     assert result.selected_kv_tokens == 4
     assert result.selected_text_reencoded_tokens == 0
     assert result.physical_kv_copy is True
+    assert result.selected_kv_segments == 2
+    assert result.selection_pack_bytes == candidate.selection.memory.nbytes
+    assert result.materialization_policy == "dense_pack"
     assert model.position_offsets == [6, 8]
     assert candidate.outcome == "finished"
     assert candidate.finish() is False
@@ -221,3 +231,29 @@ def test_mlx_selection_failure_releases_source_borrow(fake_mlx) -> None:
         )
     assert runtime.registry.view("source").active_request_ids == ()
     assert runtime.snapshot()["active_request_ids"] == ()
+
+
+def test_mlx_disjoint_request_keeps_source_views_without_pack_copy(fake_mlx) -> None:
+    runtime = _runtime()
+    source = _memory()
+    runtime.register_source(
+        "source", source, tenant_id="tenant", session_id="session", generation=1
+    )
+
+    request = _begin(runtime, "segmented", segmented=True)
+    assert request.segmented is True
+    assert request.selection.physical_kv_copy is None
+    assert request.selection.plan.selected_tokens == 4
+    selected_layer = request.selection.memory.layers[0]
+    assert len(selected_layer.segments) == 2
+    assert np.shares_memory(selected_layer.segments[0].keys, source.layers[0].keys)
+    assert np.shares_memory(selected_layer.segments[1].values, source.layers[0].values)
+
+    result = request.generate(_DeterministicMLXModel(), [5], max_new_tokens=1)
+    assert result.token_ids == (3,)
+    assert result.selected_text_reencoded_tokens == 0
+    assert result.physical_kv_copy is None
+    assert result.selected_kv_segments == 2
+    assert result.selection_pack_bytes == 0
+    assert result.materialization_policy == "disjoint_segmented"
+    assert request.outcome == "finished"

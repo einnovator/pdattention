@@ -9,7 +9,11 @@ import pytest
 
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_hf.live_history import LiveKVSelectionPlan
-from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+from pra_mlx.native import (
+    MLXDisjointLayerKV,
+    MLXNativeLayerKV,
+    MLXNativeMemory,
+)
 import pra_sglang.mlx_native as sglang_native
 from pra_sglang.mlx_native import (
     SGLangMLXLiveKVRuntime,
@@ -224,6 +228,53 @@ def test_sglang_live_request_pins_owner_and_releases_on_native_finish(
         "error": 0,
     }
     runner.remove_request("source-owner")
+
+
+def test_sglang_disjoint_live_request_keeps_source_intervals_unpacked(
+    monkeypatch,
+) -> None:
+    _fake_mlx(monkeypatch)
+    runner, bridge = _bridge(monkeypatch)
+    runtime = SGLangMLXLiveKVRuntime(
+        bridge,
+        dump=lambda source: source,
+        load=lambda source: source,
+    )
+    runtime.register_source(
+        "history",
+        _memory(),
+        owner_request_id="source-owner",
+        tenant_id="tenant",
+        session_id="session",
+        generation=3,
+    )
+    plan = LiveKVSelectionPlan.create(
+        6, ((0, 2), (4, 6)), source_position_base=11
+    )
+
+    request = runtime.begin_request(
+        "candidate",
+        "history",
+        plan,
+        tenant_id="tenant",
+        session_id="session",
+        expected_generation=3,
+        disjoint=True,
+    )
+    assert request.selection.physical_kv_copy is None
+    assert request.selection.selected_text_reencoded_tokens == 0
+    assert isinstance(request.selection.memory.layers[0], MLXDisjointLayerKV)
+    assert [segment.keys.shape[2] for segment in request.selection.memory.layers[0].segments] == [2, 2]
+
+    runner.prefill_start("candidate", [1], [1], [], [], 0)
+    selected = runner._req_caches["candidate"][0]
+    assert isinstance(selected, SGLangSelectedKVCache)
+    assert selected.disjoint
+    assert selected.memory_tokens == 4
+    assert selected.position_base == 11
+    with pytest.raises(RuntimeError, match="interval-addressed attention"):
+        selected.get_kv()
+    assert request.cancel()
 
 
 def test_sglang_borrows_and_pins_before_selected_cache_construction(

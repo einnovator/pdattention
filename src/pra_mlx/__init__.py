@@ -2,6 +2,9 @@
 
 from .adapter import MLXEngineAdapter, MLXNativeExecutor
 from .native import (
+    MLXDisjointLayerKV,
+    MLXDisjointNativeMemory,
+    MLXDisjointSelectedKVCache,
     MLXResidentKVSelection,
     MLXInProcessNativeExecutor,
     MLXNativeLayerKV,
@@ -15,6 +18,7 @@ from .native import (
     MLXSelectedKVCache,
     capture_live_native_memory,
     select_live_native_memory,
+    select_live_native_memory_disjoint,
     combine_native_memories,
     dequantize_native_memory,
     deserialize_native_memory,
@@ -24,6 +28,7 @@ from .native import (
     quantize_native_memory,
     save_native_memory,
     compiled_segmented_selected_attention,
+    disjoint_segmented_selected_attention,
     segmented_selected_attention,
     serialize_native_memory,
 )
@@ -38,6 +43,9 @@ from .native_storage import MLXNativeSegmentStore
 
 __all__ = [
     "MLXEngineAdapter",
+    "MLXDisjointLayerKV",
+    "MLXDisjointNativeMemory",
+    "MLXDisjointSelectedKVCache",
     "MLXInProcessNativeExecutor",
     "MLXNativeExecutor",
     "MLXNativeLayerKV",
@@ -53,6 +61,7 @@ __all__ = [
     "MLXSelectedKVCache",
     "capture_live_native_memory",
     "select_live_native_memory",
+    "select_live_native_memory_disjoint",
     "MLXLiveKVGeneration",
     "MLXLiveKVRequest",
     "MLXLiveKVRequestCancelled",
@@ -66,6 +75,7 @@ __all__ = [
     "quantize_native_memory",
     "save_native_memory",
     "compiled_segmented_selected_attention",
+    "disjoint_segmented_selected_attention",
     "segmented_selected_attention",
     "install_qwen3_segmented_attention",
     "serialize_native_memory",

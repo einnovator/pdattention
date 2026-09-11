@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pra_mlx.native import (
+    MLXDisjointNativeMemory,
     MLXNativeColdCodec,
     MLXNativeFingerprint,
     MLXNativeLayerKV,
@@ -14,7 +15,9 @@ from pra_mlx.native import (
     deserialize_native_memory,
     resolve_query_position_base,
     serialize_native_memory,
+    select_live_native_memory_disjoint,
 )
+from pra_hf.live_history import LiveKVSelectionPlan
 from pra_mlx.native_storage import MLXNativeSegmentStore
 
 
@@ -67,6 +70,27 @@ def test_positioned_cache_separates_source_and_local_offsets() -> None:
     cache = MLXPositionedKVCache(Local(), position_base=17)
     assert cache.offset == 20
     assert cache.local_offset == 3
+
+
+def test_disjoint_selection_preserves_source_views_and_original_extent() -> None:
+    import numpy as np
+
+    keys = np.arange(40, dtype=np.float32).reshape(1, 1, 10, 4)
+    values = keys + 100
+    source = MLXNativeMemory((MLXNativeLayerKV(keys, values),), source_tokens=10)
+    plan = LiveKVSelectionPlan.create(
+        10, ((0, 2), (5, 8)), source_position_base=12
+    )
+
+    result = select_live_native_memory_disjoint(source, plan)
+
+    assert isinstance(result.memory, MLXDisjointNativeMemory)
+    assert result.physical_kv_copy is None
+    assert result.selected_text_reencoded_tokens == 0
+    assert result.plan.source_position_base == 12
+    assert result.memory.layers[0].tokens == 5
+    assert np.shares_memory(result.memory.layers[0].segments[0].keys, keys)
+    assert np.shares_memory(result.memory.layers[0].segments[1].values, values)
 
 
 def test_query_position_base_defaults_to_source_and_allows_bug_control() -> None:

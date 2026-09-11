@@ -247,6 +247,51 @@ fixture with `--selection-replay`; no nearest or ordinal fallback is allowed.
 The ordinary G11 product cell performs its own route and remains a distinct
 causal comparison.
 
+### Locked first-three direct matrix
+
+The post-`fcde2c74` checkpoint is a task-major, direct-engine-only matrix over
+the first three instances in the admitted baseline-success stratum. Its five
+arms are No PRA, PRA 100% with no adaptor, PRA 100% with a frozen adaptor, PRA
+90% with no adaptor, and PRA 90% with a frozen adaptor. Every arm fixes seed 0,
+temperature 0, Qwen3-Coder-30B Q4_K_M, mini-swe-agent 2.4.6, the llama.cpp
+engine identity, and the same source/progress/mutation/verification retention
+policy. Gateway routing is prohibited. The locked topology runs the agent and
+Docker workload on Medium Mac `.8` while the endpoint environment names the
+direct model engine on Big Mac `.6`; the two host identities are recorded
+separately so orchestration placement is not mistaken for model placement.
+
+Prepare receipts without launching tasks:
+
+```bash
+python -m experiments.paper4_5_agent.prepare_easy3_direct_matrix \
+  --output /tmp/paper4-5-easy3/qualification.json
+```
+
+Add `--probe-endpoint` only after
+`PRA_AGENT_NATIVE_ENGINE_CACHE_ON_URL` names the direct engine. That probe uses
+GET health/model metadata and sends no generation request. The output contains
+15 ordered cell manifests and both the future run command and its
+`--preflight-only` form. Actual task execution remains a separate explicit
+step.
+
+Here “adaptor” means a learned causal-record routing/selection adaptor applied
+to record scores before the selected K/V subset is frozen and materialized. It
+does not mean the structural model-to-engine mapping, a memory-consumption or
+late-band/LoRA transform, prompt-based consumption guidance, or frozen
+selected-record replay. The repository currently has no certified
+Qwen3-Coder-30B coding-agent routing bundle and no certified corresponding
+memory/late-band training path.
+
+The adaptor arms therefore fail closed until a bundle supplies an immutable
+identifier, revision, weights checksum, parameter precision, insertion points,
+leakage-free training/evaluation provenance, and a qualified typed
+runner/runtime injection path. They must never be executed or reported as
+aliases of the no-adaptor arms. The config's machine-readable
+`adaptor_qualification` section records the assumed semantics, exclusions,
+training and evaluation evidence, and injection contract. Per-example receipts
+reserve task, request, K/V, tool-call, divergence, TTFT, wall-time, and memory
+fields; unavailable engine metrics remain `NOT_MEASURED`, not zero.
+
 ## Controlled SWE-bench fixed-50 campaign
 
 The next campaign uses the exact ordered 50-instance cohort from the external

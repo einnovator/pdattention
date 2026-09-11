@@ -1,0 +1,279 @@
+{
+  "schema_version": "paper4.5.vllm-cuda-scheduler-page-alias.v1",
+  "probe": "vllm_cuda_scheduler_owned_existing_page_alias",
+  "evidence_scope": "48-token, three-page mechanism and lifecycle smoke; not an Easy-50 or full Task02 result",
+  "base_commit": "fcde2c74",
+  "vllm": "0.28.0",
+  "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "block_size": 16,
+  "source_tokens": 48,
+  "selected_tokens": 32,
+  "source_position_base": 48,
+  "integration_scope": {
+    "engine_api": "vLLM V1 0.28.0 Scheduler._get_local_prefix_cache_hit -> KVCacheManager.allocate_slots",
+    "scheduler_block_table_authoritative": true,
+    "source_owner_pin_boundary": "Scheduler._connector_finished before KVCacheManager.free",
+    "request_release_boundary": "ordinary Scheduler finish/cancel/error teardown",
+    "selected_length_is_position_extent": false,
+    "original_position_persisted_on_every_decode_step": true,
+    "complete_pages_required": true,
+    "homogeneous_single_kv_group_required": true,
+    "multiprocess_scheduler_worker_qualification": false,
+    "unsupported_layouts_fail_closed": true
+  },
+  "outputs": [
+    [
+      576,
+      12542,
+      374,
+      4287
+    ],
+    [
+      576,
+      12542,
+      374,
+      4287
+    ]
+  ],
+  "concurrent_outputs_exact": true,
+  "after_source": {
+    "sources": {
+      "smoke-source-g1": {
+        "generation": 1,
+        "source_tokens": 48,
+        "block_ids": [
+          1,
+          2,
+          3
+        ],
+        "borrowers": [],
+        "pending": [],
+        "tombstoned": false
+      }
+    },
+    "active_requests": [],
+    "pending_requests": [],
+    "telemetry": {
+      "source_pin_events": 1,
+      "alias_install_events": 0,
+      "alias_release_events": 0,
+      "physical_kv_copy_bytes": 0,
+      "host_to_device_bytes": 0,
+      "selected_history_reencoded_tokens": 0
+    }
+  },
+  "after_consumers": {
+    "sources": {
+      "smoke-source-g1": {
+        "generation": 1,
+        "source_tokens": 48,
+        "block_ids": [
+          1,
+          2,
+          3
+        ],
+        "borrowers": [],
+        "pending": [],
+        "tombstoned": false
+      }
+    },
+    "active_requests": [],
+    "pending_requests": [],
+    "telemetry": {
+      "source_pin_events": 1,
+      "alias_install_events": 2,
+      "alias_release_events": 2,
+      "physical_kv_copy_bytes": 0,
+      "host_to_device_bytes": 0,
+      "selected_history_reencoded_tokens": 0
+    }
+  },
+  "cancellation": {
+    "request_ids": [
+      "3-8aacb583",
+      "4-a5025132"
+    ],
+    "first_step_finished": [],
+    "during": {
+      "sources": {
+        "smoke-source-g1": {
+          "generation": 1,
+          "source_tokens": 48,
+          "block_ids": [
+            1,
+            2,
+            3
+          ],
+          "borrowers": [
+            "3-8aacb583",
+            "4-a5025132"
+          ],
+          "pending": [],
+          "tombstoned": false
+        }
+      },
+      "active_requests": [
+        "3-8aacb583",
+        "4-a5025132"
+      ],
+      "pending_requests": [],
+      "telemetry": {
+        "source_pin_events": 1,
+        "alias_install_events": 4,
+        "alias_release_events": 2,
+        "physical_kv_copy_bytes": 0,
+        "host_to_device_bytes": 0,
+        "selected_history_reencoded_tokens": 0
+      }
+    },
+    "after": {
+      "sources": {
+        "smoke-source-g1": {
+          "generation": 1,
+          "source_tokens": 48,
+          "block_ids": [
+            1,
+            2,
+            3
+          ],
+          "borrowers": [],
+          "pending": [],
+          "tombstoned": false
+        }
+      },
+      "active_requests": [],
+      "pending_requests": [],
+      "telemetry": {
+        "source_pin_events": 1,
+        "alias_install_events": 4,
+        "alias_release_events": 4,
+        "physical_kv_copy_bytes": 0,
+        "host_to_device_bytes": 0,
+        "selected_history_reencoded_tokens": 0
+      }
+    },
+    "borrowed_eviction": {
+      "rejected": true,
+      "error": "Cannot evict a borrowed CUDA source generation."
+    }
+  },
+  "stale_generation": {
+    "rejected": true,
+    "error": "Stale sparse CUDA generation: requested 2, live 1."
+  },
+  "error": {
+    "enqueued_id": "5-9ef1f2d9",
+    "scheduler_request_ids": [
+      "5-9ef1f2d9"
+    ],
+    "during": {
+      "sources": {
+        "smoke-source-g1": {
+          "generation": 1,
+          "source_tokens": 48,
+          "block_ids": [
+            1,
+            2,
+            3
+          ],
+          "borrowers": [
+            "5-9ef1f2d9"
+          ],
+          "pending": [],
+          "tombstoned": false
+        }
+      },
+      "active_requests": [
+        "5-9ef1f2d9"
+      ],
+      "pending_requests": [],
+      "telemetry": {
+        "source_pin_events": 1,
+        "alias_install_events": 5,
+        "alias_release_events": 4,
+        "physical_kv_copy_bytes": 0,
+        "host_to_device_bytes": 0,
+        "selected_history_reencoded_tokens": 0
+      }
+    },
+    "after": {
+      "sources": {
+        "smoke-source-g1": {
+          "generation": 1,
+          "source_tokens": 48,
+          "block_ids": [
+            1,
+            2,
+            3
+          ],
+          "borrowers": [],
+          "pending": [],
+          "tombstoned": false
+        }
+      },
+      "active_requests": [],
+      "pending_requests": [],
+      "telemetry": {
+        "source_pin_events": 1,
+        "alias_install_events": 5,
+        "alias_release_events": 5,
+        "physical_kv_copy_bytes": 0,
+        "host_to_device_bytes": 0,
+        "selected_history_reencoded_tokens": 0
+      }
+    }
+  },
+  "eviction": {
+    "source_block_ids": [
+      1,
+      2,
+      3
+    ],
+    "evicted_block_ids": [
+      1,
+      2,
+      3
+    ],
+    "refcounts_before": [
+      2,
+      1,
+      2
+    ],
+    "early_attempt": {
+      "rejected": true,
+      "error": "Cannot evict CUDA source pages with scheduler/in-flight aliases."
+    },
+    "deferred_drain": {
+      "processed_step_seq_before": 69,
+      "deferred_frees_before": 1,
+      "processed_step_seq_after": 70,
+      "deferred_frees_after": 0
+    },
+    "refcounts_after": [
+      0,
+      0,
+      0
+    ]
+  },
+  "copy_accounting": {
+    "physical_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "selected_history_reencoded_tokens": 0,
+    "mechanism": "exact scheduler KVCacheBlock identity adoption"
+  },
+  "provenance": {
+    "alias_module": {
+      "path": "/home/killu/pra-vllm-alias-fcde2c74/src/pra_vllm/cuda_scheduler_alias.py",
+      "sha256": "943e0009c8cdc8bc935a2f479e2ae6308b5d535be6824da8b3cd278804729f6f"
+    },
+    "connector_module": {
+      "path": "/home/killu/pra-vllm-alias-fcde2c74/src/pra_vllm/cuda_sparse_connector.py",
+      "sha256": "550a30db915e21f8c0bb5ae53377c8142902c3d221e4c11b06db4c67280fb8c9"
+    },
+    "pinned_scheduler": {
+      "path": "/home/killu/venvs/vllm028/lib/python3.12/site-packages/vllm/v1/core/sched/scheduler.py",
+      "sha256": "4b79ab760c3864af6838d555c01335deea3aac97c9be2be415fa0e5dab32f07e"
+    }
+  },
+  "qualified": true
+}

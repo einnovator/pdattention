@@ -44,6 +44,8 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--sampling-seed", type=int, default=0)
+    parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--recent-completed-turns", type=int, default=2)
     parser.add_argument("--recent-records-per-turn", type=int, default=2)
     parser.add_argument("--recent-source-turns", type=int, default=1)
@@ -133,6 +135,8 @@ def main() -> None:
         run_id=options.run_id,
         mode=options.mode,
         budget_fraction=options.budget_fraction,
+        sampling_seed=options.sampling_seed,
+        top_p=options.top_p,
         recent_completed_turns=options.recent_completed_turns,
         recent_records_per_turn=options.recent_records_per_turn,
         recent_source_turns=options.recent_source_turns,

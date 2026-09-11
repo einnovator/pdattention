@@ -19,6 +19,11 @@ from pra_vllm.cuda_connector import (
     PRASemanticConnectorMetadata,
     _RequestTransfer,
 )
+from pra_vllm.cuda_scheduler_alias import (
+    SchedulerPageSelection,
+    VLLMCudaSchedulerPageRegistry,
+    install_vllm_scheduler_page_alias_hooks,
+)
 from pra_vllm.cuda_sparse_protocol import SparseCudaConnectorCommand
 
 
@@ -41,6 +46,7 @@ def _position_delta(selected_tokens: int, source_position_base: int) -> int:
 @dataclass
 class _SparseRequestTransfer(_RequestTransfer):
     source_position_base: int = 0
+    scheduler_alias: bool = False
 
     @classmethod
     def create_sparse(
@@ -50,9 +56,16 @@ class _SparseRequestTransfer(_RequestTransfer):
         block_size: int,
         request_id: str,
         detached: bool,
+        scheduler_alias: bool = False,
     ) -> "_SparseRequestTransfer":
         base = _RequestTransfer.create(
-            command, block_ids, block_size, request_id, detached
+            command,
+            block_ids,
+            block_size,
+            request_id,
+            # A scheduler alias already owns its authoritative slots; this
+            # metadata exists only to carry original-position geometry.
+            detached or scheduler_alias,
         )
         return cls(
             request_id=base.request_id,
@@ -61,8 +74,9 @@ class _SparseRequestTransfer(_RequestTransfer):
             slot_mapping=base.slot_mapping,
             mode=base.mode,
             residency=base.residency,
-            detached=base.detached,
+            detached=bool(detached),
             source_position_base=command.source_position_base,
+            scheduler_alias=bool(scheduler_alias),
         )
 
 
@@ -100,7 +114,7 @@ def _install_sparse_position_hook() -> None:
             )
             for request in getattr(metadata, "requests", ())
             if request.mode == "load"
-            and request.detached
+            and (request.detached or getattr(request, "scheduler_alias", False))
             and hasattr(request, "source_position_base")
         }
         token = _POSITION_BASES.set(bases)
@@ -119,8 +133,99 @@ class PRASparseConnector(PRASemanticConnector):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        if self._detached:
+        raw_alias = self._kv_transfer_config.get_from_extra_config(
+            "scheduler_page_aliases", False
+        )
+        self._scheduler_alias_enabled = (
+            raw_alias.lower() in {"1", "true", "yes", "on"}
+            if isinstance(raw_alias, str)
+            else bool(raw_alias)
+        )
+        self._scheduler_alias_registry = VLLMCudaSchedulerPageRegistry()
+        self._scheduler_kv_manager: Any | None = None
+        self._scheduler_alias_requests: set[str] = set()
+        if self._detached or self._scheduler_alias_enabled:
             _install_sparse_position_hook()
+        if self._scheduler_alias_enabled:
+            if self._detached:
+                raise ValueError(
+                    "scheduler_page_aliases and detached_pages are mutually exclusive."
+                )
+            install_vllm_scheduler_page_alias_hooks()
+
+    def bind_scheduler_kv_manager(self, manager: Any) -> None:
+        """Bind the authoritative scheduler allocator, never a worker mirror."""
+
+        if not getattr(self, "_scheduler_alias_enabled", False):
+            return
+        if self._scheduler_kv_manager not in (None, manager):
+            raise RuntimeError("PRA CUDA connector cannot cross scheduler allocators.")
+        self._scheduler_kv_manager = manager
+
+    def _scheduler_selection(
+        self, command: SparseCudaConnectorCommand
+    ) -> SchedulerPageSelection:
+        manifest = self._directory(command.logical_key) / "manifest.json"
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        try:
+            parent = str(payload["parent_logical_key"])
+            page_indices = tuple(map(int, payload["selected_page_indices"]))
+        except (KeyError, TypeError, ValueError) as error:
+            raise RuntimeError(
+                "Scheduler-page alias manifest lacks its live source mapping."
+            ) from error
+        return SchedulerPageSelection(
+            logical_key=command.logical_key,
+            source_logical_key=parent,
+            source_generation=command.source_generation,
+            selected_page_indices=page_indices,
+            selected_token_count=command.source_tokens,
+            source_position_base=command.source_position_base,
+        )
+
+    def scheduler_owned_alias_hit(
+        self, manager: Any, request: Any, ordinary_hit: Any
+    ) -> Any:
+        """Replace APC lookup with selected existing pages before allocation."""
+
+        if not getattr(self, "_scheduler_alias_enabled", False):
+            return ordinary_hit
+        self.bind_scheduler_kv_manager(manager)
+        command = self._commands.get(request.request_id)
+        if not isinstance(command, SparseCudaConnectorCommand):
+            return ordinary_hit
+        if command.mode != "load":
+            return ordinary_hit
+        if not self._ready(command):
+            raise RuntimeError(
+                "Stale or unavailable sparse CUDA K/V generation: "
+                f"{command.logical_key}@{command.source_generation}"
+            )
+        prompt_token_count = len(request.prompt_token_ids or ())
+        blocks = self._scheduler_alias_registry.prepare_alias(
+            request.request_id,
+            self._scheduler_selection(command),
+            prompt_token_count=prompt_token_count,
+            create_kv_cache_blocks=manager.create_kv_cache_blocks,
+        )
+        selected = int(command.source_tokens)
+        # Keep compact attention length and full source position extent separate.
+        # The worker position hook applies the latter; this scheduler result must
+        # remain the selected length so no omitted token is re-encoded.
+        return blocks, selected, selected, False
+
+    def update_state_after_alloc(
+        self, request: Any, blocks: Any, num_external_tokens: int
+    ) -> None:
+        if getattr(self, "_scheduler_alias_enabled", False):
+            before = set(
+                self._scheduler_alias_registry.snapshot()["pending_requests"]
+            )
+            if str(request.request_id) in before:
+                self._scheduler_alias_registry.commit_alias(request.request_id, blocks)
+                self._scheduler_alias_requests.add(str(request.request_id))
+                return
+        super().update_state_after_alloc(request, blocks, num_external_tokens)
 
     def on_new_request(self, request: Any) -> None:
         command = SparseCudaConnectorCommand.parse(request.cache_salt)
@@ -148,6 +253,14 @@ class PRASparseConnector(PRASemanticConnector):
         block_ids: list[int],
     ) -> None:
         command = self._commands.get(req_id)
+        if (
+            getattr(self, "_scheduler_alias_enabled", False)
+            and command is not None
+            and command.mode == "store"
+        ):
+            # The scheduler pins the live pages; no worker-side D2H export is
+            # part of the scheduler-alias path.
+            return
         if not isinstance(command, SparseCudaConnectorCommand):
             return super()._add_new_request(metadata, req_id, block_ids)
         if command.mode == "load" and not self._ready(command):
@@ -155,7 +268,13 @@ class PRASparseConnector(PRASemanticConnector):
                 "Stale or unavailable sparse CUDA K/V generation: "
                 f"{command.logical_key}@{command.source_generation}"
             )
-        if command.mode == "load" and not self._detached and req_id not in self._loads:
+        scheduler_alias = req_id in getattr(self, "_scheduler_alias_requests", ())
+        if (
+            command.mode == "load"
+            and not self._detached
+            and not scheduler_alias
+            and req_id not in self._loads
+        ):
             return
         metadata.requests.append(
             _SparseRequestTransfer.create_sparse(
@@ -164,7 +283,57 @@ class PRASparseConnector(PRASemanticConnector):
                 self._block_size,
                 req_id,
                 detached=self._detached and command.mode == "load",
+                scheduler_alias=scheduler_alias,
             )
+        )
+
+    def request_finished(self, request: Any, block_ids: list[int]):
+        """Pin sources and close aliases before vLLM frees request blocks."""
+
+        command = self._commands.get(request.request_id)
+        if (
+            getattr(self, "_scheduler_alias_enabled", False)
+            and getattr(self, "_scheduler_kv_manager", None) is not None
+        ):
+            if command is not None and command.mode == "store":
+                manager = self._scheduler_kv_manager
+                source_tokens = int(command.source_tokens)
+                if int(request.num_computed_tokens) < source_tokens:
+                    raise RuntimeError(
+                        "Cannot publish an incompletely computed CUDA source."
+                    )
+                generation = int(getattr(command, "source_generation", 1))
+                self._scheduler_alias_registry.publish_source(
+                    command.logical_key,
+                    generation=generation,
+                    source_tokens=source_tokens,
+                    blocks_by_group=manager.get_blocks(request.request_id).blocks,
+                    block_sizes=tuple(
+                        int(item.block_size)
+                        for item in manager.coordinator.single_type_managers
+                    ),
+                    block_pool=manager.block_pool,
+                )
+            self._scheduler_alias_registry.finish_request(request.request_id)
+            self._scheduler_alias_requests.discard(str(request.request_id))
+        return super().request_finished(request, block_ids)
+
+    def evict_scheduler_source(
+        self, logical_key: str, *, source_generation: int = 1
+    ) -> tuple[int, ...]:
+        if not getattr(self, "_scheduler_alias_enabled", False):
+            raise RuntimeError("Scheduler-page aliases are not enabled.")
+        return self._scheduler_alias_registry.evict_source(
+            logical_key, generation=source_generation
+        )
+
+    def terminate_scheduler_source(
+        self, logical_key: str, *, source_generation: int = 1
+    ) -> bool:
+        if not getattr(self, "_scheduler_alias_enabled", False):
+            raise RuntimeError("Scheduler-page aliases are not enabled.")
+        return self._scheduler_alias_registry.terminate_source(
+            logical_key, generation=source_generation
         )
 
     def evict_detached_resource(

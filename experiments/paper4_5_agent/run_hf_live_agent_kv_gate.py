@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import inspect
 import json
 import platform
 from pathlib import Path
@@ -10,7 +12,12 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pra_hf.hf_live_kv import select_dynamic_cache
+from pra_hf.hf_live_kv import (
+    dense_reference_attention_mask,
+    enable_qwen_sparse_live_kv,
+    pack_dynamic_cache_reference,
+    select_dynamic_cache,
+)
 from pra_hf.live_history import LiveKVSelectionPlan
 
 from .run_hf_agent_cache_equivalence import (
@@ -33,6 +40,7 @@ def _positioned_tail_generation(
     position_base: int,
     continuation_tokens: int,
     device: torch.device,
+    dense_reference_plan: LiveKVSelectionPlan | None = None,
 ):
     """Consume a wire tail while keeping queries in the source position frame."""
 
@@ -47,6 +55,16 @@ def _positioned_tail_generation(
         past_key_values=cache,
         position_ids=positions.unsqueeze(0),
         cache_position=positions,
+        attention_mask=(
+            dense_reference_attention_mask(
+                dense_reference_plan,
+                positions,
+                dtype=next(model.parameters()).dtype,
+                device=device,
+            )
+            if dense_reference_plan is not None
+            else None
+        ),
         use_cache=True,
         return_dict=True,
     )
@@ -67,6 +85,16 @@ def _positioned_tail_generation(
             past_key_values=cache,
             position_ids=position.unsqueeze(0),
             cache_position=position,
+            attention_mask=(
+                dense_reference_attention_mask(
+                    dense_reference_plan,
+                    position,
+                    dtype=next(model.parameters()).dtype,
+                    device=device,
+                )
+                if dense_reference_plan is not None
+                else None
+            ),
             use_cache=True,
             return_dict=True,
         )
@@ -87,6 +115,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         torch_dtype=dtype,
         local_files_only=args.local_files_only,
     ).to(device).eval()
+    enable_qwen_sparse_live_kv(model)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
     prompts = _assistant_prompts(tokenizer, trajectory, args.turns)
     messages = trajectory["messages"]
@@ -136,7 +165,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             continue
         selected = select_dynamic_cache(source_cache, plan)
         if wire_tail:
-            reference = select_dynamic_cache(_clone_cache(source_cache), plan)
+            reference = pack_dynamic_cache_reference(_clone_cache(source_cache), plan)
             ordinary_tokens, ordinary_logits = _positioned_tail_generation(
                 model,
                 reference.cache,
@@ -144,6 +173,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 position_base=plan.source_position_base,
                 continuation_tokens=args.continuation_tokens,
                 device=device,
+                dense_reference_plan=plan,
             )
             pra_tokens, pra_logits = _positioned_tail_generation(
                 model,
@@ -176,10 +206,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "source_prefix_reused_tokens": common,
                 "selected_kv_tokens": plan.selected_tokens,
                 "source_position_base": plan.source_position_base,
+                "decode_position_start": plan.source_position_base,
+                "decode_position_end": (
+                    plan.source_position_base
+                    + len(wire_tail)
+                    + args.continuation_tokens
+                    - 1
+                ),
                 "has_holes": plan.has_holes,
                 "selection_plan": plan.to_dict(),
                 "selected_text_reencoded_tokens": selected.selected_text_reencoded_tokens,
-                "physical_kv_copy": selected.physical_kv_copy,
+                "physical_kv_copy": bool(
+                    selected.physical_kv_copy
+                    or selected.transient_kv_copy_bytes > 0
+                ),
+                "persistent_interval_pack": selected.physical_kv_copy,
+                "interval_pack_bytes": selected.interval_pack_bytes,
+                "transient_attention_bytes": selected.transient_attention_bytes,
+                "transient_kv_copy_bytes": selected.transient_kv_copy_bytes,
+                "max_transient_kv_tile_bytes": selected.max_transient_kv_tile_bytes,
                 "token_exact": ordinary_tokens == pra_tokens,
                 "max_abs_logit_delta": _max_delta(ordinary_logits, pra_logits),
                 "ordinary_token_ids": ordinary_tokens,
@@ -192,13 +237,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "schema_version": "paper4.5.agent-history-kv-gate.v1",
         "probe": "hf_same_state_live_agent_kv",
         "engine": "transformers-pytorch",
-        "model": args.model,
+        "model": args.model_label or args.model,
+        "model_source": args.model,
         "torch_version": torch.__version__,
         "transformers_version": __import__("transformers").__version__,
         "python_version": platform.python_version(),
         "device": str(device),
         "dtype": args.dtype,
         "trajectory": str(args.trajectory),
+        "trajectory_sha256": hashlib.sha256(args.trajectory.read_bytes()).hexdigest(),
+        "implementation_sha256": hashlib.sha256(
+            Path(inspect.getfile(select_dynamic_cache)).read_bytes()
+        ).hexdigest(),
         "retention_fraction": args.retention_fraction,
         "adaptor": "none",
         "same_resident_kv_fork": True,
@@ -211,22 +261,59 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "zero_physical_kv_copy": all(
             not row["physical_kv_copy"] for row in rows
         ),
+        "zero_persistent_interval_pack": all(
+            not row["persistent_interval_pack"] for row in rows
+        ),
+        "zero_interval_pack_bytes": all(
+            row["interval_pack_bytes"] == 0 for row in rows
+        ),
+        "transient_attention_bytes": sum(
+            int(row["transient_attention_bytes"]) for row in rows
+        ),
+        "transient_kv_copy_bytes": sum(
+            int(row["transient_kv_copy_bytes"]) for row in rows
+        ),
+        "max_transient_kv_tile_bytes": max(
+            (int(row["max_transient_kv_tile_bytes"]) for row in rows), default=0
+        ),
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["token_exact"]), None
         ),
-        "reference_condition": "detached clone consuming identical selected resident K/V at identical original positions",
+        "reference_condition": "dense packed oracle consuming the identical selected K/V subset under an explicit original-position causal mask",
+        "sparse_numerical_policy": "256-token tiled fp32 score/value accumulation with online softmax",
         "sparse_turns": sum(int(row["has_holes"]) for row in rows),
         "rows": rows,
     }
+    result["max_abs_logit_delta"] = max(
+        (float(row["max_abs_logit_delta"]) for row in rows), default=0.0
+    )
+    result["logit_tolerance"] = args.max_logit_delta
+    result["logits_within_tolerance"] = bool(
+        result["max_abs_logit_delta"] <= args.max_logit_delta
+    )
     result["sparse_position_gate_valid"] = bool(
         args.retention_fraction < 1
         and result["all_exact"]
+        and result["logits_within_tolerance"]
         and result["zero_selected_text_reencoding"]
+        and result["zero_interval_pack_bytes"]
         and result["sparse_turns"] > 0
         and all(
             row["source_position_base"] == row["source_tokens"] for row in rows
         )
     )
+    result["zero_copy_engine_gate_valid"] = bool(
+        result["sparse_position_gate_valid"] and result["zero_physical_kv_copy"]
+    )
+    result["qualification_blockers"] = []
+    if not result["logits_within_tolerance"]:
+        result["qualification_blockers"].append(
+            "max_abs_logit_delta_exceeds_tolerance"
+        )
+    if not result["zero_physical_kv_copy"]:
+        result["qualification_blockers"].append(
+            "bounded_fp32_kv_tile_copy_requires_fused_native_sparse_attention"
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
@@ -237,10 +324,12 @@ def main() -> None:
     parser.add_argument("--trajectory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--model-label")
     parser.add_argument("--turns", type=int, default=10)
     parser.add_argument("--continuation-tokens", type=int, default=32)
     parser.add_argument("--retention-fraction", type=float, default=1.0)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument("--max-logit-delta", type=float, default=1e-3)
     parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--dtype",
@@ -253,8 +342,9 @@ def main() -> None:
     print(json.dumps({key: result[key] for key in (
         "engine", "model", "completed_turns", "exact_turns", "all_exact",
         "zero_selected_text_reencoding", "first_divergent_turn",
+        "max_abs_logit_delta", "logits_within_tolerance",
     )}, indent=2))
-    raise SystemExit(0 if result["all_exact"] else 1)
+    raise SystemExit(0 if result["sparse_position_gate_valid"] else 1)
 
 
 if __name__ == "__main__":

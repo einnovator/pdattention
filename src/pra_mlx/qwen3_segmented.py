@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from .native import (
+    MLXDisjointSelectedKVCache,
     MLXPositionedKVCache,
     MLXSegmentedSelectedKVCache,
     compiled_segmented_selected_attention,
+    disjoint_segmented_selected_attention,
     segmented_selected_attention,
 )
 
@@ -41,7 +43,12 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
 
         def __call__(self, x, mask=None, cache=None):
             if not isinstance(
-                cache, (MLXPositionedKVCache, MLXSegmentedSelectedKVCache)
+                cache,
+                (
+                    MLXPositionedKVCache,
+                    MLXSegmentedSelectedKVCache,
+                    MLXDisjointSelectedKVCache,
+                ),
             ):
                 return self.inner(x, mask, cache)
 
@@ -88,20 +95,31 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
             )
             # Qwen3 builds one mask from cache[0]. Consumer profiles may start
             # later in the stack, so every selected layer derives its own mask.
-            attention_fn = (
-                compiled_segmented_selected_attention
-                if compiled
-                else segmented_selected_attention
-            )
-            output = attention_fn(
-                queries,
-                memory_k,
-                memory_v,
-                local_k,
-                local_v,
-                scale=attention.scale,
-                mask=layer_mask,
-            )
+            if isinstance(cache, MLXDisjointSelectedKVCache):
+                output = disjoint_segmented_selected_attention(
+                    queries,
+                    memory_k,
+                    memory_v,
+                    local_k,
+                    local_v,
+                    scale=attention.scale,
+                    mask=layer_mask,
+                )
+            else:
+                attention_fn = (
+                    compiled_segmented_selected_attention
+                    if compiled
+                    else segmented_selected_attention
+                )
+                output = attention_fn(
+                    queries,
+                    memory_k,
+                    memory_v,
+                    local_k,
+                    local_v,
+                    scale=attention.scale,
+                    mask=layer_mask,
+                )
             output = output.transpose(0, 2, 1, 3).reshape(batch, length, -1)
             return attention.o_proj(output)
 

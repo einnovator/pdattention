@@ -6,16 +6,19 @@ import argparse
 import hashlib
 import json
 import platform
+import time
 from pathlib import Path
 
 import numpy as np
 
 from pra_hf.live_history import LiveKVSelectionPlan
 from pra_mlx.mlx_live_kv import MLXLiveKVRequestCancelled, MLXLiveKVRuntime
+from pra_mlx.qwen3_segmented import install_qwen3_segmented_attention
 from pra_mlx.native import (
     MLXNativeMemory,
     capture_live_native_memory,
     deserialize_native_memory,
+    disjoint_segmented_selected_attention,
     serialize_native_memory,
 )
 
@@ -48,6 +51,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     from mlx_lm.models.cache import make_prompt_cache
 
     model, tokenizer = load(args.model)
+    use_disjoint = args.materialization_policy == "disjoint_segmented"
+    patched_layers = (
+        install_qwen3_segmented_attention(model, compiled=False)
+        if use_disjoint
+        else 0
+    )
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
     prompts = _assistant_prompts(tokenizer, trajectory, args.turn)
     messages = trajectory["messages"]
@@ -103,7 +112,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         generation=identities["generation"],
     )
 
-    def begin(request_id: str, *, generation: int = 1):
+    def begin(
+        request_id: str,
+        *,
+        generation: int = 1,
+        segmented: bool | None = None,
+        disjoint_selection: bool | None = None,
+    ):
         return runtime.begin_request(
             request_id,
             identities["source_id"],
@@ -111,10 +126,99 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             tenant_id=identities["tenant_id"],
             session_id=identities["session_id"],
             expected_generation=generation,
+            segmented=use_disjoint if segmented is None else segmented,
+            disjoint_selection=disjoint_selection,
         )
 
+    active_before_selection = int(getattr(mx, "get_active_memory", lambda: 0)())
+    reset_peak = getattr(mx, "reset_peak_memory", None)
+    if reset_peak is not None:
+        reset_peak()
+    candidate_selection_start_ns = time.perf_counter_ns()
     candidate = begin("candidate")
-    reference = begin("reference")
+    selected_arrays = []
+    for layer in candidate.selection.memory.layers:
+        segments = getattr(layer, "segments", (layer,))
+        selected_arrays.extend(
+            value
+            for segment in segments
+            for value in (segment.keys, segment.values)
+        )
+    mx.eval(*selected_arrays)
+    candidate_selection_elapsed_ms = (
+        time.perf_counter_ns() - candidate_selection_start_ns
+    ) / 1_000_000
+    active_after_selection = int(getattr(mx, "get_active_memory", lambda: 0)())
+    peak_after_selection = int(getattr(mx, "get_peak_memory", lambda: 0)())
+    disjoint_attention_allocation = None
+    if use_disjoint:
+        first_layer = candidate.selection.memory.layers[0]
+        first_segment = first_layer.segments[0]
+        attention = model.layers[0].self_attn.inner
+        head_dim = int(first_segment.keys.shape[-1])
+        probe_queries = mx.zeros(
+            (1, int(attention.n_heads), 1, head_dim),
+            dtype=first_segment.keys.dtype,
+        )
+        probe_local_keys = mx.zeros(
+            (1, int(attention.n_kv_heads), 1, head_dim),
+            dtype=first_segment.keys.dtype,
+        )
+        probe_local_values = mx.zeros(
+            (1, int(attention.n_kv_heads), 1, head_dim),
+            dtype=first_segment.values.dtype,
+        )
+        mx.eval(probe_queries, probe_local_keys, probe_local_values)
+        if reset_peak is not None:
+            reset_peak()
+        attention_active_before = int(getattr(mx, "get_active_memory", lambda: 0)())
+        probe_output = disjoint_segmented_selected_attention(
+            probe_queries,
+            tuple(segment.keys for segment in first_layer.segments),
+            tuple(segment.values for segment in first_layer.segments),
+            probe_local_keys,
+            probe_local_values,
+            scale=float(attention.scale),
+        )
+        mx.eval(probe_output)
+        attention_active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
+        attention_peak = int(getattr(mx, "get_peak_memory", lambda: 0)())
+        selected_layer_bytes = int(first_layer.nbytes)
+        attention_peak_delta = max(attention_peak - attention_active_before, 0)
+        attention_active_delta = max(
+            attention_active_after - attention_active_before, 0
+        )
+        disjoint_attention_allocation = {
+            "selected_layer_kv_bytes": selected_layer_bytes,
+            "active_before_bytes": attention_active_before,
+            "active_after_bytes": attention_active_after,
+            "active_delta_bytes": attention_active_delta,
+            "absolute_peak_bytes": attention_peak,
+            "peak_delta_bytes": attention_peak_delta,
+            "peak_delta_to_selected_layer_kv_ratio": (
+                attention_peak_delta / selected_layer_bytes
+                if selected_layer_bytes
+                else None
+            ),
+            "full_selected_kv_sized_allocation_observed": (
+                attention_peak_delta >= selected_layer_bytes * 0.9
+            ),
+        }
+    # The reference consumes the identical selected K/V and original position
+    # frame through the established packed path. It never re-encodes text.
+    dense_reference_selection_start_ns = time.perf_counter_ns()
+    reference = begin(
+        "reference", segmented=use_disjoint, disjoint_selection=False
+    )
+    dense_reference_arrays = [
+        value
+        for layer in reference.selection.memory.layers
+        for value in (layer.keys, layer.values)
+    ]
+    mx.eval(*dense_reference_arrays)
+    dense_reference_selection_elapsed_ms = (
+        time.perf_counter_ns() - dense_reference_selection_start_ns
+    ) / 1_000_000
     two_borrowers = runtime.registry.view(identities["source_id"]).active_request_ids
     try:
         runtime.offload_source(identities["source_id"])
@@ -206,7 +310,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "offload_rejected_with_one_borrower": "while requests borrow" in one_borrower_offload_error,
         "same_subset_token_exact": candidate_result.token_ids == reference_result.token_ids,
-        "same_subset_logit_exact": _max_delta(candidate_logits, reference_logits) == 0.0,
+        "same_subset_logit_within_tolerance": (
+            _max_delta(candidate_logits, reference_logits)
+            <= args.max_abs_logit_delta
+        ),
         "cooperative_cancel_released_exactly_once": (
             cancellation_observed
             and cancelled.outcome == "cancelled"
@@ -234,16 +341,40 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             row.selected_text_reencoded_tokens == 0
             for row in (candidate_result, reference_result, restored_result)
         ),
-        "physical_kv_copy_reported": candidate_result.physical_kv_copy == (len(plan.intervals) > 1),
+        "physical_kv_copy_reported": candidate_result.physical_kv_copy == (
+            None if use_disjoint else len(plan.intervals) > 1
+        ),
+        "disjoint_selection_did_not_allocate": (
+            not use_disjoint
+            or (
+                active_after_selection == active_before_selection
+                and peak_after_selection == 0
+            )
+        ),
+        "disjoint_attention_has_no_full_selected_kv_sized_allocation": (
+            not use_disjoint
+            or not bool(
+                disjoint_attention_allocation[
+                    "full_selected_kv_sized_allocation_observed"
+                ]
+            )
+        ),
+        "selection_pack_bytes_reported": candidate_result.selection_pack_bytes == (
+            candidate.selection.memory.nbytes
+            if candidate_result.physical_kv_copy
+            else 0
+        ),
     }
     result = {
-        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v1",
+        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v2",
         "probe": "mlx_real_model_request_owned_sparse_kv",
         "engine": "mlx-lm",
         "model": args.model,
         "mlx_lm_version": getattr(mlx_lm, "__version__", "unknown"),
         "python_version": platform.python_version(),
         "hardware": args.hardware_label,
+        "materialization_policy": args.materialization_policy,
+        "segmented_attention_patched_layers": patched_layers,
         "trajectory": str(args.trajectory),
         "turn": args.turn,
         "retention_fraction": args.retention_fraction,
@@ -253,11 +384,63 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "realized_retention_fraction": plan.selected_tokens / max(len(source_ids), 1),
         "source_position_base": plan.source_position_base,
         "has_holes": plan.has_holes,
-        "physical_kv_copy": candidate_result.physical_kv_copy,
+        "physical_kv_copy": (
+            True
+            if use_disjoint
+            and active_after_selection == active_before_selection
+            and peak_after_selection == 0
+            and disjoint_attention_allocation[
+                "full_selected_kv_sized_allocation_observed"
+            ]
+            else candidate_result.physical_kv_copy
+        ),
+        "runtime_physical_kv_copy_report": candidate_result.physical_kv_copy,
+        "pra_interval_pack_copy": False if use_disjoint else candidate_result.physical_kv_copy,
+        "physical_kv_copy_qualification": (
+            "measured_alias_at_selection_but_full_kv_sized_allocation_at_attention"
+            if use_disjoint
+            else "measured_explicit_interval_pack"
+        ),
+        "selected_kv_segments": candidate_result.selected_kv_segments,
+        "selection_pack_bytes": candidate_result.selection_pack_bytes,
+        "selection_materialization_elapsed_ms": candidate_selection_elapsed_ms,
+        "dense_reference_pack_bytes": reference.selection.memory.nbytes,
+        "dense_reference_materialization_elapsed_ms": (
+            dense_reference_selection_elapsed_ms
+        ),
+        "selection_active_memory_delta_bytes": max(
+            active_after_selection - active_before_selection, 0
+        ),
+        "selection_peak_memory_bytes": peak_after_selection,
+        "disjoint_attention_allocation": disjoint_attention_allocation,
+        "allocation_measurement_method": {
+            "selection": (
+                "Reset the MLX peak allocator, construct the selected interval "
+                "views, force every selected key/value array with mx.eval, and "
+                "compare active and peak bytes with the pre-selection baseline."
+            ),
+            "consumption": (
+                "Reset the MLX peak allocator, run one real first-layer attention "
+                "query over all selected interval key/value views plus one local "
+                "token, force the output with mx.eval, and compare peak delta "
+                "against the selected first-layer K/V byte extent."
+            ),
+            "full_kv_sized_threshold": (
+                "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+            ),
+        },
+        "required_runtime_fix": (
+            "fused interval-addressed Metal attention kernel that consumes "
+            "disjoint source-cache ranges without concatenating or otherwise "
+            "materializing a selected-K/V-sized transient"
+            if use_disjoint
+            else None
+        ),
         "selected_text_reencoded_tokens": candidate_result.selected_text_reencoded_tokens,
         "offloaded_payload_type": type(offloaded).__name__,
         "offloaded_payload_bytes": len(offloaded) if isinstance(offloaded, bytes) else None,
         "max_abs_logit_delta_same_subset": _max_delta(candidate_logits, reference_logits),
+        "same_subset_logit_exact": _max_delta(candidate_logits, reference_logits) == 0.0,
         "max_abs_logit_delta_after_restore": _max_delta(candidate_logits, restored_logits),
         "checks": checks,
         "runtime_snapshot": runtime.snapshot(),
@@ -283,6 +466,12 @@ def main() -> None:
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--continuation-tokens", type=int, default=16)
     parser.add_argument("--hardware-label", default="unspecified")
+    parser.add_argument(
+        "--materialization-policy",
+        choices=("dense_pack", "disjoint_segmented"),
+        default="dense_pack",
+    )
+    parser.add_argument("--max-abs-logit-delta", type=float, default=5e-3)
     args = parser.parse_args()
     result = run(args)
     print(

@@ -65,12 +65,57 @@ class MLXNativeMemory:
 
 
 @dataclass(frozen=True)
+class MLXDisjointLayerKV:
+    """Ordered K/V views over disjoint intervals of one canonical layer.
+
+    The segment objects retain their source arrays instead of packing the
+    selected intervals into one dense tensor. Whether an engine implements a
+    slice as a storage alias is a runtime qualification question; this type
+    guarantees only that PRA itself performs no concatenating selection copy.
+    """
+
+    segments: tuple[MLXNativeLayerKV, ...]
+
+    def __post_init__(self) -> None:
+        if not self.segments:
+            raise ValueError("Disjoint MLX K/V requires at least one interval.")
+
+    @property
+    def tokens(self) -> int:
+        return sum(int(segment.keys.shape[2]) for segment in self.segments)
+
+    @property
+    def nbytes(self) -> int:
+        return sum(segment.nbytes for segment in self.segments)
+
+
+@dataclass(frozen=True)
+class MLXDisjointNativeMemory:
+    """Layer-aligned, non-packed views selected from canonical live K/V."""
+
+    layers: tuple[MLXDisjointLayerKV, ...]
+    source_tokens: int
+
+    @property
+    def nbytes(self) -> int:
+        return sum(layer.nbytes for layer in self.layers)
+
+    def selected_nbytes(self, layer_indices: Iterable[int] | None = None) -> int:
+        if layer_indices is None:
+            return self.nbytes
+        selected = set(map(int, layer_indices))
+        return sum(
+            layer.nbytes for index, layer in enumerate(self.layers) if index in selected
+        )
+
+
+@dataclass(frozen=True)
 class MLXResidentKVSelection:
     """Native memory selected from a live MLX cache, never from source text."""
 
-    memory: MLXNativeMemory
+    memory: MLXNativeMemory | MLXDisjointNativeMemory
     plan: LiveKVSelectionPlan
-    physical_kv_copy: bool
+    physical_kv_copy: bool | None
     selected_text_reencoded_tokens: int = 0
 
 
@@ -333,6 +378,101 @@ class MLXSegmentedSelectedKVCache(MLXSelectedKVCache):
         return self.memory.keys, self.memory.values, local_keys, local_values
 
 
+class MLXDisjointSelectedKVCache:
+    """Request cache consuming several immutable history K/V segments.
+
+    Unlike :class:`MLXSelectedKVCache`, this wrapper never concatenates the
+    selected history intervals. The Qwen3 attention patch combines every
+    segment and the local causal cache under one exact softmax normalization.
+    """
+
+    def __init__(
+        self,
+        local_cache: object,
+        memory: MLXDisjointLayerKV,
+        position_base: int,
+    ) -> None:
+        if position_base < 0:
+            raise ValueError("MLX native query position base cannot be negative.")
+        self.local_cache = local_cache
+        self.memory = memory
+        self.position_base = int(position_base)
+
+    @property
+    def offset(self) -> int:
+        return self.position_base + int(self.local_cache.offset)
+
+    @property
+    def local_offset(self) -> int:
+        return int(self.local_cache.offset)
+
+    @property
+    def memory_tokens(self) -> int:
+        return self.memory.tokens
+
+    @property
+    def state(self):
+        local = self.local_cache.state
+        if not isinstance(local, tuple):
+            local = tuple(local)
+        selected = tuple(
+            value
+            for segment in self.memory.segments
+            for value in (segment.keys, segment.values)
+        )
+        return (*selected, *local)
+
+    @state.setter
+    def state(self, value) -> None:
+        raise RuntimeError("A PRA disjoint selected-memory cache is immutable.")
+
+    @property
+    def nbytes(self) -> int:
+        return self.memory.nbytes + int(getattr(self.local_cache, "nbytes", 0))
+
+    def empty(self) -> bool:
+        return False
+
+    def is_trimmable(self) -> bool:
+        operation = getattr(self.local_cache, "is_trimmable", None)
+        return bool(operation and operation())
+
+    def trim(self, n: int) -> int:
+        return int(self.local_cache.trim(n))
+
+    def update_and_fetch(self, keys, values):
+        raise RuntimeError(
+            "Disjoint PRA cache requires an installed multi-segment attention patch."
+        )
+
+    def update_and_fetch_segments(self, keys, values):
+        local_keys, local_values = self.local_cache.update_and_fetch(keys, values)
+        return (
+            tuple(segment.keys for segment in self.memory.segments),
+            tuple(segment.values for segment in self.memory.segments),
+            local_keys,
+            local_values,
+        )
+
+    def make_mask(
+        self,
+        n: int,
+        return_array: bool = False,
+        window_size: int | None = None,
+        **_: object,
+    ):
+        import mlx.core as mx
+        from mlx_lm.models.base import create_causal_mask
+
+        if window_size is not None:
+            local_window = min(window_size, self.local_offset + n)
+            local = create_causal_mask(n, self.local_offset, window_size=local_window)
+        else:
+            local = create_causal_mask(n, self.local_offset)
+        memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
+        return mx.concatenate((memory, local), axis=1)
+
+
 def segmented_selected_attention(
     queries: object,
     memory_keys: object,
@@ -374,6 +514,96 @@ def segmented_selected_attention(
         memory_mask=memory_mask,
         local_mask=local_mask,
     )
+
+
+def disjoint_segmented_selected_attention(
+    queries: object,
+    memory_keys: Sequence[object],
+    memory_values: Sequence[object],
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+    mask: object | None = None,
+) -> object:
+    """Attend to disjoint resident K/V views without packing selected history.
+
+    This is the N-memory-segment analogue of
+    :func:`segmented_selected_attention`. It performs one mathematical softmax
+    by combining per-segment maxima, denominators, and numerators. The
+    implementation deliberately remains eager: runtime qualification must
+    measure view materialization and kernel-launch overhead before a fused
+    Metal implementation can be claimed.
+    """
+
+    import mlx.core as mx
+
+    key_segments = tuple(memory_keys)
+    value_segments = tuple(memory_values)
+    if not key_segments or len(key_segments) != len(value_segments):
+        raise ValueError("Disjoint attention requires matching non-empty K/V segments.")
+    kv_heads = int(key_segments[0].shape[1])
+    query_heads = int(queries.shape[1])
+    if query_heads % kv_heads:
+        raise ValueError("Query head count must be divisible by K/V head count.")
+    for keys, values in zip(key_segments, value_segments):
+        if int(keys.shape[1]) != kv_heads or int(values.shape[1]) != kv_heads:
+            raise ValueError("All disjoint K/V segments must use the same head count.")
+        if int(keys.shape[2]) != int(values.shape[2]):
+            raise ValueError("Each disjoint key/value segment must have equal width.")
+    if int(local_keys.shape[1]) != kv_heads or int(local_values.shape[1]) != kv_heads:
+        raise ValueError("Selected and local K/V must use the same head count.")
+
+    groups = query_heads // kv_heads
+    grouped_queries = mx.unflatten(queries, 1, (kv_heads, groups))
+
+    def scores(keys):
+        expanded = mx.expand_dims(keys, axis=2)
+        return (grouped_queries @ mx.swapaxes(expanded, -1, -2)) * scale
+
+    score_segments = [scores(keys).astype(mx.float32) for keys in key_segments]
+    score_segments.append(scores(local_keys).astype(mx.float32))
+
+    if mask is not None:
+        widths = [int(keys.shape[2]) for keys in key_segments]
+        widths.append(int(local_keys.shape[2]))
+        if int(mask.shape[-1]) != sum(widths):
+            raise ValueError("Disjoint attention mask does not match total K/V width.")
+        start = 0
+        masked_scores = []
+        for values, width in zip(score_segments, widths):
+            segment_mask = mask[..., start : start + width]
+            start += width
+            for _ in range(values.ndim - segment_mask.ndim):
+                segment_mask = mx.expand_dims(segment_mask, axis=0)
+            if segment_mask.dtype == mx.bool_:
+                values = mx.where(segment_mask, values, mx.array(-1e9, values.dtype))
+            else:
+                values = values + segment_mask
+            masked_scores.append(values)
+        score_segments = masked_scores
+
+    maximum = mx.max(score_segments[0], axis=-1, keepdims=True)
+    for values in score_segments[1:]:
+        maximum = mx.maximum(maximum, mx.max(values, axis=-1, keepdims=True))
+
+    denominator = None
+    numerator = None
+    all_values = (*value_segments, local_values)
+    for score, values in zip(score_segments, all_values):
+        weights = mx.exp(score - maximum)
+        partial_denominator = mx.sum(weights, axis=-1, keepdims=True)
+        expanded_values = mx.expand_dims(values, axis=2).astype(mx.float32)
+        partial_numerator = weights @ expanded_values
+        denominator = (
+            partial_denominator
+            if denominator is None
+            else denominator + partial_denominator
+        )
+        numerator = (
+            partial_numerator if numerator is None else numerator + partial_numerator
+        )
+    return mx.flatten(numerator / denominator, 1, 2).astype(queries.dtype)
 
 
 def _segmented_selected_attention_impl(
@@ -651,6 +881,44 @@ def select_live_native_memory(
     return MLXResidentKVSelection(selected, plan, packed)
 
 
+def select_live_native_memory_disjoint(
+    source: MLXNativeMemory, plan: LiveKVSelectionPlan
+) -> MLXResidentKVSelection:
+    """Retain disjoint live-history K/V as independent source-array views.
+
+    PRA performs no interval concatenation in this path. It is suitable only
+    for a consumer such as :class:`MLXDisjointSelectedKVCache` that can combine
+    several memory segments under one attention normalization.
+    """
+
+    if source.source_tokens != plan.source_tokens:
+        raise ValueError(
+            "MLX canonical source length does not match the selection plan."
+        )
+    if not plan.intervals:
+        raise ValueError("Disjoint MLX selection requires at least one interval.")
+
+    layers = []
+    for layer in source.layers:
+        if int(layer.keys.shape[2]) < plan.source_tokens:
+            raise ValueError("MLX canonical source K/V is shorter than its manifest.")
+        layers.append(
+            MLXDisjointLayerKV(
+                tuple(
+                    MLXNativeLayerKV(
+                        layer.keys[:, :, interval.start : interval.end, :],
+                        layer.values[:, :, interval.start : interval.end, :],
+                    )
+                    for interval in plan.intervals
+                )
+            )
+        )
+    selected = MLXDisjointNativeMemory(tuple(layers), plan.source_tokens)
+    # PRA performs no explicit interval-pack copy, but MLX slice storage and
+    # transient attention allocation remain runtime-measured properties.
+    return MLXResidentKVSelection(selected, plan, None)
+
+
 def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMemory:
     """Concatenate immutable resource K/V without changing source-local positions."""
 
@@ -855,7 +1123,7 @@ class MLXNativeColdCodec:
 
 def make_native_prompt_cache(
     model: object,
-    memory: MLXNativeMemory,
+    memory: MLXNativeMemory | MLXDisjointNativeMemory,
     *,
     max_kv_size: int | None = None,
     selected_layers: Iterable[int] | None = None,
@@ -884,9 +1152,14 @@ def make_native_prompt_cache(
     invalid = selected - set(range(len(memory.layers)))
     if invalid:
         raise ValueError(f"MLX consumer layers are out of range: {sorted(invalid)}")
-    selected_cache_type = (
-        MLXSegmentedSelectedKVCache if segmented else MLXSelectedKVCache
-    )
+    if isinstance(memory, MLXDisjointNativeMemory):
+        if not segmented:
+            raise ValueError("Disjoint MLX memory requires segmented=True.")
+        selected_cache_type = MLXDisjointSelectedKVCache
+    else:
+        selected_cache_type = (
+            MLXSegmentedSelectedKVCache if segmented else MLXSelectedKVCache
+        )
     position_base = resolve_query_position_base(
         memory.source_tokens, query_position_base
     )

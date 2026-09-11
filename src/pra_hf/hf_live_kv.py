@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+import inspect
 from dataclasses import dataclass, field
+from types import MethodType
 from threading import RLock
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, Iterable, TypeVar
 
 from .live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 
@@ -21,6 +23,22 @@ class HFResidentKVSelection:
     plan: LiveKVSelectionPlan
     physical_kv_copy: bool
     selected_text_reencoded_tokens: int = 0
+    interval_pack_bytes: int = 0
+
+    @property
+    def transient_attention_bytes(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "transient_attention_bytes", 0))
+
+    @property
+    def transient_kv_copy_bytes(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "transient_kv_copy_bytes", 0))
+
+    @property
+    def max_transient_kv_tile_bytes(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "max_transient_kv_tile_bytes", 0))
 
 
 class HFLiveKVRequestCancelled(RuntimeError):
@@ -37,6 +55,10 @@ class HFLiveKVGeneration:
     selected_kv_tokens: int
     selected_text_reencoded_tokens: int
     physical_kv_copy: bool
+    interval_pack_bytes: int = 0
+    transient_attention_bytes: int = 0
+    transient_kv_copy_bytes: int = 0
+    max_transient_kv_tile_bytes: int = 0
 
 
 @dataclass
@@ -150,6 +172,11 @@ class HFLiveKVRequest(Generic[T]):
                 raise HFLiveKVRequestCancelled(
                     f"HF live-K/V request {self.request_id!r} was cancelled."
                 )
+            # Real Transformers models require the explicit sparse consumer.
+            # Minimal protocol fakes used by lifecycle tests consume the cache
+            # opaquely and intentionally have no ``modules`` traversal.
+            if hasattr(model, "modules"):
+                enable_qwen_sparse_live_kv(model)
             with torch.inference_mode():
                 output = model(
                     input_ids=ids,
@@ -203,7 +230,14 @@ class HFLiveKVRequest(Generic[T]):
             position_base,
             self.selection.plan.selected_tokens,
             self.selection.selected_text_reencoded_tokens,
-            self.selection.physical_kv_copy,
+            bool(
+                self.selection.physical_kv_copy
+                or self.selection.transient_kv_copy_bytes > 0
+            ),
+            self.selection.interval_pack_bytes,
+            self.selection.transient_attention_bytes,
+            self.selection.transient_kv_copy_bytes,
+            self.selection.max_transient_kv_tile_bytes,
         )
 
 
@@ -338,7 +372,405 @@ def _layer_pair(layer: object) -> tuple[object, object, str, str]:
     )
 
 
-def _select_tensor(tensor, plan: LiveKVSelectionPlan):
+@dataclass(frozen=True)
+class HFSparseKVSegment:
+    """One K/V tensor view with positions in the canonical source frame."""
+
+    keys: object
+    values: object
+    position_start: int
+    position_end: int
+    record_id: str = ""
+    causal_group_id: str = ""
+
+    @property
+    def tokens(self) -> int:
+        return self.position_end - self.position_start
+
+
+@dataclass
+class HFSparseAttentionMetrics:
+    """Mechanism costs that must not be conflated with text re-encoding."""
+
+    interval_pack_bytes: int = 0
+    transient_attention_bytes: int = 0
+    transient_kv_copy_bytes: int = 0
+    max_transient_kv_tile_bytes: int = 0
+    selected_text_reencoded_tokens: int = 0
+
+
+@dataclass
+class _HFSparseKVLayer:
+    source_segments: tuple[HFSparseKVSegment, ...]
+    tail_segments: list[HFSparseKVSegment] = field(default_factory=list)
+
+    def segments(self) -> tuple[HFSparseKVSegment, ...]:
+        return self.source_segments + tuple(self.tail_segments)
+
+
+class HFSparseDynamicCache:
+    """Non-packing request cache for Qwen2/Qwen3 full attention.
+
+    Source segments are basic tensor slices and therefore alias the canonical
+    source cache. Request-local tail K/V is appended as separate segments. The
+    class deliberately does not expose a dense ``keys`` tensor: accidentally
+    routing it through ordinary HF attention must fail instead of silently
+    materializing selected history.
+    """
+
+    def __init__(
+        self,
+        layers: Iterable[_HFSparseKVLayer],
+        plan: LiveKVSelectionPlan,
+    ) -> None:
+        self.layers = list(layers)
+        self.plan = plan
+        self.metrics = HFSparseAttentionMetrics()
+        self.is_sliding = [False for _ in self.layers]
+
+    @property
+    def is_compileable(self) -> bool:
+        return False
+
+    def get_seq_length(self, layer_idx: int = 0, cache_position=None) -> int:
+        if not self.layers:
+            return self.plan.source_position_base
+        layer = self.layers[layer_idx]
+        tail = sum(segment.tokens for segment in layer.tail_segments)
+        return self.plan.source_position_base + tail
+
+    def get_mask_sizes(self, cache_position, layer_idx: int) -> tuple[int, int]:
+        # HF constructs a conventional mask before entering each decoder layer.
+        # The Qwen sparse wrapper below uses original segment positions instead;
+        # this extent merely keeps model-level mask construction well-defined.
+        return self.get_seq_length(layer_idx) + int(cache_position.shape[0]), 0
+
+    def get_max_cache_shape(self, layer_idx: int = 0) -> int:
+        return -1
+
+    def append(
+        self,
+        layer_idx: int,
+        keys,
+        values,
+        cache_position,
+    ) -> tuple[HFSparseKVSegment, ...]:
+        if layer_idx < 0 or layer_idx >= len(self.layers):
+            raise IndexError(f"Sparse HF cache has no layer {layer_idx}.")
+        if keys.ndim != 4 or values.shape != keys.shape:
+            raise ValueError("Sparse HF Qwen K/V must be equal-shape rank-four tensors.")
+        positions = tuple(int(value) for value in cache_position.detach().cpu().tolist())
+        if not positions or positions != tuple(range(positions[0], positions[0] + len(positions))):
+            raise ValueError("Sparse HF tail cache positions must be contiguous and ordered.")
+        segment = HFSparseKVSegment(
+            keys,
+            values,
+            positions[0],
+            positions[-1] + 1,
+            record_id="request-tail",
+            causal_group_id="request-tail",
+        )
+        self.layers[layer_idx].tail_segments.append(segment)
+        return self.layers[layer_idx].segments()
+
+    def segments(self, layer_idx: int) -> tuple[HFSparseKVSegment, ...]:
+        return self.layers[layer_idx].segments()
+
+
+def _tensor_storage_pointer(tensor) -> int:
+    storage = tensor.untyped_storage()
+    return int(storage.data_ptr())
+
+
+def _source_segment_views(keys, values, plan: LiveKVSelectionPlan):
+    segments: list[HFSparseKVSegment] = []
+    for interval in plan.intervals:
+        key_view = keys[..., interval.start : interval.end, :]
+        value_view = values[..., interval.start : interval.end, :]
+        if _tensor_storage_pointer(key_view) != _tensor_storage_pointer(keys):
+            raise RuntimeError("HF sparse key interval unexpectedly copied source storage.")
+        if _tensor_storage_pointer(value_view) != _tensor_storage_pointer(values):
+            raise RuntimeError("HF sparse value interval unexpectedly copied source storage.")
+        segments.append(
+            HFSparseKVSegment(
+                key_view,
+                value_view,
+                interval.start,
+                interval.end,
+                interval.record_id,
+                interval.causal_group_id,
+            )
+        )
+    return tuple(segments)
+
+
+def segmented_qwen_attention(
+    query,
+    segments: Iterable[HFSparseKVSegment],
+    query_positions,
+    *,
+    scaling: float,
+    metrics: HFSparseAttentionMetrics | None = None,
+    score_tile_tokens: int = 256,
+):
+    """Evaluate GQA over disjoint K/V views without packing selected K/V.
+
+    This portable implementation uses an online softmax over intervals. It is
+    a correctness consumer, not a fused sparse kernel: score/probability
+    tensors are transient and their logical allocation is accounted separately.
+    """
+
+    import torch
+
+    if query.ndim != 4:
+        raise ValueError("Qwen sparse attention expects [batch, heads, query, dim].")
+    if int(query.shape[0]) != 1:
+        raise ValueError("Qwen sparse live-history currently supports batch size one.")
+    if query_positions.ndim == 2:
+        if int(query_positions.shape[0]) != 1:
+            raise ValueError("Qwen sparse query positions currently support one batch.")
+        query_positions = query_positions[0]
+    if query_positions.ndim != 1 or int(query_positions.shape[0]) != int(query.shape[-2]):
+        raise ValueError("Query positions must provide one original position per query.")
+    rows = tuple(segments)
+    if not rows:
+        raise ValueError("Sparse attention requires at least the current query K/V segment.")
+
+    batch, query_heads, query_tokens, head_dim = map(int, query.shape)
+    kv_heads = int(rows[0].keys.shape[1])
+    if query_heads % kv_heads:
+        raise ValueError("Qwen query heads must be divisible by K/V heads.")
+    groups = query_heads // kv_heads
+    grouped_query = query.reshape(batch, kv_heads, groups, query_tokens, head_dim)
+    query32 = grouped_query.float()
+    accumulator = torch.zeros(
+        (batch, kv_heads, groups, query_tokens, head_dim),
+        dtype=torch.float32,
+        device=query.device,
+    )
+    denominator = torch.zeros(
+        (batch, kv_heads, groups, query_tokens, 1),
+        dtype=torch.float32,
+        device=query.device,
+    )
+    running_max = torch.full_like(denominator, -torch.inf)
+    transient_peak = accumulator.numel() * accumulator.element_size()
+    transient_peak += denominator.numel() * denominator.element_size() * 2
+    transient_peak += query32.numel() * query32.element_size()
+
+    if score_tile_tokens <= 0:
+        raise ValueError("score_tile_tokens must be positive.")
+    for segment in rows:
+        keys, values = segment.keys, segment.values
+        if keys.ndim != 4 or values.shape != keys.shape:
+            raise ValueError("Every sparse K/V segment must contain equal rank-four tensors.")
+        if tuple(keys.shape[:2]) != (batch, kv_heads) or int(keys.shape[-1]) != head_dim:
+            raise ValueError("Sparse K/V segment geometry does not match the query.")
+        key_tokens = int(keys.shape[-2])
+        if key_tokens != segment.tokens:
+            raise ValueError("Sparse K/V tensor width does not match its position interval.")
+
+        for tile_start in range(0, key_tokens, score_tile_tokens):
+            tile_end = min(tile_start + score_tile_tokens, key_tokens)
+            key_tile = keys[..., tile_start:tile_end, :]
+            value_tile = values[..., tile_start:tile_end, :]
+            # FP16 scores overflow on the qualified Qwen2.5 checkpoint. Cast
+            # one bounded tile (never a selected interval or packed cache) so
+            # score accumulation and the online softmax remain finite.
+            key32 = key_tile.float()
+            value32 = value_tile.float()
+            kv_tile_copy_bytes = 0
+            if key32.data_ptr() != key_tile.data_ptr():
+                kv_tile_copy_bytes += key32.numel() * key32.element_size()
+            if value32.data_ptr() != value_tile.data_ptr():
+                kv_tile_copy_bytes += value32.numel() * value32.element_size()
+            if metrics is not None:
+                metrics.transient_kv_copy_bytes += int(kv_tile_copy_bytes)
+                metrics.max_transient_kv_tile_bytes = max(
+                    metrics.max_transient_kv_tile_bytes,
+                    int(kv_tile_copy_bytes),
+                )
+            logits32 = torch.einsum(
+                "bhgqd,bhkd->bhgqk", query32, key32
+            ) * float(scaling)
+            if not bool(torch.all(torch.isfinite(logits32))):
+                raise RuntimeError(
+                    "Sparse HF Qwen fp32 score kernel produced a non-finite value."
+                )
+            tile_tokens = tile_end - tile_start
+            key_positions = torch.arange(
+                segment.position_start + tile_start,
+                segment.position_start + tile_end,
+                dtype=query_positions.dtype,
+                device=query_positions.device,
+            )
+            visible = key_positions.view(1, 1, 1, 1, tile_tokens) <= query_positions.view(
+                1, 1, 1, query_tokens, 1
+            )
+            masked_logits = logits32.masked_fill(~visible, -torch.inf)
+            segment_max = masked_logits.amax(dim=-1, keepdim=True)
+            new_max = torch.maximum(running_max, segment_max)
+            finite_new_max = torch.isfinite(new_max)
+            safe_new_max = torch.where(finite_new_max, new_max, 0.0)
+            prior_scale = torch.where(
+                torch.isfinite(running_max) & finite_new_max,
+                torch.exp(running_max - safe_new_max),
+                0.0,
+            )
+            weights = torch.exp(masked_logits - safe_new_max)
+            weights = torch.where(visible & finite_new_max, weights, 0.0)
+            segment_sum = weights.sum(dim=-1, keepdim=True)
+            segment_output = torch.einsum(
+                "bhgqk,bhkd->bhgqd", weights, value32
+            )
+            accumulator = accumulator * prior_scale + segment_output
+            denominator = denominator * prior_scale + segment_sum
+            running_max = new_max
+            transient_peak = max(
+                transient_peak,
+                key32.numel() * key32.element_size()
+                + value32.numel() * value32.element_size()
+                + logits32.numel() * logits32.element_size()
+                + masked_logits.numel() * masked_logits.element_size()
+                + weights.numel() * weights.element_size()
+                + segment_output.numel() * segment_output.element_size(),
+            )
+
+    if not bool(torch.all(torch.isfinite(denominator))) or bool(torch.any(denominator <= 0)):
+        raise RuntimeError("Sparse causal attention produced a non-finite or empty denominator.")
+    if not bool(torch.all(torch.isfinite(accumulator))):
+        raise RuntimeError("Sparse causal attention produced a non-finite numerator.")
+    if metrics is not None:
+        metrics.transient_attention_bytes += int(transient_peak)
+    return (accumulator / denominator).to(query.dtype).reshape(
+        batch, query_heads, query_tokens, head_dim
+    )
+
+
+def _qwen_sparse_forward(original_forward):
+    def forward(
+        module,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_value=None,
+        cache_position=None,
+        **kwargs,
+    ):
+        plural_cache = kwargs.get("past_key_values")
+        effective_cache = plural_cache if plural_cache is not None else past_key_value
+        if not isinstance(effective_cache, HFSparseDynamicCache):
+            if "past_key_values" in kwargs:
+                return original_forward(
+                    hidden_states,
+                    position_embeddings,
+                    attention_mask,
+                    cache_position=cache_position,
+                    **kwargs,
+                )
+            return original_forward(
+                hidden_states,
+                position_embeddings,
+                attention_mask,
+                past_key_value=past_key_value,
+                cache_position=cache_position,
+                **kwargs,
+            )
+        kwargs.pop("past_key_values", None)
+        past_key_value = effective_cache
+        if module.training:
+            raise RuntimeError("Sparse HF Qwen attention is inference-only.")
+        if kwargs.get("output_attentions"):
+            raise RuntimeError("Sparse HF Qwen attention does not materialize attention weights.")
+        if cache_position is None:
+            raise ValueError("Sparse HF Qwen attention requires original cache_position values.")
+        if getattr(module, "sliding_window", None) is not None:
+            raise RuntimeError("Sparse HF Qwen attention currently supports full-attention layers only.")
+
+        module_name = type(module).__module__
+        if module_name == "transformers.models.qwen2.modeling_qwen2":
+            from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
+        elif module_name == "transformers.models.qwen3.modeling_qwen3":
+            from transformers.models.qwen3.modeling_qwen3 import apply_rotary_pos_emb
+        else:  # pragma: no cover - guarded during installation
+            raise TypeError(f"Unsupported sparse HF attention module {type(module)!r}.")
+
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, module.head_dim)
+        query = module.q_proj(hidden_states).view(hidden_shape)
+        key = module.k_proj(hidden_states).view(hidden_shape)
+        if hasattr(module, "q_norm"):
+            query = module.q_norm(query)
+        if hasattr(module, "k_norm"):
+            key = module.k_norm(key)
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = module.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        cos, sin = position_embeddings
+        query, key = apply_rotary_pos_emb(query, key, cos, sin)
+        segments = past_key_value.append(module.layer_idx, key, value, cache_position)
+        output = segmented_qwen_attention(
+            query,
+            segments,
+            cache_position,
+            scaling=module.scaling,
+            metrics=past_key_value.metrics,
+        )
+        output = output.transpose(1, 2).contiguous().reshape(*input_shape, -1)
+        return module.o_proj(output), None
+
+    return forward
+
+
+def enable_qwen_sparse_live_kv(model) -> int:
+    """Install a fail-closed sparse-cache consumer on Qwen2/Qwen3 attention.
+
+    The supported boundary is the Transformers 4.55--4.57 attention contract:
+    ``position_embeddings`` and ``cache_position`` are explicit forward
+    arguments (including the 4.57 plural cache alias). Qwen2 (including
+    Qwen2.5) and Qwen3 full-attention modules are supported. Their configured
+    dense attention backend is bypassed only for sparse-cache requests.
+    Sliding-window layers, training, batching, attention-weight output, and
+    Qwen3.5 recurrent/DeltaNet layers remain outside this correctness path.
+    """
+
+    supported_modules = {
+        "transformers.models.qwen2.modeling_qwen2": "Qwen2Attention",
+        "transformers.models.qwen3.modeling_qwen3": "Qwen3Attention",
+    }
+    installed = 0
+    modules = getattr(model, "modules", None)
+    if not callable(modules):
+        raise TypeError("HF sparse live K/V requires a Transformers model module tree.")
+    for module in modules():
+        module_name = type(module).__module__
+        expected_name = supported_modules.get(module_name)
+        if expected_name is None or type(module).__name__ != expected_name:
+            continue
+        if getattr(module, "_pra_sparse_live_kv_enabled", False):
+            installed += 1
+            continue
+        parameters = inspect.signature(module.forward).parameters
+        if "position_embeddings" not in parameters or "cache_position" not in parameters:
+            raise RuntimeError(
+                "Installed Transformers Qwen attention lacks the required 4.55-style "
+                "position_embeddings/cache_position contract."
+            )
+        original = module.forward
+        module.forward = MethodType(_qwen_sparse_forward(original), module)
+        module._pra_sparse_live_kv_enabled = True
+        module._pra_sparse_live_kv_original_forward = original
+        installed += 1
+    if not installed:
+        raise TypeError(
+            "HF non-packing live K/V supports Qwen2/Qwen2.5 and Qwen3 attention only."
+        )
+    return installed
+
+
+def _pack_tensor_reference(tensor, plan: LiveKVSelectionPlan):
+    """Materialize a dense oracle; never use this as a PRA request cache."""
+
     import torch
 
     pieces = [tensor[..., row.start : row.end, :] for row in plan.intervals]
@@ -349,31 +781,83 @@ def _select_tensor(tensor, plan: LiveKVSelectionPlan):
     return torch.cat(pieces, dim=-2), True
 
 
-def select_dynamic_cache(
-    source_cache: object, plan: LiveKVSelectionPlan
-) -> HFResidentKVSelection:
-    """Select resident K/V tensors without invoking tokenization or the model.
-
-    A single contiguous interval remains a tensor view. Multiple disjoint
-    intervals require a packed tensor copy in the portable HF cache API; that
-    cost is reported explicitly and is not confused with text re-encoding.
-    """
+def pack_dynamic_cache_reference(source_cache: object, plan: LiveKVSelectionPlan):
+    """Build the explicitly packed dense reference for qualification only."""
 
     layers = getattr(source_cache, "layers", None)
     if layers is None:
-        raise TypeError("Live HF K/V selection requires a Transformers cache with layers.")
+        raise TypeError("HF dense reference requires a Transformers cache with layers.")
     selected = copy.copy(source_cache)
     selected.layers = []
     copied = False
+    packed_bytes = 0
     for source_layer in layers:
         keys, values, key_name, value_name = _layer_pair(source_layer)
-        if int(keys.shape[-2]) < plan.source_tokens:
-            raise ValueError("HF source cache is shorter than the selection plan.")
         layer = copy.copy(source_layer)
-        chosen_keys, key_copy = _select_tensor(keys, plan)
-        chosen_values, value_copy = _select_tensor(values, plan)
+        chosen_keys, key_copy = _pack_tensor_reference(keys, plan)
+        chosen_values, value_copy = _pack_tensor_reference(values, plan)
         setattr(layer, key_name, chosen_keys)
         setattr(layer, value_name, chosen_values)
         selected.layers.append(layer)
         copied = copied or key_copy or value_copy
-    return HFResidentKVSelection(selected, plan, copied)
+        if key_copy:
+            packed_bytes += chosen_keys.numel() * chosen_keys.element_size()
+        if value_copy:
+            packed_bytes += chosen_values.numel() * chosen_values.element_size()
+    return HFResidentKVSelection(
+        selected,
+        plan,
+        copied,
+        interval_pack_bytes=int(packed_bytes),
+    )
+
+
+def dense_reference_attention_mask(
+    plan: LiveKVSelectionPlan,
+    query_positions,
+    *,
+    dtype,
+    device=None,
+):
+    """Create the dense-oracle mask for compact K/V with original positions."""
+
+    import torch
+
+    if query_positions.ndim == 2:
+        if int(query_positions.shape[0]) != 1:
+            raise ValueError("HF dense sparse-reference masks support one batch.")
+        query_positions = query_positions[0]
+    prior_tail_tokens = max(int(query_positions[0]) - plan.source_position_base, 0)
+    positions: list[int] = []
+    for interval in plan.intervals:
+        positions.extend(range(interval.start, interval.end))
+    positions.extend(
+        range(
+            plan.source_position_base,
+            plan.source_position_base + prior_tail_tokens + int(query_positions.shape[0]),
+        )
+    )
+    key_positions = torch.tensor(positions, dtype=query_positions.dtype, device=device)
+    visible = key_positions.view(1, 1, 1, -1) <= query_positions.to(device).view(1, 1, -1, 1)
+    mask = torch.zeros(visible.shape, dtype=dtype, device=device)
+    return mask.masked_fill(~visible, torch.finfo(dtype).min)
+
+
+def select_dynamic_cache(
+    source_cache: object, plan: LiveKVSelectionPlan
+) -> HFResidentKVSelection:
+    """Select source K/V as disjoint views for the Qwen sparse consumer."""
+
+    layers = getattr(source_cache, "layers", None)
+    if layers is None:
+        raise TypeError("Live HF K/V selection requires a Transformers cache with layers.")
+    selected_layers: list[_HFSparseKVLayer] = []
+    for source_layer in layers:
+        keys, values, _key_name, _value_name = _layer_pair(source_layer)
+        if int(keys.shape[-2]) < plan.source_tokens:
+            raise ValueError("HF source cache is shorter than the selection plan.")
+        selected_layers.append(
+            _HFSparseKVLayer(_source_segment_views(keys, values, plan))
+        )
+    selected = HFSparseDynamicCache(selected_layers, plan)
+    return HFResidentKVSelection(selected, plan, False, interval_pack_bytes=0)

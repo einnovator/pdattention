@@ -18,25 +18,31 @@
       "agent_campaign": "enabled"
     },
     "huggingface": {
-      "status": "PROVISIONAL",
+      "status": "BLOCKED_CONSUMPTION_GATE",
       "same_state_100_percent": "10/10 exact",
       "zero_selected_text_reencoding": true,
       "physical_kv_copy_at_100_percent": false,
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
       "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "passed for the synchronous request-owned HF runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstone checks",
+      "nonpacking_probe": "Qwen2.5-1.5B Task02 turn 4 at 2,907/3,081 tokens is greedy-token exact with original positions, zero persistent interval-pack bytes, and zero selected-text re-encoding",
+      "consumption_gate": "failed: maximum logit delta 0.029785 exceeds the predeclared 0.001 tolerance; the stable 256-token FP32 path copies 337,125,376 cumulative K/V scratch bytes (524,288-byte maximum tile) and allocates 69,099,520 transient attention bytes",
+      "lifecycle": "passed for the synchronous request-owned HF runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstone checks; the strict non-packing consumption gate remains false",
+      "required_fix": "fused/native disjoint Qwen attention, or a no-K/V-copy numerical formulation that clears the frozen 0.001 tolerance",
       "agent_campaign": "blocked"
     },
     "mlx": {
-      "status": "PROVISIONAL",
+      "status": "BLOCKED_CONSUMPTION_GATE",
       "same_state_100_percent": "10/10 exact",
       "zero_selected_text_reencoding": true,
       "physical_kv_copy_at_100_percent": false,
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
       "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "passed for request-owned MLX runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstone checks",
+      "disjoint_selection_probe": "Task02 turn 4 aliases six selected intervals with zero selection pack bytes and zero allocator delta; 0.639 ms versus 6.578 ms and 333,398,016 bytes for the dense packed reference",
+      "consumption_gate": "failed: first-layer attention peaks 12,511,756 bytes for 11,907,072 bytes of selected layer K/V and maximum same-subset logit delta is 1.0 versus the predeclared 0.005 tolerance",
+      "lifecycle": "all non-consumption request-owned checks pass, including concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstones; overall engine lifecycle qualification remains false because the strict consumption gates fail",
+      "required_fix": "fused interval-addressed Metal attention consuming disjoint source-cache ranges without packing or a selected-K/V-sized transient",
       "agent_campaign": "blocked"
     },
     "vllm": {
@@ -49,14 +55,15 @@
       "known_constraint": "complete-page selection; partial source tail remains in the ordinary suffix",
       "sparse_position_preserving": "7/7 exact at requested 90%; logical realized 90.36%-95.68% and physical page retention 90.48%-96.03%",
       "physical_kv_copy_at_sparse_retention": false,
-      "cuda_qualification": "bounded vLLM 0.28 CUDA gate on native-window Qwen2.5-1.5B: 7/7 frozen sparse turns exact, 90.48%-96.03% realized, original positions and holes preserved, zero selected-text re-encoding, non-degenerate continuations; concurrent borrowing, real mid-generation cancel isolation, stale-generation rejection, HOT eviction, lossless restore, and same-page reuse pass",
-      "cuda_lifecycle_gap": "selection initially gathers and copies K/V; the vLLM 0.28 worker hook is version bounded and not an upstream extension point; offline finish callbacks are deferred, so ownership is reconciled against an authoritative scheduler snapshot; offload is synchronous host-memory persistence",
-      "cuda_zero_copy_status": "blocked on pinned vLLM 0.28 connector API: external matches return only a token count, KVCacheManager allocates fresh destination blocks, connector metadata may not modify SchedulerOutput, and no supported existing-block alias/adoption API exists",
-      "lifecycle": "bounded CUDA mechanism/lifecycle gate passed; vLLM-Metal cancellation, eviction, and shared-page lifetime remain pending",
+      "metal_lifecycle": "QUALIFIED on real Task02 turn 4 at 2,944/3,104 page tokens (94.85%): 24/24 checks pass, two aliases preserve exact source block IDs, active memory delta and attachment-copy events are zero, and selected history is not re-encoded; 712,002,099-byte offload/restore remains a separately reported residency copy",
+      "cuda_qualification": "bounded vLLM 0.28 in-process V1 scheduler-owned alias on Qwen2.5-1.5B: Task02 turn 4 retains 2,944/3,104 complete-page tokens (94.85%), two same-subset consumers are exact, and copy/H2D/re-encoding counters are 0/0/0",
+      "cuda_lifecycle": "48-token mechanism smoke passes concurrent completion, real cancellation, injected scheduler error, stale-generation rejection, borrower-safe and deferred eviction, and final refcounts; 5 aliases installed and released exactly once",
+      "cuda_zero_copy_status": "qualified only for one homogeneous KV group, complete pages, and an in-process vLLM 0.28 V1 scheduler hook before allocate_slots; partial pages, hybrid groups, multiprocess scheduler/worker execution, full seven-turn replay, and timing/economic measurements remain unqualified",
+      "lifecycle": "vLLM-Metal request-owned lifecycle passes 24/24; bounded CUDA scheduler-owned lifecycle passes in its declared scope",
       "agent_campaign": "blocked"
     },
     "sglang": {
-      "status": "PROVISIONAL",
+      "status": "BLOCKED_CONSUMPTION_GATE",
       "same_state_100_percent": "10/10 exact",
       "zero_selected_text_reencoding": true,
       "physical_kv_copy_at_100_percent": false,
@@ -66,7 +73,10 @@
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
       "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "passed for request-owned SGLang-MLX/Radix runtime: 22/22 concurrent, finish/cancel/error, stale-generation, Radix isolation, offload/restore, termination, and tombstone checks",
+      "disjoint_selection_probe": "Task02 turn 4 aliases six selected intervals with zero selection pack bytes and zero allocator delta; 0.581 ms versus 8.303 ms and 333,398,016 bytes for the dense packed reference",
+      "consumption_gate": "failed: first-layer attention peaks 12,199,774 bytes for 11,907,072 bytes of selected layer K/V and maximum same-subset logit delta is 1.109375 versus the predeclared 0.005 tolerance",
+      "lifecycle": "24/24 non-consumption checks pass with Radix/source-owner isolation, exact-once terminal release, stale-generation rejection, offload/restore, termination, and tombstones; overall engine lifecycle qualification remains false because the strict consumption gates fail",
+      "required_fix": "fused interval-addressed SGLang-MLX Metal attention consuming Radix-isolated source ranges without packing or a selected-K/V-sized transient",
       "agent_campaign": "blocked"
     }
   },
@@ -113,6 +123,12 @@
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_zero_copy_alias_audit_v028.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_sparse_lifecycle_task02_090_5990ec30.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_sparse_lifecycle_task02_090_5990ec30.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_metal_sparse_lifecycle_task02_090_5990ec30.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_scheduler_alias_lifecycle_qwen15_fcde2c74.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_scheduler_alias_task02_turn4_090_qwen15_fcde2c74.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_disjoint_segmented_sparse_lifecycle_task02_090_5990ec30.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_disjoint_segmented_sparse_lifecycle_task02_090_5990ec30.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_nonpacking_sparse_position_task02_qwen15_strict_v1.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -137,12 +153,19 @@
     ,"typed recent_progress_turns policy propagation and frozen task-04 source-plus-progress retention regression at 90%"
     ,"request-owned SGLang-MLX/Radix sparse lifecycle on real Task02 K/V: 22/22 checks including exact-once finish/cancel/error, Radix isolation, stale-generation rejection, and exact offload/restore"
     ,"request-scoped typed agent-retention policy round-trip and runtime consumption"
+    ,"vLLM-Metal real Task02 request-owned lifecycle: 24/24 checks with exact page-ID aliasing, zero active-memory delta, and no request-attachment copy"
+    ,"bounded vLLM CUDA scheduler-owned page alias: Task02 turn 4 same-subset exact with zero K/V copy, H2D transfer, or selected-history re-encoding"
+    ,"MLX and SGLang disjoint-selection diagnostics separate zero-byte alias construction from the selected-K/V-sized allocation and logit drift observed during unfused attention consumption"
+    ,"HF non-packing diagnostic separates zero-byte persistent interval packing from bounded FP32 K/V tile copies and a strict 0.029785-versus-0.001 numerical failure"
+    ,"locked Easy-3 matrix preparation: 15 task-major cells, nine no-adaptor/configuration-qualified and six learned-adaptor cells blocked fail-closed before execution"
   ],
   "still_required": [
-    "HF and MLX zero-copy sparse materialization; corrected 90% retention-floor semantics and request-owned lifecycle pass",
-    "vLLM-Metal lifecycle qualification and a new upstream existing-block alias contract for zero-copy CUDA selection; the bounded copying CUDA sparse/lifecycle gate now passes",
-    "SGLang zero-copy sparse materialization; corrected 90% retention-floor semantics and request-owned Radix lifecycle pass",
-    "locked three-task no-PRA/PRA-100/PRA-90 matrix, with no-adaptor and frozen model-adaptor PRA arms",
+    "HF fused/native disjoint attention: the alias-only selection avoids persistent packing, but the stable portable consumer exceeds logit tolerance and cumulatively casts 337,125,376 bytes of K/V scratch",
+    "MLX fused interval-addressed attention: the alias-only selection passes but current consumption allocates a selected-layer-K/V-sized transient and exceeds logit tolerance",
+    "vLLM CUDA partial-page, hybrid-group, multiprocess, full-trajectory, and timing/economic qualification beyond the bounded in-process V1 alias",
+    "SGLang fused interval-addressed attention: the alias-only selection passes but current consumption allocates a selected-layer-K/V-sized transient and exceeds logit tolerance",
+    "execute the nine qualified no-adaptor cells of the locked three-task no-PRA/PRA-100/PRA-90 matrix after its llama.cpp endpoint and agent host are available",
+    "train, certify, and integrate a leakage-free frozen Qwen3-Coder-30B routing/selection adaptor before executing the six adaptor cells",
     "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],
   "efficacy_progress": {
@@ -155,7 +178,11 @@
     "tasks_entering_75_percent_treatment": 1,
     "tasks_resolved_at_75_percent": 0,
     "lower_retention_rows_withheld_by_quality_gate": 2,
-    "next_action": "finish vLLM-Metal lifecycle qualification, then rerun the locked three-task no-PRA/PRA-100/PRA-90 matrix with source and progress-state protection"
+    "locked_easy3_cells": 15,
+    "locked_easy3_config_qualified_cells": 9,
+    "locked_easy3_adaptor_blocked_cells": 6,
+    "locked_easy3_executed_cells": 0,
+    "next_action": "keep HF/MLX/SGLang blocked pending qualified disjoint attention consumers, extend bounded vLLM alias coverage, and execute the nine no-adaptor Easy-3 cells only when the direct llama.cpp endpoint and agent host are available"
   },
   "reason": "The tested llama.cpp configuration clears the predeclared mechanism gates. Qualification does not transfer to other engines or cache-off/rematerializing paths."
 }

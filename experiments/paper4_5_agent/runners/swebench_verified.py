@@ -239,6 +239,8 @@ def gateway_preflight(
         "model": args.served_model,
         "messages": [{"role": "user", "content": "Reply with OK."}],
         "temperature": 0,
+        "top_p": float(getattr(args, "top_p", 1.0)),
+        "seed": int(getattr(args, "sampling_seed", 0)),
         "chat_template_no_thinking": bool(
             getattr(args, "chat_template_no_thinking", False)
         ),
@@ -422,6 +424,8 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "docker_platform": getattr(args, "docker_platform", None),
         "prepull_images": bool(getattr(args, "prepull_images", False)),
         "temperature": 0,
+        "top_p": float(getattr(args, "top_p", 1.0)),
+        "sampling_seed": int(getattr(args, "sampling_seed", 0)),
         "campaign_mode": args.mode,
         "selection_contract": selection_contract,
         "selection_record_path": str(selection_record) if selection_record else None,
@@ -600,6 +604,8 @@ def _execute_chunks(
                 "-c", args.scaffold,
                 "-c", f"model.model_kwargs.api_base={agent_base_url}",
                 "-c", "model.model_kwargs.temperature=0",
+                "-c", f"model.model_kwargs.top_p={float(getattr(args, 'top_p', 1.0))}",
+                "-c", f"model.model_kwargs.seed={int(getattr(args, 'sampling_seed', 0))}",
             ]
             agent_command.extend(_completion_token_overrides(args))
             agent_command.extend([
@@ -696,6 +702,8 @@ def _execute_chunks(
             "max_steps": args.max_steps,
             "max_completion_tokens": getattr(args, "max_completion_tokens", None),
             "temperature": 0.0,
+            "top_p": float(getattr(args, "top_p", 1.0)),
+            "sampling_seed": int(getattr(args, "sampling_seed", 0)),
             "chat_template_no_thinking": bool(
                 getattr(args, "chat_template_no_thinking", False)
             ),
@@ -743,6 +751,8 @@ def _execution_fingerprint(receipt: dict[str, Any]) -> str:
                 "context_budget_fraction", "context_limit", "max_steps",
                 "retention_policy",
                 "max_completion_tokens",
+                "top_p",
+                "sampling_seed",
                 "consumption_policy",
                 "chat_template_no_thinking",
                 "prefix_caching",
@@ -1048,7 +1058,10 @@ def _write_task_rows(
                     ContextTreatment.GATEWAY_NATIVE_PRA.value,
                 } else None
             ),
-            "context_budget": args.context_limit, "seed": 0, "resolved": instance_id in resolved,
+            "context_budget": args.context_limit,
+            "seed": int(getattr(args, "sampling_seed", 0)),
+            "top_p": float(getattr(args, "top_p", 1.0)),
+            "resolved": instance_id in resolved,
             "benchmark_score": 1.0 if instance_id in resolved else 0.0,
             "logical_input_tokens": logical_tokens,
             "physical_input_tokens": physical_tokens,
@@ -1326,6 +1339,8 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--sampling-seed", type=int, default=0)
+    parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--recent-completed-turns", type=int, default=2)
     parser.add_argument("--recent-records-per-turn", type=int, default=2)
     parser.add_argument("--recent-source-turns", type=int, default=1)

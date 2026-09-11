@@ -219,6 +219,25 @@ def test_borrowed_live_prefix_pages_fail_closed_on_partial_or_reserved_pages() -
         bridge.borrow_resident_pages("reserved", (2, 8), selected_token_count=8)
 
 
+def test_nonowning_alias_can_select_restored_reserved_pages() -> None:
+    bridge = object.__new__(VLLMMetalV1NativeBridge)
+    bridge.scheduler_blocks = 8
+    bridge.reserve_blocks = 4
+    bridge.block_size = 4
+    bridge._handles = {"restored-source": (8, 9, 10, 11)}
+    bridge._borrowed_handles = set()
+    bridge._free = []
+
+    assert bridge.alias_resident_pages(
+        "request-selection", (8, 10), selected_token_count=8
+    ) == (8, 10)
+    bridge.release("request-selection")
+
+    assert bridge._handles == {"restored-source": (8, 9, 10, 11)}
+    assert bridge._borrowed_handles == set()
+    assert bridge._free == []
+
+
 def test_storage_hot_bridge_prevents_release_while_request_is_pinned() -> None:
     import numpy as np
     from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory

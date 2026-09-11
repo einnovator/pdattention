@@ -41,11 +41,18 @@ from .native_geometry import (
 )
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
 from .hf_live_kv import (
+    HFSparseAttentionMetrics,
+    HFSparseDynamicCache,
+    HFSparseKVSegment,
     HFLiveKVGeneration,
     HFLiveKVRequest,
     HFLiveKVRequestCancelled,
     HFLiveKVRuntime,
     HFResidentKVSelection,
+    dense_reference_attention_mask,
+    enable_qwen_sparse_live_kv,
+    pack_dynamic_cache_reference,
+    segmented_qwen_attention,
     select_dynamic_cache,
 )
 from .router import PRARouter
@@ -513,6 +520,9 @@ __all__ = [
     "HFLiveKVRequestCancelled",
     "HFLiveKVRuntime",
     "HFResidentKVSelection",
+    "HFSparseAttentionMetrics",
+    "HFSparseDynamicCache",
+    "HFSparseKVSegment",
     "AuthContext",
     "DiscoveryCandidate",
     "GistIndex",
@@ -584,6 +594,10 @@ __all__ = [
     "get_default_execution_policy",
     "analytical_routing_operations",
     "set_default_execution_policy",
+    "dense_reference_attention_mask",
+    "enable_qwen_sparse_live_kv",
+    "pack_dynamic_cache_reference",
+    "segmented_qwen_attention",
     "select_dynamic_cache",
 ]
 

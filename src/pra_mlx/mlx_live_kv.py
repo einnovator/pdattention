@@ -13,6 +13,7 @@ from .native import (
     MLXResidentKVSelection,
     make_native_prompt_cache,
     select_live_native_memory,
+    select_live_native_memory_disjoint,
 )
 
 
@@ -29,7 +30,10 @@ class MLXLiveKVGeneration:
     source_position_base: int
     selected_kv_tokens: int
     selected_text_reencoded_tokens: int
-    physical_kv_copy: bool
+    physical_kv_copy: bool | None
+    selected_kv_segments: int
+    selection_pack_bytes: int
+    materialization_policy: str
 
 
 @dataclass
@@ -43,6 +47,8 @@ class MLXLiveKVRequest:
     session_id: str
     generation: int
     selection: MLXResidentKVSelection
+    segmented: bool = False
+    disjoint_selection: bool = False
     _closed: bool = field(default=False, init=False, repr=False)
     _outcome: str | None = field(default=None, init=False, repr=False)
 
@@ -123,6 +129,7 @@ class MLXLiveKVRequest:
             cache = make_native_prompt_cache(
                 model,
                 self.selection.memory,
+                segmented=self.segmented,
                 query_position_base=self.selection.plan.source_position_base,
             )
         except BaseException:
@@ -164,6 +171,17 @@ class MLXLiveKVRequest:
             self.selection.plan.selected_tokens,
             self.selection.selected_text_reencoded_tokens,
             self.selection.physical_kv_copy,
+            len(self.selection.plan.intervals),
+            (
+                self.selection.memory.nbytes
+                if not self.disjoint_selection and self.selection.physical_kv_copy
+                else 0
+            ),
+            (
+                "disjoint_segmented"
+                if self.disjoint_selection
+                else "dense_segmented" if self.segmented else "dense_pack"
+            ),
         )
 
 
@@ -208,6 +226,8 @@ class MLXLiveKVRuntime:
         tenant_id: str,
         session_id: str,
         expected_generation: int,
+        segmented: bool = False,
+        disjoint_selection: bool | None = None,
     ) -> MLXLiveKVRequest:
         """Borrow the canonical source before constructing selected K/V."""
 
@@ -225,7 +245,20 @@ class MLXLiveKVRuntime:
                 expected_generations=(expected_generation,),
             )
             try:
-                selection = select_live_native_memory(source_memory, plan)
+                use_disjoint = (
+                    bool(segmented)
+                    if disjoint_selection is None
+                    else bool(disjoint_selection)
+                )
+                if use_disjoint and not segmented:
+                    raise ValueError(
+                        "Disjoint MLX selection requires segmented attention."
+                    )
+                selection = (
+                    select_live_native_memory_disjoint(source_memory, plan)
+                    if use_disjoint
+                    else select_live_native_memory(source_memory, plan)
+                )
             except BaseException:
                 self.registry.release(request_key)
                 raise
@@ -237,6 +270,8 @@ class MLXLiveKVRuntime:
                 str(session_id),
                 int(expected_generation),
                 selection,
+                bool(segmented),
+                use_disjoint,
             )
             self._requests[request_key] = request
             return request

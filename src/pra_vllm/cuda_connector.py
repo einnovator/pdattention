@@ -242,6 +242,12 @@ class PRASemanticConnector(KVConnectorBase_V1):
         cached = scheduler_output.scheduled_cached_reqs
         for index, req_id in enumerate(cached.req_ids):
             command = self._commands.get(req_id)
+            scheduler_aliases = getattr(self, "_scheduler_alias_requests", ())
+            if req_id in scheduler_aliases:
+                # Sparse original-position geometry is required on every
+                # decode step, although no worker K/V transfer occurs.
+                self._add_new_request(metadata, req_id, [])
+                continue
             if self._detached and command is not None and command.mode == "load":
                 self._add_new_request(metadata, req_id, [])
                 continue
@@ -447,7 +453,11 @@ class PRASemanticConnector(KVConnectorBase_V1):
         if detached_requests:
             self._start_detached_load(forward_context, detached_requests)
         for request in metadata.requests:
-            if request.mode != "load" or request.detached:
+            if (
+                request.mode != "load"
+                or request.detached
+                or getattr(request, "scheduler_alias", False)
+            ):
                 continue
             started = time.perf_counter()
             storage_read_ms = 0.0

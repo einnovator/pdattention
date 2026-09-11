@@ -242,6 +242,8 @@ class VLLMMetalV1NativeBridge:
         self._prefill_page_observations: list[VLLMPrefillPageObservation] = []
         self._handles: dict[str, tuple[int, ...]] = {}
         self._borrowed_handles: set[str] = set()
+        self._materialize_copy_events = 0
+        self._alias_events = 0
         self._free = list(
             range(self.scheduler_blocks, self.scheduler_blocks + self.reserve_blocks)
         )
@@ -327,6 +329,9 @@ class VLLMMetalV1NativeBridge:
             cache.value_caches[index][list(block_ids)] = values
         mx.eval(*cache.key_caches, *cache.value_caches)
         self._handles[key] = block_ids
+        self._materialize_copy_events = (
+            int(getattr(self, "_materialize_copy_events", 0)) + 1
+        )
         return block_ids
 
     def borrow_resident_pages(
@@ -348,24 +353,48 @@ class VLLMMetalV1NativeBridge:
         request suffix until segmented-page metadata is implemented.
         """
 
+        blocks = tuple(map(int, block_ids))
+        if any(block < 0 or block >= self.scheduler_blocks for block in blocks):
+            raise ValueError("Borrowed vLLM pages must belong to the scheduler pool.")
+        return self.alias_resident_pages(
+            logical_key, blocks, selected_token_count=selected_token_count
+        )
+
+    def alias_resident_pages(
+        self,
+        logical_key: str,
+        block_ids: Sequence[int],
+        *,
+        selected_token_count: int,
+    ) -> tuple[int, ...]:
+        """Create a non-owning handle over existing scheduler or reserve pages.
+
+        The caller owns the lifetime pin on the underlying pages. Releasing
+        this logical alias therefore removes only its name and never returns
+        physical pages to either allocator. This is also used for request-local
+        subsets of a restored canonical source in the reserved tail.
+        """
+
         key = str(logical_key)
         if key in self._handles:
             raise ValueError(f"vLLM PRA logical key is already registered: {key}")
         blocks = tuple(map(int, block_ids))
         if not blocks:
-            raise ValueError("A resident-page borrow requires at least one page.")
+            raise ValueError("A resident-page alias requires at least one page.")
         if len(blocks) != len(set(blocks)):
-            raise ValueError("A resident-page borrow cannot repeat a page.")
-        if any(block < 0 or block >= self.scheduler_blocks for block in blocks):
-            raise ValueError("Borrowed vLLM pages must belong to the scheduler pool.")
+            raise ValueError("A resident-page alias cannot repeat a page.")
+        total_blocks = self.scheduler_blocks + int(getattr(self, "reserve_blocks", 0))
+        if any(block < 0 or block >= total_blocks for block in blocks):
+            raise ValueError("Aliased vLLM pages must belong to the live cache.")
         expected = len(blocks) * self.block_size
         if int(selected_token_count) != expected:
             raise ValueError(
-                "Borrowed vLLM pages must be complete; keep a partial tail in "
+                "Aliased vLLM pages must be complete; keep a partial tail in "
                 "the ordinary request suffix."
             )
         self._handles[key] = blocks
         self._borrowed_handles.add(key)
+        self._alias_events = int(getattr(self, "_alias_events", 0)) + 1
         return blocks
 
     def release(self, logical_key: str) -> None:
@@ -553,6 +582,8 @@ class VLLMMetalV1NativeBridge:
             "live_prefix_page_borrow": True,
             "live_prefix_page_borrow_copy": False,
             "live_prefix_page_borrow_requires_complete_pages": True,
+            "physical_kv_materialize_copy_events": self._materialize_copy_events,
+            "nonowning_page_alias_events": self._alias_events,
         }
 
 

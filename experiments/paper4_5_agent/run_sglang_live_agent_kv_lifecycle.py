@@ -14,7 +14,12 @@ from pathlib import Path
 import numpy as np
 
 from pra_hf.live_history import LiveKVSelectionPlan
-from pra_mlx.native import MLXNativeMemory, capture_live_native_memory
+from pra_mlx.native import (
+    MLXDisjointNativeMemory,
+    MLXNativeMemory,
+    capture_live_native_memory,
+    disjoint_segmented_selected_attention,
+)
 from pra_sglang.mlx_native import (
     SGLangMLXLiveKVRuntime,
     SGLangMLXNativeBridge,
@@ -25,7 +30,13 @@ from .run_hf_agent_cache_equivalence import _assistant_prompts
 from .sparse_gate_common import sparse_causal_plan
 
 
-def _fingerprint(memory: MLXNativeMemory) -> str:
+def _max_delta(left: np.ndarray, right: np.ndarray) -> float:
+    if left.shape != right.shape:
+        return float("inf")
+    return float(np.max(np.abs(left.astype(np.float32) - right.astype(np.float32))))
+
+
+def _fingerprint(memory: MLXNativeMemory | MLXDisjointNativeMemory) -> str:
     """Hash logical K/V values independently from the offload container."""
 
     import mlx.core as mx
@@ -33,13 +44,16 @@ def _fingerprint(memory: MLXNativeMemory) -> str:
     digest = hashlib.sha256()
     digest.update(str(memory.source_tokens).encode("ascii"))
     for index, layer in enumerate(memory.layers):
-        for name, value in (("k", layer.keys), ("v", layer.values)):
-            digest.update(f"{index}:{name}:{value.dtype}:{value.shape}".encode("ascii"))
-            try:
-                host = np.asarray(value)
-            except (TypeError, ValueError, RuntimeError):
-                host = np.asarray(value.astype(mx.float32))
-            digest.update(host.tobytes())
+        segments = getattr(layer, "segments", (layer,))
+        for segment_index, segment in enumerate(segments):
+            for name, value in (("k", segment.keys), ("v", segment.values)):
+                digest.update(f"segment:{segment_index}".encode("ascii"))
+                digest.update(f"{index}:{name}:{value.dtype}:{value.shape}".encode("ascii"))
+                try:
+                    host = np.asarray(value)
+                except (TypeError, ValueError, RuntimeError):
+                    host = np.asarray(value.astype(mx.float32))
+                digest.update(host.tobytes())
     return digest.hexdigest()
 
 
@@ -55,6 +69,38 @@ def _decode(runner, request_ids: list[str]) -> list[int]:
     pending = runner.decode_batch_start(request_ids)
     runner.eval_pending(pending)
     return list(map(int, runner.decode_batch_finalize(pending)))
+
+
+def _decode_with_logits(runner, request_id: str) -> tuple[int, np.ndarray]:
+    captured: list[np.ndarray] = []
+
+    def capture(values):
+        captured.append(np.asarray(values).copy())
+        return values
+
+    pending = runner.decode_batch_start([request_id], logits_hook=capture)
+    runner.eval_pending(pending)
+    token = int(runner.decode_batch_finalize(pending)[0])
+    if len(captured) != 1:
+        raise RuntimeError("SGLang logits hook did not capture one decode row.")
+    return token, captured[0]
+
+
+def _generate_with_logits(
+    runner,
+    request_id: str,
+    wire_tail: list[int],
+    *,
+    max_tokens: int,
+) -> tuple[tuple[int, ...], np.ndarray]:
+    if max_tokens < 2:
+        raise ValueError("Logit qualification requires at least two generated tokens.")
+    generated = [_prefill(runner, request_id, wire_tail)]
+    token, logits = _decode_with_logits(runner, request_id)
+    generated.append(token)
+    while len(generated) < max_tokens:
+        generated.extend(_decode(runner, [request_id]))
+    return tuple(generated), logits
 
 
 def _generate(
@@ -86,6 +132,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     from transformers import AutoTokenizer
 
     started = time.perf_counter()
+    use_disjoint = args.materialization_policy == "disjoint_segmented"
     provenance = json.loads(args.provenance.read_text(encoding="utf-8"))
     runner = MlxModelRunner(
         args.model,
@@ -146,7 +193,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         source_tokens=len(source_ids),
     )
 
-    def begin(request_id: str, *, generation: int = 1):
+    def begin(
+        request_id: str,
+        *,
+        generation: int = 1,
+        disjoint: bool | None = None,
+    ):
         return runtime.begin_request(
             request_id,
             identities["source_id"],
@@ -154,23 +206,117 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             tenant_id=identities["tenant_id"],
             session_id=identities["session_id"],
             expected_generation=generation,
+            disjoint=use_disjoint if disjoint is None else disjoint,
         )
 
-    reference = begin("reference")
-    reference_tokens = _generate(
+    active_before_selection = int(getattr(mx, "get_active_memory", lambda: 0)())
+    reset_peak = getattr(mx, "reset_peak_memory", None)
+    if reset_peak is not None:
+        reset_peak()
+    selection_started_ns = time.perf_counter_ns()
+    candidate = begin("candidate")
+    candidate_arrays = [
+        value
+        for layer in candidate.selection.memory.layers
+        for segment in getattr(layer, "segments", (layer,))
+        for value in (segment.keys, segment.values)
+    ]
+    mx.eval(*candidate_arrays)
+    selection_elapsed_ms = (time.perf_counter_ns() - selection_started_ns) / 1_000_000
+    active_after_selection = int(getattr(mx, "get_active_memory", lambda: 0)())
+    peak_after_selection = int(getattr(mx, "get_peak_memory", lambda: 0)())
+
+    disjoint_attention_allocation = None
+    if use_disjoint:
+        first_layer = candidate.selection.memory.layers[0]
+        first_segment = first_layer.segments[0]
+        model_root = getattr(runner.model, "model", runner.model)
+        model_layers = getattr(model_root, "layers")
+        installed_attention = model_layers[0].self_attn
+        sglang_attention = installed_attention._inner
+        attention = getattr(sglang_attention, "_inner", sglang_attention)
+        head_dim = int(first_segment.keys.shape[-1])
+        probe_queries = mx.zeros(
+            (1, int(attention.n_heads), 1, head_dim),
+            dtype=first_segment.keys.dtype,
+        )
+        probe_local_keys = mx.zeros(
+            (1, int(attention.n_kv_heads), 1, head_dim),
+            dtype=first_segment.keys.dtype,
+        )
+        probe_local_values = mx.zeros(
+            (1, int(attention.n_kv_heads), 1, head_dim),
+            dtype=first_segment.values.dtype,
+        )
+        mx.eval(probe_queries, probe_local_keys, probe_local_values)
+        if reset_peak is not None:
+            reset_peak()
+        attention_active_before = int(getattr(mx, "get_active_memory", lambda: 0)())
+        probe_output = disjoint_segmented_selected_attention(
+            probe_queries,
+            tuple(segment.keys for segment in first_layer.segments),
+            tuple(segment.values for segment in first_layer.segments),
+            probe_local_keys,
+            probe_local_values,
+            scale=float(attention.scale),
+        )
+        mx.eval(probe_output)
+        attention_active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
+        attention_peak = int(getattr(mx, "get_peak_memory", lambda: 0)())
+        selected_layer_bytes = int(first_layer.nbytes)
+        attention_peak_delta = max(attention_peak - attention_active_before, 0)
+        disjoint_attention_allocation = {
+            "selected_layer_kv_bytes": selected_layer_bytes,
+            "active_before_bytes": attention_active_before,
+            "active_after_bytes": attention_active_after,
+            "active_delta_bytes": max(
+                attention_active_after - attention_active_before, 0
+            ),
+            "absolute_peak_bytes": attention_peak,
+            "peak_delta_bytes": attention_peak_delta,
+            "peak_delta_to_selected_layer_kv_ratio": (
+                attention_peak_delta / selected_layer_bytes
+                if selected_layer_bytes
+                else None
+            ),
+            "full_selected_kv_sized_allocation_observed": (
+                attention_peak_delta >= selected_layer_bytes * 0.9
+            ),
+        }
+
+    dense_started_ns = time.perf_counter_ns()
+    reference = begin("dense-reference", disjoint=False)
+    dense_arrays = [
+        value
+        for layer in reference.selection.memory.layers
+        for value in (layer.keys, layer.values)
+    ]
+    mx.eval(*dense_arrays)
+    dense_elapsed_ms = (time.perf_counter_ns() - dense_started_ns) / 1_000_000
+
+    candidate_tokens, candidate_logits = _generate_with_logits(
+        runner,
+        candidate.request_id,
+        wire_tail,
+        max_tokens=args.continuation_tokens,
+    )
+    candidate_cache = runner._req_caches[candidate.request_id][
+        runner._cache_layout.first_attention_layer_index
+    ]
+    reference_offsets = {
+        "scheduler_local": int(candidate_cache.offset),
+        "attention_rope": int(candidate_cache.rope_offset),
+        "position_base": int(candidate_cache.position_base),
+    }
+    candidate_selected_fingerprint = _fingerprint(candidate.selection.memory)
+    candidate.finish()
+    candidate_second_finish = candidate.finish()
+    reference_tokens, reference_logits = _generate_with_logits(
         runner,
         reference.request_id,
         wire_tail,
         max_tokens=args.continuation_tokens,
     )
-    reference_cache = runner._req_caches[reference.request_id][
-        runner._cache_layout.first_attention_layer_index
-    ]
-    reference_offsets = {
-        "scheduler_local": int(reference_cache.offset),
-        "attention_rope": int(reference_cache.rope_offset),
-        "position_base": int(reference_cache.position_base),
-    }
     reference_selected_fingerprint = _fingerprint(reference.selection.memory)
     reference.finish()
     reference_second_finish = reference.finish()
@@ -302,7 +448,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             len(concurrent_tokens[cancelled.request_id]) >= 2
         ),
         "normal_finish_released_exactly_once": (
-            reference.outcome == "finished" and reference_second_finish is False
+            candidate.outcome == "finished"
+            and candidate_second_finish is False
+            and reference.outcome == "finished"
+            and reference_second_finish is False
         ),
         "cancel_released_exactly_once": (
             cancelled.outcome == "cancelled"
@@ -314,14 +463,19 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             and errored.outcome == "error"
             and errored_second_fail is False
         ),
-        "concurrent_survivor_token_exact": survivor_tokens == reference_tokens,
+        "same_subset_token_exact": candidate_tokens == reference_tokens,
+        "same_subset_logit_within_tolerance": (
+            _max_delta(candidate_logits, reference_logits)
+            <= args.max_abs_logit_delta
+        ),
+        "concurrent_survivor_token_exact": survivor_tokens == candidate_tokens,
         "stale_generation_rejected": "Stale" in stale_error,
         "idle_offload_reached_non_hot_tier": offloaded_view.tier == "offloaded",
         "restore_reached_hot_tier": restored_view.tier == "hot",
         "restored_selected_kv_fingerprint_exact": (
-            restored_selected_fingerprint == reference_selected_fingerprint
+            restored_selected_fingerprint == candidate_selected_fingerprint
         ),
-        "restored_generation_token_exact": restored_tokens == reference_tokens,
+        "restored_generation_token_exact": restored_tokens == candidate_tokens,
         "termination_cancelled_active_request": (
             terminated.outcome == "cancelled" and terminated.cancel() is False
         ),
@@ -337,18 +491,34 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             == plan.source_position_base + reference_offsets["scheduler_local"]
         ),
         "zero_selected_history_reencoding": (
-            reference.selection.selected_text_reencoded_tokens == 0
+            candidate.selection.selected_text_reencoded_tokens == 0
+            and reference.selection.selected_text_reencoded_tokens == 0
             and survivor.selection.selected_text_reencoded_tokens == 0
             and restored.selection.selected_text_reencoded_tokens == 0
         ),
         "physical_kv_copy_reported": (
-            reference.selection.physical_kv_copy
-            == (len(plan.intervals) > 1)
+            candidate.selection.physical_kv_copy
+            == (None if use_disjoint else len(plan.intervals) > 1)
+        ),
+        "disjoint_selection_did_not_allocate": (
+            not use_disjoint
+            or (
+                active_after_selection == active_before_selection
+                and peak_after_selection == 0
+            )
+        ),
+        "disjoint_attention_has_no_full_selected_kv_sized_allocation": (
+            not use_disjoint
+            or not bool(
+                disjoint_attention_allocation[
+                    "full_selected_kv_sized_allocation_observed"
+                ]
+            )
         ),
         "radix_pool_ownership_isolated": not radix_pool_contains_selected_wrapper,
     }
     result = {
-        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v1",
+        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v2",
         "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
@@ -368,16 +538,76 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "realized_retention_fraction": plan.selected_tokens / len(source_ids),
         "source_position_base": plan.source_position_base,
         "has_holes": plan.has_holes,
-        "physical_kv_copy": reference.selection.physical_kv_copy,
-        "selected_text_reencoded_tokens": (
-            reference.selection.selected_text_reencoded_tokens
+        "materialization_policy": args.materialization_policy,
+        "physical_kv_copy": (
+            True
+            if use_disjoint
+            and disjoint_attention_allocation[
+                "full_selected_kv_sized_allocation_observed"
+            ]
+            else candidate.selection.physical_kv_copy
         ),
+        "runtime_physical_kv_copy_report": candidate.selection.physical_kv_copy,
+        "pra_interval_pack_copy": (
+            False if use_disjoint else candidate.selection.physical_kv_copy
+        ),
+        "physical_kv_copy_qualification": (
+            "measured_alias_at_selection_but_full_kv_sized_allocation_at_attention"
+            if use_disjoint
+            else "measured_explicit_interval_pack"
+        ),
+        "selected_kv_segments": len(plan.intervals),
+        "selection_pack_bytes": (
+            0 if use_disjoint else candidate.selection.memory.nbytes
+        ),
+        "selection_active_memory_delta_bytes": max(
+            active_after_selection - active_before_selection, 0
+        ),
+        "selection_peak_memory_bytes": peak_after_selection,
+        "selection_materialization_elapsed_ms": selection_elapsed_ms,
+        "dense_reference_pack_bytes": reference.selection.memory.nbytes,
+        "dense_reference_materialization_elapsed_ms": dense_elapsed_ms,
+        "disjoint_attention_allocation": disjoint_attention_allocation,
+        "allocation_measurement_method": {
+            "selection": (
+                "Reset the MLX peak allocator, construct the SGLang request's "
+                "selected interval views, force every selected key/value array "
+                "with mx.eval, and compare active/peak bytes to the baseline."
+            ),
+            "consumption": (
+                "Reset the MLX peak allocator, run one real first-layer attention "
+                "query over every selected SGLang interval plus one local token, "
+                "force the output with mx.eval, and compare peak delta with the "
+                "selected first-layer K/V byte extent."
+            ),
+            "full_kv_sized_threshold": (
+                "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+            ),
+        },
+        "required_runtime_fix": (
+            "fused interval-addressed SGLang-MLX Metal attention kernel that "
+            "consumes disjoint source-owner/Radix-isolated K/V ranges without "
+            "packing or a selected-K/V-sized transient"
+            if use_disjoint
+            else None
+        ),
+        "selected_text_reencoded_tokens": (
+            candidate.selection.selected_text_reencoded_tokens
+        ),
+        "candidate_token_ids": list(candidate_tokens),
         "reference_token_ids": list(reference_tokens),
         "survivor_token_ids": list(survivor_tokens),
         "restored_token_ids": list(restored_tokens),
         "source_kv_sha256": source_fingerprint,
-        "selected_kv_sha256": reference_selected_fingerprint,
+        "selected_kv_sha256": candidate_selected_fingerprint,
+        "dense_reference_selected_kv_sha256": reference_selected_fingerprint,
         "restored_selected_kv_sha256": restored_selected_fingerprint,
+        "max_abs_logit_delta_same_subset": _max_delta(
+            candidate_logits, reference_logits
+        ),
+        "same_subset_logit_exact": (
+            _max_delta(candidate_logits, reference_logits) == 0.0
+        ),
         "offloaded_payload_type": type(offloaded).__name__,
         "offloaded_payload_bytes": offloaded_bytes,
         "offloaded_payload_sha256": offloaded_sha256,
@@ -425,6 +655,12 @@ def main() -> None:
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--continuation-tokens", type=int, default=8)
+    parser.add_argument(
+        "--materialization-policy",
+        choices=("dense_pack", "disjoint_segmented"),
+        default="dense_pack",
+    )
+    parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument("--hardware-label", default="bigmac-m4pro-48gb")
     args = parser.parse_args()
     result = run(args)

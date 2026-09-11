@@ -1,0 +1,121 @@
+{
+  "schema_version": "paper4.5.easy3-direct-matrix.v1",
+  "source_commit": "fcde2c74",
+  "benchmark_card": "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50_baseline_success14.json",
+  "locked_task_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135"
+  ],
+  "locked_task_ids_sha256": "4e91c385d87fa46e37c241f5c9e955c454b4ae53d664b7566ac27d44ff47d5b3",
+  "execution": {
+    "agent_host": "jorge.simao@192.168.1.8:2222",
+    "model_engine_host": "admin.jorge.simao@192.168.1.6",
+    "gateway": false,
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "agent": "mini-swe-agent",
+    "agent_version": "2.4.6",
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "quantization": "Q4_K_M",
+    "context_limit": 32768,
+    "max_steps": 50,
+    "max_completion_tokens": 4096,
+    "engine": "llama.cpp",
+    "engine_version": "llama.cpp-458681e1-pra-sequence-attach-v1",
+    "engine_gate": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/agent_history_kv_gate.json",
+    "endpoint_environment": "PRA_AGENT_NATIVE_ENGINE_CACHE_ON_URL",
+    "prefix_caching": true,
+    "selection_policy": "swebench-balanced-v1",
+    "materialization_policy": "live-agent-kv-v1"
+  },
+  "retention_policy": {
+    "recent_completed_turns": 2,
+    "recent_records_per_turn": 2,
+    "recent_source_turns": 1,
+    "recent_progress_turns": 1,
+    "recent_mutation_turns": 1,
+    "recent_verification_turns": 1,
+    "large_record_chunk_tokens": 256,
+    "max_records_per_turn_before_chunking": 8,
+    "preserve_action_observation_pairs": true,
+    "causal_bundle_round_up": true
+  },
+  "frozen_adaptor": {
+    "status": "MISSING",
+    "bundle_id": null,
+    "bundle_revision": null,
+    "path": null,
+    "weights_sha256": null,
+    "parameter_precision": null,
+    "insertion_points": []
+  },
+  "adaptor_qualification": {
+    "status": "BLOCKED_NO_CERTIFIED_BUNDLE_OR_INJECTION_PATH",
+    "semantic_role": "learned_routing_selection",
+    "applies_at": "causal-record scoring before K/V subset materialization",
+    "explicitly_not": [
+      "structural model-to-engine mapping",
+      "memory-consumption residual adapter",
+      "late-band or LoRA activation transform",
+      "consumption-policy prompt text",
+      "frozen selected-record replay"
+    ],
+    "certified_qwen3_coder_30b_memory_or_late_band_training_path": false,
+    "required_training_provenance": [
+      "training dataset IDs and immutable revisions",
+      "leakage-free split relative to all 14 baseline-success tasks",
+      "feature extractor and tokenizer revisions",
+      "objective and negative-sampling policy",
+      "training seeds and optimizer configuration",
+      "weights checksum and parameter precision"
+    ],
+    "required_evaluation_provenance": [
+      "held-out causal-record routing metrics",
+      "all training and evaluation seeds",
+      "same-model no-adaptor comparison",
+      "frozen cross-task transfer result",
+      "selected-record identities and realized token retention"
+    ],
+    "required_injection_contract": [
+      "typed request names bundle ID and immutable revision",
+      "runtime verifies weights checksum, precision, and insertion points",
+      "adaptor changes selection scores only before the subset is frozen",
+      "materializer consumes identical selected identities in paired comparisons",
+      "missing or incompatible bundle fails closed without no-adaptor fallback"
+    ]
+  },
+  "arms": [
+    {"label": "no_pra", "pra": false, "retention_fraction": 1.0, "adaptor": "none"},
+    {"label": "pra_100_no_adaptor", "pra": true, "retention_fraction": 1.0, "adaptor": "none"},
+    {"label": "pra_100_frozen_adaptor", "pra": true, "retention_fraction": 1.0, "adaptor": "frozen_bundle"},
+    {"label": "pra_090_no_adaptor", "pra": true, "retention_fraction": 0.9, "adaptor": "none"},
+    {"label": "pra_090_frozen_adaptor", "pra": true, "retention_fraction": 0.9, "adaptor": "frozen_bundle"}
+  ],
+  "metrics": {
+    "task": ["resolved", "official_grader_outcome", "tool_call_count", "wall_time_s"],
+    "request": [
+      "logical_input_tokens_estimate",
+      "selected_tokens_estimate",
+      "realized_retention_fraction",
+      "prefix_cached_tokens",
+      "engine_cached_tokens_total",
+      "selected_kv_tokens",
+      "physical_kv_copy",
+      "selected_text_reencoded_tokens",
+      "ttft_s",
+      "peak_memory_bytes"
+    ],
+    "causal": [
+      "retention_policy",
+      "pinned_progress_state_segments",
+      "selected_resource_digest",
+      "first_divergent_action",
+      "first_divergent_command"
+    ],
+    "missing_value_policy": "NOT_MEASURED; never coerce unavailable engine telemetry to zero"
+  },
+  "output_root": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles"
+}
