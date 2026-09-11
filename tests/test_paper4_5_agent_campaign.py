@@ -62,6 +62,7 @@ from experiments.paper4_5_agent.serve_llamacpp_pra import (
     CausalChatNativePromptMixin,
     HybridLlamaCppAdapter,
     PlainSlotExecutor,
+    _direct_handler,
     parse_args as parse_llamacpp_server_args,
 )
 from experiments.paper4_5_agent.summarize_easy50_strata import stratified_outcomes
@@ -1500,6 +1501,29 @@ def test_closing_live_agent_session_erases_request_and_resource_membership() -> 
     assert "session" not in adapter._live_session_slots
     assert "session" not in adapter._live_session_tokens
     assert "session" not in adapter._logical_session_messages
+
+
+def test_direct_llamacpp_endpoint_can_close_a_live_session() -> None:
+    closed = []
+    adapter = SimpleNamespace(close_session=closed.append)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), _direct_handler(adapter, "model"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}/v1/pra/sessions/seed%201",
+            method="DELETE",
+        )
+        with urllib.request.urlopen(request) as response:
+            payload = json.loads(response.read())
+        assert payload == {"closed": True, "session_id": "seed 1"}
+        assert closed == ["seed 1"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_live_llamacpp_prefix_backtracks_after_rejected_agent_output() -> None:

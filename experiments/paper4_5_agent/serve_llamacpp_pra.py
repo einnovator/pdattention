@@ -14,6 +14,7 @@ import json
 import re
 import traceback
 import urllib.error
+import urllib.parse
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1072,6 +1073,28 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
             except Exception as error:
                 traceback.print_exc()
                 self._json(500, {"error": "engine_internal_error", "message": str(error)})
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            prefix = "/v1/pra/sessions/"
+            path = urllib.parse.urlsplit(self.path).path
+            if not path.startswith(prefix):
+                self._json(404, {"error": "not_found"})
+                return
+            session_id = urllib.parse.unquote(path[len(prefix):])
+            if not session_id or "/" in session_id:
+                self._json(400, {
+                    "error": "invalid_session_id",
+                    "message": "session id must be a non-empty path segment",
+                })
+                return
+            try:
+                adapter.close_session(session_id)
+                self._json(200, {"closed": True, "session_id": session_id})
+            except Exception as error:  # noqa: BLE001 - diagnostic server boundary
+                traceback.print_exc()
+                self._json(500, {
+                    "error": "engine_internal_error", "message": str(error),
+                })
 
         def log_message(self, format: str, *args: object) -> None:
             return None
