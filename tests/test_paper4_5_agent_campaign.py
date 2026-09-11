@@ -1710,6 +1710,57 @@ def test_closed_live_agent_session_cannot_be_reopened() -> None:
     assert closed == ["session"]
 
 
+def test_live_agent_offload_reclaims_pair_and_restore_repins_without_prefill(
+    tmp_path: Path,
+) -> None:
+    calls = []
+    erased = []
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+        slot_allocator = SimpleNamespace(request_slots=(1,), resource_slots=(0,))
+
+        @staticmethod
+        def _request_json(path, body=None):
+            calls.append((path, body))
+            if "action=save" in path:
+                return {"n_tokens": 42, "n_bytes": 4096}
+            if "action=restore" in path:
+                return {"n_tokens": 42, "n_bytes": 4096}
+            raise AssertionError(path)
+
+        @staticmethod
+        def _erase_request_slot(slot):
+            erased.append(slot)
+
+    native = Native()
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=native, close_session=lambda session: None),
+        SimpleNamespace(),
+        prefix_caching=True,
+        slot_save_path=tmp_path,
+    )
+    adapter._live_session_slots["session"] = 1
+    adapter._live_session_request_slots["session"] = 0
+    adapter._live_session_tokens["session"] = (1, 2, 3)
+
+    receipt = adapter.offload_session("session")
+    assert receipt["saved_tokens"] == 42
+    assert receipt["saved_bytes"] == 4096
+    assert erased == [1, 0]
+    assert "session" not in adapter._live_session_slots
+    assert adapter.session_status("session")["offloaded"] is True
+
+    adapter._restore_offloaded_session("session")
+    assert adapter._live_session_slots["session"] == 1
+    assert adapter._live_session_request_slots["session"] == 0
+    assert adapter.session_status("session")["offloaded"] is False
+    assert calls[-1][0] == "/slots/1?action=restore"
+    assert calls[-1][1]["pra_pin_resource"] is True
+    assert all(path != "/completion" for path, _ in calls)
+
+
 def test_frozen_prefix_probe_compares_recorded_responses(tmp_path: Path) -> None:
     fixture = tmp_path / "interaction.jsonl"
     fixture.write_text("\n".join(json.dumps(row) for row in (

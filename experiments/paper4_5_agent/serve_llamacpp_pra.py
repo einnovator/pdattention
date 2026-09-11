@@ -470,7 +470,14 @@ class PlainSlotExecutor:
 class HybridLlamaCppAdapter:
     """Dispatch plain controls and typed-resource requests on one engine target."""
 
-    def __init__(self, native_adapter: Any, plain: PlainSlotExecutor, *, prefix_caching: bool):
+    def __init__(
+        self,
+        native_adapter: Any,
+        plain: PlainSlotExecutor,
+        *,
+        prefix_caching: bool,
+        slot_save_path: Path | None = None,
+    ):
         self.native_adapter = native_adapter
         self.plain = plain
         self.prefix_cache_enabled = bool(prefix_caching)
@@ -523,6 +530,10 @@ class HybridLlamaCppAdapter:
         self._closed_sessions: set[str] = set()
         self._session_cancel_events: dict[str, threading.Event] = {}
         self._active_upstream_responses: dict[str, Any] = {}
+        self._offloaded_session_files: dict[str, str] = {}
+        self._slot_save_path = (
+            None if slot_save_path is None else Path(slot_save_path).resolve()
+        )
         if native is not None:
             native._pra_cancellation_local = threading.local()
 
@@ -655,6 +666,7 @@ class HybridLlamaCppAdapter:
                 lambda response: self._set_active_response(session_id, response)
             )
             try:
+                self._restore_offloaded_session(session_id)
                 return self._generate_serialized(request)
             finally:
                 local.cancel_event = None
@@ -680,7 +692,85 @@ class HybridLlamaCppAdapter:
                 "upstream_stream_open": session_id in self._active_upstream_responses,
                 "source_slot": self._live_session_slots.get(session_id),
                 "request_slot": self._live_session_request_slots.get(session_id),
+                "offloaded": session_id in self._offloaded_session_files,
             }
+
+    def _slot_action(
+        self,
+        slot: int,
+        action: str,
+        filename: str,
+        *,
+        pin_resource: bool = False,
+    ) -> Mapping[str, object]:
+        return self.native_adapter.native_executor._request_json(
+            f"/slots/{int(slot)}?action={action}",
+            {
+                "filename": filename,
+                "pra_pin_resource": bool(pin_resource),
+            },
+        )
+
+    def offload_session(self, session_id: str) -> dict[str, Any]:
+        session_id = str(session_id)
+        if self._slot_save_path is None:
+            raise RuntimeError("session offload requires --slot-save-path")
+        session_lock = self._session_lock(session_id)
+        with session_lock:
+            with self._live_state_lock:
+                if session_id in self._closed_sessions:
+                    raise SessionClosedError(
+                        f"live agent session {session_id!r} is closed"
+                    )
+                if session_id in self._session_cancel_events:
+                    raise SessionCommitConflict(
+                        "cannot offload a session with an active generation"
+                    )
+                source = self._live_session_slots.get(session_id)
+                request_slot = self._live_session_request_slots.get(session_id)
+                existing = self._offloaded_session_files.get(session_id)
+            if existing is not None:
+                return {
+                    "session_id": session_id,
+                    "offloaded": True,
+                    "filename": existing,
+                    "already_offloaded": True,
+                }
+            if source is None:
+                raise ValueError("session has no resident live K/V to offload")
+            filename = "paper45-agent-" + hashlib.sha256(
+                session_id.encode("utf-8")
+            ).hexdigest() + ".bin"
+            saved = self._slot_action(source, "save", filename)
+            self.native_adapter.native_executor._erase_request_slot(source)
+            if request_slot is not None and request_slot != source:
+                self.native_adapter.native_executor._erase_request_slot(request_slot)
+            with self._live_state_lock:
+                self._live_session_slots.pop(session_id, None)
+                self._live_session_request_slots.pop(session_id, None)
+                self._offloaded_session_files[session_id] = filename
+            return {
+                "session_id": session_id,
+                "offloaded": True,
+                "filename": filename,
+                "source_slot": source,
+                "saved_tokens": int(saved.get("n_saved", saved.get("n_tokens", 0)) or 0),
+                "saved_bytes": int(saved.get("n_written", saved.get("n_bytes", 0)) or 0),
+                "already_offloaded": False,
+            }
+
+    def _restore_offloaded_session(self, session_id: str) -> None:
+        with self._live_state_lock:
+            filename = self._offloaded_session_files.get(str(session_id))
+        if filename is None:
+            return
+        source, _ = self._allocate_live_pair(str(session_id))
+        self._slot_action(source, "restore", filename, pin_resource=True)
+        resident = self._live_session_tokens.get(str(session_id))
+        if not resident:
+            raise RuntimeError("offloaded session has no resident-token manifest")
+        with self._live_state_lock:
+            self._offloaded_session_files.pop(str(session_id), None)
 
     def _generate_serialized(self, request: PRAWireRequest) -> PRAEngineResult:
         key = self._resource_session_key(request)
@@ -1373,11 +1463,18 @@ class HybridLlamaCppAdapter:
                 self._pending_generations.pop(session_id, None)
                 self._session_cancel_events.pop(session_id, None)
                 self._active_upstream_responses.pop(session_id, None)
+                offloaded_filename = self._offloaded_session_files.pop(session_id, None)
             if slot is not None:
                 self.native_adapter.native_executor._erase_request_slot(slot)
             if request_slot is not None and request_slot != slot:
                 self.native_adapter.native_executor._erase_request_slot(request_slot)
             self.native_adapter.close_session(session_id)
+            if offloaded_filename is not None and self._slot_save_path is not None:
+                root = self._slot_save_path.resolve()
+                target = (root / offloaded_filename).resolve()
+                if target.parent != root:
+                    raise RuntimeError("refusing to remove offload state outside save path")
+                target.unlink(missing_ok=True)
 
 
 def _usage(raw: Mapping[str, Any]) -> dict[str, int] | None:
@@ -1474,7 +1571,31 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                 self._json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/v1/chat/completions":
+            path = urllib.parse.urlsplit(self.path).path
+            offload_prefix = "/v1/pra/sessions/"
+            if path.startswith(offload_prefix) and path.endswith("/offload"):
+                encoded_session = path[len(offload_prefix):-len("/offload")]
+                session_id = urllib.parse.unquote(encoded_session.rstrip("/"))
+                if not session_id or "/" in session_id:
+                    self._json(400, {"error": "invalid_session_id"})
+                    return
+                try:
+                    self._json(200, adapter.offload_session(session_id))
+                except SessionCommitConflict as error:
+                    self._json(409, {
+                        "error": "session_commit_conflict", "message": str(error),
+                    })
+                except SessionClosedError as error:
+                    self._json(410, {
+                        "error": "session_closed", "message": str(error),
+                    })
+                except Exception as error:  # noqa: BLE001 - diagnostic boundary
+                    traceback.print_exc()
+                    self._json(500, {
+                        "error": "engine_internal_error", "message": str(error),
+                    })
+                return
+            if path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
                 return
             try:
@@ -1586,6 +1707,7 @@ def serve(args: argparse.Namespace) -> None:
         native_adapter,
         PlainSlotExecutor(native_executor, prefix_caching=args.prefix_caching),
         prefix_caching=args.prefix_caching,
+        slot_save_path=args.slot_save_path,
     )
     if args.mode in {"g00", "g11"}:
         serve_gateway(
@@ -1612,6 +1734,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resource-slots", type=int, nargs="+")
     parser.add_argument("--request-slots", type=int, nargs="+")
     parser.add_argument("--timeout-seconds", type=float, default=3600)
+    parser.add_argument(
+        "--slot-save-path", type=Path,
+        help="Directory configured in llama-server with --slot-save-path.",
+    )
     parser.add_argument(
         "--prefix-caching", action=argparse.BooleanOptionalAction, default=False
     )
