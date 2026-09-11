@@ -1561,6 +1561,84 @@ def test_live_agent_template_is_qualified_before_inference() -> None:
         Executor().validate_record_prefix_template()
 
 
+def test_live_agent_sessions_use_disjoint_pairs_concurrently() -> None:
+    completion_slots = []
+    erased = []
+    closed = []
+    overlap = threading.Barrier(2, timeout=5)
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+        slot_allocator = SimpleNamespace(
+            request_slots=(1, 3), resource_slots=(0, 2),
+        )
+
+        @staticmethod
+        def _query_text(request):
+            return str(request.messages[-1]["content"])
+
+        @staticmethod
+        def _request_json(path, body=None):
+            if path == "/tokenize":
+                return {"tokens": [ord(char) for char in body["content"]]}
+            assert path == "/completion"
+            completion_slots.append(body["id_slot"])
+            overlap.wait()
+            return {
+                "content": f"answer-{body['id_slot']}",
+                "tokens": [100 + body["id_slot"]],
+                "timings": {"cache_n": 0},
+            }
+
+        @staticmethod
+        def _erase_request_slot(slot):
+            erased.append(slot)
+
+    native = Native()
+    native_adapter = SimpleNamespace(
+        native_executor=native, close_session=closed.append,
+    )
+    adapter = HybridLlamaCppAdapter(
+        native_adapter,
+        PlainSlotExecutor(native, prefix_caching=True),
+        prefix_caching=True,
+    )
+    requests = [
+        PRAWireRequest(
+            model="model",
+            messages=({"role": "user", "content": f"task-{session}"},),
+            session_id=session,
+            metadata={"history_projection": "live-agent-kv-v1"},
+        )
+        for session in ("a", "b")
+    ]
+    errors = []
+
+    def generate(request):
+        try:
+            adapter.generate(request)
+        except Exception as error:  # pragma: no cover - assertion reports value
+            errors.append(error)
+
+    threads = [threading.Thread(target=generate, args=(request,)) for request in requests]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert not errors
+    assert all(not thread.is_alive() for thread in threads)
+    assert set(completion_slots) == {1, 3}
+    assert adapter._live_session_slots == {"a": 1, "b": 3}
+    assert adapter._live_session_request_slots == {"a": 0, "b": 2}
+
+    adapter.close_session("a")
+    adapter.close_session("b")
+    assert set(erased) == {0, 1, 2, 3}
+    assert closed == ["a", "b"]
+
+
 def test_frozen_prefix_probe_compares_recorded_responses(tmp_path: Path) -> None:
     fixture = tmp_path / "interaction.jsonl"
     fixture.write_text("\n".join(json.dumps(row) for row in (

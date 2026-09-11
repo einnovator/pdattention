@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import threading
 import traceback
 import urllib.error
 import urllib.parse
@@ -303,14 +304,17 @@ class PlainSlotExecutor:
         self.native = native_executor
         self.prefix_caching = bool(prefix_caching)
 
-    def _generate_prompt(self, request: PRAWireRequest, prompt: str) -> PRAEngineResult:
+    def _generate_prompt(
+        self, request: PRAWireRequest, prompt: str, *, slot: int | None = None,
+    ) -> PRAEngineResult:
+        active_slot = self.native.request_slot if slot is None else int(slot)
         if not self.prefix_caching:
-            self.native._erase_request_slot(self.native.request_slot)
+            self.native._erase_request_slot(active_slot)
         raw = dict(self.native._request_json(
             "/completion",
             {
                 "prompt": prompt,
-                "id_slot": self.native.request_slot,
+                "id_slot": active_slot,
                 "n_predict": request.resolved_max_new_tokens,
                 "cache_prompt": self.prefix_caching,
                 "temperature": float(request.openai_fields.get("temperature", 0)),
@@ -336,10 +340,16 @@ class PlainSlotExecutor:
             },),
         )
 
-    def generate(self, request: PRAWireRequest) -> PRAEngineResult:
-        return self._generate_prompt(request, self.native._query_text(request))
+    def generate(
+        self, request: PRAWireRequest, *, slot: int | None = None,
+    ) -> PRAEngineResult:
+        return self._generate_prompt(
+            request, self.native._query_text(request), slot=slot,
+        )
 
-    def generate_complete_selection(self, request: PRAWireRequest) -> PRAEngineResult:
+    def generate_complete_selection(
+        self, request: PRAWireRequest, *, slot: int | None = None,
+    ) -> PRAEngineResult:
         """Consume a lossless selected trajectory as an ordinary full prompt.
 
         At 100% retention PRA is a semantic no-op.  Sending the selected prefix
@@ -350,7 +360,7 @@ class PlainSlotExecutor:
 
         pair = self.native._causal_prompt_pair(request)
         prompt = "".join(pair) if pair is not None else self.native._query_text(request)
-        return self._generate_prompt(request, prompt)
+        return self._generate_prompt(request, prompt, slot=slot)
 
 
 class HybridLlamaCppAdapter:
@@ -361,6 +371,24 @@ class HybridLlamaCppAdapter:
         self.plain = plain
         self.prefix_cache_enabled = bool(prefix_caching)
         self._live_session_slots: dict[str, int] = {}
+        self._live_session_request_slots: dict[str, int] = {}
+        native = getattr(native_adapter, "native_executor", None)
+        allocator = getattr(native, "slot_allocator", None)
+        source_slots = tuple(getattr(allocator, "request_slots", ()))
+        request_slots = tuple(getattr(allocator, "resource_slots", ()))
+        if not source_slots and native is not None and hasattr(native, "request_slot"):
+            source_slots = (int(native.request_slot),)
+        if not request_slots and native is not None and hasattr(native, "resource_slot"):
+            request_slots = (int(native.resource_slot),)
+        if source_slots and not request_slots:
+            request_slots = tuple(0 if slot != 0 else 1 for slot in source_slots)
+        if len(source_slots) != len(request_slots):
+            raise ValueError(
+                "live agent source and disposable request slot pools must have equal size"
+            )
+        self._live_slot_pairs = tuple(zip(source_slots, request_slots))
+        self._live_state_lock = threading.RLock()
+        self._live_session_locks: dict[str, threading.RLock] = {}
         # G11 may send only ADD/UPDATE bodies after the first request.  The
         # native prompt renderer, however, requires the complete ordered
         # selected trajectory on every turn.  Retain that logical inventory
@@ -384,6 +412,32 @@ class HybridLlamaCppAdapter:
         # what lets record IDs be mapped to the K/V positions at which the
         # model originally evaluated them.
         self._logical_session_messages: dict[str, list[dict[str, Any]]] = {}
+
+    def _session_lock(self, session_id: str) -> threading.RLock:
+        with self._live_state_lock:
+            return self._live_session_locks.setdefault(
+                str(session_id), threading.RLock(),
+            )
+
+    def _allocate_live_pair(self, session_id: str) -> tuple[int, int]:
+        session_id = str(session_id)
+        with self._live_state_lock:
+            source = self._live_session_slots.get(session_id)
+            request = self._live_session_request_slots.get(session_id)
+            if source is not None and request is not None:
+                return source, request
+            used = set(self._live_session_slots.values())
+            pair = next(
+                (row for row in self._live_slot_pairs if row[0] not in used),
+                None,
+            )
+            if pair is None:
+                raise RuntimeError(
+                    "live agent session capacity exhausted; close or offload a session"
+                )
+            self._live_session_slots[session_id] = pair[0]
+            self._live_session_request_slots[session_id] = pair[1]
+            return pair
 
     def capabilities(self):
         return replace(
@@ -469,6 +523,13 @@ class HybridLlamaCppAdapter:
         return replace(request, resources=tuple(active), resource_ops=())
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
+        session_id = str(getattr(request, "session_id", "") or "")
+        if not session_id:
+            return self._generate_serialized(request)
+        with self._session_lock(session_id):
+            return self._generate_serialized(request)
+
+    def _generate_serialized(self, request: PRAWireRequest) -> PRAEngineResult:
         request = self._hydrate_resource_delta(request)
         logical_messages = self._hydrate_logical_messages(request)
         openai_fields = dict(request.openai_fields)
@@ -535,9 +596,11 @@ class HybridLlamaCppAdapter:
                 self._remember_resident_tokens(request, result)
                 return result
             if selection_complete:
-                result = self.plain.generate_complete_selection(request)
-                self._live_session_slots[str(request.session_id)] = (
-                    self.plain.native.request_slot
+                source = None
+                if self.prefix_cache_enabled:
+                    source, _ = self._allocate_live_pair(str(request.session_id))
+                result = self.plain.generate_complete_selection(
+                    request, slot=source,
                 )
                 if logical_messages is None:
                     self._remember_resident_tokens(request, result)
@@ -553,9 +616,20 @@ class HybridLlamaCppAdapter:
             if logical_messages is not None:
                 self._logical_session_messages[str(request.session_id)] = logical_messages
             return result
-        result = self.plain.generate(request)
+        if (
+            self.prefix_cache_enabled
+            and request.metadata.get("history_projection") == "live-agent-kv-v1"
+            and request.session_id is not None
+        ):
+            source, _ = self._allocate_live_pair(str(request.session_id))
+            result = self.plain.generate(request, slot=source)
+        else:
+            result = self.plain.generate(request)
         if request.session_id is not None:
-            self._live_session_slots[str(request.session_id)] = self.plain.native.request_slot
+            if str(request.session_id) not in self._live_session_slots:
+                self._live_session_slots[str(request.session_id)] = (
+                    self.plain.native.request_slot
+                )
             self._remember_resident_tokens(request, result, logical_messages)
             if logical_messages is not None:
                 self._logical_session_messages[str(request.session_id)] = logical_messages
@@ -870,9 +944,14 @@ class HybridLlamaCppAdapter:
                     "exact_live_prefix_continuation": True,
                 }),
             )
-        destination = (
-            native.request_slot if native.request_slot != source else native.resource_slot
+        destination = self._live_session_request_slots.get(
+            str(request.session_id)
         )
+        if destination is None:
+            destination = (
+                native.request_slot
+                if native.request_slot != source else native.resource_slot
+            )
         result = native.generate_live_prefix(
             request,
             prompt_suffix=list(full_tokens[common:]),
@@ -993,11 +1072,17 @@ class HybridLlamaCppAdapter:
         raise RuntimeError("Easy-50 llama.cpp endpoint is intentionally non-streaming")
 
     def close_session(self, session_id: str) -> None:
-        slot = self._live_session_slots.pop(str(session_id), None)
-        self._live_session_tokens.pop(str(session_id), None)
-        self._logical_session_messages.pop(str(session_id), None)
+        session_id = str(session_id)
+        with self._live_state_lock:
+            slot = self._live_session_slots.pop(session_id, None)
+            request_slot = self._live_session_request_slots.pop(session_id, None)
+            self._live_session_tokens.pop(session_id, None)
+            self._logical_session_messages.pop(session_id, None)
+            self._live_session_locks.pop(session_id, None)
         if slot is not None:
             self.native_adapter.native_executor._erase_request_slot(slot)
+        if request_slot is not None and request_slot != slot:
+            self.native_adapter.native_executor._erase_request_slot(request_slot)
         self.native_adapter.close_session(session_id)
 
 
@@ -1153,17 +1238,27 @@ def serve(args: argparse.Namespace) -> None:
         args.llama_url,
         resource_slot=args.resource_slot,
         request_slot=args.request_slot,
+        resource_slots=(
+            tuple(args.resource_slots) if args.resource_slots else None
+        ),
+        request_slots=(
+            tuple(args.request_slots) if args.request_slots else None
+        ),
         model_fingerprint=args.model_fingerprint,
         timeout_seconds=args.timeout_seconds,
     )
     if args.prefix_caching:
         native_executor.validate_record_prefix_template()
     if args.reset_slots:
-        try:
-            native_executor._delete_resource(args.resource_slot)
-        except urllib.error.HTTPError:
-            pass
-        native_executor._erase_request_slot(args.request_slot)
+        slots = {
+            *native_executor.slot_allocator.resource_slots,
+            *native_executor.slot_allocator.request_slots,
+        }
+        for slot in sorted(slots):
+            try:
+                native_executor._delete_resource(slot)
+            except urllib.error.HTTPError:
+                pass
     native_adapter = LlamaCppEngineAdapter(
         args.llama_url,
         model_fingerprint=args.model_fingerprint,
@@ -1197,6 +1292,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-fingerprint", required=True)
     parser.add_argument("--resource-slot", type=int, default=0)
     parser.add_argument("--request-slot", type=int, default=1)
+    parser.add_argument("--resource-slots", type=int, nargs="+")
+    parser.add_argument("--request-slots", type=int, nargs="+")
     parser.add_argument("--timeout-seconds", type=float, default=3600)
     parser.add_argument(
         "--prefix-caching", action=argparse.BooleanOptionalAction, default=False
