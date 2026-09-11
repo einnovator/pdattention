@@ -55,7 +55,7 @@ def _build_source(
         {"role": "user", "content": "Inspect the synthetic repository."},
     ]
     responses = []
-    for request_index in range(1, 7):
+    for request_index in range(1, 6):
         status, response = _post(wrapper_url, _physical(
             model,
             messages,
@@ -69,7 +69,7 @@ def _build_source(
         responses.append(assistant)
         messages.append({"role": "assistant", "content": assistant})
         detail = " ".join(
-            f"file{request_index}/line{index}=unchanged" for index in range(100)
+            f"file{request_index}/line{index}=unchanged" for index in range(40)
         )
         messages.append({
             "role": "user",
@@ -91,7 +91,7 @@ def _target(
         model,
         messages,
         session_id=session_id,
-        request_index=7,
+        request_index=6,
         budget_fraction=budget_fraction,
     ))
     wall_ms = (time.perf_counter() - started) * 1000
