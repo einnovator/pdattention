@@ -3103,7 +3103,7 @@ and two most recent turns.  Response 5 changes in wording but issues the same
 command; the subsequent trajectory edits the intended line, then submits an
 invalid 503-byte patch after 12 calls and resolves 0/1.  The run realizes only
 10.2\% estimated logical-context saving.  This is the first measured sparse
-selection-quality failure on the corrected K/V mechanism, but it is not yet
+trajectory failure on the corrected K/V mechanism, but it is not yet
 attributed solely to selection.  In the frozen consumption control, live K/V
 and fresh prefill match exactly on the four full-retention requests.  At the
 first sparse request, compact fresh prefill consumes 3,543 tokens while the
@@ -3111,9 +3111,21 @@ live-K/V request spans 3,717 logical positions: the 174 omitted tokens leave
 positional holes because the native path deliberately preserves original
 record coordinates.  The responses differ slightly in reasoning text but
 issue the same command.  Thus ``identical selected records'' is insufficient
-to isolate K/V construction unless positional presentation is fixed too.  A
-position-preserving fresh-evaluation control is required before assigning the
-0/1 result solely to information loss or selector quality.
+to isolate K/V construction unless positional presentation is fixed too.
+
+A position-preserving fresh-evaluation control now closes that narrower
+correctness question.  It cold-prefills the frozen 3,221-token source, attaches
+the identical 3,047 selected K/V entries to a clean request sequence at their
+original positions, and evaluates the same 496-token wire suffix.  Its response
+is byte-for-byte identical to the live-K/V response at the first sparse request
+(matching SHA-256
+\texttt{f9b4fceb64011a3c79a0c607f8e0b5efec23e3a32c89ea0d9db6d66b8cd45cdf}).
+Consequently, the native path is reusing the intended K/V subset without
+selected-text re-encoding or K/V-construction drift.  The earlier compact-fresh
+difference is a positional-consumption effect.  The task-level 0/1 result can
+therefore be assigned to the sparse treatment as a whole, but selection loss
+and original-position versus compact-position consumption remain separate
+factors for the next frozen factorial.
 
 That control exposed a separate occupancy confound.  With both request slots
 empty, two frozen full-transcript prompts produce identical response hashes
