@@ -1,0 +1,49 @@
+{
+  "schema_version": "paper4.5.frozen-agent-replay.v1",
+  "task_id": "django__django-15277",
+  "source_arm": "retention_100_v59",
+  "comparison_arm": "plain_cache_on_v60",
+  "retention_fraction": 1.0,
+  "engine": "llama.cpp",
+  "engine_revision": "e6dc022",
+  "model": "qwen3-coder:30b",
+  "quantization": "Q4_K_M",
+  "prefix_caching": true,
+  "live_kv": {
+    "model_calls": 30,
+    "official_resolved": false,
+    "termination_reason": "Submitted",
+    "invalid_patch": true,
+    "selected_kv_token_exposures": 234035,
+    "selected_history_tokens_reencoded": 0,
+    "physical_kv_copy_observed": false,
+    "resource_tokens_evaluated": 0,
+    "wire_tokens": 4856,
+    "full_retention_requests_after_initialization": 29
+  },
+  "autonomous_plain_control": {
+    "model_calls": 35,
+    "official_resolved": false,
+    "termination_reason": "Submitted",
+    "invalid_patch": true,
+    "exact_assistant_responses_over_first_30": 24,
+    "exact_initial_assistant_responses": 22,
+    "first_response_divergence": 23,
+    "first_input_difference": "The preceding ls -la observation contained a different directory timestamp.",
+    "interpretation": "The autonomous trajectories ceased to be input-identical because the live filesystem observation changed; this is not an engine parity failure."
+  },
+  "frozen_plain_replay": {
+    "payload": "the live arm's recorded logical payloads and frozen tool observations",
+    "response_count": 30,
+    "exact_response_count": 30,
+    "first_divergence": null,
+    "all_exact": true
+  },
+  "quality_classification": {
+    "matched_pair_score": "0/1 versus 0/1",
+    "cause": "Both autonomous arms submitted model prose instead of an applicable unified diff.",
+    "pra_regression": false,
+    "lower_retention_decision": "Do not spend a sparse efficacy row on this current-build failure; advance to the next task that reproduces the baseline success."
+  },
+  "interpretation": "At 100% retention the live-K/V path is an exact behavioral no-op when the complete interaction stream is frozen. The current binary/model pairing no longer reproduces this task's historical solve, so task capability and mechanism parity are reported separately."
+}

@@ -3233,14 +3233,30 @@ median paired ratio), while endpoint wall time falls from 294.7 to 266.7~ms
 This qualifies an engine-specific sparse runtime benefit at this geometry, not
 an Easy-50 task-quality or large-model speedup.  The llama.cpp live-agent path
 therefore clears the construction, concurrency, lifecycle, offload, and sparse-
-campaign-level lock prevents the resumable Easy-50 scheduler from launching
-treatment cells before that status is explicitly promoted.  The gate is now
+runtime gates.  A campaign-level lock prevents the resumable Easy-50 scheduler
+from launching treatment cells before that status is explicitly promoted.  The gate is now
 \texttt{QUALIFIED} only for a llama.cpp wrapper with prefix caching enabled and
 a configured slot checkpoint directory; cache-off wrappers and HF, MLX, vLLM,
 and SGLang remain unqualified.  The restarted efficacy sequence operates on the
 14 baseline-success instances, one instance at a time: each instance must first
 pass the 100\% semantic-no-op control before its 90\% treatment can run, and
 lower retention remains contingent on that result.
+
+The restarted task-01 row illustrates why that protocol separates mechanism
+parity from current task capability.  Its 100\% live-K/V execution makes 30
+model calls, re-encodes zero selected-history tokens, copies no K/V, and reuses
+234,035 resident K/V token-exposures.  A frozen ordinary-prefix replay of the
+same recorded requests and tool observations reproduces all 30 assistant
+responses byte-for-byte.  The independently autonomous plain run instead
+matches the first 22 responses and first differs after an \texttt{ls -la}
+observation carries a changed directory timestamp; with frozen observations,
+that apparent divergence disappears.  Both autonomous arms nevertheless score
+0/1 because this current model/binary pairing submits explanatory prose rather
+than an applicable unified diff.  We classify that as a matched capability
+failure, not a PRA regression, and do not spend a lower-retention efficacy row
+on it.  The sequence advances to the next instance that reproduces its admitted
+baseline solve; historical membership in the 14-task stratum and current paired
+success are reported separately.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
