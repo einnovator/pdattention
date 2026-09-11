@@ -117,7 +117,7 @@ class CausalChatNativePromptMixin:
                     tokens.extend(int(token) for token in row.get("tokens", ()))
             if cancel_event.is_set():
                 raise GenerationCancelled("session termination cancelled generation")
-        except (OSError, ValueError) as error:
+        except Exception as error:
             if cancel_event.is_set():
                 raise GenerationCancelled(
                     "session termination cancelled generation"
