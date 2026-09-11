@@ -314,6 +314,10 @@ EASY50_CONFIG = ROOT / "experiments/paper4_5_agent/configs/campaigns/swebench_ea
 FIXED50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_fixed50.json"
 EASY20 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy20.json"
 EASY50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_verified_easy50.json"
+INCREMENTAL_ENGINE_MATRIX = ROOT / (
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/"
+    "swebench_verified_easy50/incremental_engine_matrix.json"
+)
 LITE50 = ROOT / "experiments/paper4_5_agent/benchmarks/swebench_lite50.json"
 EASY20_RESULT = ROOT / (
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/"
@@ -324,6 +328,25 @@ EASY20_RESULT = ROOT / (
 def test_local_qwen_runner_requests_official_x86_images_on_arm() -> None:
     assert official_image_platform("arm64") == "linux/amd64"
     assert official_image_platform("aarch64") == "linux/amd64"
+
+
+def test_incremental_engine_matrix_crosses_every_pra_level_with_adaptor() -> None:
+    matrix = json.loads(INCREMENTAL_ENGINE_MATRIX.read_text(encoding="utf-8"))
+    arms = {
+        (float(row["retention_fraction"]), str(row["adaptor"])): row
+        for row in matrix["arms"]
+        if row["pra"]
+    }
+    for retention in (1.0, 0.9, 0.75):
+        assert (retention, "none") in arms
+        assert (retention, "frozen_bundle") in arms
+    assert arms[(1.0, "none")]["label"] == "pra_100_no_adaptor"
+    assert arms[(1.0, "frozen_bundle")]["label"] == "pra_100_model_adaptor"
+    assert all(
+        arms[(0.75, adaptor)]["enabled"] is False
+        for adaptor in ("none", "frozen_bundle")
+    )
+    assert matrix["factor_contract"]["gateway"] is False
 
 
 def test_task_major_runner_derives_locked_single_task_without_resampling() -> None:

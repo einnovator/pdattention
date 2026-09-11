@@ -1,5 +1,5 @@
 {
-  "schema_version": "paper4.5.incremental-engine-matrix.v1",
+  "schema_version": "paper4.5.incremental-engine-matrix.v2",
   "status": "ENGINE_QUALIFICATION",
   "gateway_enabled": false,
   "locked_task_order": [
@@ -40,8 +40,31 @@
       "retention_fraction": 0.9,
       "adaptor": "frozen_bundle",
       "label": "pra_090_model_adaptor"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 0.75,
+      "adaptor": "none",
+      "label": "pra_075_no_adaptor",
+      "enabled": false,
+      "gate": "all_first_three_tasks_pass_at_090_in_matching_cell"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 0.75,
+      "adaptor": "frozen_bundle",
+      "label": "pra_075_model_adaptor",
+      "enabled": false,
+      "gate": "all_first_three_tasks_pass_at_090_in_matching_cell"
     }
   ],
+  "factor_contract": {
+    "no_pra": "One engine-specific control per task; adaptor is not applicable.",
+    "pra_adaptor_levels": ["none", "frozen_bundle"],
+    "crossing_rule": "Every PRA retention level is crossed with both adaptor levels. Results may never be pooled across adaptor levels.",
+    "primary_adaptor_contrast": "pra_model_adaptor_minus_pra_no_adaptor at identical engine, task, retention, selection policy, materialization policy, model revision, and seed.",
+    "gateway": false
+  },
   "qualification_requirements": [
     "same engine-resident source K/V for ordinary and PRA forks",
     "100% no-adaptor response parity",
@@ -51,7 +74,7 @@
     "request membership detached without deleting source ownership",
     "actual chat-template validation"
   ],
-  "retention_075_gate": "Run only after all first three locked tasks officially resolve at 90% for the applicable engine, selection policy, materialization policy, and adaptor condition.",
+  "retention_075_gate": "Run each 75% adaptor cell only after all first three locked tasks officially resolve at 90% for the same engine, selection policy, materialization policy, and adaptor condition.",
   "expansion_rule": "Update the paper after engine qualification, after the three-task matrix, after adding task 4, and after adding task 5; do not start task 5 before the task-4 update.",
   "adaptor_rule": "The frozen bundle identifier, weights checksum, precision, insertion points, and model revision are part of the cell identity. Missing bundles are pending cells, never implicit no-adaptor results."
 }

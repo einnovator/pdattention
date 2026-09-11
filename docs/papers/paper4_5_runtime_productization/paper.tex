@@ -3341,16 +3341,17 @@ and copies no K/V.  As on task 03, end-task success therefore conceals a large
 interaction-efficiency regression; contended wall time is provenance only.
 
 The next expansion is deliberately frozen.  HF, MLX, vLLM, and SGLang must
-first pass the same-state live-history invariant already required of llama.cpp:
-the ordinary and PRA continuations fork from the same engine-resident K/V,
-100\% selection is a semantic no-op, selected history is never tokenized or
-prefilled again, source positions and stable causal-record identities survive,
-and request membership does not mutate source ownership.  The earlier rows in
+complete the same engine-qualification ladder already required of llama.cpp.
+Its first rung requires that the ordinary and PRA continuations fork from the
+same engine-resident K/V, 100\% selection is a semantic no-op, selected history
+is never tokenized or prefilled again, source positions and stable causal-record
+identities survive, and request membership does not mutate source ownership.
+The earlier rows in
 Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
 independently reconstructed cache and consequently remain rematerialization
 diagnostics, not this qualification.
 
-The first corrected same-state probes now pass for two additional runtimes.
+The corrected same-state probes now pass for HF and MLX.
 On the frozen task-02 agent transcript, Transformers 5.17/PyTorch 2.14 with
 Qwen2.5-0.5B-Instruct FP16 on MPS and MLX-LM 0.31.3 with Qwen3-0.6B 4-bit each
 match the ordinary continuation on all 10 tested turns with zero maximum logit
@@ -3358,10 +3359,22 @@ delta.  Both paths select the complete resident cache as a view, report zero
 selected-history re-encoding, and copy no K/V.  These are 100\% construction
 gates, not task-quality results: both remain provisional until sparse
 original-position selection and session lifecycle pass.  The vLLM-Metal bridge
-now has a unit-tested zero-copy borrow for scheduler-owned prefix pages, while
-SGLang-MLX now keeps selected width distinct from the original query-position
-extent.  Their real-model same-state runs remain pending and neither is yet
-promoted for an agent campaign.
+also matches all 10 turns while borrowing scheduler-owned complete prefix pages:
+selected history is not re-encoded and the pages are not copied.  This result is
+provisional because Big Mac lacks full Xcode: the run loads source revision
+\texttt{14705ad} against vLLM 0.28.0 but supplies its native binaries from the
+vLLM-Metal 0.29.0 release.  Exact packaged-build replication, partial-page
+policy, sparse selection, and lifecycle still block promotion.
+
+SGLang-MLX likewise now matches all 10 turns with zero selected-history
+re-encoding and zero K/V copy.  This gate exposed a comparison bug first: an
+ordinary full re-prefill matched only 7/10 continuations and diverged after 9 or
+more generated tokens in the other three.  Continuing the ordinary fork from
+the captured source request, while pinning that source owner until both forks
+complete, restores 10/10 exactness.  Thus the 7/10 result diagnoses
+rematerialization drift rather than selected-K/V corruption.  SGLang remains
+provisional until the same contract passes with radix-prefix interoperation,
+sparse original-position selection, and lifecycle controls.
 
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
@@ -3370,7 +3383,9 @@ holding the selected records, retention budget, and physical materialization
 policy fixed.  Exact no-adaptor parity at 100\% is an implementation gate; a
 learned adaptor is an explicit model intervention and is judged by its frozen
 identity and task outcome rather than assumed to be response-identical.  The
-75\% row is admitted only when all three predeclared tasks pass at 90\%.
+two 75\% rows (without and with the adaptor) are admitted independently only
+when all three predeclared tasks pass at 90\% in their matching engine,
+selector, materializer, and adaptor cell.
 
 The first 90\% retention-window diagnostic keeps two mutation and two
 verification turns fixed while varying completed-turn recency. The H10 and H5

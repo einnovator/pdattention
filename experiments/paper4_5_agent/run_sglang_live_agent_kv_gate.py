@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
+import platform
 from pathlib import Path
 
 from experiments.paper4_5_agent.run_hf_agent_cache_equivalence import (
@@ -12,6 +14,22 @@ from experiments.paper4_5_agent.run_hf_agent_cache_equivalence import (
 from experiments.paper6_1_sglang.run_live_runner import _run_request
 from experiments.paper6_vllm.run_v1_capture_replay_audit import _token_comparison
 from pra_hf.live_history import LiveKVSelectionPlan
+
+
+def _extend_request(runner, req_id: str, suffix: list[int], max_tokens: int):
+    """Generate after extending an already resident SGLang request cache."""
+
+    import mlx.core as mx
+
+    pending = runner.extend_start(req_id, suffix, [], needs_logits=True)
+    runner.eval_pending(pending)
+    generated = [runner.extend_finalize(pending)]
+    for _ in range(max_tokens - 1):
+        pending_decode = runner.decode_batch_start([req_id])
+        runner.eval_pending(pending_decode)
+        generated.extend(runner.decode_batch_finalize(pending_decode))
+    mx.eval(*runner._req_caches[req_id][0].state)
+    return generated
 
 
 def main() -> None:
@@ -23,6 +41,11 @@ def main() -> None:
     parser.add_argument("--turns", type=int, default=3)
     parser.add_argument("--continuation-tokens", type=int, default=16)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument(
+        "--radix-cache",
+        action="store_true",
+        help="Also initialize SGLang's radix pool; the base same-state gate keeps it off.",
+    )
     args = parser.parse_args()
 
     import sglang
@@ -34,9 +57,11 @@ def main() -> None:
     runner = MlxModelRunner(
         args.model,
         revision=args.revision,
-        disable_radix_cache=False,
+        disable_radix_cache=not args.radix_cache,
         enable_sampling=False,
     )
+    if args.radix_cache:
+        runner.init_cache_pools(None)
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
     prompts = _assistant_prompts(tokenizer, trajectory, args.turns)
@@ -58,16 +83,14 @@ def main() -> None:
             resident = capture_live_native_memory(
                 source_caches, LiveKVSelectionPlan.full(len(source))
             )
-            runner.remove_request(prime_id)
 
-            ordinary_id = f"agent-ordinary-{turn}"
-            ordinary_tokens, _ = _run_request(
-                runner,
-                ordinary_id,
-                prompt,
-                max_tokens=args.continuation_tokens,
+            # The ordinary fork must continue from the exact captured source
+            # request. Re-prefilling ``prompt`` here would compare against a
+            # newly materialized cache and reintroduce shape/order drift.
+            ordinary_tokens = _extend_request(
+                runner, prime_id, suffix, args.continuation_tokens
             )
-            ordinary_cache = runner._req_caches[ordinary_id][
+            ordinary_cache = runner._req_caches[prime_id][
                 runner._cache_layout.first_attention_layer_index
             ]
 
@@ -100,9 +123,11 @@ def main() -> None:
                     "pra_token_ids": list(map(int, pra_tokens)),
                 }
             )
-            runner.remove_request(ordinary_id)
             runner.remove_request(pra_id)
             bridge.unregister(pra_id)
+            # Keep the source owner alive until both forks have completed so
+            # its cache cannot be reset and recycled underneath the view.
+            runner.remove_request(prime_id)
     finally:
         bridge.close()
 
@@ -111,12 +136,19 @@ def main() -> None:
         "probe": "sglang_same_resident_agent_kv_100",
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
+        "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+        "mlx_version": importlib.metadata.version("mlx"),
+        "mlx_lm_version": importlib.metadata.version("mlx-lm"),
+        "transformers_version": __import__("transformers").__version__,
+        "python_version": platform.python_version(),
         "model": args.model,
         "model_revision": args.revision,
         "trajectory": str(args.trajectory),
         "retention_fraction": 1.0,
         "adaptor": "none",
         "same_resident_kv_fork": True,
+        "source_owner_pinned_through_both_forks": True,
+        "radix_cache_enabled": args.radix_cache,
         "completed_turns": len(rows),
         "exact_turns": sum(int(row["comparison"]["exact"]) for row in rows),
         "all_exact": all(row["comparison"]["exact"] for row in rows),
@@ -127,6 +159,12 @@ def main() -> None:
         ),
         "rows": rows,
     }
+    payload["same_state_gate_valid"] = bool(
+        payload["all_exact"]
+        and payload["zero_selected_text_reencoding"]
+        and payload["zero_physical_kv_copy"]
+        and payload["source_owner_pinned_through_both_forks"]
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: payload[key] for key in (
@@ -139,4 +177,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

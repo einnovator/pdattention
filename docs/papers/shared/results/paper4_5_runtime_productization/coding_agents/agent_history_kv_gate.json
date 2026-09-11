@@ -36,17 +36,27 @@
       "agent_campaign": "blocked"
     },
     "vllm": {
-      "status": "IMPLEMENTED_PENDING_RUNTIME",
-      "same_state_100_percent": "pending",
-      "live_prefix_page_borrow": "implemented and unit-tested",
+      "status": "PROVISIONAL",
+      "same_state_100_percent": "10/10 exact diagnostic",
+      "zero_selected_text_reencoding": true,
+      "physical_kv_copy_at_100_percent": false,
+      "live_prefix_page_borrow": "runtime-tested",
+      "runtime_provenance": "vLLM 0.28.0 with source revision 14705ad and vLLM-Metal 0.29.0 release native binaries; exact packaged-build replication remains pending",
       "known_constraint": "complete-page selection; partial source tail remains in the ordinary suffix",
+      "sparse_position_preserving": "pending",
+      "lifecycle": "pending",
       "agent_campaign": "blocked"
     },
     "sglang": {
-      "status": "IMPLEMENTED_PENDING_RUNTIME",
-      "same_state_100_percent": "pending",
-      "live_cache_capture": "implemented and unit-tested",
+      "status": "PROVISIONAL",
+      "same_state_100_percent": "10/10 exact",
+      "zero_selected_text_reencoding": true,
+      "physical_kv_copy_at_100_percent": false,
+      "live_cache_capture": "runtime-tested with source ownership pinned through both forks",
       "source_position_extent_separate_from_selected_width": true,
+      "radix_prefix_interoperation": "pending",
+      "sparse_position_preserving": "pending",
+      "lifecycle": "pending",
       "agent_campaign": "blocked"
     }
   },
@@ -67,6 +77,8 @@
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_04_django__django-15741/restarted_100_livekv_v70.summary.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_same_state_task02_v2.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_same_state_task02_v2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_same_state_task02_v2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_same_state_task02_v3.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -86,7 +98,8 @@
   ],
   "still_required": [
     "HF and MLX sparse position-preserving and lifecycle qualification",
-    "vLLM and SGLang same-state, sparse position-preserving, and lifecycle qualification",
+    "vLLM exact packaged-build replication plus sparse position-preserving and lifecycle qualification",
+    "SGLang radix-prefix interoperation plus sparse position-preserving and lifecycle qualification",
     "locked three-task no-PRA/PRA-100/PRA-90 matrix, with no-adaptor and frozen model-adaptor PRA arms",
     "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import math
 import os
+import platform
 from pathlib import Path
 
 from experiments.paper4_5_agent.run_hf_agent_cache_equivalence import (
@@ -22,18 +24,45 @@ def main() -> None:
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
     parser.add_argument("--turns", type=int, default=3)
     parser.add_argument("--continuation-tokens", type=int, default=16)
+    parser.add_argument(
+        "--max-model-len",
+        type=int,
+        default=8192,
+        help="Must cover the longest frozen agent prefix plus continuation.",
+    )
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=0.10,
+        help="Fraction reserved for the paged cache; 0.10 is ample for this small gate.",
+    )
+    parser.add_argument(
+        "--engine-source-revision",
+        default="14705ad974863f68d00315655514f200366441bf",
+    )
+    parser.add_argument(
+        "--native-artifact-source",
+        default="runtime_distribution",
+        help="Exact provenance of the loaded Metal .so/.metallib artifacts.",
+    )
+    parser.add_argument(
+        "--artifact-overlay",
+        action="store_true",
+        help="Mark a diagnostic run whose native binaries do not come from the exact source build.",
+    )
     args = parser.parse_args()
 
     os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
     import vllm
+    import vllm_metal
     from pra_vllm.v1_native import VLLMMetalV1NativeBridge
     from vllm import LLM, SamplingParams
 
     llm = LLM(
         model=args.model,
-        max_model_len=4096,
+        max_model_len=args.max_model_len,
         max_num_seqs=1,
-        gpu_memory_utilization=0.5,
+        gpu_memory_utilization=args.gpu_memory_utilization,
         enable_prefix_caching=True,
     )
     runner = llm.llm_engine.model_executor.driver_worker.model_runner
@@ -110,7 +139,15 @@ def main() -> None:
         "probe": "vllm_same_resident_page_agent_kv_100",
         "engine": "vllm-metal",
         "engine_version": getattr(vllm, "__version__", "unknown"),
+        "engine_source_revision": args.engine_source_revision,
+        "vllm_metal_distribution_version": importlib.metadata.version("vllm-metal"),
+        "vllm_metal_module": str(Path(vllm_metal.__file__).resolve()),
+        "native_artifact_source": args.native_artifact_source,
+        "exact_packaged_runtime": not args.artifact_overlay,
+        "python_version": platform.python_version(),
         "model": args.model,
+        "gpu_memory_utilization": args.gpu_memory_utilization,
+        "max_model_len": args.max_model_len,
         "trajectory": str(args.trajectory),
         "retention_fraction": 1.0,
         "adaptor": "none",
@@ -127,6 +164,12 @@ def main() -> None:
         "known_constraint": "borrowed history is complete-page aligned; the final partial page remains in the ordinary request suffix",
         "rows": rows,
     }
+    payload["same_state_gate_valid"] = bool(
+        payload["all_exact"]
+        and payload["zero_selected_text_reencoding"]
+        and payload["zero_physical_kv_copy"]
+        and payload["exact_packaged_runtime"]
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: payload[key] for key in (
@@ -139,4 +182,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
