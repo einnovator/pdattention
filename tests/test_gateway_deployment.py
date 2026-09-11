@@ -233,6 +233,35 @@ def test_hf_capability_contract_names_supported_runtime_boundaries():
     assert not capabilities.supports("scheduler_hints")
 
 
+def test_agent_history_kv_qualification_requires_the_full_live_prefix_contract():
+    with pytest.raises(ValueError, match="live_prefix_kv_capture"):
+        PRAEngineCapabilities(
+            adapter="incomplete-live-prefix",
+            integration_level="E2",
+            native_kv=True,
+            session_state=True,
+            agent_history_kv_qualified=True,
+        )
+
+    capabilities = PRAEngineCapabilities(
+        adapter="qualified-live-prefix",
+        integration_level="E2",
+        native_kv=True,
+        session_state=True,
+        live_prefix_kv_capture=True,
+        live_prefix_kv_subset=True,
+        zero_selected_text_reencoding=True,
+        stable_record_kv_identity=True,
+        multiple_selected_records=True,
+        source_positions_preserved=True,
+        request_membership_attach=True,
+        agent_history_kv_qualified=True,
+    )
+
+    assert capabilities.agent_history_kv_qualified
+    assert capabilities.to_dict()["zero_selected_text_reencoding"] is True
+
+
 def test_g10_is_an_explicit_text_fallback_not_native_pra():
     adapter = RecordingAdapter()
     request = _request(

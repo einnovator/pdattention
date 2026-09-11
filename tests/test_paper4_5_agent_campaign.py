@@ -1342,6 +1342,166 @@ def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill() -> 
     assert result.raw["pra"]["selected_text_reencoded_tokens"] == 0
 
 
+def test_full_live_record_selection_continues_canonical_prefix_without_slot_handoff() -> None:
+    continued = []
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+
+        @staticmethod
+        def _render_chat(messages, request, *, generate):
+            del request, generate
+            return "".join(str(message["content"]) for message in messages)
+
+        @staticmethod
+        def _request_json(path, body=None):
+            assert path == "/tokenize"
+            return {"tokens": [ord(char) for char in body["content"]]}
+
+        @staticmethod
+        def generate_live_prefix(*args, **kwargs):
+            raise AssertionError("full retention must not hand K/V to another slot")
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    adapter._live_session_tokens["session"] = tuple(map(ord, "STAOB"))
+    adapter._generate_from_live_slot = lambda request, source: (
+        continued.append((request, source)) or PRAEngineResult(
+            "answer",
+            {"pra": {"native_tokens": 5, "wire_tokens": 1}},
+            ({"stage": "llama_cpp_live_prefix_continue"},),
+        ),
+        source,
+    )
+    logical = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "T"},
+        {"role": "assistant", "content": "A"},
+        {"role": "user", "content": "O"},
+        {"role": "assistant", "content": "B"},
+        {"role": "user", "content": "C"},
+    ]
+
+    def resource(index, role):
+        return PRAWireResource(
+            resource_id=f"m{index}-0-{role}",
+            uri=f"pra://agent-trajectory/m{index}-0-{role}",
+            text=logical[index]["content"],
+            metadata={
+                "message_index": index,
+                "segment_index": 0,
+                "role": role,
+                "parent_record_id": f"m{index}",
+                "causal_group_id": f"record:m{index}",
+            },
+        )
+
+    request = PRAWireRequest(
+        model="model",
+        messages=(logical[0], logical[4], logical[5]),
+        resources=(resource(1, "user"), resource(2, "assistant"), resource(3, "user")),
+        session_id="session",
+        metadata={"mandatory_message_indices": [0, 4, 5]},
+    )
+
+    result = adapter._generate_from_live_records(request, 1, logical)
+
+    assert continued == [(request, 1)]
+    assert result.text == "answer"
+    assert result.raw["pra"]["selected_kv_tokens"] == 5
+    assert result.raw["pra"]["selected_text_reencoded_tokens"] == 0
+    assert result.raw["pra"]["exact_live_prefix_continuation"] is True
+    assert result.trace[-1]["stage"] == "llama_cpp_live_prefix_full_continue"
+
+
+def test_fresh_prefill_control_consumes_the_same_selected_logical_records() -> None:
+    consumed = []
+
+    class Plain:
+        def generate(self, request):
+            consumed.append(request)
+            return PRAEngineResult(
+                "answer",
+                {"timings": {"prompt_n": 17}},
+                ({"stage": "llama_cpp_plain", "prefix_cache_enabled": False},),
+            )
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=SimpleNamespace()), Plain(),
+        prefix_caching=False,
+    )
+    logical = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "T"},
+        {"role": "assistant", "content": "A"},
+        {"role": "user", "content": "O"},
+        {"role": "assistant", "content": "B"},
+        {"role": "user", "content": "C"},
+    ]
+
+    def resource(index, role):
+        return PRAWireResource(
+            resource_id=f"m{index}-0-{role}",
+            uri=f"pra://agent-trajectory/m{index}-0-{role}",
+            text=logical[index]["content"],
+            metadata={
+                "message_index": index,
+                "segment_index": 0,
+                "role": role,
+                "parent_record_id": f"m{index}",
+                "causal_group_id": f"record:m{index}",
+            },
+        )
+
+    request = PRAWireRequest(
+        model="model",
+        messages=(logical[0], logical[4], logical[5]),
+        resources=(
+            resource(1, "user"), resource(2, "assistant"), resource(3, "user"),
+        ),
+        session_id="session",
+        metadata={"mandatory_message_indices": [0, 4, 5]},
+    )
+
+    result = adapter._generate_fresh_selected_records(request, logical)
+
+    assert [dict(message) for message in consumed[0].messages] == logical
+    assert consumed[0].resources == ()
+    assert result.raw["pra"]["native_kv"] is False
+    assert result.raw["pra"]["kv_source"] == "fresh_selected_prefill"
+    assert result.raw["pra"]["selected_text_reencoded_tokens"] == 17
+    assert result.trace[-1]["stage"] == "llama_cpp_fresh_selected_prefill_control"
+
+
+def test_closing_live_agent_session_erases_request_and_resource_membership() -> None:
+    erased = []
+    closed = []
+    native = SimpleNamespace(_erase_request_slot=erased.append)
+    native_adapter = SimpleNamespace(
+        native_executor=native,
+        close_session=closed.append,
+    )
+    adapter = HybridLlamaCppAdapter(
+        native_adapter, SimpleNamespace(), prefix_caching=True,
+    )
+    adapter._live_session_slots["session"] = 1
+    adapter._live_session_tokens["session"] = (1, 2)
+    adapter._logical_session_messages["session"] = [
+        {"role": "user", "content": "task"},
+    ]
+
+    adapter.close_session("session")
+
+    assert erased == [1]
+    assert closed == ["session"]
+    assert "session" not in adapter._live_session_slots
+    assert "session" not in adapter._live_session_tokens
+    assert "session" not in adapter._logical_session_messages
+
+
 def test_live_llamacpp_prefix_backtracks_after_rejected_agent_output() -> None:
     calls = []
 
@@ -2088,6 +2248,7 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
             Handler.post_count += 1
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["pra"]["required_capabilities"] == ["logical_refs", "native_kv"]
+            assert body["pra"]["metadata"]["ephemeral_session"] is True
             encoded = json.dumps({
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}],
                 "pra": {"native_kv": True},
@@ -2318,6 +2479,9 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "native_tokens": 30,
             "wire_tokens": 12,
             "physical_kv_copy": False,
+            "selected_kv_tokens": 30,
+            "selected_text_reencoded_tokens": 0,
+            "full_retention": True,
             "resource_update_mode": "cold_prefill",
             "resource_prefix_cached_tokens": 0,
             "resource_evaluated_tokens": 30,
@@ -2334,6 +2498,9 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "native_tokens": 50,
             "wire_tokens": 20,
             "physical_kv_copy": False,
+            "selected_kv_tokens": 50,
+            "selected_text_reencoded_tokens": 9,
+            "full_retention": False,
             "resource_update_mode": "prefix_delta",
             "resource_prefix_cached_tokens": 40,
             "resource_evaluated_tokens": 10,
@@ -2354,6 +2521,10 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
     assert aggregate["native_tokens"] == 80
     assert aggregate["wire_tokens"] == 32
     assert aggregate["physical_kv_copy_observed"] is False
+    assert aggregate["selected_kv_tokens"] == 80
+    assert aggregate["selected_text_reencoded_tokens"] == 9
+    assert aggregate["full_retention_requests"] == 1
+    assert aggregate["sparse_kv_requests"] == 1
     assert aggregate["resource_update_counts"] == {
         "cold_prefill": 1, "prefix_delta": 1,
     }
@@ -2377,6 +2548,9 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
                     "native_tokens": 11,
                     "wire_tokens": 3,
                     "physical_kv_copy": False,
+                    "selected_kv_tokens": 11,
+                    "selected_text_reencoded_tokens": 0,
+                    "full_retention": False,
                 },
             }).encode()
             self.send_response(200)
@@ -2435,6 +2609,9 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     assert trace["native_tokens"] == 11
     assert trace["wire_tokens"] == 3
     assert trace["physical_kv_copy"] is False
+    assert trace["selected_kv_tokens"] == 11
+    assert trace["selected_text_reencoded_tokens"] == 0
+    assert trace["full_retention"] is False
     fixture = _load_selection_fixture(selection_path)
     assert len(fixture) == 1
     assert next(iter(fixture.values()))

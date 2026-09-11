@@ -3078,12 +3078,65 @@ selected history text, copied no K/V, and returned the pinned key correctly.
 A separate rejected-action path removed the discarded branch by rolling the
 source from 27 to its 23-token common prefix, then committed the recovery suffix
 with zero selected-text re-encoding and returned the correct recovery answer.
-These are mechanism gates, not Easy-50 efficacy or latency evidence. The engine
-deliberately reports \texttt{agent\_history\_kv\_qualified=false} until a real
-mini-swe-agent frozen replay, concurrent commit isolation, cancellation,
-eviction/offload, and multi-model qualification pass. A campaign-level lock
-prevents the resumable Easy-50 scheduler from launching treatment cells before
-that status is explicitly promoted to \texttt{QUALIFIED}.
+
+The first current-build real-agent gate uses predeclared baseline-success task
+02, \texttt{django\_\_django-\allowbreak15368}; task 01 was not substituted after both its
+matched current plain and selected-K/V executions became 0/1 under the revised
+binary.  The task-02 ordinary-prefix-cache control and the 100\% live-K/V arm
+both resolve 1/1 in 14 model calls, emit the same 673-byte, 13-line patch, and
+match on all 14 assistant responses byte-for-byte.  After the initializing
+request, the live arm continues the canonical same-slot sequence on every turn:
+54,686 resident K/V token-exposures are reused, only 2,996 wire-suffix tokens
+are evaluated, selected-history text is never re-encoded, and no physical K/V
+copy occurs.  Wall time is 141.4~s for the plain control and 184.1~s for the
+instrumented live arm, so this row establishes correctness, not speedup.  An
+earlier replay of task 01 also matched both controls through 19 responses, then
+failed closed because an \texttt{ls -la} observation carried different file
+timestamps and therefore a different exact request hash.  That is a frozen-
+observation harness defect, not a model-response divergence; replay fixtures
+must freeze tool observations or key them by stable causal identity.
+
+At 90\% budget the same task passes through four exact full-retention actions.
+The first sparse request attaches 3,047 of 3,221 resident source tokens and
+drops the oldest completed causal turn while retaining the task, active tail,
+and two most recent turns.  Response 5 changes in wording but issues the same
+command; the subsequent trajectory edits the intended line, then submits an
+invalid 503-byte patch after 12 calls and resolves 0/1.  The run realizes only
+10.2\% estimated logical-context saving.  This is the first measured sparse
+selection-quality failure on the corrected K/V mechanism, but it is not yet
+attributed solely to selection.  In the frozen consumption control, live K/V
+and fresh prefill match exactly on the four full-retention requests.  At the
+first sparse request, compact fresh prefill consumes 3,543 tokens while the
+live-K/V request spans 3,717 logical positions: the 174 omitted tokens leave
+positional holes because the native path deliberately preserves original
+record coordinates.  The responses differ slightly in reasoning text but
+issue the same command.  Thus ``identical selected records'' is insufficient
+to isolate K/V construction unless positional presentation is fixed too.  A
+position-preserving fresh-evaluation control is required before assigning the
+0/1 result solely to information loss or selector quality.
+
+That control exposed a separate occupancy confound.  With both request slots
+empty, two frozen full-transcript prompts produce identical response hashes
+under cache-on and cache-off execution.  Replaying the exact physical selected-
+record payloads is also exact.  If the native readiness probe first leaves an
+unrelated seven-token resource pinned in sequence 0, however, the cache-off
+response to prompt 2 changes reproducibly even though sequence 1 is erased,
+reports zero cache hits, and receives the same 1,857 prompt tokens.  The changed
+hash exactly reproduces the earlier apparent cache mismatch.  This is unified-
+KV physical-occupancy sensitivity, not evidence that the selected transcript
+or ordinary prefix cache is wrong.  Readiness probes are now ephemeral and
+release their resource sequence before measurement.  Concurrent-session
+qualification remains blocked until this layout sensitivity is bounded or the
+runtime provides deterministic per-sequence isolation.
+
+The small-model rows and the task-02 result are mechanism and single-task
+correctness gates, not Easy-50 population-level efficacy evidence. The engine
+deliberately keeps its agent-history qualification flag false until frozen
+real-agent replay, multi-seed live-cache versus cold-prefill control,
+concurrent commit isolation, cancellation, eviction/offload, and multi-model
+qualification pass. A campaign-level lock prevents the resumable Easy-50
+scheduler from launching treatment cells before that status is explicitly
+promoted to \texttt{QUALIFIED}.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or

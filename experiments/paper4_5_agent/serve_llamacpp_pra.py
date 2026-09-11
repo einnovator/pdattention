@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import traceback
 import urllib.error
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -465,6 +466,21 @@ class HybridLlamaCppAdapter:
                 self._remember_resident_tokens(request, result, logical_messages)
                 self._logical_session_messages[str(request.session_id)] = logical_messages
                 return result
+            if (
+                not self.prefix_cache_enabled
+                and logical_messages is not None
+                and request.metadata.get("history_projection") == "live-agent-kv-v1"
+            ):
+                # Matched scientific control for the live selected-K/V path:
+                # preserve the exact selected logical records and chat
+                # presentation, but deliberately encode them from text into an
+                # empty slot on every turn.  This is explicitly labelled
+                # rematerialization and must never qualify as agent-history PRA.
+                result = self._generate_fresh_selected_records(
+                    request, logical_messages,
+                )
+                self._logical_session_messages[str(request.session_id)] = logical_messages
+                return result
             if request.metadata.get("history_projection") == "live-agent-kv-v1":
                 raise RuntimeError(
                     "live agent-history PRA requires an existing prefix-cache source, "
@@ -503,6 +519,57 @@ class HybridLlamaCppAdapter:
             if logical_messages is not None:
                 self._logical_session_messages[str(request.session_id)] = logical_messages
         return result
+
+    def _generate_fresh_selected_records(
+        self,
+        request: PRAWireRequest,
+        logical_messages: list[dict[str, Any]],
+    ) -> PRAEngineResult:
+        """Cold-prefill the same logical records chosen by live-K/V PRA."""
+
+        selected_indices = {
+            int(resource.metadata["message_index"])
+            for resource in request.resources
+        }
+        selected_indices.update(
+            int(index) for index in request.metadata["mandatory_message_indices"]
+        )
+        if not selected_indices:
+            raise RuntimeError("fresh selected-record control has no selected messages")
+        if min(selected_indices) < 0 or max(selected_indices) >= len(logical_messages):
+            raise RuntimeError("selected message index is outside the logical transcript")
+        selected_messages = [
+            logical_messages[index] for index in sorted(selected_indices)
+        ]
+        physical_request = PRAWireRequest.from_dict({
+            **request.to_dict(),
+            "messages": selected_messages,
+            "resources": [],
+            "resource_ops": [],
+        })
+        result = self.plain.generate(physical_request)
+        raw = dict(result.raw)
+        timings = raw.get("timings") if isinstance(raw.get("timings"), Mapping) else {}
+        evaluated = int(
+            raw.get("tokens_evaluated", timings.get("prompt_n", 0)) or 0
+        )
+        raw["pra"] = {
+            "native_kv": False,
+            "kv_source": "fresh_selected_prefill",
+            "selected_text_reencoded_tokens": evaluated,
+            "physical_kv_copy": False,
+        }
+        return PRAEngineResult(
+            result.text,
+            raw,
+            (*result.trace, {
+                "stage": "llama_cpp_fresh_selected_prefill_control",
+                "selected_records": len(selected_indices),
+                "selected_text_reencoded_tokens": evaluated,
+                "physical_kv_copy": False,
+                "native_kv": False,
+            }),
+        )
 
     @staticmethod
     def _content_sha256(message: Mapping[str, Any]) -> str:
@@ -725,6 +792,43 @@ class HybridLlamaCppAdapter:
             ranges=tuple(ranges),
             commit_to_source=True,
         )
+        if plan.selected_tokens == common:
+            # A lossless selection is ordinary prefix-cache continuation. Do
+            # not add all source cells to a second sequence and repeatedly
+            # copy sequence membership back: that changes the long-context
+            # numerical path and is slower than continuing the canonical
+            # sequence directly. Sparse selections still use cross-sequence
+            # live K/V attachment below.
+            result, _ = self._generate_from_live_slot(request, source)
+            raw = dict(result.raw)
+            pra = dict(raw.get("pra", {}))
+            pra.update(
+                kv_source="live_prefix_capture",
+                source_slot=source,
+                source_tokens=common,
+                selected_records=len(ranges),
+                selected_kv_tokens=common,
+                selected_text_reencoded_tokens=0,
+                physical_kv_copy=False,
+                full_retention=True,
+                exact_live_prefix_continuation=True,
+            )
+            raw["pra"] = pra
+            return PRAEngineResult(
+                result.text,
+                raw,
+                (*result.trace, {
+                    "stage": "llama_cpp_live_prefix_full_continue",
+                    "source_slot": source,
+                    "request_slot": source,
+                    "selected_kv_tokens": common,
+                    "selected_records": len(ranges),
+                    "selected_text_reencoded_tokens": 0,
+                    "physical_kv_copy": False,
+                    "full_retention": True,
+                    "exact_live_prefix_continuation": True,
+                }),
+            )
         destination = (
             native.request_slot if native.request_slot != source else native.resource_slot
         )
@@ -848,9 +952,11 @@ class HybridLlamaCppAdapter:
         raise RuntimeError("Easy-50 llama.cpp endpoint is intentionally non-streaming")
 
     def close_session(self, session_id: str) -> None:
-        self._live_session_slots.pop(str(session_id), None)
+        slot = self._live_session_slots.pop(str(session_id), None)
         self._live_session_tokens.pop(str(session_id), None)
         self._logical_session_messages.pop(str(session_id), None)
+        if slot is not None:
+            self.native_adapter.native_executor._erase_request_slot(slot)
         self.native_adapter.close_session(session_id)
 
 
@@ -891,7 +997,7 @@ def _completion(
         response["usage"] = usage
     native_raw = raw.get("pra") if isinstance(raw.get("pra"), Mapping) else {}
     response["pra"] = {
-        "native_kv": bool(native),
+        "native_kv": bool(native_raw.get("native_kv", native)),
         "prefix_cache_hit": raw.get("prefix_cache_hit"),
         "prefix_cached_tokens": raw.get("prefix_cached_tokens"),
         "engine_cached_tokens_total": raw.get("engine_cached_tokens_total"),
@@ -949,17 +1055,22 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                 request = PRAWireRequest.from_openai(payload)
                 native = bool(request.resources)
                 result = adapter.generate(request)
-                self._json(200, _completion(request, result, native=native))
+                completion = _completion(request, result, native=native)
+                if bool(request.metadata.get("ephemeral_session", False)):
+                    adapter.close_session(str(request.session_id))
+                self._json(200, completion)
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
             except urllib.error.HTTPError as error:
                 upstream_body = error.read().decode("utf-8", errors="replace")
+                traceback.print_exc()
                 self._json(error.code, {
                     "error": "upstream_http_error",
                     "message": str(error),
                     "upstream_body": upstream_body,
                 })
             except Exception as error:
+                traceback.print_exc()
                 self._json(500, {"error": "engine_internal_error", "message": str(error)})
 
         def log_message(self, format: str, *args: object) -> None:

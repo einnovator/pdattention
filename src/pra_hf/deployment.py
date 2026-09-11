@@ -66,6 +66,17 @@ class PRAEngineCapabilities:
     task_metadata: bool = False
     text_fallback: bool = True
     native_kv: bool = False
+    # Detached-resource K/V is weaker than the live agent-history contract.
+    # These fields make engines state exactly whether selected records are
+    # views over the already evaluated conversational prefix.
+    live_prefix_kv_capture: bool = False
+    live_prefix_kv_subset: bool = False
+    zero_selected_text_reencoding: bool = False
+    stable_record_kv_identity: bool = False
+    multiple_selected_records: bool = False
+    source_positions_preserved: bool = False
+    request_membership_attach: bool = False
+    agent_history_kv_qualified: bool = False
     external_kv_residency: bool = False
     cpu_kv: bool = False
     pinned_kv: bool = False
@@ -95,6 +106,23 @@ class PRAEngineCapabilities:
             PRAEngineIntegrationLevel.E3_SCHEDULER,
         }:
             raise ValueError("Native K/V requires E2 or E3 engine integration.")
+        if self.agent_history_kv_qualified:
+            required = {
+                "native_kv": self.native_kv,
+                "session_state": self.session_state,
+                "live_prefix_kv_capture": self.live_prefix_kv_capture,
+                "live_prefix_kv_subset": self.live_prefix_kv_subset,
+                "zero_selected_text_reencoding": self.zero_selected_text_reencoding,
+                "stable_record_kv_identity": self.stable_record_kv_identity,
+                "multiple_selected_records": self.multiple_selected_records,
+                "source_positions_preserved": self.source_positions_preserved,
+                "request_membership_attach": self.request_membership_attach,
+            }
+            missing = sorted(name for name, enabled in required.items() if not enabled)
+            if missing:
+                raise ValueError(
+                    "Qualified agent-history K/V requires: " + ", ".join(missing)
+                )
 
     def supports(self, capability: str) -> bool:
         if not hasattr(self, capability) or capability in {"adapter", "integration_level"}:

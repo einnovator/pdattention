@@ -1225,6 +1225,9 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
             "native_tokens": None,
             "wire_tokens": None,
             "physical_kv_copy": None,
+            "selected_kv_tokens": None,
+            "selected_text_reencoded_tokens": None,
+            "full_retention": None,
             "resource_update_mode": None,
             "resource_prefix_cached_tokens": None,
             "resource_evaluated_tokens": None,
@@ -1240,6 +1243,9 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
     native_tokens = pra.get("native_tokens")
     wire_tokens = pra.get("wire_tokens")
     physical_copy = pra.get("physical_kv_copy")
+    selected_kv = pra.get("selected_kv_tokens")
+    selected_reencoded = pra.get("selected_text_reencoded_tokens")
+    full_retention = pra.get("full_retention")
     engine_cached_tokens = pra.get("engine_cached_tokens_total")
     resource_update_mode = pra.get("resource_update_mode")
     resource_cached = pra.get("resource_prefix_cached_tokens")
@@ -1256,6 +1262,12 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
             wire_tokens = row.get("wire_tokens")
         if physical_copy is None:
             physical_copy = row.get("physical_kv_copy")
+        if selected_kv is None:
+            selected_kv = row.get("selected_kv_tokens")
+        if selected_reencoded is None:
+            selected_reencoded = row.get("selected_text_reencoded_tokens")
+        if full_retention is None:
+            full_retention = row.get("full_retention")
         if engine_cached_tokens is None:
             engine_cached_tokens = row.get("engine_cached_tokens_total")
         if resource_update_mode is None:
@@ -1275,6 +1287,13 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
         "native_tokens": int(native_tokens) if native_tokens is not None else None,
         "wire_tokens": int(wire_tokens) if wire_tokens is not None else None,
         "physical_kv_copy": bool(physical_copy) if physical_copy is not None else None,
+        "selected_kv_tokens": int(selected_kv) if selected_kv is not None else None,
+        "selected_text_reencoded_tokens": (
+            int(selected_reencoded) if selected_reencoded is not None else None
+        ),
+        "full_retention": (
+            bool(full_retention) if full_retention is not None else None
+        ),
         "resource_update_mode": resource_update_mode,
         "resource_prefix_cached_tokens": (
             int(resource_cached) if resource_cached is not None else None

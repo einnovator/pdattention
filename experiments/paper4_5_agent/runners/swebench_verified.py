@@ -258,7 +258,11 @@ def gateway_preflight(
             "required_capabilities": ["logical_refs", "native_kv"] if native_required else [],
             "pra_policy": {"profile": "swebench-balanced-v1"},
             "metadata": {
-                "requested_mode": "native-memory" if native_required else "selected-context"
+                "requested_mode": "native-memory" if native_required else "selected-context",
+                # A readiness probe must not alter the K/V occupancy seen by
+                # the subsequent experiment.  The engine wrapper releases
+                # this session after constructing the response.
+                "ephemeral_session": True,
             },
         }
     probe_payload = json.dumps(probe).encode("utf-8")
@@ -1030,6 +1034,12 @@ def _write_task_rows(
             "native_tokens": trace.get("native_tokens"),
             "wire_tokens": trace.get("wire_tokens"),
             "physical_kv_copy_observed": trace.get("physical_kv_copy_observed"),
+            "selected_kv_tokens": trace.get("selected_kv_tokens"),
+            "selected_text_reencoded_tokens": trace.get(
+                "selected_text_reencoded_tokens"
+            ),
+            "full_retention_requests": trace.get("full_retention_requests"),
+            "sparse_kv_requests": trace.get("sparse_kv_requests"),
             "resource_update_counts": trace.get("resource_update_counts"),
             "resource_prefix_cached_tokens": trace.get("resource_prefix_cached_tokens"),
             "resource_evaluated_tokens": trace.get("resource_evaluated_tokens"),
@@ -1189,6 +1199,18 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "physical_kv_copy_observed": any(
             row.get("physical_kv_copy") is True for row in rows
         ),
+        "selected_kv_tokens": sum(
+            int(row.get("selected_kv_tokens") or 0) for row in rows
+        ),
+        "selected_text_reencoded_tokens": sum(
+            int(row.get("selected_text_reencoded_tokens") or 0) for row in rows
+        ),
+        "full_retention_requests": sum(
+            int(row.get("full_retention") is True) for row in rows
+        ),
+        "sparse_kv_requests": sum(
+            int(row.get("full_retention") is False) for row in rows
+        ),
         "resource_update_counts": update_counts,
         "resource_prefix_cached_tokens": sum(
             int(row.get("resource_prefix_cached_tokens") or 0) for row in rows
@@ -1220,6 +1242,13 @@ def _grader_error_type(log: Path, instance_id: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark-card", type=Path, required=True)
+    parser.add_argument(
+        "--task-index", type=int,
+        help=(
+            "Run one 1-based task from the locked benchmark card without "
+            "resampling or creating an outcome-dependent cohort."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--served-model", required=True)
@@ -1248,6 +1277,11 @@ def main() -> None:
     parser.add_argument("--grading", default="SWE-bench 4.1.0 official Docker harness")
     parser.add_argument("--context-limit", type=int, default=16384)
     parser.add_argument("--max-steps", type=int, default=40)
+    parser.add_argument(
+        "--max-completion-tokens",
+        type=int,
+        help="Per-turn completion ceiling forwarded unchanged to mini-swe-agent.",
+    )
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
         "--mode", choices=("no-pra", *[mode.value for mode in ContextTreatment]),
@@ -1290,6 +1324,11 @@ def main() -> None:
         help="Normalize a previously observed timed-out chunk without rerunning its agent.",
     )
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument(
+        "--endpoint-preflight-receipt",
+        type=Path,
+        help="Reuse a passed endpoint generation probe after a clean restart.",
+    )
     parser.add_argument("--allow-partial-reproduction", action="store_true")
     parser.add_argument(
         "--local-calibration",
