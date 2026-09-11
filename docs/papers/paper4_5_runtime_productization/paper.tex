@@ -3281,6 +3281,12 @@ is a quality pass but a consumption-efficiency warning: preserving the final
 answer does not imply preserving the path used to reach it.  The observed
 497.9-versus-940.4~s wall times are retained only as contended provenance and
 are not a speed comparison.  Task 03 therefore advances to 75\% retention.
+At 75\%, it resolves 0/1 after 23 calls and submits an invalid 479-byte
+patch while reducing estimated logical context by 23.23\%.  Its 19 sparse
+requests still re-encode zero selected-history tokens and copy no K/V, so this
+is a task-quality failure on a physically correct mechanism.  Profiles below
+75\% are consequently withheld for this instance, and task 04 becomes the next
+100\% gate.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
