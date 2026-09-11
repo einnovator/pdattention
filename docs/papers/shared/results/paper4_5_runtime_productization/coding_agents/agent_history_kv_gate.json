@@ -9,6 +9,47 @@
     "wrapper_requirement": "prefix_cache_enabled=true and slot_save_path configured",
     "scope": "direct live-prefix selected-K/V agent-history treatments only"
   },
+  "engine_qualification": {
+    "llama.cpp": {
+      "status": "QUALIFIED",
+      "same_state_100_percent": "passed",
+      "sparse_position_preserving": "passed",
+      "lifecycle": "passed",
+      "agent_campaign": "enabled"
+    },
+    "huggingface": {
+      "status": "PROVISIONAL",
+      "same_state_100_percent": "10/10 exact",
+      "zero_selected_text_reencoding": true,
+      "physical_kv_copy_at_100_percent": false,
+      "sparse_position_preserving": "pending",
+      "lifecycle": "pending",
+      "agent_campaign": "blocked"
+    },
+    "mlx": {
+      "status": "PROVISIONAL",
+      "same_state_100_percent": "10/10 exact",
+      "zero_selected_text_reencoding": true,
+      "physical_kv_copy_at_100_percent": false,
+      "sparse_position_preserving": "pending",
+      "lifecycle": "pending",
+      "agent_campaign": "blocked"
+    },
+    "vllm": {
+      "status": "IMPLEMENTED_PENDING_RUNTIME",
+      "same_state_100_percent": "pending",
+      "live_prefix_page_borrow": "implemented and unit-tested",
+      "known_constraint": "complete-page selection; partial source tail remains in the ordinary suffix",
+      "agent_campaign": "blocked"
+    },
+    "sglang": {
+      "status": "IMPLEMENTED_PENDING_RUNTIME",
+      "same_state_100_percent": "pending",
+      "live_cache_capture": "implemented and unit-tested",
+      "source_position_extent_separate_from_selected_width": true,
+      "agent_campaign": "blocked"
+    }
+  },
   "evidence": [
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/live_agent_kv_smoke_qwen25_05b.json",
     "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_same_state_smoke_qwen25_05b.json",
@@ -24,6 +65,8 @@
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/restarted_100_090_livekv_v64.summary.json",
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_03_scikit-learn__scikit-learn-13135/restarted_100_090_livekv_v67.summary.json",
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_04_django__django-15741/restarted_100_livekv_v70.summary.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_same_state_task02_v2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_same_state_task02_v2.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -42,9 +85,10 @@
     "30-of-30 exact frozen replay of the restarted task-01 100% live-K/V trajectory"
   ],
   "still_required": [
-    "full Easy-50 baseline-success stratum at 100% retention",
-    "90% and lower retention efficacy after per-task 100% parity",
-    "independent qualification of HF, MLX, vLLM, and SGLang adapters"
+    "HF and MLX sparse position-preserving and lifecycle qualification",
+    "vLLM and SGLang same-state, sparse position-preserving, and lifecycle qualification",
+    "locked three-task no-PRA/PRA-100/PRA-90 matrix, with no-adaptor and frozen model-adaptor PRA arms",
+    "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],
   "efficacy_progress": {
     "historical_baseline_success_tasks": 14,

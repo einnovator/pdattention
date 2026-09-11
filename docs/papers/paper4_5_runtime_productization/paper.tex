@@ -3350,6 +3350,19 @@ Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
 independently reconstructed cache and consequently remain rematerialization
 diagnostics, not this qualification.
 
+The first corrected same-state probes now pass for two additional runtimes.
+On the frozen task-02 agent transcript, Transformers 5.17/PyTorch 2.14 with
+Qwen2.5-0.5B-Instruct FP16 on MPS and MLX-LM 0.31.3 with Qwen3-0.6B 4-bit each
+match the ordinary continuation on all 10 tested turns with zero maximum logit
+delta.  Both paths select the complete resident cache as a view, report zero
+selected-history re-encoding, and copy no K/V.  These are 100\% construction
+gates, not task-quality results: both remain provisional until sparse
+original-position selection and session lifecycle pass.  The vLLM-Metal bridge
+now has a unit-tested zero-copy borrow for scheduler-owned prefix pages, while
+SGLang-MLX now keeps selected width distinct from the original query-position
+extent.  Their real-model same-state runs remain pending and neither is yet
+promoted for an agent campaign.
+
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
 adaptor condition (no adaptor versus an immutable model-adaptor bundle) while
