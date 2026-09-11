@@ -65,6 +65,46 @@ class CausalChatNativePromptMixin:
             raise RuntimeError("llama-server did not return a rendered chat prompt.")
         return prompt
 
+    def validate_record_prefix_template(self) -> dict[str, Any]:
+        """Fail before inference when completed records change presentation."""
+
+        messages = [
+            {"role": "system", "content": "PRA template qualification"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "action"},
+            {"role": "user", "content": "observation"},
+        ]
+
+        def tokens(rows: list[dict[str, str]], *, generate: bool) -> list[int]:
+            rendered = self._request_json("/apply-template", {
+                "messages": rows,
+                "add_generation_prompt": generate,
+            })
+            prompt = rendered.get("prompt")
+            if not isinstance(prompt, str) or not prompt:
+                raise RuntimeError("llama-server returned an empty chat template probe")
+            tokenized = self._request_json("/tokenize", {
+                "content": prompt,
+                "add_special": True,
+            })
+            return [int(token) for token in tokenized.get("tokens", ())]
+
+        full = tokens(messages, generate=True)
+        boundaries = []
+        for end in range(1, len(messages) + 1):
+            prefix = tokens(messages[:end], generate=False)
+            if full[:len(prefix)] != prefix:
+                raise RuntimeError(
+                    "chat template is not record-prefix-separable at startup "
+                    f"probe message {end - 1}; live agent-history K/V is unsafe"
+                )
+            boundaries.append(len(prefix))
+        return {
+            "record_prefix_separable": True,
+            "probe_messages": len(messages),
+            "token_boundaries": boundaries,
+        }
+
     @staticmethod
     def _trajectory_messages(request: PRAWireRequest) -> list[tuple[int, dict[str, Any]]]:
         grouped: dict[tuple[int, str], list[tuple[int, str]]] = {}
@@ -1116,6 +1156,8 @@ def serve(args: argparse.Namespace) -> None:
         model_fingerprint=args.model_fingerprint,
         timeout_seconds=args.timeout_seconds,
     )
+    if args.prefix_caching:
+        native_executor.validate_record_prefix_template()
     if args.reset_slots:
         try:
             native_executor._delete_resource(args.resource_slot)

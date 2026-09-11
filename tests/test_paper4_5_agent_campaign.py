@@ -1529,6 +1529,38 @@ def test_direct_llamacpp_endpoint_can_close_a_live_session() -> None:
         thread.join(timeout=5)
 
 
+def test_live_agent_template_is_qualified_before_inference() -> None:
+    class Executor(CausalChatNativePromptMixin):
+        inject_final_assistant_wrapper = False
+
+        def _request_json(self, path, body):
+            if path == "/apply-template":
+                rows = body["messages"]
+                rendered = "".join(
+                    f"<{row['role']}>{row['content']}" for row in rows
+                )
+                if (
+                    self.inject_final_assistant_wrapper
+                    and rows[-1]["role"] == "assistant"
+                ):
+                    rendered = rendered[:-len(rows[-1]["content"])] + (
+                        "<think></think>" + rows[-1]["content"]
+                    )
+                if body["add_generation_prompt"]:
+                    rendered += "<assistant>"
+                return {"prompt": rendered}
+            assert path == "/tokenize"
+            return {"tokens": [ord(char) for char in body["content"]]}
+
+    result = Executor().validate_record_prefix_template()
+    assert result["record_prefix_separable"] is True
+    assert result["probe_messages"] == 4
+
+    Executor.inject_final_assistant_wrapper = True
+    with pytest.raises(RuntimeError, match="not record-prefix-separable"):
+        Executor().validate_record_prefix_template()
+
+
 def test_frozen_prefix_probe_compares_recorded_responses(tmp_path: Path) -> None:
     fixture = tmp_path / "interaction.jsonl"
     fixture.write_text("\n".join(json.dumps(row) for row in (
