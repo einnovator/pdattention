@@ -3271,6 +3271,17 @@ assignment of the loss to the sparse treatment rather than a transient engine
 defect.  Because the predeclared 90\% quality gate fails, lower-retention task-02
 rows are withheld and the sequence advances to task 03 at 100\%.
 
+Task 03 also clears its 100\% gate: it resolves 1/1 in 13 calls with a valid
+716-byte patch, while its frozen plain-prefix replay reproduces all 13 responses
+byte-for-byte.  At 90\%, it still resolves 1/1 and emits the same patch, but
+requires 25 calls---a 92.3\% action increase---while reducing estimated logical
+context by 17.75\%.  Its 21 sparse requests expose 186,379 selected resident K/V
+tokens while re-encoding zero selected-history tokens and copying no K/V.  This
+is a quality pass but a consumption-efficiency warning: preserving the final
+answer does not imply preserving the path used to reach it.  The observed
+497.9-versus-940.4~s wall times are retained only as contended provenance and
+are not a speed comparison.  Task 03 therefore advances to 75\% retention.
+
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
 evaluate a replacement suffix when selection changes. Live-record PRA keeps
