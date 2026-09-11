@@ -22,6 +22,7 @@ from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
 from pra_hf.engine_invariants import EnginePRAIsolationGuard
 from pra_hf.engine_memory import LogicalPRABlock, LogicalPRABlockId, LogicalPRABlockStore
 from pra_hf.engine_residency import EnginePRAResidencyManager, PRAEvictionPolicy
+from pra_hf.live_history import LiveKVSelectionPlan
 from pra_hf.storage_lifecycle import (
     PRARetentionClass,
     PRAStorageEntry,
@@ -61,6 +62,16 @@ class MLXNativeMemory:
             return self.nbytes
         selected = set(map(int, layer_indices))
         return sum(layer.nbytes for index, layer in enumerate(self.layers) if index in selected)
+
+
+@dataclass(frozen=True)
+class MLXResidentKVSelection:
+    """Native memory selected from a live MLX cache, never from source text."""
+
+    memory: MLXNativeMemory
+    plan: LiveKVSelectionPlan
+    physical_kv_copy: bool
+    selected_text_reencoded_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -557,6 +568,45 @@ def encode_native_memory(model: object, token_ids: Sequence[int]) -> MLXNativeMe
         *(array for layer in result.layers for array in (layer.keys, layer.values))
     )
     return result
+
+
+def capture_live_native_memory(
+    caches: Sequence[object], plan: LiveKVSelectionPlan
+) -> MLXResidentKVSelection:
+    """Expose selected cells from an already evaluated mlx-lm prompt cache.
+
+    A contiguous selection stays a slice view over the live cache.  The
+    portable MLX attention protocol currently packs disjoint intervals with
+    ``concatenate``; this copies K/V but still evaluates zero selected text.
+    Segmented zero-copy consumption remains a separate materialization policy.
+    """
+
+    import mlx.core as mx
+
+    layers = []
+    packed = len(plan.intervals) > 1
+    for cache in caches:
+        state = cache.state
+        if not isinstance(state, tuple) or len(state) < 2:
+            raise TypeError("Live MLX K/V selection requires attention cache layers.")
+        keys, values = state[:2]
+        if int(keys.shape[2]) < plan.source_tokens:
+            raise ValueError("MLX source cache is shorter than the selection plan.")
+        key_parts = tuple(keys[:, :, row.start : row.end, :] for row in plan.intervals)
+        value_parts = tuple(values[:, :, row.start : row.end, :] for row in plan.intervals)
+        if not key_parts:
+            chosen_keys = keys[:, :, :0, :]
+            chosen_values = values[:, :, :0, :]
+        elif len(key_parts) == 1:
+            chosen_keys = key_parts[0]
+            chosen_values = value_parts[0]
+        else:
+            chosen_keys = mx.concatenate(key_parts, axis=2)
+            chosen_values = mx.concatenate(value_parts, axis=2)
+        layers.append(MLXNativeLayerKV(chosen_keys, chosen_values))
+    memory = MLXNativeMemory(tuple(layers), plan.selected_tokens)
+    mx.eval(*(array for layer in memory.layers for array in (layer.keys, layer.values)))
+    return MLXResidentKVSelection(memory, plan, packed)
 
 
 def combine_native_memories(memories: Sequence[MLXNativeMemory]) -> MLXNativeMemory:

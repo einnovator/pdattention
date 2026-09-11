@@ -3334,7 +3334,30 @@ SGLang 0.5.19 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 3/10 & 2 \\
 
 Task 04 clears 100\%: 1/1 in 13 calls, a valid 875-byte patch, 59,325 resident
 K/V exposures, zero re-encoding or copy, and 13/13 exact frozen responses.  Its
-running 90\% arm has exceeded 27 calls; quality remains pending.
+90\% arm also resolves 1/1, but takes 34 calls---21 more than the 100\% arm---
+while reducing estimated logical context by 11.80\%.  Across 30 sparse requests
+it exposes 248,815 selected resident K/V tokens, re-encodes no selected history,
+and copies no K/V.  As on task 03, end-task success therefore conceals a large
+interaction-efficiency regression; contended wall time is provenance only.
+
+The next expansion is deliberately frozen.  HF, MLX, vLLM, and SGLang must
+first pass the same-state live-history invariant already required of llama.cpp:
+the ordinary and PRA continuations fork from the same engine-resident K/V,
+100\% selection is a semantic no-op, selected history is never tokenized or
+prefilled again, source positions and stable causal-record identities survive,
+and request membership does not mutate source ownership.  The earlier rows in
+Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
+independently reconstructed cache and consequently remain rematerialization
+diagnostics, not this qualification.
+
+After engine qualification, the locked task-level matrix contains no gateway
+arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
+adaptor condition (no adaptor versus an immutable model-adaptor bundle) while
+holding the selected records, retention budget, and physical materialization
+policy fixed.  Exact no-adaptor parity at 100\% is an implementation gate; a
+learned adaptor is an explicit model intervention and is judged by its frozen
+identity and task outcome rather than assumed to be response-identical.  The
+75\% row is admitted only when all three predeclared tasks pass at 90\%.
 
 The first 90\% retention-window diagnostic keeps two mutation and two
 verification turns fixed while varying completed-turn recency. The H10 and H5

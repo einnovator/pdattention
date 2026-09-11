@@ -18,6 +18,7 @@ from pra_hf.storage_lifecycle import PRAStorageManager
 from pra_mlx.native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
+    MLXResidentKVSelection,
     combine_native_memories,
 )
 from pra_sglang.hicache import SGLangPRAHiCache
@@ -196,6 +197,7 @@ class SGLangNativeRequest:
     """Selected immutable memory registered for one SGLang request ID."""
 
     memory: MLXNativeMemory
+    source_position_base: int
     logical_keys: tuple[str, ...] = ()
     storage_pinned: bool = False
 
@@ -245,14 +247,25 @@ class SGLangMLXNativeBridge:
     def register(
         self,
         req_id: str,
-        memory: MLXNativeMemory | None = None,
+        memory: MLXNativeMemory | MLXResidentKVSelection | None = None,
         *,
         logical_keys: tuple[str, ...] = (),
         tenant_id: str | None = None,
         session_id: str | None = None,
+        source_position_base: int | None = None,
     ) -> None:
         identifier = str(req_id)
         storage_pinned = False
+        live_selection = (
+            memory if isinstance(memory, MLXResidentKVSelection) else None
+        )
+        if live_selection is not None:
+            if source_position_base is not None:
+                raise ValueError(
+                    "A live SGLang selection already defines source_position_base."
+                )
+            source_position_base = live_selection.plan.source_position_base
+            memory = live_selection.memory
         if memory is None:
             if not logical_keys:
                 raise ValueError(
@@ -283,6 +296,15 @@ class SGLangMLXNativeBridge:
             raise ValueError("Selected memory does not match SGLang model layers.")
         if any(int(layer.keys.shape[2]) != memory.source_tokens for layer in memory.layers):
             raise ValueError("Selected memory token geometry disagrees with its position base.")
+        position_base = int(
+            memory.source_tokens
+            if source_position_base is None
+            else source_position_base
+        )
+        if position_base < memory.source_tokens:
+            raise ValueError(
+                "SGLang source_position_base cannot be smaller than selected K/V."
+            )
         self.isolation.open_request(
             identifier,
             logical_keys,
@@ -290,7 +312,7 @@ class SGLangMLXNativeBridge:
             session_id=session_id,
         )
         self._requests[identifier] = SGLangNativeRequest(
-            memory, logical_keys, storage_pinned
+            memory, position_base, logical_keys, storage_pinned
         )
 
     def unregister(self, req_id: str) -> None:
@@ -317,7 +339,9 @@ class SGLangMLXNativeBridge:
         return [
             (
                 SGLangSelectedKVCache(
-                    cache, memory.layers[index], position_base=memory.source_tokens
+                    cache,
+                    memory.layers[index],
+                    position_base=request.source_position_base,
                 )
                 if index in self.runner._cache_layout.attention_layer_indices
                 else cache
@@ -420,6 +444,11 @@ class SGLangMLXNativeBridge:
                 self.hicache is not None or self.storage is not None
             ),
             "shared_storage_lifecycle": self.storage is not None,
+            "live_prefix_kv_capture": True,
+            "live_prefix_kv_subset": True,
+            "source_positions_preserved": True,
+            "zero_selected_text_reencoding": True,
+            "disjoint_selection_requires_pack_copy": True,
             "hicache_metrics": (
                 None if self.hicache is None else self.hicache.metrics().to_dict()
             ),

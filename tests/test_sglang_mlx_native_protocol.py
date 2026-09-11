@@ -76,7 +76,9 @@ def test_sglang_radix_transition_wraps_twice_but_attaches_once() -> None:
     bridge.runner = _Runner()
     bridge._requests = {
         "request": SGLangNativeRequest(
-            MLXNativeMemory((layer,), source_tokens=11), ("resource-R",)
+            MLXNativeMemory((layer,), source_tokens=11),
+            source_position_base=31,
+            logical_keys=("resource-R",),
         )
     }
     bridge.isolation = EnginePRAIsolationGuard()
@@ -88,4 +90,6 @@ def test_sglang_radix_transition_wraps_twice_but_attaches_once() -> None:
 
     assert same_stage is pool_backed
     assert isinstance(contiguous[0], SGLangSelectedKVCache)
+    assert contiguous[0].position_base == 31
+    assert contiguous[0].rope_offset == 31 + contiguous[0].offset
     assert bridge.isolation.view("request").attached

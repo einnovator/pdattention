@@ -1,0 +1,57 @@
+{
+  "schema_version": "paper4.5.incremental-engine-matrix.v1",
+  "status": "ENGINE_QUALIFICATION",
+  "gateway_enabled": false,
+  "locked_task_order": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135",
+    "django__django-15741",
+    "pytest-dev__pytest-7982"
+  ],
+  "engine_order": ["llama.cpp", "huggingface", "mlx", "vllm", "sglang"],
+  "arms": [
+    {
+      "pra": false,
+      "retention_fraction": 1.0,
+      "adaptor": "none",
+      "label": "no_pra"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 1.0,
+      "adaptor": "none",
+      "label": "pra_100_no_adaptor"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 1.0,
+      "adaptor": "frozen_bundle",
+      "label": "pra_100_model_adaptor"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 0.9,
+      "adaptor": "none",
+      "label": "pra_090_no_adaptor"
+    },
+    {
+      "pra": true,
+      "retention_fraction": 0.9,
+      "adaptor": "frozen_bundle",
+      "label": "pra_090_model_adaptor"
+    }
+  ],
+  "qualification_requirements": [
+    "same engine-resident source K/V for ordinary and PRA forks",
+    "100% no-adaptor response parity",
+    "zero selected-history token re-encoding",
+    "stable causal-record identities",
+    "source positions preserved",
+    "request membership detached without deleting source ownership",
+    "actual chat-template validation"
+  ],
+  "retention_075_gate": "Run only after all first three locked tasks officially resolve at 90% for the applicable engine, selection policy, materialization policy, and adaptor condition.",
+  "expansion_rule": "Update the paper after engine qualification, after the three-task matrix, after adding task 4, and after adding task 5; do not start task 5 before the task-4 update.",
+  "adaptor_rule": "The frozen bundle identifier, weights checksum, precision, insertion points, and model revision are part of the cell identity. Missing bundles are pending cells, never implicit no-adaptor results."
+}

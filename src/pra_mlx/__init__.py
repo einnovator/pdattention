@@ -2,6 +2,7 @@
 
 from .adapter import MLXEngineAdapter, MLXNativeExecutor
 from .native import (
+    MLXResidentKVSelection,
     MLXInProcessNativeExecutor,
     MLXNativeLayerKV,
     MLXNativeMemory,
@@ -12,6 +13,7 @@ from .native import (
     MLXQuantizedMemory,
     MLXSegmentedSelectedKVCache,
     MLXSelectedKVCache,
+    capture_live_native_memory,
     combine_native_memories,
     dequantize_native_memory,
     deserialize_native_memory,
@@ -33,6 +35,7 @@ __all__ = [
     "MLXNativeExecutor",
     "MLXNativeLayerKV",
     "MLXNativeMemory",
+    "MLXResidentKVSelection",
     "MLXNativeSegmentStore",
     "MLXNativeColdCodec",
     "MLXNativeFingerprint",
@@ -41,6 +44,7 @@ __all__ = [
     "MLXQuantizedMemory",
     "MLXSegmentedSelectedKVCache",
     "MLXSelectedKVCache",
+    "capture_live_native_memory",
     "combine_native_memories",
     "dequantize_native_memory",
     "deserialize_native_memory",
