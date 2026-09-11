@@ -10,6 +10,7 @@ server protocol is absent.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import threading
@@ -26,6 +27,14 @@ from pra_hf.gateway import PRAGateway, serve_gateway
 
 
 _TRAJECTORY_RESOURCE_ID = re.compile(r"m(?P<message>\d+)-(?P<segment>\d+)-(?P<role>.+)")
+
+
+class SessionCommitConflict(RuntimeError):
+    """A request tried to advance a session from a stale logical head."""
+
+
+class SessionClosedError(RuntimeError):
+    """A request addressed a session whose termination already began."""
 
 
 def _load_llamacpp_types():
@@ -434,6 +443,11 @@ class HybridLlamaCppAdapter:
         # what lets record IDs be mapped to the K/V positions at which the
         # model originally evaluated them.
         self._logical_session_messages: dict[str, list[dict[str, Any]]] = {}
+        # One generation may be retried by an HTTP client.  Cache its semantic
+        # identity and result so an exact retry is idempotent, while a different
+        # request from the same logical parent is rejected as a stale commit.
+        self._pending_generations: dict[str, dict[str, Any]] = {}
+        self._closed_sessions: set[str] = set()
 
     def _session_lock(self, session_id: str) -> threading.RLock:
         with self._live_state_lock:
@@ -548,12 +562,138 @@ class HybridLlamaCppAdapter:
         session_id = str(getattr(request, "session_id", "") or "")
         if not session_id:
             return self._generate_serialized(request)
-        with self._session_lock(session_id):
+        session_lock = self._session_lock(session_id)
+        with session_lock:
+            with self._live_state_lock:
+                if session_id in self._closed_sessions:
+                    raise SessionClosedError(
+                        f"live agent session {session_id!r} is closed"
+                    )
             return self._generate_serialized(request)
 
     def _generate_serialized(self, request: PRAWireRequest) -> PRAEngineResult:
-        request = self._hydrate_resource_delta(request)
-        logical_messages = self._hydrate_logical_messages(request)
+        key = self._resource_session_key(request)
+        had_prior_resources = bool(key is not None and key in self._session_resources)
+        prior_resources = (
+            dict(self._session_resources[key]) if had_prior_resources else None
+        )
+        try:
+            request = self._hydrate_resource_delta(request)
+            logical_messages = self._hydrate_logical_messages(request)
+            replay = self._validate_generation_parent(request, logical_messages)
+            if replay is not None:
+                return replay
+            result = self._execute_hydrated(request, logical_messages)
+            self._record_generation_head(request, logical_messages, result)
+            return result
+        except Exception:
+            # Deltas are speculative until generation commits.  A stale or
+            # failed request must not rewrite the session's active inventory.
+            if key is not None:
+                if had_prior_resources:
+                    self._session_resources[key] = prior_resources or {}
+                else:
+                    self._session_resources.pop(key, None)
+            raise
+
+    @staticmethod
+    def _manifest_digest(messages: list[dict[str, Any]]) -> str:
+        manifest = [
+            {
+                "role": str(message.get("role", "")),
+                "content_sha256": hashlib.sha256(
+                    str(message.get("content", "")).encode("utf-8")
+                ).hexdigest(),
+            }
+            for message in messages
+        ]
+        return hashlib.sha256(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _request_fingerprint(request: PRAWireRequest) -> str:
+        payload = dict(request.to_dict())
+        payload.pop("request_id", None)
+        payload.pop("correlation_id", None)
+        return hashlib.sha256(
+            json.dumps(
+                payload, sort_keys=True, separators=(",", ":"), default=str,
+            ).encode()
+        ).hexdigest()
+
+    def _validate_generation_parent(
+        self,
+        request: PRAWireRequest,
+        logical_messages: list[dict[str, Any]] | None,
+    ) -> PRAEngineResult | None:
+        if logical_messages is None or request.session_id is None:
+            return None
+        session_id = str(request.session_id)
+        pending = self._pending_generations.get(session_id)
+        if pending is None:
+            return None
+        parent_digest = self._manifest_digest(logical_messages)
+        fingerprint = self._request_fingerprint(request)
+        if parent_digest == pending["parent_digest"]:
+            if fingerprint != pending["request_fingerprint"]:
+                raise SessionCommitConflict(
+                    "a different generation already committed from this logical head"
+                )
+            prior = pending["result"]
+            return PRAEngineResult(
+                prior.text,
+                dict(prior.raw),
+                (*prior.trace, {
+                    "stage": "llama_cpp_idempotent_generation_replay",
+                    "session_id": session_id,
+                    "request_fingerprint": fingerprint,
+                }),
+            )
+
+        prior_messages = pending["logical_messages"]
+        if logical_messages[:len(prior_messages)] != prior_messages:
+            raise SessionCommitConflict(
+                "logical session history does not extend the committed head"
+            )
+        extension = logical_messages[len(prior_messages):]
+        generated = str(pending["assistant_response"])
+        accepted = (
+            len(extension) >= 2
+            and extension[0].get("role") == "assistant"
+            and str(extension[0].get("content", "")) == generated
+            and extension[1].get("role") == "user"
+        )
+        rejected_with_recovery = bool(
+            extension and extension[0].get("role") == "user"
+        )
+        if not accepted and not rejected_with_recovery:
+            raise SessionCommitConflict(
+                "logical session continuation omits or changes the committed response"
+            )
+        return None
+
+    def _record_generation_head(
+        self,
+        request: PRAWireRequest,
+        logical_messages: list[dict[str, Any]] | None,
+        result: PRAEngineResult,
+    ) -> None:
+        if logical_messages is None or request.session_id is None:
+            return
+        self._pending_generations[str(request.session_id)] = {
+            "parent_digest": self._manifest_digest(logical_messages),
+            "request_fingerprint": self._request_fingerprint(request),
+            "logical_messages": [dict(message) for message in logical_messages],
+            "assistant_response": result.text,
+            "result": result,
+        }
+
+    def _execute_hydrated(
+        self,
+        request: PRAWireRequest,
+        logical_messages: list[dict[str, Any]] | None,
+    ) -> PRAEngineResult:
         openai_fields = dict(request.openai_fields)
         requested = openai_fields.get("prefix_caching")
         if requested is not None and bool(requested) != self.prefix_cache_enabled:
@@ -1101,16 +1241,24 @@ class HybridLlamaCppAdapter:
     def close_session(self, session_id: str) -> None:
         session_id = str(session_id)
         with self._live_state_lock:
-            slot = self._live_session_slots.pop(session_id, None)
-            request_slot = self._live_session_request_slots.pop(session_id, None)
-            self._live_session_tokens.pop(session_id, None)
-            self._logical_session_messages.pop(session_id, None)
-            self._live_session_locks.pop(session_id, None)
-        if slot is not None:
-            self.native_adapter.native_executor._erase_request_slot(slot)
-        if request_slot is not None and request_slot != slot:
-            self.native_adapter.native_executor._erase_request_slot(request_slot)
-        self.native_adapter.close_session(session_id)
+            self._closed_sessions.add(session_id)
+            session_lock = self._live_session_locks.setdefault(
+                session_id, threading.RLock(),
+            )
+        # Drain an in-flight generation before erasing its K/V.  Marking the
+        # tombstone first prevents queued requests from reopening the session.
+        with session_lock:
+            with self._live_state_lock:
+                slot = self._live_session_slots.pop(session_id, None)
+                request_slot = self._live_session_request_slots.pop(session_id, None)
+                self._live_session_tokens.pop(session_id, None)
+                self._logical_session_messages.pop(session_id, None)
+                self._pending_generations.pop(session_id, None)
+            if slot is not None:
+                self.native_adapter.native_executor._erase_request_slot(slot)
+            if request_slot is not None and request_slot != slot:
+                self.native_adapter.native_executor._erase_request_slot(request_slot)
+            self.native_adapter.close_session(session_id)
 
 
 def _usage(raw: Mapping[str, Any]) -> dict[str, int] | None:
@@ -1212,6 +1360,14 @@ def _direct_handler(adapter: HybridLlamaCppAdapter, model: str):
                 if bool(request.metadata.get("ephemeral_session", False)):
                     adapter.close_session(str(request.session_id))
                 self._json(200, completion)
+            except SessionCommitConflict as error:
+                self._json(409, {
+                    "error": "session_commit_conflict", "message": str(error),
+                })
+            except SessionClosedError as error:
+                self._json(410, {
+                    "error": "session_closed", "message": str(error),
+                })
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
             except urllib.error.HTTPError as error:

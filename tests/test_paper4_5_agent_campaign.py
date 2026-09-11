@@ -65,6 +65,8 @@ from experiments.paper4_5_agent.serve_llamacpp_pra import (
     CausalChatNativePromptMixin,
     HybridLlamaCppAdapter,
     PlainSlotExecutor,
+    SessionClosedError,
+    SessionCommitConflict,
     _direct_handler,
     parse_args as parse_llamacpp_server_args,
 )
@@ -1637,6 +1639,75 @@ def test_live_agent_sessions_use_disjoint_pairs_concurrently() -> None:
     adapter.close_session("b")
     assert set(erased) == {0, 1, 2, 3}
     assert closed == ["a", "b"]
+
+
+def test_live_agent_generation_head_is_idempotent_and_rejects_stale_forks() -> None:
+    native = SimpleNamespace(request_slot=1, resource_slot=0)
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=native), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    logical = [{"role": "user", "content": "task"}]
+    request = PRAWireRequest(
+        model="model", messages=tuple(logical), session_id="session",
+        request_id="first",
+    )
+    result = PRAEngineResult("answer", {"tokens": [1]}, ({"stage": "live"},))
+    adapter._record_generation_head(request, logical, result)
+
+    retry = PRAWireRequest(
+        model="model", messages=tuple(logical), session_id="session",
+        request_id="retry-with-a-new-transport-id",
+    )
+    replay = adapter._validate_generation_parent(retry, logical)
+    assert replay is not None
+    assert replay.text == "answer"
+    assert replay.trace[-1]["stage"] == "llama_cpp_idempotent_generation_replay"
+
+    stale_fork = PRAWireRequest(
+        model="model", messages=tuple(logical), session_id="session",
+        request_id="different", openai_fields={"seed": 99},
+    )
+    with pytest.raises(SessionCommitConflict, match="different generation"):
+        adapter._validate_generation_parent(stale_fork, logical)
+
+    accepted = [
+        *logical,
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "tool output"},
+    ]
+    assert adapter._validate_generation_parent(retry, accepted) is None
+    rejected_recovery = [
+        *logical,
+        {"role": "user", "content": "format error: retry the action"},
+    ]
+    assert adapter._validate_generation_parent(retry, rejected_recovery) is None
+
+
+def test_closed_live_agent_session_cannot_be_reopened() -> None:
+    erased = []
+    closed = []
+    native = SimpleNamespace(
+        request_slot=1,
+        resource_slot=0,
+        _erase_request_slot=erased.append,
+    )
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=native, close_session=closed.append),
+        SimpleNamespace(),
+        prefix_caching=True,
+    )
+    adapter._live_session_slots["session"] = 1
+    adapter._live_session_request_slots["session"] = 0
+    adapter.close_session("session")
+    with pytest.raises(SessionClosedError, match="is closed"):
+        adapter.generate(PRAWireRequest(
+            model="model",
+            messages=({"role": "user", "content": "late request"},),
+            session_id="session",
+        ))
+    assert erased == [1, 0]
+    assert closed == ["session"]
 
 
 def test_frozen_prefix_probe_compares_recorded_responses(tmp_path: Path) -> None:
