@@ -42,6 +42,9 @@ from experiments.paper4_5_agent.build_swebench_lite_cohort import (
     select_rows as select_lite_rows,
 )
 from experiments.paper4_5_agent.promote_nested_baseline import promote
+from experiments.paper4_5_agent.probe_frozen_prefix_behavior import (
+    run as run_frozen_prefix_probe,
+)
 from experiments.paper4_5_agent.analyze_easy_frontier import (
     _bucket_effects,
     summarize as summarize_frontier,
@@ -1520,6 +1523,69 @@ def test_direct_llamacpp_endpoint_can_close_a_live_session() -> None:
             payload = json.loads(response.read())
         assert payload == {"closed": True, "session_id": "seed 1"}
         assert closed == ["seed 1"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_frozen_prefix_probe_compares_recorded_responses(tmp_path: Path) -> None:
+    fixture = tmp_path / "interaction.jsonl"
+    fixture.write_text("\n".join(json.dumps(row) for row in (
+        {
+            "event": "request",
+            "request_input_sha256": "request-hash",
+            "logical_payload": {"model": "model", "messages": []},
+        },
+        {
+            "event": "response",
+            "payload": {"choices": [{"message": {"content": "expected"}}]},
+        },
+    )) + "\n", encoding="utf-8")
+
+    class Handler(BaseHTTPRequestHandler):
+        response_text = "expected"
+
+        def do_POST(self) -> None:  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            encoded = json.dumps({
+                "choices": [{"message": {"content": self.response_text}}],
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        output = tmp_path / "result.json"
+        rows = run_frozen_prefix_probe(
+            fixture,
+            output,
+            base_url=f"http://127.0.0.1:{server.server_port}/v1",
+            request_count=1,
+            prefix_caching=True,
+            require_exact=True,
+        )
+        assert rows[0]["exact_response"] is True
+        assert rows[0]["expected_response_text_sha256"] == rows[0]["response_text_sha256"]
+
+        Handler.response_text = "different"
+        with pytest.raises(RuntimeError, match="diverged at request 1"):
+            run_frozen_prefix_probe(
+                fixture,
+                output,
+                base_url=f"http://127.0.0.1:{server.server_port}/v1",
+                request_count=1,
+                prefix_caching=True,
+                require_exact=True,
+            )
     finally:
         server.shutdown()
         server.server_close()
