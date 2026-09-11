@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from pra_hf.hf_live_kv import select_dynamic_cache
+from pra_hf.hf_live_kv import (
+    HFLiveKVRequestCancelled,
+    HFLiveKVRuntime,
+    select_dynamic_cache,
+)
 from pra_hf.live_history import (
     LiveKVInterval,
     LiveKVSelectionPlan,
@@ -161,6 +165,142 @@ def test_live_kv_registry_offload_restore_and_termination_tombstone() -> None:
             b"new",
             tenant_id="tenant",
             session_id="session",
+            generation=2,
+        )
+
+
+class _DeterministicHFModel:
+    def __init__(self, torch, *, fail: bool = False) -> None:
+        self.torch = torch
+        self.fail = fail
+        self.calls = []
+
+    def parameters(self):
+        return iter(())
+
+    def __call__(self, **kwargs):
+        if self.fail:
+            raise RuntimeError("model failure")
+        self.calls.append({
+            "input_ids": kwargs["input_ids"].tolist(),
+            "position_ids": kwargs["position_ids"].tolist(),
+            "cache_position": kwargs["cache_position"].tolist(),
+        })
+        logits = self.torch.zeros((1, kwargs["input_ids"].shape[1], 8))
+        logits[..., 3] = 1
+        return SimpleNamespace(
+            logits=logits,
+            past_key_values=kwargs["past_key_values"],
+        )
+
+
+def _hf_cache(torch):
+    keys = torch.arange(24, dtype=torch.float32).reshape(1, 1, 6, 4)
+    return SimpleNamespace(
+        layers=[SimpleNamespace(keys=keys, values=keys + 100)]
+    )
+
+
+def _hf_runtime(torch):
+    return HFLiveKVRuntime(
+        dump=lambda cache: cache,
+        load=lambda cache: cache,
+    )
+
+
+def _begin_hf_request(runtime, request_id: str):
+    return runtime.begin_request(
+        request_id,
+        "source",
+        LiveKVSelectionPlan.create(6, ((0, 2), (4, 6))),
+        tenant_id="tenant",
+        session_id="session",
+        expected_generation=1,
+    )
+
+
+def test_hf_request_borrow_spans_real_decode_and_finishes_exactly_once() -> None:
+    torch = pytest.importorskip("torch")
+    runtime = _hf_runtime(torch)
+    runtime.register_source(
+        "source", _hf_cache(torch), tenant_id="tenant", session_id="session",
+        generation=1,
+    )
+    request = _begin_hf_request(runtime, "normal")
+    assert runtime.registry.view("source").active_request_ids == ("normal",)
+    with pytest.raises(RuntimeError, match="while requests borrow"):
+        runtime.offload_source("source")
+
+    model = _DeterministicHFModel(torch)
+    result = request.generate(model, [5, 6], max_new_tokens=2)
+
+    assert result.token_ids == (3, 3)
+    assert result.source_position_base == 6
+    assert result.selected_kv_tokens == 4
+    assert result.selected_text_reencoded_tokens == 0
+    assert result.physical_kv_copy is True
+    assert model.calls[0]["position_ids"] == [[6, 7]]
+    assert model.calls[1]["position_ids"] == [[8]]
+    assert len(model.calls) == 2
+    assert runtime.registry.view("source").active_request_ids == ()
+    assert request.outcome == "finished"
+    assert request.finish() is False
+    assert runtime.snapshot()["terminal_counts"] == {
+        "finished": 1, "cancelled": 0, "error": 0,
+    }
+
+
+def test_hf_request_cancellation_and_model_error_release_exactly_once() -> None:
+    torch = pytest.importorskip("torch")
+    runtime = _hf_runtime(torch)
+    runtime.register_source(
+        "source", _hf_cache(torch), tenant_id="tenant", session_id="session",
+        generation=1,
+    )
+
+    request = _begin_hf_request(runtime, "cancel")
+    checks = iter((False, True))
+    with pytest.raises(HFLiveKVRequestCancelled):
+        request.generate(
+            _DeterministicHFModel(torch), [5], max_new_tokens=2,
+            cancelled=lambda: next(checks),
+        )
+    assert request.outcome == "cancelled"
+    assert request.cancel() is False
+
+    request = _begin_hf_request(runtime, "error")
+    with pytest.raises(RuntimeError, match="model failure"):
+        request.generate(_DeterministicHFModel(torch, fail=True), [5], max_new_tokens=1)
+    assert request.outcome == "error"
+    assert request.fail() is False
+
+    request = _begin_hf_request(runtime, "invalid")
+    with pytest.raises(ValueError, match="non-empty wire tail"):
+        request.generate(_DeterministicHFModel(torch), [], max_new_tokens=1)
+    assert request.outcome == "error"
+    assert request.fail() is False
+    assert runtime.registry.view("source").active_request_ids == ()
+    assert runtime.snapshot()["terminal_counts"] == {
+        "finished": 0, "cancelled": 1, "error": 2,
+    }
+
+
+def test_hf_session_termination_cancels_borrows_then_tombstones() -> None:
+    torch = pytest.importorskip("torch")
+    runtime = _hf_runtime(torch)
+    cache = _hf_cache(torch)
+    runtime.register_source(
+        "source", cache, tenant_id="tenant", session_id="session", generation=1,
+    )
+    request = _begin_hf_request(runtime, "active")
+
+    assert runtime.terminate_session("tenant", "session") == 1
+    assert request.outcome == "cancelled"
+    assert runtime.registry.view("source") is None
+    assert runtime.snapshot()["active_request_ids"] == ()
+    with pytest.raises(RuntimeError, match="terminated"):
+        runtime.register_source(
+            "replacement", cache, tenant_id="tenant", session_id="session",
             generation=2,
         )
 

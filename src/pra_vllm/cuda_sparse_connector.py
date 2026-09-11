@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextvars
 import functools
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -126,6 +127,20 @@ class PRASparseConnector(PRASemanticConnector):
         if command is not None:
             self._commands[request.request_id] = command
 
+    def _ready(self, command: Any) -> bool:
+        if not isinstance(command, SparseCudaConnectorCommand):
+            return super()._ready(command)
+        manifest = self._directory(command.logical_key) / "manifest.json"
+        if not manifest.exists():
+            return False
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        return bool(
+            payload.get("logical_key") == command.logical_key
+            and int(payload.get("source_tokens", -1)) == command.source_tokens
+            and int(payload.get("source_generation", -1))
+            == command.source_generation
+        )
+
     def _add_new_request(
         self,
         metadata: PRASemanticConnectorMetadata,
@@ -135,6 +150,11 @@ class PRASparseConnector(PRASemanticConnector):
         command = self._commands.get(req_id)
         if not isinstance(command, SparseCudaConnectorCommand):
             return super()._add_new_request(metadata, req_id, block_ids)
+        if command.mode == "load" and not self._ready(command):
+            raise RuntimeError(
+                "Stale or unavailable sparse CUDA K/V generation: "
+                f"{command.logical_key}@{command.source_generation}"
+            )
         if command.mode == "load" and not self._detached and req_id not in self._loads:
             return
         metadata.requests.append(
@@ -189,3 +209,10 @@ class PRASparseConnector(PRASemanticConnector):
         before = set(self._detached_active_requests)
         self._reap_inactive_detached_requests(set(map(str, active_request_ids)))
         return tuple(sorted(before - set(self._detached_active_requests)))
+
+    def offload_detached_resource(
+        self, logical_key: str, *, residency: str = "hot"
+    ) -> tuple[int, ...]:
+        """Release resident pages while retaining the persisted lossless K/V."""
+
+        return self.evict_detached_resource(logical_key, residency=residency)

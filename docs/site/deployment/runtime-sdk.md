@@ -71,6 +71,12 @@ inside its protected tail, but its child spans retain the original record and
 causal-group identities. Short records stay intact, and overlap neither crosses
 record boundaries nor counts twice against the budget.
 
+For an ordinary short turn, “recent full turn” therefore means every record.
+For a dense turn, records older than its protected `recent_records_per_turn`
+tail become selection candidates; the action required by a protected
+observation remains protected as well. An oversized record remains one logical
+record even when its physical representation contains several child spans.
+
 When `causal_bundle_round_up` is enabled, requested retention is a floor. The
 trace distinguishes `target_retention_fraction` from
 `realized_retention_fraction` and sets `retention_rounded_up` when preserving a

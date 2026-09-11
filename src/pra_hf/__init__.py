@@ -40,6 +40,14 @@ from .native_geometry import (
     materialization_profile,
 )
 from .model import GenerationResult, PRAForCausalLM, ReferenceHandle, RoutingResult
+from .hf_live_kv import (
+    HFLiveKVGeneration,
+    HFLiveKVRequest,
+    HFLiveKVRequestCancelled,
+    HFLiveKVRuntime,
+    HFResidentKVSelection,
+    select_dynamic_cache,
+)
 from .router import PRARouter
 from pra_torch.execution import (
     PRAExecutionCapabilities,
@@ -500,6 +508,11 @@ __all__ = [
     "NativeMaterializationProfile",
     "MATERIALIZATION_PROFILES",
     "GenerationResult",
+    "HFLiveKVGeneration",
+    "HFLiveKVRequest",
+    "HFLiveKVRequestCancelled",
+    "HFLiveKVRuntime",
+    "HFResidentKVSelection",
     "AuthContext",
     "DiscoveryCandidate",
     "GistIndex",
@@ -571,6 +584,7 @@ __all__ = [
     "get_default_execution_policy",
     "analytical_routing_operations",
     "set_default_execution_policy",
+    "select_dynamic_cache",
 ]
 
 __all__ += [

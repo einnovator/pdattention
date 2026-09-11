@@ -1,0 +1,33 @@
+{
+  "schema_version": "paper4.5.real-engine-lifecycle-feasibility.v1",
+  "engine": "mlx-lm",
+  "engine_version": "0.31.3",
+  "mlx_version": "0.32.2",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "turn": 4,
+  "source_tokens": 3081,
+  "selected_tokens": 2907,
+  "selection_physical_kv_copy": true,
+  "offload_codec": "serialize_native_memory quantization=none",
+  "python_version": "3.12.14",
+  "checks": {
+    "concurrent_borrowers_share_canonical_object": true,
+    "offload_rejected_with_two_borrowers": true,
+    "cancel_one_preserves_other_borrower": true,
+    "offload_rejected_with_one_borrower": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restored_fingerprint_exact": true,
+    "active_termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true
+  },
+  "registry_contract_valid": true,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 666815027,
+  "engine_request_callback_integration": false,
+  "engine_lifecycle_qualified": false,
+  "qualification_blockers": [
+    "LiveKVSourceRegistry is not yet wired into the engine request scheduler.",
+    "Cancellation and termination detach registry membership but do not invoke engine-native request cleanup callbacks.",
+    "Eviction/offload operates on the materialized selected-cache object, not scheduler-owned source pages."
+  ]
+}

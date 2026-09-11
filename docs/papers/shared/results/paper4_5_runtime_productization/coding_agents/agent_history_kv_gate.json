@@ -23,9 +23,9 @@
       "zero_selected_text_reencoding": true,
       "physical_kv_copy_at_100_percent": false,
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
-      "sparse_retention_planner": "superseded ceiling packer; rerun with causal retention floor required",
+      "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "pending",
+      "lifecycle": "passed for the synchronous request-owned HF runtime: concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, and tombstone checks",
       "agent_campaign": "blocked"
     },
     "mlx": {
@@ -34,9 +34,9 @@
       "zero_selected_text_reencoding": true,
       "physical_kv_copy_at_100_percent": false,
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
-      "sparse_retention_planner": "superseded ceiling packer; rerun with causal retention floor required",
+      "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "pending",
+      "lifecycle": "registry contract 8/8; engine scheduler callbacks and scheduler-owned source-page offload pending",
       "agent_campaign": "blocked"
     },
     "vllm": {
@@ -49,9 +49,10 @@
       "known_constraint": "complete-page selection; partial source tail remains in the ordinary suffix",
       "sparse_position_preserving": "7/7 exact at requested 90%; logical realized 90.36%-95.68% and physical page retention 90.48%-96.03%",
       "physical_kv_copy_at_sparse_retention": false,
-      "cuda_qualification": "one frozen sparse turn passed on RTX 5060 with pinned vLLM 0.28: 3600/3792 selected source K/V tokens, original position base 3792, 1/1 exact, zero selected-text re-encoding; initial gather copies K/V but a simultaneous second borrower is a zero-H2D shared-resident hit; explicit HOT eviction returns all 225 pages and exact reload reuses the same block IDs",
-      "cuda_lifecycle_gap": "vLLM 0.28 offline worker finish callbacks are deferred and require reconciliation against an authoritative scheduler snapshot; scheduler-integrated cancellation, stale-fork, offload, and multi-turn qualification remain pending",
-      "lifecycle": "pending",
+      "cuda_qualification": "bounded vLLM 0.28 CUDA gate on native-window Qwen2.5-1.5B: 7/7 frozen sparse turns exact, 90.48%-96.03% realized, original positions and holes preserved, zero selected-text re-encoding, non-degenerate continuations; concurrent borrowing, real mid-generation cancel isolation, stale-generation rejection, HOT eviction, lossless restore, and same-page reuse pass",
+      "cuda_lifecycle_gap": "selection initially gathers and copies K/V; the vLLM 0.28 worker hook is version bounded and not an upstream extension point; offline finish callbacks are deferred, so ownership is reconciled against an authoritative scheduler snapshot; offload is synchronous host-memory persistence",
+      "cuda_zero_copy_status": "blocked on pinned vLLM 0.28 connector API: external matches return only a token count, KVCacheManager allocates fresh destination blocks, connector metadata may not modify SchedulerOutput, and no supported existing-block alias/adoption API exists",
+      "lifecycle": "bounded CUDA mechanism/lifecycle gate passed; vLLM-Metal cancellation, eviction, and shared-page lifetime remain pending",
       "agent_campaign": "blocked"
     },
     "sglang": {
@@ -63,9 +64,9 @@
       "source_position_extent_separate_from_selected_width": true,
       "radix_prefix_interoperation": "runtime-tested in requested-90% sparse probe",
       "sparse_position_preserving": "7/7 exact at requested 90% against an identical selected-K/V/original-position reference",
-      "sparse_retention_planner": "superseded ceiling packer; rerun with causal retention floor required",
+      "sparse_retention_planner": "corrected causal retention floor; 90.32%-95.66% realized, mean 92.88%",
       "physical_kv_copy_at_sparse_retention": true,
-      "lifecycle": "pending",
+      "lifecycle": "registry contract 8/8; engine scheduler callbacks and scheduler-owned source-page offload pending",
       "agent_campaign": "blocked"
     }
   },
@@ -97,6 +98,19 @@
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/task03_task04_request06_source_bundle_audit_v1.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_detached_smoke_v1.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_sparse_position_task02_v1.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_sparse_position_task02_090_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_sparse_position_task02_090_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_sparse_position_task02_090_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_lifecycle_feasibility_task02_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_lifecycle_feasibility_task02_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_lifecycle_feasibility_task02_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_mlx_provenance_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_provenance_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/task03_task04_request06_source_bundle_counterfactual_llamacpp_qwen3coder30b_v1.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/task03_task04_request06_source_bundle_counterfactual_summary_v1.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_sparse_lifecycle_task02_qwen15_v2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_sparse_lifecycle_task02_090_cbf190e2.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_zero_copy_alias_audit_v028.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -112,13 +126,17 @@
     "idempotent retry, stale-fork rejection, active cancellation, and termination tombstones",
     "disk offload, forced slot reuse, exact restore, and checkpoint cleanup",
     "ten-of-ten paired sparse prompt and wall-time wins with zero selected-text re-encoding",
-    "30-of-30 exact frozen replay of the restarted task-01 100% live-K/V trajectory"
+    "30-of-30 exact frozen replay of the restarted task-01 100% live-K/V trajectory",
+    "task-03 restore-only causal replay: restoring the omitted source-view bundle recovers the recorded full-history command in 3/3 while the sparse prompt recovers 0/3",
+    "task-04 restore-only causal replay: restoring the source-view bundle deterministically changes whole-file rereading to target-specific localization, but is insufficient to recover the separate full-history immediate edit"
+    ,"bounded vLLM CUDA lifecycle on native-window Qwen2.5-1.5B: 7/7 exact sparse continuations with concurrent borrowing, real cancellation isolation, stale-generation rejection, and exact HOT eviction/restore"
+    ,"request-owned HF sparse lifecycle on real Task02 K/V: same-subset and post-restore logit exactness, exact-once terminal release, stale-generation rejection, and termination tombstone"
     ,"request-scoped typed agent-retention policy round-trip and runtime consumption"
   ],
   "still_required": [
-    "HF and MLX lifecycle qualification plus zero-copy sparse materialization",
-    "vLLM lifecycle qualification; exact matched packaged-runtime sparse-position replication now passes, and CUDA qualification is running independently",
-    "SGLang lifecycle qualification plus zero-copy sparse materialization",
+    "HF zero-copy sparse materialization; corrected 90% retention-floor semantics and synchronous request-owned lifecycle pass",
+    "vLLM-Metal lifecycle qualification and a new upstream existing-block alias contract for zero-copy CUDA selection; the bounded copying CUDA sparse/lifecycle gate now passes",
+    "SGLang lifecycle qualification plus zero-copy sparse materialization; corrected 90% retention-floor semantic probe passes",
     "locked three-task no-PRA/PRA-100/PRA-90 matrix, with no-adaptor and frozen model-adaptor PRA arms",
     "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],
@@ -132,7 +150,7 @@
     "tasks_entering_75_percent_treatment": 1,
     "tasks_resolved_at_75_percent": 0,
     "lower_retention_rows_withheld_by_quality_gate": 2,
-    "next_action": "finish scheduler-integrated CUDA cancellation/stale-fork/offload lifecycle; rerun HF/MLX/SGLang with the retention-floor planner; causally replay the common task-03/task-04 source-view omission, then rerun the locked three-task no-PRA/PRA-100/PRA-90 matrix"
+    "next_action": "finish engine lifecycle qualification, add current-hypothesis/progress-state protection motivated by task 04, then rerun the locked three-task no-PRA/PRA-100/PRA-90 matrix"
   },
   "reason": "The tested llama.cpp configuration clears the predeclared mechanism gates. Qualification does not transfer to other engines or cache-off/rematerializing paths."
 }

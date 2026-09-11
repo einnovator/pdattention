@@ -2977,6 +2977,84 @@ def test_passthrough_does_not_rewrite_openai_payload() -> None:
     assert trace.selected_tokens_estimate == 0
 
 
+def test_proxy_request_retention_metadata_overrides_process_defaults(
+    tmp_path: Path,
+) -> None:
+    captured_payloads = []
+
+    class Target(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            captured_payloads.append(json.loads(
+                self.rfile.read(int(self.headers["Content-Length"]))
+            ))
+            encoded = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}]
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    target = ThreadingHTTPServer(("127.0.0.1", 0), Target)
+    thread = threading.Thread(target=target.serve_forever, daemon=True)
+    thread.start()
+    proxy = TreatmentProxy(
+        f"http://127.0.0.1:{target.server_port}/v1",
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.5,
+        trace_path=tmp_path / "trace.jsonl",
+        recent_completed_turns=4,
+        recent_records_per_turn=4,
+        max_records_per_turn_before_chunking=8,
+    )
+    proxy_url = proxy.start()
+    request_policy = {
+        "recent_completed_turns": 1,
+        "recent_records_per_turn": 1,
+        "large_record_chunk_tokens": 3,
+        "max_records_per_turn_before_chunking": 4,
+    }
+    payload = {
+        "model": "model",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "old action"},
+            {"role": "tool", "content": "old result"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "tool", "content": "active result"},
+        ],
+        "pra": {"metadata": {"retention_policy": request_policy}},
+    }
+    try:
+        request = urllib.request.Request(
+            f"{proxy_url}/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert response.status == 200
+    finally:
+        proxy.close()
+        target.shutdown()
+        target.server_close()
+        thread.join(timeout=5)
+
+    effective = captured_payloads[0]["pra"]["metadata"]["retention_policy"]
+    assert effective["recent_completed_turns"] == 1
+    assert effective["recent_records_per_turn"] == 1
+    assert effective["large_record_chunk_tokens"] == 3
+    assert effective["max_records_per_turn_before_chunking"] == 4
+    # Request fields omitted by the caller inherit process policy defaults.
+    assert effective["recent_source_turns"] == 1
+    assert effective["preserve_action_observation_pairs"] is True
+
+
 def test_headroom_mode_leaves_compression_to_the_pinned_external_proxy() -> None:
     payload = {"model": "m", "messages": [{"role": "user", "content": "hello world"}]}
     transformed, trace = transform_chat_payload(

@@ -1,0 +1,141 @@
+{
+  "schema_version": "paper4.5.vllm-cuda-zero-copy-alias-audit.v1",
+  "status": "BLOCKED_ON_PINNED_PUBLIC_API",
+  "qualification_claim": false,
+  "audit_host": {
+    "hostname": "rapazinhopobre",
+    "ip": "192.168.1.12",
+    "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "vllm_version": "0.28.0",
+    "repo_revision": "cbf190e"
+  },
+  "objective": "Attach disjoint selected causal-record pages from a live scheduler-owned source request to a borrower without gathering, serializing, loading, copying, or re-encoding selected K/V.",
+  "verdict": {
+    "source_page_pinning": "SUPPORTED",
+    "borrower_reference_counting": "SUPPORTED_AT_BLOCK_POOL_LEVEL",
+    "arbitrary_existing_page_attachment": "NOT_EXPOSED_TO_KV_CONNECTORS",
+    "disjoint_original_position_attachment": "NOT_EXPOSED_TO_KV_CONNECTORS",
+    "safe_in_tree_implementation_possible": false,
+    "reason": "The connector can retain scheduler blocks, but it cannot insert arbitrary retained block IDs into a new request's scheduler-owned req_to_blocks/table. The only external-load API returns a token count, after which KVCacheManager allocates fresh destination blocks. build_connector_meta is explicitly forbidden from modifying SchedulerOutput. Worker block tables only consume scheduler-provided block IDs. A PRA-only monkey patch could rewrite the worker attention table, but that leaves scheduler ownership/accounting unaware and is not a supported zero-copy implementation."
+  },
+  "pinned_api_evidence": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "c4dcdf1a86896ef10e668b3656bfe1537679f91ac7083e4122a7204a4abef3ab",
+      "lines": "464-472",
+      "finding": "bind_gpu_block_pool exposes BlockPool, which is sufficient to touch/free source pages but does not expose per-request req_to_blocks."
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "c4dcdf1a86896ef10e668b3656bfe1537679f91ac7083e4122a7204a4abef3ab",
+      "lines": "475-508",
+      "finding": "get_num_new_matched_tokens returns only a prefix token count and requires the largest available prompt prefix; it cannot return existing physical block IDs or sparse logical positions."
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "c4dcdf1a86896ef10e668b3656bfe1537679f91ac7083e4122a7204a4abef3ab",
+      "lines": "510-533",
+      "finding": "update_state_after_alloc receives blocks only after CacheManager has allocated them; it cannot replace allocation with aliases."
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "c4dcdf1a86896ef10e668b3656bfe1537679f91ac7083e4122a7204a4abef3ab",
+      "lines": "536-548",
+      "finding": "build_connector_meta explicitly MUST NOT modify SchedulerOutput."
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_coordinator.py",
+      "sha256": "9e6542c45f138480b1a535a69ed5b16cf489e23b1185ef7e86bee096d4b1ccc6",
+      "lines": "232-265",
+      "finding": "External matched tokens are routed to allocate_external_computed_blocks after local hits are touched."
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "sha256": "dc6d2e64cc4cd8cbb3f4bd77d2d035038658d75b6e52f9ace0cf637a4897f71f",
+      "lines": "288-321",
+      "finding": "allocate_external_computed_blocks calls block_pool.get_new_blocks and appends fresh destination blocks; no alias parameter exists."
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "sha256": "ddee56dccb2208411b3a035918e917ce8f56a9858471e9ca12b420d5d79bc69c",
+      "lines": "700-737",
+      "finding": "touch/free_blocks provide correct shared-page reference counting and eviction protection once blocks are attached or explicitly pinned."
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "4b79ab760c3864af6838d555c01335deea3aac97c9be2be415fa0e5dab32f07e",
+      "lines": "1190-1212",
+      "finding": "NewRequestData is constructed from KVCacheManager-owned request block IDs before connector metadata is built."
+    },
+    {
+      "path": "vllm/v1/worker/block_table.py",
+      "sha256": "258280309e3e117480416254361d0911f7eeeeb838a4bcb86a10e18c535b4145",
+      "lines": "113-145",
+      "finding": "The legacy worker BlockTable can append arbitrary IDs internally, but the connector is not given a supported method to alter its rows."
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "sha256": "7f2890eefca1efe25565bf1c7e5906a87948ae922610a7aaac620b28b46f26aa",
+      "lines": "1490-1524",
+      "finding": "The worker populates persistent request block rows from scheduler-provided new_block_ids; connector metadata does not participate in that row construction."
+    }
+  ],
+  "negative_api_search": {
+    "roots": [
+      "vllm/distributed/kv_transfer",
+      "vllm/v1/core"
+    ],
+    "terms": [
+      "alias_blocks",
+      "existing_block",
+      "adopt"
+    ],
+    "candidate_attachment_api_found": false,
+    "note": "The sole 'adopt' match is an unrelated scheduler comment about a cache decision, not a connector API."
+  },
+  "current_real_qwen_control": {
+    "artifact": "vllm_cuda_sparse_lifecycle_task02_qwen15_v2.json",
+    "artifact_sha256": "ce85088149e42298dc20da884b55f432cf2b435182ad28e6b397c4ffcaa9be05",
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "completed_turns": 7,
+    "all_exact": true,
+    "sparse_position_gate_valid": true,
+    "selection_materialization_kv_copy_bytes_sum": 804651008,
+    "candidate_first_load_h2d_bytes_sum": 804651008,
+    "resident_second_borrower_h2d_bytes_sum": 0,
+    "interpretation": "The current path proves same-subset correctness and resident reuse after first load, but it is not zero-copy: each selected resource is gathered to a derived payload and copied back to GPU once."
+  },
+  "why_apc_is_not_a_substitute": [
+    "Prefix-cache lookup is a token-prefix operation, while PRA selection is an ordered set of disjoint causal pages.",
+    "Selected pages do not form the original parent-hash chain after omitted pages are removed.",
+    "The borrower sends only the query suffix, so ordinary APC cannot infer or attach the selected source page IDs.",
+    "Original RoPE extent differs from the compact selected-token count and needs an explicit position base."
+  ],
+  "required_upstream_patch": {
+    "new_scheduler_contract": "A KV connector may return per-KV-group existing block IDs plus logical selected length, original position extent, immutable source generation, and ownership token for a new request.",
+    "validation": [
+      "Reject block IDs outside the scheduler BlockPool.",
+      "Reject duplicates unless the engine explicitly supports repeated logical pages.",
+      "Require full-block alignment for the first implementation.",
+      "Validate group count, block size, model/cache identity, source generation, and original position extent.",
+      "Reject aliases whose owner pin is absent or stale."
+    ],
+    "allocation": "KVCacheManager must atomically touch the supplied existing blocks, install them into every manager's req_to_blocks, mark only those selected tokens computed, and allocate fresh blocks solely for the query/output suffix.",
+    "scheduler_output": "NewRequestData/CachedRequestData must carry the aliased block IDs as the request's authoritative block table; no worker-side rewrite is allowed.",
+    "positions": "Scheduler/model-runner metadata must carry selected logical length separately from original source_position_base so attention reads selected pages while new query positions retain their original extent.",
+    "lifecycle": "The resource owner holds one BlockPool reference; each borrower obtains another atomically. Cancellation/termination releases only the borrower reference. Eviction/offload requires zero borrowers, invalidates the generation, and then releases the owner reference.",
+    "telemetry": "Report alias_block_count, owner_refcount, borrower_refcount, selected_text_reencoded_tokens=0, selection_materialization_kv_copy_bytes=0, attachment_h2d_bytes=0, attachment_d2d_bytes=0, and newly_evaluated_suffix_tokens separately."
+  },
+  "qualification_plan_after_patch": [
+    "Unit-test disjoint multi-page aliases, duplicate/out-of-range/stale rejection, atomic rollback on partial failure, and refcount balance.",
+    "Run the frozen Qwen Task02 subset reference: direct alias and same-subset fresh reference must emit identical temperature-zero token IDs.",
+    "Require zero gather/serialization files, zero selected K/V copy bytes, zero H2D/D2D attachment bytes, and unchanged physical page IDs from source to borrowers.",
+    "Repeat with two concurrent borrowers, cancellation of one, normal termination of the other, stale-generation rejection, owner eviction, and exact offload/restore where restore is explicitly measured as a load rather than zero-copy."
+  ],
+  "prohibited_shortcuts": [
+    "Do not call BlockTable.add_row/append_row from connector code without scheduler ownership updates.",
+    "Do not mutate SchedulerOutput inside build_connector_meta.",
+    "Do not claim the current detached-tail or worker attention-table monkey patch as scheduler-owned zero-copy.",
+    "Do not label a resident second-borrower hit as end-to-end zero-copy when first materialization copied 804651008 bytes."
+  ]
+}

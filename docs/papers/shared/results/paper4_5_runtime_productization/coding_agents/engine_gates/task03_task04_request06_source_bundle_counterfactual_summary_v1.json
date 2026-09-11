@@ -1,0 +1,128 @@
+{
+  "schema": "paper4.5-request06-source-bundle-counterfactual-summary-v1",
+  "status": "complete",
+  "source_artifact": "task03_task04_request06_source_bundle_counterfactual_llamacpp_qwen3coder30b_v1.json",
+  "source_commit": "cbf190e2",
+  "runtime": {
+    "host": "FY937P29W4-PT002726.local",
+    "hardware": "Apple M4 Pro, 48 GB",
+    "engine": "llama.cpp direct OpenAI-compatible endpoint",
+    "model": "qwen3-coder:30b",
+    "model_blob": "sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a",
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "repeats_per_condition": 3
+  },
+  "design": {
+    "request": 6,
+    "recorded_sparse_message_indices": [0, 1, 2, 3, 6, 7, 8, 9, 10, 11],
+    "restored_message_indices": [4, 5],
+    "restored_bundle": "assistant source-view command plus its tool observation",
+    "conditions": [
+      "recorded_sparse_subset",
+      "restore_only_source_bundle_4_5",
+      "matched_full_history"
+    ],
+    "task04_control": "All conditions use the logical request-6 from the recorded 90% run, preserving its request-5 assistant wording. The separate recorded 100% trajectory is used only as the target action reference.",
+    "command_execution": "Generated commands were parsed but not executed against the task repositories."
+  },
+  "results": [
+    {
+      "task": 3,
+      "instance_id": "scikit-learn__scikit-learn-13135",
+      "recorded_100_action_command": "cd /testbed && grep -n \"kmeans\" sklearn/preprocessing/_discretization.py",
+      "conditions": [
+        {
+          "name": "recorded_sparse_subset",
+          "prompt_sha256": "875c77527518cc42329375098f5af823ba9bfe1687b9da2869103c7e60296004",
+          "prompt_tokens": 3803,
+          "generated_command": "cat /testbed/sklearn/preprocessing/_discretization.py",
+          "command_sha256": "36ad84e72a6c06978fcbf4394a96e4b1585aa7bf10d031ea330b0d6c7e9bf234",
+          "command_exact_repeats": "3/3",
+          "matches_recorded_100_command": "0/3",
+          "prefix_cache_tokens_by_repeat": [0, 3802, 3802],
+          "newly_evaluated_prompt_tokens_by_repeat": [3803, 1, 1]
+        },
+        {
+          "name": "restore_only_source_bundle_4_5",
+          "prompt_sha256": "ebb0e06f8b29366f0ea9daec51fa8e5fc1bb80d273abbc1e2f512bb9ee7e851f",
+          "prompt_tokens": 6403,
+          "generated_command": "cd /testbed && grep -n \"kmeans\" sklearn/preprocessing/_discretization.py",
+          "command_sha256": "395d340cde0900539db8a1a29cb0db88e4d6661a5ba30153f6a22565f389c962",
+          "command_exact_repeats": "3/3",
+          "action_text_exact_repeats": "2/3; the first reasoning text differed but proposed the same command",
+          "matches_recorded_100_command": "3/3",
+          "prefix_cache_tokens_by_repeat": [3198, 6402, 6402],
+          "newly_evaluated_prompt_tokens_by_repeat": [3205, 1, 1]
+        },
+        {
+          "name": "matched_full_history",
+          "prompt_sha256": "ebb0e06f8b29366f0ea9daec51fa8e5fc1bb80d273abbc1e2f512bb9ee7e851f",
+          "prompt_tokens": 6403,
+          "generated_command": "cd /testbed && grep -n \"kmeans\" sklearn/preprocessing/_discretization.py",
+          "command_sha256": "395d340cde0900539db8a1a29cb0db88e4d6661a5ba30153f6a22565f389c962",
+          "command_exact_repeats": "3/3",
+          "matches_recorded_100_command": "3/3",
+          "prefix_cache_tokens_by_repeat": [6402, 6402, 6402],
+          "newly_evaluated_prompt_tokens_by_repeat": [1, 1, 1]
+        }
+      ],
+      "strict_command_recovery_supported": true
+    },
+    {
+      "task": 4,
+      "instance_id": "django__django-15741",
+      "recorded_100_action_command": "cd /testbed && sed -i '100s/val = getattr(module, format_type, None)/val = getattr(module, str(format_type), None)/' django/utils/formats.py",
+      "conditions": [
+        {
+          "name": "recorded_sparse_subset",
+          "prompt_sha256": "3abaf66b3ecc47637bda328fbce6d1c294711c187c5884629d98f6478daa4c05",
+          "prompt_tokens": 2551,
+          "generated_command": "cat /testbed/django/utils/formats.py",
+          "command_sha256": "49aa87467972c51bf61464f2d22f64b1294afbadc2c28a1335fab542ab4749fc",
+          "command_exact_repeats": "3/3",
+          "matches_recorded_100_command": "0/3",
+          "prefix_cache_tokens_by_repeat": [0, 2550, 2550],
+          "newly_evaluated_prompt_tokens_by_repeat": [2551, 1, 1]
+        },
+        {
+          "name": "restore_only_source_bundle_4_5",
+          "prompt_sha256": "415073b7edf316405520e782982550cbb5af5fc9c9cbca9b0a9ecd732f631e59",
+          "prompt_tokens": 5193,
+          "generated_command": "cd /testbed && grep -A 10 -B 5 \"getattr.*format_type\" django/utils/formats.py",
+          "command_sha256": "ec57a33d455fd22ec495449220aca4adddc0ce1e0d628a146d6e93fe0fa836b7",
+          "command_exact_repeats": "3/3",
+          "matches_recorded_100_command": "0/3",
+          "prefix_cache_tokens_by_repeat": [1619, 5192, 5192],
+          "newly_evaluated_prompt_tokens_by_repeat": [3574, 1, 1]
+        },
+        {
+          "name": "matched_full_history",
+          "prompt_sha256": "415073b7edf316405520e782982550cbb5af5fc9c9cbca9b0a9ecd732f631e59",
+          "prompt_tokens": 5193,
+          "generated_command": "cd /testbed && grep -A 10 -B 5 \"getattr.*format_type\" django/utils/formats.py",
+          "command_sha256": "ec57a33d455fd22ec495449220aca4adddc0ce1e0d628a146d6e93fe0fa836b7",
+          "command_exact_repeats": "3/3",
+          "matches_recorded_100_command": "0/3",
+          "prefix_cache_tokens_by_repeat": [5192, 5192, 5192],
+          "newly_evaluated_prompt_tokens_by_repeat": [1, 1, 1]
+        }
+      ],
+      "strict_command_recovery_supported": false,
+      "directional_recovery": "Restoration changes a whole-file reread into a target-specific grep, but does not recover the separate 100% run's immediate edit."
+    }
+  ],
+  "findings": [
+    "For Task03, restoring only the omitted source-view causal bundle recovers the recorded 100% request-6 command in all three repeats; the sparse control never does.",
+    "For Task04, the source bundle is behaviorally important but not sufficient for strict recovery: it restores target localization, while the full 100% action also depends on state that differs between trajectories, notably request-5 reasoning wording.",
+    "All generated commands were stable across the three temperature-zero repeats. Task03's reasoning text varied once between partial-prefix evaluation and near-total prefix reuse while its command remained unchanged; temperature zero removes sampling but does not guarantee byte-identical decoding across different cache computation paths.",
+    "The K/V counters in this artifact describe ordinary contiguous llama.cpp prefix-cache reuse during repeated controls. The experiment evaluates selection causality and does not claim sparse PRA K/V attachment."
+  ],
+  "configuration_implication": {
+    "minimum_fix": "Pin the latest source-evidence causal turn, or keep enough recent completed turns that messages 4-5 cannot be selected out.",
+    "task03_evidence": "recent_source_turns=1 is causally supported for the first divergent action.",
+    "task04_evidence": "recent_source_turns=1 improves the decision spine but should be combined with explicit current-hypothesis/progress-state retention before claiming normal-behavior parity.",
+    "retention_accounting": "Round requested retention upward to causal bundle boundaries and report realized retention; do not reproduce the historical 57.7%-62.0% undershoot from a nominal 90% request."
+  }
+}

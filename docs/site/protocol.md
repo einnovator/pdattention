@@ -122,6 +122,13 @@ boundary, and overlap is deduplicated before budget accounting. Short records
 remain intact. The current incomplete turn and other mandatory task state remain
 outside ordinary retrieval competition.
 
+The full-turn guarantee applies directly while a turn contains no oversized
+record and does not exceed `max_records_per_turn_before_chunking`. An oversized
+record is retained as record-local child spans. In a dense turn, the newest
+`recent_records_per_turn` records—and any action needed to make their
+observations causal—remain protected; only records earlier than that protected
+tail enter ordinary selection.
+
 Because full turns and causal pairs are indivisible, realized retention can be
 higher than the requested fraction. A trace for a retention-aware request
 reports at least:

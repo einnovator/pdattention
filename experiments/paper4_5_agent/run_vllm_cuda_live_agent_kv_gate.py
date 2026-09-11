@@ -44,7 +44,8 @@ def _derive_selected_resource(
     selected_key: str,
     page_indices: tuple[int, ...],
     block_size: int,
-) -> tuple[int, int]:
+    source_generation: int,
+) -> tuple[int, int, str]:
     """Slice captured K/V pages without reconstructing their source tokens."""
 
     source = _directory(storage, source_key)
@@ -52,27 +53,33 @@ def _derive_selected_resource(
     target.mkdir(parents=True, exist_ok=False)
     selected_tokens = len(page_indices) * block_size
     native_bytes = 0
+    native_digest = hashlib.sha256()
     for path in source.glob("layer-*.safetensors"):
         tensor = safetensors.torch.load_file(str(path))["kv_cache"]
         spans = [tensor[index * block_size : (index + 1) * block_size] for index in page_indices]
         selected = __import__("torch").cat(spans, dim=0).contiguous()
         native_bytes += selected.numel() * selected.element_size()
-        safetensors.torch.save_file({"kv_cache": selected}, str(target / path.name))
+        target_path = target / path.name
+        safetensors.torch.save_file({"kv_cache": selected}, str(target_path))
+        native_digest.update(path.name.encode("utf-8"))
+        native_digest.update(target_path.read_bytes())
     manifest = {
         "schema_version": "pra-vllm-cuda-sparse-kv-v1",
         "logical_key": selected_key,
         "source_tokens": selected_tokens,
+        "source_generation": source_generation,
         "layer_files": len(list(target.glob("layer-*.safetensors"))),
         "native_tensor_bytes": native_bytes,
         "parent_logical_key": source_key,
         "selected_page_indices": list(page_indices),
         "selection_materialization": "lossless CPU K/V page gather; no tokenization or model forward",
+        "native_payload_sha256": native_digest.hexdigest(),
     }
     (target / "manifest.json").write_text(
         json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
     )
     persisted_bytes = sum(path.stat().st_size for path in target.glob("*"))
-    return native_bytes, persisted_bytes
+    return native_bytes, persisted_bytes, native_digest.hexdigest()
 
 
 def _generate(llm, sampling, tokens: list[int], cache_salt: str | None = None):
@@ -99,6 +106,73 @@ def _generate_pair(llm, sampling, tokens: list[int], cache_salt: str):
     )
     torch.cuda.synchronize()
     return outputs, (time.perf_counter() - started) * 1000.0
+
+
+def _cancel_one_of_two_borrowers(
+    llm,
+    runtime_connector,
+    sampling,
+    tokens: list[int],
+    cache_salt: str,
+    handle_key: tuple[str, str],
+) -> dict[str, object]:
+    """Abort one live vLLM request while its peer keeps borrowing the pages."""
+
+    request_ids: list[str] = []
+    for _ in range(2):
+        [request_id] = llm.enqueue(
+            _prompt(tokens, cache_salt), sampling, use_tqdm=False
+        )
+        request_ids.append(str(request_id))
+    first_outputs = llm.llm_engine.step()
+    refcount_before_abort = int(
+        runtime_connector._detached_refcounts.get(handle_key, 0)
+    )
+    cancelled, survivor = request_ids
+    cancelled_external = cancelled.split("-", 1)[0]
+    llm.llm_engine.abort_request([cancelled_external])
+    released = runtime_connector.reconcile_detached_requests({survivor})
+    refcount_after_abort = int(
+        runtime_connector._detached_refcounts.get(handle_key, 0)
+    )
+    handle_survived_abort = handle_key in runtime_connector._detached_handles
+    first_step_finished_ids = [str(row.request_id) for row in first_outputs if row.finished]
+    final_outputs = {str(row.request_id): row for row in first_outputs if row.finished}
+    while llm.llm_engine.has_unfinished_requests():
+        for row in llm.llm_engine.step():
+            if row.finished:
+                final_outputs[str(row.request_id)] = row
+    def output_for(identifier: str):
+        return final_outputs.get(identifier) or final_outputs.get(
+            identifier.split("-", 1)[0]
+        )
+
+    survivor_output = output_for(survivor)
+    cancelled_output = output_for(cancelled)
+    released_after_finish = runtime_connector.reconcile_detached_requests(set())
+    refcount_after_finish = int(
+        runtime_connector._detached_refcounts.get(handle_key, 0)
+    )
+    return {
+        "request_ids": request_ids,
+        "first_step_finished_ids": first_step_finished_ids,
+        "cancelled_request_id": cancelled,
+        "cancelled_external_request_id": cancelled_external,
+        "survivor_request_id": survivor,
+        "refcount_before_abort": refcount_before_abort,
+        "released_on_abort_snapshot": list(released),
+        "refcount_after_abort": refcount_after_abort,
+        "handle_survived_abort": handle_survived_abort,
+        "cancelled_absent_from_final_outputs": cancelled_output is None,
+        "survivor_finished": survivor_output is not None,
+        "survivor_token_ids": (
+            []
+            if survivor_output is None
+            else list(map(int, survivor_output.outputs[0].token_ids))
+        ),
+        "released_after_finish": list(released_after_finish),
+        "refcount_after_finish": refcount_after_finish,
+    }
 
 
 def _events(path: Path) -> list[dict[str, object]]:
@@ -164,7 +238,13 @@ def main() -> None:
         temperature=0, max_tokens=args.continuation_tokens, ignore_eos=True
     )
     prime = SamplingParams(temperature=0, max_tokens=1, ignore_eos=True)
+    cancellation_sampling = SamplingParams(
+        temperature=0, max_tokens=max(32, args.continuation_tokens), ignore_eos=True
+    )
     rows = []
+    lifecycle_done = False
+    stale_probe: dict[str, object] = {"attempted": False, "rejected": False}
+    stale_pending: tuple[list[int], SparseCudaConnectorCommand] | None = None
     for turn, (assistant_index, prompt) in enumerate(
         zip(assistant_indexes, prompts), start=1
     ):
@@ -197,8 +277,14 @@ def main() -> None:
             source + suffix[:1],
             CudaConnectorCommand("store", full_key, source_tokens).cache_salt(),
         )
-        native_bytes, persisted_bytes = _derive_selected_resource(
-            storage, full_key, selected_key, page_indices, block_size
+        source_generation = turn
+        native_bytes, persisted_bytes, native_digest = _derive_selected_resource(
+            storage,
+            full_key,
+            selected_key,
+            page_indices,
+            block_size,
+            source_generation,
         )
         selected_tokens = len(page_indices) * block_size
         command = SparseCudaConnectorCommand(
@@ -206,6 +292,7 @@ def main() -> None:
             selected_key,
             selected_tokens,
             source_tokens,
+            source_generation=source_generation,
             residency="hot",
             request_scope=f"turn-{turn}",
         )
@@ -231,7 +318,7 @@ def main() -> None:
             runtime_connector._detached_refcounts.get(handle_key, 0)
         )
         free_before_evict = len(runtime_connector._detached_free or ())
-        evicted_blocks = runtime_connector.evict_detached_resource(selected_key)
+        evicted_blocks = runtime_connector.offload_detached_resource(selected_key)
         free_after_evict = len(runtime_connector._detached_free or ())
         reload_event_start = len(_events(telemetry))
         replay, replay_ms = _generate(llm, generation, suffix, command.cache_salt())
@@ -245,8 +332,58 @@ def main() -> None:
             runtime_connector._detached_refcounts.get(handle_key, 0)
         )
         reconciled_reload_requests = runtime_connector.reconcile_detached_requests(set())
-        final_evicted_blocks = runtime_connector.evict_detached_resource(selected_key)
+        final_evicted_blocks = runtime_connector.offload_detached_resource(selected_key)
         free_after_final_evict = len(runtime_connector._detached_free or ())
+        cancellation = None
+        if not lifecycle_done:
+            cancel_event_start = len(_events(telemetry))
+            cancellation = _cancel_one_of_two_borrowers(
+                llm,
+                runtime_connector,
+                cancellation_sampling,
+                suffix,
+                command.cache_salt(),
+                handle_key,
+            )
+            cancel_transfers = [
+                event for event in _events(telemetry)[cancel_event_start:]
+                if event.get("event") == "load"
+            ]
+            cancellation["load_h2d_bytes"] = (
+                int(cancel_transfers[0].get("h2d_bytes", 0))
+                if cancel_transfers else None
+            )
+            cancellation["evicted_after_test"] = list(
+                runtime_connector.offload_detached_resource(selected_key)
+            )
+            control, _ = _generate(
+                llm,
+                cancellation_sampling,
+                suffix,
+                command.cache_salt(),
+            )
+            cancellation["control_token_ids"] = list(
+                map(int, control.outputs[0].token_ids)
+            )
+            runtime_connector.reconcile_detached_requests(set())
+            runtime_connector.offload_detached_resource(selected_key)
+            cancellation["survivor_exact_vs_control"] = (
+                cancellation["survivor_token_ids"]
+                == cancellation["control_token_ids"]
+            )
+            stale_pending = (
+                list(suffix),
+                SparseCudaConnectorCommand(
+                    "load",
+                    selected_key,
+                    selected_tokens,
+                    source_tokens,
+                    source_generation=source_generation + 1,
+                    residency="hot",
+                    request_scope=f"stale-turn-{turn}",
+                ),
+            )
+            lifecycle_done = True
         rows.append({
             "turn": turn,
             "source_tokens": source_tokens,
@@ -262,6 +399,7 @@ def main() -> None:
             "selected_text_reencoded_tokens": 0,
             "selection_materialization_kv_copy_bytes": native_bytes,
             "selection_persisted_bytes": persisted_bytes,
+            "native_payload_sha256": native_digest,
             "candidate_load_h2d_bytes": int(transfers[0].get("h2d_bytes", 0)) if transfers else None,
             "reference_load_h2d_bytes": int(transfers[1].get("h2d_bytes", 0)) if len(transfers) > 1 else None,
             "reference_shared_resident_hit": bool(transfers[1].get("shared_resident_hit")) if len(transfers) > 1 else None,
@@ -289,8 +427,29 @@ def main() -> None:
                 "reconciled_reload_request_ids": list(reconciled_reload_requests),
                 "final_evicted_block_ids": list(final_evicted_blocks),
                 "free_pages_after_final_evict": free_after_final_evict,
+                "persisted_payload_sha256_after_restore": json.loads(
+                    (_directory(storage, selected_key) / "manifest.json").read_text(
+                        encoding="utf-8"
+                    )
+                )["native_payload_sha256"],
             },
+            "cancellation": cancellation,
         })
+
+    if stale_pending is not None:
+        stale_suffix, stale_command = stale_pending
+        stale_probe = {
+            "attempted": True,
+            "requested_generation": stale_command.source_generation,
+            "resident_generation": stale_command.source_generation - 1,
+            "rejected": False,
+            "error": None,
+        }
+        try:
+            _generate(llm, prime, stale_suffix, stale_command.cache_salt())
+        except RuntimeError as error:
+            stale_probe["rejected"] = "Stale or unavailable" in str(error)
+            stale_probe["error"] = str(error)
 
     payload = {
         "schema_version": "paper4.5.vllm-cuda-agent-history-kv-gate.v1",
@@ -326,6 +485,29 @@ def main() -> None:
             == row["eviction"]["evicted_block_ids"]
             for row in rows
         ),
+        "offload_restore_test": all(
+            row["eviction"]["same_pages_reused"]
+            and row["eviction"]["reload_exact"]
+            and int(row["eviction"]["reload_h2d_bytes"] or 0) > 0
+            and row["eviction"]["persisted_payload_sha256_after_restore"]
+            == row["native_payload_sha256"]
+            for row in rows
+        ),
+        "cancellation_test": any(
+            row["cancellation"] is not None
+            and row["cancellation"]["refcount_before_abort"] == 2
+            and row["cancellation"]["released_on_abort_snapshot"]
+            == [row["cancellation"]["cancelled_request_id"]]
+            and row["cancellation"]["refcount_after_abort"] == 1
+            and row["cancellation"]["handle_survived_abort"]
+            and row["cancellation"]["cancelled_absent_from_final_outputs"]
+            and row["cancellation"]["survivor_finished"]
+            and row["cancellation"]["refcount_after_finish"] == 0
+            and row["cancellation"]["survivor_exact_vs_control"]
+            and bool(row["cancellation"]["evicted_after_test"])
+            for row in rows
+        ),
+        "stale_generation_test": stale_probe,
         "reference_uses_same_resident_pages": all(
             row["reference_shared_resident_hit"] is True for row in rows
         ),
@@ -340,6 +522,7 @@ def main() -> None:
             "Selection is losslessly gathered once from the full captured K/V into a derived persistent resource.",
             "The first HOT attachment copies that selected resource from host storage into detached GPU pages; subsequent borrowers reuse those resident pages.",
             "This vLLM 0.28 worker hook is version bounded and not an upstream extension point.",
+            "The offline worker defers finish callbacks; the gate reconciles connector ownership from an authoritative active-request snapshot before eviction.",
         ],
     }
     payload["realized_retention_fraction_min"] = min(
@@ -348,7 +531,33 @@ def main() -> None:
     payload["realized_retention_fraction_max"] = max(
         (row["realized_retention_fraction"] for row in rows), default=None
     )
-    payload["sparse_position_gate_valid"] = bool(
+    payload["native_max_position_embeddings"] = int(
+        getattr(llm.model_config.hf_config, "max_position_embeddings", 0) or 0
+    )
+    payload["max_source_position_base"] = max(
+        (row["source_position_base"] for row in rows), default=0
+    )
+    payload["within_native_model_window"] = bool(
+        payload["native_max_position_embeddings"]
+        and payload["max_source_position_base"] + args.continuation_tokens
+        <= payload["native_max_position_embeddings"]
+    )
+    payload["continuations_non_degenerate"] = bool(
+        rows
+        and any(
+            token != 0
+            for row in rows
+            for token in row["candidate_token_ids"]
+        )
+        and len(
+            {
+                token
+                for row in rows
+                for token in row["candidate_token_ids"]
+            }
+        ) > 1
+    )
+    payload["mechanism_gate_valid"] = bool(
         args.retention_fraction < 1
         and payload["all_exact"]
         and payload["zero_selected_text_reencoding"]
@@ -356,7 +565,15 @@ def main() -> None:
         and payload["reference_h2d_bytes_zero"]
         and payload["original_position_base_preserved"]
         and payload["explicit_hot_eviction_test"]
+        and payload["offload_restore_test"]
+        and payload["cancellation_test"]
+        and payload["stale_generation_test"]["rejected"]
         and any(row["has_holes"] for row in rows)
+    )
+    payload["sparse_position_gate_valid"] = bool(
+        payload["mechanism_gate_valid"]
+        and payload["within_native_model_window"]
+        and payload["continuations_non_degenerate"]
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

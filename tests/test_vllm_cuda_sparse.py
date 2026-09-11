@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -10,13 +12,20 @@ from experiments.paper4_5_agent.run_vllm_cuda_live_agent_kv_gate import (
     _selected_page_indices,
 )
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
+from pra_vllm.cuda_connector import PRASemanticConnectorMetadata
 from pra_vllm.cuda_sparse_connector import PRASparseConnector, _position_delta
 from pra_vllm.cuda_sparse_protocol import SparseCudaConnectorCommand
 
 
 def test_sparse_command_round_trip_preserves_original_position_base() -> None:
     command = SparseCudaConnectorCommand(
-        "load", "agent-selection", 144, 160, "hot", "turn-4"
+        "load",
+        "agent-selection",
+        144,
+        160,
+        source_generation=7,
+        residency="hot",
+        request_scope="turn-4",
     )
 
     assert SparseCudaConnectorCommand.parse(command.cache_salt()) == command
@@ -94,3 +103,47 @@ def test_authoritative_active_snapshot_reconciles_finished_borrowers() -> None:
     assert connector._detached_refcounts[("agent-selection", "hot")] == 1
     assert connector.reconcile_detached_requests(set()) == ("reference",)
     assert ("agent-selection", "hot") not in connector._detached_refcounts
+
+
+def test_offload_alias_preserves_persistence_and_returns_pages() -> None:
+    connector = _connector_with_two_borrowers()
+    connector.reconcile_detached_requests(set())
+
+    assert connector.offload_detached_resource("agent-selection") == (100, 101)
+    assert connector._detached_free == [100, 101]
+
+
+def test_stale_generation_is_rejected_before_worker_attachment(tmp_path) -> None:
+    connector = PRASparseConnector.__new__(PRASparseConnector)
+    connector._storage = tmp_path
+    connector._commands = {}
+    connector._loads = {}
+    connector._detached = True
+    connector._block_size = 16
+    logical_key = "agent-selection"
+    directory = tmp_path / hashlib.sha256(logical_key.encode()).hexdigest()
+    directory.mkdir()
+    (directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "logical_key": logical_key,
+                "source_tokens": 144,
+                "source_generation": 7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    current = SparseCudaConnectorCommand(
+        "load", logical_key, 144, 160, source_generation=7
+    )
+    stale = SparseCudaConnectorCommand(
+        "load", logical_key, 144, 160, source_generation=8
+    )
+
+    assert connector._ready(current)
+    assert not connector._ready(stale)
+    connector._commands["stale-request"] = stale
+    with pytest.raises(RuntimeError, match="Stale or unavailable"):
+        connector._add_new_request(
+            PRASemanticConnectorMetadata(), "stale-request", []
+        )
