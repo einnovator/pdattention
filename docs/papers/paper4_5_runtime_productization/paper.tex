@@ -3127,6 +3127,16 @@ therefore be assigned to the sparse treatment as a whole, but selection loss
 and original-position versus compact-position consumption remain separate
 factors for the next frozen factorial.
 
+The paired stochastic control strengthens this single-seed result.  After an
+exact replay of the four source-building turns, five predeclared sampling seeds
+(101, 202, 303, 404, and 505; temperature 0.7; 128-token continuation cap) fork
+from the same 3,047 selected cells.  Each live-built continuation is
+byte-for-byte identical to its position-preserving cold-built counterpart;
+the five seeds produce five distinct response hashes, and all five pairs match.
+This clears the multi-seed live-versus-fresh K/V-construction gate for this
+model, request, and physical slot geometry.  It does not establish quality at
+90\% retention, because both arms consume the same sparse state.
+
 That control exposed a separate occupancy confound.  With both request slots
 empty, two frozen full-transcript prompts produce identical response hashes
 under cache-on and cache-off execution.  Replaying the exact physical selected-
@@ -3142,13 +3152,17 @@ qualification remains blocked until this layout sensitivity is bounded or the
 runtime provides deterministic per-sequence isolation.
 
 The small-model rows and the task-02 result are mechanism and single-task
-correctness gates, not Easy-50 population-level efficacy evidence. The engine
-deliberately keeps its agent-history qualification flag false until frozen
-real-agent replay, multi-seed live-cache versus cold-prefill control,
-concurrent commit isolation, cancellation, eviction/offload, and multi-model
-qualification pass. A campaign-level lock prevents the resumable Easy-50
-scheduler from launching treatment cells before that status is explicitly
-promoted to \texttt{QUALIFIED}.
+correctness gates, not Easy-50 population-level efficacy evidence.  A strict
+frozen replay now resubmits the successful task-02 arm's recorded physical
+payloads and observations: all 14 assistant responses, including mutation,
+verification, and submission turns, reproduce byte-for-byte.  This removes
+live filesystem timestamps and other tool nondeterminism from the replay
+verdict and clears the single-task frozen-agent gate.  The engine deliberately
+keeps its agent-history qualification flag false until cross-model replication,
+concurrent commit isolation, cancellation/termination, eviction/offload, and
+engine-specific sparse-runtime qualification pass.  A campaign-level lock
+prevents the resumable Easy-50 scheduler from launching treatment cells before
+that status is explicitly promoted to \texttt{QUALIFIED}.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
