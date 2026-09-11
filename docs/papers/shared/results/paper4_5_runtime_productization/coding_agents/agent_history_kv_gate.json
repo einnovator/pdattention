@@ -80,6 +80,36 @@
       "agent_campaign": "blocked"
     }
   },
+  "superseded_evidence": [
+    {
+      "failure_mode": "cache_reconstruction",
+      "status": "DIAGNOSTIC_ONLY",
+      "scope": "all early fresh-prefill, cache-off, or independently reconstructed same-state comparisons",
+      "invalidated_claims": ["live_kv_reuse", "behavioral_equivalence_to_resident_prefix_state"],
+      "replacement_gate": "ordinary and PRA continuations fork from one pinned live resident source; 100% selection is a no-op; selected history is not tokenized or prefilled again"
+    },
+    {
+      "failure_mode": "position_base_error",
+      "status": "INVALID_FOR_SPARSE_KV_QUALIFICATION",
+      "scope": "all sparse rows that used compact selected width as the decode position or failed to preserve source extent on every decode step",
+      "invalidated_claims": ["original_position_sparse_correctness"],
+      "replacement_gate": "identical selected K/V and identical original positions; selected width, source-position extent, and request suffix recorded separately"
+    },
+    {
+      "failure_mode": "retention_ceiling_semantics",
+      "status": "INVALID_AS_NOMINAL_90_PERCENT_TREATMENT",
+      "scope": "early whole-bundle and v1 sparse-selection rows whose 90% target acted as a ceiling and realized as little as 67.1%",
+      "invalidated_claims": ["matched_90_percent_retention", "quality_at_90_percent"],
+      "replacement_gate": "causal-bundle floor semantics with requested and realized retention both reported; frozen cross-engine range 90.32%-95.66%"
+    },
+    {
+      "failure_mode": "physical_copy_mistaken_for_reuse",
+      "status": "SEMANTIC_REFERENCE_ONLY",
+      "scope": "all packed or detached selected-K/V paths, including the superseded vLLM CUDA worker-side path that moved 804,651,008 bytes",
+      "invalidated_claims": ["zero_copy", "prefix_cache_reuse", "runtime_benefit_from_reuse"],
+      "replacement_gate": "exact source block or storage identity plus separate K/V-copy, H2D, selected-history re-encoding, transient-attention, and residency-transfer counters"
+    }
+  ],
   "evidence": [
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/live_agent_kv_smoke_qwen25_05b.json",
     "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_same_state_smoke_qwen25_05b.json",

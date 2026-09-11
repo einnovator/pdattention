@@ -95,30 +95,31 @@ and durable user/session resolution. We retain these responsibilities and place 
 above them.  This is integration by contract rather than by collapsing distinct
 policies.
 
-The contributions are:
+The report is organized around four falsifiable claims:
 
 \begin{itemize}[leftmargin=*]
-\item a unified runtime contract joining model memory, authenticated resources,
-typed capabilities and results, durable tasks and sessions, and independently
-authorized tool execution without collapsing their policy boundaries;
-\item a physical K/V contract that preserves grouped-query heads, separates
-selection sparsity, materialization width, and consumer-layer coverage, merges
-intervals before budgeting, and accounts for transfers, temporary bytes, and
-bounded cache reuse;
-\item a corrected source-relative position and request-lifetime implementation,
-with exact disabled behavior and measured full-native semantic gates on Qwen
-and Llama plus a localized Gemma global/local topology limitation;
-\item an engine-neutral, engine-type-aware gateway with independent PRA and
-ordinary cache/session capabilities, explicit lifecycle, append-only G10
-placement, message/resource deltas, affinity hints, and non-sensitive session
-inspection, while advertising phase selection separately from unsupported
-scheduler hints;
-\item lazy tools and skills, size-adaptive typed-result indexing, task-scoped
-acquisition, external-agent bridges, and a user-facing runtime/agent interface;
-and
-\item reproducible eager measurements and explicit negative gates for compilation,
-modern-GPU transfer overlap, and native serving-engine integration.
+\item \textbf{Correct live-history semantics.}  PRA must fork from the same
+resident state as the ordinary request.  Reconstructing or re-prefilling a
+transcript is a different treatment and cannot establish cache reuse.
+\item \textbf{Engine portability contract.}  Same-subset exactness, original-
+position sparse selection, absence of physical K/V copy, and lifecycle safety
+are independent gates.  Passing one never implies the others.
+\item \textbf{Agent retention semantics.}  Agent state is a typed causal graph,
+not an undifferentiated token stream.  Task statements, action--observation
+pairs, source evidence, mutations, progress, and verification require stable
+record identities and explicit retention floors.
+\item \textbf{Coding-agent utility frontier.}  Only official task outcomes can
+admit context savings.  The locked comparison is No PRA versus PRA at 100\%,
+90\%, and conditionally 75\%, crossed with adaptor on/off while reporting
+success, calls, selected tokens, realized retention, K/V reuse, copy, and time.
 \end{itemize}
+
+The unified runtime, gateway, authenticated resource lifecycle, typed tool and
+result surfaces, and engine-specific adapters are the implementation needed to
+test those claims.  They are not additional evidence categories.  In
+particular, this paper treats correction of an overstated result as evidence
+about the measurement contract: cache identity, residence, source position,
+physical copy, and realized retention must be observed independently.
 
 \section{PRA Runtime Abstraction}
 
@@ -1383,6 +1384,55 @@ host.  \emph{Inherited} means read from a checked-in earlier experiment with
 its own protocol.  \emph{Contract only} means code exists but no external
 engine ran.  \emph{Architectural} means only an interface comparison is made.
 
+\subsection{Superseded evidence ledger}
+
+Several early agent-cache results remain useful diagnostics but no longer
+support the stronger claim originally associated with them.  We retain their
+artifacts rather than deleting inconvenient evidence.  Table~\ref{tab:superseded-agent-evidence}
+states the demotion rule applied throughout the report.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}p{0.19\textwidth}X X@{}}
+\toprule
+Failure found & Evidence superseded or demoted & Admissible replacement evidence \\
+\midrule
+Cache reconstruction & Fresh-prefill, cache-off, and independently reconstructed
+``same-state'' comparisons across the early HF, MLX, vLLM, and SGLang probes.
+They measure rematerialization behavior, even when outputs match. & Ordinary and
+PRA continuations fork from one live resident source; 100\% selection is a
+no-op; source ownership remains pinned; selected history is never re-tokenized
+or prefilled. \\
+\addlinespace
+Position-base error & Any sparse row that used compact selected width as the
+decode position or failed to carry original source extent through every decode
+step.  Token agreement from such a row cannot qualify sparse K/V. & A reference
+consumes the identical subset under the same original positions; selected
+length, source-position extent, and request suffix are separate recorded
+fields. \\
+\addlinespace
+Retention-ceiling semantics & Early nominal-90\% whole-bundle runs and v1
+sparse-selection rows whose realized retention could fall to 67.1\%.  Their
+labels do not describe a 90\% treatment. & The corrected causal policy treats
+90\% as a floor, rounds up indivisible mandatory bundles, and reports both
+requested and realized retention (90.32--95.66\% in the frozen seven-turn
+cross-engine probe). \\
+\addlinespace
+Physical copy mistaken for reuse & Packed or detached selected-K/V paths,
+including the superseded vLLM CUDA worker-side path that moved 804,651,008
+bytes.  These rows may support same-subset semantics, but not zero-copy or
+prefix-cache reuse. & Exact source block/storage identities plus independent
+counters for K/V copy, host--device transfer, re-encoded tokens, transient
+attention bytes, and offload/restore traffic. \\
+\bottomrule
+\end{tabularx}
+\caption{Superseded agent-cache evidence.  ``Superseded'' removes a systems
+claim, not the historical artifact: demoted rows remain available for debugging
+and causal comparison.}
+\label{tab:superseded-agent-evidence}
+\end{table}
+
 \subsection{Gateway session and prefix protocol}
 
 The controlled gateway fixture executes five turns with changing selected
@@ -1468,42 +1518,41 @@ answer-quality artifacts remain available for audit but are not repeated here.
 
 \section{Results}
 
-\subsection{Five product questions}
+\subsection{Four-claim evidence map}
 
-The accumulated evidence is easier to interpret as five product questions
-than as a chronology of mechanisms. Table~\ref{tab:five-product-questions}
-keeps semantic, physical, lifecycle, and operational claims at their measured
-levels.
+Table~\ref{tab:four-claim-evidence} is the report's claim ledger.  Later
+mechanism and product results are evidence for one of these rows rather than
+additional independent claims.
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabularx}{\linewidth}{p{.25\linewidth}Yp{.22\linewidth}}
+\begin{tabularx}{\linewidth}{p{.21\linewidth}Yp{.25\linewidth}}
 \toprule
-Question & Strongest current evidence & Product decision \\
+Claim & Strongest current evidence & Present boundary \\
 \midrule
-Can semantics survive engine changes? & 6,258/6,258 selector-frozen E0/E2
-pairs are exact across MLX-LM, SGLang-MLX, and vLLM-Metal. & Pinned mechanisms
-pass; portability is not inferred. \\
-Can context shrink without native changes? & E0 selected text cuts visible
-source tokens by 90.4--93.0\% in the matched engine cohorts and improves several
-long-context serving tails. & E0 is the compatibility default. \\
-Can native state be attached safely? & Request isolation, exact replay, and
-single-copy controls pass in pinned HF, vLLM, SGLang, MLX, and llama.cpp paths;
-CUDA vLLM removes source placeholders from scheduler geometry. & Native E2 is
-capability-gated and version-bound. \\
-Can state survive and be shared? & Lossless WARM is exact in 265/265 outputs,
-all 17 managers restart, async promotion can hide local stall, and shared
-resources avoid duplicate K/V. & WARM is qualified as backing state, not as an
-automatic latency win. \\
-Can operators use and inspect it? & CLI, gateway, sessions, typed records,
-authorization, bundles, OpenTelemetry, Prometheus, and Grafana share one
-versioned contract. & Unsupported capabilities fail or fall back explicitly. \\
+Correct live-history semantics & Same-resident-state controls qualify llama.cpp,
+vLLM-Metal, and the bounded vLLM CUDA path.  Selected history is not re-encoded,
+and 100\% is a semantic no-op. & Fresh-prefill/cache-reconstruction rows are
+diagnostics, not evidence of resident reuse. \\
+Engine portability contract & vLLM-Metal passes 24/24 lifecycle checks; bounded
+vLLM CUDA adopts scheduler-owned pages with zero K/V copy, H2D transfer, or
+history re-encoding. & HF, MLX, and SGLang remain blocked by numerical and/or
+selected-K/V-sized consumption allocations; CUDA scope excludes partial pages,
+hybrid groups, and multiprocess execution. \\
+Agent retention semantics & Task-03 restore-only replay recovers the efficient
+action in 3/3; task-04 changes whole-file rereading to targeted localization in
+3/3.  Typed causal policies preserve source and progress records. & Superiority
+to fixed token windows on official end-task outcomes is not yet established. \\
+Coding-agent utility frontier & The Easy-3 No-PRA/PRA-100/PRA-90 matrix freezes
+success, calls, selected tokens, realized retention, K/V reuse, copy, and time;
+nine no-adaptor cells are configuration-ready. & No cells have executed; six
+learned-adaptor cells fail closed; 75\% remains gated on three-task 90\% success. \\
 \bottomrule
 \end{tabularx}
-\caption{Runtime synthesis. An observed mechanism is not silently promoted to
-a portable or economically preferred product mode.}
-\label{tab:five-product-questions}
+\caption{Four-claim evidence map.  Passing a mechanism gate does not silently
+promote task utility, portability, zero-copy behavior, or runtime benefit.}
+\label{tab:four-claim-evidence}
 \end{table}
 
 Four derived quantities remain deliberately separate:
@@ -2962,7 +3011,9 @@ zero, and gateway latency was confounded by network placement and a shared
 single-slot model server. It clears the transport gate for a fresh corrected
 Easy-50 comparison.
 
-Native profile qualification then exposed three agent-history correctness bugs.
+\subsubsection{Claim 1: correct live-history semantics}
+
+Native profile qualification exposed three agent-history correctness bugs.
 First, mini-swe-agent can reject a malformed assistant action and append a
 format-error user observation without retaining the rejected action; the live
 KV sequence must therefore support exact-prefix backtracking rather than assume
@@ -3242,6 +3293,8 @@ and SGLang remain unqualified.  The restarted efficacy sequence operates on the
 pass the 100\% semantic-no-op control before its 90\% treatment can run, and
 lower retention remains contingent on that result.
 
+\subsubsection{Claim 4: observed coding-agent utility frontier}
+
 The restarted task-01 row illustrates why that protocol separates mechanism
 parity from current task capability.  Its 100\% live-K/V execution makes 30
 model calls, re-encodes zero selected-history tokens, copies no K/V, and reuses
@@ -3340,6 +3393,8 @@ it exposes 248,815 selected resident K/V tokens, re-encodes no selected history,
 and copies no K/V.  As on task 03, end-task success therefore conceals a large
 interaction-efficiency regression; contended wall time is provenance only.
 
+\subsubsection{Claim 3: agent retention semantics}
+
 The first-divergence audit also rules out ordinary sampling temperature as the
 proximate explanation: both task-03 and task-04 arms sent
 \texttt{temperature=0}.  At the request producing the first changed executed
@@ -3373,6 +3428,8 @@ sparse PRA attachment.  A target-bearing 256-word child span exists in each
 large observation, motivating both a \texttt{recent\_source\_turns} floor and
 hierarchical within-record selection rather than either dropping or retaining
 the entire source view.
+
+\subsubsection{Claim 2: engine portability contract}
 
 The cross-engine expansion follows the same qualification ladder already
 required of llama.cpp.  Its first rung requires that ordinary and PRA
@@ -3506,6 +3563,8 @@ explicit diagnoses, hypotheses, root causes, and proposed fixes together with
 their causal observations; generic verbose reasoning is not promoted.  A
 frozen task-04 regression verifies that its exact request-5 progress state and
 latest source evidence both survive the 90\% policy.
+
+\subsubsection{Claim 4: locked next-stage matrix}
 
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
