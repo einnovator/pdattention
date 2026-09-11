@@ -3137,6 +3137,21 @@ This clears the multi-seed live-versus-fresh K/V-construction gate for this
 model, request, and physical slot geometry.  It does not establish quality at
 90\% retention, because both arms consume the same sparse state.
 
+Cross-model replication exposes a necessary qualification dimension.  With
+Qwen3-14B Q4 and its default model template, turn 2 fails closed before
+inference because the template inserts an empty thinking wrapper when an
+assistant record is final, then removes that wrapper after a later user record
+arrives.  The completed assistant record is therefore not token-prefix-stable,
+and its old K/V cannot represent the next transcript.  With llama.cpp's stable
+ChatML template, the same probe builds a four-turn causal source twice with
+identical response hashes, attaches 3,069 of 3,205 source cells, and obtains
+byte-identical live-built versus cold-built continuations for sampling seeds
+101, 202, and 303.  Model identity alone is consequently insufficient:
+agent-history qualification binds the model, tokenizer, chat template, and
+engine geometry.  The direct endpoint now runs a four-record prefix-stability
+probe at startup and rejects an incompatible template before the first costly
+agent prefill.
+
 That control exposed a separate occupancy confound.  With both request slots
 empty, two frozen full-transcript prompts produce identical response hashes
 under cache-on and cache-off execution.  Replaying the exact physical selected-
@@ -3157,10 +3172,12 @@ frozen replay now resubmits the successful task-02 arm's recorded physical
 payloads and observations: all 14 assistant responses, including mutation,
 verification, and submission turns, reproduce byte-for-byte.  This removes
 live filesystem timestamps and other tool nondeterminism from the replay
-verdict and clears the single-task frozen-agent gate.  The engine deliberately
-keeps its agent-history qualification flag false until cross-model replication,
-concurrent commit isolation, cancellation/termination, eviction/offload, and
-engine-specific sparse-runtime qualification pass.  A campaign-level lock
+verdict and clears the single-task frozen-agent gate.  Together with the
+qualified Qwen3-14B replication, this clears the current single-task,
+multi-seed, and cross-model construction gates.  The engine deliberately keeps
+its agent-history qualification flag false until concurrent commit isolation,
+cancellation/termination, eviction/offload, and engine-specific sparse-runtime
+qualification pass.  A campaign-level lock
 prevents the resumable Easy-50 scheduler from launching treatment cells before
 that status is explicitly promoted to \texttt{QUALIFIED}.
 
