@@ -565,10 +565,17 @@ class HybridLlamaCppAdapter:
             return pair
 
     def capabilities(self):
+        # Qualification is configuration-specific.  A live agent-history
+        # endpoint must keep the canonical prefix cache enabled and expose a
+        # slot checkpoint directory for the tested eviction/offload lifecycle.
+        # Cache-off and ephemeral wrappers deliberately remain unqualified.
+        qualified = self.prefix_cache_enabled and self._slot_save_path is not None
         return replace(
             self.native_adapter.capabilities(),
             resource_delta=True,
             cache_affinity=True,
+            pinned_kv=self.prefix_cache_enabled,
+            agent_history_kv_qualified=qualified,
         )
 
     def prepare_session(self, request: PRAWireRequest) -> str | None:

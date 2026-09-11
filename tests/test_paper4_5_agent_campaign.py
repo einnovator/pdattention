@@ -1025,16 +1025,63 @@ def test_changed_resource_uses_in_place_prefix_delta_without_delete() -> None:
 def test_hybrid_llamacpp_advertises_implemented_resource_delta() -> None:
     native = SimpleNamespace(
         capabilities=lambda: PRAEngineCapabilities(
-            adapter="llama_cpp_pra", integration_level="E2", native_kv=True,
+            adapter="llama_cpp_pra",
+            integration_level="E2",
+            native_kv=True,
+            session_state=True,
+            live_prefix_kv_capture=True,
+            live_prefix_kv_subset=True,
+            zero_selected_text_reencoding=True,
+            stable_record_kv_identity=True,
+            multiple_selected_records=True,
+            source_positions_preserved=True,
+            request_membership_attach=True,
         ),
     )
-    adapter = HybridLlamaCppAdapter(native, SimpleNamespace(), prefix_caching=True)
+    adapter = HybridLlamaCppAdapter(
+        native,
+        SimpleNamespace(),
+        prefix_caching=True,
+        slot_save_path=Path("agent-slot-checkpoints"),
+    )
 
     capabilities = adapter.capabilities()
 
     assert capabilities.native_kv is True
     assert capabilities.resource_delta is True
     assert capabilities.cache_affinity is True
+    assert capabilities.pinned_kv is True
+    assert capabilities.agent_history_kv_qualified is True
+
+
+def test_hybrid_llamacpp_qualification_is_configuration_specific() -> None:
+    native = SimpleNamespace(
+        capabilities=lambda: PRAEngineCapabilities(
+            adapter="llama_cpp_pra",
+            integration_level="E2",
+            native_kv=True,
+            session_state=True,
+            live_prefix_kv_capture=True,
+            live_prefix_kv_subset=True,
+            zero_selected_text_reencoding=True,
+            stable_record_kv_identity=True,
+            multiple_selected_records=True,
+            source_positions_preserved=True,
+            request_membership_attach=True,
+        ),
+    )
+
+    cache_off = HybridLlamaCppAdapter(
+        native, SimpleNamespace(), prefix_caching=False, slot_save_path=Path("slots"),
+    ).capabilities()
+    no_offload = HybridLlamaCppAdapter(
+        native, SimpleNamespace(), prefix_caching=True,
+    ).capabilities()
+
+    assert cache_off.agent_history_kv_qualified is False
+    assert cache_off.pinned_kv is False
+    assert no_offload.agent_history_kv_qualified is False
+    assert no_offload.pinned_kv is True
 
 
 def test_hybrid_llamacpp_reconstructs_complete_ordered_g11_resource_delta() -> None:
@@ -2553,6 +2600,7 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
                     "prefix_cache_enabled": self.prefix_enabled,
                     "effective_capabilities": {
                         "native_kv": True,
+                        "agent_history_kv_qualified": True,
                         "explicit_prefix_cache": True,
                         "prefix_cache_mode": "explicit_prefix_handle",
                     },

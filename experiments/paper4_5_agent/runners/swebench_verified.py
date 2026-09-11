@@ -158,6 +158,14 @@ def gateway_preflight(
     engine = health.get("engine") or {}
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
+    if native_required and not bool(
+        effective.get("agent_history_kv_qualified")
+        or engine.get("agent_history_kv_qualified")
+    ):
+        raise RuntimeError(
+            "native agent-history PRA treatment requires an engine-specific "
+            "agent_history_kv_qualified=true capability"
+        )
     prefix_mode = str(
         engine.get("prefix_cache_mode", effective.get("prefix_cache_mode", "unknown"))
     )

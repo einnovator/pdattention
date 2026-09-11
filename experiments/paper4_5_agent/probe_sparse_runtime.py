@@ -159,6 +159,14 @@ def run(
     sparse_wall = _median(sparse_rows, "wall_ms")
     sparse_trace = sparse_rows[0]["trace"]
     full_trace = full_rows[0]["trace"]
+    prompt_ratios = [
+        full["prompt_ms"] / sparse["prompt_ms"]
+        for full, sparse in zip(full_rows, sparse_rows)
+    ]
+    wall_ratios = [
+        full["wall_ms"] / sparse["wall_ms"]
+        for full, sparse in zip(full_rows, sparse_rows)
+    ]
     payload = {
         "model": model,
         "repeats": repeats,
@@ -176,6 +184,20 @@ def run(
         },
         "prompt_speedup": full_prompt / sparse_prompt if sparse_prompt else None,
         "wall_speedup": full_wall / sparse_wall if sparse_wall else None,
+        "median_paired_prompt_speedup": statistics.median(prompt_ratios),
+        "median_paired_wall_speedup": statistics.median(wall_ratios),
+        "sparse_prompt_wins": sum(
+            full["prompt_ms"] > sparse["prompt_ms"]
+            for full, sparse in zip(full_rows, sparse_rows)
+        ),
+        "sparse_wall_wins": sum(
+            full["wall_ms"] > sparse["wall_ms"]
+            for full, sparse in zip(full_rows, sparse_rows)
+        ),
+        "target_responses_exact": all(
+            full["response"] == sparse["response"]
+            for full, sparse in zip(full_rows, sparse_rows)
+        ),
         "selected_fraction": (
             float(sparse_trace["selected_kv_tokens"])
             / float(sparse_trace["source_tokens"])

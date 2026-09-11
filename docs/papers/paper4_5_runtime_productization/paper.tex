@@ -3198,14 +3198,49 @@ multi-seed, cross-model construction, and concurrent-session isolation gates.
 The wrapper additionally serializes same-session requests, makes exact
 transport retries idempotent, rejects a different generation from the same
 logical head as a commit conflict, applies resource deltas transactionally,
-and tombstones a session before draining and erasing it.  Those lifecycle rules
-have regression coverage but remain outside the runtime-qualified set until the
-direct server probe completes.  The engine deliberately keeps its agent-
-history qualification flag false until same-session commit, active
-cancellation, termination, eviction/offload, and engine-specific sparse-runtime
-qualification pass.  A campaign-level lock
-prevents the resumable Easy-50 scheduler from launching treatment cells before
-that status is explicitly promoted to \texttt{QUALIFIED}.
+and tombstones a session before draining and erasing it.  A direct Qwen3-14B
+probe confirms those semantics: an exact retry returns the cached identical
+response; two simultaneous requests from one logical parent produce exactly one
+HTTP 200 commit and one HTTP 409 conflict; DELETE completes in 4.4~ms after the
+winning request, and later traffic receives HTTP 410.  This clears retry,
+same-session commit, and completed-request termination.  It does not clear
+active cancellation by itself.  To close that gap while preserving the public
+non-streaming API, the wrapper consumes llama.cpp's completion stream
+internally, retains the live upstream response handle, and closes it when the
+session DELETE arrives.  A repeated direct probe observes the upstream stream,
+returns HTTP 499 \texttt{generation\_cancelled} to the interrupted request,
+returns HTTP 200 to DELETE in 1.54~s, and records llama.cpp cancelling and
+releasing the active task.
+
+The eviction/offload gate uses a one-pair Qwen2.5-0.5B configuration so slot
+reuse is unavoidable.  The wrapper saves a 24-token canonical sequence as a
+295,916-byte llama.cpp slot image, erases both sequence memberships, and the
+next pressure session occupies the released source slot.  Restoring the first
+session into that same pair, with its PRA pin set atomically by the restore
+operation, yields a byte-identical continuation to the never-offloaded control.
+No selected text is submitted for prefill, and the checkpoint file is deleted
+after successful restore.  This clears explicit disk demotion, capacity reuse,
+restore identity, and cleanup for the tested runtime.
+
+That final mechanism gate uses ten alternating-order pairs on the same small
+model and fixed synthetic trajectory.  Ordinary full-prefix continuation reads
+all 1,495 resident cells; sparse live-K/V attaches 391 cells (26.2\%) across
+five causal records, with zero selected-text re-encoding and no K/V copy.  The
+one-token target response is identical in every pair.  Median engine prompt
+time falls from 174.0 to 161.4~ms (1.08$\times$ ratio of medians; 1.09$\times$
+median paired ratio), while endpoint wall time falls from 294.7 to 266.7~ms
+(1.10$\times$; 1.11$\times$ paired); sparse wins all ten prompt and wall pairs.
+This qualifies an engine-specific sparse runtime benefit at this geometry, not
+an Easy-50 task-quality or large-model speedup.  The llama.cpp live-agent path
+therefore clears the construction, concurrency, lifecycle, offload, and sparse-
+campaign-level lock prevents the resumable Easy-50 scheduler from launching
+treatment cells before that status is explicitly promoted.  The gate is now
+\texttt{QUALIFIED} only for a llama.cpp wrapper with prefix caching enabled and
+a configured slot checkpoint directory; cache-off wrappers and HF, MLX, vLLM,
+and SGLang remain unqualified.  The restarted efficacy sequence operates on the
+14 baseline-success instances, one instance at a time: each instance must first
+pass the 100\% semantic-no-op control before its 90\% treatment can run, and
+lower retention remains contingent on that result.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or

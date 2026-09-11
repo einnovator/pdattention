@@ -1,13 +1,25 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-10",
-  "status": "MECHANISM_SMOKE_PASS",
-  "campaigns_armed": false,
-  "qualified_engine": null,
+  "updated_at": "2026-09-11",
+  "status": "QUALIFIED",
+  "campaigns_armed": true,
+  "qualified_engine": {
+    "engine": "llama.cpp",
+    "patch_revision": "e6dc022",
+    "wrapper_requirement": "prefix_cache_enabled=true and slot_save_path configured",
+    "scope": "direct live-prefix selected-K/V agent-history treatments only"
+  },
   "evidence": [
     "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/live_agent_kv_smoke_qwen25_05b.json",
     "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_same_state_smoke_qwen25_05b.json",
-    "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_long_same_state_qwen25_05b.json"
+    "docs/papers/shared/results/paper6_7_llamacpp/live_prefix_long_same_state_qwen25_05b.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/live_vs_fresh_multiseed_request05_v45.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/frozen_task02_100_agentkv_v46.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/crossmodel_qwen3_14b_chatml_agentkv_v48.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/concurrent_sparse_sessions_qwen3_14b_pinned_v50.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/session_lifecycle_active_cancel_qwen3_14b_v53.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/session_offload_qwen25_05b_v54.summary.json",
+    "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/task_major_profiles/task_02_django__django-15368/sparse_runtime_qwen25_05b_v56.summary.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -15,14 +27,19 @@
     "sparse multi-record live-prefix K/V attachment",
     "zero selected-history token re-encoding",
     "rejected-action source rollback smoke",
-    "stable source positions and no physical K/V copy"
+    "stable source positions and no physical K/V copy",
+    "five-seed live-cache versus position-preserving fresh-prefill equivalence",
+    "14-of-14 exact frozen mini-swe-agent response replay at 100% retention",
+    "cross-model replication on Qwen3-14B with a prefix-separable ChatML template",
+    "two concurrent sparse sessions with byte-exact isolated trajectories",
+    "idempotent retry, stale-fork rejection, active cancellation, and termination tombstones",
+    "disk offload, forced slot reuse, exact restore, and checkpoint cleanup",
+    "ten-of-ten paired sparse prompt and wall-time wins with zero selected-text re-encoding"
   ],
   "still_required": [
-    "multi-seed cache-on versus fresh-prefill behavioral equivalence",
-    "real mini-swe-agent single-task frozen replay",
-    "cancellation and concurrent-session isolation",
-    "record eviction and lifecycle telemetry",
-    "cross-model smoke"
+    "full Easy-50 baseline-success stratum at 100% retention",
+    "90% and lower retention efficacy after per-task 100% parity",
+    "independent qualification of HF, MLX, vLLM, and SGLang adapters"
   ],
-  "reason": "A mechanism smoke is necessary but insufficient to restart the Easy-50 matrix."
+  "reason": "The tested llama.cpp configuration clears the predeclared mechanism gates. Qualification does not transfer to other engines or cache-off/rematerializing paths."
 }
