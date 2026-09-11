@@ -332,6 +332,7 @@ class PlainSlotExecutor:
             raw,
             ({
                 "stage": "llama_cpp_plain",
+                "request_slot": active_slot,
                 "prefix_cache_enabled": self.prefix_caching,
                 "prefix_cached_tokens": cached,
                 "engine_cached_tokens_total": cached,
