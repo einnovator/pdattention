@@ -3162,9 +3162,29 @@ reports zero cache hits, and receives the same 1,857 prompt tokens.  The changed
 hash exactly reproduces the earlier apparent cache mismatch.  This is unified-
 KV physical-occupancy sensitivity, not evidence that the selected transcript
 or ordinary prefix cache is wrong.  Readiness probes are now ephemeral and
-release their resource sequence before measurement.  Concurrent-session
-qualification remains blocked until this layout sensitivity is bounded or the
-runtime provides deterministic per-sequence isolation.
+release their resource sequence before measurement.
+
+The first concurrent sparse-session attempt then exposed a related ownership
+bug rather than clearing the gate.  The wrapper assigned canonical histories to
+distinct source slots, but built them as ordinary prefix-cache requests without
+setting llama.cpp's persistent PRA pin.  Under unified-KV scheduling,
+\texttt{try\_clear\_idle\_slots()} consequently purged idle source slot 1 while
+the other session was active: the slot-3 request attached correctly, whereas
+the slot-1 request failed closed with ``source has no encoded context.''  The
+fix marks only canonical live-history sources with
+\texttt{pra\_pin\_resource}; ordinary no-PRA controls remain unpinned.
+
+After that repair, two Qwen3-14B/ChatML sessions independently built three-turn,
+1,262-token live histories in source slots 1 and 3.  Their simultaneous
+75\%-budget requests used destination slots 0 and 2, each attached five records and
+662 existing K/V cells, re-encoded zero selected-history tokens, and copied no
+K/V.  Both complete source trajectories and both sparse target responses were
+byte-identical to a separately rebuilt sequential control.  Concurrent target
+wall time was 182.9~s versus 296.0~s sequential, but this 1.62$\times$ observed
+scheduling ratio is diagnostic only: an unrelated virtual machine and endpoint
+security substantially contended for the host during the run.  The result
+clears cross-session slot ownership and behavioral-isolation correctness for
+this qualified configuration; it is not a sparse-runtime speed claim.
 
 The small-model rows and the task-02 result are mechanism and single-task
 correctness gates, not Easy-50 population-level efficacy evidence.  A strict
@@ -3174,9 +3194,15 @@ verification, and submission turns, reproduce byte-for-byte.  This removes
 live filesystem timestamps and other tool nondeterminism from the replay
 verdict and clears the single-task frozen-agent gate.  Together with the
 qualified Qwen3-14B replication, this clears the current single-task,
-multi-seed, and cross-model construction gates.  The engine deliberately keeps
-its agent-history qualification flag false until concurrent commit isolation,
-cancellation/termination, eviction/offload, and engine-specific sparse-runtime
+multi-seed, cross-model construction, and concurrent-session isolation gates.
+The wrapper additionally serializes same-session requests, makes exact
+transport retries idempotent, rejects a different generation from the same
+logical head as a commit conflict, applies resource deltas transactionally,
+and tombstones a session before draining and erasing it.  Those lifecycle rules
+have regression coverage but remain outside the runtime-qualified set until the
+direct server probe completes.  The engine deliberately keeps its agent-
+history qualification flag false until same-session commit, active
+cancellation, termination, eviction/offload, and engine-specific sparse-runtime
 qualification pass.  A campaign-level lock
 prevents the resumable Easy-50 scheduler from launching treatment cells before
 that status is explicitly promoted to \texttt{QUALIFIED}.

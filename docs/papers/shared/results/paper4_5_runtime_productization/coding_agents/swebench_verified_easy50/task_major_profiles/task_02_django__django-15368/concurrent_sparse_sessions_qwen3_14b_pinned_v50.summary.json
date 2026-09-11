@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "model": "qwen3:14b",
+  "chat_template": "chatml",
+  "engine": "llama.cpp",
+  "server": {
+    "parallel_slots": 4,
+    "kv_unified": true,
+    "context_tokens": 8192,
+    "batch_tokens": 256,
+    "microbatch_tokens": 1
+  },
+  "source_replay_exact": true,
+  "target_replay_exact": true,
+  "distinct_source_slots": true,
+  "source_slots": {"A": 1, "B": 3},
+  "request_slots": {"A": 0, "B": 2},
+  "both_targets_sparse": true,
+  "source_tokens_per_session": 1262,
+  "selected_kv_tokens_per_target": 662,
+  "selected_records_per_target": 5,
+  "selected_text_reencoded_tokens": 0,
+  "physical_kv_copy": false,
+  "target_response_sha256": {
+    "A": "4f4e7279c9511c6872697342f04d1601044d89276a1428e53bc8a2784abc12db",
+    "B": "fb9fc7d668504af5a4e144e477a58e546b1a6d152d75a30557f9c1e5ea8db77a"
+  },
+  "concurrent_target_wall_s": 182.857402792004,
+  "sequential_target_wall_s": 296.0151535420009,
+  "observed_scheduling_ratio": 1.618828455,
+  "runtime_claim": "diagnostic_only_due_to_external_machine_contention",
+  "fix_commit": "6544ad69"
+}

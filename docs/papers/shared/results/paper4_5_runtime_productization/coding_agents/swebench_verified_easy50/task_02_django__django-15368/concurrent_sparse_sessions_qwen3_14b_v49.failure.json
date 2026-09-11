@@ -1,0 +1,36 @@
+{
+  "status": "failed_closed",
+  "model": "qwen3:14b",
+  "chat_template": "chatml",
+  "engine": "llama.cpp",
+  "server": {
+    "parallel_slots": 4,
+    "kv_unified": true,
+    "context_tokens": 8192,
+    "batch_tokens": 256,
+    "microbatch_tokens": 1
+  },
+  "source_sessions": {
+    "A": {"slot": 1, "resident_tokens": 1262},
+    "B": {"slot": 3, "resident_tokens": 1262}
+  },
+  "concurrent_sparse_targets": {
+    "A": {
+      "destination_slot": 0,
+      "status": "rejected",
+      "error": "PRA live-prefix source has no encoded context"
+    },
+    "B": {
+      "source_slot": 3,
+      "destination_slot": 2,
+      "status": "attached",
+      "selected_kv_tokens": 662,
+      "source_tokens": 1262,
+      "wire_tokens": 569
+    }
+  },
+  "root_cause": "Canonical live-history source slots were allocated per session but were not marked pra_resource_pinned while ordinary prefix continuation built them. Under unified-KV scheduling, try_clear_idle_slots() could therefore purge an idle source owned by another live session.",
+  "corrective_action": "Every canonical live-history source request now sets pra_pin_resource=true; ordinary no-PRA controls remain unpinned.",
+  "fix_commit": "6544ad69",
+  "qualification_effect": "The run is retained as a failure diagnostic and does not clear concurrent-session qualification."
+}
