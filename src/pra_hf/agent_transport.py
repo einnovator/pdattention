@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Any, Callable, Mapping, Sequence
 
 from .context_records import ContextRecord, RecordViewName, serialize_record
-from .deployment import PRAWireRequest, PRAWireResource
+from .deployment import PRAAgentRetentionPolicy, PRAWireRequest, PRAWireResource
 from .gateway_session import HistoryMode, ResourceDelta, ResourceOperation
 from .observability import DISABLED_OBSERVABILITY, Observability
 
@@ -63,6 +63,7 @@ class AgentTurnContext:
     task_id: str | None = None
     task_metadata: Mapping[str, Any] = field(default_factory=dict)
     selected_record_ids: tuple[str, ...] = ()
+    retention_policy: PRAAgentRetentionPolicy | Mapping[str, Any] | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -74,6 +75,12 @@ class AgentTurnContext:
         object.__setattr__(self, "skill_records", tuple(self.skill_records))
         object.__setattr__(self, "tools", tuple(dict(row) for row in self.tools))
         object.__setattr__(self, "task_metadata", dict(self.task_metadata))
+        if self.retention_policy is not None:
+            object.__setattr__(
+                self,
+                "retention_policy",
+                PRAAgentRetentionPolicy.from_mapping(self.retention_policy),
+            )
         object.__setattr__(self, "metadata", dict(self.metadata))
         object.__setattr__(
             self, "selected_record_ids", tuple(dict.fromkeys(self.selected_record_ids))
@@ -530,6 +537,10 @@ class NegotiatedRemoteBackend:
                 **turn.metadata,
                 "task_metadata": dict(turn.task_metadata),
                 "agent_transport": wire_mode.value,
+                **(
+                    {"retention_policy": turn.retention_policy.to_dict()}
+                    if turn.retention_policy is not None else {}
+                ),
             },
         )
         payload = request.to_openai(stream=False)

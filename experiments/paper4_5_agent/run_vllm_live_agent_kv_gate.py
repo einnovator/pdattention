@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.metadata
 import json
 import math
 import os
 import platform
+import sys
 from pathlib import Path
 
 from experiments.paper4_5_agent.run_hf_agent_cache_equivalence import (
@@ -15,6 +17,81 @@ from experiments.paper4_5_agent.run_hf_agent_cache_equivalence import (
 )
 from experiments.paper6_vllm.run_matched_e0_e2 import _run
 from experiments.paper6_vllm.run_v1_capture_replay_audit import _token_comparison
+from experiments.paper4_5_agent.sparse_gate_common import sparse_causal_plan
+
+
+_PACKAGED_RELEASES = {
+    "0.29.0": {
+        "vllm_base_version": "0.29.0",
+        "source_revision": "7390805822b2d7a208b09d55bd07b7572f727e20",
+    },
+}
+
+
+def _distribution_provenance(name: str) -> dict[str, object]:
+    """Return fail-closed package and native-artifact provenance."""
+
+    distribution = importlib.metadata.distribution(name)
+    root = Path(distribution.locate_file("")).resolve()
+    direct_url = distribution.read_text("direct_url.json")
+    native_files = []
+    for relative in distribution.files or ():
+        path = Path(distribution.locate_file(relative)).resolve()
+        if path.suffix not in {".so", ".dylib", ".metallib"} or not path.is_file():
+            continue
+        native_files.append({
+            "path": str(path),
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        })
+    return {
+        "name": name,
+        "version": distribution.version,
+        "root": str(root),
+        "inside_active_environment": root.is_relative_to(Path(sys.prefix).resolve()),
+        "direct_url": json.loads(direct_url) if direct_url else None,
+        "native_files": native_files,
+    }
+
+
+def _qualify_packaged_runtime(
+    *, vllm_version: str, metal_version: str, source_revision: str,
+    vllm_provenance: dict[str, object], metal_provenance: dict[str, object],
+    artifact_overlay: bool,
+) -> tuple[bool, list[str]]:
+    """Derive packaged-runtime qualification instead of trusting a CLI claim."""
+
+    release = _PACKAGED_RELEASES.get(metal_version)
+    reasons = []
+    if release is None:
+        reasons.append("unrecognized_vllm_metal_release")
+    else:
+        from packaging.version import Version
+
+        if Version(vllm_version).base_version != release["vllm_base_version"]:
+            reasons.append("vllm_core_version_mismatch")
+        if source_revision != release["source_revision"]:
+            reasons.append("source_revision_mismatch")
+    if artifact_overlay:
+        reasons.append("artifact_overlay_declared")
+    if not bool(vllm_provenance["inside_active_environment"]):
+        reasons.append("vllm_outside_active_environment")
+    if not bool(metal_provenance["inside_active_environment"]):
+        reasons.append("vllm_metal_outside_active_environment")
+    if not metal_provenance["native_files"]:
+        reasons.append("no_hashed_native_artifacts")
+    return not reasons, reasons
+
+
+def _selected_page_indices(plan, block_size: int) -> tuple[int, ...]:
+    """Select complete resident pages intersecting retained causal records."""
+
+    selected = []
+    for index in range(math.ceil(plan.source_tokens / block_size)):
+        start, end = index * block_size, min((index + 1) * block_size, plan.source_tokens)
+        if any(row.start < end and start < row.end for row in plan.intervals):
+            selected.append(index)
+    return tuple(selected)
 
 
 def main() -> None:
@@ -24,6 +101,7 @@ def main() -> None:
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
     parser.add_argument("--turns", type=int, default=3)
     parser.add_argument("--continuation-tokens", type=int, default=16)
+    parser.add_argument("--retention-fraction", type=float, default=1.0)
     parser.add_argument(
         "--max-model-len",
         type=int,
@@ -38,7 +116,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--engine-source-revision",
-        default="14705ad974863f68d00315655514f200366441bf",
+        default="unknown",
     )
     parser.add_argument(
         "--native-artifact-source",
@@ -58,6 +136,17 @@ def main() -> None:
     from pra_vllm.v1_native import VLLMMetalV1NativeBridge
     from vllm import LLM, SamplingParams
 
+    vllm_provenance = _distribution_provenance("vllm")
+    metal_provenance = _distribution_provenance("vllm-metal")
+    exact_packaged_runtime, packaging_failures = _qualify_packaged_runtime(
+        vllm_version=getattr(vllm, "__version__", "unknown"),
+        metal_version=importlib.metadata.version("vllm-metal"),
+        source_revision=args.engine_source_revision,
+        vllm_provenance=vllm_provenance,
+        metal_provenance=metal_provenance,
+        artifact_overlay=args.artifact_overlay,
+    )
+
     llm = LLM(
         model=args.model,
         max_model_len=args.max_model_len,
@@ -70,11 +159,18 @@ def main() -> None:
     tokenizer = llm.get_tokenizer()
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
     prompts = _assistant_prompts(tokenizer, trajectory, args.turns)
+    messages = trajectory["messages"]
+    assistant_indexes = [
+        index for index, message in enumerate(messages)
+        if message.get("role") == "assistant"
+    ][: args.turns]
     generation = SamplingParams(temperature=0, max_tokens=args.continuation_tokens)
     prime = SamplingParams(temperature=0, max_tokens=1)
     rows = []
     try:
-        for turn, prompt in enumerate(prompts, start=1):
+        for turn, (assistant_index, prompt) in enumerate(
+            zip(assistant_indexes, prompts), start=1
+        ):
             page_tokens = (len(prompt) // bridge.block_size) * bridge.block_size
             if page_tokens == 0 or page_tokens == len(prompt):
                 raise RuntimeError("Agent prompt did not provide a page prefix plus suffix.")
@@ -93,12 +189,49 @@ def main() -> None:
             page_count = math.ceil(len(source) / bridge.block_size)
             source_blocks = tuple(fresh[0]["block_ids_by_group"][0][:page_count])
 
-            _ordinary_id, ordinary, _ = _run(
-                llm, bridge, generation, prompt, cache_salt=salt
-            )
+            try:
+                plan = sparse_causal_plan(
+                    tokenizer,
+                    messages[:assistant_index],
+                    prompt,
+                    source_tokens=len(source),
+                    retention_fraction=args.retention_fraction,
+                )
+            except RuntimeError:
+                continue
+            page_indices = _selected_page_indices(plan, bridge.block_size)
+            selected_blocks = tuple(source_blocks[index] for index in page_indices)
+            selected_tokens = len(selected_blocks) * bridge.block_size
+            if not selected_blocks or (
+                args.retention_fraction < 1 and len(selected_blocks) == len(source_blocks)
+            ):
+                continue
+
+            if args.retention_fraction == 1:
+                _ordinary_id, ordinary, _ = _run(
+                    llm, bridge, generation, prompt, cache_salt=salt
+                )
+            else:
+                reference_key = f"agent-reference-turn-{turn}"
+                bridge.borrow_resident_pages(
+                    reference_key, selected_blocks, selected_token_count=selected_tokens
+                )
+                try:
+                    _ordinary_id, ordinary, _ = _run(
+                        llm,
+                        bridge,
+                        generation,
+                        suffix,
+                        key=reference_key,
+                        source_tokens=selected_tokens,
+                        source_position_base=len(source),
+                    )
+                finally:
+                    bridge.release(reference_key)
+
             key = f"agent-live-turn-{turn}"
             bridge.borrow_resident_pages(
-                key, source_blocks, selected_token_count=len(source)
+                key, selected_blocks, selected_token_count=selected_tokens
             )
             try:
                 _native_id, native, _ = _run(
@@ -107,7 +240,7 @@ def main() -> None:
                     generation,
                     suffix,
                     key=key,
-                    source_tokens=len(source),
+                    source_tokens=selected_tokens,
                     source_position_base=len(source),
                 )
             finally:
@@ -122,8 +255,13 @@ def main() -> None:
                     "source_tokens": len(source),
                     "wire_suffix_tokens": len(suffix),
                     "source_block_ids": list(source_blocks),
+                    "selected_page_indices": list(page_indices),
+                    "selected_block_ids": list(selected_blocks),
                     "ordinary_prefix_cached_tokens": int(ordinary.num_cached_tokens),
-                    "selected_kv_tokens": len(source),
+                    "selected_kv_tokens": selected_tokens,
+                    "source_position_base": len(source),
+                    "has_holes": selected_tokens < len(source),
+                    "selection_plan": plan.to_dict(),
                     "selected_text_reencoded_tokens": 0,
                     "physical_kv_copy": False,
                     "comparison": comparison,
@@ -136,20 +274,25 @@ def main() -> None:
 
     payload = {
         "schema_version": "paper4.5.agent-history-kv-gate.v1",
-        "probe": "vllm_same_resident_page_agent_kv_100",
+        "probe": "vllm_same_resident_page_agent_kv",
         "engine": "vllm-metal",
         "engine_version": getattr(vllm, "__version__", "unknown"),
         "engine_source_revision": args.engine_source_revision,
         "vllm_metal_distribution_version": importlib.metadata.version("vllm-metal"),
         "vllm_metal_module": str(Path(vllm_metal.__file__).resolve()),
         "native_artifact_source": args.native_artifact_source,
-        "exact_packaged_runtime": not args.artifact_overlay,
+        "exact_packaged_runtime": exact_packaged_runtime,
+        "packaging_qualification_failures": packaging_failures,
+        "package_provenance": {
+            "vllm": vllm_provenance,
+            "vllm_metal": metal_provenance,
+        },
         "python_version": platform.python_version(),
         "model": args.model,
         "gpu_memory_utilization": args.gpu_memory_utilization,
         "max_model_len": args.max_model_len,
         "trajectory": str(args.trajectory),
-        "retention_fraction": 1.0,
+        "retention_fraction": args.retention_fraction,
         "adaptor": "none",
         "same_resident_kv_fork": True,
         "page_aligned_prefix_with_wire_tail": True,
@@ -161,6 +304,11 @@ def main() -> None:
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["comparison"]["exact"]), None
         ),
+        "reference_condition": (
+            "ordinary full-history APC" if args.retention_fraction == 1
+            else "independent request borrowing identical selected resident pages at identical original positions"
+        ),
+        "sparse_turns": sum(int(row["has_holes"]) for row in rows),
         "known_constraint": "borrowed history is complete-page aligned; the final partial page remains in the ordinary request suffix",
         "rows": rows,
     }
@@ -168,6 +316,14 @@ def main() -> None:
         payload["all_exact"]
         and payload["zero_selected_text_reencoding"]
         and payload["zero_physical_kv_copy"]
+        and payload["exact_packaged_runtime"]
+    )
+    payload["sparse_position_gate_valid"] = bool(
+        args.retention_fraction < 1
+        and payload["all_exact"]
+        and payload["zero_selected_text_reencoding"]
+        and payload["zero_physical_kv_copy"]
+        and payload["sparse_turns"] > 0
         and payload["exact_packaged_runtime"]
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

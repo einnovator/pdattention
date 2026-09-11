@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import os
 import subprocess
 import sys
@@ -671,6 +672,43 @@ def test_partial_selection_keeps_assistant_observation_turns_atomic() -> None:
     assert transformed["messages"][-2:] == payload["messages"][-2:]
 
 
+def test_causal_bundle_budget_rounds_retention_up_instead_of_underfilling() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "investigate old source"},
+            {"role": "user", "content": " ".join(["large-observation"] * 20)},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, trace = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.5,
+        recent_completed_turns=0,
+        recent_source_turns=0,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+    )
+
+    metadata = transformed["pra"]["metadata"]
+    assert trace.physical_input_tokens_estimate >= math.ceil(
+        trace.logical_input_tokens_estimate * 0.5
+    )
+    assert metadata["selection_budget_policy"] == "causal_bundle_round_up_v1"
+    assert metadata["causal_round_up_tokens_estimate"] > 0
+    assert metadata["target_retention_fraction"] == 0.5
+    assert metadata["realized_retention_fraction"] >= 0.5
+    assert metadata["retention_rounded_up"] is True
+    assert {2, 3}.issubset({
+        row["metadata"]["message_index"]
+        for row in transformed["pra"]["resources"]
+    })
+
+
 def test_active_assistant_tool_tail_is_mandatory() -> None:
     payload = {
         "messages": [
@@ -792,11 +830,108 @@ def test_progress_spine_retention_counts_are_explicit_and_auditable() -> None:
         for row in transformed["pra"]["resources"]
     }
     assert resource_indices == set(range(1, 12))
+    policy = transformed["pra"]["metadata"]["retention_policy"]
+    assert policy["recent_completed_turns"] == 1
+    assert policy["recent_records_per_turn"] == 2
+    assert policy["recent_source_turns"] == 1
+    assert policy["recent_mutation_turns"] == 2
+    assert policy["recent_verification_turns"] == 2
+    assert policy["large_record_chunk_tokens"] == 32
+    assert policy["preserve_action_observation_pairs"] is True
+
+
+def test_request_metadata_controls_dense_turn_record_floor_and_chunk_size() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "call several tools"},
+            {"role": "tool", "content": "old observation one"},
+            {"role": "tool", "content": "old observation two"},
+            {"role": "tool", "content": "new observation three"},
+            {"role": "tool", "content": "new observation four"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "tool", "content": "active result"},
+        ],
+        "pra": {
+            "metadata": {
+                "caller_trace_id": "trace-17",
+                "retention_policy": {
+                    "recent_completed_turns": 1,
+                    "recent_records_per_turn": 2,
+                    "recent_source_turns": 0,
+                    "recent_mutation_turns": 0,
+                    "recent_verification_turns": 0,
+                    "large_record_chunk_tokens": 2,
+                    "max_records_per_turn_before_chunking": 3,
+                }
+            }
+        },
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+    )
+
+    resource_indices = {
+        row["metadata"]["message_index"]
+        for row in transformed["pra"]["resources"]
+    }
+    # The action is retained to preserve causality and the newest two records
+    # satisfy the per-turn floor; earlier observations remain selectable.
+    assert {2, 5, 6}.issubset(resource_indices)
     assert transformed["pra"]["metadata"]["retention_policy"] == {
         "recent_completed_turns": 1,
-        "recent_mutation_turns": 2,
-        "recent_verification_turns": 2,
+        "recent_records_per_turn": 2,
+        "recent_source_turns": 0,
+        "recent_mutation_turns": 0,
+        "recent_verification_turns": 0,
+        "large_record_chunk_tokens": 2,
+        "max_records_per_turn_before_chunking": 3,
+        "preserve_action_observation_pairs": True,
+        "causal_bundle_round_up": True,
     }
+    assert transformed["pra"]["metadata"]["caller_trace_id"] == "trace-17"
+    assert all(
+        len(row["text"].split()) <= 2
+        for row in transformed["pra"]["resources"]
+    )
+
+
+def test_hard_cap_policy_does_not_round_up_an_oversized_causal_bundle() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "alpha beta gamma delta"},
+            {"role": "tool", "content": "one two three four"},
+            {"role": "assistant", "content": "active"},
+            {"role": "tool", "content": "result"},
+        ],
+        "pra": {
+            "metadata": {
+                "retention_policy": {
+                    "recent_completed_turns": 0,
+                    "recent_source_turns": 0,
+                    "recent_mutation_turns": 0,
+                    "recent_verification_turns": 0,
+                    "causal_bundle_round_up": False,
+                }
+            }
+        },
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.5,
+    )
+
+    assert transformed["pra"]["metadata"]["selection_budget_policy"] == (
+        "causal_bundle_hard_cap_v1"
+    )
 
 
 def test_progress_spine_rejects_negative_retention_counts() -> None:
@@ -828,6 +963,7 @@ def test_zero_progress_retention_does_not_accidentally_pin_all_history() -> None
         mode=ContextTreatment.DIRECT_NATIVE_PRA,
         budget_fraction=0.01,
         recent_completed_turns=0,
+        recent_source_turns=0,
         recent_mutation_turns=0,
         recent_verification_turns=0,
     )
@@ -836,6 +972,39 @@ def test_zero_progress_retention_does_not_accidentally_pin_all_history() -> None
         row["metadata"]["message_index"]
         for row in transformed["pra"]["resources"]
     ] == [1]
+
+
+def test_latest_source_evidence_turn_is_pinned_beyond_recency_window() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "```mswea_bash_command\ncat source.py\n```"},
+            {"role": "user", "content": "def target(): return old"},
+            {"role": "assistant", "content": "python -c 'import missing_dependency'"},
+            {"role": "user", "content": "ModuleNotFoundError"},
+            {"role": "assistant", "content": "inspect environment"},
+            {"role": "user", "content": "environment result"},
+            {"role": "assistant", "content": "active action"},
+            {"role": "user", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+        recent_completed_turns=2,
+        recent_source_turns=1,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+    )
+
+    resource_indices = {
+        row["metadata"]["message_index"]
+        for row in transformed["pra"]["resources"]
+    }
+    assert {2, 3}.issubset(resource_indices)
 
 
 def test_causal_chat_validation_rejects_adjacent_assistant_messages() -> None:
@@ -2698,6 +2867,8 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
 
 
 def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> None:
+    captured_payloads = []
+
     class Target(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             encoded = json.dumps({"data": [{"id": "model"}]}).encode()
@@ -2708,7 +2879,9 @@ def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> Non
             self.wfile.write(encoded)
 
         def do_POST(self) -> None:  # noqa: N802
-            self.rfile.read(int(self.headers["Content-Length"]))
+            captured_payloads.append(json.loads(
+                self.rfile.read(int(self.headers["Content-Length"]))
+            ))
             encoded = json.dumps({
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}]
             }).encode()
@@ -2742,6 +2915,7 @@ def test_local_treatment_proxy_is_preflighted_after_start(tmp_path: Path) -> Non
         result = gateway_preflight(args, base_url=proxy_url)
         assert result["gateway_mode"] == "G00"
         assert result["generation_probe"] == "passed"
+        assert "pra" not in captured_payloads[0]
     finally:
         proxy.close()
         target.shutdown()

@@ -26,6 +26,58 @@ The runtime keeps selection and physical execution separate. It can freeze
 selected identities, plan model-specific materialization, and inspect every
 lifecycle decision without changing task semantics.
 
+## Request-scoped agent-history retention
+
+Agent integrations can override history retention per request through typed
+metadata. The same mapping is preserved by `PRAWireRequest.to_openai()` under
+`pra.metadata.retention_policy`:
+
+```python
+from pra_hf import PRAAgentRetentionPolicy, PRAWireRequest
+
+request = PRAWireRequest(
+    model="Qwen/Qwen3-1.7B",
+    messages=tuple(messages),
+    session_id="case-42",
+    metadata={"retention_policy": PRAAgentRetentionPolicy(
+        recent_completed_turns=3,
+        recent_records_per_turn=2,
+        recent_source_turns=1,
+        recent_mutation_turns=1,
+        recent_verification_turns=1,
+        large_record_chunk_tokens=2048,
+        max_records_per_turn_before_chunking=8,
+        causal_bundle_round_up=True,
+        preserve_action_observation_pairs=True,
+    )},
+)
+payload = request.to_openai()
+```
+
+Agent integrations may attach the same typed value directly to
+`AgentTurnContext(retention_policy=policy)`. `NegotiatedRemoteBackend` carries
+it through PRA full and delta transports; typed context policy takes precedence
+over an untyped `metadata["retention_policy"]` value on that turn.
+
+`recent_completed_turns` protects at least the newest `N` full causal turns.
+For earlier or oversized turns, `recent_records_per_turn` protects at least the
+newest `M` logical records. Assistant tool calls and their observations remain
+one causal bundle, so satisfying either minimum may keep additional records.
+
+Large tool observations are split within the record at natural structure—files,
+test cases, stack frames, diff hunks, then lines—before token fallback. A turn
+with more than `max_records_per_turn_before_chunking` records may be subdivided
+inside its protected tail, but its child spans retain the original record and
+causal-group identities. Short records stay intact, and overlap neither crosses
+record boundaries nor counts twice against the budget.
+
+When `causal_bundle_round_up` is enabled, requested retention is a floor. The
+trace distinguishes `target_retention_fraction` from
+`realized_retention_fraction` and sets `retention_rounded_up` when preserving a
+whole turn, pair, or record requires extra tokens. Compare treatments using the
+realized value and selected identities; do not infer exact materialization from
+the requested percentage alone.
+
 ## Subagent context graphs
 
 `SubagentHarness` wraps an existing parent/child agent loop; it does not replace

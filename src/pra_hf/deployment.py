@@ -190,6 +190,52 @@ class PRAWireBudget:
 
 
 @dataclass(frozen=True)
+class PRAAgentRetentionPolicy:
+    """Request-scoped causal-history retention and chunking controls."""
+
+    recent_completed_turns: int = 2
+    recent_records_per_turn: int = 2
+    recent_source_turns: int = 1
+    recent_mutation_turns: int = 1
+    recent_verification_turns: int = 1
+    large_record_chunk_tokens: int = 256
+    max_records_per_turn_before_chunking: int = 8
+    preserve_action_observation_pairs: bool = True
+    causal_bundle_round_up: bool = True
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.recent_completed_turns,
+            self.recent_records_per_turn,
+            self.recent_source_turns,
+            self.recent_mutation_turns,
+            self.recent_verification_turns,
+        )
+        if any(value < 0 for value in counts):
+            raise ValueError("PRA agent retention counts must be non-negative.")
+        if self.large_record_chunk_tokens <= 0:
+            raise ValueError("large_record_chunk_tokens must be positive.")
+        if self.max_records_per_turn_before_chunking <= 0:
+            raise ValueError("max_records_per_turn_before_chunking must be positive.")
+        if self.max_records_per_turn_before_chunking < self.recent_records_per_turn:
+            raise ValueError(
+                "max_records_per_turn_before_chunking must be at least "
+                "recent_records_per_turn."
+            )
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any] | "PRAAgentRetentionPolicy",
+    ) -> "PRAAgentRetentionPolicy":
+        if isinstance(value, cls):
+            return value
+        return cls(**dict(value))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class PRAWireRequest:
     """Serializable request shared by harness, gateway, and engine adapters."""
 
@@ -221,8 +267,15 @@ class PRAWireRequest:
     def __post_init__(self) -> None:
         if not self.model or not self.messages:
             raise ValueError("A PRA request requires a model and at least one message.")
-        if any(key.lower() in {"api_key", "password", "token", "secret"} for key in self.metadata):
+        metadata = dict(self.metadata)
+        if any(key.lower() in {"api_key", "password", "token", "secret"} for key in metadata):
             raise ValueError("Credentials must not be stored in PRA request metadata.")
+        retention = metadata.get("retention_policy")
+        if retention is not None:
+            metadata["retention_policy"] = PRAAgentRetentionPolicy.from_mapping(
+                retention
+            ).to_dict()
+        object.__setattr__(self, "metadata", metadata)
         for resource in self.resources:
             owner = resource.metadata.get("tenant_id")
             if owner is not None and str(owner) != self.tenant_id:

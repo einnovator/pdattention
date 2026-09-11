@@ -21,7 +21,12 @@ from pra_hf.agent_transport import (
     wire_resource_identity,
 )
 from pra_hf.context_records import ContextRecord, RecordType, RecordView, RecordViewName
-from pra_hf.deployment import PRAEngineCapabilities, PRAEngineResult, PRAWireRequest
+from pra_hf.deployment import (
+    PRAAgentRetentionPolicy,
+    PRAEngineCapabilities,
+    PRAEngineResult,
+    PRAWireRequest,
+)
 from pra_hf.gateway import PRAGateway, create_gateway_server
 from pra_hf.gateway_session import HistoryMode, ResourceOperation
 
@@ -82,7 +87,7 @@ def _record(version: str = "v1", body: str = "alpha evidence") -> ContextRecord:
     )
 
 
-def _turn(*, messages=None, record=None) -> AgentTurnContext:
+def _turn(*, messages=None, record=None, retention_policy=None) -> AgentTurnContext:
     value = record or _record()
     return AgentTurnContext(
         messages=tuple(messages or ({"role": "user", "content": "question"},)),
@@ -90,6 +95,7 @@ def _turn(*, messages=None, record=None) -> AgentTurnContext:
         task_id="task-1",
         task_metadata={"status": "active"},
         selected_record_ids=(value.record_id,),
+        retention_policy=retention_policy,
     )
 
 
@@ -196,6 +202,30 @@ def test_auto_to_g11_preserves_resources_and_sends_body_only_on_change() -> None
         resynced = adapter.requests[-1]
         assert resynced.history_mode == HistoryMode.FULL
         assert resynced.resource_ops[0].operation == ResourceOperation.ADD
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_agent_sdk_sends_typed_request_retention_policy() -> None:
+    adapter = _Adapter(pra=True)
+    server, thread, endpoint = _serve(PRAGateway(adapter, mode="G11"))
+    try:
+        backend = NegotiatedRemoteBackend(endpoint, "model", transport="pra")
+        policy = PRAAgentRetentionPolicy(
+            recent_completed_turns=4,
+            recent_records_per_turn=3,
+            large_record_chunk_tokens=512,
+            max_records_per_turn_before_chunking=9,
+        )
+        backend.generate_turn(
+            _turn(retention_policy=policy),
+            tenant_id="tenant-a",
+            session_id="session-retention",
+        )
+
+        assert adapter.requests[0].metadata["retention_policy"] == policy.to_dict()
     finally:
         server.shutdown()
         server.server_close()

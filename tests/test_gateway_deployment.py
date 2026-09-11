@@ -14,6 +14,7 @@ from click.testing import CliRunner
 from pra_hf.cli import cli as hf_cli
 from pra_hf.deployment import (
     HuggingFaceEngineAdapter,
+    PRAAgentRetentionPolicy,
     PRAEngineCapabilities,
     PRAEngineResult,
     PRAGatewayMode,
@@ -170,6 +171,43 @@ def test_g00_openai_round_trip_preserves_generation_options() -> None:
     assert forwarded == {**payload, "stream": False}
     assert request.openai_fields["temperature"] == 0
     assert "openai_fields" not in request.to_openai()["pra"]
+
+
+def test_agent_retention_policy_round_trips_as_typed_request_metadata() -> None:
+    payload = {
+        "model": "offline/model",
+        "messages": [{"role": "user", "content": "question"}],
+        "pra": {
+            "metadata": {
+                "retention_policy": {
+                    "recent_completed_turns": 4,
+                    "recent_records_per_turn": 3,
+                    "large_record_chunk_tokens": 512,
+                    "max_records_per_turn_before_chunking": 9,
+                }
+            }
+        },
+    }
+
+    request = PRAWireRequest.from_openai(payload)
+    policy = request.metadata["retention_policy"]
+
+    assert policy == {
+        **PRAAgentRetentionPolicy().to_dict(),
+        "recent_completed_turns": 4,
+        "recent_records_per_turn": 3,
+        "large_record_chunk_tokens": 512,
+        "max_records_per_turn_before_chunking": 9,
+    }
+    assert request.to_openai()["pra"]["metadata"]["retention_policy"] == policy
+
+
+def test_agent_retention_policy_rejects_impossible_record_floor() -> None:
+    with pytest.raises(ValueError, match="must be at least recent_records_per_turn"):
+        PRAAgentRetentionPolicy(
+            recent_records_per_turn=4,
+            max_records_per_turn_before_chunking=3,
+        )
 
 
 def test_openai_adapter_can_pin_backend_model_for_provider_prefixed_clients() -> None:

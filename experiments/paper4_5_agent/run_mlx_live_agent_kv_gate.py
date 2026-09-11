@@ -165,6 +165,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "zero_selected_text_reencoding": all(
             row["selected_text_reencoded_tokens"] == 0 for row in rows
         ),
+        "zero_physical_kv_copy": all(
+            not row["physical_kv_copy"] for row in rows
+        ),
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["token_exact"]), None
         ),

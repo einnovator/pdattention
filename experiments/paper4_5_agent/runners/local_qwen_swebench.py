@@ -45,8 +45,24 @@ def main() -> None:
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--recent-completed-turns", type=int, default=2)
+    parser.add_argument("--recent-records-per-turn", type=int, default=2)
+    parser.add_argument("--recent-source-turns", type=int, default=1)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
+    parser.add_argument("--large-record-chunk-tokens", type=int, default=256)
+    parser.add_argument(
+        "--max-records-per-turn-before-chunking", type=int, default=8,
+    )
+    parser.add_argument(
+        "--preserve-action-observation-pairs",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--causal-bundle-round-up",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument(
         "--consumption-policy",
         choices=CONSUMPTION_POLICIES,
@@ -117,8 +133,16 @@ def main() -> None:
         mode=options.mode,
         budget_fraction=options.budget_fraction,
         recent_completed_turns=options.recent_completed_turns,
+        recent_records_per_turn=options.recent_records_per_turn,
+        recent_source_turns=options.recent_source_turns,
         recent_mutation_turns=options.recent_mutation_turns,
         recent_verification_turns=options.recent_verification_turns,
+        large_record_chunk_tokens=options.large_record_chunk_tokens,
+        max_records_per_turn_before_chunking=(
+            options.max_records_per_turn_before_chunking
+        ),
+        preserve_action_observation_pairs=options.preserve_action_observation_pairs,
+        causal_bundle_round_up=options.causal_bundle_round_up,
         consumption_policy=options.consumption_policy,
         workers=1,
         grader_workers=2,

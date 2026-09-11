@@ -3340,6 +3340,24 @@ it exposes 248,815 selected resident K/V tokens, re-encodes no selected history,
 and copies no K/V.  As on task 03, end-task success therefore conceals a large
 interaction-efficiency regression; contended wall time is provenance only.
 
+The first-divergence audit also rules out ordinary sampling temperature as the
+proximate explanation: both task-03 and task-04 arms sent
+\texttt{temperature=0}.  At the request producing the first changed executed
+action, both nominal-90\% selectors omit exactly logical messages 4--5: the
+assistant command that displayed the target source file and its full-source
+observation.  Because the old whole-bundle packer treated 90\% as a ceiling,
+the 1,151- and 1,152-token bundles exceed their remaining budgets by only 224
+and 167 tokens but are dropped completely.  Realized retention collapses to
+62.01\% for task 03 and 57.72\% for task 04.  The corrected floor policy keeps
+the bundle and realizes 97.39\% and 96.15\%, respectively.  In task 03 the
+request-6 logical prompt is byte-identical to the existing full-history prompt;
+in task 04 response wording has already diverged at request 5 although the
+executed command is unchanged.  Thus the common omission is a strong
+observational localization, not yet a causal result: a restore-only frozen
+generation remains required.  A target-bearing 256-word child span exists in
+each large observation, motivating hierarchical within-record selection rather
+than either dropping or retaining the entire source view.
+
 The next expansion is deliberately frozen.  HF, MLX, vLLM, and SGLang must
 complete the same engine-qualification ladder already required of llama.cpp.
 Its first rung requires that the ordinary and PRA continuations fork from the
@@ -3356,15 +3374,44 @@ On the frozen task-02 agent transcript, Transformers 5.17/PyTorch 2.14 with
 Qwen2.5-0.5B-Instruct FP16 on MPS and MLX-LM 0.31.3 with Qwen3-0.6B 4-bit each
 match the ordinary continuation on all 10 tested turns with zero maximum logit
 delta.  Both paths select the complete resident cache as a view, report zero
-selected-history re-encoding, and copy no K/V.  These are 100\% construction
-gates, not task-quality results: both remain provisional until sparse
-original-position selection and session lifecycle pass.  The vLLM-Metal bridge
-also matches all 10 turns while borrowing scheduler-owned complete prefix pages:
-selected history is not re-encoded and the pages are not copied.  This result is
-provisional because Big Mac lacks full Xcode: the run loads source revision
-\texttt{14705ad} against vLLM 0.28.0 but supplies its native binaries from the
-vLLM-Metal 0.29.0 release.  Exact packaged-build replication, partial-page
-policy, sparse selection, and lifecycle still block promotion.
+selected-history re-encoding, and copy no K/V.  A subsequent requested-90\%
+sparse-position probe supplies stronger but deliberately separate evidence.
+Across seven eligible turns per engine, HF and MLX both match an independent
+reference consuming the identical selected K/V and original source positions:
+7/7 exact token sequences and zero maximum logit delta, with no selected-text
+re-encoding.  These first diagnostics used the superseded ceiling packer:
+whole causal-group removal realizes selected/source ratios from 0.671 to 0.944
+rather than treating 0.9 as a floor.  Both implementations currently
+concatenate disjoint K/V tensors, however, so all seven sparse turns incur a
+physical K/V copy.  They clear semantic sparse-position correctness, not the
+zero-copy or lifecycle gates, and must be rerun with the corrected floor
+planner before cross-engine retention ratios are compared.
+
+The corrected vLLM-Metal bridge now runs matched release packages: vLLM
+0.29.0+cpu and vLLM-Metal 0.29.0, with native shared-library and Metal-library
+hashes captured from the active environment and source revision
+\texttt{73908058}.  Full retention matches 10/10 turns.  At requested 90\%, all
+seven eligible sparse turns match an independent request borrowing the same
+scheduler-owned pages at the same original position extent.  Logical realized
+retention ranges from 90.36\% to 95.68\% (mean 92.92\%); complete-page physical
+retention ranges from 90.48\% to 96.03\% (mean 93.15\%).  The bridge re-encodes
+no selected-history tokens and copies no K/V.  This removes the earlier mixed-
+package blocker; explicit cancellation, eviction, and shared-page lifetime
+tests still block engine promotion.  A parallel vLLM 0.28 CUDA gate on an RTX
+5060 also passes its first frozen sparse turn: 3,600 of 3,792 source K/V tokens
+(94.94\% realized for a 90\% floor), with a genuine positional hole and suffix
+position base 3,792, matches 1/1 against a reference borrowing the identical
+resident pages and re-encodes no selected text.  Initial lossless page gathering
+copies 81.1~MB; a simultaneous second borrower is a shared-resident hit with
+zero host-to-device bytes.  This is bounded mechanism evidence, not engine
+qualification.  The explicit HOT-eviction gate reconciles the two deferred
+borrowers against an authoritative empty scheduler snapshot, returns all 225
+pages (free pool 159 to 384), reloads the exact same block IDs, reproduces the
+tokens, and returns the pool to 384 again after final eviction.  The need for
+reconciliation is itself an integration boundary: vLLM 0.28's offline worker
+does not deliver immediate finish callbacks to this connector.  Scheduler-
+integrated cancellation, stale-fork, offload, and multi-turn lifecycle tests
+remain open.
 
 SGLang-MLX likewise now matches all 10 turns with zero selected-history
 re-encoding and zero K/V copy.  This gate exposed a comparison bug first: an
@@ -3372,9 +3419,24 @@ ordinary full re-prefill matched only 7/10 continuations and diverged after 9 or
 more generated tokens in the other three.  Continuing the ordinary fork from
 the captured source request, while pinning that source owner until both forks
 complete, restores 10/10 exactness.  Thus the 7/10 result diagnoses
-rematerialization drift rather than selected-K/V corruption.  SGLang remains
-provisional until the same contract passes with radix-prefix interoperation,
-sparse original-position selection, and lifecycle controls.
+rematerialization drift rather than selected-K/V corruption.  With RadixCache
+enabled, its requested-90\% sparse probe now also matches 7/7 same-subset
+reference continuations at original positions and performs no selected-text
+re-encoding.  Like the HF and MLX sparse implementations, it physically
+concatenates the selected K/V on all seven turns.  SGLang therefore clears the
+semantic sparse-position and radix-interoperation probe, but remains
+provisional for zero-copy materialization and lifecycle controls.
+
+The agent SDK now carries a typed, request-scoped retention contract under
+\path{pra.metadata.retention_policy}.  It controls the minimum number of
+recent complete turns, the minimum newest records retained inside dense turns,
+separate source/mutation/verification recency floors, the oversized-record
+chunk target, the dense-turn threshold, causal action--observation pairing, and
+causal-bundle round-up.  Short records remain intact; large tool observations
+split at natural file, test, stack, diff-hunk, or line boundaries; child spans
+retain stable parent-record and causal-group identities.  This makes target and
+realized retention distinct protocol fields rather than undocumented proxy
+behavior.
 
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
@@ -3414,8 +3476,16 @@ the replacement selected-live-K/V mechanism.
 
 We repaired that policy with a v4 \emph{progress spine}.  In addition to the
 pinned task and active tail, it pins the two latest completed causal turns and
-the latest mutation and verification turns, queries retrieval with both the
-task and active state, and restores all records to causal presentation order.
+the latest source-content, mutation, and verification turns, queries retrieval
+with both the task and active state, and restores all records to causal
+presentation order.  Source-content means the latest causal bundle whose
+command actually displays file contents (for example \texttt{cat} or
+\texttt{sed -n}); a later path-only \texttt{find}/\texttt{grep} discovery does
+not displace that evidence.  This new count is exposed and recorded as
+\texttt{recent\_source\_turns}; applying value 1 to the frozen task-03 and
+task-04 request-6 payloads retains messages 4--5 in both cases.  Autonomous and
+one-bundle counterfactual replays remain required before attributing recovery
+to this change.
 All 31 baseline request prefixes again pass the physical Qwen chat template at
 75\%, 50\%, and 25\%.  On the same admitted task, v4 at 75\% resolves 1/1:
 the first four commands remain exact, action 5 merely takes a narrower source

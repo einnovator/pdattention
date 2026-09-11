@@ -19,6 +19,7 @@ from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 from pra_hf.large_record_index import LargeRecordIndex, LargeRecordSearchPolicy
+from pra_hf.deployment import PRAAgentRetentionPolicy
 
 
 _TOKEN = re.compile(r"\S+")
@@ -119,25 +120,72 @@ def transform_chat_payload(
     mode: ContextTreatment | str,
     budget_fraction: float,
     request_index: int = 0,
-    segment_tokens: int = 256,
-    recent_completed_turns: int = 2,
-    recent_mutation_turns: int = 1,
-    recent_verification_turns: int = 1,
+    segment_tokens: int | None = None,
+    recent_completed_turns: int | None = None,
+    recent_records_per_turn: int | None = None,
+    recent_source_turns: int | None = None,
+    recent_mutation_turns: int | None = None,
+    recent_verification_turns: int | None = None,
+    max_records_per_turn_before_chunking: int | None = None,
+    preserve_action_observation_pairs: bool | None = None,
+    causal_bundle_round_up: bool | None = None,
     frozen_selection: Sequence[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, Any], TreatmentTrace]:
     """Apply a matched budget, optionally replaying an exact recorded selection."""
 
     mode = ContextTreatment(mode)
+    request_envelope = payload.get("pra") or {}
+    request_metadata = (
+        request_envelope.get("metadata") or {}
+        if isinstance(request_envelope, Mapping) else {}
+    )
+    request_retention = request_metadata.get("retention_policy") or {}
+    policy = PRAAgentRetentionPolicy.from_mapping(request_retention)
+    policy = PRAAgentRetentionPolicy(
+        recent_completed_turns=(
+            policy.recent_completed_turns
+            if recent_completed_turns is None else recent_completed_turns
+        ),
+        recent_records_per_turn=(
+            policy.recent_records_per_turn
+            if recent_records_per_turn is None else recent_records_per_turn
+        ),
+        recent_source_turns=(
+            policy.recent_source_turns
+            if recent_source_turns is None else recent_source_turns
+        ),
+        recent_mutation_turns=(
+            policy.recent_mutation_turns
+            if recent_mutation_turns is None else recent_mutation_turns
+        ),
+        recent_verification_turns=(
+            policy.recent_verification_turns
+            if recent_verification_turns is None else recent_verification_turns
+        ),
+        large_record_chunk_tokens=(
+            policy.large_record_chunk_tokens
+            if segment_tokens is None else segment_tokens
+        ),
+        max_records_per_turn_before_chunking=(
+            policy.max_records_per_turn_before_chunking
+            if max_records_per_turn_before_chunking is None
+            else max_records_per_turn_before_chunking
+        ),
+        preserve_action_observation_pairs=(
+            policy.preserve_action_observation_pairs
+            if preserve_action_observation_pairs is None
+            else preserve_action_observation_pairs
+        ),
+        causal_bundle_round_up=(
+            policy.causal_bundle_round_up
+            if causal_bundle_round_up is None else causal_bundle_round_up
+        ),
+    )
+    segment_tokens = policy.large_record_chunk_tokens
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
-    retention_counts = (
-        recent_completed_turns, recent_mutation_turns,
-        recent_verification_turns,
-    )
-    if any(count < 0 for count in retention_counts):
-        raise ValueError("retained turn counts must be non-negative")
     transformed = dict(payload)
     messages = [dict(row) for row in payload.get("messages", ())]
     if not messages:
@@ -156,9 +204,15 @@ def transform_chat_payload(
     task_indices = _pinned_task_indices(messages, mandatory_indices)
     progress_indices = _progress_pinned_indices(
         messages, mandatory_indices | task_indices,
-        recent_turns=recent_completed_turns,
-        mutation_turns=recent_mutation_turns,
-        verification_turns=recent_verification_turns,
+        recent_turns=policy.recent_completed_turns,
+        recent_records_per_turn=policy.recent_records_per_turn,
+        source_turns=policy.recent_source_turns,
+        mutation_turns=policy.recent_mutation_turns,
+        verification_turns=policy.recent_verification_turns,
+        max_records_per_turn_before_chunking=(
+            policy.max_records_per_turn_before_chunking
+        ),
+        preserve_action_observation_pairs=policy.preserve_action_observation_pairs,
     )
     pinned_indices = task_indices | progress_indices
     mandatory_tokens = sum(_count_tokens(messages[index].get("content")) for index in mandatory_indices)
@@ -191,14 +245,20 @@ def transform_chat_payload(
     else:
         query = _task_aware_query(messages, task_indices, mandatory_indices)
         pinned_segments = _segments(messages, sorted(pinned_indices), segment_tokens)
-        bundles = _turn_bundles(messages, candidate_indices, segment_tokens)
+        bundles = _turn_bundles(
+            messages, candidate_indices, segment_tokens,
+            preserve_action_observation_pairs=policy.preserve_action_observation_pairs,
+        )
         segments = [segment for bundle in bundles for segment in bundle]
         selected_texts = (
             list(frozen_selection)
             if frozen_selection is not None
             else _sort_segments([
                 *pinned_segments,
-                *_select_turn_bundles(bundles, query, available_tokens),
+                *_select_turn_bundles(
+                    bundles, query, available_tokens,
+                    round_up=policy.causal_bundle_round_up,
+                ),
             ])
         )
         if frozen_selection is not None:
@@ -236,11 +296,6 @@ def transform_chat_payload(
                     + ", ".join(missing_pinned)
                 )
         selected_tokens = sum(_count_tokens(text) for _, text in selected_texts)
-        if selected_tokens > resource_budget:
-            raise ValueError(
-                "frozen selection exceeds the matched request context budget: "
-                f"{selected_tokens} > {resource_budget}"
-            )
         transformed["messages"] = [messages[index] for index in sorted(mandatory_indices)]
         resources = [
             {
@@ -268,23 +323,40 @@ def transform_chat_payload(
             "resources": resources,
             "budget": {
                 "max_resources": max(1, len(resources)),
-                "max_selected_tokens": max(1, resource_budget),
+                # Retention is a floor at causal-bundle granularity.  Expose
+                # the realized rounded allowance so the engine does not reject
+                # the final indivisible bundle as an over-budget request.
+                "max_selected_tokens": max(1, selected_tokens),
             },
             "allow_text_fallback": not native_requested,
             "required_capabilities": ["logical_refs", "native_kv"] if native_requested else [],
             "pra_policy": {"profile": "swebench-balanced-v1"},
             "metadata": {
+                **dict(envelope.get("metadata") or {}),
                 "requested_mode": "native-memory" if native_requested else "selected-context",
                 "connection": (
                     "direct" if mode is ContextTreatment.DIRECT_NATIVE_PRA else "gateway"
                 ),
                 "benchmark_fairness": "agent-visible-messages-only",
                 "budget_fraction": float(budget_fraction),
-                "retention_policy": {
-                    "recent_completed_turns": recent_completed_turns,
-                    "recent_mutation_turns": recent_mutation_turns,
-                    "recent_verification_turns": recent_verification_turns,
-                },
+                "target_retention_fraction": float(budget_fraction),
+                "realized_retention_fraction": (
+                    (mandatory_tokens + selected_tokens) / logical_tokens
+                    if logical_tokens else 1.0
+                ),
+                "retention_rounded_up": (
+                    mandatory_tokens + selected_tokens > target_tokens
+                ),
+                "selection_budget_policy": (
+                    "causal_bundle_round_up_v1"
+                    if policy.causal_bundle_round_up
+                    else "causal_bundle_hard_cap_v1"
+                ),
+                "target_physical_tokens_estimate": target_tokens,
+                "causal_round_up_tokens_estimate": max(
+                    0, mandatory_tokens + selected_tokens - target_tokens,
+                ),
+                "retention_policy": policy.to_dict(),
                 # Moving completed chat turns from the inline message list to
                 # typed resources is an intentional representation change,
                 # not a destructive rewrite of the logical agent history.
@@ -394,6 +466,14 @@ _VERIFICATION = re.compile(
     r"(?:\bpytest\b|\btox\b|\bmake\s+test\b|\bpython(?:3)?\s+-m\s+test|"
     r"\bgit\s+diff\b|\bpatch\.txt\b|COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT)",
     re.IGNORECASE,
+)
+_SOURCE_EVIDENCE = re.compile(
+    r"(?:^|&&|;|\|\|)\s*(?:(?:cd|pushd)\s+[^;&|]+\s*&&\s*)?"
+    # Pin the latest command that exposed source contents. Broad discovery
+    # commands (find/grep/rg) remain retrieval candidates: otherwise a later
+    # path-only search can evict the actual source view it depends on.
+    r"(?:cat|head|tail|sed\s+-n)\b",
+    re.IGNORECASE | re.MULTILINE,
 )
 _COMMAND_BLOCK = re.compile(r"```(?:mswea_bash_command)?\s*\n(.*?)\n```", re.DOTALL)
 _FOCUSED_TEST = re.compile(
@@ -589,27 +669,47 @@ def enforce_consumption_action(
 def _progress_pinned_indices(
     messages: Sequence[Mapping[str, Any]], excluded_indices: set[int],
     *, recent_turns: int = 2,
+    recent_records_per_turn: int = 2,
+    source_turns: int = 1,
     mutation_turns: int = 1,
     verification_turns: int = 1,
+    max_records_per_turn_before_chunking: int = 8,
+    preserve_action_observation_pairs: bool = True,
 ) -> set[int]:
     """Keep a small causal progress spine independently of lexical retrieval.
 
     Agent history is state, not a document collection. The latest two completed
     action/observation turns preserve local plan continuity. The most recent
-    mutation and verification turns preserve durable task progress even after
-    they leave that recency window.
+    source-evidence, mutation, and verification turns preserve durable task
+    progress even after they leave that recency window.
     """
 
     candidates = [
         index for index in range(len(messages)) if index not in excluded_indices
     ]
     bundles = _turn_index_bundles(messages, candidates)
-    pinned = {
-        index
-        for bundle in (bundles[-recent_turns:] if recent_turns else ())
-        for index in bundle
-    }
+    pinned: set[int] = set()
+
+    def pin_bundle(bundle: Sequence[int]) -> None:
+        retained = list(bundle)
+        if len(retained) > max_records_per_turn_before_chunking:
+            retained = retained[-recent_records_per_turn:] if recent_records_per_turn else []
+            if preserve_action_observation_pairs and bundle:
+                action_index = next(
+                    (
+                        index for index in bundle
+                        if str(messages[index].get("role")) == "assistant"
+                    ),
+                    None,
+                )
+                if action_index is not None and retained:
+                    retained.insert(0, action_index)
+        pinned.update(retained)
+
+    for bundle in (bundles[-recent_turns:] if recent_turns else ()):
+        pin_bundle(bundle)
     for pattern, keep in (
+        (_SOURCE_EVIDENCE, source_turns),
         (_MUTATION, mutation_turns),
         (_VERIFICATION, verification_turns),
     ):
@@ -624,7 +724,7 @@ def _progress_pinned_indices(
             )
         ]
         for bundle in matched[-keep:]:
-            pinned.update(bundle)
+            pin_bundle(bundle)
     return pinned
 
 
@@ -740,6 +840,8 @@ def _turn_bundles(
     messages: Sequence[Mapping[str, Any]],
     candidate_indices: Sequence[int],
     segment_tokens: int,
+    *,
+    preserve_action_observation_pairs: bool = True,
 ) -> list[list[tuple[str, str]]]:
     """Return causal selection units for an agent transcript.
 
@@ -752,7 +854,11 @@ def _turn_bundles(
     absent from mini-swe-agent's logical transcript.
     """
 
-    grouped = _turn_index_bundles(messages, candidate_indices)
+    grouped = (
+        _turn_index_bundles(messages, candidate_indices)
+        if preserve_action_observation_pairs
+        else [[index] for index in sorted(dict.fromkeys(candidate_indices))]
+    )
     bundles: list[list[tuple[str, str]]] = []
     for indices_in_bundle in grouped:
         bundle = _segments(messages, indices_in_bundle, segment_tokens)
@@ -852,8 +958,9 @@ def _causal_group_id(
 
 def _select_turn_bundles(
     bundles: Sequence[Sequence[tuple[str, str]]], query: str, budget: int,
+    *, round_up: bool = True,
 ) -> list[tuple[str, str]]:
-    """Rank trajectory turns while admitting every segment of a chosen turn."""
+    """Rank whole turns and round the retention floor up to the next bundle."""
 
     if not bundles or budget <= 0:
         return []
@@ -864,23 +971,19 @@ def _select_turn_bundles(
         query, policy=LargeRecordSearchPolicy.HYBRID,
         top_k=len(bundles), candidate_limit=len(bundles),
     )
+    ranked = [int(hit.unit_id.split(":", 1)[1]) for hit in result.hits]
+    ranked.extend(range(len(bundles) - 1, -1, -1))
     selected: set[int] = set()
     remaining = budget
-    for hit in result.hits:
-        bundle_index = int(hit.unit_id.split(":", 1)[1])
-        cost = costs[bundle_index]
-        if cost <= remaining:
-            selected.add(bundle_index)
-            remaining -= cost
-
-    # Preserve the conservative recency fallback, but at turn granularity.
-    for bundle_index in range(len(bundles) - 1, -1, -1):
+    for bundle_index in ranked:
         if bundle_index in selected:
             continue
-        cost = costs[bundle_index]
-        if cost <= remaining:
-            selected.add(bundle_index)
-            remaining -= cost
+        if not round_up and costs[bundle_index] > remaining:
+            continue
+        selected.add(bundle_index)
+        remaining -= costs[bundle_index]
+        if remaining <= 0:
+            break
 
     return [
         segment
@@ -954,8 +1057,14 @@ class TreatmentProxy:
         interaction_trace_path: Path | None = None,
         request_overrides: Mapping[str, Any] | None = None,
         recent_completed_turns: int = 2,
+        recent_records_per_turn: int = 2,
+        recent_source_turns: int = 1,
         recent_mutation_turns: int = 1,
         recent_verification_turns: int = 1,
+        large_record_chunk_tokens: int = 256,
+        max_records_per_turn_before_chunking: int = 8,
+        preserve_action_observation_pairs: bool = True,
+        causal_bundle_round_up: bool = True,
         consumption_policy: str = "standard",
     ) -> None:
         if selection_record_path is not None and selection_replay_path is not None:
@@ -968,9 +1077,17 @@ class TreatmentProxy:
         self.selection_replay_path = selection_replay_path
         self.interaction_trace_path = interaction_trace_path
         self.request_overrides = dict(request_overrides or {})
-        self.recent_completed_turns = recent_completed_turns
-        self.recent_mutation_turns = recent_mutation_turns
-        self.recent_verification_turns = recent_verification_turns
+        self.retention_policy = PRAAgentRetentionPolicy(
+            recent_completed_turns=recent_completed_turns,
+            recent_records_per_turn=recent_records_per_turn,
+            recent_source_turns=recent_source_turns,
+            recent_mutation_turns=recent_mutation_turns,
+            recent_verification_turns=recent_verification_turns,
+            large_record_chunk_tokens=large_record_chunk_tokens,
+            max_records_per_turn_before_chunking=max_records_per_turn_before_chunking,
+            preserve_action_observation_pairs=preserve_action_observation_pairs,
+            causal_bundle_round_up=causal_bundle_round_up,
+        )
         if consumption_policy not in CONSUMPTION_POLICIES:
             raise ValueError(
                 f"unknown consumption policy {consumption_policy!r}; "
@@ -1066,6 +1183,13 @@ class TreatmentProxy:
         if handler.command == "POST" and urlparse(handler.path).path == "/v1/chat/completions":
             payload = json.loads(body.decode("utf-8"))
             payload.update(self.request_overrides)
+            envelope = dict(payload.get("pra") or {})
+            metadata = dict(envelope.get("metadata") or {})
+            requested_retention = dict(metadata.get("retention_policy") or {})
+            effective_retention = PRAAgentRetentionPolicy.from_mapping({
+                **self.retention_policy.to_dict(),
+                **requested_retention,
+            })
             logical_payload = json.loads(json.dumps(payload, default=str))
             with self._lock:
                 self._request_index += 1
@@ -1091,9 +1215,19 @@ class TreatmentProxy:
             payload, trace = transform_chat_payload(
                 payload, mode=self.mode, budget_fraction=self.budget_fraction,
                 request_index=request_index, frozen_selection=frozen,
-                recent_completed_turns=self.recent_completed_turns,
-                recent_mutation_turns=self.recent_mutation_turns,
-                recent_verification_turns=self.recent_verification_turns,
+                segment_tokens=effective_retention.large_record_chunk_tokens,
+                recent_completed_turns=effective_retention.recent_completed_turns,
+                recent_records_per_turn=effective_retention.recent_records_per_turn,
+                recent_source_turns=effective_retention.recent_source_turns,
+                recent_mutation_turns=effective_retention.recent_mutation_turns,
+                recent_verification_turns=effective_retention.recent_verification_turns,
+                max_records_per_turn_before_chunking=(
+                    effective_retention.max_records_per_turn_before_chunking
+                ),
+                preserve_action_observation_pairs=(
+                    effective_retention.preserve_action_observation_pairs
+                ),
+                causal_bundle_round_up=effective_retention.causal_bundle_round_up,
             )
             payload, policy_tokens = apply_consumption_policy(
                 payload, self.consumption_policy,

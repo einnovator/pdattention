@@ -1,0 +1,155 @@
+{
+  "schema": "paper4.5-task03-task04-request06-source-bundle-audit-v1",
+  "status": "observational; counterfactual-generation-pending",
+  "scope": "Frozen request-6 selection audit on the first divergent assistant action",
+  "token_accounting": {
+    "method": "whitespace_v1",
+    "effective_retention_definition": "physical_input_tokens_estimate / logical_input_tokens_estimate",
+    "note": "The requested 0.90 budget is a ceiling. Whole causal bundles are not partially packed, so realized retention may undershoot it."
+  },
+  "common_finding": {
+    "temperature": 0,
+    "recorded_90_omitted_logical_message_indices": [4, 5],
+    "omitted_bundle_type": "assistant source-view command plus resulting full-source observation",
+    "first_executed_command_diverged_at_request": 6,
+    "ordinary_sampling_randomness_supported": false,
+    "causal_claim": "not yet established; restore-only generation has not run",
+    "recent_source_turns_1_selection_check": "passed"
+  },
+  "current_worktree_configuration_sweep": {
+    "selection_budget_policy": "causal_bundle_round_up_v1",
+    "note": "This policy was added after the recorded 90 percent trajectories. It prevents the historical catastrophic undershoot by admitting one indivisible bundle past the nominal target.",
+    "task_3": [
+      {
+        "recent_completed_turns": 2,
+        "recent_source_turns": 0,
+        "all_selected_message_indices": [0, 1, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 97.3927392739274
+      },
+      {
+        "recent_completed_turns": 2,
+        "recent_source_turns": 1,
+        "all_selected_message_indices": [0, 1, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 97.3927392739274
+      },
+      {
+        "recent_completed_turns": 4,
+        "recent_source_turns": 0,
+        "all_selected_message_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 100.0
+      }
+    ],
+    "task_4": [
+      {
+        "recent_completed_turns": 2,
+        "recent_source_turns": 0,
+        "all_selected_message_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 100.0
+      },
+      {
+        "recent_completed_turns": 2,
+        "recent_source_turns": 1,
+        "all_selected_message_indices": [0, 1, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 96.14678899082568
+      },
+      {
+        "recent_completed_turns": 4,
+        "recent_source_turns": 0,
+        "all_selected_message_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "effective_retention_percent": 100.0
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "task_number": 3,
+      "instance_id": "scikit-learn__scikit-learn-13135",
+      "logical_message_count": 12,
+      "logical_input_tokens_estimate": 3030,
+      "requested_90_target_tokens_estimate": 2727,
+      "candidate_budget_after_mandatory_and_old_pins": 927,
+      "source_bundle_budget_excess_tokens": 224,
+      "recorded_90": {
+        "temperature": 0,
+        "all_selected_message_indices": [0, 1, 2, 3, 6, 7, 8, 9, 10, 11],
+        "resource_message_indices": [1, 2, 3, 6, 7, 8, 9],
+        "omitted_message_indices": [4, 5],
+        "physical_input_tokens_estimate": 1879,
+        "effective_retention_fraction": 0.6201320132013202,
+        "effective_retention_percent": 62.01320132013202,
+        "action_6_sha256": "6851f0f1e21f84347767baa5b683b079043cda3990b1ebc21e84d5b309de96d8"
+      },
+      "recent_source_turns_1": {
+        "all_selected_message_indices": [0, 1, 4, 5, 6, 7, 8, 9, 10, 11],
+        "resource_message_indices": [1, 4, 5, 6, 7, 8, 9],
+        "omitted_message_indices": [2, 3],
+        "source_bundle_4_5_included": true,
+        "physical_input_tokens_estimate": 2951,
+        "effective_retention_fraction": 0.9739273927392739,
+        "effective_retention_percent": 97.3927392739274
+      },
+      "restore_only_4_5": {
+        "restored_whitespace_tokens": 1151,
+        "source_observation_message_5_whitespace_tokens": 1121,
+        "target_code_first_appears_in_256_word_child_span": 2,
+        "resulting_selected_message_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "request_6_logical_prompt_matches_existing_full_history_run_exactly": true,
+        "generation_status": "one matched-prompt full-history observation available; deterministic repeats pending compatible qwen3-coder-30b endpoint"
+      },
+      "first_response_text_diverged_at_request": 6,
+      "first_executed_command_diverged_at_request": 6,
+      "full_history_action_6_sha256": "51529dc77cc61b74ab4052e00aab9f40cc351302b12208735495b3cf5c0bf4df",
+      "recorded_90_matches_full_history_action_6": false
+    },
+    {
+      "task_number": 4,
+      "instance_id": "django__django-15741",
+      "logical_message_count": 12,
+      "logical_input_tokens_estimate": 2725,
+      "requested_90_target_tokens_estimate": 2453,
+      "candidate_budget_after_mandatory_and_old_pins": 985,
+      "source_bundle_budget_excess_tokens": 167,
+      "recorded_90": {
+        "temperature": 0,
+        "all_selected_message_indices": [0, 1, 2, 3, 6, 7, 8, 9, 10, 11],
+        "resource_message_indices": [1, 2, 3, 6, 7, 8, 9],
+        "omitted_message_indices": [4, 5],
+        "physical_input_tokens_estimate": 1573,
+        "effective_retention_fraction": 0.5772477064220184,
+        "effective_retention_percent": 57.72477064220184,
+        "action_6_sha256": "11473f05dd49b2b88348bb4cf597e22ecddccd5a29d92f4a3f2650cd6cecd2d5"
+      },
+      "recent_source_turns_1": {
+        "all_selected_message_indices": [0, 1, 4, 5, 6, 7, 8, 9, 10, 11],
+        "resource_message_indices": [1, 4, 5, 6, 7, 8, 9],
+        "omitted_message_indices": [2, 3],
+        "source_bundle_4_5_included": true,
+        "physical_input_tokens_estimate": 2620,
+        "effective_retention_fraction": 0.9614678899082569,
+        "effective_retention_percent": 96.14678899082568
+      },
+      "restore_only_4_5": {
+        "restored_whitespace_tokens": 1152,
+        "source_observation_message_5_whitespace_tokens": 1109,
+        "target_code_first_appears_in_256_word_child_span": 1,
+        "resulting_selected_message_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "request_6_logical_prompt_matches_existing_full_history_run_exactly": false,
+        "request_6_logical_prompt_difference": "message 10 reasoning text differs although its executed reproduction command and message 11 observation match",
+        "generation_status": "exact frozen counterfactual pending compatible qwen3-coder-30b endpoint"
+      },
+      "first_response_text_diverged_at_request": 5,
+      "first_executed_command_diverged_at_request": 6,
+      "full_history_action_6_sha256": "67a799a990943f4e31a3ea4e51fa478911816de670a70730fe840d40b606980b",
+      "recorded_90_matches_full_history_action_6": false
+    }
+  ],
+  "interpretation": [
+    "The same source-view causal bundle was the only omitted logical history at the first divergent request in both tasks.",
+    "The recorded runs used temperature zero, so the paired divergence is not attributable to ordinary sampling temperature.",
+    "The old selector's whole-bundle packing converted a nominal 90 percent request into only 62.0 and 57.7 percent realized retention.",
+    "The source bundle exceeded the remaining candidate budget by only 224 and 167 whitespace tokens, but indivisible admission skipped all 1,151 and 1,152 tokens and left most of the candidate budget unused.",
+    "Pinning the latest source-evidence turn preserves the suspected decision spine but realizes 97.4 and 96.1 percent retention; efficacy must be tested separately from this selection-inclusion check.",
+    "A hierarchical causal policy could retain the source command, result metadata, and target-bearing child span without forcing the entire roughly 1,100-word observation into the budget.",
+    "A frozen model counterfactual restoring only messages 4 and 5 remains necessary before claiming those messages caused the divergent action."
+  ]
+}

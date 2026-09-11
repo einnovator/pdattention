@@ -434,8 +434,20 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "context_budget_fraction": args.budget_fraction,
         "retention_policy": {
             "recent_completed_turns": getattr(args, "recent_completed_turns", 2),
+            "recent_records_per_turn": getattr(args, "recent_records_per_turn", 2),
+            "recent_source_turns": getattr(args, "recent_source_turns", 1),
             "recent_mutation_turns": getattr(args, "recent_mutation_turns", 1),
             "recent_verification_turns": getattr(args, "recent_verification_turns", 1),
+            "large_record_chunk_tokens": getattr(
+                args, "large_record_chunk_tokens", 256,
+            ),
+            "max_records_per_turn_before_chunking": getattr(
+                args, "max_records_per_turn_before_chunking", 8,
+            ),
+            "preserve_action_observation_pairs": getattr(
+                args, "preserve_action_observation_pairs", True,
+            ),
+            "causal_bundle_round_up": getattr(args, "causal_bundle_round_up", True),
         },
         "harness": "mini-swe-agent",
         "harness_version": args.harness_version,
@@ -510,8 +522,20 @@ def run(args: argparse.Namespace) -> Path:
             selection_record_path=getattr(args, "selection_record", None),
             selection_replay_path=getattr(args, "selection_replay", None),
             recent_completed_turns=getattr(args, "recent_completed_turns", 2),
+            recent_records_per_turn=getattr(args, "recent_records_per_turn", 2),
+            recent_source_turns=getattr(args, "recent_source_turns", 1),
             recent_mutation_turns=getattr(args, "recent_mutation_turns", 1),
             recent_verification_turns=getattr(args, "recent_verification_turns", 1),
+            large_record_chunk_tokens=getattr(
+                args, "large_record_chunk_tokens", 256,
+            ),
+            max_records_per_turn_before_chunking=getattr(
+                args, "max_records_per_turn_before_chunking", 8,
+            ),
+            preserve_action_observation_pairs=getattr(
+                args, "preserve_action_observation_pairs", True,
+            ),
+            causal_bundle_round_up=getattr(args, "causal_bundle_round_up", True),
             consumption_policy=getattr(args, "consumption_policy", "standard"),
             request_overrides={
                 "prefix_caching": bool(getattr(args, "prefix_caching", False))
@@ -1301,8 +1325,24 @@ def main() -> None:
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--recent-completed-turns", type=int, default=2)
+    parser.add_argument("--recent-records-per-turn", type=int, default=2)
+    parser.add_argument("--recent-source-turns", type=int, default=1)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
+    parser.add_argument("--large-record-chunk-tokens", type=int, default=256)
+    parser.add_argument(
+        "--max-records-per-turn-before-chunking", type=int, default=8,
+    )
+    parser.add_argument(
+        "--preserve-action-observation-pairs",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--causal-bundle-round-up",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument(
         "--consumption-policy",
         choices=tuple(CONSUMPTION_POLICIES),

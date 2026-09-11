@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
@@ -104,19 +105,21 @@ def sparse_causal_plan(
         groups[span.causal_group_id].append(span)
 
     # The system/task preamble and two most recent completed causal groups are
-    # mandatory. Older groups are removed whole, oldest first, until the token
-    # target is reached. This is a mechanism gate, not the efficacy selector.
+    # mandatory. Retention is a floor: remove only whole old groups that fit
+    # inside the requested drop allowance. A group that would cross the
+    # allowance is skipped rather than turning nominal 90% retention into, for
+    # example, 60%. This is a mechanism gate, not the efficacy selector.
     mandatory = {"preamble", *order[-2:]}
-    drop_target = max(1, source_tokens - int(source_tokens * fraction))
+    drop_budget = max(0, source_tokens - math.ceil(source_tokens * fraction))
     dropped: set[str] = set()
     dropped_tokens = 0
     for group in order:
         if group in mandatory:
             continue
-        dropped.add(group)
-        dropped_tokens += sum(span.tokens for span in groups[group])
-        if dropped_tokens >= drop_target:
-            break
+        cost = sum(span.tokens for span in groups[group])
+        if dropped_tokens + cost <= drop_budget:
+            dropped.add(group)
+            dropped_tokens += cost
     if not dropped:
         raise RuntimeError("Agent prefix has no old causal group eligible for sparse selection.")
     selected = tuple(span for span in spans if span.causal_group_id not in dropped)
@@ -125,4 +128,3 @@ def sparse_causal_plan(
         selected,
         source_position_base=source_tokens,
     )
-

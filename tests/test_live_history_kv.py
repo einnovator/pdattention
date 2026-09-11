@@ -11,6 +11,9 @@ from pra_hf.live_history import (
     LiveKVSourceRegistry,
 )
 from experiments.paper4_5_agent.sparse_gate_common import sparse_causal_plan
+from experiments.paper4_5_agent.run_vllm_live_agent_kv_gate import (
+    _qualify_packaged_runtime,
+)
 
 
 class _ChatTokenizer:
@@ -185,13 +188,44 @@ def test_sparse_gate_drops_whole_old_causal_group_and_keeps_original_extent() ->
         messages,
         prompt,
         source_tokens=source_tokens,
-        retention_fraction=0.9,
+        retention_fraction=0.75,
     )
 
     assert plan.has_holes
+    assert plan.selected_tokens / source_tokens >= 0.75
     assert plan.source_position_base == source_tokens
     groups = {row.causal_group_id for row in plan.intervals}
     assert "preamble" in groups
     assert "turn:6" in groups
     assert "turn:8" in groups
     assert "turn:2" not in groups
+
+
+def test_vllm_packaged_runtime_qualification_is_derived_fail_closed() -> None:
+    provenance = {
+        "inside_active_environment": True,
+        "native_files": [{"path": "native.so", "sha256": "abc", "bytes": 1}],
+    }
+
+    qualified, failures = _qualify_packaged_runtime(
+        vllm_version="0.29.0+cpu",
+        metal_version="0.29.0",
+        source_revision="7390805822b2d7a208b09d55bd07b7572f727e20",
+        vllm_provenance=provenance,
+        metal_provenance=provenance,
+        artifact_overlay=False,
+    )
+    assert qualified
+    assert failures == []
+
+    qualified, failures = _qualify_packaged_runtime(
+        vllm_version="0.28.0",
+        metal_version="0.29.0",
+        source_revision="7390805822b2d7a208b09d55bd07b7572f727e20",
+        vllm_provenance=provenance,
+        metal_provenance={**provenance, "native_files": []},
+        artifact_overlay=False,
+    )
+    assert not qualified
+    assert "vllm_core_version_mismatch" in failures
+    assert "no_hashed_native_artifacts" in failures
