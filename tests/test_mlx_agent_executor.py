@@ -132,6 +132,24 @@ class _Model:
         return logits
 
 
+class _Backbone:
+    def __init__(self) -> None:
+        self.call_widths = []
+
+    def __call__(self, input_ids, *, cache):
+        values = list(map(int, input_ids[0]))
+        self.call_widths.append(len(values))
+        for wrapped in cache:
+            getattr(wrapped, "local_cache", wrapped).append(values)
+        return np.zeros((1, len(values), 4), dtype=np.float32)
+
+
+class _ModelWithNativeBackbone(_Model):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = _Backbone()
+
+
 @pytest.fixture()
 def fake_mlx(monkeypatch):
     mlx = ModuleType("mlx")
@@ -226,6 +244,32 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
 
 
 def test_plain_prefill_is_chunked_and_only_materializes_last_token_logits(fake_mlx) -> None:
+    model = _ModelWithNativeBackbone()
+    executor = MLXAgentHistoryExecutor(
+        model,
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        prefill_step_size=2,
+    )
+
+    result = executor.generate(PRAWireRequest(
+        model="fake",
+        messages=({"role": "user", "content": "long prompt"},),
+        max_new_tokens=1,
+    ))
+
+    assert result.text == "A"
+    assert model.call_widths == [1]
+    assert model.model.call_widths
+    assert max(model.model.call_widths) <= 2
+    assert sum(model.model.call_widths) + sum(model.call_widths) == (
+        result.trace[0]["prompt_tokens"]
+    )
+
+
+def test_plain_prefill_falls_back_for_model_without_native_backbone(fake_mlx) -> None:
     model = _Model()
     executor = MLXAgentHistoryExecutor(
         model,

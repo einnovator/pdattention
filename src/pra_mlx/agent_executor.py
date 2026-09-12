@@ -275,15 +275,26 @@ class MLXAgentHistoryExecutor:
         return logits
 
     def _prefill(self, token_ids: Sequence[int], cache: Sequence[object]) -> int:
-        """Evaluate cache state in bounded chunks without materializing prompt logits."""
+        """Populate cache in bounded chunks without running the prompt LM head.
+
+        mlx-lm decoder models expose their transformer backbone as ``model``.
+        Calling that backbone directly updates the same prompt caches but avoids
+        constructing vocabulary-sized logits for every prompt token.  Small
+        test doubles and unusual integrations may not expose a callable
+        backbone, so retain the full-model fallback for compatibility.
+        """
 
         import mlx.core as mx
 
         calls = 0
         values = list(map(int, token_ids))
+        backbone = getattr(self.model, "model", None)
+        prefill_model = backbone if callable(backbone) else self.model
         for start in range(0, len(values), self.prefill_step_size):
             chunk = values[start : start + self.prefill_step_size]
-            logits = self.model(mx.array([chunk], dtype=mx.int32), cache=cache)
+            activations = prefill_model(
+                mx.array([chunk], dtype=mx.int32), cache=cache
+            )
             states = [getattr(row, "state", None) for row in cache]
             states = [row for row in states if row is not None]
             if states:
@@ -292,7 +303,7 @@ class MLXAgentHistoryExecutor:
                 # Test doubles and unusual cache implementations may not expose
                 # state.  Keep their behavior correct without using this fallback
                 # for normal mlx-lm prompt caches.
-                mx.eval(logits)
+                mx.eval(activations)
             clear = getattr(mx, "clear_cache", None)
             if callable(clear):
                 clear()
