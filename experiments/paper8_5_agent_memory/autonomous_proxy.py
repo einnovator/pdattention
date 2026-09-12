@@ -318,11 +318,22 @@ def transform_autonomous_payload(
         count_tokens=count_tokens,
     )
 
-    # FULL is the behavioral control: retain the exact message dictionaries,
-    # including any API-standard fields, instead of round-tripping through the
-    # logical serializer.  Negative arms deliberately emit only ordinary
-    # role/content records so controller metadata never leaks into the prompt.
-    if config.policy == "full":
+    all_record_ids = tuple(row.record_id for row in history.records)
+    exact_logical_noop = (
+        tuple(plan.selected_record_ids) == all_record_ids
+        and all(
+            row.mode == MaterializationMode.WHOLE_RECORD
+            and row.content == history.record_by_id[row.record_id].content
+            for row in materialized.records
+        )
+    )
+    # FULL is the behavioral control.  A negative policy that currently has
+    # nothing to remove must be the same control too: retain every incoming
+    # message dictionary instead of silently changing the request envelope by
+    # round-tripping through the logical serializer.  Once a real exclusion or
+    # detail reduction occurs, emit only ordinary role/content records so
+    # selector metadata never leaks into the model prompt.
+    if config.policy == "full" or exact_logical_noop:
         selected_messages = messages
     else:
         selected_messages = serialize_materialized_messages(history, materialized)
@@ -355,6 +366,9 @@ def transform_autonomous_payload(
         "plan_digest": plan.digest,
         "request_input_sha256": _digest(messages),
         "selected_messages_sha256": _digest(selected_messages),
+        "exact_request_passthrough": bool(
+            config.policy == "full" or exact_logical_noop
+        ),
         "tokenizer": config.tokenizer_identity,
         "token_accounting_scope": "message_content_only_excludes_chat_template",
         "requested_budget_fraction": config.budget_fraction,

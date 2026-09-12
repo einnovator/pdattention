@@ -74,6 +74,23 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["excluded_causal_group_count"] == 0
 
 
+def test_abstaining_negative_policy_is_an_exact_request_noop():
+    source = _payload()
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="h2b_verified_write",
+            expected_model="locked-model",
+            require_exact_sidecars=False,
+        ),
+    )
+    assert result.payload == source
+    assert result.trace["exact_request_passthrough"] is True
+    assert result.trace["request_input_sha256"] == result.trace[
+        "selected_messages_sha256"
+    ]
+
+
 def test_negative_arm_preserves_prompt_and_current_turn_and_reports_exclusions():
     result = transform_autonomous_payload(
         _payload(),
