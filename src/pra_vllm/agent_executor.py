@@ -317,7 +317,22 @@ class VLLMInProcessSchedulerDriver:
             raise RuntimeError("vLLM store request did not publish its source pages.")
         committed = self.connector.pop_scheduler_committed_source(row.request_id)
         if command.mode == "load" and committed is None:
-            raise RuntimeError("vLLM load request did not commit its next source generation.")
+            available = sorted(
+                map(
+                    str,
+                    getattr(
+                        self.connector, "_scheduler_committed_sources", {}
+                    ),
+                )
+            )
+            snapshot = self.connector._scheduler_alias_registry.snapshot()
+            raise RuntimeError(
+                "vLLM load request did not commit its next source generation: "
+                f"output_request_id={row.request_id!s}, "
+                f"available_commit_receipts={available}, "
+                f"active_aliases={snapshot['active_requests']}, "
+                f"pending_aliases={snapshot['pending_requests']}."
+            )
         temporary = None
         if cuda and torch is not None:
             temporary = max(int(torch.cuda.max_memory_allocated()) - active, 0)
