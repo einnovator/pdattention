@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.deployment import PRAEngineResult
+from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from experiments.paper4_5_agent.serve_sglang_mlx_agent_pra import _completion
 from pra_sglang.agent_executor import (
     AgentHistoryLedger,
@@ -17,6 +18,7 @@ from pra_sglang.agent_executor import (
     _MlxRepetitionPenaltyController,
     _common_prefix,
     _fixed_shape_repetition_token_ids,
+    _execution_plan,
     _live_kv_copy_metrics,
     _repetition_token_ids,
     _selected_sampler_prompt,
@@ -32,6 +34,23 @@ from pra_sglang.adapter import SGLangEngineAdapter
 from pra_sglang.mlx_native import _qwen_projections
 from pra_hf.gateway import PRAGateway
 from pra_hf.deployment import PRAGatewayMode
+
+
+def test_complete_record_coverage_uses_direct_canonical_execution() -> None:
+    record_plan = LiveKVSelectionPlan.create(
+        12,
+        (
+            LiveKVInterval(0, 5, "record-0", "record-0"),
+            LiveKVInterval(5, 12, "record-1", "record-1"),
+        ),
+    )
+
+    execution_plan = _execution_plan(record_plan)
+
+    assert record_plan.full_retention
+    assert execution_plan.intervals == (
+        LiveKVInterval(0, 12, "full-history", "full-history"),
+    )
 
 
 def test_qwen_projection_supports_qwen2_without_qk_norm_and_qwen3_with_it() -> None:

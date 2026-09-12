@@ -137,6 +137,12 @@ def _token_digest(token_ids: Sequence[int]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _execution_plan(plan: LiveKVSelectionPlan) -> LiveKVSelectionPlan:
+    """Collapse complete record coverage to one direct canonical K/V view."""
+
+    return LiveKVSelectionPlan.full(plan.source_tokens) if plan.full_retention else plan
+
+
 def _selected_sampler_prompt(
     source: Sequence[int], wire: Sequence[int], plan: LiveKVSelectionPlan
 ) -> list[int]:
@@ -991,6 +997,12 @@ class SGLangMLXAgentHistoryExecutor:
                 None if selection_contract is None else str(selection_contract)
             ),
         )
+        if plan.full_retention:
+            # Preserve logical record identities in the selector audit, but
+            # normalize complete coverage to one direct canonical view for
+            # execution. Record boundaries alone must not route PRA-100 (or a
+            # rounded-up PRA-90 request) through segmented attention.
+            plan = _execution_plan(plan)
         repetition_penalty, repeat_last_n = self._repetition_settings(request)
         sampler_prompt = _selected_sampler_prompt(source, wire, plan)
 
@@ -1012,7 +1024,7 @@ class SGLangMLXAgentHistoryExecutor:
             tenant_id=request.tenant_id,
             session_id=state.session_id,
             expected_generation=state.generation,
-            disjoint=True,
+            disjoint=not plan.full_retention,
         )
         reset_peak = getattr(mx, "reset_peak_memory", None)
         if reset_peak is not None:
