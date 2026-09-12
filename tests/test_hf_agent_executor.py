@@ -100,6 +100,39 @@ def test_all_hf_agent_forwards_disable_autograd() -> None:
     assert output.logits.shape == (1, 1, 4)
 
 
+def test_hf_agent_requests_only_the_last_prefill_logit_when_supported() -> None:
+    class Model:
+        device = torch.device("cpu")
+
+        def __init__(self) -> None:
+            self.logits_to_keep = None
+
+        def forward(
+            self,
+            *,
+            input_ids,
+            past_key_values,
+            cache_position,
+            use_cache,
+            return_dict,
+            logits_to_keep=0,
+        ):
+            self.logits_to_keep = logits_to_keep
+            return SimpleNamespace(
+                logits=torch.zeros((1, 1, 4)),
+                past_key_values=past_key_values,
+            )
+
+        __call__ = forward
+
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.model = Model()
+
+    executor._forward(object(), [1, 2, 3], 0)
+
+    assert executor.model.logits_to_keep == 1
+
+
 def test_ledger_restores_history_but_never_tokenizes_selected_resource() -> None:
     tokenizer = _Tokenizer()
     ledger = AgentHistoryLedger()

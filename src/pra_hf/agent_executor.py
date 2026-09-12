@@ -11,6 +11,7 @@ that lifecycle cost is measured separately from the zero-copy selection.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 import threading
@@ -575,10 +576,28 @@ class HFAgentHistoryExecutor:
         device = self._device()
         ids = torch.tensor([list(map(int, token_ids))], dtype=torch.long, device=device)
         positions = torch.arange(start, start + len(token_ids), device=device)
+        last_logit_kwargs = getattr(self, "_last_logit_kwargs", None)
+        if last_logit_kwargs is None:
+            forward = getattr(self.model, "forward", self.model)
+            try:
+                parameters = inspect.signature(forward).parameters
+            except (TypeError, ValueError):
+                parameters = {}
+            if "logits_to_keep" in parameters:
+                last_logit_kwargs = {"logits_to_keep": 1}
+            elif "num_logits_to_keep" in parameters:
+                last_logit_kwargs = {"num_logits_to_keep": 1}
+            else:
+                last_logit_kwargs = {}
+            self._last_logit_kwargs = last_logit_kwargs
+
         # Every call is inference, including single-token decode and canonical
         # cache extension.  Without this guard PyTorch retains an autograd
         # graph through successive DynamicCache concatenations; agent decode
         # then grows memory per token and can OOM even a small model.
+        # Models that expose a last-logit control must also avoid projecting
+        # every prompt position into vocabulary space: the agent only consumes
+        # the final row, and the full [prompt, vocab] tensor can dominate VRAM.
         with torch.inference_mode():
             outputs = self.model(
                 input_ids=ids,
@@ -586,6 +605,7 @@ class HFAgentHistoryExecutor:
                 cache_position=positions,
                 use_cache=True,
                 return_dict=True,
+                **last_logit_kwargs,
             )
         return outputs, getattr(outputs, "past_key_values", cache)
 
