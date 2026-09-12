@@ -40,6 +40,16 @@ class HFResidentKVSelection:
         metrics = getattr(self.cache, "metrics", None)
         return int(getattr(metrics, "max_transient_kv_tile_bytes", 0))
 
+    @property
+    def request_tail_copy_bytes(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "request_tail_copy_bytes", 0))
+
+    @property
+    def fused_attention_calls(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "fused_attention_calls", 0))
+
 
 class HFLiveKVRequestCancelled(RuntimeError):
     """Raised after a cooperative cancellation releases its source borrow."""
@@ -397,11 +407,16 @@ class HFSparseAttentionMetrics:
     transient_kv_copy_bytes: int = 0
     max_transient_kv_tile_bytes: int = 0
     selected_text_reencoded_tokens: int = 0
+    request_tail_copy_bytes: int = 0
+    fused_attention_calls: int = 0
 
 
 @dataclass
 class _HFSparseKVLayer:
     source_segments: tuple[HFSparseKVSegment, ...]
+    source_keys: object | None = None
+    source_values: object | None = None
+    source_intervals: tuple[tuple[int, int, int], ...] = ()
     tail_segments: list[HFSparseKVSegment] = field(default_factory=list)
 
     def segments(self) -> tuple[HFSparseKVSegment, ...]:
@@ -443,7 +458,12 @@ class HFSparseDynamicCache:
         # HF constructs a conventional mask before entering each decoder layer.
         # The Qwen sparse wrapper below uses original segment positions instead;
         # this extent merely keeps model-level mask construction well-defined.
-        return self.get_seq_length(layer_idx) + int(cache_position.shape[0]), 0
+        query_length = (
+            int(cache_position)
+            if isinstance(cache_position, int)
+            else int(cache_position.shape[0])
+        )
+        return self.get_seq_length(layer_idx) + query_length, 0
 
     def get_max_cache_shape(self, layer_idx: int = 0) -> int:
         return -1
@@ -512,6 +532,9 @@ def segmented_qwen_attention(
     scaling: float,
     metrics: HFSparseAttentionMetrics | None = None,
     score_tile_tokens: int = 256,
+    source_keys=None,
+    source_values=None,
+    source_intervals: tuple[tuple[int, int, int], ...] = (),
 ):
     """Evaluate GQA over disjoint K/V views without packing selected K/V.
 
@@ -535,6 +558,51 @@ def segmented_qwen_attention(
     rows = tuple(segments)
     if not rows:
         raise ValueError("Sparse attention requires at least the current query K/V segment.")
+
+    if query.is_cuda and source_keys is not None and source_values is not None:
+        source_count = len(source_intervals)
+        tail_rows = rows[source_count:]
+        if source_count <= 0 or len(rows) < source_count or not tail_rows:
+            raise ValueError(
+                "Fused HF attention requires source intervals and request-local K/V."
+            )
+        expected_position = tail_rows[0].position_start
+        for row in tail_rows:
+            if row.position_start != expected_position:
+                raise ValueError("Fused HF request-local K/V positions must be contiguous.")
+            expected_position = row.position_end
+        if len(tail_rows) == 1:
+            local_keys = tail_rows[0].keys
+            local_values = tail_rows[0].values
+            tail_copy_bytes = 0
+        else:
+            local_keys = torch.cat([row.keys for row in tail_rows], dim=-2)
+            local_values = torch.cat([row.values for row in tail_rows], dim=-2)
+            tail_copy_bytes = (
+                local_keys.numel() * local_keys.element_size()
+                + local_values.numel() * local_values.element_size()
+            )
+        from .hf_triton_attention import triton_disjoint_selected_attention
+
+        output, interval_table = triton_disjoint_selected_attention(
+            query,
+            source_keys,
+            source_values,
+            source_intervals,
+            local_keys,
+            local_values,
+            query_positions,
+            scale=scaling,
+        )
+        if metrics is not None:
+            metrics.fused_attention_calls += 1
+            metrics.request_tail_copy_bytes += int(tail_copy_bytes)
+            metrics.transient_attention_bytes += int(
+                tail_copy_bytes
+                + interval_table.numel() * interval_table.element_size()
+                + output.numel() * output.element_size()
+            )
+        return output
 
     batch, query_heads, query_tokens, head_dim = map(int, query.shape)
     kv_heads = int(rows[0].keys.shape[1])
@@ -714,6 +782,14 @@ def _qwen_sparse_forward(original_forward):
             )
         kwargs.pop("past_key_values", None)
         past_key_value = effective_cache
+        if cache_position is None:
+            cache_position = kwargs.pop("position_ids", None)
+            if cache_position is not None and cache_position.ndim == 2:
+                if int(cache_position.shape[0]) != 1:
+                    raise ValueError(
+                        "Sparse HF Qwen attention currently supports one batch."
+                    )
+                cache_position = cache_position[0]
         if module.training:
             raise RuntimeError("Sparse HF Qwen attention is inference-only.")
         if kwargs.get("output_attentions"):
@@ -745,12 +821,16 @@ def _qwen_sparse_forward(original_forward):
         cos, sin = position_embeddings
         query, key = apply_rotary_pos_emb(query, key, cos, sin)
         segments = past_key_value.append(module.layer_idx, key, value, cache_position)
+        sparse_layer = past_key_value.layers[module.layer_idx]
         output = segmented_qwen_attention(
             query,
             segments,
             cache_position,
             scaling=module.scaling,
             metrics=past_key_value.metrics,
+            source_keys=sparse_layer.source_keys,
+            source_values=sparse_layer.source_values,
+            source_intervals=sparse_layer.source_intervals,
         )
         output = output.transpose(1, 2).contiguous().reshape(*input_shape, -1)
         return module.o_proj(output), None
@@ -761,11 +841,11 @@ def _qwen_sparse_forward(original_forward):
 def enable_qwen_sparse_live_kv(model) -> int:
     """Install a fail-closed sparse-cache consumer on Qwen2/Qwen3 attention.
 
-    The supported boundary is the Transformers 4.55--4.57 attention contract:
-    ``position_embeddings`` and ``cache_position`` are explicit forward
-    arguments (including the 4.57 plural cache alias). Qwen2 (including
-    Qwen2.5) and Qwen3 full-attention modules are supported. Their configured
-    dense attention backend is bypassed only for sparse-cache requests.
+    The supported boundary covers the Transformers 4.55--4.57 explicit
+    ``cache_position`` contract and the 5.12 forwarded ``position_ids``
+    contract. Qwen2 (including Qwen2.5) and Qwen3 full-attention modules are
+    supported. Their configured dense attention backend is bypassed only for
+    sparse-cache requests.
     Sliding-window layers, training, batching, attention-weight output, and
     Qwen3.5 recurrent/DeltaNet layers remain outside this correctness path.
     """
@@ -787,10 +867,20 @@ def enable_qwen_sparse_live_kv(model) -> int:
             installed += 1
             continue
         parameters = inspect.signature(module.forward).parameters
-        if "position_embeddings" not in parameters or "cache_position" not in parameters:
+        supports_explicit_position = "cache_position" in parameters
+        supports_forwarded_position = (
+            "past_key_values" in parameters
+            and any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+        )
+        if "position_embeddings" not in parameters or not (
+            supports_explicit_position or supports_forwarded_position
+        ):
             raise RuntimeError(
-                "Installed Transformers Qwen attention lacks the required 4.55-style "
-                "position_embeddings/cache_position contract."
+                "Installed Transformers Qwen attention lacks an explicit or forwarded "
+                "position contract for sparse live K/V."
             )
         original = module.forward
         module.forward = MethodType(_qwen_sparse_forward(original), module)
@@ -860,6 +950,14 @@ def pack_segmented_dynamic_cache_reference(
 
     packed = pack_dynamic_cache_reference(source_cache, plan)
     selected_layers: list[_HFSparseKVLayer] = []
+    compact_source_intervals = []
+    compact_cursor = 0
+    for interval in plan.intervals:
+        width = interval.end - interval.start
+        compact_source_intervals.append(
+            (compact_cursor, compact_cursor + width, interval.start)
+        )
+        compact_cursor += width
     for packed_layer in packed.cache.layers:
         keys, values, _key_name, _value_name = _layer_pair(packed_layer)
         cursor = 0
@@ -877,7 +975,14 @@ def pack_segmented_dynamic_cache_reference(
                 )
             )
             cursor += width
-        selected_layers.append(_HFSparseKVLayer(tuple(segments)))
+        selected_layers.append(
+            _HFSparseKVLayer(
+                tuple(segments),
+                source_keys=keys,
+                source_values=values,
+                source_intervals=tuple(compact_source_intervals),
+            )
+        )
     return HFResidentKVSelection(
         HFSparseDynamicCache(selected_layers, plan),
         plan,
@@ -931,7 +1036,15 @@ def select_dynamic_cache(
         if int(keys.shape[-2]) < plan.source_tokens:
             raise ValueError("HF source cache is shorter than the selection plan.")
         selected_layers.append(
-            _HFSparseKVLayer(_source_segment_views(keys, values, plan))
+            _HFSparseKVLayer(
+                _source_segment_views(keys, values, plan),
+                source_keys=keys,
+                source_values=values,
+                source_intervals=tuple(
+                    (interval.start, interval.end, interval.start)
+                    for interval in plan.intervals
+                ),
+            )
         )
     selected = HFSparseDynamicCache(selected_layers, plan)
     return HFResidentKVSelection(selected, plan, False, interval_pack_bytes=0)

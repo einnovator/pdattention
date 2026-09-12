@@ -1546,18 +1546,20 @@ diagnostics, not evidence of resident reuse. \\
 Engine portability contract & vLLM-Metal passes 24/24 lifecycle checks; bounded
 vLLM CUDA adopts scheduler-owned pages with zero K/V copy, H2D transfer, or
 history re-encoding.  HF, MLX, and SGLang now also pass their declared sparse
-consumer/lifecycle scopes. & HF remains an unfused batch-one Qwen path; the
-Metal kernel is limited to head dimension at most 256 and direct MLX batch one,
-while SGLang evaluates batched rows independently.  CUDA still excludes partial
-pages, hybrid groups, and multiprocess execution. \\
+consumer/lifecycle scopes. & HF's fused Triton path remains limited to its
+declared batch-one Qwen/CUDA geometry; the Metal kernel is limited to head
+dimension at most 256 and direct MLX batch one, while SGLang evaluates batched
+rows independently.  vLLM CUDA still excludes partial pages, hybrid groups,
+and multiprocess execution. \\
 Agent retention semantics & Task-03 restore-only replay recovers the efficient
 action in 3/3; task-04 changes whole-file rereading to targeted localization in
 3/3.  Typed causal policies preserve source and progress records. & Superiority
 to fixed token windows on official end-task outcomes is not yet established. \\
-Coding-agent utility frontier & The Easy-3 No-PRA/PRA-100/PRA-90 matrix freezes
-success, calls, selected tokens, realized retention, K/V reuse, copy, and time;
-nine no-adaptor cells are configuration-ready. & No cells have executed; six
-learned-adaptor cells fail closed; 75\% remains gated on three-task 90\% success. \\
+Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
+exact plain/PRA-100 solve and an admitted 25-call PRA-90 solve at 93.32\%
+model-visible retention; the cross-engine reducer keeps all four outcome
+families separate. & HF, MLX, SGLang, and vLLM autonomous gates remain open;
+Easy-14 and 75\% are locked, and learned-adaptor cells still fail closed. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
@@ -3297,59 +3299,206 @@ therefore clears the construction, concurrency, lifecycle, offload, and sparse-
 runtime gates.  A campaign-level lock prevents the resumable Easy-50 scheduler
 from launching treatment cells before that status is explicitly promoted.  The gate is now
 \texttt{QUALIFIED} only for a llama.cpp wrapper with prefix caching enabled and
-a configured slot checkpoint directory; cache-off wrappers and HF, MLX, vLLM,
-and SGLang remain unqualified.  The restarted efficacy sequence operates on the
-14 baseline-success instances, one instance at a time: each instance must first
-pass the 100\% semantic-no-op control before its 90\% treatment can run, and
-lower retention remains contingent on that result.
+a configured slot checkpoint directory.  HF, MLX, vLLM, and SGLang now clear
+bounded sparse-consumer mechanism gates, but their autonomous end-to-end
+agent gates remain pending.  The campaign is therefore frozen at one task per
+engine: each engine must first pass the 100\% semantic-no-op control before its
+90\% treatment can run, and no Easy-14 expansion is permitted until every
+qualified engine completes that sequence.
 
 \subsubsection{Claim 4: observed coding-agent utility frontier}
 
-The restarted task-01 row illustrates why that protocol separates mechanism
-parity from current task capability.  Its 100\% live-K/V execution makes 30
-model calls, re-encodes zero selected-history tokens, copies no K/V, and reuses
-234,035 resident K/V token-exposures.  A frozen ordinary-prefix replay of the
-same recorded requests and tool observations reproduces all 30 assistant
-responses byte-for-byte.  The independently autonomous plain run instead
-matches the first 22 responses and first differs after an \texttt{ls -la}
-observation carries a changed directory timestamp; with frozen observations,
-that apparent divergence disappears.  Both autonomous arms nevertheless score
-0/1 because this current model/binary pairing submits explanatory prose rather
-than an applicable unified diff.  We classify that as a matched capability
-failure, not a PRA regression, and do not spend a lower-retention efficacy row
-on it.  The sequence advances to the next instance that reproduces its admitted
-baseline solve; historical membership in the 14-task stratum and current paired
-success are reported separately.
+The current campaign freezes one end-to-end task per qualified engine before
+any Easy-14 expansion.  The first completed engine row is llama.cpp
+458681e1 with Qwen3-Coder-30B Q4 on task 01
+(\texttt{django\_\_django-15277}).  Fresh autonomous runs begin from empty
+wrapper/session state and use temperature zero.  The ordinary prefix-cache
+control and PRA-100 both resolve 1/1 in 30 calls.  More strongly, the ordered
+30-action trajectories---assistant text plus parsed shell action---have the
+same SHA-256 digest.  PRA-100 reports 1.0 realized retention on every request,
+zero selected-history re-encoding, zero selected-history K/V-copy bytes, and zero
+host-to-device bytes.  This clears the agent-level semantic-no-op gate rather
+than merely reproducing the final patch.
 
-Task 02 then provides the first complete restarted efficacy pair.  Its fresh
-100\% arm again resolves 1/1 in 14 calls with a 673-byte patch, 54,686 resident
-K/V token-exposures, zero selected-history re-encoding, and no K/V copy.  The
-frozen ordinary-prefix control again reproduces 14/14 responses exactly, with
-the same response hashes as the earlier qualification run.  The admitted 90\%
-arm again resolves 0/1 in 12 calls and submits the same invalid 503-byte patch
-shape.  Across eight sparse requests it records 37,793 selected K/V token-
-exposures, zero selected-history re-encoding, no K/V copy, and only 10.16\%
-estimated logical-context saving.  Replicating both outcomes strengthens the
-assignment of the loss to the sparse treatment rather than a transient engine
-defect.  Because the predeclared 90\% quality gate fails, lower-retention task-02
-rows are withheld and the sequence advances to task 03 at 100\%.
+The now-admissible PRA-90 run also resolves 1/1, in 25 calls.  It first differs
+from the plain/PRA-100 trajectory at action 7, so the later path is a legitimate
+selection/retention result, not evidence of a 100\% implementation defect.
+Across the 25 calls, total model-visible context retention is 93.32\%; per-call
+retention ranges from 90.94\% to 100\% because indivisible mandatory causal
+bundles round upward.  Historical K/V attachment is a different denominator:
+the engine reports 85.03--100\% of the completed live-history source while the
+new current-turn suffix remains inline.  Mixing those two ratios produced a
+misleading earlier min/max field; the reducer now publishes them separately.
+The 90\% run re-encodes zero selected-history tokens and records zero
+selected-history K/V-copy
+and host-to-device bytes.  Consumer temporary allocation is not instrumented
+by this llama.cpp endpoint and remains explicitly missing rather than being
+reported as zero.
 
-Task 03 also clears its 100\% gate: it resolves 1/1 in 13 calls with a valid
-716-byte patch, while its frozen plain-prefix replay reproduces all 13 responses
-byte-for-byte.  At 90\%, it still resolves 1/1 and emits the same patch, but
-requires 25 calls---a 92.3\% action increase---while reducing estimated logical
-context by 17.75\%.  Its 21 sparse requests expose 186,379 selected resident K/V
-tokens while re-encoding zero selected-history tokens and copying no K/V.  This
-is a quality pass but a consumption-efficiency warning: preserving the final
-answer does not imply preserving the path used to reach it.  The observed
-497.9-versus-940.4~s wall times are retained only as contended provenance and
-are not a speed comparison.  Task 03 therefore advances to 75\% retention.
-At 75\%, it resolves 0/1 after 23 calls and submits an invalid 479-byte
-patch while reducing estimated logical context by 23.23\%.  Its 19 sparse
-requests still re-encode zero selected-history tokens and copy no K/V, so this
-is a task-quality failure on a physically correct mechanism.  Profiles below
-75\% are consequently withheld for this instance, and task 04 becomes the next
-100\% gate.
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen task-01 autonomous llama.cpp gate.  ``Retention'' is total
+model-visible context; wall time is provenance only because the 90\% trajectory
+differs after action 7 and the host was not run under an isolated timing design.}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Condition & Solved & Calls & Retention & Re-encoded & Sel. K/V copy & Temp. & Wall (s) \\
+\midrule
+Plain prefix cache & 1/1 & 30 & 100\% & n/a & n/a & n/e & 279.0 \\
+PRA-100 & 1/1 & 30 & 100\% & 0 & 0 B & n/e & 263.0 \\
+PRA-90 & 1/1 & 25 & 93.32\% & 0 & 0 B & n/e & 139.2 \\
+\bottomrule
+\end{tabular}
+\label{tab:agent-e2e-llamacpp-task01}
+\end{table}
+
+Here ``n/e'' means that the endpoint does not expose the measurement; it is
+not a zero.  The cross-engine reducer consequently counts llama.cpp as one
+behaviorally complete engine but zero measurement-complete engines so far.
+
+Earlier task-02--04 utility rows predate this cross-engine freeze and remain
+diagnostic evidence for retention-policy design; they do not authorize an
+Easy-14 matrix.  In particular, the task-03/04 counterfactuals below still
+localize important omitted records, but the active scheduler will not add task
+instances until HF, MLX, SGLang, and vLLM each complete the same plain,
+PRA-100, then PRA-90 sequence on an independently admissible frozen task.
+
+The first MLX autonomous admission attempt illustrates why model/task and
+template admission precede PRA attribution.  Qwen3-14B 4-bit on task 01 reaches
+the fixed 50-call limit and submits an empty patch (0/1 official solves), so no
+PRA-100 or PRA-90 arm is run and the row is classified as an inadmissible
+model/task pair, not a PRA failure.  Its frozen no-thinking template is checked
+separately: the first-turn bytes and token IDs exactly match the stock
+no-thinking template, while completed assistant records retain the same empty
+thinking wrapper so the next rendered prompt contains the complete earlier
+prompt as a byte and token prefix.  The stock template fails that two-turn
+prefix test.  Qwen3.5-27B is also excluded from this gate, rather than counted
+as a failed solve, because three of every four layers use recurrent
+GatedDeltaNet state instead of a token-addressable K/V history; the qualified
+interval-selection contract does not apply to that state.
+
+The first vLLM CUDA autonomous admission similarly stops before PRA.  On the
+8~GB RTX 5060, Qwen2.5-Coder-7B AWQ requires 2~GB of CPU weight offload,
+eager execution, and a 16K context to leave 2.66~GiB for K/V.  After two
+separately recorded agent/parser configuration controls, the matched
+text-command configuration executes 19 valid agent actions in 470.6~s but
+makes no source mutation.  The run is terminated at its bounded no-progress
+cutoff without submission or official grading.  Retention, K/V-copy,
+re-encoding, and consumer-temporary fields therefore remain null: no PRA
+request was issued.  A stronger 14B AWQ admission on the same task does clear
+server startup at 16K, but only by CPU-offloading 6.39B parameters.  Decode then
+falls to 0.4--0.5 tokens/s: two actions require 602.4~s, make no mutation, and a
+third generation is cancelled at the bounded throughput cutoff.  This second
+row is hardware-throughput inadmissible rather than a model-quality or PRA
+failure.  The missing stateful OpenAI serving bridge is now implemented: it
+maps an agent session onto the scheduler-owned page-alias primitive, evaluates
+only the suffix, rolls canonical generations forward by sharing old pages plus
+new complete suffix pages, and fails closed unless prepare, commit, hit, and
+release receipts are observed.  Its contract/scheduler tests pass, and a real
+Qwen2.5-Coder-1.5B/vLLM~0.28 CUDA attempt exposes two integration defects: a
+stale remote worker ignored scheduler-alias metadata and attempted file-backed
+K/V loading, while source-generation commit referenced a scheduler manager
+bound only in the store branch.  Both paths are corrected and regression-
+tested.  The post-fix seven-turn retry nevertheless loses the RTX host/WSL
+before producing its canonical artifact, so no bridge telemetry or autonomous
+task outcome is promoted.  The stateful bridge therefore remains incomplete,
+not failed for PRA efficacy.  Qualification remains bounded to in-process V1,
+one homogeneous K/V group, and complete pages; at most one partial page is
+re-evaluated and reported separately.
+
+The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
+smoke.  The model returns the frozen
+``OK'' then ``DONE'' responses, the second prompt extends the resident source,
+and both turns report zero selected-history re-encoding, zero selected-history
+K/V copy, and zero host-to-device transfer.  Each turn separately reports a
+3,342,336-byte device-side canonical suffix graft; the measured request peaks
+are 805,306,376 and 402,653,192 bytes, with 144 fused-attention calls per turn.
+
+The stronger task admission exposed two ordinary-generation defects before any
+PRA treatment.  First, the server used only the tokenizer EOS identity and
+omitted renderer/end-of-turn stop identities; the frozen contract now uses the
+union $\{151643,151644,151645\}$.  Second, the pinned SGLang-MLX backend accepted
+but ignored the requested repetition penalty.  The correction applies the
+llama/Ollama sign-aware transform before token choice: positive seen logits are
+divided by the penalty and non-positive seen logits are multiplied by it, with
+duplicate history IDs transformed once.  For greedy decoding with $U$ unique
+penalized IDs, the exact winner must lie in the original top $U+1$: at least one
+candidate in that set is unpenalized and dominates everything below it.  The
+implementation therefore gathers only that bounded candidate set, restores the
+full-vocabulary lowest-ID tie rule, and retains a full-scatter fallback for
+sampling, edit rows, and log-probability requests.  Unit tests cover stop-ID
+composition, sign and zero handling, duplicate IDs, decode-history refresh,
+ties, and 100 randomized property cases against a full-vocabulary reference;
+the focused SGLang bridge suite passes 20/20 tests.  A real-model probe then
+terminates naturally after a 17-token single-command response.  On a deliberately
+repetitive 256-token greedy benchmark, however, exact top-$U+1$ processing takes
+5.722~s versus 3.975~s without a penalty (44.74 versus 64.40 tokens/s), a 43.95\%
+elapsed-time overhead; it is a correctness repair, not a speed result.
+
+With both fixes frozen, the matched Qwen3-Coder-30B Task~02 plain arm completes
+and grades 0/1.  It accepts one read-only source-location action, modifies no
+file, and then produces three consecutive format-error responses; all four
+responses reach the 4,096-token cap.  This is a model/scaffold admission failure,
+not a PRA regression.  The predeclared plain-before-PRA gate therefore withholds
+both PRA-100 and PRA-90.
+
+A second frozen admission uses the dense Qwen2.5-Coder-14B MLX 4-bit family.
+Its first real bridge request exposed a cross-family implementation defect:
+the fused attention path assumed the Qwen3 \texttt{q\_norm}/\texttt{k\_norm}
+modules, which Qwen2.5 does not define.  The corrected path applies these
+normalizers only when the model exposes them and otherwise preserves Qwen2's
+native unnormalized projections.  After that correction, a real two-turn
+``OK''/``DONE'' bridge smoke passes with 61/61 second-turn history tokens and
+zero selected-history re-encoding, selected-history K/V copy, or H2D transfer;
+the separately reported canonical suffix graft is 6,684,672 bytes.  The same
+frozen model/task pair nevertheless fails plain Task~02 admission: it submits
+after nine valid actions and modifies one file, but its 443-byte patch inserts
+an undefined \texttt{attr} check at function entry and the official grader
+scores 0/1.  This is again a plain model/task failure, not a PRA result, so the
+PRA-100 and PRA-90 arms remain withheld.
+
+The direct MLX no-gateway bridge is now implemented under the same contract.
+It owns a persistent canonical live cache per session, extends only an append-
+stable suffix, treats PRA-100 as the full-context semantic no-op candidate, and
+serves PRA-90 through disjoint intervals with original positions.  Every sparse
+request must also clear a dense same-subset reference gate at maximum logit
+delta 0.005.  Request borrowing, exact-once release, and session termination
+are contract-tested, while interval packing, dense-reference packing,
+canonical graft/reallocation, H2D traffic, and consumer temporary bytes are
+reported separately.  Nineteen focused tests pass and four hardware tests
+skip.  No model smoke is claimed from the 16~GB M5 because its concurrent
+Paper~3.3, Docker, and existing model workloads left only about 4~GB free under
+heavy swap pressure; real allocation and autonomous-task qualification remain
+open.
+
+HF now has the corresponding direct, no-gateway agent bridge in code.  It keeps
+a persistent canonical \texttt{DynamicCache}, treats PRA-100 as the dense
+live-prefix no-op, consumes PRA-90 through original-position intervals, and
+grafts only newly generated assistant K/V back into the canonical owner.  The
+telemetry separates zero selected-history re-encoding/copy from tail packing,
+cache-reallocation copy, suffix-graft copy, total consumer temporary bytes, and
+model calls.  Focused executor/lifecycle tests pass, including a real tiny-Qwen
+PRA-100 then PRA-90 sequence, but the autonomous task has not yet run; this is
+implementation readiness, not an end-to-end engine result.
+The subsequent real-CUDA mechanism smoke on Qwen2.5-Coder-1.5B validates that
+accounting boundary.  PRA-100 retains 153/153 source tokens with zero selected-
+history re-encoding or copy, but ordinary \texttt{DynamicCache} growth and the
+new suffix still move 24,514,560 bytes in total.  The valid record-rounded
+PRA-90 row retains 137/151 tokens (90.73\%), again copies and re-encodes no
+selected history, and reports 1,953,728 attention-temporary bytes and
+9,633,792 total lifecycle-copy bytes.  An earlier manually underfilled
+137/179 row is explicitly superseded; both HF and SGLang now fail closed below
+$\lceil rN\rceil$ unless the request declares an arbitrary-subset mechanism
+probe.  This fallback smoke is not autonomous task evidence.  A subsequent
+Qwen2.5-Coder-7B NF4 attempt loads successfully on the 8~GB RTX 5060 and passes
+a 40-token bridge smoke under both eager and SDPA attention, but the frozen
+Task~01 plain arm fails before its first agent action.  SDPA removes the eager
+softmax allocation failure; the remaining failure is the BitsAndBytes 4-bit
+GEMM dequantization temporary in the Qwen2 MLP down projection.  Consequently
+the model/task pair is hardware-inadmissible on this device, its task outcome
+and peak temporary bytes remain unmeasured, and neither PRA-100 nor PRA-90 is
+run.  This is a serving-capacity boundary rather than a PRA failure.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
@@ -3364,44 +3513,11 @@ first three now have physical telemetry; no speedup is claimed until a matched
 agent run shows that reduced K/V reads dominate membership and residency costs.
 
 The same frozen agent history also shows why transcript rematerialization
-cannot be assumed equivalent across engines. Table~\ref{tab:agent-cache-smoke}
-reports diagnostic token parity; continuation scopes differ and the rows are
-neither speed nor quality rankings. The bounded HF arm is exact despite small
-logit changes, while MLX, vLLM, and SGLang each expose prompt-dependent token
-changes. MLX precision is non-monotonic, so quantization alone does not explain
-the effect. Product adapters must preserve the live K/V state that generated
-the trajectory, or explicitly qualify a strict rematerialization mode; they
-must not silently substitute one for the other.
-
-\begin{table}[H]
-\centering
-\small
-\caption{Frozen real-agent cache/rematerialization diagnostics. ``Scope'' is
-the number of agent turns and continuation cap. Different models and scopes
-make these correctness probes, not engine comparisons.}
-\begin{tabular}{llllr}
-\toprule
-Engine & Model & Scope & Exact turns & First divergence \\
-\midrule
-llama.cpp 458681e1 & Qwen3-Coder-30B Q4 & 30, $\leq$4096 & 30/30 & --- \\
-HF 5.17 / PyTorch 2.13 & Qwen2.5-1.5B BF16 & 6, 8 & 6/6 & --- \\
-MLX 0.31.3 & Qwen3-0.6B BF16 & 10, 16 & 6/10 & 2 \\
-MLX 0.31.3 & Qwen3-0.6B 8-bit & 10, 16 & 9/10 & 6 \\
-MLX 0.31.3 & Qwen3-0.6B 4-bit & 10, 16 & 8/10 & 7 \\
-vLLM 0.29.0 V1 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 5/10 & 4 \\
-SGLang 0.5.19 & Qwen2.5-1.5B BF16 & 10, $\leq$256 & 3/10 & 2 \\
-\bottomrule
-\end{tabular}
-\label{tab:agent-cache-smoke}
-\end{table}
-
-Task 04 clears 100\%: 1/1 in 13 calls, a valid 875-byte patch, 59,325 resident
-K/V exposures, zero re-encoding or copy, and 13/13 exact frozen responses.  Its
-90\% arm also resolves 1/1, but takes 34 calls---21 more than the 100\% arm---
-while reducing estimated logical context by 11.80\%.  Across 30 sparse requests
-it exposes 248,815 selected resident K/V tokens, re-encodes no selected history,
-and copies no K/V.  As on task 03, end-task success therefore conceals a large
-interaction-efficiency regression; contended wall time is provenance only.
+cannot be assumed equivalent across engines.  The earlier reconstructed-cache
+rows remain diagnostics rather than engine comparisons.  Product adapters must
+preserve the live K/V state that generated the trajectory, or explicitly
+qualify a strict rematerialization mode; they must not silently substitute one
+for the other.
 
 \subsubsection{Claim 3: agent retention semantics}
 
@@ -3451,9 +3567,8 @@ lifecycle controls; the bounded vLLM CUDA scheduler alias clears them in its
 declared scope.  The newest MLX and SGLang disjoint-consumption candidates also
 clear their declared numerical, allocation, and lifecycle gates through the
 shared interval-addressed Metal consumer described below.
-The earlier rows in
-Table~\ref{tab:agent-cache-smoke} compare incremental execution with an
-independently reconstructed cache and consequently remain rematerialization
+Earlier reconstructed-cache rows compare incremental execution with an
+independently rebuilt cache and consequently remain rematerialization
 diagnostics, not this qualification.
 
 The corrected same-state probes pass for HF and MLX.
@@ -3498,17 +3613,19 @@ replacement integration therefore runs one boundary earlier, at
 \texttt{Scheduler.\_get\_local\_prefix\_cache\_hit} before
 \texttt{allocate\_slots}, and installs the source request's existing
 \texttt{KVCacheBlock} objects in the authoritative scheduler table.  On an RTX
-5060 with vLLM 0.28 and Qwen2.5-1.5B, task-02 turn 4 retains 2,944/3,104 tokens
-(94.85\%); two consumers are same-subset exact and K/V-copy, host-to-device,
-and selected-history-re-encoding counters are all zero.  A separate three-page
+5060 with vLLM 0.28 and Qwen2.5-1.5B, the complete seven eligible task-02
+turns (4--10) retain 90.48--96.03\% of complete pages.  Each turn launches two
+simultaneous same-subset borrowers; all 14 outputs are exact, with seven source
+pins, 14 alias installations, 14 releases, and zero K/V-copy, host-to-device,
+or selected-history-re-encoding bytes or tokens.  A separate three-page
 mechanism smoke exercises concurrent completion, real cancellation, injected
 scheduler error, stale-generation rejection, borrowed and deferred eviction,
 and exact-once release: five aliases are installed and five are released, with
 final page reference counts zero.  This is a bounded zero-copy result, not a
 general vLLM claim: it requires in-process V1, complete pages, and one
 homogeneous K/V group.  Partial pages, hybrid groups, multiprocess
-scheduler/worker execution, the full seven-turn trajectory, and runtime
-economics remain unqualified.
+scheduler/worker execution, autonomous agent execution, and runtime economics
+remain unqualified.
 
 SGLang-MLX likewise keeps selected-history re-encoding at zero while preserving
 Radix/source-owner isolation, borrower-safe removal, eviction and offload,
@@ -3517,12 +3634,15 @@ tombstones.  Its replacement consumer is a fused interval-addressed Metal
 kernel.  Rather than passing six selected slices as independent buffers, the
 kernel receives the canonical source K/V once plus a compact interval table,
 keeps original source positions in the cache contract, and performs one online
-softmax while reading only admitted ranges.  For 2,907/3,081 selected tokens
-(94.35\%), selection pack bytes remain zero.  First-layer peak delta falls from
+softmax while reading only admitted ranges.  Across all seven eligible task-02
+turns, realized retention spans 90.32--95.66\%; selection pack bytes and
+allocator delta remain zero.  The turn-4 first-layer peak delta falls from
 12,199,774 to 19,371 bytes, only 0.163\% of the 11,907,072-byte selected layer,
 and the candidate is final-logit exact against a packed-value oracle preserving
-the same segment boundaries and using the identical consumer.  All combined
-consumption and lifecycle checks now pass.  This qualification remains bounded:
+the same segment boundaries and using the identical consumer.  All seven turns
+are token and logit exact under the matched consumer, re-encode no selected
+history, and avoid a selected-K/V-sized allocation.  All combined consumption
+and lifecycle checks now pass.  This qualification remains bounded:
 SGLang's multi-request path evaluates each selected row separately and rejects a
 batch that mixes ordinary and disjoint cache protocols.
 
@@ -3537,24 +3657,26 @@ gates even though all three declared scopes now pass them.
 HF wires ownership into its synchronous model request and passes concurrent
 borrowing, exact-once finish/cancel/error release, stale-generation,
 offload/restore, termination, and tombstone controls.  On Qwen2.5-1.5B FP16 on
-the RTX host, task-02 turn 4 retains 2,907/3,081 tokens (94.35\%), preserves
-original positions, re-encodes no history, and uses zero persistent interval-
-pack bytes.  The corrected two-pass consumer scales the request-local query,
-uses native SDPA on each storage-alias K/V view, and combines their probability
-mass in FP32.  It casts or copies no selected K/V: cumulative K/V scratch and
-maximum K/V tile bytes both fall from 337,125,376 and 524,288 to zero.  Bounded
-score/probability state remains explicit at 34,062,336 logical bytes.  Against a
-packed-value oracle with the identical causal segments, positions, and consumer,
-maximum logit delta is 0.0, clearing the predeclared 0.001 gate.  The path is
-correct but unfused; no latency advantage is claimed.
+the RTX host, all seven eligible task-02 turns preserve original positions,
+re-encode no selected history, and use zero persistent interval-pack or K/V-copy
+bytes.  The replacement Triton kernel performs one fused online softmax over
+canonical source intervals and the request-local tail.  It executes 196 layer
+calls across the seven one-token continuations.  Against a packed-value oracle
+with the identical causal segments, positions, and consumer, every turn is token
+exact and maximum logit delta is 0.0, clearing the predeclared 0.001 gate.  The
+one-token gate has zero request-tail copy; cumulative logical attention scratch
+is reported separately as 19,292,784 bytes.  This qualifies the declared
+batch-one Qwen/CUDA geometry, not a general latency advantage.
 
-MLX-LM uses the same Metal consumer directly on Qwen3-0.6B 4-bit.  For task-02
-turn 4, six intervals retain 2,907/3,081 tokens with zero selected-history
-re-encoding, zero selection pack bytes, and zero allocator delta.  The kernel
-addresses those intervals in the original canonical arrays and reduces
-first-layer peak delta from 12,511,756 to 19,371 bytes (0.163\% of the
-11,907,072-byte selected layer).  The packed-value matched-consumer oracle is
-final-logit exact (0.0 versus the 0.005 gate), and ownership, exact-once release,
+MLX-LM uses the same Metal consumer directly on Qwen3-0.6B 4-bit.  Across all
+seven eligible task-02 turns, realized retention spans 90.32--95.66\%, with
+zero selected-history re-encoding, zero selection pack bytes, and zero allocator
+delta.  The kernel addresses those intervals in the original canonical arrays;
+the maximum observed first-layer peak delta is 24,043 bytes, while the maximum
+per-turn ratio is 0.163\% of
+the selected layer, versus a selected-K/V-sized transient in the superseded
+consumer.  Every packed-value matched-consumer oracle is token and final-logit
+exact (maximum 0.0 versus the 0.005 gate), and ownership, exact-once release,
 stale-generation, offload/restore, termination, and tombstone checks all pass.
 Lossless offload separately serializes 706,726,451 bytes.  The earlier 1.0
 cross-consumer logit delta remains a useful warning: changing from MLX's dense
@@ -4044,17 +4166,33 @@ causally recovers task 03's efficient command and directionally improves task
 04, where current-hypothesis state is additionally required; the typed
 \texttt{recent\_progress\_turns} floor now preserves that state in the frozen
 90\% regression.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
-consumer and lifecycle scopes.  HF's two-pass path eliminates K/V casts and is
-matched-consumer logit exact, but remains unfused and carries bounded score
-state.  A bounded vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
+consumer and lifecycle scopes.  HF's fused Triton path consumes canonical K/V
+through interval descriptors and is matched-consumer logit exact.  A bounded
+vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
 existing-page aliasing with zero K/V copy, host-to-device transfer, or selected-
-history re-encoding on task-02 turn 4 and its lifecycle smoke.  It is not yet a
+history re-encoding across all seven eligible task-02 turns and its lifecycle
+smoke.  It is not yet a
 general product path: multiprocess execution, hybrid K/V groups, partial pages,
-full-trajectory coverage, and runtime economics remain open.  MLX and SGLang
+autonomous agent execution, and runtime economics remain open.  MLX and SGLang
 now consume the canonical source plus interval descriptors through one fused
 Metal kernel: their measured first-layer transient falls from roughly one
-selected K/V layer to 19,371 bytes and both are matched-consumer logit exact.
-End-to-end agent runs and broader batch/model geometry remain open.  Under the
+selected K/V layer to at most 24,043 bytes (with a maximum per-turn ratio of
+0.163\%), and both are matched-consumer token
+and logit exact on all seven eligible turns.  HF likewise passes all seven turns
+with zero selected-K/V copy.  The first autonomous end-to-end gate now passes
+on llama.cpp: plain and PRA-100 are action-exact 1/1 solves in 30 calls, while
+PRA-90 is a 1/1 solve in 25 calls at 93.32\% total context retention.  Direct
+HF and SGLang serving bridges now exist and pass bounded mechanism smokes.  Two
+independent SGLang Task~02 plain cells remain inadmissible: Qwen3-Coder-30B
+grades 0/1 after one read-only action and three format errors, while
+Qwen2.5-Coder-14B grades 0/1 after nine actions and an incorrect nonempty patch.
+The latter run also exposed and corrected the fused path's Qwen3-only Q/K-norm
+assumption before the scientific arm.  Both models' PRA-100 and PRA-90 arms
+remain withheld as plain model/task admission failures.  The
+vLLM OpenAI-to-scheduler alias bridge and the direct MLX bridge pass contract
+tests, but neither has completed its post-fix remote mechanism gate.  All four autonomous gates and
+broader batch/model geometry are still pending.
+Easy-14 expansion is locked until they pass.  Under the
 RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
 cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
 Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks

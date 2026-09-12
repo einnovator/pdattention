@@ -1,0 +1,113 @@
+{
+  "schema_version": "paper4.5.sglang-qwen3-coder-inventory.v1",
+  "host": "big-mac-192.168.1.6",
+  "host_unified_memory_bytes": 51539607552,
+  "model": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+  "revision": "6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "model_url": "https://huggingface.co/mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit/tree/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "advertised_weight_size_bytes_approx": 17200000000,
+  "cached_at_start": false,
+  "disk_free_bytes_approx_at_start": 34000000000,
+  "architecture": {
+    "architectures": [
+      "Qwen3MoeForCausalLM"
+    ],
+    "model_type": "qwen3_moe",
+    "layers": 48,
+    "attention_heads": 32,
+    "kv_heads": 4,
+    "head_dim": 128,
+    "token_addressable_kv": true,
+    "recurrent_or_deltanet_layers": false,
+    "installed_mlx_lm_implementation_present": true,
+    "installed_attention_contract": "q_proj/k_proj/v_proj, q_norm/k_norm, RoPE offset from cache, token-indexed update_and_fetch"
+  },
+  "chat_template": {
+    "profile": "native",
+    "digest": "672e747c77e990320152343b0a4951222e40de5645297905d89afba05586d827",
+    "first_turn_equal_to_stock": true,
+    "canonical_tokens": 31,
+    "next_turn_common_prefix_tokens": 31,
+    "new_suffix_tokens": 28,
+    "selected_history_reencoded_tokens": 0,
+    "append_stable": true
+  },
+  "weight_fetch_probe": {
+    "elapsed_seconds_approx": 100,
+    "downloaded_bytes_approx": 100000000,
+    "throughput_bytes_per_second_approx": 1000000,
+    "projected_full_fetch_hours_approx": 4.8,
+    "terminated_as_not_quick": true,
+    "partial_download_is_resumable_within_one_process": true,
+    "http_parallel_retry": {
+      "xet_disabled": true,
+      "peak_effective_throughput_mib_per_second_approx": 23,
+      "settled_effective_throughput_mib_per_second_approx": 9,
+      "completed_shards": 1,
+      "stopped_after_no_byte_progress_seconds": 420
+    },
+    "http_sequential_retry": {
+      "max_workers": 1,
+      "download_timeout_seconds": 120,
+      "elapsed_seconds": 150,
+      "downloaded_bytes": 545259520,
+      "effective_throughput_mib_per_second_approx": 3.5,
+      "reused_prior_partial": false,
+      "created_new_random_suffix_incomplete_file": true,
+      "projected_full_fetch_hours_approx": 1.4,
+      "terminated_as_too_slow": true
+    },
+    "cache_allocated_bytes_after_probes": 12915998720,
+    "completed_shards_after_probes": 1
+  },
+  "direct_range_recovery": {
+    "completed": true,
+    "recovery_transport": "curl HTTP Range with one writer and one invocation per retry",
+    "cdn_range_response_verified": true,
+    "partial_prefix_verified": true,
+    "internal_curl_retry_safe": false,
+    "internal_curl_retry_failure": "an in-process retry reused the invocation's original offset; external invocations were required to recompute the durable file length",
+    "duplicate_incomplete_bytes_removed": 5555721936,
+    "weight_bytes": 17181071994,
+    "shards": [
+      {
+        "file": "model-00001-of-00004.safetensors",
+        "bytes": 5321473414,
+        "sha256": "25c6d0a62e02224605774ce2e9dc9a8c95910cde33557b938e55a368da1b5212"
+      },
+      {
+        "file": "model-00002-of-00004.safetensors",
+        "bytes": 5366644780,
+        "sha256": "7007ce495b063155207c3e8b4038771d0d751655274cb6b76c42b8d9c0624412"
+      },
+      {
+        "file": "model-00003-of-00004.safetensors",
+        "bytes": 5276887419,
+        "sha256": "a14f5bfdd0cd72ee6e71e7f0bc72f6fcde4d78a2da7ee0665f8cf071ac7d2675"
+      },
+      {
+        "file": "model-00004-of-00004.safetensors",
+        "bytes": 1216066381,
+        "sha256": "0ea3484a221d674b60c604ea20cb5e5418a2cfd9e61df72c0d7fb5b1622ff5b4"
+      }
+    ],
+    "canonical_snapshot_complete": true
+  },
+  "mlx_load_validation": {
+    "mlx_lm_version": "0.32.0",
+    "lazy": false,
+    "loaded": true,
+    "model_class": "mlx_lm.models.qwen3_moe.Model",
+    "load_seconds": 4.149864665989298,
+    "active_memory_bytes": 17180946440,
+    "peak_memory_bytes": 17180946440,
+    "generation_performed": false
+  },
+  "server_launched": false,
+  "bridge_smoke_launched": false,
+  "task02_plain_launched": false,
+  "pra_100_launched": false,
+  "pra_90_launched": false,
+  "classification": "qualified_architecture_template_snapshot_and_load_pending_direct_agent_admission",
+  "claim_boundary": "The pinned architecture, append-stable native template, exact four-shard snapshot, and non-lazy MLX load are qualified. No SGLang bridge generation or Task02 result with this 30B model exists yet; plain admission must precede PRA-100 and PRA-90."
+}

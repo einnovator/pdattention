@@ -1065,7 +1065,11 @@ class HybridLlamaCppAdapter:
             "native_kv": False,
             "kv_source": "fresh_selected_prefill",
             "selected_text_reencoded_tokens": evaluated,
+            "selected_history_reencoded_tokens": evaluated,
             "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 0,
+            "total_kv_copy_bytes": 0,
+            "canonical_suffix_graft_d2d_bytes": 0,
         }
         return PRAEngineResult(
             result.text,
@@ -1074,7 +1078,11 @@ class HybridLlamaCppAdapter:
                 "stage": "llama_cpp_fresh_selected_prefill_control",
                 "selected_records": len(selected_indices),
                 "selected_text_reencoded_tokens": evaluated,
+                "selected_history_reencoded_tokens": evaluated,
                 "physical_kv_copy": False,
+                "physical_kv_copy_bytes": 0,
+                "total_kv_copy_bytes": 0,
+                "canonical_suffix_graft_d2d_bytes": 0,
                 "native_kv": False,
             }),
         )
@@ -1317,7 +1325,13 @@ class HybridLlamaCppAdapter:
                 selected_records=len(ranges),
                 selected_kv_tokens=common,
                 selected_text_reencoded_tokens=0,
+                selected_history_reencoded_tokens=0,
                 physical_kv_copy=False,
+                physical_kv_copy_bytes=0,
+                total_kv_copy_bytes=0,
+                canonical_suffix_graft_d2d_bytes=0,
+                host_to_device_bytes=0,
+                realized_retention_fraction=1.0,
                 full_retention=True,
                 exact_live_prefix_continuation=True,
             )
@@ -1332,7 +1346,13 @@ class HybridLlamaCppAdapter:
                     "selected_kv_tokens": common,
                     "selected_records": len(ranges),
                     "selected_text_reencoded_tokens": 0,
+                    "selected_history_reencoded_tokens": 0,
                     "physical_kv_copy": False,
+                    "physical_kv_copy_bytes": 0,
+                    "total_kv_copy_bytes": 0,
+                    "canonical_suffix_graft_d2d_bytes": 0,
+                    "host_to_device_bytes": 0,
+                    "realized_retention_fraction": 1.0,
                     "full_retention": True,
                     "exact_live_prefix_continuation": True,
                 }),
@@ -1352,6 +1372,20 @@ class HybridLlamaCppAdapter:
             request_slot=destination,
         )
         raw = dict(result.raw)
+        pra = dict(raw.get("pra") or {})
+        pra.update({
+            "selected_kv_tokens": plan.selected_tokens,
+            "selected_text_reencoded_tokens": 0,
+            "selected_history_reencoded_tokens": 0,
+            "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 0,
+            "total_kv_copy_bytes": 0,
+            "canonical_suffix_graft_d2d_bytes": 0,
+            "host_to_device_bytes": 0,
+            "full_retention": False,
+            "realized_retention_fraction": plan.selected_tokens / max(common, 1),
+        })
+        raw["pra"] = pra
         raw.update(
             prefix_cache_enabled=True,
             prefix_cached_tokens=plan.selected_tokens,
@@ -1440,6 +1474,13 @@ class HybridLlamaCppAdapter:
             "native_tokens": cached,
             "wire_tokens": len(wire_tokens),
             "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 0,
+            "total_kv_copy_bytes": 0,
+            "canonical_suffix_graft_d2d_bytes": 0,
+            "host_to_device_bytes": 0,
+            "selected_history_reencoded_tokens": 0,
+            "full_retention": True,
+            "realized_retention_fraction": 1.0,
         }
         raw["pra"] = pra
         raw.update(
@@ -1550,6 +1591,27 @@ def _completion(
         "native_tokens": native_raw.get("native_tokens"),
         "wire_tokens": native_raw.get("wire_tokens"),
         "physical_kv_copy": native_raw.get("physical_kv_copy"),
+        "physical_kv_copy_bytes": native_raw.get("physical_kv_copy_bytes"),
+        "total_kv_copy_bytes": native_raw.get("total_kv_copy_bytes"),
+        "canonical_suffix_graft_d2d_bytes": native_raw.get(
+            "canonical_suffix_graft_d2d_bytes"
+        ),
+        "host_to_device_bytes": native_raw.get("host_to_device_bytes"),
+        "selected_kv_tokens": native_raw.get("selected_kv_tokens"),
+        "selected_text_reencoded_tokens": native_raw.get(
+            "selected_text_reencoded_tokens"
+        ),
+        "selected_history_reencoded_tokens": native_raw.get(
+            "selected_history_reencoded_tokens"
+        ),
+        "full_retention": native_raw.get("full_retention"),
+        "realized_retention_fraction": native_raw.get(
+            "realized_retention_fraction"
+        ),
+        "consumer_temporary_bytes": native_raw.get("consumer_temporary_bytes"),
+        "consumer_temporary_peak_bytes": native_raw.get(
+            "consumer_temporary_peak_bytes"
+        ),
         "resource_update_mode": raw.get("resource_update_mode"),
         "resource_prefix_cached_tokens": raw.get("resource_prefix_cached_tokens"),
         "resource_evaluated_tokens": raw.get("resource_evaluated_tokens"),

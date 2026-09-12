@@ -1,0 +1,113 @@
+{
+  "schema_version": "paper4.5.vllm-cuda-stateful-agent-bridge-admission.v1",
+  "created_utc": "2026-09-12T00:39:00Z",
+  "status": "strict_negative_incomplete",
+  "passed": false,
+  "scope": "Stateful request/session bridge above the previously qualified vLLM 0.28 scheduler page-alias mechanism",
+  "machine": {
+    "host": "192.168.1.12",
+    "os": "WSL Ubuntu-24.04 on Windows",
+    "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "gpu_memory_gib": 8
+  },
+  "software": {
+    "vllm": "0.28.0",
+    "torch": "2.13.0+cu130",
+    "transformers": "5.12.1",
+    "repository_head_at_launch": "44a94af5bd7f880b7a400c508e11fe663fc87594",
+    "working_tree": "uncommitted shared research worktree"
+  },
+  "model": {
+    "id": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+    "snapshot": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+    "dtype": "bfloat16",
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.72,
+    "enforce_eager": true,
+    "prefix_caching": true,
+    "kv_cache_tokens_reported": 78752
+  },
+  "frozen_input": {
+    "name": "Task02 trajectory",
+    "sha256": "e6b58ba69831b1356422ede459dbb947a8c108dfdad14cc0606754645b41bff3",
+    "target_turns_per_arm": 7,
+    "arms": [
+      "PRA100 scheduler alias",
+      "PRA90 causal-record/block-rounded scheduler alias"
+    ],
+    "temperature": 0,
+    "max_new_tokens": 8
+  },
+  "attempts": [
+    {
+      "storage": "/home/killu/pra-vllm-agent-bridge-smoke-20260912/storage3",
+      "model_admitted": true,
+      "failure_stage": "PRA100 call 2 worker consumption",
+      "failure": "FileNotFoundError for layer safetensors despite scheduler_alias=true in scheduler metadata",
+      "root_cause": "Remote deployment skew: cuda_sparse_connector had scheduler-alias metadata but the older cuda_connector worker consumer lacked the scheduler_alias bypass and attempted detached/file-backed loading.",
+      "resolution": "Synchronized the complete connector stack; the worker now skips storage/H2D injection for scheduler-owned aliases."
+    },
+    {
+      "storage": "/home/killu/pra-vllm-agent-bridge-smoke-20260912/storage4",
+      "model_admitted": true,
+      "dense_reference_interleaved": true,
+      "failure_stage": "stateful PRA100 run before canonical artifact emission",
+      "failure": "The WSL instance restarted during the run; the remote result file was not emitted.",
+      "root_cause": null,
+      "classification": "Remote WSL loss while interleaving dense-reference and scheduler-alias requests; no correctness inference is permitted.",
+      "resolution": "Removed interleaved dense-reference traffic for the next mechanism-only diagnostic so APC/reference traffic could not confound the alias lifecycle."
+    },
+    {
+      "storage": "/home/killu/pra-vllm-agent-bridge-smoke-20260912/storage5",
+      "model_admitted": true,
+      "failure_stage": "PRA100 call 2 lifecycle commit",
+      "failure": "UnboundLocalError: local variable 'manager' referenced in PRASparseConnector.request_finished load branch",
+      "root_cause": "The scheduler manager local was assigned only in the store branch, while source-generation extension also requires it in the load branch.",
+      "resolution": "Bind the validated scheduler manager before dispatching store/load lifecycle branches and add a complete-page counting regression."
+    },
+    {
+      "storage": "/home/killu/pra-vllm-agent-bridge-smoke-20260912/storage6",
+      "model_admitted": true,
+      "failure_stage": "post-fix stateful run before canonical artifact emission",
+      "failure": "RTX host became unreachable by SSH after launch; the remote result file was not emitted.",
+      "root_cause": null,
+      "classification": "Remote host/WSL loss during stateful lifecycle validation; no PRA correctness or performance inference is permitted.",
+      "retry_policy": "Stopped after repeated remote loss; preserve the diagnostic and require an observed bounded lifecycle run before promotion."
+    }
+  ],
+  "requested_telemetry": {
+    "selected_history_reencoded_tokens": null,
+    "selected_history_kv_copy_bytes": null,
+    "physical_kv_copy_bytes": null,
+    "host_to_device_bytes": null,
+    "total_kv_copy_bytes": null,
+    "consumer_temporary_bytes": null,
+    "realized_retention": null,
+    "scheduler_alias_calls": null,
+    "fused_sparse_attention_calls": null,
+    "lifecycle_cleanup": null
+  },
+  "telemetry_null_reason": "No post-fix seven-turn run reached artifact finalization. Partial observations are not promoted into aggregate metrics.",
+  "engine_mechanism_context": {
+    "existing_lower_level_artifact": "vllm_cuda_scheduler_alias_task02_full7_090_qwen15_v2.json",
+    "existing_lower_level_result": "Seven Task02 turns previously qualified exact same-subset scheduler aliases with zero selected-history reencoding, physical K/V copy, and H2D transfer.",
+    "stateful_bridge_result": "Not qualified: source-generation extension and cleanup remain unobserved end to end after the lifecycle fix.",
+    "fused_sparse_attention_calls": null,
+    "fused_sparse_attention_calls_reason": "This mechanism aliases scheduler block tables and uses ordinary vLLM attention kernels; it does not invoke a separate fused PRA attention kernel."
+  },
+  "agent_outcomes": {
+    "plain_official_solve": null,
+    "pra100_official_solve": null,
+    "pra90_official_solve": null,
+    "tool_calls": null,
+    "first_divergence": null,
+    "reason": "Mechanism gate did not pass, so no autonomous mini-swe-agent arm was launched. Prior 1.5B coder Task01 evidence was not a credible solving model/task admission."
+  },
+  "source_sha256": {
+    "src/pra_vllm/agent_executor.py": "40cb0b750ea69de7eafeeaa819ffc55462f08e4664312c0eef44bcfe12ea39f3",
+    "src/pra_vllm/cuda_sparse_connector.py": "e34cf0fca20738ce3202b22781ec112ed4f19a114ae331e19d50f950ddeca441",
+    "src/pra_vllm/cuda_connector.py": "bd91697672b9367782b1d57a46eb17a303a5a09a67ba6142ca4939f58bcdaf25",
+    "experiments/paper4_5_agent/run_vllm_cuda_agent_bridge_smoke.py": "912d59baf43b5b1a1eb61018d84eb24c11666c5d398efde20158812e6c741a63"
+  },
+  "next_gate": "On a stable RTX host, rerun the frozen seven-turn PRA100 arm first, verify exact dense trajectory and cleanup, then run valid record/block-rounded PRA90. Do not run mini-swe-agent until both mechanism arms finalize canonical telemetry."
+}

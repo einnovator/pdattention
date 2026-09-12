@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "classification": "completed_plain_admission_failure",
+  "scientific_gate": "plain_before_pra100_before_pra90",
+  "pra_arms_run": false,
+  "task": "django__django-15368",
+  "model": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+  "model_revision": "6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "engine": "sglang-mlx",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "harness": "mini-swe-agent 2.4.6",
+  "generation_contract": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "repeat_last_n": 64,
+    "repetition_penalty_implementation": "lazy_mlx_sign_aware_before_greedy_argmax",
+    "repetition_penalty_cpu_syncs": 0,
+    "effective_stop_token_ids": [151643, 151644, 151645],
+    "chat_template_profile": "native",
+    "chat_template_digest": "672e747c77e990320152343b0a4951222e40de5645297905d89afba05586d827"
+  },
+  "outcome": {
+    "official_resolved": false,
+    "official_score": 0.0,
+    "exit_status": "RepeatedFormatError",
+    "api_calls": 4,
+    "accepted_actions": 1,
+    "files_inspected": 1,
+    "files_modified": 0,
+    "empty_patch": true
+  },
+  "calls": [
+    {
+      "index": 1,
+      "prompt_tokens": 1683,
+      "completion_tokens": 4096,
+      "elapsed_seconds": 99.78112841599796,
+      "response_characters": 14863,
+      "penalty_application_calls": 4096,
+      "penalty_unique_tokens_first_step": 52,
+      "penalty_unique_tokens_max": 62,
+      "sampler_prompt_sha256": "59348e29d6c33c537cfa0b9ea4cdf323e93e5bb0a97a7f9b2d98fb2980da9315",
+      "parsed_mswe_actions": 1,
+      "accepted_command": "find /testbed -name \"query.py\" -path \"*/models*\""
+    },
+    {
+      "index": 2,
+      "prompt_tokens": 5823,
+      "completion_tokens": 4096,
+      "elapsed_seconds": 132.4696580000018,
+      "response_characters": 14807,
+      "penalty_application_calls": 4096,
+      "parsed_mswe_actions": 0
+    },
+    {
+      "index": 3,
+      "prompt_tokens": 5959,
+      "completion_tokens": 4096,
+      "elapsed_seconds": 151.27895983398776,
+      "response_characters": 14829,
+      "penalty_application_calls": 4096,
+      "parsed_mswe_actions": 0
+    },
+    {
+      "index": 4,
+      "prompt_tokens": 6095,
+      "completion_tokens": 4096,
+      "elapsed_seconds": 229.91503766700043,
+      "response_characters": 15068,
+      "penalty_application_calls": 4096,
+      "parsed_mswe_actions": 0
+    }
+  ],
+  "watcher_effect": {
+    "invalidated_run": false,
+    "detail": "The connection watcher terminated the server only after all four model calls, trajectory persistence, and grading completed. It did not cause the three format errors."
+  },
+  "interpretation": "Stop-token and repetition-penalty parity prevent neither this MLX quantization's length-capped mixed-fence first response nor its later all-bash format drift. This model/engine/scaffold cell is inadmissible for PRA comparison; PRA100 and PRA90 remain correctly unexecuted.",
+  "artifacts": {
+    "trajectory": "plain_penalty_v3/chunk_00/django__django-15368/django__django-15368.traj.json",
+    "results": "plain_penalty_v3/results.jsonl",
+    "official_result": "plain_penalty_v3/official_result.json"
+  }
+}

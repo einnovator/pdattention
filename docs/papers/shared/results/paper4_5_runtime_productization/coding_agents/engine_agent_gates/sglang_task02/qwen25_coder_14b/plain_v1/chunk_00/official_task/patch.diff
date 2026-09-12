@@ -1,0 +1,12 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index f8d848e926..673bad8a40 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -637,6 +637,7 @@ class QuerySet:
+         return objs
+ 
+     def bulk_update(self, objs, fields, batch_size=None):
++        if not hasattr(attr, "resolve_expression"):
+         """
+         Update the given fields in each of the given objects in the database.
+         """

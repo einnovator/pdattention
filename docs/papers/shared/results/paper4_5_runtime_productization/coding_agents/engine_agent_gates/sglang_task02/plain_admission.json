@@ -1,0 +1,52 @@
+{
+  "schema_version": "paper4.5.sglang-agent-plain-admission.v1",
+  "engine": "sglang-mlx",
+  "instance_id": "django__django-15368",
+  "model": "mlx-community/Qwen3-14B-4bit",
+  "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "chat_template_profile": "qwen3-stable-no-thinking",
+  "chat_template_digest": "156395feb3e5fe15aa88746a2da5f55c0009f4f9a8b8a81ec5e0ad73a9525563",
+  "temperature": 0,
+  "sampling_seed": 0,
+  "status": "stopped_by_bounded_no_progress_gate",
+  "official_task_result": null,
+  "task_success": null,
+  "accepted_tool_actions": 4,
+  "generation_in_progress_when_stopped": 1,
+  "preflight_generation_calls": 1,
+  "mutation_observed": false,
+  "verification_observed": false,
+  "repeated_action": "grep -n 'def bulk_update' django/db/models/query.py",
+  "repeated_action_count": 4,
+  "runner_elapsed_seconds_at_stop": 752,
+  "task_process_elapsed_seconds_at_stop": 744,
+  "pra_100_executed": false,
+  "pra_90_executed": false,
+  "classification": "inadmissible_model_task_pair_bounded_screen",
+  "claim_boundary": "This is a bounded admission screen, not an official SWE-bench failure or solve. The plain arm made four identical read-only tool calls, began a fifth model generation, and made no repository mutation. The predeclared no-progress rule stopped the run before the 50-call ceiling; PRA arms are scientifically inadmissible without a solved plain reference.",
+  "raw_evidence": {
+    "run_manifest": "plain/run_manifest.json",
+    "mini_swe_agent_log": "plain/chunk_00/minisweagent.log",
+    "image_receipt": "plain/chunk_00.image_receipt.json",
+    "image_pull_log": "plain/chunk_00.django_1776_django-15368.image.log",
+    "docker_event_actions": [
+      {
+        "timestamp": "2026-09-11T22:53:18.313583430+01:00",
+        "command": "grep -n 'def bulk_update' django/db/models/query.py"
+      },
+      {
+        "timestamp": "2026-09-11T22:55:35.839123834+01:00",
+        "command": "grep -n 'def bulk_update' django/db/models/query.py"
+      },
+      {
+        "timestamp": "2026-09-11T22:56:05.264145459+01:00",
+        "command": "grep -n 'def bulk_update' django/db/models/query.py"
+      },
+      {
+        "timestamp": "2026-09-11T22:58:21.754593378+01:00",
+        "command": "grep -n 'def bulk_update' django/db/models/query.py"
+      }
+    ]
+  }
+}

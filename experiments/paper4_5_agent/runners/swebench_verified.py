@@ -157,6 +157,12 @@ def gateway_preflight(
         )
     effective = health.get("effective_capabilities") or health
     engine = health.get("engine") or {}
+    chat_template_profile = health.get(
+        "chat_template_profile", effective.get("chat_template_profile")
+    )
+    chat_template_digest = health.get(
+        "chat_template_digest", effective.get("chat_template_digest")
+    )
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
     if native_required and not bool(
@@ -224,6 +230,13 @@ def gateway_preflight(
             raise RuntimeError("endpoint preflight receipt lacks native consumption proof")
         if expected_mode is not None and prior.get("gateway_mode") != expected_mode:
             raise RuntimeError("endpoint preflight receipt gateway mode does not match this run")
+        if (
+            prior.get("chat_template_digest") is not None
+            and prior.get("chat_template_digest") != chat_template_digest
+        ):
+            raise RuntimeError(
+                "endpoint preflight chat template digest changed after restart"
+            )
         return {
             **prior,
             "url": root,
@@ -233,6 +246,8 @@ def gateway_preflight(
             "replayed_from": str(Path(prior_receipt_path).resolve()),
             "post_restart_health_rechecked": True,
             "post_restart_model_rechecked": True,
+            "chat_template_profile": chat_template_profile,
+            "chat_template_digest": chat_template_digest,
             "generation_probe_replayed": True,
         }
     probe: dict[str, Any] = {
@@ -331,6 +346,8 @@ def gateway_preflight(
         "prefix_cache_mode": prefix_mode,
         "prefix_cache_supported": prefix_supported,
         "prefix_cache_enabled": prefix_active,
+        "chat_template_profile": chat_template_profile,
+        "chat_template_digest": chat_template_digest,
     }
 
 
@@ -1085,10 +1102,39 @@ def _write_task_rows(
             "native_tokens": trace.get("native_tokens"),
             "wire_tokens": trace.get("wire_tokens"),
             "physical_kv_copy_observed": trace.get("physical_kv_copy_observed"),
+            "physical_kv_copy_bytes": trace.get("physical_kv_copy_bytes"),
+            "total_kv_copy_bytes": trace.get("total_kv_copy_bytes"),
+            "canonical_suffix_graft_d2d_bytes": trace.get(
+                "canonical_suffix_graft_d2d_bytes"
+            ),
+            "host_to_device_bytes": trace.get("host_to_device_bytes"),
             "selected_kv_tokens": trace.get("selected_kv_tokens"),
             "selected_text_reencoded_tokens": trace.get(
                 "selected_text_reencoded_tokens"
             ),
+            "selected_history_reencoded_tokens": trace.get(
+                "selected_history_reencoded_tokens"
+            ),
+            "realized_retention_fraction": trace.get(
+                "realized_retention_fraction"
+            ),
+            "realized_retention_fraction_min": trace.get(
+                "realized_retention_fraction_min"
+            ),
+            "realized_retention_fraction_max": trace.get(
+                "realized_retention_fraction_max"
+            ),
+            "engine_reported_history_kv_retention_fraction_min": trace.get(
+                "engine_reported_history_kv_retention_fraction_min"
+            ),
+            "engine_reported_history_kv_retention_fraction_max": trace.get(
+                "engine_reported_history_kv_retention_fraction_max"
+            ),
+            "consumer_temporary_bytes": trace.get("consumer_temporary_bytes"),
+            "consumer_temporary_peak_bytes": trace.get(
+                "consumer_temporary_peak_bytes"
+            ),
+            "fused_attention_calls": trace.get("fused_attention_calls"),
             "full_retention_requests": trace.get("full_retention_requests"),
             "sparse_kv_requests": trace.get("sparse_kv_requests"),
             "resource_update_counts": trace.get("resource_update_counts"),
@@ -1226,6 +1272,41 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         mode = row.get("resource_update_mode")
         if mode:
             update_counts[str(mode)] = update_counts.get(str(mode), 0) + 1
+    context_retention = [
+        int(row.get("physical_input_tokens_estimate") or 0)
+        / int(row.get("logical_input_tokens_estimate") or 1)
+        for row in rows if int(row.get("logical_input_tokens_estimate") or 0) > 0
+    ]
+    history_kv_retention = [
+        float(
+            row.get("engine_reported_history_kv_retention_fraction")
+            if row.get("engine_reported_history_kv_retention_fraction") is not None
+            else row["realized_retention_fraction"]
+        )
+        for row in rows if (
+            row.get("engine_reported_history_kv_retention_fraction") is not None
+            or row.get("realized_retention_fraction") is not None
+        )
+    ]
+
+    def sum_reported(key: str) -> int | None:
+        values = [int(row[key]) for row in rows if row.get(key) is not None]
+        return sum(values) if values else None
+
+    def max_reported(key: str) -> int | None:
+        values = [int(row[key]) for row in rows if row.get(key) is not None]
+        return max(values) if values else None
+
+    def sum_reported_alias(primary: str, fallback: str) -> int | None:
+        values = [
+            int(
+                row[primary]
+                if row.get(primary) is not None else row[fallback]
+            )
+            for row in rows
+            if row.get(primary) is not None or row.get(fallback) is not None
+        ]
+        return sum(values) if values else None
     return {
         "logical_input_tokens_estimate": logical,
         "physical_input_tokens_estimate": physical,
@@ -1250,12 +1331,41 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "physical_kv_copy_observed": any(
             row.get("physical_kv_copy") is True for row in rows
         ),
+        "physical_kv_copy_bytes": sum_reported("physical_kv_copy_bytes"),
+        "total_kv_copy_bytes": sum_reported("total_kv_copy_bytes"),
+        "canonical_suffix_graft_d2d_bytes": sum_reported(
+            "canonical_suffix_graft_d2d_bytes"
+        ),
+        "host_to_device_bytes": sum_reported("host_to_device_bytes"),
         "selected_kv_tokens": sum(
             int(row.get("selected_kv_tokens") or 0) for row in rows
         ),
         "selected_text_reencoded_tokens": sum(
             int(row.get("selected_text_reencoded_tokens") or 0) for row in rows
         ),
+        "selected_history_reencoded_tokens": sum_reported_alias(
+            "selected_history_reencoded_tokens", "selected_text_reencoded_tokens"
+        ),
+        "realized_retention_fraction": (
+            physical / logical if logical else None
+        ),
+        "realized_retention_fraction_min": (
+            min(context_retention) if context_retention else None
+        ),
+        "realized_retention_fraction_max": (
+            max(context_retention) if context_retention else None
+        ),
+        "engine_reported_history_kv_retention_fraction_min": (
+            min(history_kv_retention) if history_kv_retention else None
+        ),
+        "engine_reported_history_kv_retention_fraction_max": (
+            max(history_kv_retention) if history_kv_retention else None
+        ),
+        "consumer_temporary_bytes": sum_reported("consumer_temporary_bytes"),
+        "consumer_temporary_peak_bytes": max_reported(
+            "consumer_temporary_peak_bytes"
+        ),
+        "fused_attention_calls": sum_reported("fused_attention_calls"),
         "full_retention_requests": sum(
             int(row.get("full_retention") is True) for row in rows
         ),
@@ -1394,6 +1504,14 @@ def main() -> None:
         help="Normalize a previously observed timed-out chunk without rerunning its agent.",
     )
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument(
+        "--require-endpoint-preflight",
+        action="store_true",
+        help=(
+            "Require health/model/template admission even for a direct plain "
+            "arm, so cross-arm engine configuration can be frozen."
+        ),
+    )
     parser.add_argument(
         "--endpoint-preflight-receipt",
         type=Path,

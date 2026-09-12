@@ -40,9 +40,11 @@ from .mlx_live_kv import (
 )
 from .qwen3_segmented import install_qwen3_segmented_attention
 from .native_storage import MLXNativeSegmentStore
+from .agent_executor import MLXAgentHistoryExecutor
 
 __all__ = [
     "MLXEngineAdapter",
+    "MLXAgentHistoryExecutor",
     "MLXDisjointLayerKV",
     "MLXDisjointNativeMemory",
     "MLXDisjointSelectedKVCache",

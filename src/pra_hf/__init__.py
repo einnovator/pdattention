@@ -56,6 +56,16 @@ from .hf_live_kv import (
     segmented_qwen_attention,
     select_dynamic_cache,
 )
+from .agent_executor import (
+    AgentHistoryLedger,
+    HFAgentHistoryExecutor,
+    HFKVGraftMetrics,
+    causal_message_spans,
+    configure_append_stable_template,
+    qwen3_append_stable_no_thinking_template,
+    selected_record_plan,
+    validate_append_stable_template,
+)
 from .router import PRARouter
 from pra_torch.execution import (
     PRAExecutionCapabilities,
@@ -521,6 +531,14 @@ __all__ = [
     "HFLiveKVRequestCancelled",
     "HFLiveKVRuntime",
     "HFResidentKVSelection",
+    "AgentHistoryLedger",
+    "HFAgentHistoryExecutor",
+    "HFKVGraftMetrics",
+    "causal_message_spans",
+    "configure_append_stable_template",
+    "qwen3_append_stable_no_thinking_template",
+    "selected_record_plan",
+    "validate_append_stable_template",
     "HFSparseAttentionMetrics",
     "HFSparseDynamicCache",
     "HFSparseKVSegment",

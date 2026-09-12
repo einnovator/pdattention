@@ -3244,8 +3244,17 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "native_tokens": 30,
             "wire_tokens": 12,
             "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 0,
+            "total_kv_copy_bytes": 128,
+            "canonical_suffix_graft_d2d_bytes": 128,
+            "host_to_device_bytes": 0,
             "selected_kv_tokens": 30,
             "selected_text_reencoded_tokens": 0,
+            "selected_history_reencoded_tokens": 0,
+            "realized_retention_fraction": 0.6,
+            "consumer_temporary_bytes": 1200,
+            "consumer_temporary_peak_bytes": 700,
+            "fused_attention_calls": 4,
             "full_retention": True,
             "resource_update_mode": "cold_prefill",
             "resource_prefix_cached_tokens": 0,
@@ -3263,8 +3272,17 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
             "native_tokens": 50,
             "wire_tokens": 20,
             "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 64,
+            "total_kv_copy_bytes": 320,
+            "canonical_suffix_graft_d2d_bytes": 256,
+            "host_to_device_bytes": 32,
             "selected_kv_tokens": 50,
             "selected_text_reencoded_tokens": 9,
+            "selected_history_reencoded_tokens": 9,
+            "realized_retention_fraction": 0.5,
+            "consumer_temporary_bytes": 1800,
+            "consumer_temporary_peak_bytes": 900,
+            "fused_attention_calls": 6,
             "full_retention": False,
             "resource_update_mode": "prefix_delta",
             "resource_prefix_cached_tokens": 40,
@@ -3286,8 +3304,21 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
     assert aggregate["native_tokens"] == 80
     assert aggregate["wire_tokens"] == 32
     assert aggregate["physical_kv_copy_observed"] is False
+    assert aggregate["physical_kv_copy_bytes"] == 64
+    assert aggregate["total_kv_copy_bytes"] == 448
+    assert aggregate["canonical_suffix_graft_d2d_bytes"] == 384
+    assert aggregate["host_to_device_bytes"] == 32
     assert aggregate["selected_kv_tokens"] == 80
     assert aggregate["selected_text_reencoded_tokens"] == 9
+    assert aggregate["selected_history_reencoded_tokens"] == 9
+    assert aggregate["realized_retention_fraction"] == pytest.approx(160 / 300)
+    assert aggregate["realized_retention_fraction_min"] == pytest.approx(0.5)
+    assert aggregate["realized_retention_fraction_max"] == pytest.approx(0.6)
+    assert aggregate["engine_reported_history_kv_retention_fraction_min"] == pytest.approx(0.5)
+    assert aggregate["engine_reported_history_kv_retention_fraction_max"] == pytest.approx(0.6)
+    assert aggregate["consumer_temporary_bytes"] == 3000
+    assert aggregate["consumer_temporary_peak_bytes"] == 900
+    assert aggregate["fused_attention_calls"] == 10
     assert aggregate["full_retention_requests"] == 1
     assert aggregate["sparse_kv_requests"] == 1
     assert aggregate["resource_update_counts"] == {
@@ -3296,6 +3327,21 @@ def test_treatment_trace_aggregation_keeps_estimates_disjoint() -> None:
     assert aggregate["resource_prefix_cached_tokens"] == 40
     assert aggregate["resource_evaluated_tokens"] == 40
     assert aggregate["resource_total_tokens"] == 80
+
+
+def test_treatment_trace_aggregation_preserves_missing_physical_telemetry() -> None:
+    aggregate = _aggregate_traces([{
+        "logical_input_tokens_estimate": 100,
+        "physical_input_tokens_estimate": 100,
+    }])
+
+    assert aggregate["selected_history_reencoded_tokens"] is None
+    assert aggregate["physical_kv_copy_bytes"] is None
+    assert aggregate["total_kv_copy_bytes"] is None
+    assert aggregate["canonical_suffix_graft_d2d_bytes"] is None
+    assert aggregate["host_to_device_bytes"] is None
+    assert aggregate["consumer_temporary_bytes"] is None
+    assert aggregate["consumer_temporary_peak_bytes"] is None
 
 
 def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Path) -> None:
@@ -3313,8 +3359,17 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
                     "native_tokens": 11,
                     "wire_tokens": 3,
                     "physical_kv_copy": False,
+                    "physical_kv_copy_bytes": 0,
+                    "total_kv_copy_bytes": 4096,
+                    "canonical_suffix_graft_d2d_bytes": 4096,
+                    "host_to_device_bytes": 0,
                     "selected_kv_tokens": 11,
                     "selected_text_reencoded_tokens": 0,
+                    "selected_history_reencoded_tokens": 0,
+                    "realized_retention_fraction": 0.9,
+                    "consumer_temporary_bytes": 2048,
+                    "consumer_temporary_peak_bytes": 1024,
+                    "fused_attention_calls": 28,
                     "full_retention": False,
                 },
             }).encode()
@@ -3374,8 +3429,17 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     assert trace["native_tokens"] == 11
     assert trace["wire_tokens"] == 3
     assert trace["physical_kv_copy"] is False
+    assert trace["physical_kv_copy_bytes"] == 0
+    assert trace["total_kv_copy_bytes"] == 4096
+    assert trace["canonical_suffix_graft_d2d_bytes"] == 4096
+    assert trace["host_to_device_bytes"] == 0
     assert trace["selected_kv_tokens"] == 11
     assert trace["selected_text_reencoded_tokens"] == 0
+    assert trace["selected_history_reencoded_tokens"] == 0
+    assert trace["realized_retention_fraction"] == pytest.approx(0.9)
+    assert trace["consumer_temporary_bytes"] == 2048
+    assert trace["consumer_temporary_peak_bytes"] == 1024
+    assert trace["fused_attention_calls"] == 28
     assert trace["full_retention"] is False
     fixture = _load_selection_fixture(selection_path)
     assert len(fixture) == 1

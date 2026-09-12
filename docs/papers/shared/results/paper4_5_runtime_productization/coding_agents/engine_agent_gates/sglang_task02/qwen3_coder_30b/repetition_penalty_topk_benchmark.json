@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "classification": "real_model_greedy_penalty_mechanism_benchmark",
+  "model": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+  "model_revision": "6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "engine": "sglang-mlx",
+  "prompt": "Repeat alpha forever, separated by spaces.",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "max_tokens": 256,
+  "repeat_last_n": 64,
+  "sampler_prompt_tokens": 35,
+  "sampler_prompt_sha256": "f13defae675e65d24fe85a79a22e3bfd7a91b3cc7903504ed376ee1c08937032",
+  "arms": [
+    {
+      "name": "raw_greedy_no_penalty",
+      "repetition_penalty": 1.0,
+      "completion_tokens": 256,
+      "elapsed_seconds": 3.974962583000888,
+      "tokens_per_second": 64.40312185749352,
+      "penalty_application_calls": 0
+    },
+    {
+      "name": "exact_topk_greedy_penalty",
+      "repetition_penalty": 1.05,
+      "completion_tokens": 256,
+      "elapsed_seconds": 5.721759041000041,
+      "tokens_per_second": 44.7414881454822,
+      "penalty_application_calls": 256,
+      "penalty_unique_tokens_first_step": 26,
+      "penalty_unique_tokens_max": 28,
+      "lazy_mlx": true,
+      "cpu_syncs": 0
+    }
+  ],
+  "relative": {
+    "penalty_throughput_ratio": 0.694710862811285,
+    "penalty_elapsed_overhead_fraction": 0.4394502852585129
+  },
+  "exactness_argument": "With at most 64 unique penalized ids, at least one of the original top 65 candidates is unchanged and dominates every logit outside top 65. Sign-aware penalty can only decrease a seen candidate, so the penalized greedy winner is exactly inside that set.",
+  "scope": "Greedy requests without edit rows or logprobs. Sampling and edited-distribution requests retain the full-scatter fallback."
+}

@@ -2,6 +2,12 @@
 
 from .adapter import SGLangEngineAdapter, SGLangNativeExecutor
 from .native_executor import SGLangInProcessNativeExecutor
+from .agent_executor import (
+    PURE_CHATML_APPEND_STABLE_TEMPLATE,
+    SGLangMLXAgentHistoryExecutor,
+    configure_append_stable_template,
+    qwen3_append_stable_no_thinking_template,
+)
 from .remote_warm import HTTPHiCacheStorageClient, RemoteWarmClientMetrics
 from .hicache import (
     PRAHiCacheMetrics,
@@ -23,6 +29,10 @@ from .mlx_native import (
 __all__ = [
     "SGLangEngineAdapter",
     "SGLangInProcessNativeExecutor",
+    "SGLangMLXAgentHistoryExecutor",
+    "PURE_CHATML_APPEND_STABLE_TEMPLATE",
+    "configure_append_stable_template",
+    "qwen3_append_stable_no_thinking_template",
     "HTTPHiCacheStorageClient",
     "PRAHiCacheMetrics",
     "PRAHiCacheTier",

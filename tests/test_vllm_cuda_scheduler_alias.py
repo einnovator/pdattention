@@ -11,6 +11,7 @@ from pra_vllm.cuda_scheduler_alias import (
     SchedulerPageSelection,
     VLLMCudaSchedulerPageRegistry,
 )
+from pra_vllm.cuda_sparse_connector import _completed_append_pages
 
 
 @dataclass(eq=False)
@@ -66,6 +67,17 @@ def _published():
         block_pool=pool,
     )
     return registry, pool, pages
+
+
+def test_load_completion_counts_pages_from_explicit_scheduler_manager() -> None:
+    manager = SimpleNamespace(
+        coordinator=SimpleNamespace(
+            single_type_managers=[SimpleNamespace(block_size=16)]
+        )
+    )
+    assert _completed_append_pages(
+        manager, SimpleNamespace(num_computed_tokens=101), 64
+    ) == 2
 
 
 def test_authoritative_alias_uses_exact_source_objects_and_native_refcounts() -> None:

@@ -68,6 +68,9 @@ class _PinnedSource:
 @dataclass(frozen=True)
 class SchedulerAliasTelemetry:
     source_pin_events: int
+    alias_hit_events: int
+    alias_prepare_events: int
+    alias_commit_events: int
     alias_install_events: int
     alias_release_events: int
     physical_kv_copy_bytes: int
@@ -84,6 +87,9 @@ class VLLMCudaSchedulerPageRegistry:
         self._pending: dict[str, SchedulerPageSelection] = {}
         self._active: dict[str, SchedulerPageSelection] = {}
         self._source_pin_events = 0
+        self._alias_hit_events = 0
+        self._alias_prepare_events = 0
+        self._alias_commit_events = 0
         self._alias_install_events = 0
         self._alias_release_events = 0
 
@@ -197,7 +203,16 @@ class VLLMCudaSchedulerPageRegistry:
             selected = tuple(source.blocks[index] for index in selection.selected_page_indices)
             source.pending.add(request_key)
             self._pending[request_key] = selection
+            self._alias_prepare_events += 1
             return create_kv_cache_blocks((selected,))
+
+    def note_alias_hit(self, request_id: str) -> None:
+        """Record that the scheduler lookup actually selected the PRA alias."""
+
+        with self._lock:
+            if str(request_id) not in self._pending:
+                raise RuntimeError("Sparse CUDA alias hit was not prepared first.")
+            self._alias_hit_events += 1
 
     def commit_alias(self, request_id: str, installed_blocks: Any) -> None:
         """Confirm allocate_slots installed the exact source block identities."""
@@ -231,7 +246,62 @@ class VLLMCudaSchedulerPageRegistry:
             source.pending.discard(request_key)
             source.borrowers.add(request_key)
             self._active[request_key] = selection
+            self._alias_commit_events += 1
             self._alias_install_events += 1
+
+    def publish_extended_source(
+        self,
+        request_id: str,
+        destination_logical_key: str,
+        *,
+        destination_generation: int,
+        append_complete_pages: int,
+        request_blocks: Any,
+    ) -> int:
+        """Publish old full pages plus newly evaluated request suffix pages.
+
+        The request block table begins with its compact selected aliases.  Its
+        following pages contain suffix K/V evaluated at ``source_position_base``.
+        Those pages can extend the *full* canonical source without copying K/V.
+        Partial suffix pages are deliberately excluded.
+        """
+
+        request_key = str(request_id)
+        with self._lock:
+            selection = self._active.get(request_key)
+            if selection is None:
+                raise RuntimeError("Cannot extend a source before alias commit.")
+            source = self._sources.get(selection.source_logical_key)
+            if source is None or source.tombstoned:
+                raise RuntimeError("Canonical CUDA source is unavailable.")
+            if selection.source_position_base != source.source_tokens:
+                raise RuntimeError(
+                    "Sparse request position base does not equal canonical source extent."
+                )
+            count = int(append_complete_pages)
+            if count < 0:
+                raise ValueError("append_complete_pages cannot be negative.")
+            groups = tuple(getattr(request_blocks, "blocks", ()))
+            if len(groups) != 1:
+                raise NotImplementedError(
+                    "CUDA source extension requires one homogeneous KV group."
+                )
+            selected_pages = len(selection.selected_page_indices)
+            end = selected_pages + count
+            if len(groups[0]) < end:
+                raise RuntimeError("Request does not own all committed suffix pages.")
+            appended = tuple(groups[0][selected_pages:end])
+            combined = (*source.blocks, *appended)
+            tokens = source.source_tokens + count * source.block_size
+            self.publish_source(
+                destination_logical_key,
+                generation=destination_generation,
+                source_tokens=tokens,
+                blocks_by_group=(combined,),
+                block_sizes=(source.block_size,),
+                block_pool=source.block_pool,
+            )
+            return tokens
 
     def finish_request(self, request_id: str) -> bool:
         """Release logical state once; vLLM frees its physical alias reference."""
@@ -316,12 +386,20 @@ class VLLMCudaSchedulerPageRegistry:
         source.block_pool.free_blocks(reversed(source.blocks))
         self._sources.pop(key, None)
 
-    @staticmethod
-    def _only_source_pin_remains(source: _PinnedSource) -> bool:
-        # Each source page has exactly one persistent registry-owned pin. Any
-        # larger refcount is an authoritative scheduler request or a deferred
-        # in-flight free, even if its logical finish callback already fired.
-        return all(int(block.ref_cnt) == 1 for block in source.blocks)
+    def _only_source_pin_remains(self, source: _PinnedSource) -> bool:
+        # A page can be owned by two canonical generations during atomic
+        # rollover.  Discount all registry-owned source pins, but never an
+        # authoritative request/deferred-free reference.
+        def persistent_pins(block: Any) -> int:
+            return sum(
+                sum(candidate is block for candidate in row.blocks)
+                for row in self._sources.values()
+            )
+
+        return all(
+            int(block.ref_cnt) == persistent_pins(block)
+            for block in source.blocks
+        )
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -345,6 +423,9 @@ class VLLMCudaSchedulerPageRegistry:
     def telemetry(self) -> SchedulerAliasTelemetry:
         return SchedulerAliasTelemetry(
             source_pin_events=self._source_pin_events,
+            alias_hit_events=self._alias_hit_events,
+            alias_prepare_events=self._alias_prepare_events,
+            alias_commit_events=self._alias_commit_events,
             alias_install_events=self._alias_install_events,
             alias_release_events=self._alias_release_events,
             physical_kv_copy_bytes=0,

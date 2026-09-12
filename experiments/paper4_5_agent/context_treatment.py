@@ -1399,8 +1399,18 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
             "native_tokens": None,
             "wire_tokens": None,
             "physical_kv_copy": None,
+            "physical_kv_copy_bytes": None,
+            "total_kv_copy_bytes": None,
+            "canonical_suffix_graft_d2d_bytes": None,
+            "host_to_device_bytes": None,
             "selected_kv_tokens": None,
             "selected_text_reencoded_tokens": None,
+            "selected_history_reencoded_tokens": None,
+            "realized_retention_fraction": None,
+            "engine_reported_history_kv_retention_fraction": None,
+            "consumer_temporary_bytes": None,
+            "consumer_temporary_peak_bytes": None,
+            "fused_attention_calls": None,
             "full_retention": None,
             "resource_update_mode": None,
             "resource_prefix_cached_tokens": None,
@@ -1417,8 +1427,24 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
     native_tokens = pra.get("native_tokens")
     wire_tokens = pra.get("wire_tokens")
     physical_copy = pra.get("physical_kv_copy")
+    physical_copy_bytes = pra.get("physical_kv_copy_bytes")
+    total_kv_copy_bytes = pra.get("total_kv_copy_bytes")
+    canonical_suffix_graft_d2d_bytes = pra.get(
+        "canonical_suffix_graft_d2d_bytes"
+    )
+    host_to_device_bytes = pra.get("host_to_device_bytes")
     selected_kv = pra.get("selected_kv_tokens")
     selected_reencoded = pra.get("selected_text_reencoded_tokens")
+    selected_history_reencoded = pra.get("selected_history_reencoded_tokens")
+    realized_retention = pra.get("realized_retention_fraction")
+    consumer_temporary = pra.get(
+        "consumer_temporary_bytes",
+        pra.get("transient_attention_bytes", pra.get("temporary_allocation_bytes")),
+    )
+    consumer_temporary_peak = pra.get(
+        "consumer_temporary_peak_bytes", pra.get("consumer_peak_delta_bytes")
+    )
+    fused_attention_calls = pra.get("fused_attention_calls")
     full_retention = pra.get("full_retention")
     engine_cached_tokens = pra.get("engine_cached_tokens_total")
     resource_update_mode = pra.get("resource_update_mode")
@@ -1436,10 +1462,35 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
             wire_tokens = row.get("wire_tokens")
         if physical_copy is None:
             physical_copy = row.get("physical_kv_copy")
+        if physical_copy_bytes is None:
+            physical_copy_bytes = row.get("physical_kv_copy_bytes")
+        if total_kv_copy_bytes is None:
+            total_kv_copy_bytes = row.get("total_kv_copy_bytes")
+        if canonical_suffix_graft_d2d_bytes is None:
+            canonical_suffix_graft_d2d_bytes = row.get(
+                "canonical_suffix_graft_d2d_bytes"
+            )
+        if host_to_device_bytes is None:
+            host_to_device_bytes = row.get("host_to_device_bytes")
         if selected_kv is None:
             selected_kv = row.get("selected_kv_tokens")
         if selected_reencoded is None:
             selected_reencoded = row.get("selected_text_reencoded_tokens")
+        if selected_history_reencoded is None:
+            selected_history_reencoded = row.get("selected_history_reencoded_tokens")
+        if realized_retention is None:
+            realized_retention = row.get("realized_retention_fraction")
+        if consumer_temporary is None:
+            consumer_temporary = row.get(
+                "consumer_temporary_bytes",
+                row.get("transient_attention_bytes", row.get("temporary_allocation_bytes")),
+            )
+        if consumer_temporary_peak is None:
+            consumer_temporary_peak = row.get(
+                "consumer_temporary_peak_bytes", row.get("consumer_peak_delta_bytes")
+            )
+        if fused_attention_calls is None:
+            fused_attention_calls = row.get("fused_attention_calls")
         if full_retention is None:
             full_retention = row.get("full_retention")
         if engine_cached_tokens is None:
@@ -1461,9 +1512,42 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
         "native_tokens": int(native_tokens) if native_tokens is not None else None,
         "wire_tokens": int(wire_tokens) if wire_tokens is not None else None,
         "physical_kv_copy": bool(physical_copy) if physical_copy is not None else None,
+        "physical_kv_copy_bytes": (
+            int(physical_copy_bytes) if physical_copy_bytes is not None else None
+        ),
+        "total_kv_copy_bytes": (
+            int(total_kv_copy_bytes) if total_kv_copy_bytes is not None else None
+        ),
+        "canonical_suffix_graft_d2d_bytes": (
+            int(canonical_suffix_graft_d2d_bytes)
+            if canonical_suffix_graft_d2d_bytes is not None else None
+        ),
+        "host_to_device_bytes": (
+            int(host_to_device_bytes) if host_to_device_bytes is not None else None
+        ),
         "selected_kv_tokens": int(selected_kv) if selected_kv is not None else None,
         "selected_text_reencoded_tokens": (
             int(selected_reencoded) if selected_reencoded is not None else None
+        ),
+        "selected_history_reencoded_tokens": (
+            int(selected_history_reencoded)
+            if selected_history_reencoded is not None
+            else int(selected_reencoded) if selected_reencoded is not None else None
+        ),
+        "realized_retention_fraction": (
+            float(realized_retention) if realized_retention is not None else None
+        ),
+        "engine_reported_history_kv_retention_fraction": (
+            float(realized_retention) if realized_retention is not None else None
+        ),
+        "consumer_temporary_bytes": (
+            int(consumer_temporary) if consumer_temporary is not None else None
+        ),
+        "consumer_temporary_peak_bytes": (
+            int(consumer_temporary_peak) if consumer_temporary_peak is not None else None
+        ),
+        "fused_attention_calls": (
+            int(fused_attention_calls) if fused_attention_calls is not None else None
         ),
         "full_retention": (
             bool(full_retention) if full_retention is not None else None

@@ -373,10 +373,13 @@ class PRAGateway:
         self, turn: ResolvedSessionTurn, request: PRAWireRequest,
     ) -> str | None:
         state = turn.state
+        history_projection = request.metadata.get("history_projection")
         selected_history_projection = (
-            self.mode == PRAGatewayMode.G11_MEDIATION
-            and request.metadata.get("history_projection")
-            == "detached-agent-trajectory-v1"
+            history_projection == "detached-agent-trajectory-v1"
+            and self.mode == PRAGatewayMode.G11_MEDIATION
+        ) or (
+            history_projection == "live-agent-kv-v1"
+            and self.adapter.capabilities().agent_history_kv_qualified
         )
         if (
             turn.prefix_changed_reason == "history_rewrite"

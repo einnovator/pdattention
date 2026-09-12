@@ -30,7 +30,7 @@ from pra_sglang.mlx_native import (
     SGLangSelectedKVCache,
 )
 
-from .run_hf_agent_cache_equivalence import _assistant_prompts
+from .run_mlx_agent_cache_equivalence import _assistant_prompts
 from .sparse_gate_common import sparse_causal_plan
 
 

@@ -1,0 +1,82 @@
+{
+  "schema_version": "paper4.5.sglang-mlx-plain-admission.v1",
+  "timestamp": "2026-09-12T01:25:48Z",
+  "classification": "plain_model_task_admission_failure_not_pra_failure",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "model_revision": "29efdbab55a161237ab1e432a3abaf6c7ae2b477",
+  "engine": "sglang-mlx",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "task": {
+    "instance_id": "django__django-15368",
+    "locked_task_index": 2,
+    "cohort_sha256": "e367bb52c19baf863b5e74a79de34775289649760b50a0a32b8451d006e59113"
+  },
+  "snapshot": {
+    "weight_bytes": 8309494233,
+    "shards": [
+      {
+        "name": "model-00001-of-00002.safetensors",
+        "bytes": 5353840273,
+        "sha256": "784b0c89d3e006f49cb8547aba1f2f4e99b365ab4380cf202655ca04c87d7ac3"
+      },
+      {
+        "name": "model-00002-of-00002.safetensors",
+        "bytes": 2955653960,
+        "sha256": "a1b7516f1926070177601698661494dfc68c2de1d98e7c43ba910a0d1d7dfbbe"
+      }
+    ],
+    "architecture": "Qwen2ForCausalLM",
+    "recurrent_state": false
+  },
+  "chat_template": {
+    "profile": "native",
+    "sha256": "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f",
+    "two_turn_byte_prefix_stable": true,
+    "two_turn_token_prefix_stable": true,
+    "effective_stop_token_ids": [151643, 151644, 151645],
+    "repetition_penalty": 1.05,
+    "repeat_last_n": 64
+  },
+  "implementation_fix": {
+    "root_cause": "The fused SGLang-MLX Qwen projection path assumed Qwen3 q_norm/k_norm modules, but Qwen2.5 attention has neither.",
+    "correction": "Apply q_norm and k_norm only when the model family exposes them; preserve the unnormalized Qwen2 projection contract.",
+    "focused_tests": "20/20 passed"
+  },
+  "bridge_smoke": {
+    "passed": true,
+    "responses": ["OK", "DONE"],
+    "second_turn_source_tokens": 61,
+    "second_turn_selected_tokens": 61,
+    "selected_history_reencoded_tokens": 0,
+    "selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "canonical_suffix_graft_d2d_bytes": 6684672,
+    "consumer_temporary_peak_bytes": 805306376,
+    "artifact": "bridge_smoke_v1.json"
+  },
+  "plain_admission": {
+    "resolved": false,
+    "official_score": 0.0,
+    "termination_reason": "Submitted",
+    "model_calls": 9,
+    "accepted_tool_actions": 9,
+    "files_inspected": 1,
+    "files_modified": 1,
+    "patch_bytes": 443,
+    "wall_time_seconds": 307.09218311309814,
+    "grader_time_seconds": 37.984996791987214,
+    "failure_type": "model_task_incorrect_patch",
+    "failure_detail": "The agent inserted an undefined attr check at function entry, producing an incorrect patch; the official grader completed and marked the task unresolved.",
+    "artifact": "plain_v1/official_result.json",
+    "trajectory": "plain_v1/chunk_00/django__django-15368/django__django-15368.traj.json"
+  },
+  "pra_100": {
+    "status": "not_run_plain_gate_failed"
+  },
+  "pra_90": {
+    "status": "not_run_plain_gate_failed"
+  },
+  "pra_100_executed": false,
+  "pra_90_executed": false,
+  "claim_boundary": "The direct bridge and resident-K/V mechanism pass on Qwen2.5-Coder-14B, but this frozen model/task pair does not pass plain admission. Its PRA-100 and PRA-90 arms are therefore withheld, and the 0/1 result is not evidence about PRA efficacy."
+}

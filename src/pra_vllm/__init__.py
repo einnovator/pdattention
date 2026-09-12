@@ -7,6 +7,12 @@ from .cuda_scheduler_alias import (
     VLLMCudaSchedulerPageRegistry,
     install_vllm_scheduler_page_alias_hooks,
 )
+from .agent_executor import (
+    VLLMAgentSchedulerDriver,
+    VLLMCudaAgentHistoryExecutor,
+    VLLMGenerationReceipt,
+    VLLMInProcessSchedulerDriver,
+)
 from .metal_native import VLLMMetalBlockHandle, VLLMMetalPRAStore
 from .metal_live_kv import (
     VLLMMetalLiveKVRuntime,
@@ -31,6 +37,10 @@ from .v1_native import (
 __all__ = [
     "SchedulerAliasTelemetry",
     "SchedulerPageSelection",
+    "VLLMAgentSchedulerDriver",
+    "VLLMCudaAgentHistoryExecutor",
+    "VLLMGenerationReceipt",
+    "VLLMInProcessSchedulerDriver",
     "VLLMEngineAdapter",
     "VLLMCudaSchedulerPageRegistry",
     "VLLMMetalBlockHandle",

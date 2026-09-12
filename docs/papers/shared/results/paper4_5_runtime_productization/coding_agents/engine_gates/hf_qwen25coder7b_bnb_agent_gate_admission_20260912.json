@@ -1,0 +1,141 @@
+{
+  "schema_version": "paper4.5-hf-bnb-agent-admission-v1",
+  "created_at": "2026-09-12T00:15:22+01:00",
+  "machine": {
+    "host": "192.168.1.12",
+    "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "gpu_memory_total_mib": 8151,
+    "desktop_baseline_memory_mib": 1725,
+    "loaded_server_memory_mib_including_desktop": 7405,
+    "torch_version": "2.13.0+cu130",
+    "transformers_version": "5.12.1",
+    "bitsandbytes_version": "0.50.2",
+    "bitsandbytes_install": {
+      "mode": "isolated-target-overlay-no-deps",
+      "path": "/home/killu/hf-bnb-overlay",
+      "dry_run_replaced_torch": false,
+      "dry_run_replaced_transformers": false,
+      "declared_dependencies_pre_satisfied": true,
+      "cuda_import_passed": true
+    }
+  },
+  "model": {
+    "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "snapshot_bytes_advertised": 15200000000,
+    "snapshot_complete": true,
+    "quantization": "bitsandbytes-nf4",
+    "compute_dtype": "float16",
+    "double_quantization": true,
+    "device_map": "auto",
+    "attention_implementation": "eager",
+    "model_admitted": true,
+    "health_passed": true,
+    "real_cuda": true
+  },
+  "plain_bridge_smoke": {
+    "passed": true,
+    "native_kv_used": false,
+    "prompt_tokens": 40,
+    "completion_tokens": 1,
+    "output": "Clone",
+    "model_forward_calls": 2,
+    "temperature": 0,
+    "elapsed_seconds": 1.5186764200000198,
+    "chat_template_profile": "pure-chatml-stable",
+    "chat_template_digest": "38944c4cae0001fc4fb68d4dfd685b8be09a296ed35d1830ba4b914c4984fa6c"
+  },
+  "sdpa_retry": {
+    "server": {
+      "dense_attention_implementation": "sdpa",
+      "sparse_pra90_attention_implementation": "not_exercised; remains the separate fused sparse consumer",
+      "model_memory_mib_including_desktop_before_prompt": 7332,
+      "device_memory_total_mib": 8151,
+      "sampled_peak_memory_mib": null,
+      "peak_memory_note": "The driver rejected the first full-prompt allocation before an external peak sample; capacity exhaustion is observed, but an exact peak is not fabricated.",
+      "health_passed": true
+    },
+    "short_plain_bridge_smoke": {
+      "passed": true,
+      "native_kv_used": false,
+      "prompt_tokens": 40,
+      "completion_tokens": 1,
+      "output": "Clone",
+      "model_forward_calls": 2,
+      "temperature": 0,
+      "elapsed_seconds": 1.2576779990001796
+    },
+    "frozen_task01_plain": {
+      "started": true,
+      "completed": false,
+      "resolved": false,
+      "official_grade": null,
+      "agent_actions_completed": 0,
+      "tool_calls_completed": 0,
+      "source_mutations": 0,
+      "trajectory_path": null,
+      "failure_stage": "first_full_agent_prompt_prefill",
+      "failure_type": "CUDA_out_of_memory",
+      "primary_error": "RuntimeError: CUDA driver error: out of memory",
+      "primary_error_operation": "bitsandbytes CUDA 4-bit GEMM dequantization fallback allocating B_dq in the Qwen2 MLP down projection",
+      "secondary_retry_error": "RuntimeError: !handles_.at(i) INTERNAL ASSERT FAILED at c10/cuda/CUDACachingAllocator.cpp:467",
+      "classification": "sdpa_removes_dense_attention_quadratic_but_bnb_dequant_temporary_still_exceeds_hardware",
+      "run_directory": "/home/killu/paper45-e2e/hf_qwen7b_bnb_sdpa_task01_plain_v1",
+      "log_path": "/home/killu/paper45-e2e/hf_qwen7b_bnb_sdpa_task01_plain_v1/minisweagent.log",
+      "log_sha256": "b2cc3de7ff3b640fd77175bf7909bee12c1257cbb8890e5bbab849b64997883c"
+    }
+  },
+  "frozen_task01_plain": {
+    "benchmark": "SWE-bench Verified",
+    "instance_id": "django__django-15277",
+    "harness": "mini-swe-agent",
+    "harness_version": "2.4.6",
+    "model_class": "litellm_textbased",
+    "agent_config": "swebench_backticks.yaml",
+    "temperature": 0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024,
+    "step_limit": 50,
+    "started": true,
+    "completed": false,
+    "resolved": false,
+    "official_grade": null,
+    "agent_actions_completed": 0,
+    "tool_calls_completed": 0,
+    "source_mutations": 0,
+    "trajectory_path": null,
+    "submission_path": null,
+    "failure_stage": "first_full_agent_prompt_prefill",
+    "failure_type": "CUDA_out_of_memory",
+    "primary_error": "RuntimeError: CUDA driver error: out of memory",
+    "secondary_retry_error": "RuntimeError: !handles_.at(i) INTERNAL ASSERT FAILED at c10/cuda/CUDACachingAllocator.cpp:467",
+    "failure_operation": "Qwen2 eager attention softmax for the initial autonomous prompt",
+    "classification": "model_server_admitted_but_task_prompt_hardware_inadmissible",
+    "run_directory": "/home/killu/paper45-e2e/hf_qwen7b_bnb_task01_plain_v1",
+    "log_path": "/home/killu/paper45-e2e/hf_qwen7b_bnb_task01_plain_v1/minisweagent.log",
+    "log_sha256": "9f75e9f83f1361361d75e0ca917a00ebee0f076f147b5031028fc4b36d0d841f"
+  },
+  "pra_100": null,
+  "pra_90": null,
+  "selection_telemetry": {
+    "selected_logical_tokens": null,
+    "selected_kv_tokens": null,
+    "retention_fraction_requested": null,
+    "retention_fraction_realized": null,
+    "first_divergence": null
+  },
+  "consumption_telemetry": {
+    "selected_history_reencoded_tokens": null,
+    "selected_history_kv_copy_bytes": null,
+    "selected_interval_copy_bytes": null,
+    "host_to_device_bytes": null,
+    "consumer_temporary_attention_bytes": null,
+    "consumer_temporary_kv_copy_bytes": null
+  },
+  "outcome": {
+    "plain_model_task_pair_admitted": false,
+    "pra_gate_open": false,
+    "reason": "Both eager and SDPA real frozen plain-task attempts failed before the first agent action. SDPA removed the eager-attention failure site, but BitsAndBytes' 4-bit GEMM dequantization temporary still exhausted the 8 GB GPU. PRA100 was correctly not attempted."
+  }
+}

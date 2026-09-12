@@ -1,0 +1,154 @@
+{
+  "schema_version": "paper4.5.frozen-agent-engine-admission.v1",
+  "recorded_at": "2026-09-11T23:27:00+01:00",
+  "engine": "vllm",
+  "engine_version": "0.28.0",
+  "host": "192.168.1.12",
+  "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "model": "Qwen/Qwen2.5-Coder-14B-Instruct-AWQ",
+  "resolved_snapshot": "/home/killu/.cache/huggingface/hub/models--Qwen--Qwen2.5-Coder-14B-Instruct-AWQ/snapshots/eb3172f06a6d6b3a15f08947b0668d782e4d2d2c",
+  "model_snapshot": {
+    "status": "complete",
+    "checkpoint_gib": 9.29,
+    "safetensor_shards": 3
+  },
+  "task": {
+    "suite": "SWE-bench Verified",
+    "instance_id": "django__django-15368",
+    "agent": "mini-swe-agent",
+    "agent_version": "2.4.6",
+    "model_class": "litellm_textbased",
+    "prompt_config": "swebench_backticks.yaml",
+    "temperature": 0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "step_limit": 50
+  },
+  "server_admission": {
+    "status": "passed_at_0.84",
+    "qualified_geometry": {
+      "gpu_memory_utilization": 0.84,
+      "requested_cpu_offload_gb": 8.0,
+      "observed_cpu_offloaded_parameters_billions": 6.39,
+      "enforce_eager": true,
+      "kv_cache_dtype": "float16",
+      "max_model_len": 16384,
+      "enable_prefix_caching": true
+    },
+    "observed": {
+      "model_gpu_memory_gib": 2.91,
+      "available_kv_cache_gib": 3.04,
+      "gpu_kv_cache_tokens": 16624,
+      "maximum_16384_token_concurrency": 1.01,
+      "health_http_status": 200
+    },
+    "failed_controls": [
+      {
+        "gpu_memory_utilization": 0.82,
+        "requested_cpu_offload_gb": 7.0,
+        "available_kv_cache_gib": 2.89,
+        "required_kv_cache_gib": 3.0,
+        "estimated_max_model_len": 15744,
+        "status": "kv_capacity_failed",
+        "log_path": "/home/killu/pra-cuda-results/vllm_qwen14b_082_server.log",
+        "log_sha256": "6dccf30ec645708c3cc8ff17d3d7a87943a7303571ef257be7112c4b7ff5b0f1"
+      },
+      {
+        "gpu_memory_utilization": 0.78,
+        "requested_cpu_offload_gb": 8.0,
+        "available_kv_cache_gib": 2.57,
+        "required_kv_cache_gib": 3.0,
+        "estimated_max_model_len": 14016,
+        "status": "kv_capacity_failed",
+        "log_path": "/home/killu/pra-cuda-results/vllm_qwen14b_078_server.log",
+        "log_sha256": "ad4d027a1cc6c06ce082b4168140111d39f4c14f9e57a2eb1fbf0d5edfc56abc"
+      }
+    ],
+    "passing_log": {
+      "path": "/home/killu/pra-cuda-results/vllm_qwen14b_084_server.log",
+      "sha256": "7cbe6526113ccf888f5648f63b743c4dc5bf0aa7778df66a8b7dbeebb7c2df41"
+    }
+  },
+  "conditions": {
+    "plain": {
+      "status": "hardware_inadmissible_for_autonomous_task_throughput",
+      "task_success": null,
+      "grader_outcome": null,
+      "action_trajectory_sha256": null,
+      "completed_tool_calls": 2,
+      "orphaned_server_completions": 1,
+      "wall_time_s": 602.42,
+      "source_mutation_present_at_cutoff": false,
+      "observed_prompt_throughput_tokens_s": 168.3,
+      "observed_decode_throughput_tokens_s_range": [0.4, 0.5],
+      "termination": "The third generation was cancelled after the bounded throughput/no-progress cutoff; its later orphaned server completion was not counted as an agent action.",
+      "run_log": {
+        "path": "/home/killu/paper45-e2e/vllm_qwen14bawq_task02_plain_v1_textbased/minisweagent.log",
+        "sha256": "85f8e3ecf02ba3d61710df696563fbf9dd20409b80d828317fe03c2a1330e315"
+      },
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    },
+    "pra_100": {
+      "status": "not_run_plain_admission_gate_failed",
+      "task_success": null,
+      "exact_action_trajectory": null,
+      "first_action_divergence": null,
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    },
+    "pra_90": {
+      "status": "not_run_pra_100_gate_not_reached",
+      "task_success": null,
+      "first_action_divergence": null,
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    }
+  },
+  "outcome_families": {
+    "task_success_and_exact_100_trajectory": "plain task did not finish; task success and PRA trajectory parity are null",
+    "two_retention_denominators": "not exercised; both denominators are null",
+    "reencoding_and_kv_copy_bytes": "not exercised; values are null, not zero",
+    "consumer_temporary_bytes_and_calls": "two plain agent actions completed; PRA consumer memory values are null"
+  },
+  "pra_request_issued": false,
+  "fresh_reprefill_used": false,
+  "easy_task_expansion_allowed": false
+}

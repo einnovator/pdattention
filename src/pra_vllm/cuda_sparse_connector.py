@@ -33,6 +33,14 @@ _POSITION_BASES: contextvars.ContextVar[dict[str, tuple[int, int]]] = (
 _HOOKED: set[type[Any]] = set()
 
 
+def _completed_append_pages(manager: Any, request: Any, selected_tokens: int) -> int:
+    """Count complete suffix pages without depending on a store-only local."""
+
+    computed_suffix = max(0, int(request.num_computed_tokens) - int(selected_tokens))
+    block_size = int(manager.coordinator.single_type_managers[0].block_size)
+    return computed_suffix // block_size
+
+
 def _position_delta(selected_tokens: int, source_position_base: int) -> int:
     """Return the RoPE offset not represented by compact selected pages."""
 
@@ -144,6 +152,7 @@ class PRASparseConnector(PRASemanticConnector):
         self._scheduler_alias_registry = VLLMCudaSchedulerPageRegistry()
         self._scheduler_kv_manager: Any | None = None
         self._scheduler_alias_requests: set[str] = set()
+        self._scheduler_committed_sources: dict[str, tuple[str, int, int]] = {}
         if self._detached or self._scheduler_alias_enabled:
             _install_sparse_position_hook()
         if self._scheduler_alias_enabled:
@@ -208,6 +217,7 @@ class PRASparseConnector(PRASemanticConnector):
             prompt_token_count=prompt_token_count,
             create_kv_cache_blocks=manager.create_kv_cache_blocks,
         )
+        self._scheduler_alias_registry.note_alias_hit(request.request_id)
         selected = int(command.source_tokens)
         # Keep compact attention length and full source position extent separate.
         # The worker position hook applies the latter; this scheduler result must
@@ -295,8 +305,8 @@ class PRASparseConnector(PRASemanticConnector):
             getattr(self, "_scheduler_alias_enabled", False)
             and getattr(self, "_scheduler_kv_manager", None) is not None
         ):
+            manager = self._scheduler_kv_manager
             if command is not None and command.mode == "store":
-                manager = self._scheduler_kv_manager
                 source_tokens = int(command.source_tokens)
                 if int(request.num_computed_tokens) < source_tokens:
                     raise RuntimeError(
@@ -314,9 +324,41 @@ class PRASparseConnector(PRASemanticConnector):
                     ),
                     block_pool=manager.block_pool,
                 )
+            elif command is not None and command.mode == "load":
+                manifest_path = self._directory(command.logical_key) / "manifest.json"
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                destination = payload.get("commit_source_logical_key")
+                destination_generation = payload.get("commit_source_generation")
+                if destination is not None or destination_generation is not None:
+                    if not destination or destination_generation is None:
+                        raise RuntimeError(
+                            "Sparse CUDA source commit metadata is incomplete."
+                        )
+                    append_pages = _completed_append_pages(
+                        manager, request, int(command.source_tokens)
+                    )
+                    committed_tokens = self._scheduler_alias_registry.publish_extended_source(
+                        request.request_id,
+                        str(destination),
+                        destination_generation=int(destination_generation),
+                        append_complete_pages=append_pages,
+                        request_blocks=manager.get_blocks(request.request_id),
+                    )
+                    self._scheduler_committed_sources[str(request.request_id)] = (
+                        str(destination),
+                        int(destination_generation),
+                        committed_tokens,
+                    )
             self._scheduler_alias_registry.finish_request(request.request_id)
             self._scheduler_alias_requests.discard(str(request.request_id))
         return super().request_finished(request, block_ids)
+
+    def pop_scheduler_committed_source(
+        self, request_id: str
+    ) -> tuple[str, int, int] | None:
+        """Return the source-generation receipt emitted by request teardown."""
+
+        return self._scheduler_committed_sources.pop(str(request_id), None)
 
     def evict_scheduler_source(
         self, logical_key: str, *, source_generation: int = 1

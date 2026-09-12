@@ -1,0 +1,173 @@
+{
+  "schema_version": "paper4.5.frozen-agent-engine-admission.v1",
+  "recorded_at": "2026-09-11T22:42:00+01:00",
+  "engine": "vllm",
+  "engine_version": "0.28.0",
+  "host": "192.168.1.12",
+  "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+  "resolved_snapshot": "/home/killu/.cache/huggingface/hub/models--Qwen--Qwen2.5-Coder-7B-Instruct-AWQ/snapshots/8e8ed243bbe6f9a5aff549a0924562fc719b2b8a",
+  "model_snapshot_state": "complete; both indexed safetensor shards present",
+  "task": {
+    "suite": "SWE-bench Verified",
+    "instance_id": "django__django-15368",
+    "agent": "mini-swe-agent",
+    "agent_version": "2.4.6",
+    "temperature": 0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "step_limit": 50
+  },
+  "server_admission": {
+    "status": "passed_with_cpu_weight_offload_and_eager_execution",
+    "qualified_geometry": {
+      "gpu_memory_utilization": 0.82,
+      "cpu_offload_gb": 2.0,
+      "enforce_eager": true,
+      "kv_cache_dtype": "float16",
+      "max_model_len": 16384,
+      "enable_prefix_caching": true,
+      "tool_call_parser": "hermes"
+    },
+    "observed": {
+      "model_gpu_memory_gib": 3.2,
+      "available_kv_cache_gib": 2.66,
+      "gpu_kv_cache_tokens": 49808,
+      "maximum_16384_token_concurrency": 3.04,
+      "health_http_status": 200
+    },
+    "failed_startup_controls": [
+      {
+        "gpu_memory_utilization": 0.82,
+        "cpu_offload_gb": 0.0,
+        "enforce_eager": false,
+        "status": "gpu_capacity_failed",
+        "available_kv_cache_gib": 0.02,
+        "required_kv_cache_gib": 0.88,
+        "estimated_max_model_len": 320
+      },
+      {
+        "gpu_memory_utilization": 0.82,
+        "cpu_offload_gb": 2.0,
+        "enforce_eager": false,
+        "status": "cuda_graph_offload_failed",
+        "error": "Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned"
+      }
+    ],
+    "raw_server_log": {
+      "path": "/home/killu/pra-cuda-results/vllm_qwen7b_082_server.log",
+      "sha256": "5b1457192437afa1fc8e1db5fcfe2366942f633ef77cb7d68af054aa815375f9"
+    }
+  },
+  "conditions": {
+    "plain": {
+      "status": "failed_model_task_admission_no_progress_cutoff",
+      "task_success": null,
+      "grader_outcome": null,
+      "action_trajectory_sha256": null,
+      "calls_to_solution": null,
+      "tool_calls": 19,
+      "wall_time_s": 470.56,
+      "termination": "Bounded no-progress cutoff after 19 completed calls; no source mutation was present at cutoff.",
+      "interface_controls": [
+        {
+          "model_class": "litellm",
+          "prompt_config": "swebench_backticks.yaml",
+          "status": "RepeatedFormatError",
+          "api_calls": 3,
+          "cause": "The model emitted valid fenced commands, but the default model class requires OpenAI tool_calls.",
+          "trajectory_path": "/home/killu/paper45-e2e/vllm_qwen7bawq_task02_plain_v3/django__django-15368/django__django-15368.traj.json",
+          "trajectory_sha256": "1472e025c46d1c322f52a6a45dd76425fbad9fb7b13684e91ee990065e3e2de3"
+        },
+        {
+          "model_class": "litellm",
+          "prompt_config": "swebench.yaml",
+          "status": "RepeatedFormatError",
+          "api_calls": 3,
+          "cause": "The model copied illustrative tool-call prose instead of emitting Qwen/Hermes tool-call records; vLLM returned tool_calls=null.",
+          "trajectory_path": "/home/killu/paper45-e2e/vllm_qwen7bawq_task02_plain_v4_toolcall/django__django-15368/django__django-15368.traj.json",
+          "trajectory_sha256": "93c128de86bbc005d554a21fc6279403a742173a79dae3460594e4dc7138e58f"
+        },
+        {
+          "model_class": "litellm_textbased",
+          "prompt_config": "swebench_backticks.yaml",
+          "status": "accepted_actions_but_no_progress",
+          "completed_api_calls": 19,
+          "source_mutation_present_at_cutoff": false,
+          "run_log_path": "/home/killu/paper45-e2e/vllm_qwen7bawq_task02_plain_v6_textbased/minisweagent.log",
+          "run_log_sha256": "ca4f7211d729900d4d671f5122d8d7589cf708df3629ed04062f97ed2160fa48"
+        }
+      ],
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    },
+    "pra_100": {
+      "status": "not_run_plain_admission_gate_failed",
+      "task_success": null,
+      "exact_action_trajectory": null,
+      "first_action_divergence": null,
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    },
+    "pra_90": {
+      "status": "not_run_pra_100_gate_not_reached",
+      "task_success": null,
+      "first_action_divergence": null,
+      "whole_request_retention": {
+        "selected_input_tokens": null,
+        "logical_input_tokens": null,
+        "fraction": null
+      },
+      "agent_history_kv_retention": {
+        "selected_history_kv_tokens": null,
+        "source_history_kv_tokens": null,
+        "fraction": null
+      },
+      "selected_history_reencoded_tokens": null,
+      "physical_kv_copy_bytes": null,
+      "consumer_temporary_bytes": null,
+      "consumer_temporary_peak_bytes": null
+    }
+  },
+  "outcome_families": {
+    "task_success_and_exact_100_trajectory": "plain admission failed; task success and PRA action parity are null",
+    "two_retention_denominators": "not applicable before PRA100; both denominators are null",
+    "reencoding_and_kv_copy_bytes": "not measured because no PRA request was issued; values are null, not zero",
+    "consumer_temporary_bytes_and_calls": "plain tool calls observed; PRA consumer memory values are null"
+  },
+  "scheduler_alias_bridge": {
+    "qualified_primitive_exists": true,
+    "openai_serving_path_qualified": false,
+    "mini_swe_agent_invokes_alias_path": false,
+    "blocker": "The ordinary mini-swe-agent/LiteLLM request supplies chat messages but no SparseCudaConnectorCommand cache_salt. The current HTTP adapter emits only a tenant hash cache_salt, not the required two-phase store/load command, source generation, selected-page manifest, and suffix-only prompt. Consequently an OpenAI-compatible request has no request-scoped coordinator that publishes the live source and then asks the scheduler to alias its selected pages.",
+    "required_fix": "Add a stateful OpenAI serving bridge colocated with the configured PRASparseConnector. It must tokenize once, issue a store command for completed live history, persist logical source generation and selected page indices, submit load requests with only the wire suffix, and expose scheduler alias prepare/commit/hit counters plus zero-reencoding telemetry. It must fail closed if those callbacks are not observed."
+  },
+  "pra_request_issued": false,
+  "fresh_reprefill_used": false,
+  "easy14_expansion_allowed": false
+}

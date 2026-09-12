@@ -1,0 +1,253 @@
+{
+  "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v2",
+  "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
+  "engine": "sglang-mlx",
+  "engine_version": "0.0.0.dev0",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "mlx_version": "0.32.1",
+  "mlx_lm_version": "0.32.0",
+  "python_version": "3.12.12",
+  "hardware": "bigmac-m4pro-48gb",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "trajectory": "/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/easy14-livekv/task_02_django__django-15368/retention_100_v62/chunk_00/django__django-15368/django__django-15368.traj.json",
+  "turn": 9,
+  "retention_fraction": 0.9,
+  "source_tokens": 5086,
+  "wire_suffix_tokens": 32,
+  "selected_kv_tokens": 4665,
+  "realized_retention_fraction": 0.9172237514746363,
+  "source_position_base": 5086,
+  "has_holes": true,
+  "materialization_policy": "disjoint_segmented",
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 14,
+  "selection_pack_bytes": 0,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "selection_materialization_elapsed_ms": 1.182875,
+  "dense_reference_pack_bytes": 535019520,
+  "dense_reference_materialization_elapsed_ms": 12.377375,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 19107840,
+    "active_before_bytes": 1274912898,
+    "active_after_bytes": 1274929959,
+    "active_delta_bytes": 17061,
+    "absolute_peak_bytes": 1274929959,
+    "peak_delta_bytes": 17061,
+    "peak_delta_to_selected_layer_kv_ratio": 0.0008928795719453376,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the SGLang request's selected interval views, force every selected key/value array with mx.eval, and compare active/peak bytes to the baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over every selected SGLang interval plus one local token, force the output with mx.eval, and compare peak delta with the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "candidate_token_ids": [
+    151667,
+    198
+  ],
+  "reference_token_ids": [
+    151667,
+    198
+  ],
+  "survivor_token_ids": [
+    151667,
+    198
+  ],
+  "restored_token_ids": [
+    151667,
+    198
+  ],
+  "source_kv_sha256": "5d0bf3cf60a0de34145c811ea6029b948f740f88f172e8938f9e6428e754893e",
+  "selected_kv_sha256": "036c2e21e87268e778d4f849acb8cd99fdda9f099d8088f144cdd6bdfc709cd7",
+  "dense_reference_selected_kv_sha256": "036c2e21e87268e778d4f849acb8cd99fdda9f099d8088f144cdd6bdfc709cd7",
+  "restored_selected_kv_sha256": "036c2e21e87268e778d4f849acb8cd99fdda9f099d8088f144cdd6bdfc709cd7",
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "offloaded_payload_type": "tuple",
+  "offloaded_payload_bytes": 1166625331,
+  "offloaded_payload_sha256": "e1560fa429e70162615b948ae1eecdd26d2c768b2731bd1ed4469b98aaa8617e",
+  "native_error": "KeyError: 'missing-request'",
+  "request_offsets": {
+    "scheduler_local": 33,
+    "attention_rope": 5119,
+    "position_base": 5086
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    },
+    "physical_kv_copy_policy": "dense_interval_pack_or_unqualified_disjoint_views",
+    "selected_text_reencoded_tokens": 0
+  },
+  "bridge_capabilities": {
+    "integration_level": "E2",
+    "native_kv": true,
+    "radix_prefix_identity_separate": true,
+    "radix_prefix_and_native_same_request": true,
+    "hicache_external_namespace": false,
+    "shared_storage_lifecycle": false,
+    "live_prefix_kv_capture": true,
+    "live_prefix_kv_subset": true,
+    "source_positions_preserved": true,
+    "zero_selected_text_reencoding": true,
+    "disjoint_selection_requires_pack_copy": false,
+    "disjoint_attention_runtime_qualification_required": true,
+    "physical_kv_copy_reported": true,
+    "native_remove_request_terminal_hook": true,
+    "source_owner_pin_guard": true,
+    "request_activation_callback": "MlxModelRunner.prefill_start",
+    "selected_cache_callbacks": [
+      "MlxModelRunner._acquire_cache",
+      "MlxModelRunner._cache_with_pool_backed_attention"
+    ],
+    "request_teardown_callback": "MlxModelRunner.remove_request",
+    "radix_pool_release_strips_selected_memory": true,
+    "hicache_metrics": null,
+    "patched_layers": 28
+  },
+  "selection_plan": {
+    "source_tokens": 5086,
+    "source_position_base": 5086,
+    "selected_tokens": 4665,
+    "full_retention": false,
+    "has_holes": true,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 1680,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 2101,
+        "end": 2104,
+        "record_id": "message:6:assistant",
+        "causal_group_id": "turn:6"
+      },
+      {
+        "start": 2104,
+        "end": 3110,
+        "record_id": "message:7:user",
+        "causal_group_id": "turn:6"
+      },
+      {
+        "start": 3110,
+        "end": 3113,
+        "record_id": "message:8:assistant",
+        "causal_group_id": "turn:8"
+      },
+      {
+        "start": 3113,
+        "end": 3714,
+        "record_id": "message:9:user",
+        "causal_group_id": "turn:8"
+      },
+      {
+        "start": 3714,
+        "end": 3717,
+        "record_id": "message:10:assistant",
+        "causal_group_id": "turn:10"
+      },
+      {
+        "start": 3717,
+        "end": 4038,
+        "record_id": "message:11:user",
+        "causal_group_id": "turn:10"
+      },
+      {
+        "start": 4038,
+        "end": 4041,
+        "record_id": "message:12:assistant",
+        "causal_group_id": "turn:12"
+      },
+      {
+        "start": 4041,
+        "end": 4379,
+        "record_id": "message:13:user",
+        "causal_group_id": "turn:12"
+      },
+      {
+        "start": 4379,
+        "end": 4382,
+        "record_id": "message:14:assistant",
+        "causal_group_id": "turn:14"
+      },
+      {
+        "start": 4382,
+        "end": 4709,
+        "record_id": "message:15:user",
+        "causal_group_id": "turn:14"
+      },
+      {
+        "start": 4709,
+        "end": 4712,
+        "record_id": "message:16:assistant",
+        "causal_group_id": "turn:16"
+      },
+      {
+        "start": 4712,
+        "end": 5086,
+        "record_id": "message:17:user",
+        "causal_group_id": "turn:16"
+      }
+    ]
+  },
+  "checks": {
+    "radix_cache_enabled": true,
+    "two_concurrent_borrowers": true,
+    "source_owner_removal_rejected_while_borrowed": true,
+    "offload_rejected_while_borrowed": true,
+    "eviction_rejected_while_borrowed": true,
+    "native_batched_decode_executed": true,
+    "normal_finish_released_exactly_once": true,
+    "cancel_released_exactly_once": true,
+    "error_callback_released_exactly_once": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "concurrent_survivor_token_exact": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_selected_kv_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "zero_selected_history_reencoding": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "radix_pool_ownership_isolated": true
+  },
+  "experiment_revision": "44a94af5bd7f880b7a400c508e11fe663fc87594",
+  "implementation_files": {
+    "src/pra_sglang/mlx_native.py": "2b66ee09ef8d5f07f888959ebbc14d626bfbb918bad44e084ba0c7a1c22ef8f2",
+    "src/pra_sglang/native_executor.py": "de1bbe7d6f93126180b14d9d83d6b280556fa1daaf1f3e74c05e7318bdbcbac9",
+    "experiments/paper4_5_agent/run_sglang_live_agent_kv_lifecycle.py": "1a9151e46cfc8ec48a5e345cf207e2bafdfa75b710228bbb771950ce1034ff9f"
+  },
+  "provenance_artifact": "/Users/admin.jorge.simao/git/rd/paper45-full7-fused/docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_provenance_cbf190e2.json",
+  "provenance_artifact_sha256": "e4d01a7f501036d695cfaaa86fa49dd84ccd730a46e792b96ca7c11e6c4b31c0",
+  "elapsed_seconds": 8.889966040995205,
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": []
+}

@@ -6,6 +6,7 @@ import argparse
 import json
 import platform
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,6 +104,14 @@ def _assistant_prompts(tokenizer, trajectory: dict, turns: int) -> list[list[int
         )
         if isinstance(rendered, str):
             rendered = tokenizer.encode(rendered, add_special_tokens=False)
+        elif isinstance(rendered, Mapping):
+            rendered = rendered["input_ids"]
+        if hasattr(rendered, "tolist"):
+            rendered = rendered.tolist()
+        if rendered and isinstance(rendered[0], list):
+            if len(rendered) != 1:
+                raise ValueError("chat template returned a batched prompt")
+            rendered = rendered[0]
         prompts.append([int(token) for token in rendered])
     return prompts
 

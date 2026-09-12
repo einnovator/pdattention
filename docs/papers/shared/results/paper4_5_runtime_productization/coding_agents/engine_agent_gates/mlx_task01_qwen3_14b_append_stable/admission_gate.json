@@ -1,0 +1,50 @@
+{
+  "schema_version": "paper4.5.mlx-agent-e2e-admission.v1",
+  "created_at": "2026-09-11T22:38:00+01:00",
+  "engine": "mlx-lm",
+  "engine_version": "0.31.3",
+  "hardware": "Apple M4 Max 48 GB (Big Mac, 192.168.1.6)",
+  "model": "mlx-community/Qwen3-14B-4bit",
+  "model_revision": "a4d9b2df59d2c150bef02fcbe0d91046b7ca33a4",
+  "task": "django__django-15277",
+  "task_index": 1,
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "sampling_seed": 0,
+  "chat_template": {
+    "path": "experiments/paper4_5_agent/templates/qwen3_append_stable_no_think.jinja",
+    "sha256": "518418383db64be371326f5313f3d78201ac20a9493cf13fee9063bda04f447b",
+    "first_turn_byte_exact_to_stock_no_thinking": true,
+    "first_turn_token_exact_to_stock_no_thinking": true,
+    "two_turn_byte_prefix_stable": true,
+    "two_turn_token_prefix_stable": true,
+    "stock_two_turn_token_prefix_stable": false,
+    "one_turn_miniswe_action_format_valid": true
+  },
+  "plain_admission": {
+    "official_grader": true,
+    "resolved": false,
+    "score": 0.0,
+    "model_calls": 50,
+    "tool_calls": 50,
+    "termination_reason": "LimitsExceeded",
+    "empty_submitted_patch": true,
+    "wall_time_s": 391.0181829929352,
+    "max_prompt_tokens": 15944,
+    "cumulative_prompt_tokens": 481511,
+    "repeated_context_fraction_estimate": 0.9668875685082999,
+    "classification": "inadmissible_model_task_pair",
+    "trajectory_sha256": "b378f906a5f6670acb2029e79939e23b6e1108292585778a6f58c6d5909db9b1",
+    "official_result_sha256": "7abc8b5461e78cfb173c83490aae6eb2d518a93fe6fae780d9c1b24b9db8cd70"
+  },
+  "pra_100": {
+    "status": "not_run",
+    "reason": "plain admission did not solve"
+  },
+  "pra_090": {
+    "status": "not_run",
+    "reason": "plain admission did not solve; 100% parity gate was not entered"
+  },
+  "gate_passed": false,
+  "interpretation": "This is a model/task admission failure, not a PRA failure. The frozen append-stable template passed its independent prompt-equivalence checks, but Qwen3-14B did not solve Task01 within the fixed 50-step mini-swe-agent budget, so no PRA arm is scientifically admissible for this pair."
+}

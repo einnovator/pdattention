@@ -52,6 +52,27 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
         )
         self.block_store = block_store or LogicalPRABlockStore()
         self.native_executor = native_executor
+        self.prefix_cache_enabled = bool(
+            getattr(native_executor, "prefix_cache_enabled", False)
+        )
+        self.chat_template_profile = getattr(
+            native_executor, "chat_template_profile", None
+        )
+        self.chat_template_digest = getattr(
+            native_executor, "chat_template_digest", None
+        )
+        self.additional_stop_token_ids = tuple(sorted(
+            getattr(native_executor, "additional_stop_token_ids", ())
+        ))
+        self.effective_stop_token_ids = tuple(sorted(
+            native_executor._eos_ids()
+        )) if native_executor is not None else ()
+        self.default_repetition_penalty = float(
+            getattr(native_executor, "default_repetition_penalty", 1.0)
+        )
+        self.default_repeat_last_n = int(
+            getattr(native_executor, "default_repeat_last_n", 64)
+        )
 
     def capabilities(self) -> PRAEngineCapabilities:
         if self.native_executor is None:
@@ -63,14 +84,23 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
                 automatic_prefix_cache=True,
                 text_fallback=True,
             )
+        advertised = (
+            dict(self.native_executor.capabilities())
+            if hasattr(self.native_executor, "capabilities")
+            else {}
+        )
+        prefix_enabled = bool(advertised.get("prefix_cache_enabled", True))
         return PRAEngineCapabilities(
             adapter="sglang_pra",
             engine_type=EngineType.SGLANG,
             integration_level="E2",
-            prefix_cache_mode=PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
-            automatic_prefix_cache=True,
+            prefix_cache_mode=(
+                PrefixCacheMode.AUTOMATIC_PREFIX_CACHE
+                if prefix_enabled else PrefixCacheMode.STATELESS
+            ),
+            automatic_prefix_cache=prefix_enabled,
             session_state=True,
-            resource_delta=True,
+            resource_delta=bool(advertised.get("resource_delta", True)),
             cache_affinity=True,
             logical_refs=True,
             typed_records=True,
@@ -81,10 +111,30 @@ class SGLangEngineAdapter(OpenAICompatibleEngineAdapter):
             gpu_kv=True,
             selected_interval_materialization=True,
             request_lifetime=True,
-            streaming=True,
+            streaming=bool(advertised.get("streaming", True)),
             host_device_residency=True,
             scheduler_hints=True,
             tenant_isolation=True,
+            live_prefix_kv_capture=bool(advertised.get("live_prefix_kv_capture")),
+            live_prefix_kv_subset=bool(advertised.get("live_prefix_kv_subset")),
+            zero_selected_text_reencoding=bool(
+                advertised.get("zero_selected_text_reencoding")
+            ),
+            stable_record_kv_identity=bool(
+                advertised.get("stable_record_kv_identity")
+            ),
+            multiple_selected_records=bool(
+                advertised.get("multiple_selected_records")
+            ),
+            source_positions_preserved=bool(
+                advertised.get("source_positions_preserved")
+            ),
+            request_membership_attach=bool(
+                advertised.get("request_membership_attach")
+            ),
+            agent_history_kv_qualified=bool(
+                advertised.get("agent_history_kv_qualified")
+            ),
         )
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:

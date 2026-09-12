@@ -204,19 +204,29 @@ def _base_attention(attention: object) -> object:
 
 
 def _qwen_projections(attention: object, x: object):
-    """Project and normalize Qwen3 Q/K/V without changing model weights."""
+    """Project Qwen-family Q/K/V without changing model weights.
+
+    Qwen3 applies learned Q/K normalization after projection, whereas Qwen2
+    (including Qwen2.5-Coder) does not expose those modules.  The fused PRA
+    path must preserve that model-family distinction instead of assuming the
+    Qwen3 projection contract for every Qwen checkpoint.
+    """
 
     base = _base_attention(attention)
     batch, length, _ = x.shape
     queries = base.q_proj(x)
     keys = base.k_proj(x)
     values = base.v_proj(x)
-    queries = base.q_norm(
-        queries.reshape(batch, length, base.n_heads, -1)
-    ).transpose(0, 2, 1, 3)
-    keys = base.k_norm(
-        keys.reshape(batch, length, base.n_kv_heads, -1)
-    ).transpose(0, 2, 1, 3)
+    queries = queries.reshape(batch, length, base.n_heads, -1)
+    keys = keys.reshape(batch, length, base.n_kv_heads, -1)
+    q_norm = getattr(base, "q_norm", None)
+    k_norm = getattr(base, "k_norm", None)
+    if q_norm is not None:
+        queries = q_norm(queries)
+    if k_norm is not None:
+        keys = k_norm(keys)
+    queries = queries.transpose(0, 2, 1, 3)
+    keys = keys.transpose(0, 2, 1, 3)
     values = values.reshape(batch, length, base.n_kv_heads, -1).transpose(
         0, 2, 1, 3
     )

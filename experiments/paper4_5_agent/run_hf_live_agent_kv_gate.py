@@ -77,6 +77,8 @@ def _positioned_tail_generation(
         step_logits.append(current.detach().float().cpu())
         token = int(torch.argmax(current, dim=-1).item())
         generated.append(token)
+        if step + 1 == continuation_tokens:
+            break
         position = torch.tensor(
             [position_base + len(tail) + step], dtype=torch.long, device=device
         )
@@ -228,6 +230,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "transient_attention_bytes": selected.transient_attention_bytes,
                 "transient_kv_copy_bytes": selected.transient_kv_copy_bytes,
                 "max_transient_kv_tile_bytes": selected.max_transient_kv_tile_bytes,
+                "request_tail_copy_bytes": selected.request_tail_copy_bytes,
+                "fused_attention_calls": selected.fused_attention_calls,
                 "token_exact": ordinary_tokens == pra_tokens,
                 "max_abs_logit_delta": _max_delta(ordinary_logits, pra_logits),
                 "ordinary_token_ids": ordinary_tokens,
@@ -280,11 +284,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "max_transient_kv_tile_bytes": max(
             (int(row["max_transient_kv_tile_bytes"]) for row in rows), default=0
         ),
+        "request_tail_copy_bytes": sum(
+            int(row["request_tail_copy_bytes"]) for row in rows
+        ),
+        "fused_attention_calls": sum(
+            int(row["fused_attention_calls"]) for row in rows
+        ),
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["token_exact"]), None
         ),
         "reference_condition": "packed-value oracle preserving the candidate segment boundaries and original positions under the identical sparse consumer",
-        "sparse_numerical_policy": "two-pass native SDPA over storage-alias K/V views with fp32 cross-segment normalization and zero K/V casts",
+        "consumer_implementation": (
+            "fused_interval_addressed_triton"
+            if device.type == "cuda"
+            else "two_pass_segmented_sdpa"
+        ),
+        "sparse_numerical_policy": (
+            "one fused Triton online softmax over canonical source intervals and request-local K/V"
+            if device.type == "cuda"
+            else "two-pass native SDPA over storage-alias K/V views with fp32 cross-segment normalization and zero K/V casts"
+        ),
         "sparse_turns": sum(int(row["has_holes"]) for row in rows),
         "rows": rows,
     }
