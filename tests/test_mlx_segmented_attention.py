@@ -1,6 +1,19 @@
 import pytest
 
 
+def test_interval_consumer_matches_mlx_two_pass_dispatch_geometry() -> None:
+    from pra_mlx.native import _native_mlx_vector_blocks
+
+    # The admitted Qwen2.5-Coder-14B request on M4 Pro has 2,640 total K/V
+    # tokens and 15 SIMD planes (GQA factor 5 x query width 3).
+    assert _native_mlx_vector_blocks(2640, 15, "s", grouped_query=True) == 128
+    assert _native_mlx_vector_blocks(2640, 15, "d", grouped_query=True) == 128
+    assert _native_mlx_vector_blocks(1023, 15, "s", grouped_query=True) is None
+    assert _native_mlx_vector_blocks(20_000, 15, "s", grouped_query=True) == 256
+    assert _native_mlx_vector_blocks(70_000, 15, "d", grouped_query=True) == 1024
+    assert _native_mlx_vector_blocks(4096, 4, "x", grouped_query=False) is None
+
+
 def test_segmented_attention_matches_concatenated_reference() -> None:
     mx = pytest.importorskip("mlx.core")
     from pra_mlx.native import segmented_selected_attention

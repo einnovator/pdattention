@@ -654,6 +654,46 @@ def disjoint_segmented_selected_attention(
 
 
 _DISJOINT_METAL_KERNELS: dict[float, object] = {}
+_DISJOINT_METAL_2PASS_KERNELS: dict[tuple[float, int], tuple[object, object]] = {}
+
+
+def _native_mlx_vector_blocks(
+    key_tokens: int,
+    n_simds: int,
+    architecture_class: str,
+    *,
+    grouped_query: bool,
+) -> int | None:
+    """Return MLX's two-pass vector-SDPA block count for a request shape."""
+
+    use_two_pass = (
+        architecture_class in {"d", "s"} and key_tokens >= 1024
+    ) or (grouped_query and key_tokens >= 4096)
+    if not use_two_pass:
+        return None
+    if architecture_class == "s":
+        blocks = 64
+        if key_tokens > 1024 and n_simds > 4:
+            if key_tokens <= 8192:
+                blocks = 128
+            elif key_tokens <= 32768:
+                blocks = 256
+            elif key_tokens <= 65536:
+                blocks = 512
+            else:
+                blocks = 1024
+        return blocks
+    if architecture_class == "d":
+        blocks = 128
+        if n_simds <= 2 and key_tokens > 8192:
+            blocks = 256
+        elif n_simds >= 6:
+            if 16384 <= key_tokens < 65536:
+                blocks = 512
+            elif key_tokens >= 65536:
+                blocks = 1024
+        return blocks
+    return 64 if n_simds >= 4 else 32
 
 
 def _metal_disjoint_selected_attention(
@@ -694,6 +734,33 @@ def _metal_disjoint_selected_attention(
     if mask.ndim != 2 or mask.dtype != mx.bool_ or int(mask.shape[-1]) != total_tokens:
         raise ValueError("Metal disjoint attention requires a matching rank-two bool mask.")
     interval_array = mx.array(intervals, dtype=mx.uint32)
+
+    # mlx-lm routes short-query attention with at least 1K resident tokens to
+    # its two-pass vector kernel on current large Apple GPUs.  Use the same
+    # work partition and reduction order for interval-addressed attention;
+    # otherwise an algebraically equivalent single-pass kernel can accumulate
+    # enough fp16-visible drift to fail the engine's same-subset gate.
+    architecture = str(mx.device_info().get("architecture", ""))
+    architecture_class = architecture[-1:] if architecture else ""
+    groups = query_heads // kv_heads
+    blocks = _native_mlx_vector_blocks(
+        total_tokens,
+        groups * query_tokens,
+        architecture_class,
+        grouped_query=kv_heads < query_heads,
+    )
+    if blocks is not None:
+        return _metal_disjoint_selected_attention_2pass(
+            queries,
+            source_keys,
+            source_values,
+            interval_array,
+            local_keys,
+            local_values,
+            scale=scale,
+            mask=mask,
+            blocks=blocks,
+        )
 
     kernel_key = float(scale)
     kernel = _DISJOINT_METAL_KERNELS.get(kernel_key)
@@ -823,6 +890,211 @@ def _metal_disjoint_selected_attention(
         output_shapes=(queries.shape,),
         output_dtypes=(mx.float32,),
     )[0].astype(queries.dtype)
+
+
+def _metal_disjoint_selected_attention_2pass(
+    queries: object,
+    source_keys: object,
+    source_values: object,
+    interval_array: object,
+    local_keys: object,
+    local_values: object,
+    *,
+    scale: float,
+    mask: object,
+    blocks: int,
+) -> object:
+    """Mirror MLX's two-pass vector SDPA over interval-addressed K/V."""
+
+    import mlx.core as mx
+
+    query_heads = int(queries.shape[1])
+    query_tokens = int(queries.shape[2])
+    head_dim = int(queries.shape[3])
+    kv_heads = int(source_keys.shape[1])
+    groups = query_heads // kv_heads
+    if head_dim % 32:
+        raise ValueError("Two-pass Metal attention requires a 32-aligned head dimension.")
+    if groups * query_tokens > 32:
+        raise ValueError("Two-pass Metal attention exceeds one SIMD group plane.")
+    if blocks <= 0 or blocks % 32:
+        raise ValueError("Two-pass Metal attention requires 32-aligned blocks.")
+
+    kernel_key = (float(scale), int(blocks))
+    kernels = _DISJOINT_METAL_2PASS_KERNELS.get(kernel_key)
+    if kernels is None:
+        pass1_source = f"""
+    uint lane = thread_index_in_simdgroup;
+    uint kvhead = threadgroup_position_in_grid.x;
+    uint block_idx = threadgroup_position_in_grid.z;
+    uint qi = thread_position_in_threadgroup.z;
+    uint groups = q_shape[1] / source_k_shape[1];
+    uint qhead = groups * kvhead + thread_position_in_threadgroup.y;
+    uint query_tokens = q_shape[2];
+    uint head_dim = q_shape[3];
+    uint per_thread = head_dim / 32;
+    uint selected_tokens = 0u;
+    for (uint interval = 0; interval < intervals_shape[0]; ++interval) {{
+        selected_tokens += intervals[interval * 2 + 1]
+            - intervals[interval * 2];
+    }}
+    uint total_tokens = selected_tokens + local_k_shape[2];
+    uint block_count = {int(blocks)}u;
+    float scale_value = {float(scale):.17g}f;
+    float qv[8];
+    float ov[8];
+    for (uint j = 0; j < per_thread; ++j) {{
+        uint q_index = qhead * q_strides[1] + qi * q_strides[2]
+            + (lane * per_thread + j) * q_strides[3];
+        qv[j] = scale_value * float(q[q_index]);
+        ov[j] = 0.0f;
+    }}
+    float max_score = -INFINITY;
+    float sum_exp_score = 0.0f;
+    for (uint compact = block_idx; compact < total_tokens; compact += block_count) {{
+        bool visible = mask[qi * mask_strides[0] + compact * mask_strides[1]];
+        if (!visible) {{ continue; }}
+        bool is_local = compact >= selected_tokens;
+        uint token = compact - selected_tokens;
+        if (!is_local) {{
+            uint remaining = compact;
+            for (uint interval = 0; interval < intervals_shape[0]; ++interval) {{
+                uint begin = intervals[interval * 2];
+                uint width = intervals[interval * 2 + 1] - begin;
+                if (remaining < width) {{
+                    token = begin + remaining;
+                    break;
+                }}
+                remaining -= width;
+            }}
+        }}
+        float score = 0.0f;
+        for (uint j = 0; j < per_thread; ++j) {{
+            uint dim = lane * per_thread + j;
+            uint key_index = is_local
+                ? kvhead * local_k_strides[1] + token * local_k_strides[2]
+                    + dim * local_k_strides[3]
+                : kvhead * source_k_strides[1] + token * source_k_strides[2]
+                    + dim * source_k_strides[3];
+            float key_value = is_local
+                ? float(local_k[key_index]) : float(source_k[key_index]);
+            score += qv[j] * key_value;
+        }}
+        score = simd_sum(score);
+        float next_max = metal::max(max_score, score);
+        float prior_scale = metal::fast::exp(max_score - next_max);
+        float weight = metal::fast::exp(score - next_max);
+        max_score = next_max;
+        sum_exp_score = sum_exp_score * prior_scale + weight;
+        for (uint j = 0; j < per_thread; ++j) {{
+            uint dim = lane * per_thread + j;
+            uint value_index = is_local
+                ? kvhead * local_v_strides[1] + token * local_v_strides[2]
+                    + dim * local_v_strides[3]
+                : kvhead * source_v_strides[1] + token * source_v_strides[2]
+                    + dim * source_v_strides[3];
+            float value = is_local
+                ? float(local_v[value_index]) : float(source_v[value_index]);
+            ov[j] = ov[j] * prior_scale + weight * value;
+        }}
+    }}
+    uint row = qhead * query_tokens + qi;
+    uint stat_index = row * block_count + block_idx;
+    if (lane == 0) {{
+        sums[stat_index] = sum_exp_score;
+        maxs[stat_index] = max_score;
+    }}
+    uint partial_base = stat_index * head_dim + lane * per_thread;
+    for (uint j = 0; j < per_thread; ++j) {{
+        partials[partial_base + j] = ov[j];
+    }}
+"""
+        pass2_source = f"""
+    uint lane = thread_index_in_simdgroup;
+    uint simdgroup = simdgroup_index_in_threadgroup;
+    uint row = threadgroup_position_in_grid.x;
+    uint head_dim = partials_shape[4];
+    uint per_thread = head_dim / 32;
+    uint block_count = {int(blocks)}u;
+    threadgroup float outputs[1024];
+    float max_score = -INFINITY;
+    float sum_exp_score = 0.0f;
+    float ov[8];
+    for (uint j = 0; j < per_thread; ++j) {{ ov[j] = 0.0f; }}
+    uint stats_base = row * block_count;
+    for (uint b = 0; b < block_count / 32; ++b) {{
+        max_score = metal::max(max_score, maxs[stats_base + lane + 32 * b]);
+    }}
+    max_score = simd_max(max_score);
+    for (uint b = 0; b < block_count / 32; ++b) {{
+        uint index = stats_base + lane + 32 * b;
+        float factor = metal::fast::exp(maxs[index] - max_score);
+        sum_exp_score += factor * sums[index];
+    }}
+    sum_exp_score = simd_sum(sum_exp_score);
+    for (uint b = 0; b < block_count / 32; ++b) {{
+        uint block = simdgroup + 32 * b;
+        float factor = metal::fast::exp(maxs[stats_base + block] - max_score);
+        uint partial_base = (stats_base + block) * head_dim
+            + lane * per_thread;
+        for (uint j = 0; j < per_thread; ++j) {{
+            ov[j] += factor * float(partials[partial_base + j]);
+        }}
+    }}
+    uint output_base = row * head_dim + simdgroup * per_thread;
+    for (uint j = 0; j < per_thread; ++j) {{
+        outputs[lane * 32 + simdgroup] = ov[j];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float value = simd_sum(outputs[simdgroup * 32 + lane]);
+        value = sum_exp_score == 0.0f ? value : value / sum_exp_score;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (lane == 0) {{ out[output_base + j] = value; }}
+    }}
+"""
+        pass1 = mx.fast.metal_kernel(
+            name="pra_interval_addressed_attention_2pass_1",
+            input_names=(
+                "q", "source_k", "source_v", "local_k", "local_v",
+                "intervals", "mask",
+            ),
+            output_names=("partials", "sums", "maxs"),
+            source=pass1_source,
+            ensure_row_contiguous=False,
+            compile_options={"math_mode": "safe"},
+        )
+        pass2 = mx.fast.metal_kernel(
+            name="pra_interval_addressed_attention_2pass_2",
+            input_names=("partials", "sums", "maxs"),
+            output_names=("out",),
+            source=pass2_source,
+            ensure_row_contiguous=False,
+            compile_options={"math_mode": "safe"},
+        )
+        kernels = (pass1, pass2)
+        _DISJOINT_METAL_2PASS_KERNELS[kernel_key] = kernels
+
+    pass1, pass2 = kernels
+    partial_shape = (
+        int(queries.shape[0]), query_heads, query_tokens, blocks, head_dim,
+    )
+    stat_shape = partial_shape[:-1]
+    partials, sums, maxs = pass1(
+        inputs=(
+            queries, source_keys, source_values, local_keys, local_values,
+            interval_array, mask,
+        ),
+        grid=(kv_heads * 32, groups, query_tokens * blocks),
+        threadgroup=(32, groups, query_tokens),
+        output_shapes=(partial_shape, stat_shape, stat_shape),
+        output_dtypes=(queries.dtype, mx.float32, mx.float32),
+    )
+    return pass2(
+        inputs=(partials, sums, maxs),
+        grid=(query_heads * query_tokens * 1024, 1, 1),
+        threadgroup=(1024, 1, 1),
+        output_shapes=(queries.shape,),
+        output_dtypes=(queries.dtype,),
+    )[0]
 
 
 def _segmented_selected_attention_impl(
