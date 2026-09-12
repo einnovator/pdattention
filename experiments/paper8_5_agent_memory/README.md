@@ -82,3 +82,8 @@ only a historical trajectory. `DAG-EXCLUDE@100` supplies the per-decision token
 ceilings for its recency control through `--matched-budget-replay dag.json`;
 whole causal turns are rounded down to that ceiling, and the unused remainder
 is reported rather than silently filled with a partial turn.
+
+The replay request specifies only temperature zero by default, matching the
+mini-swe-agent baseline; endpoint defaults remain unspecified. `--seed` and
+`--max-output-tokens` are opt-in and must be used in both baseline and candidate
+arms if a campaign freezes those parameters.

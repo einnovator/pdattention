@@ -84,8 +84,8 @@ def replay(
     materialization_mode: MaterializationMode,
     materialization_threshold_tokens: int,
     max_decisions: int | None,
-    seed: int,
-    max_output_tokens: int,
+    seed: int | None,
+    max_output_tokens: int | None,
     api_key: str | None,
     timeout: int,
     reference_replay: Mapping[str, Any] | None = None,
@@ -146,19 +146,21 @@ def replay(
             count_tokens=count_tokens,
         )
         selected_messages = serialize_materialized_messages(history, materialized)
-        raw = _post(endpoint, {
+        request_payload: dict[str, Any] = {
             "model": model,
             "messages": selected_messages,
             "temperature": 0,
-            "top_p": 1,
-            "top_k": -1,
-            "min_p": 0,
-            "repetition_penalty": 1,
-            "presence_penalty": 0,
-            "frequency_penalty": 0,
-            "seed": seed,
-            "max_tokens": max_output_tokens,
-        }, api_key=api_key, timeout=timeout)
+        }
+        if seed is not None:
+            request_payload["seed"] = seed
+        if max_output_tokens is not None:
+            request_payload["max_tokens"] = max_output_tokens
+        raw = _post(
+            endpoint,
+            request_payload,
+            api_key=api_key,
+            timeout=timeout,
+        )
         generated = str(raw["choices"][0].get("message", {}).get("content") or "")
         reference_command = _command(reference)
         generated_command = _command(generated)
@@ -198,7 +200,12 @@ def replay(
         "instance_id": trajectory.get("instance_id"),
         "model": model,
         "tokenizer": tokenizer_identity,
-        "generation": {"temperature": 0, "seed": seed},
+        "generation": {
+            "temperature": 0,
+            "seed": seed,
+            "max_output_tokens": max_output_tokens,
+            "unspecified_parameters_use_endpoint_defaults": True,
+        },
         "comparison_reference": (
             "contemporaneous_full_replay"
             if reference_replay is not None else "historical_trajectory"
@@ -245,8 +252,8 @@ def main() -> None:
     )
     parser.add_argument("--materialization-threshold-tokens", type=int, default=512)
     parser.add_argument("--max-decisions", type=int)
-    parser.add_argument("--max-output-tokens", type=int, default=1024)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-output-tokens", type=int)
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument(
