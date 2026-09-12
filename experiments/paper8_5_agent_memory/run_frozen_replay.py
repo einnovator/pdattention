@@ -414,12 +414,17 @@ def replay(
         generated, failure_reason, response_diagnostics = _response_diagnostics(raw)
         reference_command = _command(reference)
         generated_command = _command(generated)
+        transport_failure = failure_reason == "empty_generated_content"
         rows.append({
             "decision": decision,
             "decision_status": (
-                "failed_invalid_generation" if failure_reason else "completed"
+                "failed_transport_generation" if transport_failure else "completed"
             ),
-            "failure_reason": failure_reason,
+            "failure_reason": (
+                failure_reason if transport_failure else None
+            ),
+            "action_valid": failure_reason is None,
+            "action_validation_reason": failure_reason,
             "trajectory_message_index": assistant_index,
             "comparison_reference": (
                 "contemporaneous_full_replay"
@@ -449,7 +454,7 @@ def replay(
         })
         if progress_path is not None:
             _atomic_write_json(progress_path, current_result())
-        if failure_reason is not None:
+        if transport_failure:
             raise ReplayGenerationError(
                 f"decision {decision} stopped: {failure_reason}; "
                 "the failure is recorded and resume requires --restart"

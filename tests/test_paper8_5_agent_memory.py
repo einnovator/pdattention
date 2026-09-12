@@ -658,7 +658,7 @@ def test_frozen_replay_resume_rejects_configuration_and_reference_changes(
     assert calls == 1
 
 
-def test_frozen_replay_records_invalid_generation_and_requires_restart(
+def test_frozen_replay_records_format_error_and_continues(
     monkeypatch, tmp_path
 ):
     messages = _messages(2)
@@ -680,6 +680,50 @@ def test_frozen_replay_records_invalid_generation_and_requires_restart(
         }
 
     monkeypatch.setattr(frozen_replay, "_post", truncated_post)
+    result = frozen_replay.replay(**_replay_arguments(messages, progress))
+
+    saved = json.loads(progress.read_text(encoding="utf-8"))
+    assert saved["attempted_decisions"] == 2
+    assert saved["completed_decisions"] == 2
+    assert saved["terminal_failure"] is None
+    failed = saved["rows"][1]
+    assert failed["decision_status"] == "completed"
+    assert failed["action_valid"] is False
+    assert failed["action_validation_reason"] == "missing_generated_command"
+    assert failed["response_diagnostics"]["finish_reason"] == "length"
+    assert failed["response_diagnostics"]["response_id"] == "response-2"
+    assert failed["response_diagnostics"]["message_keys"] == ["content", "role"]
+    assert result["exact_command_rate"] == 0.5
+
+    resumed = frozen_replay.replay(**_replay_arguments(messages, progress))
+    assert resumed["completed_decisions"] == 2
+    assert calls == 2
+
+
+def test_frozen_replay_stops_on_empty_transport_generation_and_requires_restart(
+    monkeypatch, tmp_path
+):
+    messages = _messages(2)
+    progress = tmp_path / "full.json"
+    calls = 0
+
+    def empty_post(url, payload, *, api_key, timeout):
+        nonlocal calls
+        calls += 1
+        content = messages[2]["content"] if calls == 1 else ""
+        return {
+            "id": f"response-{calls}",
+            "model": "test-model" if content else "",
+            "choices": [{
+                "finish_reason": "stop" if content else None,
+                "message": {"role": "assistant" if content else "", "content": content},
+            }],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3} if content else {
+                "prompt_tokens": 0, "completion_tokens": 0,
+            },
+        }
+
+    monkeypatch.setattr(frozen_replay, "_post", empty_post)
     with pytest.raises(frozen_replay.ReplayGenerationError, match="decision 2 stopped"):
         frozen_replay.replay(**_replay_arguments(messages, progress))
 
@@ -688,13 +732,11 @@ def test_frozen_replay_records_invalid_generation_and_requires_restart(
     assert saved["completed_decisions"] == 1
     assert saved["terminal_failure"] == {
         "decision": 2,
-        "reason": "missing_generated_command",
+        "reason": "empty_generated_content",
     }
     failed = saved["rows"][1]
-    assert failed["decision_status"] == "failed_invalid_generation"
-    assert failed["response_diagnostics"]["finish_reason"] == "length"
-    assert failed["response_diagnostics"]["response_id"] == "response-2"
-    assert failed["response_diagnostics"]["message_keys"] == ["content", "role"]
+    assert failed["decision_status"] == "failed_transport_generation"
+    assert failed["action_valid"] is False
 
     with pytest.raises(ValueError, match="terminal failure at decision 2"):
         frozen_replay.replay(**_replay_arguments(messages, progress))
