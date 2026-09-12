@@ -52,3 +52,37 @@ whitespace-token saving at `Kf=0`), H2a removes 0.3%, H3 `Kr=1` removes 0.2%,
 and guarded H2b abstains because verification-resource dependency metadata is
 absent. H4 `Kx=2` reaches 3.5% but is explicitly an aggressive working-set
 heuristic. No next-action or task-success result is attached to these rows.
+
+`negative_heuristic_structural_exact.json` repeats that opportunity screen
+with the pinned Qwen3-Coder tokenizer.  Its counts are cumulative over 23
+growing decision prefixes, not unique-history storage savings: H1 `Kf=0`
+removes 2,660 of 199,109 tokens (1.34%), H2a 833 (0.42%), H3 `Kr=1` 603
+(0.30%), and guarded H2b again abstains.  Aggressive H4 `Kx=2` removes 11,370
+(5.71%); `Kx>=3` abstains because dependency pins protect the remaining
+resources.
+
+## Seed-0 repeatability and negative-selection cohort
+
+Temperature zero alone was not trajectory-exact on this endpoint.  The
+unseeded matched-tail diagnostic is therefore quarantined under `quarantine/`.
+`full_seed0_a.json` is the new comparison reference and `full_seed0_b.json`
+is its repeatability gate: all 23 generated contents match byte-for-byte.  The
+reference's decision 22 is format-invalid in both repeats, so command-rate
+denominators deliberately include only the 22 decisions where FULL emitted a
+command.
+
+`comparison_seed0.json` and `comparison_seed0.md` contain only arms generated
+against that seeded FULL reference.  The first equal-token control shows that
+the 603-token certified DAG exclusion and the token-tail control have the same
+95.5% exact/conservative action rate and first action divergence at decision
+21.  Their cumulative materialized totals differ by only six tokens.  This is
+frozen next-action evidence, not autonomous task success.
+
+Immediate H1 (`Kf=0`) is not safe on this trace.  Removing one 190-token
+discovery turn after its first downstream read changes content at decision 10,
+the exact command at decision 12, and the conservative shell action at decision
+13.  Across the trace it saves 2,660 cumulative tokens (1.34%) but preserves
+only 68.2% conservative action equivalence, with six immediate resource
+reacquisitions and one policy-excess reacquisition.  Delayed H1 and the other
+isolated heuristics remain separate treatments rather than being hidden inside
+a combined policy.

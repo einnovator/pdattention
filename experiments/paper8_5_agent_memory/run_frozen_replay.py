@@ -220,7 +220,10 @@ def _result(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     completed_rows = [row for row in rows if row.get("decision_status") == "completed"]
-    exact_commands = sum(bool(row["exact_command"]) for row in completed_rows)
+    reference_command_rows = [
+        row for row in completed_rows if row.get("reference_command") is not None
+    ]
+    exact_commands = sum(bool(row["exact_command"]) for row in reference_command_rows)
     failed_row = next(
         (row for row in rows if row.get("decision_status") != "completed"), None
     )
@@ -253,11 +256,17 @@ def _result(
         "attempted_decisions": len(rows),
         "completed_decisions": len(completed_rows),
         "exact_command_decisions": exact_commands,
+        "reference_command_decisions": len(reference_command_rows),
         "exact_command_rate": (
-            exact_commands / len(completed_rows) if completed_rows else None
+            exact_commands / len(reference_command_rows)
+            if reference_command_rows else None
         ),
         "first_command_divergence": next(
-            (row["decision"] for row in completed_rows if not row["exact_command"]), None
+            (
+                row["decision"] for row in reference_command_rows
+                if not row["exact_command"]
+            ),
+            None,
         ),
         "terminal_failure": (
             {

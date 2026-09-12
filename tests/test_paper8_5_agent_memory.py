@@ -1284,6 +1284,29 @@ def test_frozen_replay_records_format_error_and_continues(
     assert calls == 2
 
 
+def test_frozen_replay_command_rate_excludes_invalid_reference_actions(monkeypatch):
+    messages = _messages(2)
+    reference = {
+        "rows": [
+            {"decision": 1, "generated_content": messages[2]["content"]},
+            {"decision": 2, "generated_content": "THOUGHT: no command"},
+        ]
+    }
+    generated = iter((messages[2]["content"], "THOUGHT: also no command"))
+
+    def fake_post(url, payload, *, api_key, timeout):
+        return {"choices": [{"message": {"content": next(generated)}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(
+        **_replay_arguments(messages, None), reference_replay=reference
+    )
+    assert result["reference_command_decisions"] == 1
+    assert result["exact_command_decisions"] == 1
+    assert result["exact_command_rate"] == 1.0
+    assert result["first_command_divergence"] is None
+
+
 def test_frozen_replay_stops_on_empty_transport_generation_and_requires_restart(
     monkeypatch, tmp_path
 ):

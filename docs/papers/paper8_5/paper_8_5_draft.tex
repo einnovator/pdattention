@@ -667,6 +667,13 @@ neither tokenizer-exact saving, next-action quality, nor task success. Their
 purpose is to confirm that the arms fire differently before spending model
 calls; frozen and autonomous rows remain pending.
 
+Repeating the screen with the pinned Qwen3-Coder tokenizer changes the counts
+but not the ordering. Across 199,109 cumulative full-history tokens, H1 at
+$K_f=0$ removes 2,660 (1.34\%), H2a removes 833 (0.42\%), H3 at $K_r=1$
+removes 603 (0.30\%), and guarded H2b abstains. Aggressive H4 at $K_x=2$
+removes 11,370 (5.71\%), whereas $K_x\geq3$ abstains under the dependency
+pins. These are still opportunity counts, not behavior results.
+
 \subsection{First instrumented frozen cohort}
 
 We then executed the ordered frozen gate on
@@ -675,9 +682,14 @@ We then executed the ordered frozen gate on
 \texttt{qwen3-coder:30b}, its pinned tokenizer, temperature zero, and restored
 decision-point workspaces.  This is next-action evidence, not yet an
 autonomous policy success rate.  Table~\ref{tab:first-frozen-cohort} compares
-each arm directly with a contemporaneous \textsc{Full} replay.  Exact-command
-and conservative-action rates use the 22 decisions on which \textsc{Full}
-emitted a command; \textsc{Full}'s decision 22 is itself format-invalid.
+each arm directly with a contemporaneous seeded \textsc{Full} replay.
+Temperature zero alone was insufficient: an unseeded repeat diverged at
+decision 3 despite identical history through decision 20, so the original
+unseeded policy matrix is quarantined rather than interpreted as selection
+evidence. With seed zero, independent \textsc{Full}-A and \textsc{Full}-B runs
+match all 23 generated contents byte-for-byte. Exact-command and
+conservative-action rates use the 22 decisions on which \textsc{Full} emitted
+a command; \textsc{Full}'s decision 22 is itself format-invalid.
 
 \begin{table}[H]
 \centering
@@ -688,48 +700,18 @@ not autonomous SWE-bench resolution.}
 \label{tab:first-frozen-cohort}
 \begin{tabular}{lrrrrrrc}
 \toprule
-Treatment & Mean ret. & Saving & Exact text & Exact cmd. & Cons. action & First div. & Final \\
+Treatment & Mean ret. & Saving & Exact text & Exact cmd. & Cons. action & First text div. & Final \\
 \midrule
 \textsc{Full} & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
+\textsc{Full} repeat & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
 \textsc{Dag-Exclude}@100 & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
-Matched causal tail & 97.1\% & 3.9\% & 87.0\% & 90.9\% & 90.9\% & 21 & no \\
-Recency@90 floor & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
-Lexical@90 floor & 94.7\% & 5.9\% & 30.4\% & 45.5\% & 59.1\% & 6 & yes \\
-Spine+lexical@90 floor & 95.5\% & 5.2\% & 39.1\% & 45.5\% & 59.1\% & 8 & yes \\
-DAG+spine+lexical@90 & 95.7\% & 4.9\% & 39.1\% & 45.5\% & 59.1\% & 8 & yes \\
+Matched token tail & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
+H1 consumed search, $K_f=0$ & 98.9\% & 1.3\% & 52.2\% & 59.1\% & 68.2\% & 10 & yes \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Three mechanism findings matter.  First, recency with a 90\% floor retains
-the entire history on this trace: the last ranked large turn is needed to cross
-the floor, producing 19,899 cumulative tokens of whole-turn overshoot.  Lexical
-ranking reaches a closer 94.7\% mean and delays no protocol failure, but changes
-many next actions; comment-only normalization explains some, not all, of the
-gap.  Adding the progress spine delays first divergence from decision 6 to 8
-and improves exact text, but saves fewer tokens and creates one overlong,
-format-invalid action at decision 9.  A role floor is therefore not sufficient
-evidence of improved policy quality.
-
-Applying certified exclusion before the same spine-plus-lexical floor produces
-identical frozen responses to the non-DAG arm but retains slightly more, 95.7\%
-versus 95.5\%.  Once the duplicate is removed, the whole-turn fallback chooses
-a larger replacement to cross the 90\% floor.  A two-stage exclusion-plus-floor
-policy is therefore not monotone in realized token saving; negative and
-positive stages must be evaluated as a composed policy.
-
-A conservative human action audit further separates command-string mismatch
-from workflow damage.  Among lexical@90's 13 non-exact actions, three differ
-only in shell comments, six are likely operationally equivalent diagnostics or
-edits, two are materially different but plausibly useful, and two alter the
-submission path.  For spine+lexical the corresponding counts are three, three,
-three, and three, plus one format-invalid action.  The recurring dangerous
-omissions concern failed-environment status, successful mutation,
-post-mutation verification, and patch/submission-artifact state.  These become
-explicit ablation and oracle-add-back targets rather than being inferred from
-lexical score alone.
-
-Second, the instrumented trace supports one
+Two mechanism findings are currently admissible. First, the instrumented trace supports one
 \textsc{Trace-Exact-Operation-Result} certificate: two complete reads execute
 the same command and return the same bytes for the same cwd, environment, and
 resource version despite different reasoning prose.  Removing the older turn
@@ -739,13 +721,23 @@ to the exact final submission action at decision 23.  Operational proof and
 behavioral identity are therefore empirically distinct even in the strongest
 current DAG tier.
 
-Third, the causal-tail ``matched'' control cannot actually match this small
-exclusion: its next indivisible turn drops retention to 77--78\% on decisions
-21--23, leaving 7,197 cumulative target tokens unused and removing 7,800 tokens
-versus the DAG arm's 603.  Its worse final action cannot be attributed to
-recency versus DAG semantics at equal context.  A genuine token-tail control
-with bounded within-observation materialization is required before that causal
-comparison is admissible.
+The new within-observation token-tail control materially matches the DAG arm:
+198,500 versus 198,506 cumulative materialized tokens. Both first change the
+action at decision 21, preserve 95.5\% conservative action agreement, and
+return to the exact final action. This one trace therefore does not yet show a
+quality advantage for certified exclusion over recency at equal materialized
+context.
+
+Second, immediate H1 is too aggressive. Once a discovery result is consumed by
+a concrete read and followed by a non-read transition, it removes one
+190-token causal turn from each later prefix. The first text change occurs at
+decision 10, the first command-string change at decision 12, and the first
+conservatively different shell action at decision 13. Across all prefixes it
+saves 2,660 tokens (1.34\%) but preserves only 68.2\% conservative action
+agreement, with six immediate reacquisitions and one policy-excess
+reacquisition. A search listing can remain a durable navigation map after one
+file is opened; delayed H1 is therefore a required variant, not a cosmetic
+ablation.
 
 \section{Semantic-Role Ablations}
 
