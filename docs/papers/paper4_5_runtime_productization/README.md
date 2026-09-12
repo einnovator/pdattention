@@ -50,6 +50,9 @@ The implementation adds:
   active record, named Paper 3/7/8 materialization profiles, and raw-versus-unique
   interval diagnostics;
 - permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
+- a bounded vLLM 0.28 CUDA stateful page-alias gate whose seven-turn PRA-100
+  replay is 7/7 token-exact to dense full history, observes every lifecycle
+  callback, and reports zero selected-history re-encoding, K/V copy, and H2D;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
 - request attachment guards that bind native selections to tenant/session scope

@@ -51,6 +51,47 @@ def test_hf_no_cast_sparse_consumer_clears_strict_gate() -> None:
     assert result["zero_copy_engine_gate_valid"] is True
 
 
+def test_hf_task02_full_history_cache_control_is_sequence_exact() -> None:
+    result = _load(
+        "hf_qwen25coder15b_task02_incremental_full_history_20260912.json"
+    )
+    assert result["model"] == "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+    assert result["completed_turns"] == result["exact_turns"] == 7
+    assert result["all_exact"] is True
+    assert result["first_divergent_turn"] is None
+    assert max(row["max_abs_logit_delta"] for row in result["rows"]) == 0.34375
+
+
+def test_vllm_task02_pra100_matches_dense_and_closes_every_alias() -> None:
+    result = _load(
+        "vllm_qwen25coder15b_task02_pra100_dense_reference_20260912.json"
+    )
+    assert result["engine_version"] == "0.28.0"
+    assert result["model_revision"] == (
+        "2e1fd397ee46e1388853d2af2c993145b0f1098a"
+    )
+    assert result["retention_fractions"] == [1.0]
+    assert len(result["arms"]) == 1
+    rows = result["arms"][0]["rows"]
+    assert len(rows) == 7
+    assert all(row["dense_reference_exact"] for row in rows)
+    assert all(row["trace"]["realized_retention_fraction"] == 1.0 for row in rows)
+    accounting = result["copy_accounting"]
+    assert accounting["selected_history_reencoded_tokens"] == 0
+    assert accounting["selected_history_kv_copy_bytes"] == 0
+    assert accounting["physical_kv_copy_bytes"] == 0
+    assert accounting["host_to_device_bytes"] == 0
+    assert accounting["total_kv_copy_bytes"] == 0
+    assert accounting["consumer_temporary_bytes_peak"] == 206446080
+    callbacks = result["consumer"]["scheduler_alias_calls"]
+    assert set(callbacks.values()) == {6}
+    lifecycle = result["arms"][0]["lifecycle"]
+    assert lifecycle["source_count_after_close"] == 0
+    assert lifecycle["active_request_count_after_close"] == 0
+    assert lifecycle["pending_commit_count_after_close"] == 0
+    assert result["passed"] is True
+
+
 def test_mlx_interval_metal_consumer_is_exact_and_not_kv_sized() -> None:
     result = _load("mlx_interval_metal_sparse_lifecycle_task02_090_v2.json")
     allocation = result["disjoint_attention_allocation"]

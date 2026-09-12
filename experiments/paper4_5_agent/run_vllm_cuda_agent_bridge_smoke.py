@@ -28,6 +28,7 @@ from pra_vllm.agent_executor import (
     VLLMCudaAgentHistoryExecutor,
     VLLMInProcessSchedulerDriver,
     record_rounded_selected_indices,
+    validate_retention_fractions,
 )
 
 
@@ -234,6 +235,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     digest = configure_append_stable_template(tokenizer, "pure-chatml-stable")
     validate_append_stable_template(tokenizer)
     driver = VLLMInProcessSchedulerDriver(llm)
+    model_config = llm.llm_engine.model_config
+    hf_config = model_config.hf_config
+    retention_fractions = validate_retention_fractions(args.retention_fractions)
     arms = [
         _run_arm(
             llm=llm,
@@ -247,10 +251,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             max_tokens=args.max_tokens,
             dense_reference=args.dense_reference,
         )
-        for fraction in (1.0, 0.9)
+        for fraction in retention_fractions
     ]
     rows = [row for arm in arms for row in arm["rows"]]
-    sparse_rows = [row for row in arms[1]["rows"] if row["turn"] > 1]
+    pra100_arm = next(arm for arm in arms if arm["retention_fraction"] == 1.0)
+    sparse_arms = [arm for arm in arms if arm["retention_fraction"] < 1.0]
+    sparse_rows = [
+        row for arm in sparse_arms for row in arm["rows"] if row["turn"] > 1
+    ]
     callbacks = {
         name: sum(int(row["trace"]["scheduler_callback_delta"].get(name, 0)) for row in rows)
         for name in VLLMInProcessSchedulerDriver.REQUIRED_CALLBACKS
@@ -258,19 +266,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     assertions = {
         "requested_turns_completed": all(len(arm["rows"]) == args.turns for arm in arms),
         "pra100_dense_reference_exact": (
-            all(row["dense_reference_exact"] for row in arms[0]["rows"])
+            all(row["dense_reference_exact"] for row in pra100_arm["rows"])
             if args.dense_reference
             else None
         ),
-        "pra90_record_block_floor_valid": all(
-            0.9 <= float(row["trace"]["realized_historical_kv_retention"]) < 1.0
-            for row in sparse_rows
+        "sparse_record_block_floor_valid": (
+            all(
+                float(row["trace"]["requested_retention_fraction"])
+                <= float(row["trace"]["realized_historical_kv_retention"])
+                < 1.0
+                for row in sparse_rows
+            )
+            if sparse_rows
+            else None
         ),
         "zero_selected_history_reencoding": all(row["trace"]["selected_history_reencoded_tokens"] == 0 for row in rows),
         "zero_selected_history_copy": all(row["trace"]["selected_history_kv_copy_bytes"] == 0 for row in rows),
         "zero_h2d": all(row["trace"]["host_to_device_bytes"] == 0 for row in rows),
         "zero_total_kv_copy": all(row["trace"]["total_kv_copy_bytes"] == 0 for row in rows),
-        "all_alias_callbacks_observed": all(value == 12 for value in callbacks.values()),
+        "all_alias_callbacks_observed": all(
+            value == (args.turns - 1) * len(arms) for value in callbacks.values()
+        ),
         "lifecycle_cleanup": all(
             arm["lifecycle"][key] == 0
             for arm in arms
@@ -287,11 +303,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     payload = {
         "schema_version": "paper4.5.vllm-cuda-stateful-agent-alias-smoke.v1",
-        "probe": "frozen_task02_seven_turn_pra100_and_record_block_rounded_pra90",
+        "probe": (
+            "frozen_task02_seven_turn_pra100"
+            if retention_fractions == (1.0,)
+            else "frozen_task02_seven_turn_pra100_and_record_block_rounded_sparse"
+        ),
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "trajectory": str(trajectory),
         "trajectory_sha256": _sha256(trajectory),
         "model": args.model,
+        "resolved_model": str(model_config.model),
+        "model_revision": getattr(hf_config, "_commit_hash", None),
         "engine": "vllm-cuda",
         "engine_version": vllm.__version__,
         "torch_version": torch.__version__,
@@ -300,6 +322,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "temperature": 0,
         "block_size": driver.block_size,
         "turns_per_arm": args.turns,
+        "retention_fractions": list(retention_fractions),
         "max_new_tokens": args.max_tokens,
         "retention_denominators": {
             "historical_kv": "selected complete resident pages / canonical resident source pages",
@@ -354,6 +377,16 @@ def main() -> None:
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
     parser.add_argument("--dense-reference", action="store_true")
+    parser.add_argument(
+        "--retention-fractions",
+        type=float,
+        nargs="+",
+        default=(1.0, 0.9),
+        help=(
+            "Ordered retention arms to run. Use '--retention-fractions 1.0' "
+            "to qualify PRA-100 without starting a sparse-policy experiment."
+        ),
+    )
     args = parser.parse_args()
     if args.turns != 7:
         raise ValueError("This frozen qualification requires exactly seven turns.")

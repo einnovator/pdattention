@@ -4,7 +4,18 @@ import pytest
 
 from pra_vllm.agent_executor import (
     record_rounded_selected_indices,
+    validate_retention_fractions,
 )
+
+
+def test_bridge_smoke_can_run_pra100_without_starting_a_sparse_arm() -> None:
+    assert validate_retention_fractions([1.0]) == (1.0,)
+
+
+@pytest.mark.parametrize("values", ([], [0.9], [1.0, 1.0], [1.0, 0.0]))
+def test_bridge_smoke_rejects_invalid_retention_arm_sets(values) -> None:
+    with pytest.raises(ValueError):
+        validate_retention_fractions(values)
 
 
 def test_record_rounded_selector_preserves_pairs_and_rounds_up() -> None:

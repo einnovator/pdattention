@@ -3422,12 +3422,28 @@ Qwen2.5-Coder-1.5B/vLLM~0.28 CUDA attempt exposes two integration defects: a
 stale remote worker ignored scheduler-alias metadata and attempted file-backed
 K/V loading, while source-generation commit referenced a scheduler manager
 bound only in the store branch.  Both paths are corrected and regression-
-tested.  The post-fix seven-turn retry nevertheless loses the RTX host/WSL
-before producing its canonical artifact, so no bridge telemetry or autonomous
-task outcome is promoted.  The stateful bridge therefore remains incomplete,
-not failed for PRA efficacy.  Qualification remains bounded to in-process V1,
-one homogeneous K/V group, and complete pages; at most one partial page is
-re-evaluated and reported separately.
+tested.  Two post-fix retries nevertheless lose the RTX host/WSL before
+producing a canonical artifact.  A later isolated run exposes a third identity
+defect: vLLM randomizes the scheduler request ID as
+\texttt{external-random8}, while \texttt{LLM.generate} returns only the
+external ID, so the driver could not find the already-emitted generation-commit
+receipt.  The corrected resolver accepts an exact internal ID or a unique
+randomized child and fails closed on ambiguity.
+
+The resulting strictly PRA-100-only gate now completes all seven frozen
+Task~02 turns on Qwen2.5-Coder-1.5B, vLLM~0.28, and the 8~GB RTX~5060.  Each
+eight-token continuation is token-exact to a fresh dense full-history request
+(7/7 pairs); resident source size grows from 3,104 to 4,208 complete-page
+tokens and realized retention is 1.0 on every turn.  The six stateful updates
+each observe exactly one alias hit, prepare, commit, and release.  Selected-
+history re-encoding, selected-history K/V copy, total physical K/V copy, and
+host-to-device transfer are all zero; the measured request-temporary peak is
+206,446,080 bytes.  Closing the session leaves zero sources, active aliases,
+or pending commits.  This promotes the bounded stateful mechanism, not an
+autonomous SWE-bench outcome: no 90\% arm was launched, and task treatment
+remains gated on a plain-success model/task pair.  Qualification remains
+bounded to in-process V1, one homogeneous K/V group, and complete pages; at
+most one partial page is re-evaluated and reported separately.
 
 A fresh vLLM~0.28 admission separates that old 16K capacity point from the
 single-task operating point.  The server now exposes CPU offload explicitly
@@ -3588,6 +3604,16 @@ selected history, and reports 1,953,728 attention-temporary bytes and
 137/179 row is explicitly superseded; both HF and SGLang now fail closed below
 $\lceil rN\rceil$ unless the request declares an arbitrary-subset mechanism
 probe.  This fallback smoke is not autonomous task evidence.
+
+On the same Qwen2.5-Coder-1.5B checkpoint and frozen Task~02 trajectory, the
+matched HF incremental-cache control is also greedy-token exact to cold full-
+history re-prefill on all seven eight-token continuations.  Append-only reuse
+grows from 1,683 prompt tokens on turn one to 4,382 on turn seven.  The maximum
+bfloat16 logit delta is 0.34375, so this is sequence parity rather than
+bit-exact logit parity.  Together with the direct PRA-100 accounting smoke
+above, it closes the full-retention cache-continuation control while retaining
+the distinction between zero selected-history attachment copy and ordinary
+\texttt{DynamicCache} growth copy.
 
 The first autonomous CUDA attempts exposed two further plain-path defects that
 supersede the earlier attribution to BitsAndBytes alone.  HF forward calls were

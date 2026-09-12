@@ -93,6 +93,21 @@ def _enforce_page_retention_floor(
     )
 
 
+def validate_retention_fractions(values: Sequence[float]) -> tuple[float, ...]:
+    """Validate an ordered bridge-smoke arm set anchored by PRA-100."""
+
+    fractions = tuple(float(value) for value in values)
+    if not fractions:
+        raise ValueError("At least one retention fraction is required.")
+    if len(set(fractions)) != len(fractions):
+        raise ValueError("Retention fractions must be unique.")
+    if any(not 0 < fraction <= 1 for fraction in fractions):
+        raise ValueError("Retention fractions must be in (0, 1].")
+    if 1.0 not in fractions:
+        raise ValueError("The frozen qualification must include PRA-100.")
+    return fractions
+
+
 def record_rounded_selected_indices(
     messages: Sequence[Mapping[str, Any]],
     spans: Mapping[int, tuple[int, int]],
@@ -302,7 +317,22 @@ class VLLMInProcessSchedulerDriver:
             raise RuntimeError("vLLM store request did not publish its source pages.")
         committed = self.connector.pop_scheduler_committed_source(row.request_id)
         if command.mode == "load" and committed is None:
-            raise RuntimeError("vLLM load request did not commit its next source generation.")
+            available = sorted(
+                map(
+                    str,
+                    getattr(
+                        self.connector, "_scheduler_committed_sources", {}
+                    ),
+                )
+            )
+            snapshot = self.connector._scheduler_alias_registry.snapshot()
+            raise RuntimeError(
+                "vLLM load request did not commit its next source generation: "
+                f"output_request_id={row.request_id!s}, "
+                f"available_commit_receipts={available}, "
+                f"active_aliases={snapshot['active_requests']}, "
+                f"pending_aliases={snapshot['pending_requests']}."
+            )
         temporary = None
         if cuda and torch is not None:
             temporary = max(int(torch.cuda.max_memory_allocated()) - active, 0)

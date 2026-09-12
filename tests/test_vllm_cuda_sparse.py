@@ -147,3 +147,23 @@ def test_stale_generation_is_rejected_before_worker_attachment(tmp_path) -> None
         connector._add_new_request(
             PRASemanticConnectorMetadata(), "stale-request", []
         )
+
+
+def test_scheduler_commit_receipt_resolves_vllm_randomized_request_id() -> None:
+    connector = PRASparseConnector.__new__(PRASparseConnector)
+    receipt = ("agent-source-g2", 2, 3200)
+    connector._scheduler_committed_sources = {"7-deadbeef": receipt}
+
+    assert connector.pop_scheduler_committed_source("7") == receipt
+    assert connector._scheduler_committed_sources == {}
+
+
+def test_scheduler_commit_receipt_rejects_ambiguous_external_request_id() -> None:
+    connector = PRASparseConnector.__new__(PRASparseConnector)
+    connector._scheduler_committed_sources = {
+        "7-deadbeef": ("agent-source-g2", 2, 3200),
+        "7-cafebabe": ("agent-source-g3", 3, 3216),
+    }
+
+    with pytest.raises(RuntimeError, match="Ambiguous vLLM scheduler commit"):
+        connector.pop_scheduler_committed_source("7")

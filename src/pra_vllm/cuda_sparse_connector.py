@@ -356,9 +356,32 @@ class PRASparseConnector(PRASemanticConnector):
     def pop_scheduler_committed_source(
         self, request_id: str
     ) -> tuple[str, int, int] | None:
-        """Return the source-generation receipt emitted by request teardown."""
+        """Return a teardown receipt by external or scheduler request ID.
 
-        return self._scheduler_committed_sources.pop(str(request_id), None)
+        vLLM 0.28 randomizes the scheduler-owned ID as
+        ``<external-id>-<8 random characters>`` while ``LLM.generate`` exposes
+        the original external ID in its output.  Keep the receipt keyed by the
+        authoritative internal ID, then resolve that one-to-one mapping here.
+        """
+
+        key = str(request_id)
+        exact = self._scheduler_committed_sources.pop(key, None)
+        if exact is not None:
+            return exact
+        prefix = f"{key}-"
+        matches = [
+            candidate
+            for candidate in self._scheduler_committed_sources
+            if candidate.startswith(prefix)
+        ]
+        if len(matches) > 1:
+            raise RuntimeError(
+                "Ambiguous vLLM scheduler commit receipts for external request "
+                f"{key!r}: {sorted(matches)}"
+            )
+        if not matches:
+            return None
+        return self._scheduler_committed_sources.pop(matches[0])
 
     def evict_scheduler_source(
         self, logical_key: str, *, source_generation: int = 1
