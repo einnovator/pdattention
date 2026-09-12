@@ -134,6 +134,10 @@ def test_sidecar_join_enables_guarded_h2_without_leaking_extra(tmp_path):
                 "content": f"<returncode>0</returncode>\n<output>{output}</output>",
             },
         ))
+    messages[2]["content"] = (
+        "Illustrative payload:\n```python\nprint('not the action')\n```\n"
+        f"```mswea_bash_command\n{commands[0]}\n```"
+    )
     common = {
         "return_code": 0,
         "output_complete": True,

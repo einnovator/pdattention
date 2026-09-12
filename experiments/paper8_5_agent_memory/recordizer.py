@@ -8,7 +8,10 @@ from typing import Any, Mapping, Sequence
 from .model import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
 
 
-_COMMAND_BLOCK = re.compile(r"```(?:mswea_bash_command|bash)?\s*\n(.*?)\n```", re.DOTALL)
+_MINISWE_COMMAND_BLOCK = re.compile(
+    r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL
+)
+_COMMAND_BLOCK = re.compile(r"```(?:bash)?\s*\n(.*?)\n```", re.DOTALL)
 _RETURN_CODE = re.compile(r"<returncode>(-?\d+)</returncode>")
 _PATH = re.compile(
     r"(?<![\w.-])(?:\.?\.?/)?(?:[\w.-]+/)*[\w.-]+\.[A-Za-z0-9_+-]+"
@@ -35,7 +38,10 @@ def _content(message: Mapping[str, Any]) -> str:
 
 
 def _command(content: str) -> str | None:
-    match = _COMMAND_BLOCK.search(content)
+    # mini-swe-agent executes only its tagged action block.  Prefer that exact
+    # protocol marker so an explanatory Python/Bash fence earlier in the
+    # response cannot be mistaken for the command that changed the workspace.
+    match = _MINISWE_COMMAND_BLOCK.search(content) or _COMMAND_BLOCK.search(content)
     return match.group(1).strip() if match else None
 
 

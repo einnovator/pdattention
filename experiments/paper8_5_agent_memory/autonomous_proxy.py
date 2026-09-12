@@ -40,7 +40,7 @@ from .selectors import FullHistorySelector, TokenCounter, whitespace_tokens
 from .serialization import serialize_materialized_messages
 
 
-_COMMAND = re.compile(r"```(?:mswea_bash_command|bash)?\s*\n(.*?)\n```", re.DOTALL)
+_COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 
 
 def _digest(value: Any) -> str:

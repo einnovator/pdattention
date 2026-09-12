@@ -86,6 +86,16 @@ def test_recordizer_preserves_action_observation_causal_bundles():
     assert mutation.causal_group_id == observation.causal_group_id
 
 
+def test_recordizer_prefers_the_executable_miniswe_tag_over_explanatory_fences():
+    rows = _messages(1)
+    rows[2]["content"] = (
+        "Example only:\n```python\nprint('do not execute')\n```\n"
+        "```mswea_bash_command\ncat foo.py\n```"
+    )
+    history = recordize_minisweagent_messages(rows)
+    assert history.record_by_id["m2"].command == "cat foo.py"
+
+
 def test_head_and_tail_are_independent_and_selection_is_middle_only():
     history = recordize_minisweagent_messages(_messages(6))
     selector = HeadMiddleTailSelector(HeadMiddleTailConfig(
