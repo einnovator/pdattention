@@ -57,6 +57,20 @@ PRA_ONLY_METRICS = frozenset(
     }
 )
 
+# Public engine-dependent evidence must identify the corrected execution
+# contract.  Older bundle measurements predate the resident live-K/V,
+# original-position, zero-copy accounting, and lifecycle gates and must not be
+# rendered as current merely because their legacy schema remains readable.
+CURRENT_ENGINE_EVIDENCE_CONTRACT = "live-kv-original-position-lifecycle-v1"
+ENGINE_DEPENDENT_CONDITIONS = frozenset(
+    {
+        EvidenceCondition.PRA_NATIVE_MEMORY_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_SERVING_NO_ADAPTOR,
+        EvidenceCondition.PRA_NATIVE_MEMORY_BUNDLE,
+        EvidenceCondition.PRA_NATIVE_SERVING_BUNDLE,
+    }
+)
+
 DELTA_PAIRS: dict[str, tuple[EvidenceCondition, EvidenceCondition]] = {
     "delta_sc_vs_no_pra": (
         EvidenceCondition.NO_PRA,
@@ -303,6 +317,9 @@ class EvidenceProvenance(StrictModel):
     artifact_checksum: str | None = None
     feature_extraction_precision: str | None = None
     adaptor_parameter_precision: str | None = None
+    engine_contract_version: str | None = None
+    engine_gate_commit: str | None = None
+    source_tree_dirty: bool | None = None
 
 
 class MetricDelta(StrictModel):
@@ -489,6 +506,35 @@ class CanonicalEvidenceRecord(StrictModel):
             if pair[0] in self.conditions and pair[1] in self.conditions
         }
         return payload
+
+
+def requires_current_engine_contract(record: CanonicalEvidenceRecord) -> bool:
+    """Return whether a record contains measured native/serving observations."""
+
+    return any(
+        observation.state == MeasurementState.MEASURED
+        for condition, evidence in record.conditions.items()
+        if condition in ENGINE_DEPENDENT_CONDITIONS
+        for observation in evidence.metrics.values()
+    )
+
+
+def is_current_engine_evidence(record: CanonicalEvidenceRecord) -> bool:
+    """Accept selection-only evidence or engine evidence from the current gate.
+
+    Schema migration remains intentionally permissive so historical artifacts
+    can be audited.  Public surfaces use this stricter freshness predicate.
+    """
+
+    if not requires_current_engine_contract(record):
+        return True
+    provenance = record.provenance
+    return bool(
+        provenance.commit
+        and provenance.engine_gate_commit
+        and provenance.engine_contract_version == CURRENT_ENGINE_EVIDENCE_CONTRACT
+        and provenance.source_tree_dirty is False
+    )
 
 
 def render_markdown_table(

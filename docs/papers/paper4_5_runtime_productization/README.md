@@ -3,6 +3,17 @@
 Paper 4.5 asks whether PRA's logical K/V sparsity becomes a measurable,
 portable inference primitive before a serving engine is redesigned around it.
 
+## Evidence freshness correction (2026-09-12)
+
+Agent-history qualification exposed engine defects not covered by the earlier
+bundle benchmark. All pre-gate native-runtime exactness and economic values
+listed below are retained as historical development evidence, not current
+qualification. Ten canonical records and ten bundle headline rows derived from
+24 raw artifacts are quarantined pending rerun under
+`live-kv-original-position-lifecycle-v1`. Structural bundle metadata and
+selection/router-only diagnostics remain valid. See
+`../shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`.
+
 The implementation adds:
 
 - one `PRARuntime` facade over the existing HF model API;

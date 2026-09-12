@@ -38,30 +38,19 @@ capability negotiation, and evidence receipts behind one runtime and gateway.
 The contract keeps ordinary prefix K/V distinct from query-addressed PRA state
 and falls back to E0 when a deeper capability is unavailable.
 
-The evaluation separates quality, context, and economics. On frozen routed
-evidence, MLX-LM, SGLang-MLX, and vLLM-Metal remove 90.6--93.0\% of visible
-prompt tokens and preserve 6,258/6,258 paired outputs across 149 questions per
-engine. Lossless WARM storage preserves 265/265 outputs over 17
-model--dataset cohorts and survives restart, whereas int8 COLD storage is exact
-in only 61/265 sequences and remains opt-in. Qwen3-32B reaches a warm E2/E0
-cost ratio of 1.011 and a cold usable-context ratio of 0.976 on Apple Silicon.
-A scheduler-invisible CUDA vLLM prototype preserves 128/128 outputs in each of
-FULL, E0, E2-HOT, and E2-WARM, but E0 sustains 56.3 requests/s versus 45.5 and
-42.4 for the two native modes. Thus semantic parity and scheduler invisibility
-do not yet imply an economic win.
-On a 48~GiB M4 Pro, a Qwen3.5-27B MLX 4-bit checkpoint runs at 31.1 decode
-tokens/s and fits in 15.4~GiB at smoke scale. At a 20\% selected-context budget,
-it removes 77--79\% of visible prompt tokens and reduces mean TTFT by 76--79\%
-on 32 held-out QASPER and HotpotQA questions. Its learned router helps QASPER
-but hurts HotpotQA, and detached native K/V is unavailable because 48 of 64
-layers require DeltaNet recurrent state beyond K/V.
-
-Using MultiHop-RAG only as a locked engine workload, MLX-LM contiguous Native
-Memory preserves every selector-frozen output. Retained K/V reduces warm total
-latency from 3.031 to 0.638~s at 2K and from 6.121 to 0.799~s at 4K, while cold
-native execution remains 1.8--3.3\% slower across Qwen3-4B/8B. Independently
-cached chunks reduce runtime but change outputs, so they remain unqualified.
-Papers~3.2 and~3.3 own the corresponding retrieval and selector conclusions.
+Agent-history qualification subsequently exposed cache reconstruction,
+original-position, physical-copy accounting, consumer-transient, and lifecycle
+defects absent from the earlier bundle benchmark. We therefore quarantine all
+pre-gate engine-dependent headline measurements: ten canonical runtime rows,
+ten bundle headline rows, and their 24 raw artifacts remain historical
+diagnostics but do not support current exactness or economic claims. Structural
+bundle metadata and selection/router-only evidence remain valid. Replacement
+measurements must identify the corrected
+\texttt{live-kv-original-position-lifecycle-v1} contract, PRA commit, and
+engine-gate commit and must report re-encoding, K/V copy, and consumer temporary
+memory independently. The post-fix engine gates establish the mechanism; the
+remaining question is whether corrected execution preserves agent behavior and
+improves workload economics across engines.
 \end{abstract}
 
 \section{Introduction}
@@ -1433,6 +1422,16 @@ backend-specific rounding. & Alias-backed and packed-value paths retain the
 same logical segment boundaries and original positions and execute the same
 consumer.  Cross-consumer drift remains a diagnostic, not a selection-
 correctness failure. \\
+\addlinespace
+Pre-gate product evidence & Ten canonical Native-Memory records, ten bundle
+headline rows, and 24 raw qualification artifacts produced before the agent-
+history fixes. Their output parity, TTFT, throughput, memory, cache-hit, and
+copy-savings values are historical diagnostics only. & Rerun the frozen exact-
+identity cohorts under
+\texttt{live-kv-original-\allowbreak position-\allowbreak lifecycle-v1},
+recording both the PRA source
+commit and engine-gate commit and separating selected-history re-encoding,
+selection K/V copy, residency, and consumer temporary memory. \\
 \bottomrule
 \end{tabularx}
 \caption{Superseded agent-cache evidence.  ``Superseded'' removes a systems
@@ -1440,6 +1439,25 @@ claim, not the historical artifact: demoted rows remain available for debugging
 and causal comparison.}
 \label{tab:superseded-agent-evidence}
 \end{table}
+
+This quarantine also governs earlier quantitative runtime sections in this
+report. Their artifacts are retained to document the development path, but a
+number printed from a pre-gate artifact is not a current engine or product
+claim. The machine-readable audit enumerates the affected bundle identities and
+the frozen rerun order.
+
+The first corrected-run prequalification uses one frozen QASPER example with
+Qwen3-8B MLX 8-bit on the 48~GiB M4 Pro. Native Memory is captured as a view of
+the already evaluated live prefix, not encoded independently. The alias path
+and an owned value-identical reference execute the same segmented consumer and
+have zero maximum logit difference; E0 prefix-cache and segmented E2 greedy
+outputs also match in all four bounded regimes. Their gold-answer log
+probabilities differ by 0.177887, which is retained as cross-consumer numerical
+drift rather than misclassified as a selection error. Selected history is not
+re-encoded and selection materialization copies zero K/V bytes. Physical copy
+beyond selection remains unmeasured, and the run is explicitly
+\emph{prequalification}: its source tree was dirty and host load was not timing-
+controlled, so none of its latency values is admissible as a headline.
 
 \subsection{Gateway session and prefix protocol}
 
@@ -2422,7 +2440,8 @@ selector output. It executes QASPER, HotpotQA, and 2Wiki separately and records
 the source artifacts and checksums in the card. Thus a result for MLX 8-bit is
 never inherited by MLX 6-bit, bitsandbytes 8-bit, or another checkpoint.
 
-Table~\ref{tab:quantized-bundle-quality} reports the new exact-identity cohorts.
+Table~\ref{tab:quantized-bundle-quality} preserves the superseded exact-identity
+cohorts for auditability; it is not a current qualification table.
 The MLX runs contain 20 examples per dataset and five dataset seeds (60 unique
 questions per identity). The smaller CUDA bitsandbytes run contains five
 examples per dataset (15 total) and is intentionally presented as controlled,
@@ -2435,9 +2454,10 @@ match exactly.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Exact-identity selected-text (E0) versus native-K/V (E2) bundle
-qualification. The selector output is frozen between conditions. ``Promote''
-means Native Memory with BALANCED becomes the exact-identity default.}
+\caption{Historical pre-gate exact-identity selected-text (E0) versus native-
+K/V (E2) bundle results. The selector output was frozen between conditions,
+but the engine contract was not yet complete; every row is quarantined pending
+rerun. ``Promote'' records the decision made at the time, not a current default.}
 \begin{tabular}{lrrrrrrl}
 \toprule
 Model / quantization & $N$ & Exact & E0 F1 & E2 F1 & Visible $\Delta$ & Completion $\Delta$ & Gate \\
@@ -2454,7 +2474,7 @@ Qwen2.5-1.5B BNB 8-bit & 15 & 0/15 & 0.3991 & 0.0179 & $-91.7\%$ & $+203.5\%$ & 
 \label{tab:quantized-bundle-quality}
 \end{table}
 
-The passing Qwen and Llama rows preserve output exactly while hiding about
+Historically, the passing Qwen and Llama rows preserved output exactly while hiding about
 91.5\% of selected source tokens from the visible prompt. Median TTFT changes
 are $-6.9\%$ for Llama, $-9.2\%$ for Qwen3-4B, $+0.7\%$ for Qwen3-8B 6-bit,
 $-5.7\%$ for Qwen3-8B 8-bit, and $-2.4\%$ for Qwen3-14B 8-bit. Mean completion
@@ -2470,16 +2490,16 @@ calibration. The eager bitsandbytes path preserves evidence recall and removes
 three times as long end to end; Selected Context therefore remains its default.
 Neither failure is converted into an unspecified missing value.
 
-The public catalog applies the same schema to 16 current bundles. Each card
+The public catalog applies the same schema to 17 local bundles. Each card
 enumerates every declared engine, mode, and profile and labels absent work by
 cause: \texttt{NEEDS\_RUN}, \texttt{NO\_QUALIFIED\_ADAPTER}, or
 \texttt{CALIBRATION\_PENDING}. It preserves \texttt{NOT\_MEASURED} when no
-stronger cause is established. Five Qwen/Llama quantized identities now carry promoted
-Native Memory evidence; Gemma MLX 8-bit and Qwen2.5 bitsandbytes 8-bit carry
-measured candidate failures. The generated site evidence matrix remains the
-exhaustive view.
+stronger cause is established. The ten pre-gate native-runtime records are now
+rendered as \texttt{QUARANTINED}/\texttt{NEEDS\_RUN}; they do not retain their
+former promoted or candidate status. The generated site evidence matrix remains
+the exhaustive current view.
 
-These results do not show that a learned adaptor is necessary. The promoted
+These quarantined results do not show that a learned adaptor is necessary. The formerly promoted
 BALANCED profiles use parameter-free routing and all eligible consumer layers.
 The Qwen3-4B bundle includes an opt-in learned router whose QASPER recall gain
 does not transfer to HotpotQA; it is not substituted for a missing end-task
@@ -2499,22 +2519,20 @@ source model.  Converted artifacts additionally admit source and tokenizer
 revisions, quantization configuration hashes, conversion recipes, and artifact
 checksums.
 
-The current normalized ledger contains 53 planned or observed exact-precision
-rows.  Five have matched Selected-Context and Native-Memory end-task measurements;
-46 planned rows still require execution.  Table~\ref{tab:precision-ladder}
-shows only measured rows, while the machine-readable supplement retains all
-missing and blocked states.  Qwen3-14B is the sole present within-model
-cross-precision comparison: both MLX 4-bit and MLX 8-bit preserve token-F1
-between Selected Context and Native Memory, although the 4-bit cohort has only 15 pairs and
-the 8-bit cohort has 60.  These observations support exact-encoding
-qualification, not a general claim that PRA is precision invariant.
+The normalized ledger contains 53 planned or historical exact-precision rows.
+Its pre-gate Native-Memory measurements are now quarantined; their cells must be
+treated as rerun-required rather than as current observations.
+Table~\ref{tab:precision-ladder} preserves the earlier rows for auditability,
+while the machine-readable supplement retains all missing and blocked states.
+The earlier Qwen3-14B cross-precision comparison is therefore diagnostic only
+and does not currently qualify either encoding.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Observed exact-precision Selected-Context versus Native-Memory rows.  Missing FP32/BF16 and
-learned-adaptor cells are omitted here but retained as explicit states in the
-53-row generated ledger.}
+\caption{Historical pre-gate exact-precision Selected-Context versus Native-
+Memory rows, all quarantined pending rerun. Missing FP32/BF16 and learned-
+adaptor cells remain explicit in the 53-row generated ledger.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/paper4_5_runtime_productization/precision_ladder/generated_precision_ladder.tex}}
 \label{tab:precision-ladder}

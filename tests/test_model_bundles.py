@@ -450,6 +450,19 @@ def test_default_registry_contains_published_cross_family_catalog() -> None:
 
     assert {name: entries[name].bundle_revision for name in expected} == expected
     assert all("balanced" in entries[name].profiles for name in expected)
-    assert entries["pra-qwen3-32b-mlx-4bit"].qualification == "ENGINE_QUALIFIED"
+    assert entries["pra-qwen3-32b-mlx-4bit"].qualification == "CONTROLLED"
+    assert entries["pra-qwen3-32b-mlx-4bit"].engine_compatibility["mlx"] == "controlled"
+    rerun_pending = {
+        "pra-qwen3-14b-mlx-4bit",
+        "pra-qwen3-8b-mlx-4bit",
+        "pra-qwen3-32b-mlx-4bit",
+        "pra-qwen3-4b-mlx-8bit",
+        "pra-qwen3-8b-mlx-8bit",
+        "pra-qwen3-14b-mlx-8bit",
+        "pra-qwen3-8b-mlx-6bit",
+        "pra-llama3-2-1b-mlx-8bit",
+    }
+    assert all(entries[name].qualification == "CONTROLLED" for name in rerun_pending)
+    assert all(entries[name].engine_compatibility["mlx"] == "controlled" for name in rerun_pending)
     assert entries["pra-qwen3-4b-mlx-8bit"].trust == "eInnovator-qualified"
     assert entries["pra-qwen3-8b-mlx-8bit"].trust == "eInnovator-maintained"

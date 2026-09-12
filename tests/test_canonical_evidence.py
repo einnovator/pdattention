@@ -17,6 +17,9 @@ from pra_hf.canonical_evidence import (
     MetricGroup,
     MetricObservation,
     STANDARD_METRICS,
+    CURRENT_ENGINE_EVIDENCE_CONTRACT,
+    is_current_engine_evidence,
+    requires_current_engine_contract,
     render_latex_table,
     render_markdown_table,
 )
@@ -127,6 +130,33 @@ def test_control_plane_serialization_contains_computed_deltas() -> None:
     assert payload["conditions"]["NO_PRA"]["metrics"]["ttft_p95_ms"]["value"] == 1200
     assert payload["deltas"]["delta_nm_vs_sc"]["ttft_p95_ms"]["delta"] == -200
     assert payload["deltas"]["delta_nm_bundle_vs_nm"]["official_task_success"]["delta"] == pytest.approx(0.1)
+
+
+def test_prefixed_native_evidence_is_readable_but_not_current() -> None:
+    record = _record()
+    assert requires_current_engine_contract(record)
+    assert not is_current_engine_evidence(record)
+
+    current = record.model_copy(update={
+        "provenance": record.provenance.model_copy(update={
+            "commit": "new-run-commit",
+            "engine_gate_commit": "qualified-gate-commit",
+            "engine_contract_version": CURRENT_ENGINE_EVIDENCE_CONTRACT,
+            "source_tree_dirty": False,
+        })
+    })
+    assert is_current_engine_evidence(current)
+
+
+def test_selection_only_evidence_does_not_require_engine_contract() -> None:
+    record = _record().model_copy(update={
+        "conditions": {
+            EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR:
+                _record().conditions[EvidenceCondition.PRA_SELECTED_CONTEXT_NO_ADAPTOR]
+        }
+    })
+    assert not requires_current_engine_contract(record)
+    assert is_current_engine_evidence(record)
 
 
 def test_metric_definitions_reject_ambiguous_ttft_and_token_rate() -> None:

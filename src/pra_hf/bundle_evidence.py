@@ -310,6 +310,27 @@ def import_matched_e0_e2_evidence(
             and exact_pairs / max(len(pra_rows), 1) >= 0.95
             else "CANDIDATE"
         )
+        pra_commits = {str(payload.get("pra_commit")) for _, payload in payloads}
+        contract_versions = {
+            str(payload.get("engine_contract_version")) for _, payload in payloads
+        }
+        gate_commits = {
+            str(payload.get("engine_gate_commit")) for _, payload in payloads
+        }
+        dirty_states = {payload.get("source_tree_dirty") for _, payload in payloads}
+        if (
+            len(pra_commits) != 1
+            or len(contract_versions) != 1
+            or len(gate_commits) != 1
+            or len(dirty_states) != 1
+        ):
+            raise EvidenceValidationError(
+                "Matched E0/E2 artifacts disagree on engine evidence provenance."
+            )
+        pra_commit = next(iter(pra_commits))
+        contract_version = next(iter(contract_versions))
+        gate_commit = next(iter(gate_commits))
+        source_tree_dirty = next(iter(dirty_states))
         imported.append(
             {
                 "metric_class": "END_TASK",
@@ -355,7 +376,12 @@ def import_matched_e0_e2_evidence(
                 "hardware": hardware,
                 "cohort": "selector-frozen natural QA; cold direct query",
                 "date": evidence_date,
-                "pra_commit": None,
+                "pra_commit": None if pra_commit == "None" else pra_commit,
+                "engine_contract_version": (
+                    None if contract_version == "None" else contract_version
+                ),
+                "engine_gate_commit": None if gate_commit == "None" else gate_commit,
+                "source_tree_dirty": source_tree_dirty,
                 "artifact": ", ".join(artifacts_out),
                 "artifact_sha256": ",".join(file_sha256(path) for path, _ in payloads),
             }
@@ -557,6 +583,9 @@ def canonicalize_paired_transport_evidence(
             artifacts=tuple(str(value) for value in (row.get("artifact"),) if value),
             feature_extraction_precision=row.get("feature_extraction_precision"),
             adaptor_parameter_precision=row.get("adaptor_parameter_precision"),
+            engine_contract_version=row.get("engine_contract_version"),
+            engine_gate_commit=row.get("engine_gate_commit"),
+            source_tree_dirty=row.get("source_tree_dirty"),
         ),
         evidence_tier=str(row.get("evidence_tier", "CONTROLLED")),
     )

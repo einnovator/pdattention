@@ -247,6 +247,7 @@ def render_canonical_evidence_catalog(
         EvidenceCondition,
         MetricGroup,
         condition_for_mode,
+        is_current_engine_evidence,
         render_markdown_table,
     )
 
@@ -264,8 +265,16 @@ def render_canonical_evidence_catalog(
         if not bundle_dir.is_dir():
             continue
         bundle = PRAModelBundle.from_pretrained(bundle_dir)
-        records = _catalog_canonical_records(bundle)
+        all_records = _catalog_canonical_records(bundle, current_only=False)
+        records = [record for record in all_records if is_current_engine_evidence(record)]
+        quarantined = len(all_records) - len(records)
         loaded.append((catalog_row, bundle, records))
+        if quarantined:
+            lines.append(
+                f"| `{catalog_row['model']}` | {catalog_row['precision_family']} / {catalog_row['precision_encoding']} "
+                f"| {catalog_row['engine']} | native runtime | ALL | NEEDS_RUN "
+                f"| QUARANTINED ({quarantined} pre-fix record(s)) | NEEDS_RUN | CORRECTION_PENDING |"
+            )
         for profile_name, raw_profile in bundle.profiles.items():
             profile = raw_profile if isinstance(raw_profile, Mapping) else {}
             engine = str(profile.get("engine", catalog_row["engine"]))
@@ -297,7 +306,7 @@ def render_canonical_evidence_catalog(
                 f"| {_catalog_condition_coverage(matches, EvidenceCondition.NO_PRA, no_pra_fallback)} "
                 f"| {CONDITION_LABELS[mode_condition]}: {_catalog_condition_coverage(matches, mode_condition, mode_fallback)} "
                 f"| {CONDITION_LABELS[bundle_condition]}: {_catalog_condition_coverage(matches, bundle_condition, bundle_fallback)} "
-                f"| {catalog_row['evidence_tier']} |"
+                f"| {'NEEDS_RERUN' if quarantined else catalog_row['evidence_tier']} |"
             )
 
     lines += [
@@ -326,16 +335,21 @@ def render_canonical_evidence_catalog(
     return "\n".join(lines)
 
 
-def _catalog_canonical_records(bundle: Any) -> list[Any]:
-    from .canonical_evidence import CanonicalEvidenceRecord
+def _catalog_canonical_records(bundle: Any, *, current_only: bool = True) -> list[Any]:
+    from .canonical_evidence import CanonicalEvidenceRecord, is_current_engine_evidence
 
     raw = bundle.qualification.get("canonical_evidence", []) if isinstance(bundle.qualification, Mapping) else []
     values = raw if isinstance(raw, list) else [raw]
     fields = CanonicalEvidenceRecord.model_fields
-    return [
+    records = [
         CanonicalEvidenceRecord.model_validate({name: value[name] for name in fields if name in value})
         for value in values if isinstance(value, Mapping)
     ]
+    return (
+        [record for record in records if is_current_engine_evidence(record)]
+        if current_only
+        else records
+    )
 
 
 def _catalog_condition_coverage(

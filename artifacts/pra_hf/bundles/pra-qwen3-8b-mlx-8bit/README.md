@@ -33,8 +33,8 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Engine: **mlx**
 - Recommended PRA mode: **Native Memory**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **ENGINE_QUALIFIED**
-- Native Memory status: **QUALIFIED**
+- Bundle evidence tier: **NEEDS_RERUN**
+- Native Memory status: **NEEDS_RERUN**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
 
@@ -44,17 +44,13 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 | Family | Encoding | Serving | Feature extraction | Adaptor parameters | Engine | Mode | Profile | Evidence | Datasets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| INT8 | MLX-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Native Memory | BALANCED | ENGINE_QUALIFIED | NOT_MEASURED |
+| INT8 | MLX-8bit | INT8 | NEEDS_RUN | NO_QUALIFIED_ADAPTER | mlx | Native Memory | BALANCED | NEEDS_RERUN | NOT_MEASURED |
 
 ## Headline results
 
-| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| combined (n=60) | token_f1=0.144 | token_f1=0.144 | +0.0000 | -91.5% | -5.7% | +0.6% | 60/60 | ENGINE_QUALIFIED |
+**Evidence correction:** Earlier native-runtime headline measurements are quarantined. They predate the corrected live-K/V, original-position, copy-accounting, and lifecycle contract. The bundle's structural mapping and routing-only diagnostics remain available, but native exactness, latency, throughput, memory, cache-hit, and copy-savings claims require rerun.
 
-All headline rows freeze the PRA-selected evidence. Deltas are Native Memory minus Selected Context; negative latency and visible-context deltas are reductions. These rows contain no ordinary No-PRA arm.
-
-Evidence receipt: `mlx-lm 0.31.3`; Apple M4 Pro (Mac16,7), 48 GB; selector-frozen natural QA; cold direct query (n=60); 2026-09-03; PRA commit `None`; artifact `qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json`; SHA-256 `312d6fc5e1df75d5e8c83598efa35ff960f5ccc078b7766523121cc795cc8bcf,a46a8d6b2b0951a225ff7745af8daf5b0ef11009e1b4175f419fcf50582cfb48,dd6044a32173ce41179b4b34c85883c8039bc7680138fd13bf91962e8772f06f`.
+No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
 ## Exact-identity runtime smoke
 
@@ -70,60 +66,25 @@ Runtime smoke does not establish end-task quality, Native Memory parity, routing
 
 Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
 
+**Evidence correction:** 1 pre-fix native-runtime record(s) are quarantined from this card. They predate the corrected live-K/V, original-position, copy-accounting, and lifecycle contract and require rerun. Structural compatibility and routing-only evidence are unaffected.
+
 | Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
 | mlx | Native Memory | QUALITY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
-| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: MEASURED (16) | Native Memory + Bundle: NO_QUALIFIED_ADAPTER | context, quality, resources, routing, serving |
+| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: NEEDS_RUN | Native Memory + Bundle: NO_QUALIFIED_ADAPTER | NEEDS_RUN |
 | mlx | Native Memory | ECONOMY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
 
 ## Canonical staged evidence
 
-Each table holds task, hardware, engine, model, precision, and profile fixed. Every delta names its source and target; bundle use is held orthogonal to execution depth.
+A complete staged cohort is not packaged for this exact identity.
 
-### combined / mlx-lm / balanced
+| Condition | Evidence status |
+| --- | --- |
+| No PRA | `NEEDS_RUN` |
+| Native Memory | `NEEDS_RUN` |
+| Native Memory + Bundle | `NO_QUALIFIED_ADAPTER` |
 
-Exact identity: `mlx-community/Qwen3-8B-8bit` at `48a0b75b1ae72503e21e1558d040bc227510ff06` on `Apple M4 Pro (Mac16,7), 48 GB`; precision `INT8` / `MLX-8bit`.
-
-#### Quality
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Token F1 | fraction | higher_is_better | 0.144011 | 0.144011 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
-| Exact Match | fraction | higher_is_better | 0 | 0 | NO_QUALIFIED_ADAPTER | +0 | NO_QUALIFIED_ADAPTER |
-| Gold Answer Log Probability | log_probability | higher_is_better | -19.1076 | -19.1076 | NO_QUALIFIED_ADAPTER | +0 (-0.00%) | NO_QUALIFIED_ADAPTER |
-
-#### Context
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Visible Tokens | token | lower_is_better | 396.317 | 33.5167 | NO_QUALIFIED_ADAPTER | -362.8 (-91.54%) | NO_QUALIFIED_ADAPTER |
-| Selected Native K/V Tokens | token | neutral | 0 | 362.8 | NO_QUALIFIED_ADAPTER | +362.8 | NO_QUALIFIED_ADAPTER |
-
-#### Serving
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| TTFT p50 (ms) | ms | lower_is_better | 186.881 | 176.211 | NO_QUALIFIED_ADAPTER | -10.6696 (-5.71%) | NO_QUALIFIED_ADAPTER |
-| TTFT p95 (ms) | ms | lower_is_better | 232.033 | 208.936 | NO_QUALIFIED_ADAPTER | -23.0971 (-9.95%) | NO_QUALIFIED_ADAPTER |
-| TTFT p99 (ms) | ms | lower_is_better | 249.496 | 212.698 | NO_QUALIFIED_ADAPTER | -36.7977 (-14.75%) | NO_QUALIFIED_ADAPTER |
-| ITL p50 (ms) | ms | lower_is_better | 34.8123 | 35.6742 | NO_QUALIFIED_ADAPTER | +0.861843 (+2.48%) | NO_QUALIFIED_ADAPTER |
-| ITL p95 (ms) | ms | lower_is_better | 36.4766 | 36.8092 | NO_QUALIFIED_ADAPTER | +0.332536 (+0.91%) | NO_QUALIFIED_ADAPTER |
-| ITL p99 (ms) | ms | lower_is_better | 36.8347 | 37.1582 | NO_QUALIFIED_ADAPTER | +0.323467 (+0.88%) | NO_QUALIFIED_ADAPTER |
-| Output Tokens Per Second | output_token/s | higher_is_better | 24.4728 | 24.3286 | NO_QUALIFIED_ADAPTER | -0.144183 (-0.59%) | NO_QUALIFIED_ADAPTER |
-| Completion Latency Mean (ms) | ms | lower_is_better | 981.993 | 987.449 | NO_QUALIFIED_ADAPTER | +5.4559 (+0.56%) | NO_QUALIFIED_ADAPTER |
-
-#### Resources
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Active Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
-| Retained Detail Bytes | byte | lower_is_better | 0 | 5.3497e+07 | NO_QUALIFIED_ADAPTER | +5.3497e+07 | NO_QUALIFIED_ADAPTER |
-
-#### Routing
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Evidence Recall | fraction | higher_is_better | 0.615972 | 0.615972 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
+Earlier selector-frozen Selected Context versus Native Memory measurements are quarantined pending corrected-engine rerun.
 
 ## Installation
 
@@ -145,39 +106,23 @@ pra serve mlx-community/Qwen3-8B-8bit -e mlx -a EInnovator/pra-qwen3-8b-mlx-8bit
 
 | Profile | Purpose | Routing | Consumer layers | Status | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | CALIBRATION_PENDING | Not promoted |
-| BALANCED | Qualified default preserving the all-eligible consumer geometry | generic cosine | all eligible | QUALIFIED | Default |
-| ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | CALIBRATION_PENDING | Not promoted |
+| QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | NEEDS_RERUN | Not promoted |
+| BALANCED | Qualified default preserving the all-eligible consumer geometry | generic cosine | all eligible | NEEDS_RERUN | Pending rerun |
+| ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | NEEDS_RERUN | Not promoted |
 
 ## Engine compatibility
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| mlx | validated | QUALIFIED | NOT_APPLICABLE | Native Memory with BALANCED |
+| mlx | validated | NEEDS_RERUN | NOT_APPLICABLE | Selected Context pending rerun |
 
 ## End-to-end qualification
 
-| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |
-| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| qasper (n=20) | Selected Context | token_f1=0.1681 | 398.6 | 154.3 ms | 973.7 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| qasper (n=20) | Native Memory | token_f1=0.1681 | 28.05 | 144.3 ms | 981.8 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| hotpotqa (n=20) | Selected Context | token_f1=0.1594 | 415.4 | 221.6 ms | 1004 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| hotpotqa (n=20) | Native Memory | token_f1=0.1594 | 39.05 | 206.4 ms | 1008 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| 2wikimultihopqa (n=20) | Selected Context | token_f1=0.1045 | 374.9 | 209.6 ms | 968.7 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| 2wikimultihopqa (n=20) | Native Memory | token_f1=0.1045 | 33.45 | 202.6 ms | 972.6 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| combined (n=60) | Selected Context | token_f1=0.144 | 396.3 | 186.9 ms | 982 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
-| combined (n=60) | Native Memory | token_f1=0.144 | 33.52 | 176.2 ms | 987.4 ms | Apple M4 Pro (Mac16,7), 48 GB | ENGINE_QUALIFIED |
+What remains to be measured: paired end-task quality for this exact bundle identity.
 
 ## Native Memory qualification
 
-Native Memory uses the same selector output as Selected Context. It is recommended only where the profile and engine tables say so.
-
-| Workload | Selected native K/V tokens | Active detail | Peak memory | Completion cost vs Selected Context |
-| --- | ---: | ---: | ---: | ---: |
-| qasper | 370.6 | 52.12 MiB | NEEDS_RUN | 1.008x |
-| hotpotqa | 376.3 | 52.92 MiB | NEEDS_RUN | 1.004x |
-| 2wikimultihopqa | 341.5 | 48.02 MiB | NEEDS_RUN | 1.004x |
-| combined | 362.8 | 51.02 MiB | NEEDS_RUN | 1.006x |
+What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.
 
 ## Research diagnostics
 

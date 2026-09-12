@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-12",
+  "decision": "QUARANTINE_AND_RERUN",
+  "current_engine_contract": "live-kv-original-position-lifecycle-v1",
+  "freshness_requirements": [
+    "pra_commit",
+    "engine_gate_commit",
+    "engine_contract_version",
+    "source_tree_dirty_false",
+    "exact_model_revision",
+    "precision_encoding",
+    "engine_version",
+    "hardware",
+    "cohort",
+    "artifact"
+  ],
+  "inventory": {
+    "local_bundles": 17,
+    "quarantined_canonical_native_runtime_records": 10,
+    "quarantined_headline_rows": 10,
+    "quarantined_raw_native_runtime_artifacts": 24,
+    "matched_e0_e2_artifacts": 21,
+    "legacy_mlx_profile_artifacts": 3
+  },
+  "quarantined_bundles": [
+    "pra-gemma3-1b-mlx-8bit",
+    "pra-llama3-2-1b-mlx-8bit",
+    "pra-qwen2-5-1-5b-instruct-bnb-8bit",
+    "pra-qwen3-14b-mlx-4bit",
+    "pra-qwen3-14b-mlx-8bit",
+    "pra-qwen3-32b-mlx-4bit",
+    "pra-qwen3-4b-mlx-8bit",
+    "pra-qwen3-8b-mlx-4bit",
+    "pra-qwen3-8b-mlx-6bit",
+    "pra-qwen3-8b-mlx-8bit"
+  ],
+  "valid_without_rerun": [
+    "structural_bundle_contracts",
+    "exact_model_identity_manifests",
+    "selection_only_diagnostics",
+    "router_only_diagnostics",
+    "plain_runtime_smoke_with_explicit_scope",
+    "post_fix_narrow_engine_gates"
+  ],
+  "rerun_metrics": [
+    "same_subset_output_and_logit_parity",
+    "selected_history_reencoded_tokens",
+    "selection_materialization_kv_copy_bytes",
+    "source_capture_encode_cost",
+    "resident_resource_bytes",
+    "consumer_temporary_active_and_peak_bytes",
+    "ttft_itl_total_latency_throughput",
+    "lifecycle_and_concurrency_outcomes"
+  ],
+  "publication_surfaces": {
+    "hf_bundle_cards": "QUARANTINED_UNTIL_RERUN",
+    "static_site_evidence_matrix": "QUARANTINED_UNTIL_RERUN",
+    "static_site_catalog_and_model_pages": "DOWNGRADED_TO_CONTROLLED_SELECTED_CONTEXT",
+    "trusted_auto_resolution_registry": "DOWNGRADED_TO_CONTROLLED",
+    "paper4_5_engine_numbers": "HISTORICAL_DIAGNOSTIC_UNTIL_RERUN",
+    "paper6x_and_paper9": "QUARANTINED_ENGINE_METRICS_ONLY"
+  },
+  "cross_paper_impact": [
+    {
+      "surface": "paper6_1_sglang",
+      "evidence_date": "2026-08-30",
+      "quarantined": [
+        "matched_e0_e2_exactness",
+        "runtime_economics",
+        "copy_and_temporary_memory",
+        "lifecycle_economics"
+      ],
+      "retained": [
+        "retrieval",
+        "routing",
+        "policy",
+        "record_identity"
+      ]
+    },
+    {
+      "surface": "paper6_2_mlx",
+      "evidence_date": "2026-08-30",
+      "quarantined": [
+        "matched_e0_e2_exactness",
+        "runtime_economics",
+        "copy_and_temporary_memory",
+        "lifecycle_economics"
+      ],
+      "retained": [
+        "retrieval",
+        "routing",
+        "policy",
+        "record_identity"
+      ]
+    },
+    {
+      "surface": "paper6_vllm",
+      "evidence_date": "2026-08-30",
+      "quarantined": [
+        "matched_e0_e2_exactness",
+        "runtime_economics",
+        "copy_and_temporary_memory",
+        "lifecycle_economics"
+      ],
+      "retained": [
+        "retrieval",
+        "routing",
+        "policy",
+        "record_identity"
+      ]
+    },
+    {
+      "surface": "paper9_subagents",
+      "evidence_date_range": "2026-09-08/2026-09-09",
+      "quarantined": [
+        "mlx_fanout_speedups",
+        "mlx_32k_residency_timing",
+        "direct_mlx_lifecycle_timing",
+        "physical_kv_savings"
+      ],
+      "retained": [
+        "lineage",
+        "routing",
+        "invalidation",
+        "consumption_factorial"
+      ]
+    }
+  ],
+  "prequalification": {
+    "engine": "mlx-lm 0.31.3",
+    "model": "mlx-community/Qwen3-8B-8bit",
+    "model_revision": "48a0b75b1ae72503e21e1558d040bc227510ff06",
+    "dataset_examples": "qasper n=1",
+    "materialization": "segmented live-prefix K/V alias",
+    "same_consumer_max_abs_logit_delta": 0.0,
+    "same_consumer_gate_passed": true,
+    "e0_e2_greedy_output_equal_across_regimes": true,
+    "e0_e2_gold_answer_logprob_delta": 0.177886962890625,
+    "interpretation": "The same-consumer selection/materialization gate passes. The E0 versus segmented-E2 logprob difference is cross-consumer numerical drift and is reported separately.",
+    "selected_history_reencoded_tokens": 0,
+    "selection_materialization_kv_copy_bytes": 0,
+    "physical_kv_copy_bytes": null,
+    "source_tree_dirty": true,
+    "timing_qualified": false,
+    "artifact": "engine_evidence_rerun/qwen3_8b_mlx_8bit_qasper_n1_prequalification.json",
+    "artifact_sha256": "01e6089dacf50cd211f55c6bf6b9816490a263e2bfb70aabb1697ff9d317a512"
+  }
+}

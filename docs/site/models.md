@@ -7,8 +7,8 @@ and therefore requires a known structural mapping plus model-specific validation
 
 | Family | Selected Context | Native Memory | Structural adapter | Evidence |
 | --- | --- | --- | --- | --- |
-| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping | **Optional** | Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3.5-27B 4-bit adds a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER F1 from 0.385 to 0.459 while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern. |
-| [Llama](#llama) | ✅ Available | ℹ️ Validated mapping | **Optional** | Llama-3.1-8B 4-bit has a five-seed, held-out MLX routing comparison. The Llama-3.2-1B 8-bit bundle has exact structural validation only. Learned routing improves QASPER MRR but reduces HotpotQA recall on the measured 4-bit identity, so generic routing remains the default. |
+| [Qwen](#qwen) | ✅ Available | ℹ️ Validated mapping; runtime rerun pending | **Optional** | Pre-gate Native Memory measurements are quarantined pending clean reruns under the live-K/V original-position lifecycle contract. Qwen3.5-27B 4-bit retains a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit retains exact five-seed routing evidence; other structural, identity, and runtime-smoke results remain scoped to those claims. |
+| [Llama](#llama) | ✅ Available | ℹ️ Validated mapping; runtime rerun pending | **Optional** | Llama-3.1-8B 4-bit has a five-seed, held-out MLX routing comparison. The Llama-3.2-1B 8-bit bundle has exact structural validation only. Learned routing improves QASPER MRR but reduces HotpotQA recall on the measured 4-bit identity, so generic routing remains the default. |
 | [Gemma 3 text](#gemma3) | ✅ Available | 🧪 Partial topology | **Required for native production** | Gemma-3-1B 4-bit has a five-seed, held-out MLX comparison under its mixed sliding/global topology. Its 8-bit bundle has exact structural validation only. Learned routing helps QASPER and combined MRR on the measured 4-bit identity, while HotpotQA recall remains mixed. |
 | [Other Hugging Face causal decoders](#other-hf) | ✅ Available | ⏳ Qualification pending | **Required** | No family-wide native claim is made for unregistered architectures. |
 | [Models behind ordinary API endpoints](#endpoint-only) | ✅ Available | 🧪 Engine dependent | **Not required for Selected Context** | Selected Context is the portable cross-engine path. |
@@ -42,18 +42,18 @@ The SDK includes Qwen2/Qwen3/Qwen3.5 structural mappings. Qwen3.5 Selected Conte
 | Model | PRA bundle/model card | Status | Validated engines | Recommended mode | Last qualification |
 | --- | --- | --- | --- | --- | --- |
 | `Qwen/Qwen2.5-1.5B-Instruct` | [EInnovator/pra-qwen2-5-1-5b-instruct](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct) | Controlled | HF routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-03 |
-| `Qwen/Qwen2.5-1.5B-Instruct (bitsandbytes 8-bit runtime)` | [EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit) | Controlled | HF bitsandbytes int8 CUDA measured; Native Memory candidate failed quality/parity gates | Selected Context with BALANCED | 2026-09-03 |
+| `Qwen/Qwen2.5-1.5B-Instruct (bitsandbytes 8-bit runtime)` | [EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit](https://huggingface.co/EInnovator/pra-qwen2-5-1-5b-instruct-bnb-8bit) | Correction pending | HF bitsandbytes native-runtime evidence quarantined; structural and Selected Context support retained | Selected Context with BALANCED | 2026-09-12 |
 | `Qwen/Qwen2.5-Coder-1.5B-Instruct` | [EInnovator/pra-qwen2-5-coder-1-5b-instruct](https://huggingface.co/EInnovator/pra-qwen2-5-coder-1-5b-instruct) | Controlled | HF routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-03 |
 | `Qwen/Qwen3-0.6B` | [EInnovator/pra-qwen3-0.6b](https://huggingface.co/EInnovator/pra-qwen3-0.6b) | Research/reference | HF Native Memory; portable Selected Context | Selected Context; qualify Native Memory locally | 2026-09-01 |
 | `Qwen/Qwen3-1.7B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/Qwen3-4B-4bit` | [EInnovator/pra-qwen3-4b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
-| `mlx-community/Qwen3-4B-8bit` | [EInnovator/pra-qwen3-4b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-8bit) | Engine qualified | MLX Native Memory: 60/60 exact paired outputs; 91.5% fewer visible tokens | Native Memory with BALANCED; learned router remains opt-in | 2026-09-03 |
-| `mlx-community/Qwen3-8B-4bit` | [EInnovator/pra-qwen3-8b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
-| `mlx-community/Qwen3-8B-6bit` | [EInnovator/pra-qwen3-8b-mlx-6bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-6bit) | Engine-qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-03 |
-| `mlx-community/Qwen3-8B-8bit` | [EInnovator/pra-qwen3-8b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-8bit) | Engine-qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-03 |
-| `mlx-community/Qwen3-14B-4bit` | [EInnovator/pra-qwen3-14b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
-| `mlx-community/Qwen3-14B-8bit` | [EInnovator/pra-qwen3-14b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-8bit) | Engine-qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-03 |
-| `mlx-community/Qwen3-32B-4bit` | [EInnovator/pra-qwen3-32b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-32b-mlx-4bit) | Engine qualified | MLX paired natural-QA Native Memory qualification | Native Memory with BALANCED | 2026-09-01 |
+| `mlx-community/Qwen3-4B-8bit` | [EInnovator/pra-qwen3-4b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-4b-mlx-8bit) | Correction pending | MLX native-runtime evidence quarantined; exact routing evidence retained | Selected Context with BALANCED; learned router remains opt-in | 2026-09-12 |
+| `mlx-community/Qwen3-8B-4bit` | [EInnovator/pra-qwen3-8b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-4bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
+| `mlx-community/Qwen3-8B-6bit` | [EInnovator/pra-qwen3-8b-mlx-6bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-6bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
+| `mlx-community/Qwen3-8B-8bit` | [EInnovator/pra-qwen3-8b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-8b-mlx-8bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
+| `mlx-community/Qwen3-14B-4bit` | [EInnovator/pra-qwen3-14b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-4bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
+| `mlx-community/Qwen3-14B-8bit` | [EInnovator/pra-qwen3-14b-mlx-8bit](https://huggingface.co/EInnovator/pra-qwen3-14b-mlx-8bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
+| `mlx-community/Qwen3-32B-4bit` | [EInnovator/pra-qwen3-32b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-32b-mlx-4bit) | Correction pending | MLX native-runtime evidence quarantined; rerun required | Selected Context with BALANCED | 2026-09-12 |
 | `mlx-community/Qwen3.5-27B-4bit` | [EInnovator/pra-qwen3-5-27b-mlx-4bit](https://huggingface.co/EInnovator/pra-qwen3-5-27b-mlx-4bit) | Controlled | MLX Selected Context and five-seed routing qualification | Generic balanced; learned router only for matched QASPER | 2026-09-07 |
 
 **Inspect and launch**
@@ -66,7 +66,7 @@ pra serve Qwen/Qwen2.5-1.5B-Instruct --engine hf --mode auto --profile recommend
 
 **Evidence boundary**
 
-Qwen3-8B, 14B, and 32B 4-bit checkpoints have exact-identity paired MLX Native Memory qualification: 15/15 output parity, unchanged F1, and 89.1% fewer visible tokens. Qwen3.5-27B 4-bit adds a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER F1 from 0.385 to 0.459 while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit adds exact five-seed routing evidence: learned QASPER R@20% improves by 0.120, while HotpotQA declines by 0.227. Other 6-bit/8-bit bundles have runtime smoke only. Matched 1.5B general-instruction and code-instruction HF checkpoints show the same dataset-dependent routing pattern.
+Pre-gate Native Memory measurements are quarantined pending clean reruns under the live-K/V original-position lifecycle contract. Qwen3.5-27B 4-bit retains a 32-example natural-QA Selected Context qualification: a 20% source budget reduces visible prompt tokens by about 78%, and the learned router improves QASPER while degrading HotpotQA, so generic routing remains default. Qwen3-4B 8-bit retains exact five-seed routing evidence; other structural, identity, and runtime-smoke results remain scoped to those claims.
 
 **Limitations**
 
@@ -86,7 +86,7 @@ The SDK includes the conventional Llama decoder mapping. A declarative adapter i
 | --- | --- | --- | --- | --- | --- |
 | `unsloth/Llama-3.2-1B` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `meta-llama/Llama-3.2-1B-Instruct` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
-| `mlx-community/Llama-3.2-1B-Instruct-8bit` | [EInnovator/pra-llama3-2-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | Engine qualified | MLX Native Memory: 60/60 exact Selected Context/Native Memory outputs; 91.5% fewer visible tokens | Native Memory with BALANCED | 2026-09-03 |
+| `mlx-community/Llama-3.2-1B-Instruct-8bit` | [EInnovator/pra-llama3-2-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-llama3-2-1b-mlx-8bit) | Correction pending | MLX native-runtime evidence quarantined; structural support retained | Selected Context with BALANCED | 2026-09-12 |
 | `mlx-community/Llama-3.1-8B-Instruct-4bit` | [EInnovator/pra-llama3-1-8b-mlx-4bit](https://huggingface.co/EInnovator/pra-llama3-1-8b-mlx-4bit) | Controlled | MLX routing qualification; portable Selected Context | Generic balanced; learned router only for matched QASPER | 2026-09-01 |
 
 **Inspect and launch**
@@ -118,7 +118,7 @@ A built-in mapping discovers Gemma 3 text attention, but its heterogeneous topol
 | --- | --- | --- | --- | --- | --- |
 | `google/gemma-3-1b-it` | Not published | NOT_MEASURED | NOT_MEASURED | Inspect and qualify locally | NOT_MEASURED |
 | `mlx-community/gemma-3-1b-it-4bit` | [EInnovator/pra-gemma3-1b-mlx-4bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-4bit) | Controlled | MLX mixed/sliding routing qualification; portable Selected Context | Generic balanced; learned router for matched QASPER or validated mixed workloads | 2026-09-01 |
-| `mlx-community/gemma-3-1b-it-8bit` | [EInnovator/pra-gemma3-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | Controlled | MLX Native Memory: 60 measured cases; 3/60 exact outputs and token-F1 delta -0.0036 | Selected Context with BALANCED | 2026-09-03 |
+| `mlx-community/gemma-3-1b-it-8bit` | [EInnovator/pra-gemma3-1b-mlx-8bit](https://huggingface.co/EInnovator/pra-gemma3-1b-mlx-8bit) | Correction pending | MLX native-runtime evidence quarantined; mixed-attention structural support retained | Selected Context with BALANCED | 2026-09-12 |
 
 **Inspect and launch**
 
@@ -201,4 +201,4 @@ Selected Context is the portable cross-engine path.
 5. Promote Native Memory only after quality, geometry, lifecycle, and economics pass
    for the exact model revision, tokenizer, quantization, engine, and hardware.
 
-_Generated from the model registry; evidence current through 2026-09-07._
+_Generated from the model registry; evidence current through 2026-09-12._

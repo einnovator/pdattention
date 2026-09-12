@@ -15,11 +15,13 @@ from .bundle_evidence import EVIDENCE_TIERS, EvidenceValidationError, validate_b
 from .canonical_evidence import (
     BUNDLE_CONDITIONS,
     CONDITION_LABELS,
+    CURRENT_ENGINE_EVIDENCE_CONTRACT,
     CanonicalEvidenceRecord,
     EvidenceCondition,
     MeasurementState,
     MetricGroup,
     condition_for_mode,
+    is_current_engine_evidence,
     render_markdown_table,
 )
 from .precision import PRECISION_FAMILIES, infer_precision
@@ -471,7 +473,19 @@ class BundleBuilder:
             else "hf"
         )
         qualification = bundle.qualification if isinstance(bundle.qualification, Mapping) else {}
-        headline = [row for row in qualification.get("headline", []) if isinstance(row, Mapping)]
+        all_headline = [
+            row for row in qualification.get("headline", [])
+            if isinstance(row, Mapping)
+        ]
+        headline = [
+            row for row in all_headline
+            if row.get("pra_commit")
+            and row.get("engine_gate_commit")
+            and row.get("engine_contract_version")
+            == CURRENT_ENGINE_EVIDENCE_CONTRACT
+            and row.get("source_tree_dirty") is False
+        ]
+        quarantined_headline_rows = len(all_headline) - len(headline)
         end_task_generation = [
             row for row in qualification.get("end_task_generation", [])
             if isinstance(row, Mapping)
@@ -519,8 +533,8 @@ class BundleBuilder:
             "## Recommended configuration", "",
             f"- Engine: **{engine_name}**", f"- Recommended PRA mode: **{mode}**",
             f"- Recommended profile: **{recommended_name.upper()}**",
-            f"- Bundle evidence tier: **{qualification.get('status', 'NOT_MEASURED')}**",
-            f"- Native Memory status: **{native_status}**", "",
+            f"- Bundle evidence tier: **{'NEEDS_RERUN' if quarantined_headline_rows else qualification.get('status', 'NOT_MEASURED')}**",
+            f"- Native Memory status: **{'NEEDS_RERUN' if quarantined_headline_rows else native_status}**", "",
             "Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.", "",
             "## Precision qualification", "",
             "Precision evidence is scoped to the exact model conversion, engine, mode, and profile. Qualification does not transfer automatically between BF16, INT8, INT4, or encoding-specific formats.", "",
@@ -531,6 +545,12 @@ class BundleBuilder:
             datasets_value = precision_row.get("datasets", "NOT_MEASURED")
             if isinstance(datasets_value, Sequence) and not isinstance(datasets_value, str):
                 datasets_value = ", ".join(str(value) for value in datasets_value)
+            precision_evidence = precision_row.get("evidence_tier", "NOT_MEASURED")
+            if (
+                quarantined_headline_rows
+                and "native" in str(precision_row.get("mode", mode)).lower()
+            ):
+                precision_evidence = "NEEDS_RERUN"
             lines.append(
                 f"| {precision_row.get('precision_family', 'UNSPECIFIED')} "
                 f"| {precision_row.get('encoding', precision_row.get('precision_encoding', 'UNSPECIFIED'))} "
@@ -540,7 +560,7 @@ class BundleBuilder:
                 f"| {precision_row.get('engine', engine_name)} "
                 f"| {precision_row.get('mode', mode)} "
                 f"| {precision_row.get('profile', recommended_name.upper())} "
-                f"| {precision_row.get('evidence_tier', 'NOT_MEASURED')} "
+                f"| {precision_evidence} "
                 f"| {datasets_value} |"
             )
         if not precision_rows:
@@ -551,6 +571,11 @@ class BundleBuilder:
         ]
         if post_training:
             lines.insert(lines.index("## Recommended configuration") - 1, f"- Post-training: `{post_training}`")
+        if quarantined_headline_rows:
+            lines += [
+                "**Evidence correction:** Earlier native-runtime headline measurements are quarantined. They predate the corrected live-K/V, original-position, copy-accounting, and lifecycle contract. The bundle's structural mapping and routing-only diagnostics remain available, but native exactness, latency, throughput, memory, cache-hit, and copy-savings claims require rerun.",
+                "",
+            ]
         if headline:
             lines += ["| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
             for row in headline:
@@ -615,13 +640,26 @@ class BundleBuilder:
                 f"| {_bytes(peak_bytes)} | {runtime_smoke.get('claim_scope', 'runtime smoke')} |", "",
                 "Runtime smoke does not establish end-task quality, Native Memory parity, routing quality, or serving economics. The coverage table below identifies the exact follow-up state.", "",
             ]
-        canonical_records = _canonical_evidence_rows(bundle)
+        all_canonical_records = _canonical_evidence_rows(bundle, current_only=False)
+        canonical_records = [
+            record for record in all_canonical_records
+            if is_current_engine_evidence(record)
+        ]
+        quarantined_engine_records = len(all_canonical_records) - len(canonical_records)
         lines += [
             "## Evidence by engine, mode, and profile", "",
             "Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.", "",
             "| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
+        if quarantined_engine_records:
+            lines[lines.index("| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |")] = (
+                f"**Evidence correction:** {quarantined_engine_records} pre-fix native-runtime "
+                "record(s) are quarantined from this card. They predate the corrected live-K/V, "
+                "original-position, copy-accounting, and lifecycle contract and require rerun. "
+                "Structural compatibility and routing-only evidence are unaffected.\n\n"
+                "| Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |"
+            )
         for name, item in bundle.profiles.items():
             value = item if isinstance(item, Mapping) else {}
             profile_engine = str(value.get("engine", engine_name))
@@ -694,7 +732,11 @@ class BundleBuilder:
                 "| No PRA | `NEEDS_RUN` |",
                 f"| {CONDITION_LABELS[condition_for_mode(mode)]} | `NEEDS_RUN` |",
                 f"| {CONDITION_LABELS[condition_for_mode(mode, bundle=True)]} | `{'NEEDS_RUN' if bundle.learned_adapters else 'NO_QUALIFIED_ADAPTER'}` |", "",
-                "Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence.", "",
+                (
+                    "Earlier selector-frozen Selected Context versus Native Memory measurements are quarantined pending corrected-engine rerun."
+                    if quarantined_engine_records
+                    else "Existing selector-frozen Selected Context versus Native Memory measurements remain reported below as transport evidence; they are not silently relabeled as adaptor evidence."
+                ), "",
             ]
         lines += [
             "## Installation", "", "```bash", "pip install 'pra-hf[hf-hub,hf-runtime]'", "pra doctor", "```", "",
@@ -710,13 +752,34 @@ class BundleBuilder:
                 consumers = ", ".join(str(layer) for layer in consumers)
             routing = value.get("routing_adapter") or "generic cosine"
             recommendation = "Default" if value.get("recommended") else value.get("recommendation", "Not promoted")
-            lines.append(f"| {str(name).upper()} | {value.get('purpose', 'General PRA use')} | {routing} | {consumers} | {value.get('status', 'NOT_MEASURED')} | {recommendation} |")
+            profile_is_native = "native" in str(value.get("mode", mode)).lower()
+            public_status = (
+                "NEEDS_RERUN"
+                if quarantined_headline_rows and profile_is_native
+                else value.get("status", "NOT_MEASURED")
+            )
+            if quarantined_headline_rows and profile_is_native and recommendation == "Default":
+                recommendation = "Pending rerun"
+            lines.append(f"| {str(name).upper()} | {value.get('purpose', 'General PRA use')} | {routing} | {consumers} | {public_status} | {recommendation} |")
         lines += ["", "## Engine compatibility", "", "| Engine | Selected Context | Native Memory | Native Serving | Recommended today |", "| --- | --- | --- | --- | --- |"]
         for engine, item in bundle.runtime_compatibility.items():
             value = item if isinstance(item, Mapping) else {}
-            lines.append(f"| {engine} | {value.get('selected_context', 'NOT_MEASURED')} | {value.get('native_memory', 'NOT_MEASURED')} | {value.get('native_serving', 'NOT_MEASURED')} | {value.get('recommended', 'Selected Context')} |")
+            public_native = (
+                "NEEDS_RERUN"
+                if quarantined_headline_rows
+                else value.get("native_memory", "NOT_MEASURED")
+            )
+            public_recommendation = (
+                "Selected Context pending rerun"
+                if quarantined_headline_rows
+                else value.get("recommended", "Selected Context")
+            )
+            lines.append(f"| {engine} | {value.get('selected_context', 'NOT_MEASURED')} | {public_native} | {value.get('native_serving', 'NOT_MEASURED')} | {public_recommendation} |")
         lines += ["", "## End-to-end qualification", ""]
-        end_task = [row for row in _qualification_rows(bundle) if row.get("metric_class") == "END_TASK"]
+        end_task = [
+            row for row in _qualification_rows(bundle)
+            if row.get("metric_class") == "END_TASK" and not quarantined_headline_rows
+        ]
         if end_task:
             lines += ["| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |", "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |"]
             for row in end_task:
@@ -829,7 +892,9 @@ def _qualification_rows(bundle: PRAModelBundle) -> list[Mapping[str, Any]]:
     return [row for row in rows if isinstance(row, Mapping)] if isinstance(rows, Sequence) else []
 
 
-def _canonical_evidence_rows(bundle: PRAModelBundle) -> list[CanonicalEvidenceRecord]:
+def _canonical_evidence_rows(
+    bundle: PRAModelBundle, *, current_only: bool = True
+) -> list[CanonicalEvidenceRecord]:
     qualification = bundle.qualification if isinstance(bundle.qualification, Mapping) else {}
     raw = qualification.get("canonical_evidence", [])
     values = raw if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, Mapping)) else [raw]
@@ -839,7 +904,11 @@ def _canonical_evidence_rows(bundle: PRAModelBundle) -> list[CanonicalEvidenceRe
             continue
         fields = CanonicalEvidenceRecord.model_fields
         records.append(CanonicalEvidenceRecord.model_validate({name: value[name] for name in fields if name in value}))
-    return records
+    return (
+        [record for record in records if is_current_engine_evidence(record)]
+        if current_only
+        else records
+    )
 
 
 def _condition_coverage(

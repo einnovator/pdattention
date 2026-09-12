@@ -1,0 +1,1171 @@
+{
+  "schema_version": "2.0",
+  "experiment": "paper6_cross_engine_matched_e0_e2_mlx_v2",
+  "evidence_tier": "NATURAL_QA_MATCHED_SELECTION",
+  "engine": "mlx-lm",
+  "engine_version": "0.31.3",
+  "mlx_version": "0.32.2",
+  "python_version": "3.12.14 (main, Aug 12 2026, 13:57:54) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "hardware": "Apple-M4-Pro-48GB-Mac16-7",
+  "timing_status": "PREQUALIFICATION",
+  "model_id": "mlx-community/Qwen3-8B-8bit",
+  "model_revision": "48a0b75b1ae72503e21e1558d040bc227510ff06",
+  "dataset": "qasper",
+  "cohort": "paper6_cross_engine_matched_e0_e2_v2",
+  "selection_policy": "frozen Paper 6.2 SDK hybrid top-4 document routing",
+  "max_source_tokens": 384,
+  "warm_repeats": 1,
+  "multi_query_count": 1,
+  "concurrency": 1,
+  "concurrency_semantics": "concurrent_borrows_serialized_model_runner",
+  "materialization": "segmented",
+  "selected_history_reencoded_tokens": 0,
+  "physical_kv_copy_bytes": null,
+  "physical_copy_accounting": "NOT_MEASURED",
+  "pra_commit": "d9e6af2d5997ed3d8f178b245e87b5dd42a061cf",
+  "source_tree_dirty": true,
+  "source_tree_diff_sha256": "7ec91d93485e28fa84a6ea1ffaed9ac9bfaefcbf38526a433f1d4c8d6904f478",
+  "engine_gate_commit": "d9e6af2d5997ed3d8f178b245e87b5dd42a061cf",
+  "engine_contract_version": "live-kv-original-position-lifecycle-v1",
+  "same_consumer_correctness_gates": [
+    {
+      "dataset": "qasper",
+      "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+      "reference": "owned value-identical K/V; same segmented attention consumer",
+      "max_abs_logit_delta": 0.0,
+      "passed": true
+    }
+  ],
+  "same_consumer_correctness_passed": true,
+  "rows": [
+    {
+      "condition": "e0_selected_text",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The scores of their",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.83904266357422,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 410
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1027.0432910037925
+        },
+        "serving": {
+          "ttft_ms": 316.327790991636,
+          "itl_ms": 43.767819666148476,
+          "tpot_ms": 43.767819666148476,
+          "total_latency_ms": 447.63737499306444,
+          "generated_tokens": 4,
+          "tokens_per_second": 8.935804344000486,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 384,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": null,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8836343822,
+          "consumer_active_after_bytes": 8861644892,
+          "consumer_peak_bytes": 9021892782,
+          "consumer_temporary_peak_delta_bytes": 185548960
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "cold_one_shot",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The scores of their",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.661155700683594,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 26
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 56623104,
+          "retained_detail_bytes": 56623104
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1024.9391660036054
+        },
+        "serving": {
+          "ttft_ms": 282.46700001182035,
+          "itl_ms": 40.23813899645271,
+          "tpot_ms": 40.23813899645271,
+          "total_latency_ms": 403.18725000543054,
+          "generated_tokens": 4,
+          "tokens_per_second": 9.920948640975437,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 0,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 56623104,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": 0,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8861644892,
+          "consumer_active_after_bytes": 8849872609,
+          "consumer_peak_bytes": 9029828204,
+          "consumer_temporary_peak_delta_bytes": 168183312
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.83904266357422,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 410
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1027.0432910037925
+        },
+        "serving": {
+          "ttft_ms": 246.63691699970514,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 246.83141699642874,
+          "generated_tokens": 1,
+          "tokens_per_second": 4.051348131321826,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 384,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": null,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8849872609,
+          "consumer_active_after_bytes": 8861644898,
+          "consumer_peak_bytes": 9021892788,
+          "consumer_temporary_peak_delta_bytes": 172020179
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "warm_repeated",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.661155700683594,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 26
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 56623104,
+          "retained_detail_bytes": 56623104
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1024.9391660036054
+        },
+        "serving": {
+          "ttft_ms": 251.3370840024436,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 251.4755000011064,
+          "generated_tokens": 1,
+          "tokens_per_second": 3.976530516871824,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 0,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 56623104,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": 0,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8861644898,
+          "consumer_active_after_bytes": 8849848269,
+          "consumer_peak_bytes": 9030155890,
+          "consumer_temporary_peak_delta_bytes": 168510992
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.83904266357422,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 410
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1027.0432910037925
+        },
+        "serving": {
+          "ttft_ms": 221.81245799583849,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 221.9075829925714,
+          "generated_tokens": 1,
+          "tokens_per_second": 4.506380478370025,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 384,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": null,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8849848269,
+          "consumer_active_after_bytes": 8861644898,
+          "consumer_peak_bytes": 9021581492,
+          "consumer_temporary_peak_delta_bytes": 171733223
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "multi_query_same_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": null,
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.661155700683594,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 26
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 56623104,
+          "retained_detail_bytes": 56623104
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1024.9391660036054
+        },
+        "serving": {
+          "ttft_ms": 229.25820799719077,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 229.44558299786877,
+          "generated_tokens": 1,
+          "tokens_per_second": 4.35833188390159,
+          "requests_per_second": null
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 0,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 56623104,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": 0,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8861644898,
+          "consumer_active_after_bytes": 8849848269,
+          "consumer_peak_bytes": 9030155890,
+          "consumer_temporary_peak_delta_bytes": 168510992
+        },
+        "concurrency_execution": "single_request"
+      }
+    },
+    {
+      "condition": "e0_selected_text",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": "4caa3d82c587a029",
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.83904266357422,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 410
+        },
+        "pra": {
+          "selected_native_kv_tokens": 0,
+          "active_detail_bytes": 0,
+          "retained_detail_bytes": 0
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1027.0432910037925
+        },
+        "serving": {
+          "ttft_ms": 214.97141699364875,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 215.06479199160822,
+          "generated_tokens": 1,
+          "tokens_per_second": 4.64976154738996,
+          "requests_per_second": 1.8797117595041193
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 384,
+          "pra_hot_hit": false,
+          "pra_warm_hit": false,
+          "bytes_read": 0,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": null,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8849848269,
+          "consumer_active_after_bytes": 8861644898,
+          "consumer_peak_bytes": 9021892788,
+          "consumer_temporary_peak_delta_bytes": 172044519
+        },
+        "concurrency_execution": "concurrent_borrows_serialized_model_runner"
+      }
+    },
+    {
+      "condition": "e2_native_kv",
+      "regime": "concurrent_shared_resource",
+      "request_ordinal": 0,
+      "query_variant": "direct",
+      "query_sha256": "cdfbc91a7162e2a08a4f30ca03058cff4691666d70dd59924a208c2b9d131ce6",
+      "concurrency_group": "4caa3d82c587a029",
+      "selection": {
+        "dataset": "qasper",
+        "example_id": "1805.10824-c85b6f9bafc4c64fc538108ab40a0590a2f5768e",
+        "candidate_document_ids": [
+          "abstract",
+          "section-0-paragraph-0",
+          "section-0-paragraph-1",
+          "section-0-paragraph-2",
+          "section-1-paragraph-0",
+          "section-2-paragraph-0",
+          "section-3-paragraph-0",
+          "section-3-paragraph-1",
+          "section-3-paragraph-2",
+          "section-4-paragraph-0",
+          "section-5-paragraph-0",
+          "section-5-paragraph-1",
+          "section-6-paragraph-0",
+          "section-6-paragraph-1",
+          "section-6-paragraph-2",
+          "section-6-paragraph-3",
+          "section-7-paragraph-0",
+          "section-7-paragraph-1",
+          "section-8-paragraph-0",
+          "section-8-paragraph-1",
+          "section-8-paragraph-2",
+          "section-9-paragraph-0",
+          "section-9-paragraph-1",
+          "section-9-paragraph-2",
+          "section-10-paragraph-0"
+        ],
+        "candidate_set_sha256": "22cccbee0f605b6cdb51a946e45254e5ee974ab23940a1f97052bd5e60a49ade",
+        "selected_document_ids": [
+          "section-9-paragraph-0",
+          "section-5-paragraph-0",
+          "section-7-paragraph-1",
+          "section-5-paragraph-1"
+        ],
+        "selected_intervals": [
+          {
+            "document_id": "section-9-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 325
+          },
+          {
+            "document_id": "section-5-paragraph-0",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 384
+          },
+          {
+            "document_id": "section-7-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 985
+          },
+          {
+            "document_id": "section-5-paragraph-1",
+            "coordinate_space": "unicode_codepoint",
+            "start": 0,
+            "end": 814
+          }
+        ],
+        "selected_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "selection_id": "9169f4aa37a61f4934c78b03f484b0a02f99eb392f41990010c3db3ca9713754"
+      },
+      "output": "The",
+      "metrics": {
+        "quality": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "task_score": 0.0,
+          "gold_answer_logprob": -63.661155700683594,
+          "evidence_recall": 0.0
+        },
+        "input": {
+          "candidate_tokens": 3322,
+          "selected_source_tokens": 384,
+          "visible_prompt_tokens": 26
+        },
+        "pra": {
+          "selected_native_kv_tokens": 384,
+          "active_detail_bytes": 56623104,
+          "retained_detail_bytes": 56623104
+        },
+        "ingestion": {
+          "text_preparation_ms": 4.3892910034628585,
+          "kv_encode_ms": 1020.0051249994431,
+          "index_construction_ms": 0.0,
+          "time_to_usable_context_ms": 1024.9391660036054
+        },
+        "serving": {
+          "ttft_ms": 216.52499999618158,
+          "itl_ms": 0.0,
+          "tpot_ms": 0.0,
+          "total_latency_ms": 216.7313340032706,
+          "generated_tokens": 1,
+          "tokens_per_second": 4.61400749734189,
+          "requests_per_second": 1.9019004502557293
+        },
+        "reuse": {
+          "ordinary_prefix_cache_hit_tokens": 0,
+          "pra_hot_hit": true,
+          "pra_warm_hit": false,
+          "bytes_read": 56623104,
+          "bytes_promoted": 0,
+          "bytes_avoided": 0,
+          "duplicate_physical_kv_avoided_bytes": 0
+        }
+      },
+      "extra": {
+        "dataset": "qasper",
+        "seed": 11,
+        "gold_answer": "column Ens Test in Table TABREF19",
+        "execution_source_sha256": "fe16df28ce6b6cfe1d58afa28a091d29bde8ebfc683871c844425d40d74995b0",
+        "e0_prefix_kv_bytes": 56623104,
+        "source_kv_captured_once_from_live_prefix": true,
+        "source_encode_ms": 1020.0051249994431,
+        "selection_capture_ms": 0.5447500006994233,
+        "ordinary_prefix_snapshot_ms": 2.648875000886619,
+        "selection_physical_kv_copy": false,
+        "selected_history_reencoded_tokens": 0,
+        "selection_materialization_kv_copy_bytes": 0,
+        "physical_kv_copy_bytes": null,
+        "physical_copy_accounting": "NOT_MEASURED",
+        "consumer_memory": {
+          "consumer_active_before_bytes": 8861644898,
+          "consumer_active_after_bytes": 8849848921,
+          "consumer_peak_bytes": 9029828216,
+          "consumer_temporary_peak_delta_bytes": 168183318
+        },
+        "concurrency_execution": "concurrent_borrows_serialized_model_runner"
+      }
+    }
+  ]
+}

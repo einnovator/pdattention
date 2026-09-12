@@ -304,7 +304,7 @@ def test_release_gate_rejects_profile_and_headline_conflicts() -> None:
         replace(bundle, qualification={**bundle.qualification, "canonical_evidence": [canonical]}).validate(require_card=False)
 
 
-def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
+def test_generated_32b_card_quarantines_prefixed_engine_results() -> None:
     bundle = PRAModelBundle.from_pretrained(
         ROOT / "artifacts/pra_hf/bundles/pra-qwen3-32b-mlx-4bit"
     )
@@ -312,18 +312,15 @@ def test_generated_32b_card_leads_with_pairing_not_router_recall() -> None:
 
     assert "# PRA Runtime Bundle for" in text
     assert "Recommended profile: **BALANCED**" in text
-    assert "15/15" in text
-    assert "-89.1%" in text
+    assert "Bundle evidence tier: **NEEDS_RERUN**" in text
+    assert "Earlier native-runtime headline measurements are quarantined" in text
     assert "## Evidence by engine, mode, and profile" in text
     assert "## Precision qualification" in text
     assert "INT4" in text
     assert "MLX-4bit" in text
-    assert "| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: MEASURED" in text
-    assert "Delta NM vs SC" in text
-    assert "Output Tokens Per Second" in text
-    assert "ITL p95 (ms)" in text
-    assert "SHA-256" in text
-    assert "70.32 MiB" in text
+    assert "| mlx | Native Memory | BALANCED | NEEDS_RUN | Native Memory: NEEDS_RUN" in text
+    assert "15/15" not in text
+    assert "-89.1%" not in text
     assert "## Expected metrics" not in text
     assert "R@20%" not in text.split("## Research diagnostics", 1)[0]
 
@@ -472,17 +469,17 @@ def test_exact_8bit_native_path_qualifies_while_learned_router_remains_opt_in() 
     assert bundle.qualification["runtime_smoke"]["status"] == "RUNTIME_SMOKE_VALIDATED"
 
 
-def test_canonical_evidence_catalog_covers_every_model_profile_and_engine_metric() -> None:
+def test_canonical_evidence_catalog_quarantines_prefixed_engine_metrics() -> None:
     text = render_canonical_evidence_catalog(load_bundle_catalog())
     for row in load_bundle_catalog()["bundles"]:
         assert row["model"] in text
     assert "Selected Context" in text
     assert "Native Memory" in text
     assert "Same mode / bundle" in text
-    assert "Output Tokens Per Second" in text
-    assert "TTFT p95 (ms)" in text
-    assert "ITL p95 (ms)" in text
-    assert "Delta Bundle" in text
+    assert "QUARANTINED" in text
+    assert "CORRECTION_PENDING" in text
+    assert "Output Tokens Per Second" not in text
+    assert "TTFT p95 (ms)" not in text
 
 
 def test_published_cards_preserve_explicit_missing_coverage_states() -> None:

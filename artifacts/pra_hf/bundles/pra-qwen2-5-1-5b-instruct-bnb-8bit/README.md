@@ -33,8 +33,8 @@ This repository packages the model-specific Progressive Retrieval Attention (PRA
 - Engine: **hf**
 - Recommended PRA mode: **Selected Context**
 - Recommended profile: **BALANCED**
-- Bundle evidence tier: **CONTROLLED**
-- Native Memory status: **CONTROLLED**
+- Bundle evidence tier: **NEEDS_RERUN**
+- Native Memory status: **NEEDS_RERUN**
 
 Availability, qualification, and recommendation are separate. A mode may be implemented without being qualified or recommended for this identity.
 
@@ -48,13 +48,9 @@ Precision evidence is scoped to the exact model conversion, engine, mode, and pr
 
 ## Headline results
 
-| Workload | Selected Context quality | Native Memory quality | Delta NM vs SC | Visible-context delta NM vs SC | TTFT delta NM vs SC | Completion delta NM vs SC | Paired parity | Evidence |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| combined (n=15) | token_f1=0.3991 | token_f1=0.01786 | -0.3813 | -91.7% | NEEDS_RUN | +203.5% | 0/15 | ENGINE_QUALIFIED |
+**Evidence correction:** Earlier native-runtime headline measurements are quarantined. They predate the corrected live-K/V, original-position, copy-accounting, and lifecycle contract. The bundle's structural mapping and routing-only diagnostics remain available, but native exactness, latency, throughput, memory, cache-hit, and copy-savings claims require rerun.
 
-All headline rows freeze the PRA-selected evidence. Deltas are Native Memory minus Selected Context; negative latency and visible-context deltas are reductions. These rows contain no ordinary No-PRA arm.
-
-Evidence receipt: `huggingface_eager 5.16.1`; NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB; selector-frozen natural QA; cold direct query (n=15); 2026-09-03; PRA commit `None`; artifact `qualification/matched_e0_e2_qasper.json, qualification/matched_e0_e2_hotpotqa.json, qualification/matched_e0_e2_2wikimultihopqa.json`; SHA-256 `d6a7b3eab5faf9c6641e4f9894893f41c87978329dcf1167e868a16ef93a1dcd,2f9866b196ac90c0937d74951998ec4b925dff2d312a20562c6f68159b3ea3dc,fb234090cf8d0d55eb725664d084b7e146077a00944d2220e9ef02cf61388737`.
+No paired end-task headline is available for this exact model, revision, quantization, engine, profile, and execution mode. Routing diagnostics below must not be interpreted as application quality.
 
 ## Exact-identity runtime smoke
 
@@ -70,6 +66,8 @@ Runtime smoke does not establish end-task quality, Native Memory parity, routing
 
 Each row identifies the exact runtime surface for which metrics are available. `MEASURED` counts scalar metrics with real observations; missing profile/mode combinations are not inferred from another row.
 
+**Evidence correction:** 1 pre-fix native-runtime record(s) are quarantined from this card. They predate the corrected live-K/V, original-position, copy-accounting, and lifecycle contract and require rerun. Structural compatibility and routing-only evidence are unaffected.
+
 | Engine | Mode | Profile | No PRA | Mode / no adaptor | Same mode / bundle | Measured metric groups |
 | --- | --- | --- | --- | --- | --- | --- |
 | hf | Native Memory | QUALITY | CALIBRATION_PENDING | Native Memory: CALIBRATION_PENDING | Native Memory + Bundle: CALIBRATION_PENDING | CALIBRATION_PENDING |
@@ -78,45 +76,15 @@ Each row identifies the exact runtime surface for which metrics are available. `
 
 ## Canonical staged evidence
 
-Each table holds task, hardware, engine, model, precision, and profile fixed. Every delta names its source and target; bundle use is held orthogonal to execution depth.
+A complete staged cohort is not packaged for this exact identity.
 
-### combined / huggingface_eager / balanced
+| Condition | Evidence status |
+| --- | --- |
+| No PRA | `NEEDS_RUN` |
+| Selected Context | `NEEDS_RUN` |
+| Selected Context + Bundle | `NO_QUALIFIED_ADAPTER` |
 
-Exact identity: `Qwen/Qwen2.5-1.5B-Instruct` at `989aa7980e4cf806f80c7fef2b1adb7bc71aa306` on `NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB`; precision `INT8` / `PyTorch-bnb-8bit`.
-
-#### Quality
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Token F1 | fraction | higher_is_better | 0.399111 | 0.0178571 | NO_QUALIFIED_ADAPTER | -0.381254 (-95.53%) | NO_QUALIFIED_ADAPTER |
-| Exact Match | fraction | higher_is_better | 0.333333 | 0 | NO_QUALIFIED_ADAPTER | -0.333333 (-100.00%) | NO_QUALIFIED_ADAPTER |
-
-#### Context
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Visible Tokens | token | lower_is_better | 404.6 | 33.6 | NO_QUALIFIED_ADAPTER | -371 (-91.70%) | NO_QUALIFIED_ADAPTER |
-| Selected Native K/V Tokens | token | neutral | 0 | 371 | NO_QUALIFIED_ADAPTER | +371 | NO_QUALIFIED_ADAPTER |
-
-#### Serving
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Output Tokens Per Second | output_token/s | higher_is_better | 2.30576 | 2.09692 | NO_QUALIFIED_ADAPTER | -0.208833 (-9.06%) | NO_QUALIFIED_ADAPTER |
-| Completion Latency Mean (ms) | ms | lower_is_better | 3772.26 | 11448.4 | NO_QUALIFIED_ADAPTER | +7676.19 (+203.49%) | NO_QUALIFIED_ADAPTER |
-
-#### Resources
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Active Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
-| Retained Detail Bytes | byte | lower_is_better | 0 | 1.06373e+07 | NO_QUALIFIED_ADAPTER | +1.06373e+07 | NO_QUALIFIED_ADAPTER |
-
-#### Routing
-
-| Metric | Unit | Direction | Selected Context | Native Memory | Native Memory + Bundle | Delta NM vs SC | Delta Bundle vs NM |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Evidence Recall | fraction | higher_is_better | 0.75 | 0.75 | NO_QUALIFIED_ADAPTER | +0 (+0.00%) | NO_QUALIFIED_ADAPTER |
+Earlier selector-frozen Selected Context versus Native Memory measurements are quarantined pending corrected-engine rerun.
 
 ## Installation
 
@@ -138,39 +106,23 @@ pra serve Qwen/Qwen2.5-1.5B-Instruct -e hf -a EInnovator/pra-qwen2-5-1-5b-instru
 
 | Profile | Purpose | Routing | Consumer layers | Status | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | CALIBRATION_PENDING | Not promoted |
+| QUALITY | Candidate maximum-quality profile; held-out calibration is incomplete | generic cosine | all eligible | NEEDS_RERUN | Not promoted |
 | BALANCED | Qualified default preserving the all-eligible consumer geometry | generic cosine | all eligible | QUALIFIED | Default |
-| ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | CALIBRATION_PENDING | Not promoted |
+| ECONOMY | Reduced-consumer candidate; the held-out quality gate has not passed | generic cosine | CALIBRATION_PENDING | NEEDS_RERUN | Not promoted |
 
 ## Engine compatibility
 
 | Engine | Selected Context | Native Memory | Native Serving | Recommended today |
 | --- | --- | --- | --- | --- |
-| hf | validated | CONTROLLED | NOT_APPLICABLE | Selected Context with BALANCED |
+| hf | validated | NEEDS_RERUN | NOT_APPLICABLE | Selected Context pending rerun |
 
 ## End-to-end qualification
 
-| Workload | Mode | Quality | Visible tokens | TTFT p50 | Completion mean | Hardware | Evidence |
-| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| qasper (n=5) | Selected Context | token_f1=0.064 | 380.6 | NEEDS_RUN ms | 6854 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| qasper (n=5) | Native Memory | token_f1=0 | 27.4 | NEEDS_RUN ms | 1.13e+04 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| hotpotqa (n=5) | Selected Context | token_f1=0.3333 | 423.6 | NEEDS_RUN ms | 2297 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| hotpotqa (n=5) | Native Memory | token_f1=0.05357 | 40 | NEEDS_RUN ms | 1.146e+04 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| 2wikimultihopqa (n=5) | Selected Context | token_f1=0.8 | 409.6 | NEEDS_RUN ms | 2165 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| 2wikimultihopqa (n=5) | Native Memory | token_f1=0 | 33.4 | NEEDS_RUN ms | 1.158e+04 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| combined (n=15) | Selected Context | token_f1=0.3991 | 404.6 | NEEDS_RUN ms | 3772 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
-| combined (n=15) | Native Memory | token_f1=0.01786 | 33.6 | NEEDS_RUN ms | 1.145e+04 ms | NVIDIA GeForce RTX 5060 Laptop GPU, 8 GB | ENGINE_QUALIFIED |
+What remains to be measured: paired end-task quality for this exact bundle identity.
 
 ## Native Memory qualification
 
-Native Memory uses the same selector output as Selected Context. It is recommended only where the profile and engine tables say so.
-
-| Workload | Selected native K/V tokens | Active detail | Peak memory | Completion cost vs Selected Context |
-| --- | ---: | ---: | ---: | ---: |
-| qasper | 353.2 | 9.66 MiB | NEEDS_RUN | 1.649x |
-| hotpotqa | 383.6 | 10.49 MiB | NEEDS_RUN | 4.988x |
-| 2wikimultihopqa | 376.2 | 10.29 MiB | NEEDS_RUN | 5.349x |
-| combined | 371 | 10.14 MiB | NEEDS_RUN | 3.035x |
+What remains to be measured: paired Selected Context versus Native Memory quality and serving economics.
 
 ## Research diagnostics
 
