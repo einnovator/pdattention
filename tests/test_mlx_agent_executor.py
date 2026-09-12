@@ -242,7 +242,8 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert first_trace["pra_100_semantic_noop"] is True
     assert first_trace["exact_trajectory_eligible"] is True
     assert first_trace["selected_history_reencoded_tokens"] == 0
-    assert first_trace["selected_history_kv_copy_bytes"] is None
+    assert first_trace["selected_history_kv_copy_bytes"] == 0
+    assert first_trace["physical_kv_copy"] is False
     assert first_trace["canonical_suffix_graft_d2d_bytes"] > 0
 
     logical = (*initial, {"role": "assistant", "content": "A"}, {

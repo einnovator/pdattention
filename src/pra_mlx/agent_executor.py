@@ -568,10 +568,14 @@ class MLXAgentHistoryExecutor:
             # slice or an attention-sized transient.  Keep the end-to-end
             # physical-copy verdict unknown until hardware allocation
             # qualification covers both stages.
-            "physical_kv_copy": None,
+            "physical_kv_copy": (
+                False if plan.full_retention else None
+            ),
             "selection_physical_kv_copy": candidate.selection.physical_kv_copy,
             "selected_interval_pack_bytes": selected_pack,
-            "selected_history_kv_copy_bytes": None,
+            "selected_history_kv_copy_bytes": (
+                0 if plan.full_retention else None
+            ),
             "canonical_extension_copy_bytes": extension_copy,
             "canonical_suffix_graft_d2d_bytes": (
                 graft_metrics.canonical_suffix_graft_d2d_bytes
@@ -582,7 +586,10 @@ class MLXAgentHistoryExecutor:
             "known_total_kv_copy_bytes": (
                 extension_copy + graft_metrics.total_kv_copy_bytes + selected_pack
             ),
-            "total_kv_copy_bytes": None,
+            "total_kv_copy_bytes": (
+                extension_copy + graft_metrics.total_kv_copy_bytes
+                if plan.full_retention else None
+            ),
             "host_to_device_bytes": 0,
             "consumer_temporary_active_delta_bytes": consumer_active_delta,
             "consumer_temporary_bytes": consumer_peak_delta,

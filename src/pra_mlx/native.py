@@ -1076,6 +1076,14 @@ def select_live_native_memory(
         raise ValueError(
             "MLX canonical source length does not match the selection plan."
         )
+    if (
+        len(plan.intervals) == 1
+        and plan.intervals[0].start == 0
+        and plan.intervals[0].end == plan.source_tokens
+    ):
+        # The 100% semantic control borrows the canonical object itself. This
+        # is stronger than relying on an MLX full-range slice being a view.
+        return MLXResidentKVSelection(source, plan, False)
     import mlx.core as mx
 
     layers = []

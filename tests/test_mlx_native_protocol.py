@@ -15,6 +15,7 @@ from pra_mlx.native import (
     deserialize_native_memory,
     resolve_query_position_base,
     serialize_native_memory,
+    select_live_native_memory,
     select_live_native_memory_disjoint,
 )
 from pra_hf.live_history import LiveKVSelectionPlan
@@ -91,6 +92,22 @@ def test_disjoint_selection_preserves_source_views_and_original_extent() -> None
     assert result.memory.layers[0].tokens == 5
     assert np.shares_memory(result.memory.layers[0].segments[0].keys, keys)
     assert np.shares_memory(result.memory.layers[0].segments[1].values, values)
+
+
+def test_full_selection_borrows_canonical_memory_without_a_slice() -> None:
+    import numpy as np
+
+    keys = np.arange(40, dtype=np.float32).reshape(1, 1, 10, 4)
+    source = MLXNativeMemory(
+        (MLXNativeLayerKV(keys, keys + 100),), source_tokens=10
+    )
+    plan = LiveKVSelectionPlan.full(10)
+
+    result = select_live_native_memory(source, plan)
+
+    assert result.memory is source
+    assert result.physical_kv_copy is False
+    assert result.selected_text_reencoded_tokens == 0
 
 
 def test_query_position_base_defaults_to_source_and_allows_bug_control() -> None:
