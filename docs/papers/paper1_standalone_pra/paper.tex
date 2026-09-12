@@ -51,15 +51,15 @@ compressed replacement for the token state that attention reads.
 We evaluate this mechanism in controlled standalone transformers. The central repair is to
 encode contiguous context before slicing smaller routing units; independently encoded
 microchunks lose the historical context needed for faithful K/V. After this repair, fixed
-selection breadth over 64--256 addressable units reduces the active fraction from 17.9--18.7\% to
+selection breadth over split labels 64--256 (63--255 addressable source units) reduces the active fraction from 17.9--18.7\% to
 4.4--4.9\% while retaining essentially all measured dense-context benefit in the small
 model. A fixed-fraction reanalysis isolates router quality from increasing sparsity:
 selecting about 12.5\% of references gives annotated target coverage of
 0.756/0.772/0.762 on HotpotQA-derived examples and 0.794/0.803/0.800 on
-QASPER-derived examples at 64/128/256 units. Under a hard 32-token native-operation
+QASPER-derived examples at split labels 64/128/256. Under a hard 32-token attention-axis
 limit, PRA addresses a 184-token displaced prompt head inside 192 logical tokens, with
 loss 1.0567 versus 1.2287 for truncation and no operation-limit violations. Exact
-256-way routing takes 5.5--11.6 ms after index construction in this prototype.
+Split-256 routing over 255 candidates takes 5.5--11.6 ms after index construction in this prototype.
 
 In a separate pretrained Qwen3 8B--32B MLX calibration, selected native K/V
 matches all selected-text sequences at 8B/14B and 13/15 at 32B while the full-versus-selected answer-quality
@@ -111,7 +111,7 @@ selected regions.
 
 The contribution is not a claim that each ingredient is unprecedented. Content routing,
 external memory, native-K/V caching, and bounded attention all have substantial prior art. The
-Paper~1 contribution is their particular contract: an addressable logical memory, compact
+contribution is their particular contract: an addressable logical memory, compact
 routing metadata, selected full-detail layer-native K/V, a hard bound on the native operation,
 and encoding granularity separated from routing granularity. This combination lets logical
 availability grow without requiring either every available token or a compressed surrogate of
@@ -137,18 +137,18 @@ Fragmentation repair & Split-64 oracle RCB: .546$\rightarrow$.996
 (HotpotQA-derived), .748$\rightarrow$.999 (QASPER-derived) & Encode contiguous context
 before exposing smaller routing views \\
 Fixed-$k$ sparse scaling & $k=8$ keeps 11--13 physical K/V tokens active; active fraction
-falls .179$\rightarrow$.044 and .187$\rightarrow$.049 from 64 to 256 units & Accessible
+falls .179$\rightarrow$.044 and .187$\rightarrow$.049 from split 64 to split 256 & Accessible
 memory grows while the selected payload remains approximately flat \\
 Fixed-fraction quality scaling & Coverage at about 12.5\% selection is
-.756/.772/.762 and .794/.803/.800 at 64/128/256 units & Fixed-$k$ decline partly reflects
+.756/.772/.762 and .794/.803/.800 at split labels 64/128/256 & Fixed-$k$ decline partly reflects
 increasing sparsity rather than routing collapse \\
-Bounded logical context & 192 logical tokens, 184-token \texttt{\#\_\_head}, largest
-native call 20 under a limit of 32, zero violations & Logical memory can exceed one native
+Bounded logical context & 192 logical tokens, 184-token \texttt{\#\_\_head}; maximum source
+input 20 and maximum combined attention K/V 28 under a limit of 32 & Logical memory can exceed one native
 operation without violating the configured bound \\
-CPU-resident detail K/V & At 256 units, .734--3.420 MiB leaves GPU; loss and selection are
+CPU-resident detail K/V & At split 256 (255 source units), .734--3.420 MiB leaves GPU; loss and selection are
 unchanged; warm overhead is 4.0--13.5 ms & Sparse selection becomes a measured device-capacity
 tradeoff when inactive detail is offloaded \\
-Measured capacity effect & QASPER-derived routed RCB at 256 units: .908 tiny versus 1.000
+Measured capacity effect & QASPER-derived routed RCB at split 256 (255 source units): .908 tiny versus 1.000
 small & Some high-scale weakness belongs to the tested model/router capacity, not transport \\
 \bottomrule
 \end{tabularx}
@@ -340,6 +340,81 @@ and annotated source identity. Targets are controlled answer codes, so these exp
 measure evidence transport and routing coverage rather than unrestricted QA.
 \end{itemize}
 
+Table~\ref{tab:main-config} records the configuration behind the principal split-64--256
+scaling result. The scale manipulation does not add 256 independent documents: it constructs
+one 255-unit source for each question and evaluates nested prefixes repartitioned into 63,
+127, or 255 addressable units. Candidate count is therefore a routing-granularity variable,
+while accessible token count is reported separately.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Reproduction contract for the principal controlled scaling experiment. ``Final''
+means the fixed terminal training step; no validation-best checkpoint selection is used.}
+\label{tab:main-config}
+\begin{tabularx}{\textwidth}{P{0.19\textwidth}Y}
+\toprule
+Field & Frozen setting \\
+\midrule
+Data construction & HotpotQA train (4,000 constructed examples) or QASPER train (200), with a
+deterministic 80/10/10 internal split and 3,200/160 optimization examples; separate frozen
+64-question evaluation source, first 32 questions evaluated per seed; nested 63/127/255-source-unit
+versions preserve question IDs and answers. Construction/evaluation seeds are 31,337/72,991
+(HotpotQA) and 44,321/82,811 (QASPER) \\
+Tokenizer and target & Dataset-specific BPE, target vocabulary cap 8,000, minimum frequency 2
+(realized vocabulary: HotpotQA 8,000; QASPER 7,339); cross-entropy supervises only the first
+answer token at the final prompt position, with all other labels masked \\
+Tiny tier & width 128, 4 heads, 2 layers, feed-forward width 256, batch 8, 200 AdamW steps \\
+Small tier & width 256, 4 heads, 4 layers, feed-forward width 768, batch 4, 300 AdamW steps \\
+Shared optimization & learning rate $7\!\times\!10^{-4}$, weight decay 0, dropout 0,
+gradient-norm clip 1.0, maximum sequence length 768; final-step checkpoint \\
+Pairing & seeds 1, 7, 21, 42, 87; identical question order and answer labels across scale variants \\
+PRA conversion & inference-only, weight-preserving conversion from the trained self-attention
+model; contextual \texttt{native\_slice}; global source positions and historical direct-tail positions \\
+Routing & one mean-pooled key gist per unit; query is the newest direct token's projected query;
+cosine-like exhaustive ranking; whole-unit admission; $k=8$ is materially evaluated in the small
+tier, while full-ranking cutoffs $k=8,16,32$ provide the fixed-fraction coverage comparison \\
+Canonical artifacts & \texttt{shared/results/pra\_scale\_sensitivity.json} and
+\texttt{scripts/run\_pra\_scale\_sensitivity.py} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The remaining result families use the same reporting discipline but different frozen cohorts.
+Table~\ref{tab:artifact-map} prevents evidence from one family from silently supplying the
+denominator of another.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Artifact and cohort map. Paths are relative to \texttt{docs/papers}.}
+\label{tab:artifact-map}
+\begin{tabularx}{\textwidth}{P{0.17\textwidth}P{0.28\textwidth}P{0.28\textwidth}Y}
+\toprule
+Result family & Frozen cohort / unit & Canonical artifact & Interpretation boundary \\
+\midrule
+Transport and fragmentation & HotpotQA- and QASPER-derived answer-code probes; five paired
+seeds; splits 2--64 & \path{shared/results/native_kv_hotpotqa.json} and
+\path{shared/results/native_kv_qasper.json} & Full-context self-attention followed by weight-preserving
+PRA conversion; first answer token, not generated QA \\
+Scale and residency & Same 32 question identities per seed at nested 63/127/255-unit sources;
+five paired seeds & \path{shared/results/pra_scale_sensitivity.json} and
+\path{shared/results/pra_kv_residency.json} & Seed-level
+aggregates retained; not 256 independent documents and not a process-memory benchmark \\
+Bounded head and budget & Synthetic fixed-target v5; 4 generated examples crossed with 4 target
+positions = 16 cases per seed, 80 cases over five seeds; GTX 950M
+& \path{shared/results/pra_head_beyond_native_context.json},
+\path{shared/results/pra_materialization_budget.json},
+\path{shared/results/pra_context_budget.json} & Source-call,
+direct, retained-memory, and combined-attention lengths are distinct \\
+Pretrained calibration & 15 unique questions per 8K Qwen3 model point; three at 8B/32K
+& \path{shared/results/paper1_standalone_pra/mac_context_dilution/mlx_long_context_summary.json}
+& Shared with the positional study; annotated selection,
+one quantized family, payload bytes rather than peak allocation \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 We report loss and exact target accuracy where defined. For memory contribution, the
 recovered-context-benefit ratio is
 \begin{equation}
@@ -348,8 +423,15 @@ recovered-context-benefit ratio is
  \label{eq:rcb}
 \end{equation}
 An RCB near one means that the condition recovers the measured loss benefit of dense
-context relative to the tail-only baseline. It is not a general correctness score and may
-slightly exceed one under finite-sample noise. We separately report annotated target
+context relative to the tail-only baseline. For every seed, the numerator and denominator
+use condition-level mean answer-token losses over the same frozen questions; displayed RCB
+is then the mean of the five paired seed ratios, not a ratio reconstructed from the rounded
+cross-seed losses. Ratios are unclamped and are undefined when the absolute denominator is at
+most $10^{-8}$. The retained summary exposes positive cross-seed mean denominators but not the
+five underlying denominator signs, so per-seed positivity is not independently auditable from
+that artifact. Values above one can mean that
+selected memory has lower measured loss than full context, not only sampling variation. RCB
+is not a general correctness score. We separately report annotated target
 coverage, active K/V fraction, physical K/V tokens, and operation length. This separation
 prevents a successful transport path from being mistaken for a successful learned router.
 
@@ -391,8 +473,8 @@ quality advantage on every question.}
 
 At 8K, full context improves mean gold-answer log probability by 1.192 nats at
 8B but lowers it by 1.485 nats at 14B and 0.999 nats at 32B. F1 moves in the
-same direction only for the 14B and 32B cohorts; the three-example 8B 32K boundary has selected-context
-likelihood but full-context F1 moving in opposite directions. The defensible
+same direction for all three 8K cohorts, including 8B; only the three-example
+8B 32K boundary has likelihood and F1 moving in opposite directions. The defensible
 result is therefore non-monotonicity, not a universal selected-context quality
 gain. Larger models still require an explicit dilution measurement.
 
@@ -404,6 +486,14 @@ about 39.6 MiB while full native K/V grows from 1,152 MiB at 8K to 4,608 MiB at
 pretrained scale in this calibration even though the quality sign depends on
 model and example. It does not establish benchmark QA accuracy or a learned
 router at 8B--32B.
+
+This is a shared MLX campaign with the companion positional study, not an independent
+replication. Here it supports context-dilution and all-layer payload accounting; coordinate
+and position-reset interventions are analyzed there. E0 re-renders the frozen annotated
+selection as visible text, whereas E2 injects native K/V sliced from the encoded selected
+layout. Output-sequence agreement tests the consumer behavior of those two paths but does
+not prove equality of every internal tensor. The MiB figures are serialized all-layer K/V
+payload sizes, not measured peak unified-memory allocation or whole-process savings.
 
 \section{Does Selected Native K/V Carry the Needed Detail?}
 \label{sec:transport}
@@ -477,8 +567,8 @@ itself is not meaningful unless the encoding procedure is also specified.
 \section{Scaling: Breadth, Fraction, and Coverage}
 \label{sec:scaling}
 
-After the fragmentation repair, we scale each natural-text-derived source to 64, 128, and
-256 addressable units. Two comparisons answer different questions. Fixed $k=8$ asks whether
+After the fragmentation repair, we evaluate split labels 64, 128, and 256, corresponding to
+63, 127, and 255 addressable source units plus the direct answer/query component. Two comparisons answer different questions. Fixed $k=8$ asks whether
 the physical working set remains bounded as logical memory grows. Selection near a fixed 12.5\%
 asks whether routing quality remains stable under comparable sparsity pressure.
 
@@ -487,11 +577,12 @@ asks whether routing quality remains stable under comparable sparsity pressure.
 \small
 \setlength{\tabcolsep}{4pt}
 \caption{Small-tier scaling under two controls. Fixed-$k$ coverage and RCB use $k=8$;
-fixed-fraction coverage uses the measured $k$ nearest 12.5\% ($8,16,32$).}
+fixed-fraction coverage reads the complete ranking at the cutoff nearest 12.5\% ($8,16,32$);
+the small tier physically materializes only its evaluated $k=8$ condition.}
 \label{tab:scale-main}
 \begin{tabular}{llrrrr}
 \toprule
-Probe & Units & \shortstack{Active\\fraction} & \shortstack{Fixed-$k$\\coverage} &
+Probe & Split label & \shortstack{Active\\fraction} & \shortstack{Fixed-$k$\\coverage} &
 \shortstack{Routed\\RCB} & \shortstack{Fixed-fraction\\coverage} \\
 \midrule
 HotpotQA-derived & 64  & 0.179 & 0.756 & 1.000 & 0.756 \\
@@ -508,23 +599,23 @@ QASPER-derived   & 64  & 0.187 & 0.794 & 1.000 & 0.794 \\
 
 At fixed $k=8$, candidate count grows from 63 to 255 while the small model materializes only
 11--13 physical K/V tokens per example. The active fraction falls from .179 to .044 on the
-HotpotQA-derived probe and from .187 to .049 on the QASPER-derived probe. At 256 units this
+HotpotQA-derived probe and from .187 to .049 on the QASPER-derived probe. At split 256 this
 avoids 96.9--97.4\% of reference K/V and 94.9--95.6\% of total accessible K/V. Routed RCB
-remains 1.000 to the reported precision. This is the PRA systems law measured here:
+remains 1.000 to the reported precision. This is the fixed-budget scaling behavior observed here:
 accessible memory grows while the selected native-K/V working set remains approximately flat.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=.86\textwidth]{../shared/figures/pra_scale_sparsity.pdf}
 \caption{\textbf{Fixed $k=8$ keeps physical selected K/V nearly flat as candidate memory
-grows.} The resulting active fraction falls to 4.4--4.9\% at 256 addressable units.}
+grows.} The resulting active fraction falls to 4.4--4.9\% at split 256 (255 source units).}
 \label{fig:scale-sparsity}
 \end{figure}
 
 \subsection{Fixed fraction: routing quality under equal sparsity pressure}
 
 Fixed $k$ becomes progressively harsher: the selected candidate fraction changes from 12.7\%
-at 64 units to 6.3\% at 128 and 3.1\% at 256. Selecting the measured $k$ nearest 12.5\%
+at split 64 to 6.3\% at split 128 and 3.1\% at split 256. Reading the complete ranking at the cutoff nearest 12.5\%
 removes that confound. Coverage remains 0.756/0.772/0.762 for HotpotQA-derived text and
 0.794/0.803/0.800 for QASPER-derived text. Figure~\ref{fig:fixed-fraction} shows every
 measured point; no values are interpolated.
@@ -534,7 +625,7 @@ measured point; no values are interpolated.
 \includegraphics[width=.88\textwidth]{../shared/figures/pra_fixed_k_vs_fraction_scaling.pdf}
 \caption{\textbf{Fixed-$k$ decline partly reflects increasing sparsity, not intrinsic routing
 collapse.} Holding selection near 12.5\% yields stable annotated target coverage through the
-measured 256-unit scale.}
+measured split-256 scale.}
 \label{fig:fixed-fraction}
 \end{figure}
 
@@ -544,11 +635,20 @@ was selected. A model can recover the answer when redundant or correlated eviden
 present even if the annotated URI is absent. Accordingly, the perfect measured RCB at
 $k=8$ should not be read as perfect routing.
 
+The retained scale artifact contains seed-level aggregates but not the per-question
+target-hit/miss loss rows needed to identify why RCB remains near one when annotated coverage
+is incomplete. Historical contextual slicing can propagate an answer-code signal into later
+states whose URI is not the annotated target, and correlated/redundant text is another possible
+route. The current evidence does not distinguish these explanations. We therefore limit the
+claim to loss recovery on this answer-coded probe; it is not evidence of semantic retrieval at
+natural-QA difficulty. A causal follow-up must export per-question traces and rebuild downstream
+state after changing or removing the answer-bearing source.
+
 \subsection{Measured model-capacity effect}
 
 The same QASPER-derived $k=8$ run separates transport from tested model capacity. Tiny-tier
-routed RCB declines from 1.000 at 64 units to 0.908 at 256, while the small tier remains 1.000.
-Its target coverage at 256 is also 0.388 versus 0.759. Increased capacity materially improves
+routed RCB declines from 1.000 at split 64 to 0.908 at split 256, while the small tier remains 1.000.
+Its target coverage at split 256 is also 0.388 versus 0.759. Increased capacity materially improves
 this measured high-scale operating point, but two small tiers do not support extrapolation to
 large models or prove that capacity alone solves routing.
 
@@ -560,8 +660,11 @@ that every underlying operation respects a model limit. We therefore impose a ha
 $L_{\max}=32$ token limit on every source-encoding and decode operation. The direct tail
 uses 8 tokens, the memory budget is 20, and 4 tokens are reserved for accounting safety.
 The logical prompt contains 192 tokens, of which 184 form an implicit addressable head.
-Encoding uses 16-token cores with up to four tokens of left context; the largest observed
-native operation is 20 tokens, or 62.5\% of the declared limit.
+Encoding uses 16-token cores with up to four tokens of left context. The frozen per-call
+trace reports a maximum source-encoding input of 20 tokens, a direct input of 8, an actual
+retained-memory maximum of 20, and therefore a combined attention K/V axis of 28. The
+four-token reserve is unused capacity, not participating K/V. Thus 20 is the largest source
+input, while 28 (87.5\% of the declared limit) is the largest attention operation.
 
 \begin{figure}[H]
 \centering
@@ -574,9 +677,10 @@ $\downarrow$ compact routing selects full-detail K/V under a 20-token memory bud
 $\downarrow$ native attention constraint:
 $8\ \text{direct} + L_M\ \text{selected} + 4\ \text{reserve} \leq 32$
 \end{minipage}}
-\caption{\textbf{A 192-token logical request executes without a native call longer than 20
-tokens under the configured 32-token limit.} Logical history, displaced head, direct tail,
-materialized memory, and native operation length are distinct quantities.}
+\caption{\textbf{A 192-token logical request executes with source inputs no longer than 20
+tokens and a combined attention K/V axis no longer than 28 under the configured 32-token
+limit.} Logical history, displaced head, direct tail, retained memory, and combined K/V
+length are distinct quantities; the four-token reserve is unused capacity.}
 \label{fig:bounded-head-path}
 \end{figure}
 
@@ -622,7 +726,7 @@ more of the 32-token operation budget to selected native K/V improves loss and t
 
 The same mechanism supports rollover during generation. In a 48-token generation smoke
 test, 11 rollovers migrate 44 historical tokens into addressable memory while the largest
-operation remains 20 tokens. This verifies the state transition; it is not a long-form
+source-encoding input remains 20 tokens and combined attention remains at most 28. This verifies the state transition; it is not a long-form
 generation quality result.
 
 \section{Implementation and Systems Measurements}
@@ -637,7 +741,7 @@ This 94--103$\times$ microbenchmark improvement demonstrates that exact routing 
 Python-loop bound; it is not an end-to-end latency claim.
 
 Persistent source K/V may also reside on CPU and move to the accelerator only after selection.
-At 256 units, this removes 0.734--3.420 MiB of measured source K/V from GPU residency and
+At split 256 (255 source units), this removes 0.734--3.420 MiB of measured source K/V from GPU residency and
 transfers only 24.6--87.9 KiB per example. The selected identities, materialized tokens, and
 loss match GPU-resident execution exactly. Selective transfer itself takes 4.0--8.9 ms; the
 complete warm-request path is 4.0--13.5 ms slower. Index memory remains on GPU at 260 KiB in
@@ -648,7 +752,7 @@ source-K/V savings should not be confused with whole-model peak allocation.
 \centering
 \includegraphics[width=.94\textwidth]{../shared/figures/pra_kv_residency.pdf}
 \caption{\textbf{CPU residency removes the full inactive source cache from GPU while preserving
-the sparse selected payload.} At 256 units the measured saving is .734--3.420 MiB; total peak
+the sparse selected payload.} At split 256 the measured saving is .734--3.420 MiB; total peak
 CUDA allocation falls less because model parameters and other tensors remain resident.}
 \label{fig:kv-residency}
 \end{figure}
@@ -663,7 +767,7 @@ serving claims.}
 \toprule
 Measurement & Established & Not established \\
 \midrule
-Exact packed routing & 256-way warm selection in 5.5--11.6 ms with scalar parity &
+Exact packed routing & Split-256 (255-candidate) warm selection in 5.5--11.6 ms with scalar parity &
 Production decode latency or approximate-index scaling \\
 CPU-resident K/V & Lower GPU residency with identical selected state and loss &
 Free storage or transfer-free attention \\
@@ -757,6 +861,17 @@ activation: a cache hit alone does not determine whether an object should enter 
 attention operation. The mechanisms can compose, with a serving cache storing PRA objects and a
 PRA router determining which cached objects become active.
 
+RetrievalAttention is the closest stored-K/V comparison: it builds an attention-aware vector
+index over CPU-resident K/V and retrieves a small token subset during decoding
+\cite{liu2024retrievalattention}. PRA does not claim precedence for K/V retrieval. Its narrower
+addition in this study is a named-source lifecycle with contextual-block encoding, independently
+addressable routing views, whole-unit admission, and explicit accounting of source inputs versus
+the final direct-plus-memory attention axis. Conversely, this prototype does not match
+RetrievalAttention's optimized approximate index or serving evidence. CacheBlend addresses the
+complementary failure caused by independently constructed prefix caches by selectively
+recomputing state; PRA's fragmentation repair instead encodes contiguous context before exposing
+smaller read-only views.
+
 \begin{table}[H]
 \centering
 \scriptsize
@@ -810,7 +925,7 @@ generation is not counted as additional quality evidence, and its annotated
 selector does not validate learned large-model routing.
 
 Routing quality remains the main unresolved issue. Stable fixed-fraction target coverage
-through 256 units is encouraging, but coverage near 0.76--0.80 leaves substantial room for
+through split 256 (255 source units) is encouraging, but coverage near 0.76--0.80 leaves substantial room for
 better selectors. The bounded-context router reaches only 0.525 recall, and the shuffled
 control shows that some gain is not source-specific. PRA makes sparse access possible; it
 does not make relevance estimation automatic.
@@ -841,7 +956,8 @@ operation. Contextual encoding can remain coarse enough to preserve historical s
 routing views remain fine enough for sparse selection. The gist is routing metadata; selected
 full-detail K/V is the attention payload.
 
-The controlled evidence establishes both scaling laws through 256 units. At fixed $k$, physical
+The controlled evidence establishes two observed fixed-budget trends through split 256
+(255 addressable source units). At fixed $k$, physical
 selected K/V remains nearly flat and the active fraction falls to 4.4--4.9\%. At a fixed
 selection fraction, target coverage remains stable near 0.76--0.80. A 192-token logical prompt
 also executes under a hard 32-token native limit, and CPU residency converts sparse selection
