@@ -265,6 +265,10 @@ def test_runtime_observation_metadata_certifies_only_simple_complete_reads():
     )
     assert metadata["tool_semantics"]["provenance"] == "runtime_traced"
     assert metadata["tool_semantics"]["complete"] is True
+    assert metadata["return_code"] == 0
+    assert metadata["command_sha256"] == hashlib.sha256(
+        b"sed -n '1,20p' foo.py"
+    ).hexdigest()
     assert metadata["tool_semantics"]["effects"] == [{
         "kind": "read",
         "resource_id": "foo.py",
@@ -380,11 +384,11 @@ def test_checkpoint_restore_preserves_index_worktree_and_untracked_state(tmp_pat
         "checkpoint_complete": True,
         "head": head,
         "workspace_version_fingerprint": expected["workspace_version_fingerprint"],
-        "index_patch": str(index_path),
+        "index_patch": index_path.name,
         "index_patch_sha256": hashlib.sha256(index_path.read_bytes()).hexdigest(),
-        "worktree_patch": str(worktree_path),
+        "worktree_patch": worktree_path.name,
         "worktree_patch_sha256": hashlib.sha256(worktree_path.read_bytes()).hexdigest(),
-        "untracked_archive": str(archive_path),
+        "untracked_archive": archive_path.name,
         "untracked_archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
     }), encoding="utf-8")
 

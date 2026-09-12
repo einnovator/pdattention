@@ -186,13 +186,13 @@ PY'''
             "workspace_version_fingerprint": pre_state.get(
                 "workspace_version_fingerprint"
             ),
-            "index_patch": str(index_path),
+            "index_patch": index_path.name,
             "index_patch_sha256": hashlib.sha256(index_patch).hexdigest(),
             "index_capture_complete": index_result["returncode"] == 0,
-            "worktree_patch": str(worktree_path),
+            "worktree_patch": worktree_path.name,
             "worktree_patch_sha256": hashlib.sha256(worktree_patch).hexdigest(),
             "worktree_capture_complete": worktree_result["returncode"] == 0,
-            "untracked_archive": str(archive_path),
+            "untracked_archive": archive_path.name,
             "untracked_archive_sha256": hashlib.sha256(archive).hexdigest(),
             "untracked_capture_complete": archive_result["returncode"] == 0,
             "checkpoint_complete": (
@@ -204,7 +204,7 @@ PY'''
         }
         receipt_path = stem.with_suffix(".json")
         receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-        return {**receipt, "receipt": str(receipt_path)}
+        return {**receipt, "receipt": receipt_path.name}
 
     def _docker_bytes(self, cwd: str, command: str) -> dict[str, Any]:
         assert self.container_id

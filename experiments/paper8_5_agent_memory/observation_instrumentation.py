@@ -75,7 +75,10 @@ def build_bash_observation_metadata(
         and not output_truncated
     )
     return {
+        "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
         "cwd": cwd,
+        "return_code": return_code,
+        "raw_output_sha256": hashlib.sha256(raw_output.encode()).hexdigest(),
         "environment_fingerprint": environment_fingerprint,
         "resource_version_fingerprints": pre_versions,
         "post_resource_version_fingerprints": post_versions,
