@@ -260,10 +260,30 @@ def _turn_records(
     return tuple(records[record_id] for record_id in turn.record_ids)
 
 
-def _turn_digest(turn: AgentTurn, records: Mapping[str, AgentRecord]) -> str:
-    content = "\x1e".join(
-        f"{record.role}\x1f{record.content}" for record in _turn_records(turn, records)
+def _operational_read_digest(
+    turn: AgentTurn,
+    records: Mapping[str, AgentRecord],
+) -> str:
+    """Hash the executed command and observations, excluding private reasoning.
+
+    Two Bash turns can be the same witnessed operation even when the model's
+    prose before the command differs.  The certificate remains deliberately
+    operational: it proves duplicate external evidence, not that deleting the
+    older reasoning text is behaviorally invisible to an LLM.
+    """
+
+    rows = _turn_records(turn, records)
+    action = next(
+        (row for row in rows if row.has_role(AgentRecordRole.ASSISTANT_ACTION)),
+        None,
     )
+    observations = tuple(
+        row for row in rows if row.has_role(AgentRecordRole.TOOL_OBSERVATION)
+    )
+    content = "\x1e".join((
+        f"command\x1f{action.command if action is not None else ''}",
+        *(f"observation\x1f{row.content}" for row in observations),
+    ))
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
@@ -377,7 +397,7 @@ def build_resource_effect_dag(
             EffectKind.PURE,
         }
         if read_only_bundle and turn.complete:
-            digest = _turn_digest(turn, records)
+            digest = _operational_read_digest(turn, records)
             older = seen_read_bundle.get(digest)
             if older is not None:
                 older_rows = _turn_records(older, records)
@@ -397,7 +417,7 @@ def build_resource_effect_dag(
                 certificate = None
                 if certified:
                     certificate = ExclusionCertificate(
-                        rule_id="TRACE_EXACT_READ_BUNDLE_V1",
+                        rule_id="TRACE_EXACT_OPERATION_RESULT_V1",
                         proof_scope="operational_duplicate_not_llm_behavioral_equivalence",
                         witness_record_ids=(*older.record_ids, *turn.record_ids),
                         resource_version_fingerprints=older_identity[2],
@@ -413,7 +433,8 @@ def build_resource_effect_dag(
                     if certified else ExclusionClass.HEURISTIC_EXACT_DUPLICATE,
                     (*older.record_ids, *turn.record_ids),
                     certified,
-                    "the complete read-only action and observation are byte-identical; "
+                    "the executed read-only command and complete observation are "
+                    "byte-identical (assistant reasoning may differ); "
                     + (
                         "runtime identity also matches"
                         if certified else

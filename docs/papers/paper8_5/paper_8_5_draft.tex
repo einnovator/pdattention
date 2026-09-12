@@ -295,6 +295,15 @@ the claimed property is \emph{certificate-backed operational obsolescence},
 not risk-free behavioral equivalence. Behavioral preservation remains an
 empirical outcome measured by frozen replay and autonomous tasks.
 
+The initial executable rule, \textsc{Trace-Exact-Operation-Result}, compares the
+executed command and complete observation rather than the assistant's private
+reasoning prose.  It fires only when cwd, environment identity, affected
+resource-version fingerprints, return code, and observation bytes agree under
+runtime-traced or declared-complete semantics.  The older whole causal bundle
+is then operationally redundant.  Different reasoning prose is intentionally
+outside the certificate, which is why frozen behavioral qualification remains
+required even for this strongest exclusion tier.
+
 Initial rules fail closed: system/task/current state and unresolved errors are
 protected; arbitrary or untraced Bash is \textsc{Unknown}; output must be
 complete and non-truncated; file reads require canonical paths and version/span

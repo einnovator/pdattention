@@ -283,6 +283,45 @@ def test_dag_certifies_operational_duplicate_with_complete_runtime_identity():
     assert "turn:t0000" in protected_plan.selected_causal_group_ids
 
 
+def test_dag_operational_duplicate_allows_different_assistant_reasoning():
+    messages = _messages(1)
+    runtime_identity = {
+        "returncode": 0,
+        "cwd": "/workspace/repo",
+        "environment_fingerprint": "env-sha256",
+        "resource_version_fingerprints": {"foo.py": "file-sha256"},
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+        "tool_semantics": {
+            "category": "filesystem_read",
+            "provenance": "runtime_traced",
+            "complete": True,
+            "effects": [{
+                "kind": "read",
+                "resource_id": "foo.py",
+                "resource_version_fingerprint": "file-sha256",
+            }],
+        },
+    }
+    messages[3]["extra"] = runtime_identity
+    later_action = dict(messages[2])
+    later_action["content"] = later_action["content"].replace(
+        "inspect turn 0", "verify the unchanged file again"
+    )
+    messages.extend((later_action, dict(messages[3])))
+
+    dag = build_resource_effect_dag(recordize_minisweagent_messages(messages))
+    certified = [
+        row for row in dag.exclusion_candidates
+        if row.classification == ExclusionClass.CERTIFIED_OPERATIONAL_DUPLICATE
+    ]
+
+    assert len(certified) == 1
+    assert certified[0].causal_group_id == "turn:t0000"
+    assert certified[0].certificate.rule_id == "TRACE_EXACT_OPERATION_RESULT_V1"
+
+
 def test_runtime_observation_metadata_certifies_only_simple_complete_reads():
     state = {
         "complete": True,
