@@ -11,7 +11,7 @@ llama_repo=${PRA_LLAMA_REPO:-/Users/admin.jorge.simao/git/rd/upstream/llama.cpp}
 python=${PRA_AGENT_PYTHON:-/Users/admin.jorge.simao/.venvs/paper45-agent/bin/python}
 paper67=${PRA_LLAMA_ADAPTER_SRC:-/Users/admin.jorge.simao/git/rd/pdattention-paper6-7-llamacpp/src}
 model=${PRA_AGENT_MODEL_PATH:-/Users/admin.jorge.simao/.ollama/models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a}
-history=${PRA_AGENT_HISTORY:-/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/e2e_gate/llamacpp_task01_pra100_v1/interaction_history.jsonl}
+interaction_history=${PRA_AGENT_HISTORY:-/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/e2e_gate/llamacpp_task01_pra100_v1/interaction_history.jsonl}
 turns=${PRA_AGENT_REPLAY_TURNS:-31}
 
 mkdir -p "$runs"
@@ -73,7 +73,7 @@ run_condition() {
   start_engine "$label"
   cd "$runtime"
   "$python" -m experiments.paper4_5_agent.run_selection_staircase_replay \
-    --interaction-history "$history" \
+    --interaction-history "$interaction_history" \
     --output "$runs/$label.json" \
     --base-url http://127.0.0.1:18101/v1 \
     --model qwen3-coder:30b --engine llama.cpp \
