@@ -459,11 +459,14 @@ class HFAgentHistoryExecutor:
         model_id: str,
         model_revision: str,
         wire_tail_tokens: int = 32,
+        prefill_step_size: int = 256,
         chat_template_profile: str = "native",
         chat_template_digest: str | None = None,
     ) -> None:
         if wire_tail_tokens <= 0:
             raise ValueError("wire_tail_tokens must be positive.")
+        if prefill_step_size <= 0:
+            raise ValueError("prefill_step_size must be positive.")
         self.model = model
         evaluate = getattr(model, "eval", None)
         if callable(evaluate):
@@ -472,6 +475,7 @@ class HFAgentHistoryExecutor:
         self.model_id = str(model_id)
         self.model_revision = str(model_revision)
         self.wire_tail_tokens = int(wire_tail_tokens)
+        self.prefill_step_size = int(prefill_step_size)
         self.chat_template_profile = str(chat_template_profile)
         selected = str(getattr(tokenizer, "chat_template", "") or "")
         observed = hashlib.sha256(selected.encode("utf-8")).hexdigest()
@@ -505,6 +509,7 @@ class HFAgentHistoryExecutor:
             "streaming": False,
             "physical_kv_copy_reported": True,
             "prefix_cache_enabled": False,
+            "prefill_step_size": self.prefill_step_size,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
         }
@@ -617,17 +622,26 @@ class HFAgentHistoryExecutor:
         if not tokens:
             return 0, 0, 0
         assert state.canonical_cache is not None
-        before_bytes = _cache_bytes(state.canonical_cache)
-        before_pointers = _cache_storage_pointers(state.canonical_cache)
-        _outputs, cache = self._forward(
-            state.canonical_cache, tokens, len(state.canonical_tokens)
-        )
-        state.canonical_cache = cache
-        after_bytes = _cache_bytes(cache)
-        after_pointers = _cache_storage_pointers(cache)
-        reallocated = bool(before_pointers and before_pointers != after_pointers)
-        suffix_bytes = max(after_bytes - before_bytes, 0) if reallocated else 0
-        reallocation = before_bytes if reallocated else 0
+        suffix_bytes = 0
+        reallocation = 0
+        base_position = len(state.canonical_tokens)
+        values = list(map(int, tokens))
+        for offset in range(0, len(values), self.prefill_step_size):
+            step = values[offset : offset + self.prefill_step_size]
+            before_bytes = _cache_bytes(state.canonical_cache)
+            before_pointers = _cache_storage_pointers(state.canonical_cache)
+            _outputs, cache = self._forward(
+                state.canonical_cache, step, base_position + offset
+            )
+            state.canonical_cache = cache
+            after_bytes = _cache_bytes(cache)
+            after_pointers = _cache_storage_pointers(cache)
+            reallocated = bool(
+                before_pointers and before_pointers != after_pointers
+            )
+            if reallocated:
+                suffix_bytes += max(after_bytes - before_bytes, 0)
+                reallocation += before_bytes
         return suffix_bytes, reallocation, suffix_bytes + reallocation
 
     def _ensure_owner(self, state: _Session, source: list[int]) -> tuple[int, int, int]:
@@ -722,8 +736,15 @@ class HFAgentHistoryExecutor:
                 suffix_copy += max(after - before, 0)
             return result, updated
 
-        outputs, cache = advance(cache, wire, start)
-        calls += 1
+        values = list(map(int, wire))
+        if not values:
+            raise ValueError("HF generation wire must contain at least one token.")
+        outputs = None
+        for offset in range(0, len(values), self.prefill_step_size):
+            step = values[offset : offset + self.prefill_step_size]
+            outputs, cache = advance(cache, step, start + offset)
+            calls += 1
+        assert outputs is not None
         token = int(torch.argmax(outputs.logits[:, -1, :], dim=-1).item())
         generated: list[int] = []
         eos = self._eos_ids()

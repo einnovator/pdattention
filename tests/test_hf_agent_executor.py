@@ -133,6 +133,32 @@ def test_hf_agent_requests_only_the_last_prefill_logit_when_supported() -> None:
     assert executor.model.logits_to_keep == 1
 
 
+def test_hf_agent_bounds_prefill_and_preserves_absolute_positions() -> None:
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.prefill_step_size = 2
+    executor._eos_ids = lambda: {0}
+    observed: list[tuple[tuple[int, ...], int]] = []
+    cache = object()
+
+    def forward(active_cache, token_ids, start):
+        observed.append((tuple(token_ids), start))
+        logits = torch.zeros((1, 1, 2))
+        logits[..., 0] = 1
+        return SimpleNamespace(logits=logits), active_cache
+
+    executor._forward = forward
+    result = executor._decode_with_cache(
+        cache,
+        [10, 11, 12, 13, 14],
+        start=7,
+        max_tokens=1,
+    )
+
+    assert observed[:3] == [((10, 11), 7), ((12, 13), 9), ((14,), 11)]
+    assert observed[3] == ((0,), 12)
+    assert result.generated == []
+
+
 def test_ledger_restores_history_but_never_tokenizes_selected_resource() -> None:
     tokenizer = _Tokenizer()
     ledger = AgentHistoryLedger()

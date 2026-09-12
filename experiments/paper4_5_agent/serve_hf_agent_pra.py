@@ -132,6 +132,12 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18123)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
+    parser.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=256,
+        help="Maximum tokens per prompt/cache-extension forward pass.",
+    )
     parser.add_argument("--device-map", default="auto")
     parser.add_argument(
         "--attn-implementation",
@@ -196,6 +202,7 @@ def main() -> None:
         model_id=served_model,
         model_revision=args.revision,
         wire_tail_tokens=args.wire_tail_tokens,
+        prefill_step_size=args.prefill_step_size,
         chat_template_profile=args.chat_template_profile,
         chat_template_digest=template_digest,
     )
