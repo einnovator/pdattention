@@ -1,0 +1,53 @@
+{
+  "audit_date": "2026-09-12",
+  "scope": "Read-only audit of the frozen 64-example split-16 inputs used by the learned-routing and pooling-geometry reports; no model execution.",
+  "split_rule": {
+    "implementation": "src/data/datamodules.py:PRADataModule._split",
+    "lengths": {
+      "train": 51,
+      "validation": 6,
+      "test": 7,
+      "heldout_complement": 13
+    },
+    "heldout_definition": "validation plus test: every index not in the 51-example training subset"
+  },
+  "hotpotqa": {
+    "generation_version": "hotpotqa_nativekv_answer_code_v3",
+    "split_seed": 31337,
+    "question_file_sha256": "1c55469a799f01866fb035c4db1bbcd5e66b9b4f1ccf3576cdf33903a98cc3f5",
+    "examples": 64,
+    "target_is_first_candidate_examples": 64,
+    "source_begins_with_answer_code_examples": 64,
+    "train_unique_source_rows": 51,
+    "heldout_unique_source_rows": 13,
+    "train_heldout_source_overlap": 0
+  },
+  "qasper": {
+    "generation_version": "qasper_nativekv_answer_code_v2",
+    "split_seed": 44321,
+    "question_file_sha256": "b008aff7c699e922acecfca7ffa079571d662557b9cf4d6a57450259aa356676",
+    "examples": 64,
+    "target_is_first_candidate_examples": 64,
+    "source_begins_with_answer_code_examples": 64,
+    "train_unique_papers": 48,
+    "heldout_unique_papers": 13,
+    "train_heldout_paper_overlap": 1,
+    "overlapping_paper_ids": [
+      "1911.07555"
+    ],
+    "overlap_detail": {
+      "train_example": "qasper-1911.07555-c598028815066089cc1e131b96d6966d2610467a",
+      "heldout_example": "qasper-1911.07555-e5c8e9e54e77960c8c26e8e238168a603fcdfcc6"
+    }
+  },
+  "controls_present": {
+    "shuffled_within_example_labels": true,
+    "fixed_selection_native_kv_payload_parity": true,
+    "position_only_router": false,
+    "random_low_dimensional_projection": false,
+    "anchor_only_lexical_router": false,
+    "randomized_target_location": false,
+    "document_disjoint_qasper_split": false
+  },
+  "interpretation": "The stored result supports target-identity detection in a fixed-anchor controlled benchmark. It does not exclude an answer-code, candidate-location, or QASPER paper-overlap shortcut and therefore does not establish general semantic relevance."
+}

@@ -11,10 +11,10 @@
 \input{../shared/macros.tex}
 \setlength{\emergencystretch}{3em}
 
-\title{Position, Attention Geometry, and Semantic Routing\\for Retrieved Native-KV Memory}
+\title{Position, Attention Geometry, and Controlled Evidence Routing\\for Retrieved Native-KV Memory}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
-\hypersetup{pdftitle={Position, Attention Geometry, and Semantic Routing for Retrieved Native-KV Memory},pdfauthor={Jorge Simao}}
+\hypersetup{pdftitle={Position, Attention Geometry, and Controlled Evidence Routing for Retrieved Native-KV Memory},pdfauthor={Jorge Simao}}
 
 \begin{document}
 \maketitle
@@ -38,17 +38,20 @@ The central result is a separation rather than a universal quality gain. WikiTex
 representation improves in 30/30 pairs, but next-token loss improves in only 5/30; controlled
 QA-derived loss improves in 35/60 pairs and reverses direction for some RoPE conditions.
 Changing RoPE distance alone yields no stable useful optimum. Increasing centered-RoPE gist
-resolution from one to eight raises native-Q/K rank fidelity from .794 to .963 while semantic
-AUC remains .6510--.6516. Conversely, a learned 32-dimensional relevance metric reaches .971
-AUC despite only .178 Q/K fidelity. For fixed selected identities, post-RoPE K, V, and native
-attention output remain bit-exact. A 192-token logical prompt also runs with every measured
+resolution from one to eight raises Spearman agreement with our defined native-Q/K
+chunk-ranking surrogate from .794 to .963 while normalized target-identity
+recall/request-fraction area remains .6510--.6516. Conversely, a learned 32-dimensional metric
+reaches .971 area with only .178 surrogate rank fidelity on explicit answer-code anchors that
+always occupy the first of 15 candidates. This controlled dissociation does not establish
+general semantic relevance or downstream answer improvement. For fixed selected identities,
+post-RoPE K, V, and native attention output remain bit-exact. A 192-token logical prompt also runs with every measured
 native operation at or below 24 tokens under a 32-token limit. The distinction
 remains consequential in a pretrained Qwen3 8B--32B MLX calibration: at 8K,
 source-relative segmented first-logit error is far below a query-restart control,
 whose greedy-sequence agreement is zero at every measured model point.
 Positional continuity is
-necessary, but coordinate correctness, representation fidelity, attention geometry, semantic
-selection, and downstream use are distinct empirical properties.
+necessary, but coordinate correctness, representation fidelity, attention geometry, controlled
+target selection, and downstream use are distinct empirical properties.
 \end{abstract}
 
 \section{Introduction}
@@ -78,9 +81,9 @@ fails to use that composition:
 \item \textbf{Representation fidelity:} does chunked K/V resemble the state produced with
 the intended coordinates and context?
 \item \textbf{Attention-geometry fidelity:} does the positional treatment reproduce the
-intended query--key relation?
-\item \textbf{Semantic retrieval utility:} are relevant chunks ranked highly by a
-position-independent content representation?
+defined query--key chunk-ranking relation?
+\item \textbf{Target-identity retrieval utility:} is the programmatically labeled chunk ranked
+highly by a routing representation that applies no explicit positional rotation at scoring time?
 \item \textbf{Downstream task utility:} does the selected state improve language-model loss
 or answers?
 \end{enumerate}
@@ -108,10 +111,11 @@ quality--encoding-cost tradeoff.
 \item We demonstrate that systematic representation improvement need not produce monotonic
 language-model or QA-derived loss improvement.
 \item We show that averaging post-RoPE keys mixes positional phases, and that increasingly
-faithful approximations of native Q/K geometry need not improve semantic evidence retrieval.
-\item We demonstrate that semantic evidence routing can instead use a tiny learned hidden-state
-projection while selected native post-RoPE K/V remains unchanged for attention, separating
-semantic relevance geometry from positional attention geometry.
+faithful approximations of a defined native-Q/K chunk-ranking surrogate need not improve
+programmatic target-identity retrieval.
+\item We demonstrate, on a deliberately simplified fixed-anchor task, that a tiny learned
+hidden-state projection can improve target-identity ranking while selected native post-RoPE
+K/V remains unchanged for attention. We do not interpret this as general semantic retrieval.
 \item We demonstrate bounded implicit-head execution in which logical prompt length exceeds
 every native model operation, while carefully separating this mechanical result from dense
 long-context equivalence.
@@ -170,6 +174,16 @@ The gist is routing metadata, not a compressed substitute for the selected token
 Once a chunk is selected, its full token-level native K/V joins direct-context K/V under the
 same attention softmax. Position errors introduced while building that K/V survive routing
 and materialization; the router cannot repair them afterward.
+For one query head and a router-selected identity set $S$, PRA executes the ordinary attention
+map
+\begin{equation}
+  \operatorname{Attn}(q,K_S,V_S)
+  =\operatorname{softmax}\!\left(\frac{qK_S^{\top}}{\sqrt{d_h}}+M_S\right)V_S,
+  \label{eq:pra-attention}
+\end{equation}
+where $K_S,V_S$ are the selected tokens' native payload, $d_h$ is head width, and $M_S$
+enforces the applicable causal mask. The compact gist determines $S$ but is not substituted
+for $K_S$ or $V_S$.
 
 Three lengths remain distinct. $L_{\mathrm{logical}}$ is the addressable source span,
 $L_{\mathrm{model\mbox{-}op}}$ is the maximum K/V participating in one native operation,
@@ -196,7 +210,7 @@ Does overlap improve representation? & Yes in the verified WikiText scope; 29/30
 Are pre/post RoPE keys equivalent? & Zero K, logit, and output error at matched effective positions & Storage state does not change the intended geometry \\
 Does better representation guarantee task quality? & No: WikiText loss improves in 5/30; QA routed loss in 35/60 & Functional utility is a separate empirical property \\
 Can deferred rotation rebind keys? & Yes; warm latency rises from 0.179 to 0.649 ms & Flexibility has a measured systems cost \\
-Does closer native-Q/K geometry improve semantic retrieval? & Centered $G=1\rightarrow8$ raises Q/K fidelity .794$\rightarrow$.963 while AUC stays .6510$\rightarrow$.6516; the learned 32-D metric reaches .971 AUC at only .178 Q/K fidelity & Attention execution and semantic search require different geometries \\
+Does closer native-Q/K surrogate geometry improve target retrieval? & Centered $G=1\rightarrow8$ raises surrogate rank fidelity .794$\rightarrow$.963 while target-identity area stays .6510$\rightarrow$.6516; the learned 32-D metric reaches .971 area at only .178 fidelity & The tested chunk-ranking and target-identity objectives dissociate \\
 Can logical prompt exceed a native operation? & 192 logical tokens, maximum measured operation 24 under a limit of 32 & Bounded positional and transport mechanics \\
 \bottomrule
 \end{tabularx}
@@ -218,11 +232,12 @@ Coordinate correctness & Offsets remove layer-0 reset error in 30/30 pairs. & Co
 do not reconstruct missing causal context. \\
 Representation fidelity & Final-layer K improves in 30/30 pairs; WikiText loss improves in
 5/30. & Representation fidelity is not task utility. \\
-Attention-geometry fidelity & Centered $G=1\rightarrow8$ raises Q/K fidelity
-.794$\rightarrow$.963 while AUC stays .6510$\rightarrow$.6516. & Attention fidelity is not
-semantic relevance. \\
-Semantic retrieval utility & The learned metric reaches .971 AUC with .178 Q/K fidelity; an
-evidence oracle can still worsen loss. & Relevance is not sufficient for downstream use. \\
+Attention-geometry fidelity & Centered $G=1\rightarrow8$ raises surrogate rank fidelity
+.794$\rightarrow$.963 while target-identity area stays .6510$\rightarrow$.6516. & Agreement
+with this chunk-ranking surrogate is not target-identity retrieval. \\
+Target-identity retrieval utility & The learned metric reaches .971 area with .178 surrogate
+rank fidelity; an evidence oracle can still worsen loss. & Programmatic identity recall is not
+sufficient for downstream use. \\
 Downstream task utility & Routed QA loss improves in 35/60 pairs, with reversals across RoPE
 cells. & Context composition and model use require direct evaluation. \\
 \bottomrule
@@ -549,40 +564,56 @@ and retain all subgist identities. Half-token centers are evaluated directly by 
 than rounded; they occur in 30.4\% of evaluated subspans. When a short chunk contains fewer
 than $G$ tokens, $G$ is capped at one nonempty subgist per token.
 
-\paragraph{Geometry target and protocol.}
-For query $i$ and candidate chunk $c$, the exact native target is
+\paragraph{Chunk-ranking surrogate and protocol.}
+For query $i$ and candidate chunk $c$, we define the native-Q/K chunk-ranking surrogate
 \begin{equation}
  s^{\mathrm{native}}_{ic}
  =\max_{j\in c}\left[\frac{1}{H}\sum_{h=1}^{H}
  \frac{q_{ih}^{\top}R(p_j)k_{icjh}^{\mathrm{pre}}}{\sqrt{d_h}}\right].
  \label{eq:native-qk-target}
 \end{equation}
-Every gist method uses the same mean-over-heads then maximum-over-gists reducer. We report the
-per-example Spearman correlation $\rho_{QK}$ between its 15-chunk ranking and
-Eq.~\ref{eq:native-qk-target}, plus top-1 and top-3 agreement. Position bias is the per-example
+This scalar first averages token scores across heads and then maximizes across tokens. Actual
+multi-head attention normalizes scores separately within each head and combines values;
+therefore this is a chunk-ranking target, not an attention-output target or an approximation
+guarantee for the full attention operator. Every gist method uses the same mean-over-heads then
+maximum-over-gists reducer. We report the per-example Spearman correlation $\rho_{QK}$ between
+its 15-chunk ranking and Eq.~\ref{eq:native-qk-target}, plus top-1 and top-3 agreement. Thus
+``Q/K fidelity'' below always means rank fidelity to this specific surrogate. Position bias is the per-example
 Pearson correlation between routing score and normalized chunk center; the table reports its
 absolute magnitude $|\rho_{\mathrm{pos}}|$, while signed values remain in the artifacts.
 
 The experiment reuses the frozen RoPE checkpoints, 16-way HotpotQA- and QASPER-derived
 partitions, established 80/20 split, tiny and small tiers, and seeds 1, 7, 21, 42, and 87. We
-compare post-RoPE mean, position-neutral pre-RoPE mean, centered $G=1,2,4,8$, raw hidden
-cosine, and the supervised 32-D hidden-state projection introduced in the next section. Semantic
-metrics use the programmatic evidence identity. Reported means first aggregate the four
+compare post-RoPE mean, pre-RoPE mean, centered $G=1,2,4,8$, raw hidden
+cosine, and the supervised 32-D hidden-state projection introduced in the next section.
+Target-retrieval metrics use the programmatic evidence identity. Reported means first aggregate the four
 dataset--tier cells within each seed; 95\% intervals use the five resulting seed means.
 The attention payload is always native token-level post-RoPE K and native V.
+
+For clarity, the reported area is not ROC-AUC. The requested-fraction grid is
+\begin{equation}
+\mathcal F=\{.01,.02,.05,.10,.15,.20,.25,.30,.50,1.0\},
+\end{equation}
+and, for the 15-candidate benchmark, $k(f)=\max(1,\lceil15f\rceil)$. At each requested fraction $f$, $R(f)$ is mean
+held-out target-identity recall after selecting the top $k(f)$ candidates. We trapezoidally
+integrate the points $(0,0)$ and $(f,R(f))$ for $f\leq.30$, then divide by $.30$. We call this
+the normalized target-identity recall/request-fraction area, $A^{\mathrm{target}}_{0\text{--}30}$.
+Because ceiling is applied to 15 candidates, several requested fractions share the same
+physical cutoff; in particular, nominal 5\% and 10\% select 1/15 and 2/15, or 6.7\% and 13.3\%.
 
 \begin{table}[!htbp]
 \centering
 \scriptsize
-\caption{Native-Q/K geometry and semantic evidence retrieval. $\rho_{QK}$ includes a 95\%
-confidence interval over five seed-level means. R10/R20 denote evidence-identity recall at
-nominal 10\%/20\% candidate fractions; AUC is sparse AUC$_{0\text{--}30}$, and $f_{80}$/$f_{90}$
-are selected fractions needed for .80/.90 recall.}
+\caption{Native-Q/K surrogate geometry and target-identity retrieval. $\rho_{QK}$ includes a
+95\% confidence interval over five seed-level means. R10/R20 denote target-identity recall at
+nominal 10\%/20\% requested candidate fractions; $A^{\mathrm{target}}_{0\text{--}30}$ is the
+normalized recall/request-fraction area defined in text, and $f_{80}$/$f_{90}$ are actual
+selected fractions needed for .80/.90 recall.}
 \label{tab:pooling-geometry}
 \resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrrrrrr}
+\begin{tabular}{lrrrr@{\hspace{8pt}}rrr}
 \toprule
-Method & $\rho_{QK}$ & $|\rho_{\mathrm{pos}}|$ & R10 & R20 & AUC & $f_{80}$ & $f_{90}$ \\
+Method & $\rho_{QK}$ & $|\rho_{\mathrm{pos}}|$ & R10 & R20 & $A^{\mathrm{target}}$ & $f_{80}$ & $f_{90}$ \\
 \midrule
 Post-RoPE mean & $.802\mathbin{\pm}.049$ & .590 & .631 & .688 & .653 & .350 & .523 \\
 Pre-RoPE mean & $.408\mathbin{\pm}.071$ & .239 & .527 & .596 & .548 & .600 & .683 \\
@@ -599,32 +630,37 @@ Learned 32-D & $.178\mathbin{\pm}.058$ & .338 & .996 & 1.000 & .971 & .070 & .07
 \begin{figure}[H]
 \centering
 \includegraphics[width=.78\linewidth]{../shared/figures/rope_pooling_geometry_vs_semantics.pdf}
-\caption{\textbf{Increasing centered-RoPE resolution closely reproduces native Q/K ranking
-without improving semantic evidence retrieval; the learned semantic router shows the opposite
-geometry.} Error bars are 95\% confidence intervals over five seed-level means.}
+\caption{\textbf{Increasing centered-RoPE resolution more closely reproduces the defined
+native-Q/K chunk-ranking surrogate without improving programmatic target-identity retrieval;
+the supervised projection shows the crossed pattern.} Error bars are 95\% confidence intervals
+over five seed-level means. The target-identity axis is the normalized recall/request-fraction
+area, not ROC-AUC.}
 \label{fig:pooling-geometry}
 \end{figure}
 
 The $G$ sweep supplies the cleanest controlled contrast. From $G=1$ to $G=8$, mean
 $\rho_{QK}$ rises by .169, and it rises in all 20 dataset--tier--seed conditions. Top-1
-agreement rises from .723 to .946 and top-3 overlap from .715 to .923. Yet semantic AUC moves
+agreement rises from .723 to .946 and top-3 overlap from .715 to .923. Yet normalized
+target-identity recall/request-fraction area moves
 only from .6510 to .6516: 10 conditions improve, 8 decline, and 2 tie. R10 changes from .631
 to .627 and R20 from .692 to .681. Diagnostic R@3/R@8/MRR are
-.692/.931/.653 at $G=1$ and .681/.923/.662 at $G=8$. Better approximation of the host
-attention ranking therefore does not imply better evidence ranking in this probe.
+.692/.931/.653 at $G=1$ and .681/.923/.662 at $G=8$. Better approximation of the defined
+chunk-ranking surrogate therefore does not imply better target-identity ranking in this probe.
 
-The learned metric provides the crossed comparison. It has only .178 Q/K rank fidelity, yet
-reaches .971 sparse AUC, .996 R10, and 1.000 R20. It is not an approximation of native Q/K
-geometry; it is a supervised relevance geometry. Centered $G=8$ shows the reverse: .963 Q/K
-fidelity with only .652 AUC. These results experimentally separate levels 3 and 4 in the
+The learned metric provides the crossed comparison. It has only .178 surrogate rank fidelity,
+yet reaches .971 normalized target-identity area, .996 R10, and 1.000 R20. It is not an
+approximation of the native-Q/K chunk-ranking surrogate; it is a supervised target-identity
+geometry in this controlled construction. Centered $G=8$ shows the reverse: .963 surrogate
+rank fidelity with only .652 target-identity area. These results experimentally separate the
+two measured ranking objectives in the
 paper's framework:
 \begin{equation}
- \boxed{\text{better native-attention approximation}\not\Rightarrow
- \text{better semantic retrieval}}
+ \boxed{\text{better native-Q/K surrogate ranking}\not\Rightarrow
+ \text{better target-identity retrieval}}
 \end{equation}
 \begin{equation}
- \boxed{\text{high semantic retrieval}\not\Rightarrow
- \text{native-attention similarity}}
+ \boxed{\text{high target-identity retrieval}\not\Rightarrow
+ \text{native-Q/K surrogate similarity}}
 \end{equation}
 
 \begin{figure}[!htbp]
@@ -632,7 +668,7 @@ paper's framework:
 \includegraphics[width=.72\linewidth]{../shared/figures/rope_pooling_position_bias.pdf}
 \caption{Native RoPE attention is position-sensitive, so increasing Q/K fidelity need not
 remove position correlation. Centered $G=1$--$8$ retains substantial negative signed
-correlations ($-.569$ to $-.595$), whereas the learned relevance metric reduces but does not
+correlations ($-.569$ to $-.595$), whereas the learned target-identity metric reduces but does not
 eliminate the association. Error bars show 95\% confidence intervals over five seeds.}
 \label{fig:pooling-position-bias}
 \end{figure}
@@ -641,17 +677,17 @@ For every method, fixed selected identities yield zero maximum absolute differen
 native K, selected native V, and attention output. Pooling changes only the compact search
 representation. The result does not make token-level post-RoPE K wrong: native post-RoPE K is
 the correct attention payload. It shows why a mixed-phase mean can be a useful approximation
-of attention ranking and still be the wrong objective for semantic indexing. In particular,
+of the defined Q/K ranking and still be the wrong objective for target-identity indexing. In particular,
 $G\uparrow\Rightarrow\rho_{QK}\uparrow$ does not imply
 $|\rho_{\mathrm{position}}|\rightarrow0$, because the target geometry is itself positional.
 
 \section{Can Routing Use a Different Geometry?}
 \label{sec:learned-routing}
 
-If increasingly faithful approximations of native attention geometry do not improve evidence
-ranking, semantic retrieval may require a different metric rather than a more accurate
-approximation of Q/K attention. We therefore test a positive alternative. Native RoPE remains
-responsible for attention, while a small position-independent metric ranks chunks. Let $h_q$
+If increasingly faithful approximations of the native-Q/K chunk-ranking surrogate do not
+improve target-identity ranking, that controlled objective may require a different metric.
+We therefore test a positive alternative. Native RoPE remains responsible for attention, while
+a small metric with no explicit positional rotation at scoring time ranks chunks. Let $h_q$
 be the final query token's attention-input hidden state and $g_c$ the mean attention-input
 hidden state of candidate chunk $c$. Two bias-free linear maps define
 \begin{equation}
@@ -664,8 +700,8 @@ encoding, Q/K/V projections, and payload path remain frozen. Only $A_q$ and $A_c
 within-example margin-ranking loss against the programmatic evidence identity.
 
 \begin{quote}
-\textbf{A tiny learned semantic geometry sharply improves evidence ranking without altering
-native positional K/V.}
+\textbf{A tiny supervised projection sharply improves fixed-anchor target-identity ranking
+without altering native positional K/V.}
 \end{quote}
 
 \begin{figure}[H]
@@ -680,8 +716,8 @@ $A_c$ $\leftarrow$ mean chunk $h_{\mathrm{in}}$\\
 \multicolumn{3}{c}{selected identities $\rightarrow$ native post-RoPE K + native V
 $\rightarrow$ ordinary attention}
 \end{tabular}
-\caption{Semantic memory selection and positional attention can use different geometries
-without changing the selected native K/V payload.}
+\caption{Controlled target-identity selection and positional attention can use different
+geometries without changing the selected native K/V payload.}
 \label{fig:two-geometries}
 \end{figure}
 
@@ -695,6 +731,19 @@ fifth router has identical initialization and optimization but within-example ev
 are replaced by equally many non-evidence labels. The target is the benchmark's explicit
 answer-code evidence anchor; this isolates evidence-identity ranking but is not unrestricted
 question-conditioned QA retrieval.
+
+A read-only audit of the frozen 64-example inputs exposes the available shortcuts. For both
+datasets, all 64 sources begin with \texttt{AnswerCode yes/no}, and the sole target is
+always \texttt{part-1}, the first of 15 candidates. The random split contributes 51 training
+examples and a 13-example held-out complement. HotpotQA has 51 distinct training source rows,
+13 distinct held-out rows, and zero row overlap. QASPER has 48 distinct training papers and 13
+distinct held-out papers, with one paper represented by different questions on both sides.
+Thus the QASPER split is not document-disjoint. The stored experiment has no position-only,
+random low-dimensional, anchor-only lexical, or randomized-location control. Attention-input
+hidden states receive no explicit rotation in Eq.~\ref{eq:learned-router}, but may retain
+position- or construction-correlated information from the frozen contextual encoder. We
+therefore attribute the result only to supervised detection of the constructed target identity;
+which cue was learned remains unresolved.
 
 Because 15 candidates are indexed, the requested R@5\% and R@10\% cutoffs realize one and two
 references, or 6.7\% and 13.3\%. Each example has one target identity, so any-evidence,
@@ -724,24 +773,27 @@ QASPER   & Small & .369 & .369 & .000 & .969 (.038) & .000 & .067/.067 \\
 \includegraphics[width=.74\linewidth]{../shared/figures/rope_learned_routing.pdf}
 \caption{The learned 32-D hidden-state metric dominates raw hidden cosine and the
 shuffled-label control throughout the sparse range. Post-RoPE and pre-RoPE Q/K remain useful
-controls but do not define the best evidence-ranking geometry. Curves average five seeds.}
+controls but do not define the best target-identity ranking geometry in this construction.
+Curves average five seeds.}
 \label{fig:learned-routing}
 \end{figure}
 
 At the two-reference point, learned recall is 1.000, 1.000, .985, and 1.000 in table order.
-Learned sparse AUC$_{0\text{--}30}$ is .962--.980 and MRR is .954--.992. Its AUC exceeds raw
+Learned normalized target-identity area $A^{\mathrm{target}}_{0\text{--}30}$ is .962--.980 and
+MRR is .954--.992. Its area exceeds raw
 hidden cosine and shuffled supervision in all 5/5 seeds of every dataset--tier cell. It also
 exceeds post-RoPE Q/K in all small-tier seeds and all QASPER-tiny seeds; HotpotQA-tiny is less
 uniform at 3/5 despite a positive mean difference. Thus the result is not that every learned
-initialization beats every K-space baseline. It is that evidence supervision exposes a routing
-geometry absent from both raw hidden cosine and the matched label-noise control.
+initialization beats every K-space baseline. It is that evidence supervision exposes a
+target-identity ranking geometry absent from both raw hidden cosine and the matched label-noise
+control in this fixed-anchor construction.
 
 Raw hidden-state cosine is an important negative result: one-reference recall is .000--.138,
-despite the learned maps receiving exactly those hidden states. Semantic information can be
-present in contextual hidden states while cosine in the native hidden coordinates remains a
-poor relevance metric. The asymmetric projection exposes a more useful relevance geometry.
-The shuffled-label projection collapses to .000--.015 recall, showing that the gain is learned
-evidence relevance rather than a generic benefit from low dimension or reparameterization.
+despite the learned maps receiving exactly those hidden states. The asymmetric projection
+exposes a more useful metric for this target identity. The shuffled-label projection collapses
+to .000--.015 recall, showing sensitivity to the assigned supervision rather than a generic
+benefit from low dimension or reparameterization. It does not exclude answer-code,
+candidate-location, or source-overlap shortcuts.
 
 The router adds 4,096 parameters in the tiny tier and 8,192 in the small tier, or
 .31--.79\% of the dataset-specific backbone. A 15-candidate float32 index falls from
@@ -751,16 +803,16 @@ selected identity list, post-RoPE K is identical, V is identical, and native att
 is identical: every comparison has zero maximum absolute error. The projection changes only
 the search representation, not the selected payload or its use by attention:
 \begin{equation}
- \boxed{\text{semantic routing geometry}\ne\text{native attention payload geometry}.}
+ \boxed{\text{target-identity routing geometry}\ne\text{native attention payload geometry}.}
 \end{equation}
 
 This closes the controlled comparison. Exact, local, fixed, clipped, and compressed RoPE
 placements did not yield a stable beneficial fixed distance. Increasing centered-pooling
-resolution did reproduce native attention ranking, but did not improve semantic ranking.
-Learned routing does not repair native attention geometry; it avoids asking that geometry to
-serve as a semantic relevance metric. Larger contextual encoding improves the representation
-being summarized, learned projection improves evidence ranking, and RoPE placement controls
-native positional attention. They are separate axes.
+resolution did reproduce the defined native-Q/K chunk ranking, but did not improve
+target-identity ranking. Learned routing does not repair native attention geometry; it avoids
+asking the tested Q/K surrogate to serve as the target-identity objective. Larger contextual
+encoding improves the representation being summarized, learned projection improves controlled
+target ranking, and RoPE placement controls native positional attention. They are separate axes.
 
 This contextualization result independently reinforces Paper~1's separation between encoding
 and routing granularity: fine addressability does not require equally fine independent encoding.
@@ -855,7 +907,11 @@ zero for all three. The three-case 8B 32K
 boundary has RMSE 0.128 versus 2.530 and agreement 0.333 versus zero. These are
 not claims that the segmented path is bit-exact. A companion concatenated-cache
 reference preserves 60/60 selected-text sequences across the Qwen size ladder
-and MoE checkpoint. The residual source-relative error here comes from the
+and MoE checkpoint. That concatenated-cache result is shared experimental evidence with the
+standalone native-K/V manuscript, not an independent replication: both analyses use the
+byte-identical frozen artifact
+\path{shared/results/paper1_5_rope/mac_long_context/mlx_long_context_summary.json}.
+The residual source-relative error here comes from the
 unfused segmented one-softmax reduction repeated through many layers; the reset
 control is roughly 20--48 times larger.
 
@@ -928,21 +984,27 @@ The exact evidence-only context row is structurally invariant because evidence i
 first.
 
 The learned-router confirmation is deliberately narrow. Its positive identity is an explicit
-answer-code anchor inside natural-text-derived sources, and its train and held-out examples
-come from the same controlled dataset family. It demonstrates that a tiny supervised metric
-can separate the mapped target from distractors without positional K-space, not that it solves
-open-ended HotpotQA or QASPER retrieval. We do not retrain memory use or claim a downstream
-loss gain from replacing the selector. Hard negatives, cross-domain transfer, and pretrained
-semantic structure require separate experiments.
+answer-code anchor at the beginning of every source and therefore always falls in the first
+candidate. Its train and held-out examples come from the same controlled dataset family; the
+QASPER split also shares one source paper across the two sides. It demonstrates that a tiny
+supervised metric can separate the mapped target from distractors without applying an explicit
+positional rotation in its routing score, not that it solves open-ended HotpotQA or QASPER
+retrieval. The shuffled-label control establishes sensitivity to the assigned supervision but
+does not exclude anchor, location, or document-overlap shortcuts. Position-only, random
+projection, anchor-only lexical, randomized-location, document-disjoint, hard-negative, and
+cross-domain controls remain untested. We do not retrain memory use or claim a downstream loss
+gain from replacing the selector.
 
 The pooling-geometry experiment shares those evidence-identity and scale limitations. Its
-native target uses a maximum over token scores after averaging heads; other reducers can define
-a different approximation problem. Increasing $G$ also increases compact-index entries and
+native-Q/K surrogate uses a maximum over token scores after averaging heads; actual multi-head
+attention instead normalizes per head and combines values, and other reducers can define a
+different ranking problem. Increasing $G$ also increases compact-index entries and
 score work, so $G=8$ is a fidelity control rather than a free serving recommendation. The
 study measures ranking and fixed-selection payload parity, not end-to-end answer quality after
-replacing the selector. The dissociation does not make Q/K fidelity irrelevant: native Q/K
-geometry remains the object executed by attention, while the result concerns its suitability
-as a semantic search metric.
+replacing the selector. Fixed-identity payload parity is a separate software invariant and does
+not establish attention-output approximation under changed selection. The dissociation does
+not make native Q/K geometry irrelevant; it concerns only the suitability of the stated
+mean-head/max-token surrogate for this target-identity search objective.
 
 The paper deliberately excludes pretrained Hugging Face adaptation, learned memory-use
 training, recursive multi-hop retrieval, hidden-state multi-gist search, semantic-distance
@@ -963,17 +1025,21 @@ no stable beneficial fixed retrieval distance emerged in the tested regime. Very
 placement can be destructive; the near-range response is non-monotonic rather than a universal
 distance rule.
 
-Fourth, centered subgists increasingly approximate native token-Q/K ranking: fidelity rises
-from .794 to .963 in all 20 matched conditions from $G=1$ to $G=8$. Fifth, this geometric
-success leaves semantic AUC essentially unchanged at .6510--.6516. Sixth, a tiny asymmetric
-projection shows the reverse geometry, reaching .971 semantic AUC with only .178 native-Q/K
-fidelity while selected native post-RoPE K, V, and attention output remain bit-exact. Seventh,
-semantic retrieval success still does not guarantee downstream utility: annotated evidence
-and the functionally best context composition are not always identical.
+Fourth, centered subgists increasingly approximate the defined mean-head/max-token native-Q/K
+chunk-ranking surrogate: rank fidelity rises from .794 to .963 in all 20 matched conditions
+from $G=1$ to $G=8$. Fifth, this geometric success leaves normalized target-identity
+recall/request-fraction area essentially unchanged at .6510--.6516. Sixth, a tiny asymmetric
+projection shows the crossed pattern, reaching .971 target-identity area with only .178
+surrogate rank fidelity while selected native post-RoPE K, V, and attention output remain
+bit-exact for fixed identities. Because the answer-code anchor is always in the first candidate
+and shortcut controls are absent, this result establishes supervised target detection only in
+the reported construction. Seventh, annotated-target retrieval still does not guarantee
+downstream utility: annotated evidence and the functionally best context composition are not
+always identical.
 
 The practical hierarchy is therefore: repair source coordinates, preserve contextually
-faithful representations, define native positional-attention geometry, choose a semantic
-relevance geometry, retain native K/V for attention, and measure downstream use independently.
+faithful representations, define native positional-attention geometry, choose and validate a
+task-specific routing geometry, retain native K/V for attention, and measure downstream use independently.
 \textbf{The metric appropriate for executing attention is not necessarily the metric
 appropriate for searching memory. Position, context, routing, and use are separate
 architectural problems.}
@@ -1063,7 +1129,9 @@ summaries use \texttt{052ae05}; the frozen distance/context run records source c
 prevents a process-local tokenizer retraining from changing token IDs during evaluation.
 Raw CSV/JSON, compact publication CSVs, plots, expectations, and manifests are stored in the
 Paper 1.5 results directory. The reduction script regenerates manuscript artifacts without
-executing a model. Tests cover large logical offsets, overlap and splitting, independent
+executing a model. The read-only split/location audit is
+\texttt{learned\_routing/shortcut\_audit.json}; the source-to-claim checklist and deferred
+experiment backlog are in \texttt{paper1\_5\_rope/CLAIM\_LEDGER.md}. Tests cover large logical offsets, overlap and splitting, independent
 operation/position bounds, cache metadata, no-memory conversion parity, pre-/post-RoPE equivalence,
 deliberate rebinding, retrieval policies, rollover, and CPU/GPU parity.
 Learned-routing tests additionally cover projection shapes, backbone freezing, deterministic

@@ -1,4 +1,4 @@
-"""Compare pooled RoPE attention geometry with semantic evidence retrieval."""
+"""Compare a pooled native-Q/K ranking surrogate with target-identity retrieval."""
 
 from __future__ import annotations
 
@@ -452,8 +452,8 @@ def _plot(publication: list[dict]) -> None:
             capsize=3,
             label=LABELS[method],
         )
-    axis.set_xlabel(r"Native-QK fidelity $\rho_{QK}$")
-    axis.set_ylabel(r"Semantic evidence AUC$_{0:30}$")
+    axis.set_xlabel(r"Native-QK surrogate rank fidelity $\rho_{QK}$")
+    axis.set_ylabel("Normalized target-identity recall/request-fraction area")
     axis.legend(frameon=True, fontsize=8, ncol=2)
     figure.tight_layout()
     figure.savefig(FIGURES / "rope_pooling_geometry_vs_semantics.pdf")
