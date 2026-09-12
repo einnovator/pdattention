@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from functools import lru_cache
 import json
 import math
 from pathlib import Path
@@ -35,7 +36,15 @@ def _token_counter(tokenizer_name: str | None) -> tuple[Callable[[str], int], st
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-    return lambda text: len(tokenizer.encode(text, add_special_tokens=False)), tokenizer_name
+
+    @lru_cache(maxsize=None)
+    def count_tokens(text: str) -> int:
+        # Structural grids revisit the same immutable records thousands of
+        # times. Cache exact counts by content without weakening tokenizer
+        # identity or changing any selected text.
+        return len(tokenizer.encode(text, add_special_tokens=False))
+
+    return count_tokens, tokenizer_name
 
 
 def _query(messages: Sequence[dict[str, Any]]) -> str:
