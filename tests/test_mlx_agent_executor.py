@@ -334,6 +334,7 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert first_trace["selected_history_reencoded_tokens"] == 0
     assert first_trace["selected_history_kv_copy_bytes"] == 0
     assert first_trace["physical_kv_copy"] is False
+    assert first_trace["physical_kv_copy_bytes"] == 0
     assert first_trace["canonical_suffix_graft_d2d_bytes"] > 0
     assert first_trace["attention_path"] == "canonical_native"
     assert first_trace["segmented_attention_active"] is False
@@ -362,6 +363,7 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert trace["selected_history_reencoded_tokens"] == 0
     assert trace["selected_interval_pack_bytes"] == 0
     assert trace["physical_kv_copy"] is None
+    assert trace["physical_kv_copy_bytes"] is None
     assert trace["same_subset_gate_passed"] is True
     assert trace["same_subset_reference_pack_bytes"] > 0
     assert trace["canonical_suffix_graft_d2d_bytes"] > 0
@@ -450,6 +452,7 @@ def test_qualified_profile_reports_zero_candidate_selection_copy(fake_mlx) -> No
     assert executor.capabilities()["agent_history_kv_qualified"] is True
     assert result.trace[0]["selected_history_kv_copy_bytes"] == 0
     assert result.trace[0]["physical_kv_copy"] is False
+    assert result.trace[0]["physical_kv_copy_bytes"] == 0
     assert result.trace[0]["total_kv_copy_bytes"] is not None
     assert result.trace[0]["fused_disjoint_attention"] is False
 

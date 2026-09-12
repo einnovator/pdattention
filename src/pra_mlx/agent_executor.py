@@ -672,6 +672,11 @@ class MLXAgentHistoryExecutor:
                 if plan.full_retention or self.agent_history_qualified
                 else None
             ),
+            "physical_kv_copy_bytes": (
+                0
+                if plan.full_retention or self.agent_history_qualified
+                else None
+            ),
             "canonical_extension_copy_bytes": extension_copy,
             "canonical_suffix_graft_d2d_bytes": (
                 graft_metrics.canonical_suffix_graft_d2d_bytes
