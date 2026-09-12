@@ -575,13 +575,18 @@ class HFAgentHistoryExecutor:
         device = self._device()
         ids = torch.tensor([list(map(int, token_ids))], dtype=torch.long, device=device)
         positions = torch.arange(start, start + len(token_ids), device=device)
-        outputs = self.model(
-            input_ids=ids,
-            past_key_values=cache,
-            cache_position=positions,
-            use_cache=True,
-            return_dict=True,
-        )
+        # Every call is inference, including single-token decode and canonical
+        # cache extension.  Without this guard PyTorch retains an autograd
+        # graph through successive DynamicCache concatenations; agent decode
+        # then grows memory per token and can OOM even a small model.
+        with torch.inference_mode():
+            outputs = self.model(
+                input_ids=ids,
+                past_key_values=cache,
+                cache_position=positions,
+                use_cache=True,
+                return_dict=True,
+            )
         return outputs, getattr(outputs, "past_key_values", cache)
 
     def _extend_canonical(

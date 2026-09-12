@@ -75,6 +75,31 @@ def _manifest(messages):
     ]
 
 
+def test_all_hf_agent_forwards_disable_autograd() -> None:
+    class Model:
+        device = torch.device("cpu")
+
+        def __init__(self) -> None:
+            self.grad_enabled = None
+
+        def __call__(self, **kwargs):
+            self.grad_enabled = torch.is_grad_enabled()
+            return SimpleNamespace(
+                logits=torch.zeros((1, 1, 4)),
+                past_key_values=kwargs["past_key_values"],
+            )
+
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.model = Model()
+    cache = object()
+
+    output, returned_cache = executor._forward(cache, [1], 0)
+
+    assert executor.model.grad_enabled is False
+    assert returned_cache is cache
+    assert output.logits.shape == (1, 1, 4)
+
+
 def test_ledger_restores_history_but_never_tokenizes_selected_resource() -> None:
     tokenizer = _Tokenizer()
     ledger = AgentHistoryLedger()
