@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from pra_hf.live_history import LiveKVSelectionPlan
+from pra_hf.agent_executor import split_generation_prompt
 from pra_mlx.native import (
     MLXDisjointLayerKV,
     MLXDisjointNativeMemory,
@@ -30,7 +31,6 @@ from pra_sglang.mlx_native import (
     SGLangSelectedKVCache,
 )
 
-from .run_mlx_agent_cache_equivalence import _assistant_prompts
 from .sparse_gate_common import sparse_causal_plan
 
 
@@ -147,7 +147,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     runner.init_cache_pools(None)
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    prompts = _assistant_prompts(tokenizer, trajectory, args.turn)
     messages = trajectory["messages"]
     assistant_indexes = [
         index
@@ -155,10 +154,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if message.get("role") == "assistant"
     ][: args.turn]
     assistant_index = assistant_indexes[-1]
-    prompt_ids = prompts[-1]
-    tail_tokens = min(args.wire_tail_tokens, max(1, len(prompt_ids) // 4))
-    source_ids = prompt_ids[:-tail_tokens]
-    wire_tail = prompt_ids[-tail_tokens:]
+    prompt_ids, source_ids, wire_tail = split_generation_prompt(
+        tokenizer,
+        messages[:assistant_index],
+    )
     plan = sparse_causal_plan(
         tokenizer,
         messages[:assistant_index],

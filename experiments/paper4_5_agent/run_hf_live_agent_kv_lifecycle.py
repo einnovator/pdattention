@@ -14,12 +14,9 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from pra_hf.hf_live_kv import HFLiveKVRequestCancelled, HFLiveKVRuntime
+from pra_hf.agent_executor import split_generation_prompt
 
-from .run_hf_agent_cache_equivalence import (
-    _assistant_prompts,
-    _max_delta,
-    _prefill,
-)
+from .run_hf_agent_cache_equivalence import _max_delta, _prefill
 from .sparse_gate_common import sparse_causal_plan
 
 
@@ -93,17 +90,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         local_files_only=args.local_files_only,
     ).to(device).eval()
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    prompts = _assistant_prompts(tokenizer, trajectory, args.turn)
     messages = trajectory["messages"]
     assistant_indexes = [
         index for index, message in enumerate(messages)
         if message.get("role") == "assistant"
     ][: args.turn]
     assistant_index = assistant_indexes[-1]
-    prompt_ids = prompts[-1]
-    tail_tokens = min(args.wire_tail_tokens, max(1, len(prompt_ids) // 4))
-    source_ids = prompt_ids[:-tail_tokens]
-    wire_tail = prompt_ids[-tail_tokens:]
+    prompt_ids, source_ids, wire_tail = split_generation_prompt(
+        tokenizer,
+        messages[:assistant_index],
+    )
     source = _prefill(model, source_ids, device)
     source_cache = source.past_key_values
     plan = sparse_causal_plan(
