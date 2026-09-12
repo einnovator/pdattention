@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -213,6 +214,47 @@ def test_record_plan_preserves_full_source_extent_and_original_positions() -> No
     assert tuple(plan.intervals) == tuple(
         row for row in spans if row.record_id.startswith(("message:0:", "message:1:", "message:2:"))
     )
+
+
+def test_record_plan_rounds_up_with_authoritative_engine_tokenizer() -> None:
+    tokenizer = _Tokenizer()
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "old observation"},
+        {"role": "assistant", "content": "new action"},
+        {"role": "user", "content": "new observation"},
+    )
+    prompt = tokenizer.apply_chat_template(
+        messages, tokenize=True, add_generation_prompt=True
+    )
+    source = len(prompt) - len("<assistant>")
+    sparse = selected_record_plan(
+        tokenizer,
+        messages,
+        prompt,
+        source_tokens=source,
+        retention_fraction=0.9,
+        mandatory_message_indices=(0, 1),
+        selected_message_indices=(4, 5),
+    )
+    rounded = selected_record_plan(
+        tokenizer,
+        messages,
+        prompt,
+        source_tokens=source,
+        retention_fraction=0.9,
+        mandatory_message_indices=(0, 1),
+        selected_message_indices=(4, 5),
+        round_up_to_retention_floor=True,
+    )
+
+    assert sparse.selected_tokens < math.ceil(0.9 * source)
+    assert rounded.selected_tokens >= math.ceil(0.9 * source)
+    assert {
+        span.record_id for span in rounded.intervals if span.causal_group_id == "turn:2"
+    } == {"message:2:assistant", "message:3:user"}
 
 
 def test_declared_retention_floor_rejects_underfilled_record_selection() -> None:

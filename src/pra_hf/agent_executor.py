@@ -311,6 +311,7 @@ def selected_record_plan(
     mandatory_message_indices: Sequence[int],
     selected_message_indices: Sequence[int],
     chat_template_kwargs: Mapping[str, Any] | None = None,
+    round_up_to_retention_floor: bool = False,
 ) -> LiveKVSelectionPlan:
     fraction = float(retention_fraction)
     if not 0 < fraction <= 1:
@@ -343,6 +344,30 @@ def selected_record_plan(
             "Selected resident records have no chat-template token span: "
             + ", ".join(map(str, missing))
         )
+    if round_up_to_retention_floor:
+        minimum = math.ceil(fraction * source_tokens)
+        chosen_ids = {span.record_id for span in chosen}
+        # The proxy uses a portable whitespace estimate, whereas this layer
+        # has the model's authoritative tokenizer.  Complete any partially
+        # selected causal groups first, then restore the newest omitted whole
+        # groups until the exact token floor is met.  No text is re-tokenized:
+        # all added intervals refer to the resident canonical K/V owner.
+        groups: dict[str, list[LiveKVInterval]] = {}
+        for span in spans:
+            groups.setdefault(span.causal_group_id or span.record_id, []).append(span)
+        selected_groups = {
+            span.causal_group_id or span.record_id for span in chosen
+        }
+        for group_id in selected_groups:
+            chosen_ids.update(span.record_id for span in groups[group_id])
+        for group_id in reversed(tuple(groups)):
+            selected_tokens = sum(
+                span.tokens for span in spans if span.record_id in chosen_ids
+            )
+            if selected_tokens >= minimum:
+                break
+            chosen_ids.update(span.record_id for span in groups[group_id])
+        chosen = tuple(span for span in spans if span.record_id in chosen_ids)
     return LiveKVSelectionPlan.create(
         source_tokens, chosen, source_position_base=source_tokens
     )
@@ -868,6 +893,10 @@ class HFAgentHistoryExecutor:
             mandatory_message_indices=mandatory,
             selected_message_indices=selected,
             chat_template_kwargs=template_kwargs,
+            round_up_to_retention_floor=(
+                request.metadata.get("selection_budget_policy")
+                == "causal_bundle_round_up_v1"
+            ),
         )
         selection_contract = request.metadata.get("selection_contract")
         enforce_retention_floor(
