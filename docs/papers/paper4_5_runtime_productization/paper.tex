@@ -3605,15 +3605,22 @@ selected history, and reports 1,953,728 attention-temporary bytes and
 $\lceil rN\rceil$ unless the request declares an arbitrary-subset mechanism
 probe.  This fallback smoke is not autonomous task evidence.
 
-On the same Qwen2.5-Coder-1.5B checkpoint and frozen Task~02 trajectory, the
-matched HF incremental-cache control is also greedy-token exact to cold full-
-history re-prefill on all seven eight-token continuations.  Append-only reuse
-grows from 1,683 prompt tokens on turn one to 4,382 on turn seven.  The maximum
-bfloat16 logit delta is 0.34375, so this is sequence parity rather than
-bit-exact logit parity.  Together with the direct PRA-100 accounting smoke
-above, it closes the full-retention cache-continuation control while retaining
-the distinction between zero selected-history attachment copy and ordinary
-\texttt{DynamicCache} growth copy.
+On the same Qwen2.5-Coder-1.5B revision and frozen Task~02 trajectory, the
+earlier incremental-cache versus cold full-history diagnostic is greedy-token
+exact on all seven eight-token continuations, but its maximum bfloat16 logit
+delta is 0.34375.  That comparison changes the prefill reduction shape and is
+therefore a rematerialization diagnostic, not a PRA-100 numerical gate.  The
+corrected CUDA gate forks the ordinary control and PRA-100 from the identical
+resident \texttt{DynamicCache}; PRA-100 then passes 7/7 continuations with
+zero maximum logit delta.  Every turn retains all source tokens (1,683 on turn
+one through 4,382 on turn seven), returns the dense cache object by identity,
+and reports zero selected-history re-encoding, K/V copy, interval packing, and
+host-to-device bytes.  The two experimental cache clones total 1,198,317,568
+bytes across the seven turns and are reported separately as measurement-only
+state-fork overhead; they are absent from the production attachment path.
+Thus exact same-state PRA-100 parity and zero-copy selection coexist without
+misclassifying ordinary \texttt{DynamicCache} growth or oracle cloning as
+selected-history attachment cost.
 
 The first autonomous CUDA attempts exposed two further plain-path defects that
 supersede the earlier attribution to BitsAndBytes alone.  HF forward calls were

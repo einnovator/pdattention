@@ -53,6 +53,10 @@ The implementation adds:
 - a bounded vLLM 0.28 CUDA stateful page-alias gate whose seven-turn PRA-100
   replay is 7/7 token-exact to dense full history, observes every lifecycle
   callback, and reports zero selected-history re-encoding, K/V copy, and H2D;
+- a corrected HF CUDA same-resident-state gate whose seven-turn PRA-100 dense
+  no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
+  interval packing, and H2D remain zero; measurement-only cache forks are
+  reported outside the production attachment boundary;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
 - request attachment guards that bind native selections to tenant/session scope

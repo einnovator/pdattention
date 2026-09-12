@@ -62,6 +62,30 @@ def test_hf_task02_full_history_cache_control_is_sequence_exact() -> None:
     assert max(row["max_abs_logit_delta"] for row in result["rows"]) == 0.34375
 
 
+def test_hf_task02_pra100_is_logit_exact_from_identical_resident_state() -> None:
+    result = _load(
+        "hf_qwen25coder15b_task02_pra100_same_state_cuda_20260912.json"
+    )
+    assert result["schema_version"] == "paper4.5.agent-history-kv-gate.v2"
+    assert result["model_revision"] == (
+        "2e1fd397ee46e1388853d2af2c993145b0f1098a"
+    )
+    assert result["retention_fraction"] == 1.0
+    assert result["completed_turns"] == result["exact_turns"] == 7
+    assert result["max_abs_logit_delta"] == 0.0
+    assert result["pra100_same_state_gate_valid"] is True
+    assert result["zero_copy_engine_gate_valid"] is True
+    assert all(row["dense_semantic_noop_identity"] for row in result["rows"])
+    accounting = result["copy_accounting"]
+    assert accounting["selected_history_reencoded_tokens"] == 0
+    assert accounting["selected_history_kv_copy_bytes"] == 0
+    assert accounting["physical_kv_copy_bytes"] == 0
+    assert accounting["host_to_device_bytes"] == 0
+    assert accounting["interval_pack_bytes"] == 0
+    assert accounting["measurement_state_fork_copy_bytes"] > 0
+    assert accounting["measurement_state_fork_in_production_path"] is False
+
+
 def test_vllm_task02_pra100_matches_dense_and_closes_every_alias() -> None:
     result = _load(
         "vllm_qwen25coder15b_task02_pra100_dense_reference_20260912.json"
