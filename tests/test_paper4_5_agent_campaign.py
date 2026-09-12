@@ -2898,12 +2898,17 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
         agent_qualified = True
         post_count = 0
         session_ids = []
+        runtime_identity = {
+            "packages": {"mlx": "0.32.1", "mlx-lm": "0.32.0"},
+            "pra_source_revision": "e563e62d",
+        }
 
         def do_GET(self) -> None:  # noqa: N802
             payload = (
                 {
                     "status": "ok",
                     "prefix_cache_enabled": self.prefix_enabled,
+                    "runtime_identity": self.runtime_identity,
                     "effective_capabilities": {
                         "native_kv": True,
                         "agent_history_kv_qualified": self.agent_qualified,
@@ -2957,6 +2962,7 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
         result = gateway_preflight(args)
         repeated = gateway_preflight(args)
         assert result["native_consumption_probe"] == "passed"
+        assert result["runtime_identity"]["packages"]["mlx"] == "0.32.1"
         assert repeated["native_consumption_probe"] == "passed"
         assert len(set(Handler.session_ids)) == 2
         assert result["prefix_cache_enabled"] is True
@@ -2966,6 +2972,16 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
         replayed = gateway_preflight(args)
         assert replayed["generation_probe_replayed"] is True
         assert Handler.post_count == 2
+        Handler.runtime_identity = {
+            **Handler.runtime_identity,
+            "pra_source_revision": "different",
+        }
+        with pytest.raises(RuntimeError, match="runtime package/source identity changed"):
+            gateway_preflight(args)
+        Handler.runtime_identity = {
+            **Handler.runtime_identity,
+            "pra_source_revision": "e563e62d",
+        }
         args.endpoint_preflight_receipt = None
         Handler.prefix_enabled = False
         with pytest.raises(RuntimeError, match="prefix_cache_enabled=true"):

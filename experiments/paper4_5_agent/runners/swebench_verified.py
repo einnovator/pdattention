@@ -163,6 +163,9 @@ def gateway_preflight(
     chat_template_digest = health.get(
         "chat_template_digest", effective.get("chat_template_digest")
     )
+    runtime_identity = health.get("runtime_identity")
+    if runtime_identity is not None and not isinstance(runtime_identity, dict):
+        raise RuntimeError("endpoint runtime_identity must be a JSON object")
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
     agent_history_qualified = bool(
@@ -250,6 +253,13 @@ def gateway_preflight(
             raise RuntimeError(
                 "endpoint preflight chat template digest changed after restart"
             )
+        if (
+            prior.get("runtime_identity") is not None
+            and prior.get("runtime_identity") != runtime_identity
+        ):
+            raise RuntimeError(
+                "endpoint runtime package/source identity changed after restart"
+            )
         return {
             **prior,
             "url": root,
@@ -261,6 +271,7 @@ def gateway_preflight(
             "post_restart_model_rechecked": True,
             "chat_template_profile": chat_template_profile,
             "chat_template_digest": chat_template_digest,
+            "runtime_identity": runtime_identity,
             "generation_probe_replayed": True,
         }
     probe: dict[str, Any] = {
@@ -361,6 +372,7 @@ def gateway_preflight(
         "prefix_cache_enabled": prefix_active,
         "chat_template_profile": chat_template_profile,
         "chat_template_digest": chat_template_digest,
+        "runtime_identity": runtime_identity,
     }
 
 

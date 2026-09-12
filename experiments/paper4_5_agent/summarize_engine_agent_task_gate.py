@@ -45,6 +45,11 @@ def _action_trajectory(path: Path) -> list[dict[str, Any]]:
     return trajectory
 
 
+def _submission(path: Path) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return str((payload.get("info") or {}).get("submission") or "")
+
+
 def _digest(value: Any) -> str:
     encoded = json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -90,6 +95,7 @@ def _run_summary(run_dir: Path | None, instance_id: str) -> dict[str, Any] | Non
         if manifest_path.is_file() else {}
     )
     endpoint = manifest.get("gateway_preflight") or {}
+    submission = _submission(trajectory_path)
     logical = sum(int(item.get("logical_input_tokens_estimate") or 0) for item in telemetry)
     physical = sum(int(item.get("physical_input_tokens_estimate") or 0) for item in telemetry)
     context_retention = [
@@ -117,6 +123,12 @@ def _run_summary(run_dir: Path | None, instance_id: str) -> dict[str, Any] | Non
         "action_trajectory_length": len(actions),
         "action_trajectory_sha256": _digest(actions),
         "action_trajectory": actions,
+        "patch_sha256": hashlib.sha256(submission.encode("utf-8")).hexdigest(),
+        "patch_bytes": len(submission.encode("utf-8")),
+        "engine_version": manifest.get("engine_version"),
+        "engine_runtime_identity": endpoint.get("runtime_identity"),
+        "exact_environment": manifest.get("exact_environment"),
+        "configuration_differences": manifest.get("configuration_differences"),
         "requested_retention_fraction": row.get("context_budget_fraction"),
         "realized_retention_fraction": (
             physical / logical if logical else row.get("realized_retention_fraction")
@@ -227,6 +239,27 @@ def summarize(
         and pra100_complete
         and plain["action_trajectory_sha256"] == pra100["action_trajectory_sha256"]
     )
+    exact_patch_100 = bool(
+        plain_complete
+        and pra100_complete
+        and plain["patch_sha256"] == pra100["patch_sha256"]
+    )
+    plain_runtime_identity = (
+        plain.get("engine_runtime_identity") if plain else None
+    )
+    pra100_runtime_identity = (
+        pra100.get("engine_runtime_identity") if pra100 else None
+    )
+    runtime_identity_100_match = (
+        None
+        if plain_runtime_identity is None and pra100_runtime_identity is None
+        else bool(
+            plain_complete
+            and pra100_complete
+            and plain_runtime_identity
+            and plain_runtime_identity == pra100_runtime_identity
+        )
+    )
     plain_template_digest = plain.get("chat_template_digest") if plain else None
     pra100_template_digest = pra100.get("chat_template_digest") if pra100 else None
     template_digest_100_match = (
@@ -241,6 +274,8 @@ def summarize(
     )
     parity_100 = bool(
         exact_100
+        and exact_patch_100
+        and runtime_identity_100_match is not False
         and template_digest_100_match is not False
         and plain.get("task_success") is True
         and pra100.get("task_success") is True
@@ -284,12 +319,23 @@ def summarize(
                 pra100.get("task_success") if pra100_complete else None
             ),
             "pra_100_exact_action_trajectory": exact_100 if pra100_complete else None,
+            "pra_100_exact_patch": exact_patch_100 if pra100_complete else None,
+            "pra_100_engine_runtime_identity_match": (
+                runtime_identity_100_match if pra100_complete else None
+            ),
             "pra_100_chat_template_digest_match": (
                 template_digest_100_match if pra100_complete else None
             ),
             "pra_100_behavioral_parity": parity_100 if pra100_complete else None,
             "pra_90_execution_allowed": parity_100,
             "pra_90_first_action_divergence": first_90_divergence,
+            "pra_90_patch_matches_plain": (
+                bool(
+                    plain_complete and pra90_complete
+                    and plain["patch_sha256"] == pra90["patch_sha256"]
+                )
+                if pra90_complete else None
+            ),
             "engine_task_gate_complete": bool(parity_100 and pra90_complete),
             # This reducer covers one engine only. The campaign-level reducer
             # must observe a completed gate for every qualified engine before

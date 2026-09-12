@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import traceback
 import urllib.parse
@@ -39,7 +41,36 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
     return response
 
 
-def _direct_handler(executor: object, model_id: str):
+def _runtime_identity(pra_source_revision: str) -> dict[str, Any]:
+    """Describe the packages that execute MLX requests, not the caller venv."""
+
+    packages: dict[str, str | None] = {}
+    records: dict[str, str | None] = {}
+    for package in ("mlx", "mlx-lm"):
+        try:
+            distribution = importlib.metadata.distribution(package)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package] = None
+            records[package] = None
+            continue
+        packages[package] = distribution.version
+        record = distribution.read_text("RECORD")
+        records[package] = (
+            hashlib.sha256(record.encode("utf-8")).hexdigest()
+            if record else None
+        )
+    return {
+        "packages": packages,
+        "package_record_sha256": records,
+        "pra_source_revision": pra_source_revision,
+    }
+
+
+def _direct_handler(
+    executor: object,
+    model_id: str,
+    runtime_identity: Mapping[str, Any] | None = None,
+):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, status: int, payload: Mapping[str, Any]) -> None:
             encoded = json.dumps(payload, default=str).encode("utf-8")
@@ -60,6 +91,7 @@ def _direct_handler(executor: object, model_id: str):
                     "prefix_cache_enabled": False,
                     "chat_template_profile": executor.chat_template_profile,
                     "chat_template_digest": executor.chat_template_digest,
+                    "runtime_identity": dict(runtime_identity or {}),
                     "effective_capabilities": capabilities,
                     "engine": capabilities,
                 })
@@ -131,6 +163,11 @@ def main() -> None:
         help="Stable OpenAI model name; defaults to the model load path.",
     )
     parser.add_argument("--revision", required=True)
+    parser.add_argument(
+        "--pra-source-revision",
+        default="NOT_RECORDED",
+        help="Immutable pdattention source revision advertised in /health.",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18124)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
@@ -197,7 +234,12 @@ def main() -> None:
     )
     try:
         ThreadingHTTPServer(
-            (args.host, args.port), _direct_handler(executor, served_model)
+            (args.host, args.port),
+            _direct_handler(
+                executor,
+                served_model,
+                _runtime_identity(args.pra_source_revision),
+            ),
         ).serve_forever()
     finally:
         executor.close()

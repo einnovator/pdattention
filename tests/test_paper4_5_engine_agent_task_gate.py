@@ -12,6 +12,7 @@ INSTANCE = "owner__repo-1"
 def _run(
     path: Path, *, mode: str, resolved: bool, commands: list[str],
     retention: float, chat_template_digest: str | None = None,
+    runtime_identity: dict | None = None,
 ) -> None:
     path.mkdir(parents=True)
     row = {
@@ -41,11 +42,12 @@ def _run(
         for index, command in enumerate(commands)
     ]
     trajectory.write_text(json.dumps({"messages": messages}), encoding="utf-8")
-    if chat_template_digest is not None:
+    if chat_template_digest is not None or runtime_identity is not None:
         (path / "run_manifest.json").write_text(json.dumps({
             "gateway_preflight": {
                 "chat_template_profile": "stable-test",
                 "chat_template_digest": chat_template_digest,
+                "runtime_identity": runtime_identity,
             }
         }), encoding="utf-8")
 
@@ -104,6 +106,28 @@ def test_100_percent_rejects_chat_template_digest_mismatch(tmp_path: Path) -> No
     )
     assert result["gates"]["pra_100_exact_action_trajectory"] is True
     assert result["gates"]["pra_100_chat_template_digest_match"] is False
+    assert result["gates"]["pra_100_behavioral_parity"] is False
+
+
+def test_100_percent_rejects_engine_runtime_identity_mismatch(tmp_path: Path) -> None:
+    plain, pra100 = tmp_path / "plain", tmp_path / "pra100"
+    _run(
+        plain, mode="no-pra", resolved=True, commands=["ls"], retention=1.0,
+        runtime_identity={"packages": {"mlx": "0.32.1"}},
+    )
+    _run(
+        pra100, mode="direct-native-pra", resolved=True, commands=["ls"],
+        retention=1.0,
+        runtime_identity={"packages": {"mlx": "0.32.2"}},
+    )
+
+    result = summarize(
+        engine="test", instance_id=INSTANCE,
+        plain_dir=plain, pra100_dir=pra100, pra90_dir=None,
+    )
+
+    assert result["gates"]["pra_100_exact_action_trajectory"] is True
+    assert result["gates"]["pra_100_engine_runtime_identity_match"] is False
     assert result["gates"]["pra_100_behavioral_parity"] is False
 
 
