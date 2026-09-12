@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "source": "controlled_local_sa_v6/traversal_to_use_rows.csv",
+  "analysis_scope": "reanalysis of frozen stored rows; no model or router execution",
+  "estimand": "equal-weight mean over the 400 observed model-example conditions",
+  "model_example_rows": 400,
+  "unique_example_identities": 16,
+  "model_conditions_per_identity": 25,
+  "conditions": {
+    "windows": 5,
+    "seeds": 5
+  },
+  "uncertainty": {
+    "method": "percentile bootstrap over example_id clusters",
+    "draws": 10000,
+    "seed": 2516,
+    "within_cluster_policy": "retain all observed window-by-seed model conditions",
+    "population_limit": "only 16 fixed synthetic identities; intervals are descriptive sensitivity summaries, not broad task-population claims",
+    "subgroup_membership": "held fixed from observed path_gain within each resampled identity; selected-subgroup intervals remain post-treatment conditional"
+  },
+  "outputs": [
+    "traversal_effects_p0_summary.csv",
+    "traversal_effects_by_identity.csv",
+    "traversal_effects_condition_sensitivity.csv"
+  ]
+}

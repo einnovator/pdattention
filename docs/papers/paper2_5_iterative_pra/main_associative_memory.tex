@@ -17,24 +17,27 @@ checkpoint is converted without learning to native-K/V PRA.  We complement this 
 frozen Qwen, Gemma, and Llama-family diagnostics on multi-hop language tasks.
 
 At the controlled model's final layer, $W=16$ attains native edge R@4 $.428\pm.076$, versus
-$.187\pm.065$ under global attention.  Under the same 20 layer-token K/V budget, evolving-state
-iterative PRA improves complete-path recovery over one-shot retrieval in 59/400 (14.8\%)
-model--example units.  Within this path-improved subset, correct-label margin increases by $2.164$,
-with a paired-bootstrap 95\% interval $[1.336,2.971]$, while aggregate answer-accuracy improvement
-remains statistically unresolved.  Ordinary executable memory is distractor dominated, assigning
-.147 final-query
-attention mass to evidence and .521 to memory distractors.  A matched oracle intervention raises
-frozen accuracy from .140 to .398 and correct-label margin from $-3.103$ to $-.703$.
+$.187\pm.065$ under global attention.  We then compare two equal-payload but differently timed
+retrieval schedules on 16 held-out task identities evaluated by 25 window--seed models (400
+model--example rows).  Iteration raises aggregate complete-path recovery by .0275 but lowers answer
+accuracy by .0400; example-identity-clustered 95\% intervals are $[-.020,.075]$ and $[-.095,.008]$.
+Path recovery improves in 59 rows, is unchanged in 293, and worsens in 48.  The improved subgroup
+has a conditional correct-label-margin gain of $2.164$ $[1.054,3.209]$, whereas the worse subgroup
+loses .292 answer accuracy and 1.585 margin.  Ordinary executable memory assigns .147 final-query
+attention mass to evidence, .521 to memory distractors, and .332 to native context.  A matched oracle
+intervention assigns .270/.301/.429 to those categories and raises frozen accuracy from .140 to .398.
 
-These results reject absolute consumer incapacity; noisy controlled activation is the leading tested
-limitation, but attention dilution is not isolated as its sole mechanism.
+These results reject absolute consumer incapacity under this intervention but do not establish
+reliable reasoning; noisy controlled activation is the leading tested limitation, but attention dilution is
+not isolated as its sole mechanism.
 Candidate-normalized replay likewise finds no iterative dominance: at matched
 deduplicated $K/N$, depth-two iteration trades small complete-recovery gains at
 wide budgets for slightly lower mean evidence recall than one-shot retrieval.
-Transformer memory contains topology that depends causally on receptive field;
-iterative PRA can traverse that topology; and the frozen computation can use correctly activated
-memory.  The unresolved problem is to make useful evidence dominate sparse external-memory influence
-and to preserve that influence through subsequent layers.
+Transformer memory contains topology that depends causally on receptive field; the tested iterative
+schedule can traverse more of that topology without improving aggregate answers; and frozen
+computation can use correctly activated memory in an oracle control.  Isolating evolving-query search
+from its layer schedule, making evidence dominate sparse memory influence, and preserving answer
+decodability through later layers remain unresolved.
 \end{abstract}
 
 \section{Introduction}
@@ -49,22 +52,23 @@ memory.  Iterative retrieval instead asks whether $A$ itself can become a new se
 This question has two parts that are often conflated.  First, the model must expose useful
 memory-to-memory geometry.  Second, selected memories must influence the residual stream in the
 right direction.  A recovered path can fail at either boundary: routing can select distractors, the
-shared softmax can assign them most of the memory mass, or later layers can erase an initially useful
-change.  Conversely, a weak aggregate output effect does not prove that associative traversal or
+shared softmax can assign them most of the memory mass, or later layers can reduce the answer
+decodability of an initially useful change.  Conversely, a weak aggregate output effect does not prove that associative traversal or
 frozen memory consumption is absent.
 
 PRA separates compact routing state from layer-native K/V payloads
 \cite{simao2026pra,simao2026position,simao2026hf}.  That separation lets us observe root activation,
 associative traversal, physical activation, attention allocation, residual change, and final output
-as distinct events.  It also enables a strict comparison: one-shot and evolving-state iterative PRA
-receive the same layer-token K/V budget, and selected URI identities cannot be replayed merely to
-consume another intervention.
+as distinct events.  It also enables a strict payload comparison: one-shot and evolving-state
+iterative PRA receive the same layer-token K/V budget, and selected URI identities cannot be replayed
+merely to consume another intervention.  Their injection schedules are not matched.
 
 The paper has four principal findings.  First, local receptive fields preserve stronger explicit
-native Q/K topology than global attention.  Second, matched iterative PRA exploits that topology to
-recover more complete paths.  Third, better traversal is functionally useful when it changes selected
-evidence: correct-answer margin rises substantially in the path-improved subgroup.  Fourth, ordinary
-activation remains noisy, whereas matched oracle memory produces a large frozen-model output gain.
+native Q/K topology than global attention.  Second, the iterative schedule recovers more complete
+paths on average, although the comparison does not isolate evolving queries from timing and exposure.
+Third, the conditional positive association in path-improved rows coexists with a $-.040$ aggregate
+answer-accuracy change and substantial harm when paths worsen.  Fourth, ordinary activation remains
+noisy, whereas matched oracle memory produces a large frozen-model output gain.
 Table~\ref{tab:headline-questions} states the resulting causal decomposition.
 
 \begin{table}[H]
@@ -79,17 +83,17 @@ Scientific question & Result & Consequence \\
 \midrule
 Does transformer memory expose associative topology? & Yes: native Q/K contains recoverable evidence edges & Compact states support explicit traversal. \\
 Does receptive field affect topology? & Yes: final-layer R@4 is .428 at $W=16$ and .187 globally & Locality preserves stronger explicit structure. \\
-Can iterative PRA traverse it? & Yes: path recovery usually rises at the same 20-state budget & Evolving-state access is an operational primitive. \\
-Does improved traversal help computation? & Yes when useful evidence changes: margin $+2.164$ & Traversal is useful, but improved cases are sparse. \\
+Can the iterative schedule traverse it? & Aggregate path change $+.0275$ at the same 20-state budget & The composite schedule can improve traversal; evolving queries are not isolated. \\
+Does the schedule improve answers? & Aggregate accuracy change $-.0400$; improved-path margin $+2.164$ & The subgroup association is conditional and offset by null/harmful rows. \\
 Why is aggregate answer gain weak? & Selected memory gives .147 mass to evidence and .521 to distractors & Noisy controlled activation is the leading measured bottleneck. \\
-Can the frozen model consume correct PRA memory? & Yes: oracle accuracy .140$\rightarrow$.398 & Frozen-consumer incapacity is rejected as an absolute explanation. \\
+Can the frozen model consume correct PRA memory? & Oracle accuracy .140$\rightarrow$.398 & Absolute incapacity is rejected; reliable reasoning is not established. \\
 Do layers matter? & Yes: search, consumption, and preservation profiles differ & There is no universal best PRA layer. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Our contributions are: (1) controlled causal evidence that receptive field shapes associative
-topology; (2) matched-budget evidence that evolving-state PRA traverses that topology; (3) a causal
+topology; (2) a matched-budget comparison of complete one-shot and iterative schedules; (3) a causal
 decomposition of retrieval, attention allocation, residual change, and preservation; (4) oracle
 evidence that frozen transformers can use correctly activated external memory; and (5) pretrained
 validation of root-entry, granularity, layer, and distractor-competition effects.  The chronological
@@ -274,8 +278,10 @@ more explicitly traversable.}
 
 After training, selected self-attention blocks are replaced with PRA blocks carrying the same layer
 normalization, Q/K/V/O projections, and FFN weights.  Disabled-memory logits match the source model
-to numerical tolerance.  One-shot PRA selects four facts at one layer.  Matched iterative PRA
-selects one unseen fact at layers 0, 2, 4, and 5.  Both materialize exactly 20 layer-token K/V states.
+to numerical tolerance.  The one-shot schedule selects four facts at layer 0; the iterative schedule
+selects one unseen fact at each of layers 0, 2, 4, and 5.  Both materialize exactly 20 layer-token K/V
+states, but they are complete schedules rather than an isolation of one factor: selection state,
+injection timing, exposure depth, and the number of consumer events all change together.
 The later query is the transformed hidden state after previous memory integration and intervening
 self-attention/FFN computation:
 \begin{equation}
@@ -285,6 +291,20 @@ self-attention/FFN computation:
 \end{equation}
 Visited URI identities are removed from later caches, so iterative depth cannot be simulated by
 replaying the first selected fact.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.90\linewidth}
+\textbf{Controlled residual-dependent schedule.}
+Start with the final query-token residual $q_0$.  For each $\ell\in\{0,2,4,5\}$, rank unvisited
+facts with the current residual $q_\ell$, select one, inject its five layer-native K/V states, execute
+the intervening transformer blocks, and use the resulting residual for the next ranking.  The
+one-shot comparator instead ranks four facts from $q_0$ and injects all 20 states at layer 0.
+\end{minipage}}
+\caption{Controlled selection algorithm.  Equal total K/V state does not match the injection schedule;
+a static-query four-layer control is not present in the frozen evidence.}
+\label{fig:controlled-selection-algorithm}
+\end{figure}
 
 \begin{table}[H]
 \centering
@@ -306,11 +326,12 @@ Global & .212 & .420 & .197 & .177 & .453 & .221 & -.036 \\
 \end{tabular}
 \end{table}
 
-Iterative retrieval raises path recovery in four of five windows, including +.068 at $W=16$, but
+The iterative schedule raises path recovery in four of five windows, including +.068 at $W=16$, but
 every five-seed accuracy interval crosses zero.  The largest mean answer difference is +.073 at
 $W=32$, with a 95\% interval of $\pm.151$.  This does not mean graph traversal is irrelevant.  It
-means the executable policy changes useful evidence too infrequently to establish a stable
-architecture-level answer gain.
+means the schedule changes useful evidence too infrequently to establish a stable architecture-level
+answer gain.  Because a static-query selector on the same four-layer schedule was not run, these rows
+do not attribute the difference specifically to residual-dependent query updating.
 
 \begin{figure}[H]
 \centering
@@ -339,9 +360,13 @@ is retained as a diagnostic frontier, not a deployment policy.}
 \label{sec:controlled-activation}
 
 The matched traversal result identifies a boundary but not its cause.  We therefore reuse all 25
-validation-selected checkpoints as frozen experimental instruments.  The causal cohort contains 16
-paired held-out examples per checkpoint, or 400 model--example units.  No backbone, router, readout,
-or memory projection is updated.
+validation-selected checkpoints as frozen experimental instruments.  The causal cohort contains the
+same 16 held-out task identities under every window--seed checkpoint: $16\times5$ windows $\times5$
+seeds, or 400 dependent model--example rows.  No backbone, router, readout, or memory projection is
+updated.  Point estimates weight those 400 observed conditions equally.  Uncertainty below resamples
+the 16 example identities as clusters while retaining all 25 model conditions.  It describes
+sensitivity within this small fixed synthetic cohort, not a population of 400 independently sampled
+tasks and not the separate 512-example evaluation.
 
 For the same model, query, layers, example, and physical budget, we compare no memory $E_0$;
 ordinary selected memory $E_+$; oracle evidence plus enough unique distractors to preserve 20 states
@@ -362,15 +387,15 @@ generic state perturbation or correlated selection effect rather than content-sp
 layer-token K/V states.}
 \label{tab:causal-memory}
 \small
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lrrrrrr}
 \toprule
-Memory condition & Complete path & Accuracy & Margin & Evidence mass & Distractor mass \\
+Memory condition & Complete path & Accuracy & Margin & Evidence & Distractor & Native \\
 \midrule
-$E_0$ & .000 & .140 & $-3.103$ & .000 & .000 \\
-$E_+$ & .408 & .195 & $-2.255$ & .147 & .521 \\
-$E_{\mathrm{oracle}}$ & 1.000 & .398 & $-.703$ & .270 & .301 \\
-$E_{\mathrm{wrong}}$ & .000 & .058 & $-3.544$ & .000 & .546 \\
-$E_{\mathrm{shuffle}}$ & .418 & .193 & $-2.318$ & .122 & .433 \\
+$E_0$ & .000 & .140 & $-3.103$ & .000 & .000 & 1.000 \\
+$E_+$ & .408 & .195 & $-2.255$ & .147 & .521 & .332 \\
+$E_{\mathrm{oracle}}$ & 1.000 & .398 & $-.703$ & .270 & .301 & .429 \\
+$E_{\mathrm{wrong}}$ & .000 & .058 & $-3.544$ & .000 & .546 & .454 \\
+$E_{\mathrm{shuffle}}$ & .418 & .193 & $-2.318$ & .122 & .433 & .445 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -383,14 +408,15 @@ distractor dominated; matched oracle forcing increases evidence mass while prese
 \label{fig:memory-mass}
 \end{figure}
 
-\subsection{Oracle memory establishes consumption capacity}
+\subsection{Oracle memory establishes bounded consumption capacity}
 
 Oracle forcing raises complete-path recovery to 1.0, accuracy to .398, and margin from $-3.103$ to
 $-.703$.  Accuracy improves in 23 of 25 window--seed pairs and margin in 24 of 25.  With five seeds
 per window, the strongest exact two-sided sign result is still $p=.0625$; the result is a large,
 directionally consistent causal ceiling, not a fully powered deployment comparison.  Wrong memory
-lowers accuracy to .058.  Memory content therefore matters, and the frozen transformer has
-substantial latent capacity to consume correctly activated PRA memory.
+lowers accuracy to .058.  Memory content therefore matters, and the frozen transformer has substantial
+capacity to respond to correctly activated PRA memory in this controlled intervention.  It does not
+establish reliable multi-step reasoning: oracle accuracy remains .398.
 The matched oracle, wrong, and shuffled controls establish content specificity, not a sparsity-only
 benefit, but do not isolate softmax dilution: value content, residual state, and preservation also change.
 
@@ -405,26 +431,55 @@ direction.  Curves average paired checkpoints and examples for diagnosis rather 
 
 \subsection{When does iteration help?}
 
-Iterative PRA improves complete-path recovery over one-shot in 59 of 400 model--example units,
-leaves it unchanged in 293, and worsens it in 48.  Within the improved subset, correct-label margin
-rises by 2.164 with paired bootstrap 95\% interval $[1.336,2.971]$; accuracy rises by .102 with
-interval $[-.017,.220]$.  When path recovery worsens, margin falls by 1.585 and accuracy by .292.
-Across all rows, path gain correlates .279 with margin gain and .207 with answer gain.  Better
-traversal is therefore functionally useful when it changes evidence, but the tested policy does not
-produce that event reliably enough for a stable aggregate accuracy improvement.
+Aggregate results come first.  Across all 400 observed model--example rows, the iterative-minus-
+one-shot path change is $+.0275$ (2.75 percentage points), answer-accuracy change is $-.0400$, and
+margin change is $+.341$.  Identity-clustered 95\% intervals are $[-.020,.075]$, $[-.095,.008]$,
+and $[.007,.690]$, respectively.  Path estimates range from $-.0375$ to $+.0875$ across windows and
+from $-.0500$ to $+.0875$ across seeds.  Every window has a negative answer point estimate;
+seed-level answer changes range from $-.213$ to $+.063$.  Thus improved traversal does not yield an
+aggregate answer benefit in this cohort.  Appendix~\ref{app:mechanistic-identities} reports all 16
+identity means.
+
+\begin{table}[H]
+\centering
+\caption{Full outcome distribution in the 16-identity mechanistic cohort.  Rows are window--seed--
+example observations; subgroup membership is defined after observing path change.  Values are
+descriptive means, not independent-task estimates.}
+\label{tab:aggregate-path-outcomes}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Path outcome & Rows & $\Delta$ path & $\Delta$ accuracy & $\Delta$ margin \\
+\midrule
+Improved & 59 & $+1.000$ & $+.102$ & $+2.164$ \\
+Unchanged & 293 & $.000$ & $-.027$ & $+.290$ \\
+Worse & 48 & $-1.000$ & $-.292$ & $-1.585$ \\
+\midrule
+All rows & 400 & $+.0275$ & $-.0400$ & $+.341$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Within the 59 path-improved rows, correct-label margin rises by 2.164 with an identity-clustered
+95\% interval $[1.054,3.209]$ and accuracy rises by .102 $[-.045,.234]$.  This is a conditional,
+post-treatment-selected association, not evidence that improved retrieval mediates an overall causal
+gain.  When path recovery worsens in 48 rows, margin falls by 1.585 and accuracy by .292; unchanged
+rows also have a negative mean accuracy change.  Across all rows, path gain correlates .279 with
+margin gain and .207 with answer gain.  The full distribution supports a traversal--use association
+while showing that the tested schedule does not produce favorable path changes reliably.
 
 Let $G_+=\{\Delta\mathrm{path}>0\}$ denote the 59 improved units and
 $G_0=\{\Delta\mathrm{path}\leq0\}$ the other 341.  Table~\ref{tab:iteration-benefit}
 compares their existing traces.  The first block contains measurements available after one-shot
 retrieval but before choosing a retry; the second contains consequences observed only after
-iteration.  The distinction matters: margin gain, iterative evidence mass, and erasure can diagnose
+iteration.  The distinction matters: margin gain, iterative evidence mass, and decodability loss can diagnose
 a completed retry but cannot serve as deployable retry triggers.
 
 \begin{table}[H]
 \centering
-\caption{Path-improved versus other model--example units.  Entries are means; $d$ is the pooled
-standardized mean difference except for answer gain, reported as a mean change.  Intervals
-and medians are preserved in the public derived CSV.}
+\caption{Post-treatment-selected path-improved versus other model--example rows.  Entries are means;
+$d$ is the pooled standardized mean difference except for answer gain, reported as a mean change.
+Identity-clustered intervals and medians are preserved in the public derived CSV.}
 \label{tab:iteration-benefit}
 \small
 \begin{tabular}{llrrr}
@@ -442,7 +497,7 @@ Post-treatment & Margin gain & 2.164 & .026 & $d=.629$ \\
 Post-treatment & Answer gain & .102 & $-.065$ & $+.166$ \\
 Post-treatment & Iterative evidence mass & .202 & .137 & $d=.635$ \\
 Post-treatment & Iterative distractor mass & .476 & .528 & $d=-.387$ \\
-Post-treatment & Erased by final layer & .203 & .185 & $p=.720$ \\
+Post-treatment & Loses final answer decodability & .203 & .185 & $p=.720$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -459,7 +514,9 @@ because this synthetic generator couples it to chain depth.  Root-score gaps, ro
 facets, per-unit native R@$K$/MRR, contraction, and frontier competition were not recorded for these
 paired units.
 
-We test only a one-feature decision stump on the 248 eligible one-shot misses.  Feature and threshold
+The retry analysis is a conditional diagnostic, not an executable policy evaluation: its 248-row
+eligibility set is defined by whether one-shot missed the gold path, which is unavailable at inference.
+Within that oracle-defined subset, we test a one-feature decision stump.  Feature and threshold
 selection occur inside each leave-one-example-identity-out fold, so all 25 model realizations of the
 held-out task identity remain outside training; no post-treatment field is available to the stump.
 The primary feature set is label free and excludes both target/evidence annotations and query length,
@@ -469,10 +526,12 @@ improvements but issues 60 false retries: balanced accuracy is .638 (identity-bo
 selected in every fold.  A query-length-only sensitivity is stronger---balanced accuracy .839
 [.730,.919], recall .831 [.582,.983], and precision .628 [.525,.769]---but exploits a synthetic
 generator shortcut rather than a natural runtime signal.  Always declining to retry has raw accuracy
-.762 and balanced accuracy .500.  Label-free observables therefore contain only modest signal and do
-not supply a reliable controller.  The small identity count, broad precision intervals, and asymmetric
-retry cost make this a diagnostic rather than a deployable policy; Paper 3.5 must test adaptive control
-on larger natural independent cohorts.
+.762 and balanced accuracy .500 on the same conditioned subset.  Label-free observables therefore
+contain only modest conditional signal and do not supply a deployable controller.  An executable
+evaluation must define eligibility from pre-retry observables for all examples, keep tuning inside
+training folds, and count unnecessary retries, regressions, and added retrieval cost.  Those
+measurements are absent; the small identity count and broad precision intervals reinforce the
+diagnostic status.
 
 \begin{figure}[H]
 \centering
@@ -492,11 +551,11 @@ frozen decision in the correct direction, but most rows do not improve the path.
 Stage & Finding & Interpretation \\
 \midrule
 Topology & Local $W$ preserves stronger R@K & Associative structure exists and depends on receptive field. \\
-Traversal & Iterative PRA improves path recovery & The structure is operationally traversable. \\
+Traversal & Aggregate path change $+.0275$; accuracy change $-.0400$ & The composite schedule improves traversal, not answers. \\
 Ordinary activation & Evidence mass .147, distractor mass .521 & Executable selection is noisy. \\
-Oracle activation & Accuracy .140$\rightarrow$.398; margin $-3.103\rightarrow-.703$ & Frozen computation can use correct memory. \\
-Improved-path subset & Margin $+2.164$ & Better traversal is useful when selected evidence changes. \\
-Later computation & 21.6\% of initially positive oracle traces are erased & Scheduling and assimilation are secondary limits. \\
+Oracle activation & Accuracy .140$\rightarrow$.398; margin $-3.103\rightarrow-.703$ & Frozen computation responds to correct memory. \\
+Improved-path subset & Margin $+2.164$; worse-path margin $-1.585$ & Conditional association, not aggregate mediation. \\
+Later computation & 21.6\% lose positive intermediate answer decodability & Scheduling and assimilation are secondary limits. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -511,7 +570,8 @@ different measurements and need not peak together.
 Oracle usefulness is strongest early in this controlled family.  Averaged across windows, injection
 at layer 0 gives .358 accuracy and $-1.239$ margin, compared with .138 and $-2.565$ at layer 5.  The
 native graph-search optimum follows a different layer ordering.  Among oracle traces with a positive
-immediate margin effect, 21.6\% lose that advantage by the final layer.  Mean local answer-direction
+intermediate margin effect, 21.6\% lose that answer-decoding advantage by the final layer.  This is
+reduced intermediate answer decodability, not proof that usable information was erased.  Mean local answer-direction
 alignment is positive for oracle memory (.054), near zero for selected memory (.017), and negative
 for wrong memory ($-.061$).  Evidence value-contribution norm rises from 1.283 under ordinary
 selection to 2.105 under oracle selection.
@@ -537,15 +597,15 @@ $\downarrow$\\
 \textbf{SELECTED MEMORY}\\
 $\searrow$ distractors dominate (.521 vs .147 evidence) $\rightarrow$ poor activation\\
 $\downarrow$\\
-\textbf{EVIDENCE-DOMINATED ATTENTION} \quad (oracle evidence mass .270)\\
+\textbf{INCREASED EVIDENCE ATTENTION} \quad (oracle: .270 evidence, .301 distractor, .429 native)\\
 $\downarrow$\\
 \textbf{USEFUL RESIDUAL CHANGE} \quad (path-improved margin $+2.164$)\\
-$\searrow$ later erasure (21.6\%) $\rightarrow$ lost gain\\
+$\searrow$ reduced final decodability (21.6\%) $\rightarrow$ lost gain\\
 $\downarrow$\\
 \textbf{OUTPUT} \quad (oracle accuracy .140$\rightarrow$.398)
 \end{minipage}}
 \caption{Final diagnostic pipeline.  Noisy controlled activation between selected memory and
-evidence-dominated attention is the leading measured loss; the intervention does not isolate
+increased evidence attention is the leading measured loss; the intervention does not isolate
 softmax dilution from value content, consumer placement, or preservation.}
 \label{fig:causal-pipeline}
 \end{figure}
@@ -562,6 +622,21 @@ Synthetic chains test exact transitive reachability.  QASPER is primarily a dire
 control; HotpotQA supplies bridge questions; 2Wiki supplies annotated evidence transitions; and
 MuSiQue supplies deeper task graphs that reveal contraction.  These datasets have different roles and
 are not pooled into one leaderboard.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.90\linewidth}
+\textbf{Pretrained compact-memory traversal.}
+Encode document parents or local spans into a compact memory graph.  Rank root candidates from fixed
+query views or facets, then expand a bounded frontier from selected compact memory states with the
+declared semantic or native-Q/K edge scorer.  Deduplicate identities, enforce the final budget, and
+only then materialize selected native K/V.  Transformer residuals do not define the successive graph
+queries in these frozen pretrained routing studies.
+\end{minipage}}
+\caption{Pretrained traversal algorithm.  It is iterative graph expansion over compact memory, not
+the controlled experiment's residual-dependent layer-by-layer selection mechanism.}
+\label{fig:pretrained-selection-algorithm}
+\end{figure}
 
 \subsection{Root activation and query facets}
 
@@ -852,7 +927,7 @@ acceptance threshold $\theta$ reverses that tradeoff, improving precision while 
 evidence; earlier threshold-calibration gates did not identify a reliable closure rule.
 
 Consumer placement is a separate axis.  More PRA layers offer repeated assimilation but consume
-more layer-token K/V and can perturb or erase useful residual changes.  The best search layer need
+more layer-token K/V and can perturb useful residual changes or reduce their answer decodability.  The best search layer need
 not be the best consumer layer or preservation schedule.  Finally, chunk granularity $G$ changes the
 graph itself: coarse nodes improve containment at low node count but disclose irrelevant payload,
 whereas fine nodes improve payload precision while increasing graph size and sensitivity to missing
@@ -895,9 +970,12 @@ materialization, preserve a strong root, change query facet or region, or stop.
 
 Search, consumption, and preservation operate on different computational timescales.  A layer can
 have useful native Q/K topology while being a poor location for injecting value vectors.  An early
-consumer can create a useful change that later layers erase.  These observations favor architectures
+consumer can create a useful change whose answer decodability declines in later layers.  These observations favor architectures
 that treat local ongoing computation, sparse nonlocal activation, and assimilation time as separate
-controls.  They do not establish that one layer schedule generalizes across model families.
+controls.  In the mechanistic cohort, the resulting $+.0275$ aggregate path point estimate coexists
+with a $-.0400$ answer-accuracy point estimate.  The 59 favorable path rows therefore cannot be read
+apart from the 293 unchanged and 48 harmful path rows.  Nor do these experiments establish that one
+layer schedule generalizes across model families.
 
 The bounded-processing analogy is deliberately restrained.  A limited working set can be useful
 because not every associatively plausible memory should dominate current processing.  Iterative
@@ -910,9 +988,12 @@ evaluated here.
 The controlled models are 740K-parameter scientific instruments with a synthetic vocabulary, not
 language-model scaling evidence.  Five seeds leave wide Student-$t$ intervals; the minimum exact
 two-sided result with five same-direction nonzero effects is $p=.0625$.  The primary PRA corpus has
-32 examples per seed and the mechanistic cohort has 16.  Model--example bootstrap analyses do not
-turn repeated examples across seeds into independent model replicates.  Oracle forcing is a causal
-ceiling, not an executable router.
+32 examples per seed and the mechanistic cohort has 16 unique task identities, each reused across 25
+window--seed models.  Mechanistic intervals cluster on those 16 identities and retain all model
+conditions; the window and seed summaries are sensitivity analyses, not additional independent task
+samples.  Selected-subgroup membership is held fixed during resampling, so its interval remains
+conditional on the observed treatment outcome.  Oracle forcing is a causal ceiling, not an executable
+router.
 
 The local mask uses a dense kernel, so controlled elapsed time does not estimate optimized LocalSA.
 Exact SA-to-PRA conversion is intentionally frozen.  The experiment tests inherited topology and
@@ -956,18 +1037,20 @@ oracle to mostly correct, noisy, and finally distractor-only retrieval, not mere
 
 Transformer memory exposes an associative topology whose explicit traversability depends on native
 receptive field.  In the controlled family, final-layer edge R@4 is .428 at $W=16$ and .187 under
-global attention.  Evolving-state PRA can exploit that structure to recover more paths under the
-same physical K/V budget.
+global attention.  The tested iterative schedule recovers more paths under the same physical K/V
+budget, but its timing and exposure differ from one-shot, so evolving-query selection is not isolated.
 
-Better traversal is useful when it changes evidence.  It does so in 59/400 (14.8\%) model--example
-units, which gain 2.164 correct-label margin, even though the current policy produces too few such
-cases for a stable aggregate accuracy gain.  The causal intervention explains the operational gap:
+Across the 16-identity mechanistic cohort, aggregate path recovery changes by $+.0275$ while answer
+accuracy changes by $-.0400$.  Path recovery improves in 59/400 (14.8\%) model--example rows, whose
+conditional margin gain is 2.164, but it is unchanged in 293 and worsens in 48; the latter lose .292
+accuracy and 1.585 margin.  The causal intervention helps diagnose this operational gap:
 ordinary memory is
 distractor dominated, while matched oracle evidence raises frozen accuracy from .140 to .398 and
-margin from $-3.103$ to $-.703$.  The frozen transformer can consume correct PRA memory.
+margin from $-3.103$ to $-.703$.  The frozen transformer can respond to correct PRA memory, although
+oracle accuracy .398 does not establish reliable reasoning.
 
-Paper 2.5 supports seven bounded claims: receptive field shapes associative topology; iterative
-traversal is real but improves useful paths in only a minority of units; ordinary memory is distractor
+Paper 2.5 supports six bounded claims: receptive field shapes associative topology; the composite
+iterative schedule modestly improves aggregate traversal but not answers; ordinary memory is distractor
 dominated; oracle memory is useful to the frozen consumer; controlled activation, not absolute
 consumer incapacity, is a leading unresolved problem; and adaptive effort is next.  Physical K/V
 disclosure, adaptive control, and learned robustness remain separate research programs.

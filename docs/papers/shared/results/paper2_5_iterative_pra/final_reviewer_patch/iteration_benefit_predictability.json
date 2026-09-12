@@ -1,7 +1,9 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "analysis_scope": "existing controlled traces only; no model or router execution",
   "eligibility": "one_shot_path_recovery == 0",
+  "eligibility_availability": "oracle-defined from gold path; unavailable to a deployed controller",
+  "evaluation_population": "conditioned subset only; all-example retries, regressions, and added cost not evaluated",
   "target": "path_gain > 0",
   "eligible_units": 248,
   "positive_units": 59,
@@ -741,5 +743,5 @@
       }
     ]
   },
-  "interpretation": "Label-free one-shot observables excluding generator-coupled query length are weak: balanced accuracy is 0.638 and precision is 0.368. Query length appears stronger (0.839 balanced accuracy) because the synthetic generator couples it to chain depth. Neither result justifies a deployable retry controller; larger natural independent cohorts are required."
+  "interpretation": "Label-free one-shot observables excluding generator-coupled query length are weak: balanced accuracy is 0.638 and precision is 0.368. Query length appears stronger (0.839 balanced accuracy) because the synthetic generator couples it to chain depth. Eligibility itself uses an oracle gold-path miss and is unavailable at inference. Neither result justifies a deployable retry controller; an all-example evaluation with observable eligibility, unnecessary retries, regressions, and added cost is required."
 }

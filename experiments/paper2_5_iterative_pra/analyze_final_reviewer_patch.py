@@ -50,17 +50,72 @@ def median(values: list[float]) -> float:
     return statistics.median(values) if values else math.nan
 
 
-def bootstrap_difference_ci(
-    improved: list[float], other: list[float], *, seed: int = 34159, draws: int = 2000
+def percentile_interval(estimates: list[float]) -> tuple[float, float]:
+    estimates.sort()
+    return (
+        estimates[int(0.025 * len(estimates))],
+        estimates[min(int(0.975 * len(estimates)), len(estimates) - 1)],
+    )
+
+
+def identity_cluster_mean_ci(
+    rows: list[dict],
+    metric: str,
+    *,
+    cluster_identities: list[str] | None = None,
+    seed: int = 2516,
+    draws: int = 10000,
 ) -> tuple[float, float]:
+    """Bootstrap task identities, retaining every model condition within a draw.
+
+    If ``rows`` is a post-treatment subgroup, membership is held fixed at its
+    observed value. This estimates uncertainty for the selected subgroup; it
+    does not remove selection bias or turn the 16 identities into a population
+    sample.
+    """
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["example_id"]), []).append(row)
+    identities = cluster_identities or sorted(grouped)
+    if not identities:
+        return math.nan, math.nan
     rng = random.Random(seed)
     estimates = []
     for _ in range(draws):
-        left = statistics.fmean(rng.choices(improved, k=len(improved)))
-        right = statistics.fmean(rng.choices(other, k=len(other)))
-        estimates.append(left - right)
-    estimates.sort()
-    return estimates[int(0.025 * draws)], estimates[min(int(0.975 * draws), draws - 1)]
+        sampled = [rng.choice(identities) for _ in identities]
+        values = [number(row[metric]) for identity in sampled for row in grouped.get(identity, [])]
+        if values:
+            estimates.append(mean(values))
+    return percentile_interval(estimates)
+
+
+def identity_cluster_difference_ci(
+    improved_rows: list[dict],
+    other_rows: list[dict],
+    metric: str,
+    *,
+    seed: int = 34159,
+    draws: int = 2000,
+) -> tuple[float, float]:
+    """Cluster-bootstrap a selected-subgroup mean difference by task identity."""
+
+    grouped: dict[str, dict[str, list[dict]]] = {}
+    for label, source in (("improved", improved_rows), ("other", other_rows)):
+        for row in source:
+            grouped.setdefault(str(row["example_id"]), {"improved": [], "other": []})[label].append(row)
+    identities = sorted(grouped)
+    rng = random.Random(seed)
+    estimates = []
+    for _ in range(draws):
+        sampled = [rng.choice(identities) for _ in identities]
+        improved = [number(row[metric]) for identity in sampled for row in grouped[identity]["improved"]]
+        other = [number(row[metric]) for identity in sampled for row in grouped[identity]["other"]]
+        if improved and other:
+            estimates.append(mean(improved) - mean(other))
+    if not estimates:
+        return math.nan, math.nan
+    return percentile_interval(estimates)
 
 
 def standardized_mean_difference(improved: list[float], other: list[float]) -> float:
@@ -300,7 +355,9 @@ def summarize_features(rows: list[dict]) -> list[dict]:
             for feature in features:
                 improved = [number(row[feature]) for row in improved_rows]
                 other = [number(row[feature]) for row in other_rows]
-                low, high = bootstrap_difference_ci(improved, other)
+                low, high = identity_cluster_difference_ci(
+                    improved_rows, other_rows, feature
+                )
                 summary = {
                     "comparison_scope": comparison_scope,
                     "timing": timing,
@@ -313,8 +370,10 @@ def summarize_features(rows: list[dict]) -> list[dict]:
                     "other_mean": mean(other),
                     "other_median": median(other),
                     "mean_difference": mean(improved) - mean(other),
-                    "difference_bootstrap_ci95_low": low,
-                    "difference_bootstrap_ci95_high": high,
+                    "difference_identity_cluster_bootstrap_ci95_low": low,
+                    "difference_identity_cluster_bootstrap_ci95_high": high,
+                    "bootstrap_unit": "example_id",
+                    "subgroup_membership": "fixed from observed path_gain",
                 }
                 if feature in BINARY:
                     a = sum(value > 0.5 for value in improved)
@@ -334,7 +393,7 @@ def summarize_features(rows: list[dict]) -> list[dict]:
                         {
                             "effect_type": "standardized mean difference",
                             "effect": standardized_mean_difference(improved, other),
-                            "association_test": "descriptive bootstrap; no multiplicity-adjusted hypothesis test",
+                            "association_test": "descriptive identity-cluster bootstrap; no multiplicity-adjusted hypothesis test",
                             "association_p": "",
                         }
                     )
@@ -524,9 +583,11 @@ def analyze_predictability(rows: list[dict]) -> dict:
     label_free_metrics = label_free["pooled_held_out_metrics"]
     query_length_metrics = query_length["pooled_held_out_metrics"]
     result = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "analysis_scope": "existing controlled traces only; no model or router execution",
         "eligibility": "one_shot_path_recovery == 0",
+        "eligibility_availability": "oracle-defined from gold path; unavailable to a deployed controller",
+        "evaluation_population": "conditioned subset only; all-example retries, regressions, and added cost not evaluated",
         "target": "path_gain > 0",
         "eligible_units": len(eligible),
         "positive_units": sum(int(row["path_improved"]) for row in eligible),
@@ -539,8 +600,10 @@ def analyze_predictability(rows: list[dict]) -> dict:
             f"balanced accuracy is {number(label_free_metrics['balanced_accuracy']):.3f} and "
             f"precision is {number(label_free_metrics['precision']):.3f}. Query length appears "
             f"stronger ({number(query_length_metrics['balanced_accuracy']):.3f} balanced accuracy) "
-            "because the synthetic generator couples it to chain depth. Neither result justifies a "
-            "deployable retry controller; larger natural independent cohorts are required."
+            "because the synthetic generator couples it to chain depth. Eligibility itself uses an "
+            "oracle gold-path miss and is unavailable at inference. Neither result justifies a "
+            "deployable retry controller; an all-example evaluation with observable eligibility, "
+            "unnecessary retries, regressions, and added cost is required."
         ),
     }
     assert len(eligible) == 248
@@ -663,6 +726,103 @@ def write_parameter_directionality(path: Path) -> None:
     )
 
 
+def summarize_p0_traversal(rows: list[dict], output: Path) -> dict:
+    """Export aggregate, subgroup, identity, and condition summaries for Pass 1."""
+
+    assert len(rows) == 400
+    identities = sorted({str(row["example_id"]) for row in rows})
+    assert len(identities) == 16
+    assert all(sum(row["example_id"] == identity for row in rows) == 25 for identity in identities)
+
+    group_specs = (
+        ("improved_path_recovery", lambda row: number(row["path_gain"]) > 0),
+        ("unchanged_path_recovery", lambda row: number(row["path_gain"]) == 0),
+        ("worse_path_recovery", lambda row: number(row["path_gain"]) < 0),
+        ("all_rows", lambda row: True),
+    )
+    metrics = ("path_gain", "answer_gain", "margin_gain")
+    group_summary = []
+    for group, predicate in group_specs:
+        selected = [row for row in rows if predicate(row)]
+        record = {
+            "group": group,
+            "model_example_rows": len(selected),
+            "unique_example_identities": len({row["example_id"] for row in selected}),
+            "subgroup_membership": (
+                "not applicable" if group == "all_rows" else "fixed from observed path_gain; post-treatment-selected"
+            ),
+        }
+        for metric in metrics:
+            low, high = identity_cluster_mean_ci(
+                selected, metric, cluster_identities=identities
+            )
+            record[f"mean_{metric}"] = mean([number(row[metric]) for row in selected])
+            record[f"{metric}_identity_cluster_ci95_low"] = low
+            record[f"{metric}_identity_cluster_ci95_high"] = high
+        group_summary.append(record)
+    write_csv(output / "traversal_effects_p0_summary.csv", group_summary)
+
+    identity_rows = []
+    for identity in identities:
+        selected = [row for row in rows if row["example_id"] == identity]
+        identity_rows.append(
+            {
+                "example_id": identity,
+                "model_conditions": len(selected),
+                "path_improved_rows": sum(number(row["path_gain"]) > 0 for row in selected),
+                "path_unchanged_rows": sum(number(row["path_gain"]) == 0 for row in selected),
+                "path_worse_rows": sum(number(row["path_gain"]) < 0 for row in selected),
+                **{f"mean_{metric}": mean([number(row[metric]) for row in selected]) for metric in metrics},
+            }
+        )
+    write_csv(output / "traversal_effects_by_identity.csv", identity_rows)
+
+    sensitivity_rows = []
+    for dimension in ("window", "seed"):
+        for level in sorted({str(row[dimension]) for row in rows}):
+            selected = [row for row in rows if str(row[dimension]) == level]
+            sensitivity_rows.append(
+                {
+                    "condition": dimension,
+                    "level": level,
+                    "model_example_rows": len(selected),
+                    "unique_example_identities": len({row["example_id"] for row in selected}),
+                    "path_improved_rows": sum(number(row["path_gain"]) > 0 for row in selected),
+                    "path_worse_rows": sum(number(row["path_gain"]) < 0 for row in selected),
+                    **{f"mean_{metric}": mean([number(row[metric]) for row in selected]) for metric in metrics},
+                }
+            )
+    write_csv(output / "traversal_effects_condition_sensitivity.csv", sensitivity_rows)
+
+    audit = {
+        "schema_version": "1.0",
+        "source": "controlled_local_sa_v6/traversal_to_use_rows.csv",
+        "analysis_scope": "reanalysis of frozen stored rows; no model or router execution",
+        "estimand": "equal-weight mean over the 400 observed model-example conditions",
+        "model_example_rows": len(rows),
+        "unique_example_identities": len(identities),
+        "model_conditions_per_identity": 25,
+        "conditions": {"windows": len({row["window"] for row in rows}), "seeds": len({row["seed"] for row in rows})},
+        "uncertainty": {
+            "method": "percentile bootstrap over example_id clusters",
+            "draws": 10000,
+            "seed": 2516,
+            "within_cluster_policy": "retain all observed window-by-seed model conditions",
+            "population_limit": "only 16 fixed synthetic identities; intervals are descriptive sensitivity summaries, not broad task-population claims",
+            "subgroup_membership": "held fixed from observed path_gain within each resampled identity; selected-subgroup intervals remain post-treatment conditional",
+        },
+        "outputs": [
+            "traversal_effects_p0_summary.csv",
+            "traversal_effects_by_identity.csv",
+            "traversal_effects_condition_sensitivity.csv",
+        ],
+    }
+    (output / "traversal_effects_p0_audit.json").write_text(
+        json.dumps(audit, indent=2) + "\n", encoding="utf-8"
+    )
+    return audit
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
@@ -682,11 +842,13 @@ def main() -> None:
     )
     write_csv(output / "dataset_routing_geometry_summary.csv", datasets)
     write_parameter_directionality(output / "pra_parameter_directionality.md")
+    summarize_p0_traversal(rows, output)
 
     margin_values = [number(row["margin_gain"]) for row in rows if row["path_improved"]]
     assert round(mean(margin_values), 3) == 2.164
     print(f"wrote {len(rows)} units: 59 G+, 341 G0")
-    print("G+ margin gain 2.164; frozen paired-bootstrap 95% CI [1.336, 2.971]")
+    print("aggregate path gain +0.0275; aggregate answer gain -0.0400")
+    print("identity-cluster uncertainty written for 16 task identities")
 
 
 if __name__ == "__main__":

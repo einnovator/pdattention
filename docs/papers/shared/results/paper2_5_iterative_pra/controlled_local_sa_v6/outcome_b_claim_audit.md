@@ -2,24 +2,30 @@
 
 ## Causal claim
 
-Locality preserves stronger explicit associative topology, and matched iterative
-PRA exploits that topology to improve traversal. Better traversal is not a
-statistically reliable architecture-level answer-quality intervention under the
-tested policy, although path-improved model--example units gain margin.
+Locality preserves stronger explicit associative topology. At equal total K/V
+state, the tested iterative schedule changes aggregate path recovery by +.0275
+but answer accuracy by -.0400 over 400 dependent model-example rows formed from
+16 task identities and 25 window-seed models. The comparison does not isolate
+residual-dependent query updating from injection timing. Path-improved rows gain
+margin conditionally, while unchanged and worse-path rows prevent an aggregate
+answer benefit.
 
 ## Four claims kept separate
 
 1. Graph existence: supported.
 2. Graph traversability: supported.
-3. Iterative PRA improves traversal: supported.
-4. Better traversal improves paired margins when it occurs, but the tested
-   iterative policy does not produce a reliable model-level answer gain.
+3. The composite iterative schedule modestly improves aggregate traversal:
+   supported as a cohort point estimate; evolving-query causality is unresolved.
+4. Path-improved rows have higher paired margins conditionally, but the tested
+   schedule lowers aggregate answer accuracy by four percentage points.
 
 ## Freeze status
 
 - Full W x five-seed matrix: complete.
 - Matched-budget one-shot/iterative comparison: complete.
 - Conditional traversal-to-answer analysis: complete.
+- Identity-clustered uncertainty, per-identity rows, and seed/window sensitivity:
+  complete over the frozen 16-identity cohort.
 - Intervention-density frontier: complete.
 - Native activity and causal oracle controls: complete.
 - Compact pretrained bridges: inherited and explicitly provenance-labelled.

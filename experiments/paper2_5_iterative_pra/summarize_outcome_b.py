@@ -62,12 +62,28 @@ def exact_sign_p(differences: list[float]) -> float:
     return min(1.0, 2.0 * probability)
 
 
-def bootstrap_ci(values: list[float], *, seed: int = 25, draws: int = 4000) -> tuple[float, float]:
-    if not values:
+def identity_cluster_bootstrap_ci(
+    rows: list[dict], metric: str, *, seed: int = 25, draws: int = 4000
+) -> tuple[float, float]:
+    """Resample example identities and retain their observed model rows.
+
+    Subgroup membership is fixed from the observed rows, so intervals for a
+    path-improved subset remain conditional post-treatment summaries.
+    """
+
+    if not rows:
         return 0.0, 0.0
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["example_id"]), []).append(row)
+    identities = sorted(grouped)
     rng = random.Random(seed)
     estimates = sorted(
-        statistics.fmean(values[rng.randrange(len(values))] for _ in values)
+        statistics.fmean(
+            number(row[metric])
+            for identity in (rng.choice(identities) for _ in identities)
+            for row in grouped[identity]
+        )
         for _ in range(draws)
     )
     return estimates[int(0.025 * draws)], estimates[min(int(0.975 * draws), draws - 1)]
@@ -233,7 +249,7 @@ def paired_traversal_rows(root: Path) -> tuple[list[dict], list[dict]]:
         path = [number(row["path_gain"]) for row in model_rows]
         answer = [number(row["answer_gain"]) for row in model_rows]
         improved = [row for row in example_rows if number(row["path_gain"]) > 0]
-        answer_bootstrap = bootstrap_ci([number(row["answer_gain"]) for row in improved])
+        answer_bootstrap = identity_cluster_bootstrap_ci(improved, "answer_gain")
         summaries.append(
             {
                 "window": window,
@@ -254,6 +270,8 @@ def paired_traversal_rows(root: Path) -> tuple[list[dict], list[dict]]:
                 "path_improved_answer_worsened": sum(number(row["answer_gain"]) < 0 for row in improved),
                 "path_improved_answer_gain_bootstrap_ci_low": answer_bootstrap[0],
                 "path_improved_answer_gain_bootstrap_ci_high": answer_bootstrap[1],
+                "path_improved_answer_gain_bootstrap_unit": "example_id",
+                "path_improved_subgroup_membership": "fixed from observed path_gain",
             }
         )
     write_csv(root / "path_gain_answer_gain_summary.csv", summaries)
@@ -780,24 +798,30 @@ def write_freeze_audit(root: Path) -> None:
 
 ## Causal claim
 
-Locality preserves stronger explicit associative topology, and matched iterative
-PRA exploits that topology to improve traversal. Better traversal is not a
-statistically reliable architecture-level answer-quality intervention under the
-tested policy, although path-improved model--example units gain margin.
+Locality preserves stronger explicit associative topology. At equal total K/V
+state, the tested iterative schedule changes aggregate path recovery by +.0275
+but answer accuracy by -.0400 over 400 dependent model-example rows formed from
+16 task identities and 25 window-seed models. The comparison does not isolate
+residual-dependent query updating from injection timing. Path-improved rows gain
+margin conditionally, while unchanged and worse-path rows prevent an aggregate
+answer benefit.
 
 ## Four claims kept separate
 
 1. Graph existence: supported.
 2. Graph traversability: supported.
-3. Iterative PRA improves traversal: supported.
-4. Better traversal improves paired margins when it occurs, but the tested
-   iterative policy does not produce a reliable model-level answer gain.
+3. The composite iterative schedule modestly improves aggregate traversal:
+   supported as a cohort point estimate; evolving-query causality is unresolved.
+4. Path-improved rows have higher paired margins conditionally, but the tested
+   schedule lowers aggregate answer accuracy by four percentage points.
 
 ## Freeze status
 
 - Full W x five-seed matrix: complete.
 - Matched-budget one-shot/iterative comparison: complete.
 - Conditional traversal-to-answer analysis: complete.
+- Identity-clustered uncertainty, per-identity rows, and seed/window sensitivity:
+  complete over the frozen 16-identity cohort.
 - Intervention-density frontier: complete.
 - Native activity and causal oracle controls: complete.
 - Compact pretrained bridges: inherited and explicitly provenance-labelled.
