@@ -152,9 +152,16 @@ def test_reducer_reports_matched_metrics_and_markdown():
     })
     assert recency["cumulative_full_history_tokens"] == 600
     assert recency["cumulative_selected_whole_record_tokens"] == 430
+    assert recency["cumulative_selected_logical_tokens"] == 430
     assert recency["cumulative_materialized_tokens"] == 405
     assert recency["logical_token_saving_tokens"] == 170
     assert recency["logical_token_saving_fraction"] == pytest.approx(170 / 600)
+    assert recency["materialized_token_saving_tokens"] == 195
+    assert recency["realized_materialized_retention"] == pytest.approx({
+        "mean": (0.75 + 0.7 + 190 / 300) / 3,
+        "min": 190 / 300,
+        "max": 0.75,
+    })
     assert recency["mandatory_overflow_tokens"] == 5
     assert recency["whole_turn_budget_overshoot_tokens"] == 0
     assert recency["whole_turn_budget_undershoot_tokens"] == 0
@@ -186,6 +193,26 @@ def test_reducer_distinguishes_same_policy_with_different_budget_contracts():
 
     assert summary["arms"][1]["treatment"] == "middle_recency@matched-ceiling:aaaaaaaa"
     assert summary["arms"][2]["treatment"] == "middle_recency@90%-floor"
+
+
+def test_reducer_uses_materialized_budget_for_matched_token_tail():
+    full, candidate, _ = _comparison_artifacts()
+    matched = copy.deepcopy(candidate)
+    matched["policy"] = "matched_token_tail"
+    matched["matched_budget_source_digest"] = "b" * 64
+    matched["run_configuration"]["matched_budget_source_digest"] = "b" * 64
+    matched["run_configuration"][
+        "whole_turn_budget_interpretation"
+    ] = "strict_materialized_token_ceiling"
+    for row in matched["rows"]:
+        row["requested_budget_tokens"] = row["materialized_tokens"] + 3
+        row["selected_whole_record_tokens"] = row["materialized_tokens"] + 20
+    matched["run_configuration_digest"] = _digest(matched["run_configuration"])
+
+    arm = reduce_replays([full, matched])["arms"][1]
+
+    assert arm["unused_matched_budget_tokens"] == 9
+    assert arm["materialized_budget_overshoot_tokens"] == 0
 
 
 def test_conservative_action_equivalence_ignores_comment_only_lines():

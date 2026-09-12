@@ -170,6 +170,16 @@ def _arm_summary(
         for row in rows
     )
     retentions = [float(row["realized_record_retention_fraction"]) for row in rows]
+    materialized_retentions = [
+        float(row.get(
+            "realized_materialized_retention_fraction",
+            (
+                int(row["materialized_tokens"]) / int(row["full_history_tokens"])
+                if int(row["full_history_tokens"]) else 1.0
+            ),
+        ))
+        for row in rows
+    ]
     full_tokens = sum(int(row["full_history_tokens"]) for row in rows)
     selected_tokens = sum(int(row["selected_whole_record_tokens"]) for row in rows)
     materialized_tokens = sum(int(row["materialized_tokens"]) for row in rows)
@@ -233,11 +243,21 @@ def _arm_summary(
             "min": min(retentions) if retentions else None,
             "max": max(retentions) if retentions else None,
         },
+        "realized_materialized_retention": {
+            "mean": mean(materialized_retentions) if materialized_retentions else None,
+            "min": min(materialized_retentions) if materialized_retentions else None,
+            "max": max(materialized_retentions) if materialized_retentions else None,
+        },
         "cumulative_full_history_tokens": full_tokens,
+        "cumulative_selected_logical_tokens": selected_tokens,
         "cumulative_selected_whole_record_tokens": selected_tokens,
         "cumulative_materialized_tokens": materialized_tokens,
         "logical_token_saving_tokens": saving,
         "logical_token_saving_fraction": saving / full_tokens if full_tokens else None,
+        "materialized_token_saving_tokens": full_tokens - materialized_tokens,
+        "materialized_token_saving_fraction": (
+            (full_tokens - materialized_tokens) / full_tokens if full_tokens else None
+        ),
         "mandatory_overflow_tokens": sum(
             int(row["mandatory_overflow_tokens"]) for row in rows
         ),
@@ -261,8 +281,23 @@ def _arm_summary(
             max(
                 0,
                 int(row["requested_budget_tokens"])
-                - int(row["selected_whole_record_tokens"]),
+                - int(
+                    row["materialized_tokens"]
+                    if artifact.get("policy") == "matched_token_tail"
+                    else row["selected_whole_record_tokens"]
+                ),
             )
+            for row in rows
+        ),
+        "materialized_budget_overshoot_tokens": sum(
+            int(row.get(
+                "materialized_budget_overshoot_tokens",
+                max(
+                    0,
+                    int(row["materialized_tokens"])
+                    - int(row["requested_budget_tokens"]),
+                ),
+            ))
             for row in rows
         ),
         "transport_failures": len(transport_decisions),

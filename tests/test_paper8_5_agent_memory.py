@@ -14,11 +14,13 @@ from experiments.paper8_5_agent_memory import (
     HeadMiddleTailConfig,
     HeadMiddleTailSelector,
     MaterializationMode,
+    MatchedTokenTailConfig,
     MiddleSelectionStrategy,
     ToolObservationMaterializer,
     build_resource_effect_dag,
     exclude_certified_groups,
     leave_one_bundle_out_cases,
+    materialize_matched_token_tail,
     materialize_plan,
     recordize_minisweagent_messages,
     serialize_materialized_messages,
@@ -207,6 +209,91 @@ def test_large_tool_response_can_be_compacted_without_dropping_its_action():
     serialized = serialize_materialized_messages(history, materialized)
     assert serialized[-2]["role"] == "assistant"
     assert serialized[-1]["role"] == "user"
+
+
+def test_matched_token_tail_is_role_valid_and_never_exceeds_materialized_ceiling():
+    messages = _messages(3)
+    messages[5]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(f"old output line {index}" for index in range(80))
+        + "\n</output>"
+    )
+    history = recordize_minisweagent_messages(messages)
+    costs = {
+        record.record_id: whitespace_tokens(record.content) for record in history.records
+    }
+    prompt = costs["m0"] + costs["m1"]
+    newest = costs["m6"] + costs["m7"]
+    boundary_action = costs["m4"]
+    ceiling = prompt + newest + boundary_action + 18
+
+    materialized = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=ceiling,
+        config=MatchedTokenTailConfig(tool_observation_threshold_tokens=20),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert materialized.materialized_tokens <= ceiling
+    assert materialized.logical_plan.selected_tokens > materialized.materialized_tokens
+    assert materialized.logical_plan.selected_record_ids == (
+        "m0", "m1", "m4", "m5", "m6", "m7"
+    )
+    assert "m2" not in materialized.logical_plan.selected_record_ids
+    boundary_observation = next(row for row in materialized.records if row.record_id == "m5")
+    assert boundary_observation.mode == MaterializationMode.MATCHED_TOKEN_TAIL
+    assert "<returncode>0</returncode>" in boundary_observation.content
+    assert "old output line 79" in boundary_observation.content
+    assert boundary_observation.omitted_prefix_lines > 0
+    serialized = serialize_materialized_messages(history, materialized)
+    validate_minisweagent_chat(serialized)
+    assert [row["role"] for row in serialized[-4:]] == [
+        "assistant", "user", "assistant", "user"
+    ]
+
+
+def test_matched_token_tail_does_not_trim_small_or_non_tool_records():
+    history = recordize_minisweagent_messages(_messages(1))
+    prompt_tokens = sum(
+        whitespace_tokens(history.record_by_id[record_id].content)
+        for record_id in ("m0", "m1")
+    )
+    result = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=prompt_tokens + 1,
+        config=MatchedTokenTailConfig(tool_observation_threshold_tokens=100),
+    )
+    assert result.logical_plan.selected_record_ids == ("m0", "m1")
+    assert all(row.mode == MaterializationMode.WHOLE_RECORD for row in result.records)
+
+
+def test_matched_token_tail_uses_measured_fallback_for_one_oversized_line():
+    messages = _messages(1)
+    messages[3]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + " ".join(f"token{index}" for index in range(200))
+        + "\n</output>"
+    )
+    history = recordize_minisweagent_messages(messages)
+    prompt_and_action = sum(
+        whitespace_tokens(history.record_by_id[record_id].content)
+        for record_id in ("m0", "m1", "m2")
+    )
+    result = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=prompt_and_action + 12,
+        config=MatchedTokenTailConfig(tool_observation_threshold_tokens=10),
+    )
+    observation = next(row for row in result.records if row.record_id == "m3")
+    assert observation.token_fallback_used
+    assert observation.materialized_tokens <= 12
+    assert result.materialized_tokens <= prompt_and_action + 12
+
+
+def test_matched_token_tail_fails_closed_when_prompt_exceeds_ceiling():
+    history = recordize_minisweagent_messages(_messages(1))
+    with pytest.raises(ValueError, match="immutable system/task"):
+        materialize_matched_token_tail(history, max_materialized_tokens=1)
 
 
 def test_chat_validation_rejects_an_orphaned_assistant_action():
@@ -672,6 +759,102 @@ def test_frozen_replay_accepts_per_decision_matched_token_ceiling(monkeypatch):
     )
     assert result["rows"][0]["requested_budget_tokens"] == 7
     assert result["matched_budget_source_digest"] is not None
+
+
+def test_frozen_replay_matched_token_tail_uses_materialized_source_ceiling(monkeypatch):
+    messages = _messages(1)
+
+    def fake_post(url, payload, *, api_key, timeout):
+        validate_minisweagent_chat(payload["messages"])
+        return {"choices": [{"message": {"content": messages[2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    matched = {"rows": [{
+        "decision": 1,
+        "selected_whole_record_tokens": 999,
+        "materialized_tokens": 20,
+    }]}
+    result = frozen_replay.replay(
+        trajectory={"instance_id": "task-1", "messages": messages},
+        model="test-model",
+        base_url="http://example.invalid",
+        policy="matched_token_tail",
+        head=0,
+        tail=0,
+        budget_fraction=1.0,
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        materialization_threshold_tokens=20,
+        max_decisions=None,
+        seed=0,
+        max_output_tokens=128,
+        api_key=None,
+        timeout=1,
+        matched_budget_replay=matched,
+    )
+    row = result["rows"][0]
+    assert result["materialization_mode"] == "matched_token_tail"
+    assert result["run_configuration"]["matched_budget_field"] == "materialized_tokens"
+    assert row["requested_budget_tokens"] == 20
+    assert row["selected_logical_tokens"] == row["selected_whole_record_tokens"]
+    assert row["materialized_tokens"] <= 20
+    assert row["materialized_token_ceiling"] == 20
+    assert row["materialized_budget_overshoot_tokens"] == 0
+
+
+def test_frozen_replay_matched_token_tail_compacts_boundary_observation(monkeypatch):
+    messages = _messages(2)
+    messages[3]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(f"source line {index}" for index in range(100))
+        + "\n</output>"
+    )
+    prefix = recordize_minisweagent_messages(messages[:4])
+    fixed = sum(
+        whitespace_tokens(prefix.record_by_id[record_id].content)
+        for record_id in ("m0", "m1", "m2")
+    )
+    calls = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        calls.append(payload["messages"])
+        return {
+            "choices": [{"message": {"content": messages[len(calls) * 2]["content"]}}]
+        }
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(
+        **_replay_arguments(
+            messages,
+            progress_path=None,
+            policy="matched_token_tail",
+            materialization_threshold_tokens=10,
+            matched_budget_replay={"rows": [
+                {"decision": 1, "materialized_tokens": 20},
+                {"decision": 2, "materialized_tokens": fixed + 15},
+            ]},
+        )
+    )
+
+    assert len(calls) == 2
+    assert "<elided_prefix_lines" in calls[1][-1]["content"]
+    assert result["rows"][1]["selected_logical_tokens"] > result["rows"][1][
+        "materialized_tokens"
+    ]
+    assert result["rows"][1]["materialized_budget_overshoot_tokens"] == 0
+
+
+def test_frozen_replay_matched_token_tail_requires_materialized_source_counts():
+    with pytest.raises(ValueError, match="lacks materialized_tokens"):
+        frozen_replay.replay(**_replay_arguments(
+            _messages(1),
+            progress_path=None,
+            policy="matched_token_tail",
+            matched_budget_replay={
+                "rows": [{"decision": 1, "selected_whole_record_tokens": 20}]
+            },
+        ))
 
 
 def _replay_arguments(messages, progress_path, **overrides):

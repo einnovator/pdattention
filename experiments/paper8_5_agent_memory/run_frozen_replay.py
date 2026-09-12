@@ -22,6 +22,10 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
+from .matched_token_tail import (
+    MatchedTokenTailConfig,
+    materialize_matched_token_tail,
+)
 from .model import AgentMemoryBudget
 from .recordizer import recordize_minisweagent_messages
 from .run_structural_screen import _policy_selectors, _query, _token_counter
@@ -147,7 +151,7 @@ def _selector(label: str, *, head: int, tail: int, round_up: bool = False):
     try:
         return selectors[label]
     except KeyError as error:
-        choices = ", ".join(("full", *selectors))
+        choices = ", ".join(("full", "matched_token_tail", *selectors))
         raise ValueError(f"unknown policy {label!r}; choose one of {choices}") from error
 
 
@@ -295,6 +299,18 @@ def replay(
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
+    if policy == "matched_token_tail" and matched_budget_replay is None:
+        raise ValueError("matched_token_tail requires a --matched-budget-replay artifact")
+    if policy == "matched_token_tail" and round_up_whole_turns:
+        raise ValueError("matched_token_tail is a strict ceiling and cannot round up")
+    if (
+        policy != "matched_token_tail"
+        and materialization_mode == MaterializationMode.MATCHED_TOKEN_TAIL
+    ):
+        raise ValueError(
+            "matched_token_tail materialization is available only through the "
+            "matched_token_tail policy"
+        )
     messages: Sequence[Mapping[str, Any]] = trajectory["messages"]
     assistant_indexes = [
         index for index, message in enumerate(messages)
@@ -302,11 +318,19 @@ def replay(
     ]
     if max_decisions is not None:
         assistant_indexes = assistant_indexes[:max_decisions]
-    selector = _selector(
-        policy,
-        head=head,
-        tail=tail,
-        round_up=round_up_whole_turns,
+    selector = (
+        None
+        if policy == "matched_token_tail"
+        else _selector(
+            policy,
+            head=head,
+            tail=tail,
+            round_up=round_up_whole_turns,
+        )
+    )
+    effective_materialization_mode = (
+        MaterializationMode.MATCHED_TOKEN_TAIL
+        if policy == "matched_token_tail" else materialization_mode
     )
     materializer = ToolObservationMaterializer(
         mode=materialization_mode,
@@ -330,7 +354,7 @@ def replay(
         "tail_turns": tail,
         "budget_fraction": budget_fraction,
         "tokenizer": tokenizer_identity,
-        "materialization_mode": materialization_mode.value,
+        "materialization_mode": effective_materialization_mode.value,
         "materialization_threshold_tokens": materialization_threshold_tokens,
         "max_decisions": max_decisions,
         "temperature": 0,
@@ -339,8 +363,13 @@ def replay(
         "timeout": timeout,
         "invalid_generation_policy": "record_and_stop",
         "whole_turn_budget_interpretation": (
-            "retention_floor_round_up"
+            "strict_materialized_token_ceiling"
+            if policy == "matched_token_tail"
+            else "retention_floor_round_up"
             if round_up_whole_turns else "hard_ceiling_round_down"
+        ),
+        "matched_budget_field": (
+            "materialized_tokens" if policy == "matched_token_tail" else None
         ),
         "reference_replay_digest": reference_replay_digest,
         "matched_budget_source_digest": matched_budget_source_digest,
@@ -356,10 +385,25 @@ def replay(
         int(row["decision"]): row
         for row in (reference_replay or {}).get("rows", ())
     }
-    matched_budgets = {
-        int(row["decision"]): int(row["selected_whole_record_tokens"])
-        for row in (matched_budget_replay or {}).get("rows", ())
-    }
+    matched_budgets: dict[int, int] = {}
+    for row in (matched_budget_replay or {}).get("rows", ()):
+        decision = int(row["decision"])
+        source_field = (
+            "materialized_tokens"
+            if policy == "matched_token_tail" else "selected_whole_record_tokens"
+        )
+        if source_field not in row:
+            raise ValueError(
+                f"matched budget artifact decision {decision} lacks {source_field}"
+            )
+        ceiling = int(row[source_field])
+        if ceiling <= 0:
+            raise ValueError(
+                f"matched budget artifact decision {decision} has a non-positive ceiling"
+            )
+        if decision in matched_budgets:
+            raise ValueError(f"matched budget artifact repeats decision {decision}")
+        matched_budgets[decision] = ceiling
 
     def current_result() -> dict[str, Any]:
         return _result(
@@ -370,7 +414,7 @@ def replay(
             head=head,
             tail=tail,
             budget_fraction=budget_fraction,
-            materialization_mode=materialization_mode,
+            materialization_mode=effective_materialization_mode,
             seed=seed,
             max_output_tokens=max_output_tokens,
             reference_replay_digest=reference_replay_digest,
@@ -398,21 +442,37 @@ def replay(
             decision,
             max(1, math.ceil(full_tokens * budget_fraction)),
         )
-        plan = selector.select(
-            history=history,
-            query=_query(prefix),
-            budget=AgentMemoryBudget(
-                max_tokens=requested_budget
-            ),
-            count_tokens=count_tokens,
-        )
-        materialized = materialize_plan(
-            history,
-            plan,
-            materializer,
-            query=_query(prefix),
-            count_tokens=count_tokens,
-        )
+        if policy == "matched_token_tail":
+            if decision not in matched_budgets:
+                raise ValueError(
+                    f"matched budget artifact has no ceiling for decision {decision}"
+                )
+            materialized = materialize_matched_token_tail(
+                history,
+                max_materialized_tokens=requested_budget,
+                config=MatchedTokenTailConfig(
+                    tool_observation_threshold_tokens=materialization_threshold_tokens
+                ),
+                count_tokens=count_tokens,
+            )
+            plan = materialized.logical_plan
+        else:
+            assert selector is not None
+            plan = selector.select(
+                history=history,
+                query=_query(prefix),
+                budget=AgentMemoryBudget(
+                    max_tokens=requested_budget
+                ),
+                count_tokens=count_tokens,
+            )
+            materialized = materialize_plan(
+                history,
+                plan,
+                materializer,
+                query=_query(prefix),
+                count_tokens=count_tokens,
+            )
         selected_messages = serialize_materialized_messages(history, materialized)
         request_payload: dict[str, Any] = {
             "model": model,
@@ -459,10 +519,19 @@ def replay(
                 reference_command is not None and reference_command == generated_command
             ),
             "full_history_tokens": plan.full_history_tokens,
+            "selected_logical_tokens": plan.selected_tokens,
             "selected_whole_record_tokens": plan.selected_tokens,
             "materialized_tokens": materialized.materialized_tokens,
             "requested_budget_tokens": plan.requested_budget_tokens,
+            "materialized_token_ceiling": (
+                plan.requested_budget_tokens
+                if policy == "matched_token_tail" else None
+            ),
             "realized_record_retention_fraction": plan.realized_retention_fraction,
+            "realized_logical_retention_fraction": plan.realized_retention_fraction,
+            "realized_materialized_retention_fraction": (
+                materialized.materialized_retention_fraction
+            ),
             "mandatory_overflow_tokens": plan.mandatory_overflow_tokens,
             "whole_turn_budget_overshoot_tokens": max(
                 0, plan.selected_tokens - plan.requested_budget_tokens
@@ -470,8 +539,26 @@ def replay(
             "whole_turn_budget_undershoot_tokens": max(
                 0, plan.requested_budget_tokens - plan.selected_tokens
             ),
+            "materialized_budget_overshoot_tokens": max(
+                0, materialized.materialized_tokens - plan.requested_budget_tokens
+            ),
+            "materialized_budget_unused_tokens": max(
+                0, plan.requested_budget_tokens - materialized.materialized_tokens
+            ),
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
+            "materialized_records": [
+                {
+                    "record_id": row.record_id,
+                    "mode": row.mode.value,
+                    "original_tokens": row.original_tokens,
+                    "materialized_tokens": row.materialized_tokens,
+                    "selected_line_spans": row.selected_line_spans,
+                    "token_fallback_used": row.token_fallback_used,
+                    "omitted_prefix_lines": row.omitted_prefix_lines,
+                }
+                for row in materialized.records
+            ],
             "plan_digest": plan.digest,
             "usage": response_diagnostics["usage"],
             "response_diagnostics": response_diagnostics,
@@ -530,7 +617,10 @@ def main() -> None:
     parser.add_argument(
         "--matched-budget-replay",
         type=Path,
-        help="artifact whose per-decision selected-token count supplies the ceiling",
+        help=(
+            "artifact supplying per-decision ceilings; matched_token_tail uses "
+            "its materialized_tokens field"
+        ),
     )
     args = parser.parse_args()
     counter, tokenizer_identity = _token_counter(args.tokenizer)

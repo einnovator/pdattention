@@ -78,10 +78,33 @@ physical K/V copy, and re-encoding belong to Paper 4.5.
 Frozen arms must be executed in order. First write a `full.json` artifact. Pass
 that artifact through `--reference-replay full.json` for every later arm so
 agreement is measured against a contemporaneous FULL generation rather than
-only a historical trajectory. `DAG-EXCLUDE@100` supplies the per-decision token
-ceilings for its recency control through `--matched-budget-replay dag.json`;
-whole causal turns are rounded down to that ceiling, and the unused remainder
-is reported rather than silently filled with a partial turn.
+only a historical trajectory. `DAG-EXCLUDE@100` supplies the per-decision
+*materialized-token* ceilings for the recency control through `--policy
+matched_token_tail --matched-budget-replay dag.json`. The control always keeps
+the system prompt and original task, then admits a contiguous tail of complete
+causal turns. If the oldest admitted turn crosses the ceiling, only an
+oversized tool observation may be shortened: complete output lines are removed
+from its head first, followed by a tokenizer-measured suffix fallback when one
+line alone is too large. Assistant actions and small observations are never
+truncated, and the action--observation role sequence stays valid. Every
+serialized candidate is counted with the frozen tokenizer and the materialized
+total is asserted not to exceed the decision's matched ceiling.
+
+Artifacts report `selected_logical_tokens` (the unabridged contents of every
+selected record) separately from `materialized_tokens` (the text actually sent
+to the model), plus materialized retention and unused/overshoot counts. The
+matched ceiling is read from the source artifact's `materialized_tokens`, not
+its logical whole-record count.
+
+This baseline has deliberate limitations. It is a recency control rather than
+a semantic selector; it can compact only tool observations above the configured
+threshold; it retains output envelopes and suffixes but does not understand
+file/diff/test structure beyond line boundaries; and the final oversized-line
+fallback searches Unicode character boundaries while checking the exact frozen
+tokenizer count. If the immutable prompt or the minimum role-valid boundary
+turn cannot fit, it fails closed or leaves the remaining budget unused. It does
+not summarize, mutate assistant actions, or claim that truncated text is
+behaviorally equivalent to the full observation.
 
 Nominal retention treatments use the opposite boundary rule. Pass
 `--round-up-whole-turns` for a 90% (or lower) treatment: ranked complete causal

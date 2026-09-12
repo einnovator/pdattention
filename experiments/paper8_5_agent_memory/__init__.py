@@ -5,7 +5,9 @@ from .materialization import (
     MaterializedMemoryPlan,
     ToolObservationMaterializer,
     materialize_plan,
+    materialize_tool_observation_tail_to_ceiling,
 )
+from .matched_token_tail import MatchedTokenTailConfig, materialize_matched_token_tail
 from .dag import (
     AgentHistoryDag,
     DagEdge,
@@ -69,6 +71,7 @@ __all__ = [
     "HeadMiddleTailSelector",
     "MaterializationMode",
     "MaterializedMemoryPlan",
+    "MatchedTokenTailConfig",
     "MiddleSelectionStrategy",
     "OracleAblationCase",
     "ResourceEffect",
@@ -81,6 +84,8 @@ __all__ = [
     "classify_bash_effect",
     "exclude_certified_groups",
     "materialize_plan",
+    "materialize_matched_token_tail",
+    "materialize_tool_observation_tail_to_ceiling",
     "extract_resource_ids",
     "recordize_minisweagent_messages",
     "serialize_materialized_messages",
