@@ -106,6 +106,7 @@ class MLXAgentHistoryExecutor:
         require_same_subset_reference: bool = True,
         agent_history_qualified: bool = False,
         prefill_step_size: int = 2048,
+        fused_disjoint_attention: bool = True,
     ) -> None:
         if wire_tail_tokens <= 0:
             raise ValueError("wire_tail_tokens must be positive.")
@@ -128,6 +129,7 @@ class MLXAgentHistoryExecutor:
         self.require_same_subset_reference = bool(require_same_subset_reference)
         self.agent_history_qualified = bool(agent_history_qualified)
         self.prefill_step_size = int(prefill_step_size)
+        self.fused_disjoint_attention = bool(fused_disjoint_attention)
         self.runtime = MLXLiveKVRuntime()
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.RLock()
@@ -171,6 +173,7 @@ class MLXAgentHistoryExecutor:
                 else "per-request same-subset gate required"
             ),
             "segmented_attention_layers": self.patched_layers,
+            "fused_disjoint_attention": self.fused_disjoint_attention,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
         }
@@ -473,6 +476,7 @@ class MLXAgentHistoryExecutor:
             self.model,
             candidate.selection.memory,
             segmented=use_segmented,
+            fused_disjoint_attention=self.fused_disjoint_attention,
             query_position_base=plan.source_position_base,
         )
         reset_peak = getattr(mx, "reset_peak_memory", None)
@@ -661,6 +665,7 @@ class MLXAgentHistoryExecutor:
             "same_subset_reference_pack_bytes": reference_pack_bytes,
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
+            "fused_disjoint_attention": self.fused_disjoint_attention,
             "same_subset_gate_passed": (
                 None if plan.full_retention else logit_delta is not None
                 and logit_delta <= self.max_abs_logit_delta

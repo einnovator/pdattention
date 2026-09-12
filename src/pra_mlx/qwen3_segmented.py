@@ -112,9 +112,21 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
                     local_v,
                     scale=attention.scale,
                     mask=layer_mask,
-                    source_keys=cache.memory.source_keys,
-                    source_values=cache.memory.source_values,
-                    source_intervals=cache.memory.intervals,
+                    source_keys=(
+                        cache.memory.source_keys
+                        if cache.fused_disjoint_attention
+                        else None
+                    ),
+                    source_values=(
+                        cache.memory.source_values
+                        if cache.fused_disjoint_attention
+                        else None
+                    ),
+                    source_intervals=(
+                        cache.memory.intervals
+                        if cache.fused_disjoint_attention
+                        else ()
+                    ),
                 )
             else:
                 attention_fn = (

@@ -138,6 +138,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--fused-disjoint-attention",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use the fused interval-addressed Metal consumer. Disable only for "
+            "the eager same-subset diagnostic/control path."
+        ),
+    )
+    parser.add_argument(
         "--chat-template-profile",
         choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
         default="qwen3-stable-no-thinking",
@@ -178,6 +187,7 @@ def main() -> None:
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
         agent_history_qualified=args.agent_history_qualified,
+        fused_disjoint_attention=args.fused_disjoint_attention,
     )
     try:
         ThreadingHTTPServer(

@@ -405,12 +405,14 @@ class MLXDisjointSelectedKVCache:
         local_cache: object,
         memory: MLXDisjointLayerKV,
         position_base: int,
+        fused_disjoint_attention: bool = True,
     ) -> None:
         if position_base < 0:
             raise ValueError("MLX native query position base cannot be negative.")
         self.local_cache = local_cache
         self.memory = memory
         self.position_base = int(position_base)
+        self.fused_disjoint_attention = bool(fused_disjoint_attention)
 
     @property
     def offset(self) -> int:
@@ -1361,6 +1363,7 @@ def make_native_prompt_cache(
     max_kv_size: int | None = None,
     selected_layers: Iterable[int] | None = None,
     segmented: bool = False,
+    fused_disjoint_attention: bool = True,
     query_position_base: int | None = None,
 ):
     """Create request-local sequential caches backed by immutable selected K/V.
@@ -1396,14 +1399,22 @@ def make_native_prompt_cache(
     position_base = resolve_query_position_base(
         memory.source_tokens, query_position_base
     )
-    return [
-        (
-            selected_cache_type(cache, layer, position_base)
-            if index in selected
-            else MLXPositionedKVCache(cache, position_base)
-        )
-        for index, (cache, layer) in enumerate(zip(local, memory.layers))
-    ]
+    result = []
+    for index, (cache, layer) in enumerate(zip(local, memory.layers)):
+        if index not in selected:
+            result.append(MLXPositionedKVCache(cache, position_base))
+        elif selected_cache_type is MLXDisjointSelectedKVCache:
+            result.append(
+                selected_cache_type(
+                    cache,
+                    layer,
+                    position_base,
+                    fused_disjoint_attention=fused_disjoint_attention,
+                )
+            )
+        else:
+            result.append(selected_cache_type(cache, layer, position_base))
+    return result
 
 
 def resolve_query_position_base(

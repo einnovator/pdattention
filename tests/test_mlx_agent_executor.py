@@ -316,6 +316,7 @@ def test_qualified_profile_reports_zero_candidate_selection_copy(fake_mlx) -> No
         wire_tail_tokens=1,
         max_abs_logit_delta=0.005,
         agent_history_qualified=True,
+        fused_disjoint_attention=False,
     )
     initial = (
         {"role": "system", "content": "S" * 40},
@@ -338,6 +339,7 @@ def test_qualified_profile_reports_zero_candidate_selection_copy(fake_mlx) -> No
     assert result.trace[0]["selected_history_kv_copy_bytes"] == 0
     assert result.trace[0]["physical_kv_copy"] is False
     assert result.trace[0]["total_kv_copy_bytes"] is not None
+    assert result.trace[0]["fused_disjoint_attention"] is False
 
 
 def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx) -> None:
