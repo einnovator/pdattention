@@ -754,16 +754,20 @@ class SGLangMLXAgentHistoryExecutor:
 
     def _session(self, request: PRAWireRequest) -> _Session:
         session_id = self._session_id(request)
+        tenant_id = str(request.tenant_id)
+        self.runtime.registry.assert_session_active(tenant_id, session_id)
         state = self._sessions.get(session_id)
         if state is None:
             digest = hashlib.sha256(session_id.encode()).hexdigest()[:20]
             state = _Session(
-                str(request.tenant_id),
+                tenant_id,
                 session_id,
                 owner_request_id=f"agent-owner-{digest}",
                 source_id=f"agent-source-{digest}",
             )
             self._sessions[session_id] = state
+        elif state.tenant_id != tenant_id:
+            raise RuntimeError("SGLang agent session crossed tenant scope.")
         return state
 
     @staticmethod
@@ -1203,6 +1207,11 @@ class SGLangMLXAgentHistoryExecutor:
             ),
             "full_retention": bool(plan.full_retention),
             "selection_contract": selection_contract or "minimum-retention-floor",
+            "pra_100_semantic_noop": bool(plan.full_retention),
+            "exact_trajectory_eligible": bool(plan.full_retention),
+            "realized_historical_kv_retention_fraction": (
+                plan.selected_tokens / max(len(source), 1)
+            ),
             "selected_history_reencoded_tokens": reencoded,
             "new_history_encoded_tokens": newly_encoded,
             "physical_kv_copy": copy_metrics["physical_kv_copy"],

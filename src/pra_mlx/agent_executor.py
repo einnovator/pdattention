@@ -200,16 +200,18 @@ class MLXAgentHistoryExecutor:
 
     def _session(self, request: PRAWireRequest) -> _Session:
         session_id = self._session_id(request)
+        tenant_id = str(request.tenant_id)
+        self.runtime.registry.assert_session_active(tenant_id, session_id)
         state = self._sessions.get(session_id)
         if state is None:
             digest = hashlib.sha256(session_id.encode()).hexdigest()[:20]
             state = _Session(
-                str(request.tenant_id),
+                tenant_id,
                 session_id,
                 source_id=f"mlx-agent-source-{digest}",
             )
             self._sessions[session_id] = state
-        elif state.tenant_id != str(request.tenant_id):
+        elif state.tenant_id != tenant_id:
             raise RuntimeError("MLX agent session crossed tenant scope.")
         return state
 

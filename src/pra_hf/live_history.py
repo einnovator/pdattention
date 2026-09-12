@@ -15,6 +15,10 @@ from typing import Callable, Generic, Iterable, TypeVar
 T = TypeVar("T")
 
 
+class LiveKVSessionTerminatedError(RuntimeError):
+    """A tombstoned live-K/V session rejected stale or reused work."""
+
+
 @dataclass(frozen=True, order=True)
 class LiveKVInterval:
     """Half-open token interval in the canonical source-position frame."""
@@ -214,7 +218,9 @@ class LiveKVSourceRegistry(Generic[T]):
             raise ValueError("Live K/V generation cannot be negative.")
         with self._lock:
             if (tenant, session) in self._terminated_sessions:
-                raise RuntimeError("Cannot register K/V for a terminated session.")
+                raise LiveKVSessionTerminatedError(
+                    "Cannot register K/V for a terminated session."
+                )
             prior = self._sources.get(source)
             if prior is not None:
                 if prior.active_request_ids:
@@ -251,7 +257,9 @@ class LiveKVSourceRegistry(Generic[T]):
             if request in self._requests:
                 raise RuntimeError(f"Live K/V request {request!r} is already active.")
             if (tenant, session) in self._terminated_sessions:
-                raise RuntimeError("Cannot borrow K/V for a terminated session.")
+                raise LiveKVSessionTerminatedError(
+                    "Cannot borrow K/V for a terminated session."
+                )
             rows: list[_LiveKVSource[T]] = []
             for source, generation in zip(sources, generations):
                 row = self._sources.get(source)
@@ -274,6 +282,17 @@ class LiveKVSourceRegistry(Generic[T]):
                 assert row.active_request_ids is not None
                 row.active_request_ids.add(request)
             return tuple(row.hot_value for row in rows)  # type: ignore[misc]
+
+    def assert_session_active(self, tenant_id: str, session_id: str) -> None:
+        """Reject a tombstone before an engine allocates or evaluates new K/V."""
+
+        tenant = self._identity(tenant_id, "tenant_id")
+        session = self._identity(session_id, "session_id")
+        with self._lock:
+            if (tenant, session) in self._terminated_sessions:
+                raise LiveKVSessionTerminatedError(
+                    "Cannot use K/V for a terminated session."
+                )
 
     def release(self, request_id: str) -> bool:
         """Detach request membership without deleting canonical source state."""

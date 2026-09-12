@@ -500,3 +500,21 @@ def test_append_rewrite_and_tenant_crossing_fail_closed(fake_mlx) -> None:
             session_id="session",
             metadata={"history_projection": "live-agent-kv-v1"},
         ))
+
+
+def test_terminated_session_reuse_fails_before_mlx_evaluation(fake_mlx) -> None:
+    from pra_hf.live_history import LiveKVSessionTerminatedError
+
+    executor = _executor()
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    executor.generate(_request(messages))
+    executor.close_session("session")
+    calls_before = len(executor.model.call_widths)
+
+    with pytest.raises(LiveKVSessionTerminatedError, match="terminated"):
+        executor.generate(_request(messages, request_id="stale"))
+
+    assert len(executor.model.call_widths) == calls_before

@@ -17,6 +17,7 @@ from pra_hf.hf_live_kv import (
     select_dynamic_cache,
 )
 from pra_hf.live_history import (
+    LiveKVSessionTerminatedError,
     LiveKVInterval,
     LiveKVSelectionPlan,
     LiveKVSourceRegistry,
@@ -325,7 +326,7 @@ def test_live_kv_registry_offload_restore_and_termination_tombstone() -> None:
 
     assert registry.terminate_session("tenant", "session") == 1
     assert registry.view("source") is None
-    with pytest.raises(RuntimeError, match="terminated"):
+    with pytest.raises(LiveKVSessionTerminatedError, match="terminated"):
         registry.register(
             "replacement",
             b"new",
@@ -333,6 +334,8 @@ def test_live_kv_registry_offload_restore_and_termination_tombstone() -> None:
             session_id="session",
             generation=2,
         )
+    with pytest.raises(LiveKVSessionTerminatedError, match="terminated"):
+        registry.assert_session_active("tenant", "session")
 
 
 class _DeterministicHFModel:

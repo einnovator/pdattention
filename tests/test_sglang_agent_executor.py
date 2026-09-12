@@ -537,6 +537,39 @@ def test_owner_extension_fails_closed_on_template_history_rewrite() -> None:
     assert state.selected_history_reencoded_tokens == 0
 
 
+def test_session_lookup_rejects_tombstone_and_tenant_crossing() -> None:
+    from pra_hf.live_history import (
+        LiveKVSessionTerminatedError,
+        LiveKVSourceRegistry,
+    )
+
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    executor.runtime = SimpleNamespace(registry=LiveKVSourceRegistry())
+    executor._sessions = {}
+    request = PRAWireRequest(
+        model="m",
+        messages=({"role": "user", "content": "task"},),
+        tenant_id="tenant",
+        session_id="session",
+    )
+    state = executor._session(request)
+    assert state.tenant_id == "tenant"
+
+    crossing = PRAWireRequest(
+        model="m",
+        messages=request.messages,
+        tenant_id="other",
+        session_id="session",
+    )
+    with pytest.raises(RuntimeError, match="tenant scope"):
+        executor._session(crossing)
+
+    executor.runtime.registry.terminate_session("tenant", "session")
+    executor._sessions.clear()
+    with pytest.raises(LiveKVSessionTerminatedError, match="terminated"):
+        executor._session(request)
+
+
 def test_qwen3_stable_template_rewrites_only_two_content_branches() -> None:
     branch = "{{- '<|im_start|>' + message.role + '\\n' + content }}"
     native = f"prefix {branch} middle {branch} suffix"

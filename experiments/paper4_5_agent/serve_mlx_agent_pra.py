@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from pra_hf.live_history import LiveKVSessionTerminatedError
 
 
 def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, Any]:
@@ -89,6 +90,11 @@ def _direct_handler(executor: object, model_id: str):
                 if bool(request.metadata.get("ephemeral_session", False)):
                     executor.close_session(str(request.session_id))
                 self._json(200, _completion(request, result))
+            except LiveKVSessionTerminatedError as error:
+                self._json(409, {
+                    "error": "session_terminated",
+                    "message": str(error),
+                })
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
             except Exception as error:  # noqa: BLE001 - diagnostic boundary

@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from pra_hf.live_history import LiveKVSessionTerminatedError
 
 
 def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, Any]:
@@ -125,6 +126,11 @@ def _direct_handler(adapter: object, model: str):
                 if bool(request.metadata.get("ephemeral_session", False)):
                     adapter.close_session(str(request.session_id))
                 self._json(200, _completion(request, result))
+            except LiveKVSessionTerminatedError as error:
+                self._json(409, {
+                    "error": "session_terminated",
+                    "message": str(error),
+                })
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {
                     "error": type(error).__name__,
