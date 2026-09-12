@@ -1575,8 +1575,10 @@ action in 3/3; task-04 changes whole-file rereading to targeted localization in
 to fixed token windows on official end-task outcomes is not yet established. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and an admitted 25-call PRA-90 solve at 93.32\%
-model-visible retention; the cross-engine reducer keeps all four outcome
-families separate. & HF, MLX, SGLang, and vLLM autonomous gates remain open;
+model-visible retention. Direct MLX and SGLang-MLX add action-exact six-call
+plain/PRA-100 Task-01 solves; SGLang-MLX PRA-90 also resolves 1/1 in six calls
+with exact commands. & HF and vLLM still lack an admitted plain-success
+model/task pair; direct MLX PRA-90 remains below its same-subset numerical gate.
 Easy-14 and 75\% are locked, and learned-adaptor cells still fail closed. \\
 \bottomrule
 \end{tabularx}
@@ -3374,13 +3376,15 @@ PRA-90 & 1/1 & 25 & 93.32\% & 0 & 0 B & n/e & 139.2 \\
 Here ``n/e'' means that the endpoint does not expose the measurement; it is
 not a zero.  The cross-engine reducer consequently counts llama.cpp as one
 behaviorally complete engine but zero measurement-complete engines so far.
+The newer direct-engine rows below extend, but do not retroactively fill, that
+frozen reducer table.
 
 Earlier task-02--04 utility rows predate this cross-engine freeze and remain
 diagnostic evidence for retention-policy design; they do not authorize an
 Easy-14 matrix.  In particular, the task-03/04 counterfactuals below still
 localize important omitted records, but the active scheduler will not add task
-instances until HF, MLX, SGLang, and vLLM each complete the same plain,
-PRA-100, then PRA-90 sequence on an independently admissible frozen task.
+instances until every target engine completes the same plain, PRA-100, then
+PRA-90 sequence on an independently admissible frozen task.
 
 The first MLX autonomous admission attempt illustrates why model/task and
 template admission precede PRA attribution.  Qwen3-14B 4-bit on task 01 reaches
@@ -3424,6 +3428,19 @@ task outcome is promoted.  The stateful bridge therefore remains incomplete,
 not failed for PRA efficacy.  Qualification remains bounded to in-process V1,
 one homogeneous K/V group, and complete pages; at most one partial page is
 re-evaluated and reported separately.
+
+A fresh vLLM~0.28 admission separates that old 16K capacity point from the
+single-task operating point.  The server now exposes CPU offload explicitly
+and advertises its actually enabled automatic prefix cache.  With 2~GiB
+offload, a 256-token action still takes several minutes because weight traffic
+crosses PCIe during decode.  With no offload, a 4,096-token, one-session server
+fits at 0.86 GPU-memory utilization and completes the 15-call Task~13 plain run
+plus grading in 16.1~s.  It nevertheless grades 0/1 with an empty patch: the 7B
+model repeats the same invalid \texttt{grep} command rather than adding the
+required end-of-options marker.  A Task~04 follow-up reaches five valid calls
+before an SSH transport reset and is classified as infrastructure-invalid.
+Thus the fast no-offload configuration is operational, but no vLLM PRA arm is
+admitted until a plain-success pair is found.
 
 The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
 smoke.  The model returns the frozen
@@ -3476,6 +3493,44 @@ an undefined \texttt{attr} check at function entry and the official grader
 scores 0/1.  This is again a plain model/task failure, not a PRA result, so the
 PRA-100 and PRA-90 arms remain withheld.
 
+Task~01 provides the required plain-success pair for this SGLang engine.  Its
+first admission attempt also identified a systems defect before producing a
+scientific row: ordinary SGLang-MLX prefill submitted the complete 2K-token
+agent prompt in one call and materialized prompt-wide vocabulary logits.  The
+corrected executor evaluates non-final prompt chunks through the model trunk
+without the logit head and requests logits only for the final chunk.  With the
+same three stop identities as above, a frozen first-request replay completes in
+19.54~s with 102 generated tokens and is byte-identical to the direct MLX
+reference response.
+
+The resulting full plain Task~01 run resolves 1/1 in six actions.  Its ordered
+actions and submitted patch are exactly equal to the direct MLX control.
+PRA-100 also resolves 1/1 in six actions with the same action digest and patch,
+1.0 realized and engine-reported history-K/V retention on all six requests,
+zero selected-history re-encoding, zero selected-history K/V copy, and zero
+H2D transfer.  Canonical suffix graft is 92,798,976 bytes; consumer temporary
+allocation is 4,156,645,776 bytes cumulatively with an 805,306,376-byte peak.
+Wall time is 231.2~s, retained only as provenance because this single host run
+is not an isolated timing experiment.
+
+The first PRA-90 attempt is quarantined for a measurement-contract failure:
+the proxy's whitespace estimator declared 1,530/1,649 visible tokens (92.78\%),
+but the engine tokenizer found only 2,670/3,002 resident tokens (88.94\%), 32
+below the exact 90\% floor.  The engine correctly rejected that request, while
+the outer agent retried it through request 32.  The repaired path rounds up at
+whole causal-group boundaries with the authoritative engine tokenizer and
+never re-encodes the restored spans.  Its fresh run resolves 1/1 in six calls:
+all commands and the submitted patch are byte-identical to plain, response text
+is exact through call five, and call six changes only non-operative reasoning
+wording.  Exact history retention is 100\% for calls one--four, 91.54\% for
+call five, and 92.57\% for call six.  Across the run, selected-history
+re-encoding, selected-K/V copy, and H2D transfer are all zero; canonical suffix
+movement is 92,012,544 bytes, cumulative consumer temporary allocation is
+4,156,531,664 bytes with an 805,306,376-byte peak, and the fused consumer makes
+21,888 attention calls.  The single warm 70.1-s wall time is provenance, not a
+speedup claim.  SGLang therefore clears plain, PRA-100, and PRA-90 on this
+frozen autonomous task without authorizing expansion to another task.
+
 The direct MLX no-gateway bridge is now implemented under the same contract.
 It owns a persistent canonical live cache per session, extends only an append-
 stable suffix, treats PRA-100 as the full-context semantic no-op candidate, and
@@ -3522,8 +3577,7 @@ grafts only newly generated assistant K/V back into the canonical owner.  The
 telemetry separates zero selected-history re-encoding/copy from tail packing,
 cache-reallocation copy, suffix-graft copy, total consumer temporary bytes, and
 model calls.  Focused executor/lifecycle tests pass, including a real tiny-Qwen
-PRA-100 then PRA-90 sequence, but the autonomous task has not yet run; this is
-implementation readiness, not an end-to-end engine result.
+PRA-100 then PRA-90 sequence.
 The subsequent real-CUDA mechanism smoke on Qwen2.5-Coder-1.5B validates that
 accounting boundary.  PRA-100 retains 153/153 source tokens with zero selected-
 history re-encoding or copy, but ordinary \texttt{DynamicCache} growth and the
@@ -3533,15 +3587,34 @@ selected history, and reports 1,953,728 attention-temporary bytes and
 9,633,792 total lifecycle-copy bytes.  An earlier manually underfilled
 137/179 row is explicitly superseded; both HF and SGLang now fail closed below
 $\lceil rN\rceil$ unless the request declares an arbitrary-subset mechanism
-probe.  This fallback smoke is not autonomous task evidence.  A subsequent
-Qwen2.5-Coder-7B NF4 attempt loads successfully on the 8~GB RTX 5060 and passes
-a 40-token bridge smoke under both eager and SDPA attention, but the frozen
-Task~01 plain arm fails before its first agent action.  SDPA removes the eager
-softmax allocation failure; the remaining failure is the BitsAndBytes 4-bit
-GEMM dequantization temporary in the Qwen2 MLP down projection.  Consequently
-the model/task pair is hardware-inadmissible on this device, its task outcome
-and peak temporary bytes remain unmeasured, and neither PRA-100 nor PRA-90 is
-run.  This is a serving-capacity boundary rather than a PRA failure.
+probe.  This fallback smoke is not autonomous task evidence.
+
+The first autonomous CUDA attempts exposed two further plain-path defects that
+supersede the earlier attribution to BitsAndBytes alone.  HF forward calls were
+not enclosed in \texttt{torch.inference\_mode()}, so autograd graphs survived
+successive one-token \texttt{DynamicCache} concatenations: a 1.5B model grew
+until PyTorch reported 19.64~GiB allocated and failed on the 8~GiB device.
+After that repair, the same model remains within roughly 4--6~GiB, but it is
+model/scaffold-inadmissible: on both Task~01 and the trivial one-character
+Morse-map Task~13 it emits multiple actions on its first response and then
+loops on the format-recovery example to the 50-call limit without a patch.
+
+The stronger Qwen2.5-Coder-7B NF4 retry then exposes a separate prompt-logit
+allocation: the model projects every one of roughly 2K prompt positions into
+the full vocabulary even though the agent consumes only the last row.  The
+common forward path now requests one retained logit through
+\texttt{logits\_to\_keep=1} (or the model's equivalent argument) when
+supported.  This optimization is independent of PRA and preserves the next-
+token computation.  Bounded 256-token cache extension then removes the
+remaining prompt-activation OOM while preserving absolute positions.  The
+corrected plain path completes Task~13 for ten calls in 119.2~s and Task~04 for
+fifteen calls in 104.6~s, but both grade 0/1 with empty patches.  Task~13
+follows the PR description's \texttt{simpy} typo, attempts interactive editors
+and package installation, and never reaches the mapping; Task~04 repeatedly
+constructs an invalid reproduction script.  These are two plain
+model/scaffold admission failures after the runtime repair, not PRA
+regressions.  HF PRA-100 remains withheld until a plain-success model/task pair
+is found.
 
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
@@ -4225,17 +4298,19 @@ and logit exact on all seven eligible turns.  HF likewise passes all seven turns
 with zero selected-K/V copy.  The first autonomous end-to-end gate now passes
 on llama.cpp: plain and PRA-100 are action-exact 1/1 solves in 30 calls, while
 PRA-90 is a 1/1 solve in 25 calls at 93.32\% total context retention.  Direct
-HF and SGLang serving bridges now exist and pass bounded mechanism smokes.  Two
-independent SGLang Task~02 plain cells remain inadmissible: Qwen3-Coder-30B
-grades 0/1 after one read-only action and three format errors, while
-Qwen2.5-Coder-14B grades 0/1 after nine actions and an incorrect nonempty patch.
-The latter run also exposed and corrected the fused path's Qwen3-only Q/K-norm
-assumption before the scientific arm.  Both models' PRA-100 and PRA-90 arms
-remain withheld as plain model/task admission failures.  The
-vLLM OpenAI-to-scheduler alias bridge and the direct MLX bridge pass contract
-tests, but neither has completed its post-fix remote mechanism gate.  All four autonomous gates and
-broader batch/model geometry are still pending.
-Easy-14 expansion is locked until they pass.  Under the
+MLX and SGLang-MLX now reproduce the same six-call Task~01 plain/PRA-100 solve.
+SGLang-MLX additionally clears PRA-90 in six calls with exact commands and
+patch, zero selected-history re-encoding/copy/H2D, and exact engine retention
+of 91.54\% and 92.57\% on its two sparse requests.  This run also demonstrates
+why estimated and realized retention cannot be conflated: an earlier request
+was 32 model tokens below the nominal floor until causal groups were rounded
+with the engine tokenizer.  Direct MLX PRA-90 remains withheld after its
+same-subset numerical gate fails.  HF's bounded 7B path is now free of the
+autograd, prompt-logit, and prompt-activation OOMs, but two tested tasks fail
+plain with empty patches.  vLLM's 7B AWQ no-offload 4K path is fast and stable,
+but its tested plain Task~13 also fails.  Their PRA arms are therefore not run.
+Easy-14 expansion remains locked until every target engine has a qualified
+plain/PRA-100/PRA-90 task sequence.  Under the
 RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
 cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
 Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks
