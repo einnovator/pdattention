@@ -124,6 +124,7 @@ class TurnSemantics:
     discovered_resources: tuple[str, ...]
     changed_resources: tuple[str, ...]
     successful: bool
+    observation_complete: bool
 
     @property
     def resources(self) -> tuple[str, ...]:
@@ -228,6 +229,12 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
         observations = tuple(row for row in members if row.has_role(
             AgentRecordRole.TOOL_OBSERVATION
         ))
+        observation_complete = bool(observations) and all(
+            row.metadata.get("output_complete") is not False
+            and row.metadata.get("output_truncated") is not True
+            and row.metadata.get("timed_out") is not True
+            for row in observations
+        )
         operation = classify_bash_operation(action.command)
         resources = _command_resources(action.command)
         pre_versions = _metadata_versions(observations, "resource_version_fingerprints")
@@ -247,6 +254,16 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
                 version = pre_versions.get(resource)
             version = version or f"inferred-epoch:{epochs.get(resource, 0)}"
             kind, start, end, signature = _span(action.command or "", resource)
+            # An explicitly truncated tool result cannot establish whole-file
+            # or complete query coverage.  Missing completeness metadata is
+            # still usable in the labelled heuristic tier, but an observed
+            # negative receipt must fail closed.
+            if not observation_complete and operation in {
+                BashOperation.SEARCH_DISCOVERY,
+                BashOperation.READ,
+                BashOperation.DIFF,
+            }:
+                kind, start, end, signature = "unknown", None, None, None
             accesses.append(ResourceAccess(resource, version, kind, start, end, signature))
         discovered = ()
         if operation == BashOperation.SEARCH_DISCOVERY:
@@ -268,6 +285,7 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
             discovered,
             tuple(changed_resources),
             bool(observations) and all(row.return_code in (None, 0) for row in observations),
+            observation_complete,
         ))
     return rows
 
@@ -340,13 +358,19 @@ def build_negative_exclusions(
 
     if NegativeRule.H1_SEARCH_CONSUMED in enabled:
         for index, older in enumerate(turns):
-            if older.operation != BashOperation.SEARCH_DISCOVERY or not older.successful:
+            if (
+                older.operation != BashOperation.SEARCH_DISCOVERY
+                or not older.successful
+                or not older.observation_complete
+            ):
                 continue
             discovered = set(older.discovered_resources)
             consumed = next((
                 (later_index, later)
                 for later_index, later in enumerate(turns[index + 1 :], start=index + 1)
                 if later.operation in {BashOperation.READ, BashOperation.DIFF}
+                and later.successful
+                and later.observation_complete
                 and discovered.intersection(later.resources)
             ), None)
             if consumed is None:
@@ -407,7 +431,11 @@ def build_negative_exclusions(
                     continue
                 if later.operation == BashOperation.WRITE:
                     break
-                if later.operation not in {BashOperation.READ, BashOperation.DIFF}:
+                if (
+                    later.operation not in {BashOperation.READ, BashOperation.DIFF}
+                    or not later.successful
+                    or not later.observation_complete
+                ):
                     continue
                 if config.h2_require_version_match:
                     write_versions = {row.resource_id: row.version for row in write.accesses}
@@ -440,7 +468,11 @@ def build_negative_exclusions(
                     later.resources
                 ):
                     break
-                if later.operation != BashOperation.VERIFY or not later.successful:
+                if (
+                    later.operation != BashOperation.VERIFY
+                    or not later.successful
+                    or not later.observation_complete
+                ):
                     continue
                 dependencies = set(later.resources)
                 dependencies.update(_metadata_resource_ids(
@@ -493,7 +525,12 @@ def build_negative_exclusions(
                 ))
 
     if NegativeRule.H3_READ_SUPERSEDED in enabled:
-        reads = [row for row in turns if row.operation == BashOperation.READ and row.successful]
+        reads = [
+            row for row in turns
+            if row.operation == BashOperation.READ
+            and row.successful
+            and row.observation_complete
+        ]
         for index, older in enumerate(reads):
             if not older.accesses:
                 continue
@@ -525,7 +562,12 @@ def build_negative_exclusions(
                 ))
 
     if NegativeRule.H4_WORKING_SET in enabled:
-        reads = [row for row in turns if row.operation == BashOperation.READ and row.successful]
+        reads = [
+            row for row in turns
+            if row.operation == BashOperation.READ
+            and row.successful
+            and row.observation_complete
+        ]
         active: list[str] = []
         for row in reversed(reads):
             for resource in reversed(row.resources):

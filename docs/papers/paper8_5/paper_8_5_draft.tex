@@ -654,14 +654,14 @@ Spine + lexical & 91.6\% & 80.0\% & 67.4\% & 66.5\% \\
 
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
-turns pinned, and a whitespace counter. H1 with $K_f=0$ retires 1,340
-cumulative whitespace tokens (1.5\%); delaying to $K_f=4$ reduces this to
-1,139 (1.3\%). Version-guarded H2a retires 308 (0.3\%), and H3 with $K_r=1$
+turns pinned, and a whitespace counter. After making explicit truncation
+receipts fail closed, H1 with $K_f=0$ retires 938 cumulative whitespace tokens
+(1.0\%); delaying to $K_f=4$ reduces this to 670 (0.7\%). Version-guarded H2a retires 308 (0.3\%), and H3 with $K_r=1$
 retires 177 (0.2\%); $K_r\geq2$ finds no opportunity on this trace. Guarded
 H2b correctly abstains because the captured verification lacks an explicit
 resource dependency. H4 with $K_x=2$ has the largest opportunity, 3,180 tokens
-(3.5\%), while $K_x\geq3$ abstains after dependency pins. H1+H3 removes 1,517
-(1.7\%), and all guarded rules plus H4 at $K_x=4$ remove 1,825 (2.0\%). These
+(3.5\%), while $K_x\geq3$ abstains after dependency pins. H1+H3 removes 1,115
+(1.2\%), and all guarded rules plus H4 at $K_x=4$ remove 1,423 (1.6\%). These
 are cumulative prefix occurrences rather than unique records, and they measure
 neither tokenizer-exact saving, next-action quality, nor task success. Their
 purpose is to confirm that the arms fire differently before spending model

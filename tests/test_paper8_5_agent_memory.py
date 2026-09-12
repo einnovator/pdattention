@@ -667,6 +667,20 @@ def test_h1_retires_consumed_search_only_after_kf_delay():
         _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=0),
     )
 
+    truncated_search = recordize_minisweagent_messages(_heuristic_messages(
+        (
+            "find . -name foo.py",
+            "./src/foo.py",
+            {"output_complete": False, "output_truncated": True},
+        ),
+        ("cat src/foo.py", "source", None),
+        ("pwd", "/workspace", None),
+    ))
+    assert not build_negative_exclusions(
+        truncated_search,
+        _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=0),
+    )
+
 
 def test_h2a_requires_current_version_read_and_h2b_explicit_verification_dependency():
     write_extra = {
@@ -736,6 +750,22 @@ def test_h3_keeps_kr_newest_reads_for_the_same_resource_version_and_span():
     ))
     assert not build_negative_exclusions(
         different_span,
+        _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
+    )
+
+    incomplete = recordize_minisweagent_messages(_heuristic_messages(
+        ("cat foo.py", "partial", {
+            "resource_version_fingerprints": {"foo.py": "v1"},
+            "output_complete": False,
+            "output_truncated": True,
+        }),
+        ("cat foo.py", "complete", {
+            "resource_version_fingerprints": {"foo.py": "v1"},
+            "output_complete": True,
+        }),
+    ))
+    assert not build_negative_exclusions(
+        incomplete,
         _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
     )
 
