@@ -281,6 +281,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     reference_result = reference.generate(
         model, wire_tail, max_new_tokens=args.continuation_tokens
     )
+    # A second oracle consumes the same packed selected K/V through mlx-lm's
+    # ordinary dense attention.  The first reference isolates interval
+    # addressing by using the same Metal consumer as the zero-copy candidate;
+    # this oracle separately detects consumer-level numerical/behavioral drift.
+    engine_oracle = begin(
+        "engine-oracle", segmented=False, disjoint_selection=False
+    )
+    engine_oracle_result = engine_oracle.generate(
+        model, wire_tail, max_new_tokens=args.continuation_tokens
+    )
 
     cancelled = begin("cancelled")
     try:
@@ -338,6 +348,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     candidate_logits = list(candidate_result.step_logits)
     reference_logits = list(reference_result.step_logits)
+    engine_oracle_logits = list(engine_oracle_result.step_logits)
     restored_logits = list(restored_result.step_logits)
     checks = {
         "two_concurrent_borrowers": two_borrowers == ("candidate", "reference"),
@@ -353,6 +364,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "same_subset_token_exact": candidate_result.token_ids == reference_result.token_ids,
         "same_subset_logit_within_tolerance": (
             _max_delta(candidate_logits, reference_logits)
+            <= args.max_abs_logit_delta
+        ),
+        "dense_engine_oracle_token_exact": (
+            candidate_result.token_ids == engine_oracle_result.token_ids
+        ),
+        "dense_engine_oracle_logit_within_tolerance": (
+            _max_delta(candidate_logits, engine_oracle_logits)
             <= args.max_abs_logit_delta
         ),
         "cooperative_cancel_released_exactly_once": (
@@ -380,7 +398,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "original_positions_preserved": candidate_result.source_position_base == len(source_ids),
         "zero_selected_history_reencoding": all(
             row.selected_text_reencoded_tokens == 0
-            for row in (candidate_result, reference_result, restored_result)
+            for row in (
+                candidate_result,
+                reference_result,
+                engine_oracle_result,
+                restored_result,
+            )
         ),
         "physical_kv_copy_reported": candidate_result.physical_kv_copy == (
             None if use_disjoint else len(plan.intervals) > 1
@@ -484,6 +507,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "offloaded_payload_bytes": len(offloaded) if isinstance(offloaded, bytes) else None,
         "max_abs_logit_delta_same_subset": _max_delta(candidate_logits, reference_logits),
         "same_subset_logit_exact": _max_delta(candidate_logits, reference_logits) == 0.0,
+        "max_abs_logit_delta_dense_engine_oracle": _max_delta(
+            candidate_logits, engine_oracle_logits
+        ),
+        "dense_engine_oracle_token_ids": list(engine_oracle_result.token_ids),
+        "candidate_token_ids": list(candidate_result.token_ids),
         "max_abs_logit_delta_after_restore": _max_delta(candidate_logits, restored_logits),
         "checks": checks,
         "runtime_snapshot": runtime.snapshot(),
