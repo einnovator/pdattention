@@ -307,6 +307,13 @@ def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
         assert all(set(row) == {"role", "content"} for row in forwarded["messages"])
         assert "cat a.py" not in "\n".join(row["content"] for row in forwarded["messages"])
         row = json.loads(trace.read_text().strip())
+        assert row["assistant_content_sha256"] == hashlib.sha256(
+            b"```mswea_bash_command\ncat a.py\n```"
+        ).hexdigest()
+        assert row["response_sha256_scope"] == (
+            "raw_http_body_includes_volatile_response_metadata"
+        )
+        assert len(row["request_message_content_sha256"]) == len(_payload()["messages"])
         assert row["reacquired_excluded_resources"] == ["a.py"]
         assert row["reacquisition_proxy_for_false_exclusion"] is True
 

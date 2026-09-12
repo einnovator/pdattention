@@ -58,6 +58,14 @@ def _query(messages: list[Mapping[str, Any]]) -> str:
 
 
 def _assistant_command(response_body: bytes) -> str | None:
+    content = _assistant_content(response_body)
+    if content is None:
+        return None
+    matches = _COMMAND.findall(content)
+    return matches[0].strip() if len(matches) == 1 else None
+
+
+def _assistant_content(response_body: bytes) -> str | None:
     try:
         payload = json.loads(response_body.decode("utf-8"))
         choices = payload.get("choices") or ()
@@ -65,8 +73,7 @@ def _assistant_command(response_body: bytes) -> str | None:
         content = message.get("content", "") if isinstance(message, Mapping) else ""
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, IndexError):
         return None
-    matches = _COMMAND.findall(content) if isinstance(content, str) else []
-    return matches[0].strip() if len(matches) == 1 else None
+    return content if isinstance(content, str) else None
 
 
 def join_instrumentation_sidecars(
@@ -366,6 +373,15 @@ def transform_autonomous_payload(
         "plan_digest": plan.digest,
         "request_input_sha256": _digest(messages),
         "selected_messages_sha256": _digest(selected_messages),
+        "request_message_roles": [str(row.get("role", "")) for row in messages],
+        "request_message_content_sha256": [
+            hashlib.sha256(str(row.get("content", "")).encode("utf-8")).hexdigest()
+            for row in messages
+        ],
+        "selected_message_content_sha256": [
+            hashlib.sha256(str(row.get("content", "")).encode("utf-8")).hexdigest()
+            for row in selected_messages
+        ],
         "exact_request_passthrough": bool(
             config.policy == "full" or exact_logical_noop
         ),
@@ -568,6 +584,7 @@ class AutonomousSelectionProxy:
             response_headers = error.headers
 
         if transformation is not None:
+            assistant_content = _assistant_content(response_body)
             command = _assistant_command(response_body)
             operation = classify_bash_operation(command)
             resources = extract_resource_ids(command, "") if command else ()
@@ -586,6 +603,13 @@ class AutonomousSelectionProxy:
                 },
                 "upstream_status": status,
                 "response_sha256": hashlib.sha256(response_body).hexdigest(),
+                "response_sha256_scope": (
+                    "raw_http_body_includes_volatile_response_metadata"
+                ),
+                "assistant_content_sha256": (
+                    hashlib.sha256(assistant_content.encode("utf-8")).hexdigest()
+                    if assistant_content is not None else None
+                ),
                 "assistant_command_sha256": (
                     hashlib.sha256(command.encode("utf-8")).hexdigest() if command else None
                 ),
