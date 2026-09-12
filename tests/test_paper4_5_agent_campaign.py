@@ -2894,6 +2894,7 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
 def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path: Path) -> None:
     class Handler(BaseHTTPRequestHandler):
         prefix_enabled = True
+        agent_qualified = True
         post_count = 0
         session_ids = []
 
@@ -2904,7 +2905,10 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
                     "prefix_cache_enabled": self.prefix_enabled,
                     "effective_capabilities": {
                         "native_kv": True,
-                        "agent_history_kv_qualified": True,
+                        "agent_history_kv_qualified": self.agent_qualified,
+                        "session_state": True,
+                        "live_prefix_kv_capture": True,
+                        "zero_selected_text_reencoding": True,
                         "explicit_prefix_cache": True,
                         "prefix_cache_mode": "explicit_prefix_handle",
                     },
@@ -2970,6 +2974,14 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
         assert result["prefix_cache_enabled"] is False
         Handler.prefix_enabled = True
         with pytest.raises(RuntimeError, match="prefix_cache_enabled=false"):
+            gateway_preflight(args)
+        Handler.prefix_enabled = False
+        Handler.agent_qualified = False
+        args.budget_fraction = 1.0
+        result = gateway_preflight(args)
+        assert result["native_consumption_probe"] == "passed"
+        args.budget_fraction = 0.9
+        with pytest.raises(RuntimeError, match="sparse native agent-history"):
             gateway_preflight(args)
     finally:
         server.shutdown()

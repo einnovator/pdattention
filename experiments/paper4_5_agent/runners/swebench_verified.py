@@ -165,14 +165,27 @@ def gateway_preflight(
     )
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
-    if native_required and not bool(
+    agent_history_qualified = bool(
         effective.get("agent_history_kv_qualified")
         or engine.get("agent_history_kv_qualified")
-    ):
-        raise RuntimeError(
-            "native agent-history PRA treatment requires an engine-specific "
-            "agent_history_kv_qualified=true capability"
-        )
+    )
+    full_retention_control = float(
+        getattr(args, "budget_fraction", 1.0)
+    ) >= 1.0
+    if native_required and not agent_history_qualified:
+        full_history_capable = all(bool(
+            effective.get(name) or engine.get(name)
+        ) for name in (
+            "session_state", "live_prefix_kv_capture",
+            "zero_selected_text_reencoding",
+        ))
+        if not full_retention_control or not full_history_capable:
+            raise RuntimeError(
+                "sparse native agent-history PRA requires an engine-specific "
+                "agent_history_kv_qualified=true capability; a 100% control may "
+                "proceed only with session state, live-prefix capture, and zero "
+                "selected-text re-encoding"
+            )
     prefix_mode = str(
         engine.get("prefix_cache_mode", effective.get("prefix_cache_mode", "unknown"))
     )
