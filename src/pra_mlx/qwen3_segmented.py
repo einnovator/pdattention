@@ -1,4 +1,4 @@
-"""Live Qwen3 MLX-LM patch for exact segmented PRA attention."""
+"""Live Qwen2/Qwen3 MLX-LM patch for exact segmented PRA attention."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .native import (
 
 
 def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -> int:
-    """Patch Qwen3 attention layers to consume physically separate PRA K/V.
+    """Patch Qwen2/Qwen3 attention layers to consume separate PRA K/V.
 
     The wrapper delegates ordinary and concatenated-cache requests to MLX-LM's
     original module.  Only :class:`MLXSegmentedSelectedKVCache` takes the new
@@ -28,9 +28,9 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
     import mlx.nn as nn
 
     model_type = str(getattr(getattr(model, "args", None), "model_type", ""))
-    if model_type not in {"qwen3", "qwen3_moe"}:
+    if model_type not in {"qwen2", "qwen3", "qwen3_moe"}:
         raise ValueError(
-            "Live segmented attention currently supports qwen3 and qwen3_moe, "
+            "Live segmented attention currently supports qwen2, qwen3 and qwen3_moe, "
             f"not {model_type!r}."
         )
     if getattr(model, "_pra_segmented_attention_installed", False):
@@ -57,12 +57,20 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
             queries = attention.q_proj(x)
             keys = attention.k_proj(x)
             values = attention.v_proj(x)
-            queries = attention.q_norm(
-                queries.reshape(batch, length, attention.n_heads, -1)
-            ).transpose(0, 2, 1, 3)
-            keys = attention.k_norm(
-                keys.reshape(batch, length, attention.n_kv_heads, -1)
-            ).transpose(0, 2, 1, 3)
+            queries = queries.reshape(
+                batch, length, attention.n_heads, -1
+            )
+            keys = keys.reshape(
+                batch, length, attention.n_kv_heads, -1
+            )
+            # Qwen3 applies per-head Q/K RMSNorm; Qwen2 does not. Keep the
+            # model-family projection path exact instead of fabricating norms.
+            if hasattr(attention, "q_norm"):
+                queries = attention.q_norm(queries)
+            if hasattr(attention, "k_norm"):
+                keys = attention.k_norm(keys)
+            queries = queries.transpose(0, 2, 1, 3)
+            keys = keys.transpose(0, 2, 1, 3)
             values = values.reshape(
                 batch, length, attention.n_kv_heads, -1
             ).transpose(0, 2, 1, 3)
@@ -128,7 +136,7 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
 
     layers = tuple(getattr(model, "layers", ()))
     if not layers:
-        raise ValueError("Qwen3 model exposes no decoder layers to patch.")
+        raise ValueError("Qwen model exposes no decoder layers to patch.")
     for layer in layers:
         layer.self_attn = _SegmentedQwen3Attention(layer.self_attn)
     model._pra_segmented_attention_installed = True
