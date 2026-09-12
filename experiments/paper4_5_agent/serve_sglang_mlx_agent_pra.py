@@ -39,6 +39,8 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
         "prefix_cached_tokens": raw.get("prefix_cached_tokens"),
     }
     response["pra_trace"] = list(result.trace)
+    if isinstance(raw.get("usage"), Mapping):
+        response["usage"] = dict(raw["usage"])
     return response
 
 

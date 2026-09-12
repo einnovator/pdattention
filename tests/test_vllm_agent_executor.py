@@ -161,6 +161,10 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     assert second.trace[0]["selected_history_kv_copy_bytes"] == 0
     assert second.trace[0]["host_to_device_bytes"] == 0
     assert second.trace[0]["consumer_temporary_bytes"] == 1234
+    assert second.raw["usage"]["prompt_tokens"] == second.trace[0][
+        "logical_prompt_tokens"
+    ]
+    assert second.raw["usage"]["completion_tokens"] == 1
     assert driver.evictions
 
 

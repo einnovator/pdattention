@@ -483,7 +483,15 @@ def test_direct_completion_preserves_zero_byte_attach_accounting() -> None:
         request,
         PRAEngineResult(
             text="done",
-            raw={"native_attach_bytes": 0, "pra": trace},
+            raw={
+                "native_attach_bytes": 0,
+                "usage": {
+                    "prompt_tokens": 64,
+                    "completion_tokens": 2,
+                    "total_tokens": 66,
+                },
+                "pra": trace,
+            },
             trace=(trace,),
         ),
     )
@@ -492,6 +500,7 @@ def test_direct_completion_preserves_zero_byte_attach_accounting() -> None:
     assert response["pra"]["native_attach_bytes"] == 0
     assert response["pra"]["canonical_suffix_graft_d2d_bytes"] == 8192
     assert response["pra_trace"] == [trace]
+    assert response["usage"]["total_tokens"] == 66
 
 
 def test_qualified_live_projection_does_not_reset_engine_session() -> None:

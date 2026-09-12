@@ -904,6 +904,9 @@ class HFAgentHistoryExecutor:
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
             "wire_tokens": len(wire),
+            "logical_prompt_tokens": len(prompt),
+            "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
+            "completion_tokens": len(generated),
             "requested_retention_fraction": requested,
             "realized_retention_fraction": plan.selected_tokens / max(len(source), 1),
             "selection_contract": selection_contract or "minimum-retention-floor",
@@ -947,6 +950,11 @@ class HFAgentHistoryExecutor:
                 "native_attach_bytes": 0,
                 "prefix_cache_hit": bool(len(source) - newly_encoded),
                 "prefix_cached_tokens": len(source) - newly_encoded,
+                "usage": {
+                    "prompt_tokens": len(prompt),
+                    "completion_tokens": len(generated),
+                    "total_tokens": len(prompt) + len(generated),
+                },
                 "pra": dict(trace),
             },
             trace=(trace,),
@@ -968,7 +976,14 @@ class HFAgentHistoryExecutor:
         text = str(self.tokenizer.decode(generated, skip_special_tokens=True))
         return PRAEngineResult(
             text=text,
-            raw={"pra": {"native_kv_used": False}},
+            raw={
+                "usage": {
+                    "prompt_tokens": len(prompt),
+                    "completion_tokens": len(generated),
+                    "total_tokens": len(prompt) + len(generated),
+                },
+                "pra": {"native_kv_used": False},
+            },
             trace=(
                 {
                     "stage": "plain_generation",

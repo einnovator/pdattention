@@ -21,7 +21,7 @@ from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, Any]:
     raw = dict(result.raw)
     pra = raw.get("pra") if isinstance(raw.get("pra"), Mapping) else {}
-    return {
+    response = {
         "id": request.request_id,
         "object": "chat.completion",
         "model": request.model,
@@ -39,6 +39,9 @@ def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, A
         },
         "pra_trace": list(result.trace),
     }
+    if isinstance(raw.get("usage"), Mapping):
+        response["usage"] = dict(raw["usage"])
+    return response
 
 
 def _handler(executor: object, model_id: str):

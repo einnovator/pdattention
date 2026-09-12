@@ -658,6 +658,11 @@ class VLLMCudaAgentHistoryExecutor:
                 "scheduler_geometry_token_ids": selected_tokens,
                 "new_suffix_tokens_submitted": submitted_suffix_tokens,
                 "new_request_suffix_tokens": new_request_tokens,
+                "logical_prompt_tokens": len(prompt),
+                "effective_attention_prompt_tokens": (
+                    selected_tokens + submitted_suffix_tokens
+                ),
+                "completion_tokens": len(receipt.token_ids),
                 "uncommitted_partial_page_tokens": len(state.history_tokens) - state.source_tokens,
                 "scheduler_callback_delta": dict(receipt.callback_delta),
                 "output_token_ids": list(receipt.token_ids),
@@ -671,6 +676,11 @@ class VLLMCudaAgentHistoryExecutor:
                     "native_attach_bytes": 0,
                     "prefix_cache_hit": mode != "initial_store",
                     "prefix_cached_tokens": selected_tokens,
+                    "usage": {
+                        "prompt_tokens": len(prompt),
+                        "completion_tokens": len(receipt.token_ids),
+                        "total_tokens": len(prompt) + len(receipt.token_ids),
+                    },
                     "pra": dict(trace),
                 },
                 trace=(trace,),

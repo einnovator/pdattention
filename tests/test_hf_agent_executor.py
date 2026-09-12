@@ -243,7 +243,15 @@ def test_direct_completion_keeps_selection_copy_zero_and_graft_visible() -> None
         request,
         PRAEngineResult(
             text="done",
-            raw={"native_attach_bytes": 0, "pra": trace},
+            raw={
+                "native_attach_bytes": 0,
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 4,
+                    "total_tokens": 104,
+                },
+                "pra": trace,
+            },
             trace=(trace,),
         ),
     )
@@ -251,6 +259,8 @@ def test_direct_completion_keeps_selection_copy_zero_and_graft_visible() -> None
     assert response["pra"]["selected_history_kv_copy_bytes"] == 0
     assert response["pra"]["canonical_suffix_graft_d2d_bytes"] == 4096
     assert response["pra"]["total_kv_copy_bytes"] == 8192
+    assert response["usage"]["prompt_tokens"] == 100
+    assert response["usage"]["total_tokens"] == 104
 
 
 def test_common_prefix_distinguishes_append_from_rewrite() -> None:

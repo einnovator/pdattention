@@ -1138,6 +1138,9 @@ class SGLangMLXAgentHistoryExecutor:
             "sampler_prompt_tokens": len(sampler_prompt),
             "sampler_prompt_selected_history_tokens": plan.selected_tokens,
             "sampler_prompt_wire_tokens": len(wire),
+            "logical_prompt_tokens": len(prompt),
+            "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
+            "completion_tokens": len(generated),
             "sampler_prompt_sha256": _token_digest(sampler_prompt),
             "elapsed_seconds": elapsed,
             "chat_template_profile": self.chat_template_profile,
@@ -1148,6 +1151,11 @@ class SGLangMLXAgentHistoryExecutor:
             "native_attach_bytes": copy_metrics["native_attach_bytes"],
             "prefix_cache_hit": bool(len(source) - newly_encoded),
             "prefix_cached_tokens": len(source) - newly_encoded,
+            "usage": {
+                "prompt_tokens": len(prompt),
+                "completion_tokens": len(generated),
+                "total_tokens": len(prompt) + len(generated),
+            },
             "pra": dict(trace),
         }
         return PRAEngineResult(text=text, raw=raw, trace=(trace,))
@@ -1179,7 +1187,14 @@ class SGLangMLXAgentHistoryExecutor:
                 )
                 return PRAEngineResult(
                     text=text,
-                    raw={"pra": {"native_kv_used": False}},
+                    raw={
+                        "usage": {
+                            "prompt_tokens": len(prompt),
+                            "completion_tokens": len(generated),
+                            "total_tokens": len(prompt) + len(generated),
+                        },
+                        "pra": {"native_kv_used": False},
+                    },
                     trace=({
                         "stage": "plain_generation",
                         "native_kv_used": False,

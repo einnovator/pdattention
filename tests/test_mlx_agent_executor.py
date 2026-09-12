@@ -197,6 +197,11 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     ))
     assert result.text == "A"
     assert result.trace[0]["native_kv_used"] is False
+    assert result.raw["usage"]["prompt_tokens"] == result.trace[0]["prompt_tokens"]
+    assert result.raw["usage"]["completion_tokens"] == 1
+    assert result.raw["usage"]["total_tokens"] == (
+        result.raw["usage"]["prompt_tokens"] + 1
+    )
     assert not executor._sessions
 
 
