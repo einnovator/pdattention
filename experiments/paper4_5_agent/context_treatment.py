@@ -1295,6 +1295,7 @@ class TreatmentProxy:
                 ),
                 causal_bundle_round_up=effective_retention.causal_bundle_round_up,
             )
+            native_session_id = trace.session_id
             if self.session_namespace and isinstance(payload.get("pra"), Mapping):
                 scoped_session_id = hashlib.sha256(
                     f"{self.session_namespace}\0{trace.session_id}".encode("utf-8")
@@ -1302,13 +1303,16 @@ class TreatmentProxy:
                 envelope = dict(payload["pra"])
                 envelope["session_id"] = scoped_session_id
                 payload["pra"] = envelope
-                trace = replace(trace, session_id=scoped_session_id)
+                # Keep telemetry keyed by the stable logical task session so
+                # normalization can join it to the trajectory.  The scoped
+                # identifier belongs only to the engine lifecycle.
+                native_session_id = scoped_session_id
             if self.mode in {
                 ContextTreatment.DIRECT_NATIVE_PRA,
                 ContextTreatment.GATEWAY_NATIVE_PRA,
             }:
                 with self._lock:
-                    self._native_session_ids.add(trace.session_id)
+                    self._native_session_ids.add(native_session_id)
             payload, policy_tokens = apply_consumption_policy(
                 payload, self.consumption_policy,
                 logical_messages=logical_payload.get("messages", ()),

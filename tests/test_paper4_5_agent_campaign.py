@@ -3450,7 +3450,7 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
         f"frozen-run-id\0{session_id_for_messages(json.loads(payload)['messages'])}".encode()
     ).hexdigest()[:24]
     assert observed["pra"]["session_id"] == expected_session_id
-    assert trace["session_id"] == expected_session_id
+    assert trace["session_id"] == session_id_for_messages(json.loads(payload)["messages"])
     assert closed_sessions == [f"/v1/pra/sessions/{expected_session_id}"]
     assert trace["mode"] == "direct-native-pra"
     assert trace["physical_input_tokens_estimate"] <= trace["logical_input_tokens_estimate"]
