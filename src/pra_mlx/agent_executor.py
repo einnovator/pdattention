@@ -38,7 +38,10 @@ from .native import (
     capture_live_native_memory,
     make_native_prompt_cache,
 )
-from .qwen3_segmented import install_qwen3_segmented_attention
+from .qwen3_segmented import (
+    install_qwen3_segmented_attention,
+    set_qwen3_segmented_attention_active,
+)
 
 
 def _array_bytes(value: object) -> int:
@@ -134,7 +137,10 @@ class MLXAgentHistoryExecutor:
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.RLock()
         self.prefix_cache_enabled = False
-        self.patched_layers = install_qwen3_segmented_attention(model, compiled=False)
+        self.patched_layers = install_qwen3_segmented_attention(
+            model, compiled=False, active=False
+        )
+        self._segmented_attention_active = False
         if self.agent_history_qualified and (
             self.patched_layers <= 0 or not self.require_same_subset_reference
         ):
@@ -173,6 +179,8 @@ class MLXAgentHistoryExecutor:
                 else "per-request same-subset gate required"
             ),
             "segmented_attention_layers": self.patched_layers,
+            "segmented_attention_dispatch": "sparse_only",
+            "segmented_attention_active": self._segmented_attention_active,
             "fused_disjoint_attention": self.fused_disjoint_attention,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
@@ -249,6 +257,13 @@ class MLXAgentHistoryExecutor:
         from mlx_lm.models.cache import make_prompt_cache
 
         return make_prompt_cache(self.model)
+
+    def _set_segmented_attention(self, active: bool) -> None:
+        enabled = bool(active)
+        if enabled and self.patched_layers <= 0:
+            raise RuntimeError("Sparse MLX attention is not installed.")
+        set_qwen3_segmented_attention_active(self.model, enabled)
+        self._segmented_attention_active = enabled
 
     def _evaluate(self, token_ids: Sequence[int], cache: Sequence[object]):
         import mlx.core as mx
@@ -348,6 +363,10 @@ class MLXAgentHistoryExecutor:
     ) -> tuple[int, int, MLXKVGraftMetrics | None]:
         """Build once, then extend canonical K/V using only the new suffix."""
 
+        # Canonical history construction and extension must use MLX-LM's
+        # original attention path.  Segmented attention is a sparse consumer,
+        # not a replacement for ordinary prefill or PRA-100.
+        self._set_segmented_attention(False)
         if state.canonical_memory is None:
             cache = self._new_cache()
             self._prefill(source, cache)
@@ -370,7 +389,7 @@ class MLXAgentHistoryExecutor:
         caches = make_native_prompt_cache(
             self.model,
             state.canonical_memory,
-            segmented=bool(self.patched_layers),
+            segmented=False,
             query_position_base=len(state.canonical_tokens),
         )
         self._prefill(delta, caches)
@@ -494,6 +513,7 @@ class MLXAgentHistoryExecutor:
         updated_memory: MLXNativeMemory | None = None
         graft_metrics: MLXKVGraftMetrics | None = None
         try:
+            self._set_segmented_attention(use_segmented)
             logits = self._evaluate(wire, candidate_cache)
             calls += 1
             if not plan.full_retention and self.require_same_subset_reference:
@@ -553,12 +573,15 @@ class MLXAgentHistoryExecutor:
             )
             outcome = "finished"
         finally:
-            if reference is not None:
-                reference.fail()
-            if outcome == "finished":
-                candidate.finish()
-            else:
-                candidate.fail()
+            try:
+                if reference is not None:
+                    reference.fail()
+                if outcome == "finished":
+                    candidate.finish()
+                else:
+                    candidate.fail()
+            finally:
+                self._set_segmented_attention(False)
         assert updated_memory is not None and graft_metrics is not None
         state.canonical_memory = updated_memory
         state.canonical_tokens = [*source, *wire, *generated]
@@ -666,6 +689,11 @@ class MLXAgentHistoryExecutor:
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
             "fused_disjoint_attention": self.fused_disjoint_attention,
+            "segmented_attention_dispatch": "sparse_only",
+            "attention_path": (
+                "segmented_sparse" if use_segmented else "canonical_native"
+            ),
+            "segmented_attention_active": use_segmented,
             "same_subset_gate_passed": (
                 None if plan.full_retention else logit_delta is not None
                 and logit_delta <= self.max_abs_logit_delta
@@ -695,6 +723,9 @@ class MLXAgentHistoryExecutor:
 
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
         with self._lock:
+            # Recover the canonical engine path even after a failed sparse
+            # request; this also keeps plain requests free of wrapper overhead.
+            self._set_segmented_attention(False)
             native = (
                 request.metadata.get("history_projection") == "live-agent-kv-v1"
                 or bool(request.resources)
@@ -727,6 +758,9 @@ class MLXAgentHistoryExecutor:
                         "completion_tokens": len(generated),
                         "model_calls": calls,
                         "elapsed_seconds": elapsed,
+                        "segmented_attention_dispatch": "sparse_only",
+                        "attention_path": "canonical_native",
+                        "segmented_attention_active": False,
                         "chat_template_profile": self.chat_template_profile,
                         "chat_template_digest": self.chat_template_digest,
                     },),

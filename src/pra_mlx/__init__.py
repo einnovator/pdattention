@@ -38,7 +38,10 @@ from .mlx_live_kv import (
     MLXLiveKVRequestCancelled,
     MLXLiveKVRuntime,
 )
-from .qwen3_segmented import install_qwen3_segmented_attention
+from .qwen3_segmented import (
+    install_qwen3_segmented_attention,
+    set_qwen3_segmented_attention_active,
+)
 from .native_storage import MLXNativeSegmentStore
 from .agent_executor import MLXAgentHistoryExecutor
 
@@ -80,5 +83,6 @@ __all__ = [
     "disjoint_segmented_selected_attention",
     "segmented_selected_attention",
     "install_qwen3_segmented_attention",
+    "set_qwen3_segmented_attention_active",
     "serialize_native_memory",
 ]

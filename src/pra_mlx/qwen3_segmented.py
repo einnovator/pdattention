@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .native import (
@@ -14,14 +15,59 @@ from .native import (
 )
 
 
-def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -> int:
+@dataclass
+class _SegmentedAttentionBinding:
+    layer: object
+    native: object
+    segmented: object
+
+
+class _SegmentedAttentionController:
+    """Keep patch objects outside MLX's module/parameter traversal."""
+
+    def __init__(
+        self, bindings: tuple[_SegmentedAttentionBinding, ...], active: bool
+    ) -> None:
+        self.bindings = bindings
+        self.active = bool(active)
+
+
+def set_qwen3_segmented_attention_active(model: object, active: bool) -> int:
+    """Select native or segmented attention without rebuilding either module.
+
+    Agent requests are serialized by :class:`MLXAgentHistoryExecutor`, so the
+    model-wide switch cannot change underneath an in-flight decode.  Ordinary
+    and full-retention requests keep the original MLX-LM attention modules;
+    only a genuinely sparse request temporarily installs the wrappers.
+    """
+
+    controller = getattr(model, "_pra_segmented_attention_controller", None)
+    if not isinstance(controller, _SegmentedAttentionController):
+        if active:
+            raise RuntimeError("Segmented attention has not been installed.")
+        return 0
+    enabled = bool(active)
+    if controller.active == enabled:
+        return len(controller.bindings)
+    for binding in controller.bindings:
+        binding.layer.self_attn = binding.segmented if enabled else binding.native
+    controller.active = enabled
+    object.__setattr__(model, "_pra_segmented_attention_active", enabled)
+    return len(controller.bindings)
+
+
+def install_qwen3_segmented_attention(
+    model: object, *, compiled: bool = True, active: bool = True
+) -> int:
     """Patch Qwen2/Qwen3 attention layers to consume separate PRA K/V.
 
     The wrapper delegates ordinary and concatenated-cache requests to MLX-LM's
     original module.  Only :class:`MLXSegmentedSelectedKVCache` takes the new
     path, which preserves Qwen3's projections, normalization, RoPE, and output
     projection while replacing K/V concatenation with one exact segmented
-    softmax.  The return value is the number of patched decoder layers.
+    softmax.  ``active=False`` prepares the sparse implementation while
+    leaving the model's original attention modules installed.  The return
+    value is the number of prepared decoder layers.
     """
 
     import mlx.core as mx
@@ -34,6 +80,7 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
             f"not {model_type!r}."
         )
     if getattr(model, "_pra_segmented_attention_installed", False):
+        set_qwen3_segmented_attention_active(model, active)
         return 0
 
     class _SegmentedQwen3Attention(nn.Module):
@@ -149,8 +196,23 @@ def install_qwen3_segmented_attention(model: object, *, compiled: bool = True) -
     layers = tuple(getattr(model, "layers", ()))
     if not layers:
         raise ValueError("Qwen model exposes no decoder layers to patch.")
-    for layer in layers:
-        layer.self_attn = _SegmentedQwen3Attention(layer.self_attn)
-    model._pra_segmented_attention_installed = True
+    bindings = tuple(
+        _SegmentedAttentionBinding(
+            layer=layer,
+            native=layer.self_attn,
+            segmented=_SegmentedQwen3Attention(layer.self_attn),
+        )
+        for layer in layers
+    )
+    controller = _SegmentedAttentionController(bindings, active=active)
+    # A plain controller is intentionally attached through object.__setattr__:
+    # MLX module traversal must not discover both the native and wrapped copies
+    # of the same parameter tree while native attention is selected.
+    object.__setattr__(model, "_pra_segmented_attention_controller", controller)
+    object.__setattr__(model, "_pra_segmented_attention_installed", True)
+    object.__setattr__(model, "_pra_segmented_attention_active", bool(active))
+    if active:
+        for binding in bindings:
+            binding.layer.self_attn = binding.segmented
     mx.eval(model.parameters())
     return len(layers)

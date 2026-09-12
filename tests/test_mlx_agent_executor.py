@@ -112,9 +112,15 @@ class _Model:
         self.sparse_delta = float(sparse_delta)
         self.calls = 0
         self.call_widths = []
+        self.call_attention_modes = []
+        self.call_cache_types = []
 
     def __call__(self, input_ids, *, cache):
         self.calls += 1
+        self.call_attention_modes.append(bool(getattr(
+            self, "segmented_attention_active", False
+        )))
+        self.call_cache_types.append(type(cache[0]).__name__)
         values = list(map(int, input_ids[0]))
         self.call_widths.append(len(values))
         for wrapped in cache:
@@ -146,7 +152,15 @@ def fake_mlx(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlx_lm.models.cache", cache)
     monkeypatch.setattr(
         "pra_mlx.agent_executor.install_qwen3_segmented_attention",
-        lambda model, compiled=False: 1,
+        lambda model, compiled=False, active=True: (
+            setattr(model, "segmented_attention_active", bool(active)) or 1
+        ),
+    )
+    monkeypatch.setattr(
+        "pra_mlx.agent_executor.set_qwen3_segmented_attention_active",
+        lambda model, active: (
+            setattr(model, "segmented_attention_active", bool(active)) or 1
+        ),
     )
     return core
 
@@ -204,6 +218,10 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     assert result.raw["usage"]["total_tokens"] == (
         result.raw["usage"]["prompt_tokens"] + 1
     )
+    assert result.trace[0]["attention_path"] == "canonical_native"
+    assert result.trace[0]["segmented_attention_active"] is False
+    assert result.trace[0]["segmented_attention_dispatch"] == "sparse_only"
+    assert not executor.model.call_attention_modes[-1]
     assert not executor._sessions
 
 
@@ -273,6 +291,12 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert first_trace["selected_history_kv_copy_bytes"] == 0
     assert first_trace["physical_kv_copy"] is False
     assert first_trace["canonical_suffix_graft_d2d_bytes"] > 0
+    assert first_trace["attention_path"] == "canonical_native"
+    assert first_trace["segmented_attention_active"] is False
+    assert executor.capabilities()["segmented_attention_active"] is False
+    assert executor.capabilities()["segmented_attention_dispatch"] == "sparse_only"
+    assert not any(executor.model.call_attention_modes)
+    assert "MLXDisjointSelectedKVCache" not in executor.model.call_cache_types
 
     logical = (*initial, {"role": "assistant", "content": "A"}, {
         "role": "user", "content": "O" * 40,
@@ -299,6 +323,15 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert trace["canonical_suffix_graft_d2d_bytes"] > 0
     assert trace["known_total_kv_copy_bytes"] > 0
     assert trace["total_kv_copy_bytes"] is None
+    assert trace["attention_path"] == "segmented_sparse"
+    assert trace["segmented_attention_active"] is True
+    assert any(
+        active and cache_type == "MLXDisjointSelectedKVCache"
+        for active, cache_type in zip(
+            executor.model.call_attention_modes, executor.model.call_cache_types
+        )
+    )
+    assert executor._segmented_attention_active is False
     assert executor.runtime.snapshot()["active_request_ids"] == ()
 
     source_id = executor._sessions["session"].source_id
@@ -359,6 +392,7 @@ def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx)
             retention=0.9,
             request_id="mismatch",
         ))
+    assert executor._segmented_attention_active is False
     assert executor.runtime.snapshot()["active_request_ids"] == ()
 
 
