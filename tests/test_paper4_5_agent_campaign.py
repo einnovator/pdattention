@@ -60,6 +60,7 @@ from experiments.paper4_5_agent.context_treatment import (
     _selection_digest,
     apply_consumption_policy,
     enforce_consumption_action,
+    session_id_for_messages,
     transform_chat_payload,
 )
 from experiments.paper4_5_agent.serve_llamacpp_pra import (
@@ -3358,6 +3359,7 @@ def test_treatment_trace_aggregation_preserves_missing_physical_telemetry() -> N
 
 def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Path) -> None:
     observed: dict[str, object] = {}
+    closed_sessions: list[str] = []
 
     class Target(BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802
@@ -3391,6 +3393,15 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
             self.end_headers()
             self.wfile.write(body)
 
+        def do_DELETE(self) -> None:  # noqa: N802
+            closed_sessions.append(self.path)
+            body = b'{"closed":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, format: str, *args: object) -> None:
             return None
 
@@ -3408,6 +3419,7 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
         selection_record_path=selection_path,
         interaction_trace_path=interaction_path,
         request_overrides={"prefix_caching": True},
+        session_namespace="frozen-run-id",
     )
     proxy_url = proxy.start()
     try:
@@ -3434,6 +3446,12 @@ def test_treatment_proxy_forwards_selected_context_and_writes_trace(tmp_path: Pa
     assert observed["pra"]["metadata"]["benchmark_fairness"] == "agent-visible-messages-only"
     assert observed["prefix_caching"] is True
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    expected_session_id = hashlib.sha256(
+        f"frozen-run-id\0{session_id_for_messages(json.loads(payload)['messages'])}".encode()
+    ).hexdigest()[:24]
+    assert observed["pra"]["session_id"] == expected_session_id
+    assert trace["session_id"] == expected_session_id
+    assert closed_sessions == [f"/v1/pra/sessions/{expected_session_id}"]
     assert trace["mode"] == "direct-native-pra"
     assert trace["physical_input_tokens_estimate"] <= trace["logical_input_tokens_estimate"]
     assert trace["prefix_cache_observed"] is True

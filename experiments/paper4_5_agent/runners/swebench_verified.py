@@ -573,6 +573,7 @@ def run(args: argparse.Namespace) -> Path:
             ),
             causal_bundle_round_up=getattr(args, "causal_bundle_round_up", True),
             consumption_policy=getattr(args, "consumption_policy", "standard"),
+            session_namespace=str(args.run_id),
             request_overrides={
                 "prefix_caching": bool(getattr(args, "prefix_caching", False))
             },

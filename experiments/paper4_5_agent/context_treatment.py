@@ -16,7 +16,7 @@ from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Mapping, Sequence
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from pra_hf.large_record_index import LargeRecordIndex, LargeRecordSearchPolicy
 from pra_hf.deployment import PRAAgentRetentionPolicy
@@ -1104,6 +1104,7 @@ class TreatmentProxy:
         preserve_action_observation_pairs: bool = True,
         causal_bundle_round_up: bool = True,
         consumption_policy: str = "standard",
+        session_namespace: str | None = None,
     ) -> None:
         if selection_record_path is not None and selection_replay_path is not None:
             raise ValueError("selection recording and replay are mutually exclusive")
@@ -1133,9 +1134,13 @@ class TreatmentProxy:
                 f"expected one of {CONSUMPTION_POLICIES}"
             )
         self.consumption_policy = consumption_policy
+        self.session_namespace = (
+            None if session_namespace is None else str(session_namespace)
+        )
         self._frozen_selections = _load_selection_fixture(selection_replay_path)
         self._lock = threading.Lock()
         self._request_index = 0
+        self._native_session_ids: set[str] = set()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -1213,6 +1218,27 @@ class TreatmentProxy:
             self._server.server_close()
         if self._thread is not None:
             self._thread.join(timeout=5)
+        # A treatment proxy owns the engine sessions it creates.  Reusing the
+        # task-derived ID in the next arm would otherwise attach its first
+        # request to the preceding arm's completed ledger and fail the live-K/V
+        # append-stability invariant before selection even begins.
+        with self._lock:
+            native_session_ids = tuple(sorted(self._native_session_ids))
+            self._native_session_ids.clear()
+        endpoint = self.target_base_url.removesuffix("/v1")
+        for session_id in native_session_ids:
+            request = urllib.request.Request(
+                f"{endpoint}/v1/pra/sessions/{quote(session_id, safe='')}",
+                method="DELETE",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    response.read()
+            except Exception:  # noqa: BLE001 - best-effort lifecycle cleanup
+                # Cleanup must not replace a completed benchmark result with a
+                # transport error.  The run-scoped ID still prevents a stale
+                # engine session from contaminating a later arm.
+                pass
 
     def _forward(self, handler: BaseHTTPRequestHandler) -> None:
         body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
@@ -1269,6 +1295,20 @@ class TreatmentProxy:
                 ),
                 causal_bundle_round_up=effective_retention.causal_bundle_round_up,
             )
+            if self.session_namespace and isinstance(payload.get("pra"), Mapping):
+                scoped_session_id = hashlib.sha256(
+                    f"{self.session_namespace}\0{trace.session_id}".encode("utf-8")
+                ).hexdigest()[:24]
+                envelope = dict(payload["pra"])
+                envelope["session_id"] = scoped_session_id
+                payload["pra"] = envelope
+                trace = replace(trace, session_id=scoped_session_id)
+            if self.mode in {
+                ContextTreatment.DIRECT_NATIVE_PRA,
+                ContextTreatment.GATEWAY_NATIVE_PRA,
+            }:
+                with self._lock:
+                    self._native_session_ids.add(trace.session_id)
             payload, policy_tokens = apply_consumption_policy(
                 payload, self.consumption_policy,
                 logical_messages=logical_payload.get("messages", ()),
