@@ -13,6 +13,7 @@ paper67=${PRA_LLAMA_ADAPTER_SRC:-/Users/admin.jorge.simao/git/rd/pdattention-pap
 model=${PRA_AGENT_MODEL_PATH:-/Users/admin.jorge.simao/.ollama/models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a}
 interaction_history=${PRA_AGENT_HISTORY:-/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/e2e_gate/llamacpp_task01_pra100_v1/interaction_history.jsonl}
 turns=${PRA_AGENT_REPLAY_TURNS:-31}
+condition_list=${PRA_AGENT_STAIRCASE_CONDITIONS:-"0 1"}
 
 mkdir -p "$runs"
 mkdir -p "$runs/slots"
@@ -79,10 +80,11 @@ run_condition() {
     --base-url http://127.0.0.1:18101/v1 \
     --model qwen3-coder:30b --engine llama.cpp \
     --max-omitted-bundles "$omitted" --turns "$turns"
-  local status=$?
+  local run_status=$?
   cleanup
-  return $status
+  return $run_status
 }
 
-run_condition 0
-run_condition 1
+for omitted in ${=condition_list}; do
+  run_condition "$omitted"
+done
