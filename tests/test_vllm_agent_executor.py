@@ -82,6 +82,12 @@ class _Driver:
             0.01,
         )
 
+    def generate_plain(self, prompt_token_ids, *, max_tokens):
+        self.prompts.append(list(prompt_token_ids))
+        return VLLMGenerationReceipt(
+            f"plain-{len(self.prompts)}", "A", (ord("A"),), {}, None, 4321, 0.02
+        )
+
     def evict_source(self, logical_key, generation):
         self.evictions.append((logical_key, generation))
         return (0,)
@@ -166,6 +172,29 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     ]
     assert second.raw["usage"]["completion_tokens"] == 1
     assert driver.evictions
+
+
+def test_plain_control_bypasses_scheduler_aliases_and_reports_usage() -> None:
+    driver = _Driver()
+    executor = VLLMCudaAgentHistoryExecutor(
+        driver,
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest=hashlib.sha256(b"stable").hexdigest(),
+    )
+    request = PRAWireRequest(
+        model="tiny",
+        messages=({"role": "user", "content": "plain task"},),
+        max_new_tokens=2,
+    )
+    result = executor.generate(request)
+
+    assert result.text == "A"
+    assert not driver.commands
+    assert result.trace[0]["native_kv_used"] is False
+    assert result.trace[0]["consumer_temporary_bytes"] == 4321
+    assert result.raw["usage"]["prompt_tokens"] == len(driver.prompts[0])
+    assert result.raw["usage"]["completion_tokens"] == 1
 
 
 def test_sparse_request_uses_complete_selected_pages_and_original_extent() -> None:

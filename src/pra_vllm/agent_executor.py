@@ -155,6 +155,10 @@ class VLLMGenerationReceipt:
 class VLLMAgentSchedulerDriver(Protocol):
     block_size: int
 
+    def generate_plain(
+        self, prompt_token_ids: Sequence[int], *, max_tokens: int
+    ) -> VLLMGenerationReceipt: ...
+
     def generate(
         self,
         prompt_token_ids: Sequence[int],
@@ -308,6 +312,45 @@ class VLLMInProcessSchedulerDriver:
             tuple(map(int, candidate.token_ids)),
             delta,
             committed,
+            temporary,
+            elapsed,
+        )
+
+    def generate_plain(
+        self, prompt_token_ids: Sequence[int], *, max_tokens: int
+    ) -> VLLMGenerationReceipt:
+        """Generate without scheduler aliases for the matched no-PRA control."""
+
+        from vllm import SamplingParams
+
+        try:
+            import torch
+
+            cuda = bool(torch.cuda.is_available())
+            active = int(torch.cuda.memory_allocated()) if cuda else 0
+            if cuda:
+                torch.cuda.reset_peak_memory_stats()
+        except Exception:  # pragma: no cover - optional measurement only
+            torch, cuda, active = None, False, 0
+        started = time.perf_counter()
+        outputs = self.llm.generate(
+            {"prompt_token_ids": list(map(int, prompt_token_ids))},
+            SamplingParams(temperature=0, max_tokens=int(max_tokens)),
+            use_tqdm=False,
+        )
+        elapsed = time.perf_counter() - started
+        if len(outputs) != 1 or not outputs[0].outputs:
+            raise RuntimeError("vLLM returned no completion for the plain request.")
+        row, candidate = outputs[0], outputs[0].outputs[0]
+        temporary = None
+        if cuda and torch is not None:
+            temporary = max(int(torch.cuda.max_memory_allocated()) - active, 0)
+        return VLLMGenerationReceipt(
+            str(row.request_id),
+            str(candidate.text),
+            tuple(map(int, candidate.token_ids)),
+            {},
+            None,
             temporary,
             elapsed,
         )
@@ -493,7 +536,38 @@ class VLLMCudaAgentHistoryExecutor:
     def generate(self, request: PRAWireRequest) -> PRAEngineResult:
         with self._lock:
             if request.metadata.get("history_projection") != "live-agent-kv-v1":
-                raise ValueError("vLLM native agent bridge requires live-agent-kv-v1.")
+                prompt_text = _render_text(
+                    self.tokenizer,
+                    request.messages,
+                    generation_prompt=True,
+                    template_kwargs=self.chat_template_kwargs,
+                )
+                prompt = _encode(self.tokenizer, prompt_text)
+                receipt = self.driver.generate_plain(
+                    prompt, max_tokens=request.resolved_max_new_tokens
+                )
+                trace = {
+                    "stage": "plain_generation",
+                    "engine": "vllm-cuda",
+                    "native_kv_used": False,
+                    "prompt_tokens": len(prompt),
+                    "completion_tokens": len(receipt.token_ids),
+                    "consumer_temporary_bytes": receipt.consumer_temporary_bytes,
+                    "elapsed_seconds": receipt.elapsed_seconds,
+                    "chat_template_digest": self.chat_template_digest,
+                }
+                return PRAEngineResult(
+                    receipt.text,
+                    raw={
+                        "usage": {
+                            "prompt_tokens": len(prompt),
+                            "completion_tokens": len(receipt.token_ids),
+                            "total_tokens": len(prompt) + len(receipt.token_ids),
+                        },
+                        "pra": {"native_kv_used": False},
+                    },
+                    trace=(trace,),
+                )
             if str(request.metadata.get("chat_template_digest", self.chat_template_digest)) != self.chat_template_digest:
                 raise ValueError("Request chat template digest does not match the engine.")
             state = self._session(request)
