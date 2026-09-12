@@ -341,6 +341,10 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert "model.model_kwargs.seed=0" in joined
     assert "agent.step_limit=12" in joined
     assert "InstrumentedDockerEnvironment" in joined
+    assert (
+        "environment.image=docker.io/swebench/"
+        "sweb.eval.x86_64.org_1776_repo-2:latest" in joined
+    )
 
 
 def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):

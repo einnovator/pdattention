@@ -69,6 +69,11 @@ def build_agent_command(
     instance_id: str,
     agent_output: Path,
 ) -> list[str]:
+    docker_instance_id = instance_id.replace("__", "_1776_").lower()
+    task_image = (
+        "docker.io/swebench/"
+        f"sweb.eval.x86_64.{docker_instance_id}:latest"
+    )
     command = [
         sys.executable,
         "-m",
@@ -110,6 +115,8 @@ def build_agent_command(
             "environment.environment_class="
             "experiments.paper8_5_agent_memory.miniswe_environment."
             "InstrumentedDockerEnvironment",
+            "-c",
+            f"environment.image={task_image}",
             "-c",
             f"environment.instrumentation_output_root={args.instrumentation_output_root}",
             "-c",
@@ -480,6 +487,11 @@ def run(args: argparse.Namespace) -> Path:
     metrics["agent_wall_time_seconds"] = agent_wall_time
     metrics["instance_id"] = instance_id
     _write_json(output / "autonomous_metrics.json", metrics)
+    if metrics["calls"] == 0:
+        raise RuntimeError(
+            "mini-swe-agent completed without a model request; this is an "
+            "infrastructure failure, not an unresolved task result (see agent.log)"
+        )
     if args.skip_grading:
         return output / "autonomous_metrics.json"
 
