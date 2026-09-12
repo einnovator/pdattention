@@ -52,7 +52,11 @@ engine, but to derive a portable agent-memory policy that can later be realized
 as text, persistent native K/V, or other backend state. We hypothesize that
 typed causal retention preserves agent quality more efficiently than token
 recency, and that its first benefit appears as equal task success with fewer
-calls, rereads, and retained tokens.
+calls, rereads, and retained tokens. In the first autonomous single-task pilot,
+however, same-version/span read supersession saves 6.43\% of cumulative input
+tokens, changes the trajectory at its first exclusion, and ends in official
+failure. Full history itself resolves only one of two executions, so this is
+evidence of a behavioral effect rather than an identified task-success penalty.
 \end{abstract}
 
 \section{Introduction}
@@ -665,7 +669,7 @@ resource dependency. H4 with $K_x=2$ has the largest opportunity, 3,180 tokens
 are cumulative prefix occurrences rather than unique records, and they measure
 neither tokenizer-exact saving, next-action quality, nor task success. Their
 purpose is to confirm that the arms fire differently before spending model
-calls; frozen and autonomous rows remain pending.
+calls; the frozen gate and first autonomous pilot follow below.
 
 Repeating the screen with the pinned Qwen3-Coder tokenizer changes the counts
 but not the ordering. Across 199,109 cumulative full-history tokens, H1 at
@@ -797,6 +801,78 @@ Finally, the all-guarded treatment at $K_x=4$ saves 4,096 cumulative tokens
 setting, so this is effectively H1+H2a+H3. Its slight recovery relative to
 H1+H3 despite removing more context demonstrates non-monotone model
 sensitivity, not a robust policy improvement.
+
+\subsection{First autonomous qualification}
+
+We next ran an autonomous pilot on
+\texttt{django\_\_django-15277} from fresh SWE-bench workspaces. All executions use
+mini-swe-agent 2.4.6, \texttt{qwen3-coder:30b}, the pinned Qwen tokenizer,
+temperature zero, top-$p=1$, seed zero, whole-record text materialization, and
+the official SWE-bench Docker grader. Earlier pilot attempts that were no-ops
+or otherwise invalid were quarantined and do not enter
+Table~\ref{tab:first-autonomous}. The corrected proxy forwards the incoming
+request exactly while a negative policy is a logical no-op; the included H3
+run records five such exact decisions before its first exclusion.
+
+\begin{table}[H]
+\centering
+\small
+\caption{First autonomous single-task pilot. Token totals are
+cumulative message-content tokens and exclude chat-template tokens. Because
+the rollouts diverge, their full-history totals and call counts are not paired
+request prefixes. H3's lower call count is failure termination, not fewer calls
+to solution.}
+\label{tab:first-autonomous}
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Resolved & Calls & Full tok. & Selected tok. & Saving & Reacq. \\
+\midrule
+\textsc{Full}-A & 1/1 & 26 & 131,530 & 131,530 & 0.00\% & 0 \\
+\textsc{Full}-B & 0/1 & 29 & 154,173 & 154,173 & 0.00\% & 0 \\
+H3, $K_r=1$ & 0/1 & 19 & 91,520 & 85,640 & 6.43\% & 6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textsc{Full}-A passes the official grader. \textsc{Full}-B makes the intended
+code change but diverges from \textsc{Full}-A at call 9 and finally prints a
+source excerpt rather than a unified diff; its submission is therefore rejected.
+Thus this nominally deterministic configuration is only 1/2 for \textsc{Full}
+on this task, and one H3 failure cannot estimate a causal success-rate delta.
+A separate fixed first-request probe reproduces assistant content and command
+exactly in 3/3 calls; this does not qualify a growing autonomous trajectory,
+where generated reasoning and environment observations enter later requests.
+
+The qualified H3 rollout has the same model-visible request as
+\textsc{Full}-B through call 5. Call 6 is the first actual exclusion: assistant
+reasoning changes immediately but its shell command remains the same. The shell
+command first changes at call 7. This is a causal next-action divergence, not
+by itself proof that selection caused the eventual official failure. The
+subsequent trajectory records six reacquisitions of excluded
+resources. It eventually applies an unscoped global \texttt{sed} replacement:
+the intended guard appears in \texttt{CharField}, but the already guarded
+\texttt{BinaryField} is also rewritten, producing a malformed duplicate
+\texttt{if}. The final submission command prints broad \texttt{grep} context
+rather than a Git diff; consequently, the submitted \texttt{model\_patch} is
+not a diff and the official grader reports a patch-application error.
+
+The scientific conclusion is deliberately narrow. H3's same-version/span
+condition is not behaviorally inert: a newer source read can supersede exposed
+bytes without proving the older record's localization, reasoning, or mutation
+intent irrelevant. The model-visible H3 trajectory and failure mechanism were
+reproduced exactly in a second execution after the no-op request fix, but only
+the corrected execution enters the table. Because \textsc{Full}-B also fails,
+these rows do not yet prove an H3 task-success penalty. Frozen replay remains a
+screening tool, while autonomous claims require repeated \textsc{Full} controls
+and multiple task identities. The next H3 treatment should preserve a compact
+model-visible source/progress tombstone or require stronger evidence than
+shared resource-version and span.
+
+The auditable artifacts are under
+\texttt{docs/papers/shared/results/paper8\_5\_agent\_memory/}
+\texttt{autonomous\_task01\_qwen30}; they include per-request selection
+receipts, full trajectories, token counters, official results, and frozen run
+provenance.
 
 \section{Semantic-Role Ablations}
 

@@ -65,3 +65,14 @@ a different budget contract from the ceiling-based structural pilot above.
 Its directory also contains a separately labelled whitespace-only H1--H4
 opportunity screen; the heuristic rows must not be interpreted as frozen or
 autonomous quality evidence.
+
+## First autonomous pilot
+
+The [`autonomous_task01_qwen30`](autonomous_task01_qwen30/README.md) cohort is
+the first fresh-workspace mini-swe-agent execution with official SWE-bench
+grading. Full history resolves one of two repeated executions. H3 with
+`Kr=1` saves 6.43% of cumulative message-content tokens, changes reasoning at
+the first real exclusion and the command at the following call, reacquires
+excluded state six times, and does not produce a valid final patch. Because a
+full-history repeat also fails, this is evidence that H3 is not behaviorally
+inert, not yet an estimate of its task-success penalty.
