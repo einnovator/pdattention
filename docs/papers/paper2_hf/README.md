@@ -1,5 +1,8 @@
 # Paper 2: Hugging Face PRA Integration
 
+The independent-unit accounting and exact evidence source for each manuscript headline are
+summarized in [CLAIM_LEDGER.md](CLAIM_LEDGER.md).
+
 This manuscript records the pretrained-model integration and productization phase. The current
 evidence covers frozen Qwen3-0.6B and SmolLM2-135M Llama-family checkpoints, configurable PRA
 consumption bands, eager attention, native GQA K/V, explicit reference memory, route-once
