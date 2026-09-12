@@ -1609,12 +1609,11 @@ to fixed token windows on official end-task outcomes is not yet established. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and an admitted 25-call PRA-90 solve at 93.32\%
 model-visible retention. Direct MLX and SGLang-MLX add action-exact six-call
-plain/PRA-100 Task-01 solves; SGLang-MLX PRA-90 also resolves 1/1 in six calls
-with exact commands. vLLM CUDA adds a 15-action exact plain/PRA-100 Task-05
-solve. & HF still lacks an admitted plain-success model/task pair; vLLM CUDA
-has not run its now-admissible PRA-90 arm, and direct MLX PRA-90 remains below
-its same-subset numerical gate. Easy-14 and 75\% are locked, and learned-adaptor
-cells still fail closed. \\
+plain/PRA-100 Task-01 solves and both resolve PRA-90 in six calls with the plain
+command sequence and patch. vLLM CUDA adds a 15-action exact plain/PRA-100
+Task-05 solve. & HF still lacks an admitted plain-success model/task pair;
+vLLM CUDA has not run its now-admissible PRA-90 arm. Easy-14 and 75\% are
+locked, and learned-adaptor cells still fail closed. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
@@ -3636,7 +3635,7 @@ movement is 92,012,544 bytes, cumulative consumer temporary allocation is
 speedup claim.  SGLang therefore clears plain, PRA-100, and PRA-90 on this
 frozen autonomous task without authorizing expansion to another task.
 
-The direct MLX no-gateway bridge is now implemented under the same contract.
+The direct MLX no-gateway bridge is implemented under the same contract.
 It owns a persistent canonical live cache per session, extends only an append-
 stable suffix, treats PRA-100 as the full-context semantic no-op candidate, and
 serves PRA-90 through disjoint intervals with original positions.  Every sparse
@@ -3644,36 +3643,53 @@ request must also clear a dense same-subset reference gate at maximum logit
 delta 0.005.  Request borrowing, exact-once release, and session termination
 are contract-tested, while interval packing, dense-reference packing,
 canonical graft/reallocation, H2D traffic, and consumer temporary bytes are
-reported separately.  The Qwen2.5-Coder-14B 4-bit / Task~01 pair now clears
-plain admission and the PRA-100 autonomous gate on the 48~GB M4 Pro.  Both
-fresh runs resolve 1/1 in six actions and have the same ordered action digest,
-with identical cumulative logical prompt and output token counts.  PRA-100
-reports zero selected-history re-encoding, zero selected-history K/V copy, and
-1.0 realized retention.  This result required two engine-neutral correctness
-repairs: lifecycle fixtures now split at completed record boundaries, and a
-union of adjacent record intervals that covers the complete source is treated
-as full retention rather than being sent through disjoint attention.
+reported separately.  The Qwen2.5-Coder-14B 4-bit / Task~01 pair clears plain,
+PRA-100, and PRA-90 admission on the 48~GB M4 Pro under one frozen package
+identity: MLX 0.32.1, MLX-LM 0.32.0, model/tokenizer revision
+\texttt{29efdbab55a1}, and PRA revision \texttt{be87bb88}.  The clean plain and
+PRA-100 runs both resolve 1/1 in six actions and have identical ordered action
+and 1,165-byte patch digests.  PRA-100 reports 1.0 realized retention on all
+six requests, zero selected-history re-encoding, zero selected-history K/V
+copy, and zero H2D transfer.  This result required two engine-neutral
+correctness repairs: lifecycle fixtures now split at completed record
+boundaries, and a union of adjacent record intervals that covers the complete
+source is treated as full retention rather than being sent through disjoint
+attention.
 
-The same run is not a runtime win.  MLX canonical-cache growth copies
-5,556,928,512 bytes cumulatively across the six requests, including
-92,798,976 bytes of suffix graft, while cumulative consumer temporary
-allocation is 3,337,912,320 bytes with a 651,476,992-byte request peak.  Wall
-time is 198.7~s versus 190.1~s for plain; this single non-isolated pair is
-provenance, not a speed estimate.  It demonstrates why logical retention,
-selected-history copy, canonical growth copy, consumer temporaries, and wall
-time must remain separate fields.
+The earlier direct-MLX PRA-90 numerical negative is superseded by an engine
+correctness repair, not a relaxed threshold.  A forced 100\%, single-contiguous-
+interval diagnostic still differed from native attention by 0.015625, ruling
+out selection, interval order, sparse RoPE positions, and reference-subset
+construction.  The remaining difference was reduction geometry: Qwen2.5's
+native MLX path scales queries before the dot product and uses two-pass vector
+attention with fast exponentiation, block reduction, and half-precision
+partials.  The corrected interval-addressed Metal kernel reproduces that
+native two-pass arithmetic without packing selected history.  In the frozen
+autonomous run, the two sparse requests both have maximum same-subset logit
+delta 0.0 under the unchanged predeclared 0.005 gate.
 
-PRA-90 then passes the first four requests exactly and reaches its first truly
-sparse request at call five: 2,414 of 2,637 completed-history tokens are
-selected (91.54\%), omitting only the oldest completed assistant--observation
-bundle.  Storage, original positions, and the zero-copy alias path are exact,
-and a frozen 16-token continuation has the same token IDs as an ordinary dense
-MLX consumer of that identical subset.  However, the maximum logit delta is
-0.0546875, above the predeclared 0.005 gate.  Eager disjoint attention, a
-single score-concatenation softmax, and native-fast Metal math do not remove
-the discrepancy.  The row therefore remains a strict numerical negative and
-the autonomous PRA-90 task is withheld; the tolerance is not relaxed after
-observing the result.
+The admitted PRA-90 run resolves 1/1 in six calls and submits the identical
+patch.  Its first response-text divergence is call six and changes only
+non-operative reasoning wording; all six shell commands remain equal to plain.
+The causal floor retains 100\% of engine K/V on calls one--four, 91.54\% on call
+five, and 92.57\% on call six.  Because four short-history requests round up to
+full retention, aggregate visible-materialization retention is 97.81\%
+(8,725/8,920 estimated tokens), so this task avoids only 195 estimated prompt
+tokens.  Across all six requests, selected-history re-encoding, selected-K/V
+copy, and H2D transfer remain zero.
+
+These runs qualify semantics, not production economics.  PRA-100 reports
+5,556,928,512 total K/V-copy bytes, including 92,798,976 bytes of canonical
+suffix graft, and 3,337,912,320 cumulative consumer-temporary bytes with a
+651,476,992-byte peak.  PRA-90 reports 8,403,419,136 total K/V-copy bytes,
+including 92,012,544 suffix-graft bytes and the packed dense qualification
+reference on its two sparse calls; consumer temporaries total 4,461,199,360
+bytes and peak at 1,248,509,952 bytes.  Observed model/task wall times are
+170.10~s for plain, 19.65~s for PRA-100, and 22.03~s for PRA-90, but one
+non-isolated task is provenance rather than a speedup estimate.  The result
+therefore keeps logical retention, selected-history copy, canonical growth,
+qualification-reference copy, consumer temporaries, and wall time as distinct
+fields.
 
 HF now has the corresponding direct, no-gateway agent bridge in code.  It keeps
 a persistent canonical \texttt{DynamicCache}, treats PRA-100 as the dense
@@ -4425,11 +4441,13 @@ PRA-90 is a 1/1 solve in 25 calls at 93.32\% total context retention.  Direct
 MLX and SGLang-MLX now reproduce the same six-call Task~01 plain/PRA-100 solve.
 SGLang-MLX additionally clears PRA-90 in six calls with exact commands and
 patch, zero selected-history re-encoding/copy/H2D, and exact engine retention
-of 91.54\% and 92.57\% on its two sparse requests.  This run also demonstrates
+of 91.54\% and 92.57\% on its two sparse requests.  Direct MLX now clears the
+same task sequence under the unchanged 0.005 same-subset gate: its two sparse
+requests have 0.0 maximum logit delta, the six commands and patch match plain,
+and only the final non-operative reasoning text differs.  These runs also demonstrate
 why estimated and realized retention cannot be conflated: an earlier request
 was 32 model tokens below the nominal floor until causal groups were rounded
-with the engine tokenizer.  Direct MLX PRA-90 remains withheld after its
-same-subset numerical gate fails.  HF's bounded 7B path is now free of the
+with the engine tokenizer.  HF's bounded 7B path is now free of the
 autograd, prompt-logit, and prompt-activation OOMs, but two tested tasks fail
 plain with empty patches, so its PRA arms are not run.  vLLM's earlier 7B AWQ
 plain Task~13 also fails, but the independent 8K Task~05 pair now admits PRA-90;
