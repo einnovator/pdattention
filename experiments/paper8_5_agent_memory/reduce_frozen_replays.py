@@ -126,16 +126,16 @@ def _arm_summary(
     attempted = len(rows)
     valid = sum(bool(row["action_valid"]) for row in rows)
     exact_content = sum(
-        bool(row["action_valid"])
-        and bool(full_by_decision[int(row["decision"])]["action_valid"])
-        and row.get("generated_content")
+        row.get("generated_content")
         == full_by_decision[int(row["decision"])].get("generated_content")
         for row in rows
     )
+    reference_command_decisions = sum(
+        full_by_decision[int(row["decision"])].get("generated_command") is not None
+        for row in rows
+    )
     exact_command = sum(
-        bool(row["action_valid"])
-        and bool(full_by_decision[int(row["decision"])]["action_valid"])
-        and row.get("generated_command") is not None
+        full_by_decision[int(row["decision"])].get("generated_command") is not None
         and row.get("generated_command")
         == full_by_decision[int(row["decision"])].get("generated_command")
         for row in rows
@@ -155,6 +155,7 @@ def _arm_summary(
     ]
     return {
         "policy": artifact.get("policy"),
+        "treatment": _treatment_label(artifact),
         "decisions_attempted": attempted,
         "decisions_completed": int(artifact["completed_decisions"]),
         "valid_action_decisions": valid,
@@ -162,7 +163,12 @@ def _arm_summary(
         "exact_content_decisions": exact_content,
         "exact_content_rate_vs_full": exact_content / attempted if attempted else None,
         "exact_command_decisions": exact_command,
-        "exact_command_rate_vs_full": exact_command / attempted if attempted else None,
+        "reference_command_decisions": reference_command_decisions,
+        "exact_command_rate_vs_full": (
+            exact_command / reference_command_decisions
+            if reference_command_decisions
+            else None
+        ),
         "first_content_divergence": _first_divergence(
             rows,
             full_by_decision,
@@ -206,6 +212,30 @@ def _arm_summary(
     }
 
 
+def _treatment_label(artifact: Mapping[str, Any]) -> str:
+    """Name an arm by policy plus its budget contract, not policy alone."""
+    policy = str(artifact.get("policy"))
+    if policy == "full":
+        return "FULL"
+    configuration = artifact.get("run_configuration", {})
+    fraction = _require_number(
+        artifact.get("budget_fraction", configuration.get("budget_fraction", 1.0)),
+        "budget_fraction",
+    )
+    matched_digest = artifact.get("matched_budget_source_digest")
+    if matched_digest:
+        budget = f"matched-ceiling:{str(matched_digest)[:8]}"
+    else:
+        interpretation = configuration.get(
+            "whole_turn_budget_interpretation", "retention_ceiling"
+        )
+        contract = "floor" if interpretation == "retention_floor_round_up" else "ceiling"
+        budget = f"{100 * fraction:g}%-{contract}"
+    seed = configuration.get("seed")
+    suffix = f";seed={seed}" if seed is not None else ""
+    return f"{policy}@{budget}{suffix}"
+
+
 def reduce_replays(
     artifacts: Sequence[Mapping[str, Any]],
     *,
@@ -225,8 +255,9 @@ def reduce_replays(
     policies = [artifact.get("policy") for artifact in artifacts]
     if any(not isinstance(policy, str) or not policy for policy in policies):
         raise ValueError("every artifact must have a policy")
-    if len(set(policies)) != len(policies):
-        raise ValueError("comparison policies must be unique")
+    treatments = [_treatment_label(artifact) for artifact in artifacts]
+    if len(set(treatments)) != len(treatments):
+        raise ValueError("comparison treatments must be unique")
     full_indexes = [index for index, policy in enumerate(policies) if policy == "full"]
     if len(full_indexes) != 1:
         raise ValueError("comparison requires exactly one full policy artifact")
@@ -255,8 +286,6 @@ def reduce_replays(
                 raise ValueError(f"{source}: decision {decision} has no FULL reference")
             if row.get("trajectory_message_index") != full_row.get("trajectory_message_index"):
                 raise ValueError(f"{source}: decision {decision} is not trajectory-aligned")
-            if not full_row["action_valid"]:
-                raise ValueError(f"{source}: decision {decision} has no valid FULL action")
     arms = [
         _arm_summary(artifact, rows, full_by_decision)
         for artifact, rows in zip(artifacts, rows_by_artifact)
@@ -315,7 +344,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"{arm['logical_token_saving_tokens']} "
             f"({_rate(arm['logical_token_saving_fraction'])})"
         )
-        policy = str(arm["policy"]).replace("|", "\\|")
+        policy = str(arm["treatment"]).replace("|", "\\|")
         lines.append(
             f"| {policy} | {arm['decisions_attempted']}/{arm['decisions_completed']} "
             f"| {_rate(arm['valid_action_rate'])} "

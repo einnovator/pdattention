@@ -159,8 +159,26 @@ def test_reducer_reports_matched_metrics_and_markdown():
 
     markdown = render_markdown(summary)
     assert "| Policy | Tried/done | Valid | Exact content | Exact command |" in markdown
-    assert "| middle_recency | 3/3 | 66.7% | 33.3% | 66.7% | 2/3/3 |" in markdown
-    assert "| tail | 3/2" in markdown
+    assert "| middle_recency@100%-ceiling | 3/3 | 66.7% | 33.3% | 66.7% | 2/3/3 |" in markdown
+    assert "| tail@100%-ceiling | 3/2" in markdown
+
+
+def test_reducer_distinguishes_same_policy_with_different_budget_contracts():
+    full, candidate, _ = _comparison_artifacts()
+    matched = copy.deepcopy(candidate)
+    matched["matched_budget_source_digest"] = "a" * 64
+    matched["run_configuration"]["matched_budget_source_digest"] = "a" * 64
+    matched["run_configuration_digest"] = _digest(matched["run_configuration"])
+    floor = copy.deepcopy(candidate)
+    floor["budget_fraction"] = 0.9
+    floor["run_configuration"]["budget_fraction"] = 0.9
+    floor["run_configuration"]["whole_turn_budget_interpretation"] = "retention_floor_round_up"
+    floor["run_configuration_digest"] = _digest(floor["run_configuration"])
+
+    summary = reduce_replays([full, matched, floor])
+
+    assert summary["arms"][1]["treatment"] == "middle_recency@matched-ceiling:aaaaaaaa"
+    assert summary["arms"][2]["treatment"] == "middle_recency@90%-floor"
 
 
 @pytest.mark.parametrize(
