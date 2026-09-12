@@ -283,7 +283,7 @@ def _resume_rows(
     path: Path,
     *,
     run_configuration: Mapping[str, Any],
-    assistant_indexes: Sequence[int],
+    assistant_decisions: Sequence[tuple[int, int]],
 ) -> list[dict[str, Any]]:
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
@@ -309,14 +309,13 @@ def _resume_rows(
     rows = saved.get("rows")
     if not isinstance(rows, list) or saved.get("attempted_decisions") != len(rows):
         raise ValueError("resume artifact has inconsistent completed decisions")
-    if len(rows) > len(assistant_indexes):
+    if len(rows) > len(assistant_decisions):
         raise ValueError("resume artifact contains more decisions than this run")
-    for offset, row in enumerate(rows):
-        decision = offset + 1
+    for row, (decision, assistant_index) in zip(rows, assistant_decisions):
         if (
             not isinstance(row, dict)
             or row.get("decision") != decision
-            or row.get("trajectory_message_index") != assistant_indexes[offset]
+            or row.get("trajectory_message_index") != assistant_index
         ):
             raise ValueError("resume artifact decisions are not a contiguous trajectory prefix")
         if row.get("decision_status") != "completed":
@@ -358,9 +357,12 @@ def replay(
     working_set_resources: int = 4,
     negative_fallback: str = "none",
     h2b_allow_workspace_verification: bool = False,
+    min_decision: int = 1,
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
+    if min_decision < 1:
+        raise ValueError("min_decision must be positive")
     if policy == "matched_token_tail" and matched_budget_replay is None:
         raise ValueError("matched_token_tail requires a --matched-budget-replay artifact")
     if policy == "matched_token_tail" and round_up_whole_turns:
@@ -374,12 +376,15 @@ def replay(
             "matched_token_tail policy"
         )
     messages: Sequence[Mapping[str, Any]] = trajectory["messages"]
-    assistant_indexes = [
+    assistant_decisions = list(enumerate((
         index for index, message in enumerate(messages)
         if message.get("role") == "assistant"
-    ]
+    ), start=1))
     if max_decisions is not None:
-        assistant_indexes = assistant_indexes[:max_decisions]
+        assistant_decisions = assistant_decisions[:max_decisions]
+    assistant_decisions = [
+        row for row in assistant_decisions if row[0] >= min_decision
+    ]
     selector = (
         None
         if policy == "matched_token_tail"
@@ -425,6 +430,7 @@ def replay(
         "materialization_mode": effective_materialization_mode.value,
         "materialization_threshold_tokens": materialization_threshold_tokens,
         "max_decisions": max_decisions,
+        "min_decision": min_decision,
         "temperature": 0,
         "seed": seed,
         "max_output_tokens": max_output_tokens,
@@ -455,7 +461,7 @@ def replay(
         rows = _resume_rows(
             progress_path,
             run_configuration=run_configuration,
-            assistant_indexes=assistant_indexes,
+            assistant_decisions=assistant_decisions,
         )
     replay_references = {
         int(row["decision"]): row
@@ -501,8 +507,9 @@ def replay(
 
     if progress_path is not None and (restart or not progress_path.exists()):
         _atomic_write_json(progress_path, current_result())
-    for decision, assistant_index in enumerate(assistant_indexes, start=1):
-        if decision <= len(rows):
+    completed_decision_ids = {int(row["decision"]) for row in rows}
+    for decision, assistant_index in assistant_decisions:
+        if decision in completed_decision_ids:
             continue
         prefix = messages[:assistant_index]
         historical_reference = str(messages[assistant_index].get("content", ""))
@@ -716,6 +723,12 @@ def main() -> None:
     )
     parser.add_argument("--materialization-threshold-tokens", type=int, default=512)
     parser.add_argument("--max-decisions", type=int)
+    parser.add_argument(
+        "--min-decision",
+        type=int,
+        default=1,
+        help="first one-based frozen trajectory decision to evaluate",
+    )
     parser.add_argument("--max-output-tokens", type=int)
     parser.add_argument("--seed", type=int)
     parser.add_argument(
@@ -785,6 +798,7 @@ def main() -> None:
         working_set_resources=args.working_set_resources,
         negative_fallback=args.negative_fallback,
         h2b_allow_workspace_verification=args.h2b_allow_workspace_verification,
+        min_decision=args.min_decision,
     )
     print(json.dumps({key: result[key] for key in (
         "instance_id", "policy", "completed_decisions", "exact_command_rate",

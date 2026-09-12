@@ -366,6 +366,27 @@ the task, mutated state, unresolved failures, the current tail, and declared
 dependencies. Cross-file software dependencies make H4 the riskiest family;
 it is reported as a capacity heuristic rather than safe exclusion.
 
+The initial grids above target short trajectories.  We separately predeclare
+a long-horizon grid with $K_f\in\{0,2,4,8,12,16\}$,
+$K_w\in\{1,2,4,8,12\}$, $K_r\in\{1,2,3,4,6,8\}$, and
+$K_x\in\{2,3,4,6,8,12\}$.  Its primary cohort contains only ordinary
+\textsc{Full} executions that resolve officially, contain at least 25 model
+decisions, and exceed 100,000 cumulative exact-tokenizer input tokens.  We
+report both the complete growing-prefix integral and suffixes beginning at
+decisions 10, 15, and 20.  This tests a specific nonstationarity hypothesis:
+after workspace mutations, old observations may cease to be authoritative
+even though task intent, mutation rationale, and unresolved failures can
+remain useful.  Age alone is therefore never treated as evidence of
+irrelevance.
+
+The high-retention sweep uses targets 100\%, 99\%, 97.5\%, 95\%, and 90\%.
+Every semantic arm is paired with a recency control using its exact
+per-decision materialized-token count; a fixed keep-last-$K$ control is also
+reported to show how its realized retention changes with task length.  This
+matched design asks whether resource/version/effect evidence removes stale
+state more efficiently than blind age, rather than merely comparing policies
+that remove different numbers of tokens.
+
 The predeclared sequence isolates H1, H2a, H2b, H3, and H4 before combining
 H1+H3, H2+H3, H1+H2+H3, and finally all four. If the negative stage remains
 over budget, the original absolute budget is passed to the positive selector.
@@ -685,6 +706,52 @@ $K_f=0$ removes 2,660 (1.34\%), H2a removes 833 (0.42\%), H3 at $K_r=1$
 removes 603 (0.30\%), and guarded H2b abstains. Aggressive H4 at $K_x=2$
 removes 11,370 (5.71\%), whereas $K_x\geq3$ abstains under the dependency
 pins. These are still opportunity counts, not behavior results.
+
+\subsection{Long-horizon, high-retention opportunity screen}
+
+We next applied the expanded grid to two officially resolved ordinary-text
+\textsc{Full} trajectories: \texttt{django-15277} (26 decisions) and
+\texttt{django-15368} (30 decisions).  Together their growing prefixes contain
+284,848 exact Qwen3-Coder tokens; the decision-20-and-later suffix contains
+127,332.  Table~\ref{tab:long-horizon-opportunity} reports token-removal
+opportunity, not model behavior or task quality.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Exact-tokenizer saving on long successful \textsc{Full}
+trajectories. ``Late'' integrates only decision 20 onward.}
+\label{tab:long-horizon-opportunity}
+\begin{tabular}{lrr}
+\toprule
+Treatment & Whole run & Late suffix \\
+\midrule
+H3, $K_r=1$ & 6.23\% & 8.04\% \\
+H3, $K_r=2$ & 0.73\% & 1.63\% \\
+H1, $K_f=8$ + H3, $K_r=2$ & 1.24\% & 2.78\% \\
+H1, $K_f=12$ + H3, $K_r=2$ & 0.83\% & 1.86\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The effect is phase dependent: every displayed treatment saves a larger
+fraction late than over the full trajectory.  The conservative
+$K_f=8,K_r=2$ combination retains 98.76\% overall but 97.22\% in the late
+suffix, providing a high-retention candidate that fires on both task
+identities.  The mechanism differs by task: H1 supplies the removals on
+\texttt{django-15277}, whereas H3 supplies them on
+\texttt{django-15368}.  More history is not automatically better, however:
+$K_r\geq4$ and $K_x\geq6$ abstain on both traces, while immediate H3 and small
+working sets remove substantially more and remain higher-risk arms.
+
+A blind fixed tail does not provide a stable retention contract.  From
+decision 20 onward, keeping the first turn plus the last 20 complete turns
+retains 95.77\% on \texttt{django-15277} but only 86.38\% on
+\texttt{django-15368}; shorter fixed tails diverge further.  Therefore the
+behavioral experiment will use an exact per-decision matched-token tail, not a
+shared nominal $K$.  The long-horizon structural and high-retention JSON
+artifacts in the shared results directory preserve all cells and suffix
+aggregates.
 
 \subsection{First instrumented frozen cohort}
 

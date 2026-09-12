@@ -1043,6 +1043,40 @@ def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     assert calls[1][-1]["role"] == "user"
 
 
+def test_frozen_replay_can_target_a_late_decision_suffix(monkeypatch):
+    messages = _messages(4)
+    references = [messages[6]["content"], messages[8]["content"]]
+    calls = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        calls.append(payload["messages"])
+        return {"choices": [{"message": {"content": references[len(calls) - 1]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(
+        trajectory={"instance_id": "task-1", "messages": messages},
+        model="test-model",
+        base_url="http://example.invalid",
+        policy="full",
+        head=1,
+        tail=1,
+        budget_fraction=1.0,
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        materialization_threshold_tokens=20,
+        max_decisions=None,
+        seed=0,
+        max_output_tokens=128,
+        api_key=None,
+        timeout=1,
+        min_decision=3,
+    )
+    assert [row["decision"] for row in result["rows"]] == [3, 4]
+    assert result["completed_decisions"] == 2
+    assert len(calls) == 2
+
+
 def test_frozen_replay_records_policy_excess_immediate_reacquisition(monkeypatch):
     messages = _heuristic_messages(
         ("cat a.py", "a", None),

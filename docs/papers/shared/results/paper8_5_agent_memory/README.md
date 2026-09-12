@@ -106,3 +106,51 @@ incomplete. The predeclared gate required both primary Task 02 FULL submissions
 to solve with sufficiently stable behavior, so it failed and no Task 02
 heuristic arm was run. Certified and strict exclusions remain fail-closed when
 their evidence gates are not met.
+
+## Long-horizon and high-retention screen
+
+The expanded structural screen uses the two ordinary-text FULL executions that
+both resolve officially and satisfy the predeclared long-run thresholds of at
+least 25 model decisions and 100,000 cumulative exact-tokenizer input tokens:
+
+- `django__django-15277`: 26 decisions;
+- `django__django-15368`: 30 decisions.
+
+[`long_horizon_structural_screen_qwen30_exact.json`](long_horizon_structural_screen_qwen30_exact.json)
+sweeps `Kf={0,2,4,8,12,16}`, `Kw={1,2,4,8,12}`,
+`Kr={1,2,3,4,6,8}`, and `Kx={2,3,4,6,8,12}` using the pinned
+Qwen3-Coder tokenizer. It also reports aggregates for the complete run and
+suffixes beginning at decisions 10, 15, and 20. A bug in the earlier grid
+driver was corrected: combination policies now sweep every parameter used by
+their constituent rules rather than varying `Kf` while silently fixing `Kr`
+and `Kx`.
+
+The 56 growing prefixes contain 284,848 cumulative exact tokens; the 18
+decision-20-and-later prefixes contain 127,332. Structural opportunity is
+larger late in the run:
+
+| Treatment | Whole-run saving | Decision 20+ saving |
+|---|---:|---:|
+| H3, `Kr=1` | 6.23% | 8.04% |
+| H3, `Kr=2` | 0.73% | 1.63% |
+| H1 `Kf=8` + H3 `Kr=2` | 1.24% | 2.78% |
+| H1 `Kf=12` + H3 `Kr=2` | 0.83% | 1.86% |
+
+The `Kf=8, Kr=2` combination is the first conservative high-retention
+candidate with opportunity on both task identities: 98.76% aggregate
+retention over the full runs and 97.22% after decision 20. H1 supplies the
+Task 01 exclusions, while H3 supplies Task 02 exclusions. `Kr>=4` and `Kx>=6`
+abstain on these traces, so simply increasing every `K*` eventually eliminates
+the treatment.
+
+[`long_horizon_high_retention_qwen30_exact.json`](long_horizon_high_retention_qwen30_exact.json)
+screens 100%, 99%, 97.5%, 95%, and 90% token ceilings with tail floors from 2
+through 20. A fixed keep-last-20 policy retains 95.77% on Task 01's late
+suffix but only 86.38% on Task 02's. This confirms that a common turn count is
+not a matched retention control. Model-facing comparisons must instead use the
+semantic arm's exact per-decision materialized-token count for the blind token
+tail.
+
+These two exact-tokenizer artifacts remain structural opportunity evidence.
+They do not establish next-action agreement or autonomous success. The two
+`*_whitespace.json` companions are implementation cross-checks only.
