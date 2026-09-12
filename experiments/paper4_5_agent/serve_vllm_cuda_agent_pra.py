@@ -124,6 +124,15 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18125)
     parser.add_argument("--max-model-len", type=int, default=8192)
+    parser.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        help=(
+            "Optional chunked-prefill token ceiling. Keeping this below "
+            "--max-model-len can reduce activation workspace while retaining "
+            "a longer per-request context window."
+        ),
+    )
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
     parser.add_argument(
         "--cpu-offload-gb",
@@ -143,7 +152,7 @@ def main() -> None:
         VLLMInProcessSchedulerDriver,
     )
 
-    llm = LLM(
+    llm_options = dict(
         model=args.model,
         max_model_len=args.max_model_len,
         max_num_seqs=1,
@@ -162,6 +171,9 @@ def main() -> None:
             },
         },
     )
+    if args.max_num_batched_tokens is not None:
+        llm_options["max_num_batched_tokens"] = args.max_num_batched_tokens
+    llm = LLM(**llm_options)
     tokenizer = llm.get_tokenizer()
     validate_append_stable_template(tokenizer)
     digest = hashlib.sha256(str(tokenizer.chat_template).encode()).hexdigest()
