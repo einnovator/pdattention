@@ -235,6 +235,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     digest = configure_append_stable_template(tokenizer, "pure-chatml-stable")
     validate_append_stable_template(tokenizer)
     driver = VLLMInProcessSchedulerDriver(llm)
+    model_config = llm.llm_engine.model_config
+    hf_config = model_config.hf_config
     retention_fractions = validate_retention_fractions(args.retention_fractions)
     arms = [
         _run_arm(
@@ -310,6 +312,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "trajectory": str(trajectory),
         "trajectory_sha256": _sha256(trajectory),
         "model": args.model,
+        "resolved_model": str(model_config.model),
+        "model_revision": getattr(hf_config, "_commit_hash", None),
         "engine": "vllm-cuda",
         "engine_version": vllm.__version__,
         "torch_version": torch.__version__,
