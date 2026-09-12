@@ -93,6 +93,21 @@ def _enforce_page_retention_floor(
     )
 
 
+def validate_retention_fractions(values: Sequence[float]) -> tuple[float, ...]:
+    """Validate an ordered bridge-smoke arm set anchored by PRA-100."""
+
+    fractions = tuple(float(value) for value in values)
+    if not fractions:
+        raise ValueError("At least one retention fraction is required.")
+    if len(set(fractions)) != len(fractions):
+        raise ValueError("Retention fractions must be unique.")
+    if any(not 0 < fraction <= 1 for fraction in fractions):
+        raise ValueError("Retention fractions must be in (0, 1].")
+    if 1.0 not in fractions:
+        raise ValueError("The frozen qualification must include PRA-100.")
+    return fractions
+
+
 def record_rounded_selected_indices(
     messages: Sequence[Mapping[str, Any]],
     spans: Mapping[int, tuple[int, int]],
