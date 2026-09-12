@@ -87,6 +87,14 @@ def _validated_rows(
             value = _require_int(row.get(field), f"{source}.rows[{offset}].{field}")
             if value < 0:
                 raise ValueError(f"{source}: decision {offset} has negative {field}")
+        for field in (
+            "whole_turn_budget_overshoot_tokens",
+            "whole_turn_budget_undershoot_tokens",
+        ):
+            if row.get(field) is not None:
+                value = _require_int(row.get(field), f"{source}.rows[{offset}].{field}")
+                if value < 0:
+                    raise ValueError(f"{source}: decision {offset} has negative {field}")
         retention = _require_number(
             row.get("realized_record_retention_fraction"),
             f"{source}.rows[{offset}].realized_record_retention_fraction",
@@ -233,6 +241,22 @@ def _arm_summary(
         "mandatory_overflow_tokens": sum(
             int(row["mandatory_overflow_tokens"]) for row in rows
         ),
+        "whole_turn_budget_overshoot_tokens": sum(
+            int(row.get("whole_turn_budget_overshoot_tokens", max(
+                0,
+                int(row["selected_whole_record_tokens"])
+                - int(row["requested_budget_tokens"]),
+            )))
+            for row in rows
+        ),
+        "whole_turn_budget_undershoot_tokens": sum(
+            int(row.get("whole_turn_budget_undershoot_tokens", max(
+                0,
+                int(row["requested_budget_tokens"])
+                - int(row["selected_whole_record_tokens"]),
+            )))
+            for row in rows
+        ),
         "unused_matched_budget_tokens": sum(
             max(
                 0,
@@ -354,12 +378,13 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         "",
         (
             f"Instance `{identity['instance_id']}`; model `{identity['model']}`; "
-            f"tokenizer `{identity['tokenizer']}`. Rates use attempted decisions "
-            "as the denominator and compare directly with contemporaneous FULL."
+            f"tokenizer `{identity['tokenizer']}`. Valid-action and exact-content "
+            "rates use attempted decisions; command rates use decisions where "
+            "FULL emitted a command. All comparisons are against contemporaneous FULL."
         ),
         "",
-        "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence | First content/command/action/validity divergence | Retention mean/min/max | Full/selected/materialized tokens | Logical saving | Overflow | Unused matched budget | Transport failures | Format-invalid |",
-        "|---|---:|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|",
+        "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence | First content/command/action/validity divergence | Retention mean/min/max | Full/selected/materialized tokens | Logical saving | Mandatory overflow | Whole-turn over/under target | Unused matched budget | Transport failures | Format-invalid |",
+        "|---|---:|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for arm in summary["arms"]:
         retention = arm["realized_retention"]
@@ -390,6 +415,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"| {_rate(arm['conservative_action_equivalent_rate_vs_full'])} "
             f"| {divergence} | {retention_text} | {tokens} | {saving} "
             f"| {arm['mandatory_overflow_tokens']} "
+            f"| {arm['whole_turn_budget_overshoot_tokens']}/{arm['whole_turn_budget_undershoot_tokens']} "
             f"| {arm['unused_matched_budget_tokens']} "
             f"| {arm['transport_failures']} | {arm['format_invalid_decisions']} |"
         )

@@ -22,6 +22,8 @@ def _row(
     requested=100,
     retention=1.0,
     overflow=0,
+    overshoot=0,
+    undershoot=0,
 ):
     return {
         "decision": decision,
@@ -38,6 +40,8 @@ def _row(
         "requested_budget_tokens": requested,
         "realized_record_retention_fraction": retention,
         "mandatory_overflow_tokens": overflow,
+        "whole_turn_budget_overshoot_tokens": overshoot,
+        "whole_turn_budget_undershoot_tokens": undershoot,
     }
 
 
@@ -152,6 +156,8 @@ def test_reducer_reports_matched_metrics_and_markdown():
     assert recency["logical_token_saving_tokens"] == 170
     assert recency["logical_token_saving_fraction"] == pytest.approx(170 / 600)
     assert recency["mandatory_overflow_tokens"] == 5
+    assert recency["whole_turn_budget_overshoot_tokens"] == 0
+    assert recency["whole_turn_budget_undershoot_tokens"] == 0
     assert recency["unused_matched_budget_tokens"] == 25
     assert recency["transport_failures"] == 0
     assert recency["format_invalid_decisions"] == 1
