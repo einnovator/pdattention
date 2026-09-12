@@ -27,6 +27,7 @@ from pra_hf.agent_executor import (
     _render,
     enforce_retention_floor,
     selected_record_plan,
+    split_generation_prompt,
 )
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 
@@ -369,14 +370,11 @@ class MLXAgentHistoryExecutor:
             raise ValueError("Live agent-history PRA requires a complete logical message manifest.")
         messages = state.ledger.reconcile(request)
         template_kwargs = self._template_kwargs(request)
-        prompt = _render(
+        prompt, source, wire = split_generation_prompt(
             self.tokenizer,
             messages,
-            generation_prompt=True,
             chat_template_kwargs=template_kwargs,
         )
-        tail_count = min(self.wire_tail_tokens, max(1, len(prompt) - 1))
-        source, wire = prompt[:-tail_count], prompt[-tail_count:]
         newly_encoded, reencoded, extension_graft = self._ensure_source(state, source)
         assert state.canonical_memory is not None
 

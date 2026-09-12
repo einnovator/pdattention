@@ -375,6 +375,36 @@ def _render(
     return _token_ids(rendered)
 
 
+def split_generation_prompt(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[list[int], list[int], list[int]]:
+    """Keep the source boundary on completed records, never a fixed tail."""
+
+    source = _render(
+        tokenizer,
+        messages,
+        generation_prompt=False,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    prompt = _render(
+        tokenizer,
+        messages,
+        generation_prompt=True,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    if prompt[: len(source)] != source:
+        raise RuntimeError(
+            "The chat template generation prompt rewrites completed record tokens."
+        )
+    wire = prompt[len(source) :]
+    if not wire:
+        raise RuntimeError("The chat template produced no generation-prompt suffix.")
+    return prompt, source, wire
+
+
 @dataclass
 class AgentHistoryLedger:
     """Reconstruct a logical transcript from mandatory rows and stable hashes."""
@@ -921,14 +951,11 @@ class SGLangMLXAgentHistoryExecutor:
                 messages[-1],
             )
         template_kwargs = self._checked_template_kwargs(request)
-        prompt = _render(
+        prompt, source, wire = split_generation_prompt(
             self.tokenizer,
             messages,
-            generation_prompt=True,
             chat_template_kwargs=template_kwargs,
         )
-        tail_count = min(self.wire_tail_tokens, max(1, len(prompt) - 1))
-        source, wire = prompt[:-tail_count], prompt[-tail_count:]
         newly_encoded, reencoded = self._ensure_owner(state, source)
 
         requested = float(

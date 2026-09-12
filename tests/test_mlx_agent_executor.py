@@ -205,6 +205,31 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     assert not executor._sessions
 
 
+def test_short_tool_result_cannot_move_source_boundary_backwards(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=32,
+        max_abs_logit_delta=0.005,
+    )
+    initial = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    executor.generate(_request(initial))
+    logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "x"},
+    )
+
+    result = executor.generate(_request(logical, request_id="r2"))
+
+    assert result.text == "A"
+    assert result.trace[0]["selected_history_reencoded_tokens"] == 0
+    assert result.trace[0]["wire_tokens"] == 1
+
+
 def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -> None:
     executor = _executor()
     initial = (

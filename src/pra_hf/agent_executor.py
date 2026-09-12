@@ -115,6 +115,42 @@ def _render(
     return _token_ids(rendered)
 
 
+def split_generation_prompt(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[list[int], list[int], list[int]]:
+    """Split completed records from the template's generation-only suffix.
+
+    A fixed token tail is not a valid record boundary: a short tool result can
+    make that tail move backwards into already resident assistant K/V. Render
+    both template states so the reusable source always ends after the current
+    completed record and the wire contains only the generation prompt.
+    """
+
+    source = _render(
+        tokenizer,
+        messages,
+        generation_prompt=False,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    prompt = _render(
+        tokenizer,
+        messages,
+        generation_prompt=True,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    if prompt[: len(source)] != source:
+        raise RuntimeError(
+            "The chat template generation prompt rewrites completed record tokens."
+        )
+    wire = prompt[len(source) :]
+    if not wire:
+        raise RuntimeError("The chat template produced no generation-prompt suffix.")
+    return prompt, source, wire
+
+
 def validate_append_stable_template(
     tokenizer: object,
     *,
@@ -763,14 +799,11 @@ class HFAgentHistoryExecutor:
         live_projection = request.metadata.get("history_projection") == "live-agent-kv-v1"
         messages = state.ledger.reconcile(request)
         template_kwargs = self._checked_template_kwargs(request)
-        prompt = _render(
+        prompt, source, wire = split_generation_prompt(
             self.tokenizer,
             messages,
-            generation_prompt=True,
             chat_template_kwargs=template_kwargs,
         )
-        tail_count = min(self.wire_tail_tokens, max(1, len(prompt) - 1))
-        source, wire = prompt[:-tail_count], prompt[-tail_count:]
         newly_encoded, reencoded, owner_copy = self._ensure_owner(state, source)
         requested = float(
             request.metadata.get(
