@@ -73,43 +73,45 @@ The implementation adds:
   alias;
 - versioned named agent profiles and an optional FastAPI/WebSocket multi-session UI;
 - CLI and executed notebook workflows;
-- a selector-frozen E0 selected-text versus E2 native-K/V benchmark spanning
+- an archived pre-gate selector-frozen E0 selected-text versus E2 native-K/V
+  benchmark spanning
   cold, warm, multi-query, and concurrency-eight schedules on MLX-LM,
   SGLang-MLX, and vLLM-Metal, with disjoint quality, input, PRA, ingestion,
-  serving, and reuse metrics.
-- an expanded 149-unique-question confirmation per engine: 6,258/6,258 exact
-  E0/E2 pairs overall, with engine-specific cost rather than a blanket speedup;
+  serving, and reuse metrics. Its numbers are historical diagnostics, not
+  current qualification.
+- an archived 149-unique-question confirmation per engine that historically
+  recorded 6,258/6,258 exact E0/E2 pairs overall; current-contract parity and
+  cost require rerun;
 - an engine-neutral `HOT/WARM/COLD/SOURCE` storage manager with named profiles,
   strict fingerprints, lossless WARM/COLD stores, independent compression and
   int8 policy, deterministic weighted eviction, typed-record priors, task and
   dependency retention, delayed closure compaction, and session cleanup.
-- live manager bridges for vLLM pages, SGLang HiCache-backed arrays, MLX arrays,
+- historical live-manager probes for vLLM pages, SGLang HiCache-backed arrays,
+  and MLX arrays,
   segmented mmap WARM storage, durable restart recovery, and persistent
-  lifecycle metrics. The expanded lossless WARM study is exact on 265/265
-  engine/model/dataset pairs across Qwen, Llama, and Gemma; int8 COLD is exact
-  on only 61/265 and remains opt-in. The pinned SGLang-MLX build cannot load
-  Gemma's per-layer sliding-window topology.
-- event-loop-owned, deduplicated WARM promotion with hot-set admission;
-- online SGLang/MLX streaming, cancellation, cleanup, and queueing curves;
-- shared- versus independent-resource concurrency through 16 sessions;
-- selective K/V int8 calibration and sustained multi-query pressure over
-  1,125 natural-QA requests.
-- a pinned M4 Pro Qwen3 8B/14B/32B and 30B-A3B profile campaign with exact
-  concatenated E0/E2 sequence parity, a live segmented-attention candidate,
+  lifecycle metrics. The historical expanded lossless WARM study recorded
+  265/265 pairs and int8 COLD 61/265; neither value is current qualification.
+- archived event-loop WARM-promotion, online SGLang/MLX streaming, cancellation,
+  cleanup, queueing, concurrency, selective-int8, and 1,125-request pressure
+  diagnostics; their engine economics require corrected-contract reruns.
+- an archived M4 Pro Qwen3 8B/14B/32B and 30B-A3B profile campaign with
+  historical concatenated E0/E2 sequence parity, a segmented-attention candidate,
   and model-normalized consumer-layer calibration over 60 natural-QA
   model--example pairs.
-- corrected M4/M5 MLX model-scaling evidence imported into the product matrix:
+- pre-gate M4/M5 MLX model-scaling evidence retained in the historical product matrix:
   `BALANCED` consumes native memory at all eligible layers, while segmented and
-  reduced-layer candidates remain `CALIBRATION_PENDING`.
-- a 60-example Llama 3.1 8B cross-family row with exact E0/E2 transport parity,
+  reduced-layer candidates remain `CALIBRATION_PENDING`; native execution must
+  be rerun before qualification.
+- an archived 60-example Llama 3.1 8B cross-family row with historical E0/E2 transport parity,
   a 1.032 warm ratio, and a 0.935 cold time-to-usable-context ratio; this retains
-  the all-layer default rather than promoting an uncalibrated sparse profile.
-- warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
+  no current economic qualification.
+- archived warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
   held-out noncontiguous gate that retains every eligible layer, and corrected
   2K/8K/32K occupied-context receipts.
-- seven public PRA Runtime Bundles under `EInnovator`, led by exact-identity
-  Qwen3-14B/32B/8B MLX qualification. Their cards import paired natural-QA
-  quality, parity, visible-context, and latency evidence automatically. Qwen,
+- public PRA Runtime Bundles under `EInnovator`, with pre-gate Native-Memory
+  headlines quarantined and Selected Context recommended until exact-identity
+  reruns complete. Their historical cards retain paired natural-QA values only
+  for audit. Qwen,
   Llama, and Gemma routing diagnostics remain a separate research section;
   Qwen3-0.6B is explicitly the mechanism reference bundle.
 - a presentation-independent Control Manager used by REST, MCP, the built-in

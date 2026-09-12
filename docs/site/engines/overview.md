@@ -5,12 +5,14 @@ integration. A deeper integration is not automatically a better deployment.
 Start with the recommendation in this table, then qualify the next capability
 against the same frozen evidence selection.
 
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
+
 | Engine | Selected Context | Typed PRA Transport | Native Memory | Native Serving | Recommended today | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| [Hugging Face](hugging-face.md) | ✅ Validated | ✅ Validated | ✅ Validated | ⏳ Not measured | Selected Context for applications; Native Memory for reference and research workloads. | Model-backed |
-| [MLX](mlx.md) | ✅ Validated | ✅ Validated | ✅ Validated | 🧪 Candidate | Use Selected Context by default; qualify Native Memory for repeated immutable resources. | Natural workload |
-| [vLLM](vllm.md) | ✅ Validated | ✅ Validated | 🧪 Candidate | 🧪 Candidate | Selected Context through the gateway or ordinary vLLM API. | Serving |
-| [SGLang](sglang.md) | ✅ Validated | ✅ Validated | ✅ Validated | 🧪 Candidate | Selected Context unless deploying the measured companion integration under controlled scope. | Serving |
+| [Hugging Face](hugging-face.md) | ✅ Validated | ✅ Validated | ✅ Validated (bounded post-fix mechanism gate; workload economics NOT_MEASURED) | ⏳ Not measured | Selected Context; keep Native Memory within the declared controlled gate. | Controlled |
+| [MLX](mlx.md) | ✅ Validated | ✅ Validated | ✅ Validated (bounded post-fix mechanism gate; workload economics NOT_MEASURED) | 🧪 Candidate | Use Selected Context; keep Native Memory within the declared controlled gate. | Controlled |
+| [vLLM](vllm.md) | ✅ Validated | ✅ Validated | 🧪 Candidate (bounded post-fix scheduler-page gate; workload economics NOT_MEASURED) | 🧪 Candidate | Selected Context through the gateway or ordinary vLLM API. | Controlled |
+| [SGLang](sglang.md) | ✅ Validated | ✅ Validated | ✅ Validated (bounded post-fix companion gate; workload economics NOT_MEASURED) | 🧪 Candidate | Use Selected Context; keep the companion Native Memory path within its declared controlled gate. | Controlled |
 | [OpenVINO](openvino.md) | ✅ Validated | ✅ Validated | ⏳ Not qualified | ⛔ Not applicable | Selected Context. | Natural workload |
 | [TensorRT-LLM](tensorrt-llm.md) | 🧪 Candidate | ✅ Validated | ⏳ Not measured | ⏳ Not measured | Selected Context after local model and engine validation. | Candidate |
 | [AirLLM](airllm.md) | ✅ Validated | ✅ Validated | 🧪 Research only | ⏳ Not measured | Selected Context. | Natural workload |
@@ -38,7 +40,7 @@ See [Metrics & Qualification](../metrics.md) for comparison contracts and
 [Research / Evidence](../research/index.md) for paper terminology and raw
 artifact provenance.
 
-_Generated from the engine documentation registry and 265 product-matrix rows; evidence current through 2026-09-01._
+_Generated from the engine documentation registry and 265 product-matrix rows; registry reviewed through 2026-09-12. Product-matrix disposition: HISTORICAL_PRE_GATE._
 
 ## Observability integration
 

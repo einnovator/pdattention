@@ -1,6 +1,8 @@
 # Hugging Face
 
-_Evidence current through 2026-09-01; generated from checked-in registries._
+_Registry reviewed through 2026-09-12; generated from checked-in registries._
+
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
 
 ## What this engine is for
 
@@ -8,7 +10,7 @@ Reference integration for model development, correctness checks, and portable Py
 
 ## Best PRA deployment today
 
-Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.
+Use Selected Context. Native Memory has a bounded post-fix batch-one Qwen/CUDA mechanism gate, not current workload qualification.
 
 ## What PRA adds to this engine
 
@@ -19,7 +21,7 @@ authorized regions selected for that operation. This reduces visible context
 without requiring Native Memory. Deeper native reuse is enabled only where the
 table below says it has been measured for this engine.
 
-For Hugging Face, the practical boundary is: Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.
+For Hugging Face, the practical boundary is: Use Selected Context. Native Memory has a bounded post-fix batch-one Qwen/CUDA mechanism gate, not current workload qualification.
 
 ## Three kinds of reuse
 
@@ -36,14 +38,14 @@ reuse native semantic memory on qualified integrations.
 | --- | --- |
 | Selected Context | ✅ Validated |
 | Typed PRA Transport | ✅ Validated |
-| Native Memory | ✅ Validated |
+| Native Memory | ✅ Validated (bounded post-fix mechanism gate; workload economics NOT_MEASURED) |
 | Native Serving | ⏳ Not measured |
 
 **Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
-The reference runtime supports typed resources and layer-specific native memory, but it is not a scheduler-managed serving system.
+The reference runtime supports typed resources and a bounded same-consumer Native Memory gate. Cross-family and workload economics from pre-gate artifacts are quarantined.
 
 ```text
 application -> typed context -> PRA route/select/materialize
@@ -103,13 +105,13 @@ the named model, workload, hardware, and engine version rather than every deploy
 
 | Metric | Value | Evidence | Source |
 | --- | --- | --- | --- |
-| Natural serving tails | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
-| Reference mechanism | Validated across Qwen, Llama, and Gemma adapters | Model-backed | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
+| Post-fix same-consumer gate | 7/7 token-exact; max logit delta 0; zero selected-history re-encoding and persistent K/V copy | Controlled | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_fused_sparse_position_task02_full7_090_qwen15_v1.json) |
+| Matched workload economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md) |
 
 ## Metrics and explicit gaps
 
-- **Natural serving tails:** NOT_MEASURED  Provenance: `docs/papers/shared/results/pra_product_matrix_v2.json`; evidence: Not measured.
-- **Reference mechanism:** Validated across Qwen, Llama, and Gemma adapters  Provenance: `docs/papers/shared/results/pra_product_matrix_v2.json`; evidence: Model-backed.
+- **Post-fix same-consumer gate:** 7/7 token-exact; max logit delta 0; zero selected-history re-encoding and persistent K/V copy  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_fused_sparse_position_task02_full7_090_qwen15_v1.json`; evidence: Controlled.
+- **Matched workload economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`; evidence: Not measured.
 
 Unknown metrics remain `NOT_MEASURED`; this page does not convert them to
 zero or infer economic benefit from token reduction alone.
@@ -120,16 +122,17 @@ Choose it for maximum engine portability, new models, and workloads without repe
 
 ## When Native Memory may help
 
-Consider it for repeated selected resources after model-specific parity and quality gates pass.
+Use only to reproduce the named batch-one Qwen/CUDA gate until clean exact-identity workload reruns pass.
 
 ## Limitations
 
 - No production scheduler ownership
-- Profile qualification remains model and workload specific
+- Pre-gate cross-family and workload measurements are quarantined
+- Current native evidence is limited to the declared batch-one Qwen/CUDA geometry
 
 ## Research evidence
 
-Current public evidence label: **Model-backed**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
+Current public evidence label: **Controlled**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
 
 ## Troubleshooting
 
@@ -138,4 +141,4 @@ Current public evidence label: **Model-backed**. See the [research appendix](../
 
 ## Production recommendation
 
-Start with Selected Context and promote Native Memory only from a measured bundle.
+Use Selected Context; do not promote Native Memory from the quarantined bundle measurements.

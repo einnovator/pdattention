@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from pathlib import Path
@@ -36,6 +37,31 @@ def test_generated_engine_pages_match_registry() -> None:
     registry = load_registry()
     for path, expected in generated_files(registry).items():
         assert path.read_text(encoding="utf-8") == expected
+
+
+def test_pre_gate_engine_evidence_is_machine_and_site_quarantined() -> None:
+    registry = load_registry()
+    assert registry["product_matrix_disposition"] == "HISTORICAL_PRE_GATE"
+    assert "matched workload economics remain NOT_MEASURED" in registry[
+        "historical_engine_evidence_notice"
+    ]
+
+    for relative in (
+        "docs/papers/shared/results/pra_engine_benchmarks.json",
+        "docs/papers/shared/results/pra_product_matrix_v2.json",
+    ):
+        payload = json.loads((ROOT / relative).read_text(encoding="utf-8"))
+        assert payload["disposition"] == "HISTORICAL_PRE_GATE"
+        assert payload["qualification_status"] == "QUARANTINED_UNTIL_RERUN"
+        assert payload["engine_contract_version"] is None
+
+    overview = (SITE / "engines/overview.md").read_text(encoding="utf-8")
+    rag_results = (SITE / "evaluation/rag-vs-pra/results.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Historical-engine-evidence notice" in overview
+    assert "Product-matrix disposition: HISTORICAL_PRE_GATE" in overview
+    assert "Historical pre-gate diagnostic" in rag_results
 
 
 def test_generated_cli_reference_matches_public_click_tree() -> None:

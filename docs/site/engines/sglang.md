@@ -1,6 +1,8 @@
 # SGLang
 
-_Evidence current through 2026-09-01; generated from checked-in registries._
+_Registry reviewed through 2026-09-12; generated from checked-in registries._
+
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
 
 ## What this engine is for
 
@@ -8,7 +10,7 @@ Structured generation and cache-aware serving with RadixAttention and hierarchic
 
 ## Best PRA deployment today
 
-Selected Context is the default. A companion native mechanism is validated, while distributed scheduler economics remain open.
+Selected Context is the default. Native Memory has a bounded post-fix companion mechanism gate; distributed and workload economics remain pending.
 
 ## What PRA adds to this engine
 
@@ -19,7 +21,7 @@ authorized regions selected for that operation. This reduces visible context
 without requiring Native Memory. Deeper native reuse is enabled only where the
 table below says it has been measured for this engine.
 
-For SGLang, the practical boundary is: Selected Context is the default. A companion native mechanism is validated, while distributed scheduler economics remain open.
+For SGLang, the practical boundary is: Selected Context is the default. Native Memory has a bounded post-fix companion mechanism gate; distributed and workload economics remain pending.
 
 ## Three kinds of reuse
 
@@ -36,14 +38,14 @@ reuse native semantic memory on qualified integrations.
 | --- | --- |
 | Selected Context | ✅ Validated |
 | Typed PRA Transport | ✅ Validated |
-| Native Memory | ✅ Validated |
+| Native Memory | ✅ Validated (bounded post-fix companion gate; workload economics NOT_MEASURED) |
 | Native Serving | 🧪 Candidate |
 
 **Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
-Native resources are isolated from ordinary sequential cache state. Full distributed placement, affinity, and concurrent tier economics are still candidates.
+The post-fix interval-addressed companion consumer passes bounded same-consumer and lifecycle checks. Earlier matched and lifecycle cohorts are quarantined.
 
 ```text
 application -> typed context -> PRA route/select/materialize
@@ -103,13 +105,13 @@ the named model, workload, hardware, and engine version rather than every deploy
 
 | Metric | Value | Evidence | Source |
 | --- | --- | --- | --- |
-| Matched quality and lifecycle cohorts | Available in registry | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_1_sglang/expanded_matched_e0_e2_qasper.json) |
-| Distributed HiCache economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
+| Post-fix same-consumer and lifecycle gate | 7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta | Controlled | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_interval_metal_sparse_lifecycle_task02_090_v2.json) |
+| Distributed and matched workload economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md) |
 
 ## Metrics and explicit gaps
 
-- **Matched quality and lifecycle cohorts:** Available in registry  Provenance: `docs/papers/shared/results/paper6_1_sglang/expanded_matched_e0_e2_qasper.json`; evidence: Natural workload.
-- **Distributed HiCache economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/pra_product_matrix_v2.json`; evidence: Not measured.
+- **Post-fix same-consumer and lifecycle gate:** 7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_interval_metal_sparse_lifecycle_task02_090_v2.json`; evidence: Controlled.
+- **Distributed and matched workload economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`; evidence: Not measured.
 
 Unknown metrics remain `NOT_MEASURED`; this page does not convert them to
 zero or infer economic benefit from token reduction alone.
@@ -120,16 +122,17 @@ Choose it when ordinary Radix/prefix behavior is sufficient or native placement 
 
 ## When Native Memory may help
 
-Consider it for immutable shared resources under the companion path and explicit isolation tests.
+Use only within the named companion mechanism gate until corrected distributed and workload reruns pass.
 
 ## Limitations
 
+- Pre-gate matched and lifecycle cohorts are quarantined
 - Distributed HiCache placement is not fully lifecycle-managed
 - Concurrent cold/warm tail curves remain incomplete
 
 ## Research evidence
 
-Current public evidence label: **Serving**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
+Current public evidence label: **Controlled**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
 
 ## Troubleshooting
 

@@ -1,5 +1,11 @@
 # Results
 
+> **Historical pre-gate diagnostic.** Every Native Memory exactness, latency,
+> throughput, memory, and reuse value on this page predates
+> `live-kv-original-position-lifecycle-v1`. The values are retained for audit
+> and hypothesis formation only; they do not support current MLX qualification
+> or workload economics. Corrected exact-identity reruns are pending.
+
 Paper 4.5 uses MultiHop-RAG as a controlled engine workload. Retrieval,
 selector, transfer, and answer-quality conclusions belong to Papers 3.2 and
 3.3 and are not repeated here. All comparisons below freeze the selected
@@ -57,11 +63,12 @@ a selector-frozen transport result.
 
 ## Claim boundary
 
-Paper 4.5 supports three engine conclusions:
+Historically, this pre-gate cohort suggested three engine conclusions; none is
+current qualification:
 
-- frozen contiguous MLX Native Memory is output-exact in the tested 4B and 8B modes;
-- retained K/V can remove repeated selected-text prefill, while cold native encoding is slightly slower;
-- independently cached chunks trade lower runtime for changed semantics and are not qualified.
+- frozen contiguous MLX Native Memory produced matching outputs in the tested 4B and 8B modes;
+- retained K/V removed repeated selected-text prefill in this historical implementation, while cold native encoding was slightly slower;
+- independently cached chunks traded lower runtime for changed semantics and were not qualified.
 
 The detailed candidate curves, retriever comparisons, learned and lexical
 selectors, cross-model transfer, and answer-quality analysis are intentionally

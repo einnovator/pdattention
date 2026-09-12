@@ -40,6 +40,16 @@ def _status(value: object) -> str:
     return f"{_status_icon(value)} {_escape(value)}"
 
 
+def _capability_status(engine: dict, capability: str) -> str:
+    """Render a compatibility status together with its evidence boundary."""
+
+    rendered = _status(engine["capabilities"][capability])
+    scope = engine.get("capability_scopes", {}).get(capability)
+    if scope:
+        rendered += f" ({_escape(scope)})"
+    return rendered
+
+
 def _artifact_link(path: str) -> str:
     normalized = path.replace("\\", "/")
     return f"[artifact]({REPOSITORY_BLOB}/{normalized})"
@@ -109,6 +119,8 @@ def render_overview(registry: dict) -> str:
         "Start with the recommendation in this table, then qualify the next capability",
         "against the same frozen evidence selection.",
         "",
+        f"**Historical-engine-evidence notice:** {registry['historical_engine_evidence_notice']}",
+        "",
         "| Engine | Selected Context | Typed PRA Transport | Native Memory | Native Serving | Recommended today | Evidence |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
@@ -117,10 +129,10 @@ def render_overview(registry: dict) -> str:
         lines.append(
             "| "
             f"[{_escape(engine['name'])}]({_escape(engine['slug'])}.md) | "
-            f"{_status(capabilities['selected_context'])} | "
-            f"{_status(capabilities['typed_transport'])} | "
-            f"{_status(capabilities['native_memory'])} | "
-            f"{_status(capabilities['native_serving'])} | "
+            f"{_capability_status(engine, 'selected_context')} | "
+            f"{_capability_status(engine, 'typed_transport')} | "
+            f"{_capability_status(engine, 'native_memory')} | "
+            f"{_capability_status(engine, 'native_serving')} | "
             f"{_escape(engine['recommended_today'])} | "
             f"{_escape(engine['evidence'])} |"
         )
@@ -148,7 +160,8 @@ def render_overview(registry: dict) -> str:
             "artifact provenance.",
             "",
             f"_Generated from the engine documentation registry and {registry['product_matrix_rows']} "
-            f"product-matrix rows; evidence current through {registry['evidence_as_of']}._",
+            f"product-matrix rows; registry reviewed through {registry['evidence_as_of']}. "
+            f"Product-matrix disposition: {registry['product_matrix_disposition']}._",
             "",
             "## Observability integration",
             "",
@@ -172,7 +185,9 @@ def render_engine(engine: dict, registry: dict) -> str:
     lines = [
         f"# {engine['name']}",
         "",
-        f"_Evidence current through {registry['evidence_as_of']}; generated from checked-in registries._",
+        f"_Registry reviewed through {registry['evidence_as_of']}; generated from checked-in registries._",
+        "",
+        f"**Historical-engine-evidence notice:** {registry['historical_engine_evidence_notice']}",
         "",
         "## What this engine is for",
         "",
@@ -206,10 +221,10 @@ def render_engine(engine: dict, registry: dict) -> str:
         "",
         "| Capability | Status |",
         "| --- | --- |",
-        f"| Selected Context | {_status(capabilities['selected_context'])} |",
-        f"| Typed PRA Transport | {_status(capabilities['typed_transport'])} |",
-        f"| Native Memory | {_status(capabilities['native_memory'])} |",
-        f"| Native Serving | {_status(capabilities['native_serving'])} |",
+        f"| Selected Context | {_capability_status(engine, 'selected_context')} |",
+        f"| Typed PRA Transport | {_capability_status(engine, 'typed_transport')} |",
+        f"| Native Memory | {_capability_status(engine, 'native_memory')} |",
+        f"| Native Serving | {_capability_status(engine, 'native_serving')} |",
         "",
         "**Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.",
         "",

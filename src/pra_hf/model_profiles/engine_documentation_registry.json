@@ -1,7 +1,9 @@
 {
   "schema_version": "1.0",
-  "evidence_as_of": "2026-09-01",
+  "evidence_as_of": "2026-09-12",
   "product_matrix": "docs/papers/shared/results/pra_product_matrix_v2.json",
+  "product_matrix_disposition": "HISTORICAL_PRE_GATE",
+  "historical_engine_evidence_notice": "Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.",
   "evidence_labels": [
     "Controlled",
     "Model-backed",
@@ -16,45 +18,46 @@
       "slug": "hugging-face",
       "name": "Hugging Face",
       "purpose": "Reference integration for model development, correctness checks, and portable Python experiments.",
-      "best_deployment": "Use Selected Context for ordinary pipelines. Use Native Memory when validating model-level PRA behavior or a measured model profile.",
+      "best_deployment": "Use Selected Context. Native Memory has a bounded post-fix batch-one Qwen/CUDA mechanism gate, not current workload qualification.",
       "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Not measured"},
-      "recommended_today": "Selected Context for applications; Native Memory for reference and research workloads.",
-      "evidence": "Model-backed",
-      "summary": "The reference runtime supports typed resources and layer-specific native memory, but it is not a scheduler-managed serving system.",
+      "capability_scopes": {"native_memory": "bounded post-fix mechanism gate; workload economics NOT_MEASURED"},
+      "recommended_today": "Selected Context; keep Native Memory within the declared controlled gate.",
+      "evidence": "Controlled",
+      "summary": "The reference runtime supports typed resources and a bounded same-consumer Native Memory gate. Cross-family and workload economics from pre-gate artifacts are quarantined.",
       "requirements": ["Python 3.10 or newer", "PyTorch and Transformers", "A model adapter supported by the runtime"],
       "quickstart": ["pra runtime doctor -e hf", "pra runtime inspect Qwen/Qwen3-1.7B -e hf", "pra runtime serve Qwen/Qwen3-1.7B -e hf --storage balanced"],
       "metrics": [
-        {"name": "Natural serving tails", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"},
-        {"name": "Reference mechanism", "value": "Validated across Qwen, Llama, and Gemma adapters", "status": "Model-backed", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+        {"name": "Post-fix same-consumer gate", "value": "7/7 token-exact; max logit delta 0; zero selected-history re-encoding and persistent K/V copy", "status": "Controlled", "source": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_fused_sparse_position_task02_full7_090_qwen15_v1.json"},
+        {"name": "Matched workload economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md"}
       ],
       "selected_context_when": "Choose it for maximum engine portability, new models, and workloads without repeated immutable evidence.",
-      "native_memory_when": "Consider it for repeated selected resources after model-specific parity and quality gates pass.",
-      "limitations": ["No production scheduler ownership", "Profile qualification remains model and workload specific"],
+      "native_memory_when": "Use only to reproduce the named batch-one Qwen/CUDA gate until clean exact-identity workload reruns pass.",
+      "limitations": ["No production scheduler ownership", "Pre-gate cross-family and workload measurements are quarantined", "Current native evidence is limited to the declared batch-one Qwen/CUDA geometry"],
       "troubleshooting": ["Run pra doctor in the same Python environment as the CLI", "Use pra model validate before enabling a native profile"],
-      "production_recommendation": "Start with Selected Context and promote Native Memory only from a measured bundle."
+      "production_recommendation": "Use Selected Context; do not promote Native Memory from the quarantined bundle measurements."
     },
     {
       "slug": "mlx",
       "name": "MLX",
       "purpose": "Apple-silicon execution and lifecycle research with unified memory.",
-      "best_deployment": "Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.",
+      "best_deployment": "Selected Context is the portable default. Native Memory has a bounded post-fix Qwen3 mechanism gate; workload qualification is pending.",
       "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Candidate"},
-      "recommended_today": "Use Selected Context by default; qualify Native Memory for repeated immutable resources.",
-      "evidence": "Natural workload",
-      "summary": "Synchronized larger-model measurements approach Selected Context cost parity as model scale grows; they do not establish a universal native speedup.",
+      "capability_scopes": {"native_memory": "bounded post-fix mechanism gate; workload economics NOT_MEASURED"},
+      "recommended_today": "Use Selected Context; keep Native Memory within the declared controlled gate.",
+      "evidence": "Controlled",
+      "summary": "The post-fix interval-addressed Metal consumer passes its bounded same-consumer and lifecycle gates. Earlier model-scaling and cost measurements are quarantined.",
       "requirements": ["Apple silicon", "MLX and mlx-lm", "A supported Qwen or reference-compatible model"],
       "quickstart": ["pra runtime doctor -e mlx", "pra runtime inspect mlx-community/Qwen3-4B-4bit -e mlx", "pra runtime serve mlx-community/Qwen3-4B-4bit -e mlx --storage balanced"],
       "metrics": [
-        {"name": "Warm native/selected cost, 4B", "value": "1.035x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
-        {"name": "Warm native/selected cost, 8B", "value": "1.015x", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
-        {"name": "Warm native/selected cost, 14B", "value": "0.980x; interval includes parity", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"},
-        {"name": "Reduced consumer-layer profile", "value": "CALIBRATION_PENDING", "status": "Candidate", "source": "docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json"}
+        {"name": "Post-fix same-consumer gate", "value": "7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta", "status": "Controlled", "source": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_interval_metal_sparse_lifecycle_task02_090_v2.json"},
+        {"name": "Matched workload economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md"},
+        {"name": "Reduced consumer-layer profile", "value": "CALIBRATION_PENDING", "status": "Candidate", "source": "docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md"}
       ],
       "selected_context_when": "Choose it for one-shot context, unqualified models, or the simplest operational path.",
-      "native_memory_when": "Consider it for multi-query reuse over immutable resources when the exact model profile has passed quality gates.",
-      "limitations": ["The segmented implementation is not fully fused", "Reduced consumer-layer profiles did not pass held-out quality gates", "The 16 GiB M5 cannot load the measured 32B configuration"],
+      "native_memory_when": "Use only within the named post-fix mechanism gate until clean exact-identity workload reruns pass.",
+      "limitations": ["Pre-gate model-scaling and workload economics are quarantined", "Reduced consumer-layer profiles did not pass held-out quality gates", "Broad model and serving qualification remains pending"],
       "troubleshooting": ["Keep BALANCED on all eligible layers", "Check model and tokenizer revision before reusing native memory"],
-      "production_recommendation": "Use BALANCED only where measured; keep reduced profiles at CALIBRATION_PENDING."
+      "production_recommendation": "Use Selected Context; keep Native Memory experimental and reduced profiles at CALIBRATION_PENDING."
     },
     {
       "slug": "vllm",
@@ -63,17 +66,18 @@
       "best_deployment": "Selected Context is qualified. Native CUDA correctness and concurrency are promising but matched economics remain pending.",
       "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Candidate", "native_serving": "Candidate"},
       "recommended_today": "Selected Context through the gateway or ordinary vLLM API.",
-      "evidence": "Serving",
-      "summary": "Controlled native concurrency recovered all expected values without cross-request leakage, but it is not yet a complete selected-versus-native serving comparison.",
+      "capability_scopes": {"native_memory": "bounded post-fix scheduler-page gate; workload economics NOT_MEASURED"},
+      "evidence": "Controlled",
+      "summary": "A bounded post-fix scheduler-page alias gate passes exactness, lifecycle, and copy-accounting checks. Earlier connector throughput and recovery counts are quarantined.",
       "requirements": ["CUDA-capable NVIDIA GPU", "Supported vLLM release", "PRA gateway for typed transport"],
       "quickstart": ["pra runtime doctor -e vllm", "pra runtime inspect Qwen/Qwen3-1.7B -e vllm", "pra runtime serve Qwen/Qwen3-1.7B -e vllm"],
       "metrics": [
-        {"name": "Controlled shared-native concurrency 8", "value": "48.9 requests/s; 45/45 recoveries; zero leakage", "status": "Controlled", "source": "docs/papers/shared/results/paper6_vllm/cuda_connector_concurrency_rtx5060_summary.json"},
-        {"name": "Matched native economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+        {"name": "Post-fix scheduler-page alias gate", "value": "7 turns and 14 concurrent borrowers exact; zero K/V copy, H2D, and selected-history re-encoding", "status": "Controlled", "source": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_scheduler_alias_task02_full7_090_qwen15_v2.json"},
+        {"name": "Matched native economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md"}
       ],
       "selected_context_when": "Choose it for production throughput today, especially when prefix caching already captures reuse.",
       "native_memory_when": "Reconsider after matched cold, hot, warm, APC, transfer, and tail-latency rows are qualified.",
-      "limitations": ["Native candidate is not the default runtime provider", "Final HBM, transfer, and tail-latency economics are incomplete"],
+      "limitations": ["Current CUDA gate is in-process V1 with complete pages and one homogeneous K/V group", "Pre-gate connector throughput is quarantined", "Final HBM, transfer, and tail-latency economics are incomplete"],
       "troubleshooting": ["Inspect the effective gateway and engine capabilities", "Treat a missing native receipt as Selected Context, not silent native execution"],
       "production_recommendation": "Deploy Selected Context; keep Native Memory and Native Serving experimental."
     },
@@ -81,20 +85,21 @@
       "slug": "sglang",
       "name": "SGLang",
       "purpose": "Structured generation and cache-aware serving with RadixAttention and hierarchical cache facilities.",
-      "best_deployment": "Selected Context is the default. A companion native mechanism is validated, while distributed scheduler economics remain open.",
+      "best_deployment": "Selected Context is the default. Native Memory has a bounded post-fix companion mechanism gate; distributed and workload economics remain pending.",
       "capabilities": {"selected_context": "Validated", "typed_transport": "Validated", "native_memory": "Validated", "native_serving": "Candidate"},
-      "recommended_today": "Selected Context unless deploying the measured companion integration under controlled scope.",
-      "evidence": "Serving",
-      "summary": "Native resources are isolated from ordinary sequential cache state. Full distributed placement, affinity, and concurrent tier economics are still candidates.",
+      "capability_scopes": {"native_memory": "bounded post-fix companion gate; workload economics NOT_MEASURED"},
+      "recommended_today": "Use Selected Context; keep the companion Native Memory path within its declared controlled gate.",
+      "evidence": "Controlled",
+      "summary": "The post-fix interval-addressed companion consumer passes bounded same-consumer and lifecycle checks. Earlier matched and lifecycle cohorts are quarantined.",
       "requirements": ["Supported SGLang server or companion runner", "PRA gateway", "Explicit tenant and session scope"],
       "quickstart": ["pra runtime doctor -e sglang", "pra runtime inspect Qwen/Qwen3-1.7B -e sglang", "pra runtime serve Qwen/Qwen3-1.7B -e sglang"],
       "metrics": [
-        {"name": "Matched quality and lifecycle cohorts", "value": "Available in registry", "status": "Natural workload", "source": "docs/papers/shared/results/paper6_1_sglang/expanded_matched_e0_e2_qasper.json"},
-        {"name": "Distributed HiCache economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/pra_product_matrix_v2.json"}
+        {"name": "Post-fix same-consumer and lifecycle gate", "value": "7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta", "status": "Controlled", "source": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_interval_metal_sparse_lifecycle_task02_090_v2.json"},
+        {"name": "Distributed and matched workload economics", "value": "NOT_MEASURED", "status": "Not measured", "source": "docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md"}
       ],
       "selected_context_when": "Choose it when ordinary Radix/prefix behavior is sufficient or native placement has not been qualified.",
-      "native_memory_when": "Consider it for immutable shared resources under the companion path and explicit isolation tests.",
-      "limitations": ["Distributed HiCache placement is not fully lifecycle-managed", "Concurrent cold/warm tail curves remain incomplete"],
+      "native_memory_when": "Use only within the named companion mechanism gate until corrected distributed and workload reruns pass.",
+      "limitations": ["Pre-gate matched and lifecycle cohorts are quarantined", "Distributed HiCache placement is not fully lifecycle-managed", "Concurrent cold/warm tail curves remain incomplete"],
       "troubleshooting": ["Never return selected native detail to the ordinary Radix cache pool", "Verify cleanup and one-copy attachment per request"],
       "production_recommendation": "Use Selected Context; treat Native Serving as a measured deployment project, not a flag."
     },

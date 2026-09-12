@@ -1,6 +1,8 @@
 # MLX
 
-_Evidence current through 2026-09-01; generated from checked-in registries._
+_Registry reviewed through 2026-09-12; generated from checked-in registries._
+
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
 
 ## What this engine is for
 
@@ -8,7 +10,7 @@ Apple-silicon execution and lifecycle research with unified memory.
 
 ## Best PRA deployment today
 
-Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.
+Selected Context is the portable default. Native Memory has a bounded post-fix Qwen3 mechanism gate; workload qualification is pending.
 
 ## What PRA adds to this engine
 
@@ -19,7 +21,7 @@ authorized regions selected for that operation. This reduces visible context
 without requiring Native Memory. Deeper native reuse is enabled only where the
 table below says it has been measured for this engine.
 
-For MLX, the practical boundary is: Selected Context is the portable default. Native Memory is validated with all eligible consumer layers for measured models.
+For MLX, the practical boundary is: Selected Context is the portable default. Native Memory has a bounded post-fix Qwen3 mechanism gate; workload qualification is pending.
 
 ## Three kinds of reuse
 
@@ -36,14 +38,14 @@ reuse native semantic memory on qualified integrations.
 | --- | --- |
 | Selected Context | ✅ Validated |
 | Typed PRA Transport | ✅ Validated |
-| Native Memory | ✅ Validated |
+| Native Memory | ✅ Validated (bounded post-fix mechanism gate; workload economics NOT_MEASURED) |
 | Native Serving | 🧪 Candidate |
 
 **Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
-Synchronized larger-model measurements approach Selected Context cost parity as model scale grows; they do not establish a universal native speedup.
+The post-fix interval-addressed Metal consumer passes its bounded same-consumer and lifecycle gates. Earlier model-scaling and cost measurements are quarantined.
 
 ```text
 application -> typed context -> PRA route/select/materialize
@@ -103,17 +105,15 @@ the named model, workload, hardware, and engine version rather than every deploy
 
 | Metric | Value | Evidence | Source |
 | --- | --- | --- | --- |
-| Warm native/selected cost, 4B | 1.035x | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
-| Warm native/selected cost, 8B | 1.015x | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
-| Warm native/selected cost, 14B | 0.980x; interval includes parity | Natural workload | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
-| Reduced consumer-layer profile | CALIBRATION_PENDING | Candidate | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json) |
+| Post-fix same-consumer gate | 7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta | Controlled | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_interval_metal_sparse_lifecycle_task02_090_v2.json) |
+| Matched workload economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md) |
+| Reduced consumer-layer profile | CALIBRATION_PENDING | Candidate | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md) |
 
 ## Metrics and explicit gaps
 
-- **Warm native/selected cost, 4B:** 1.035x  Provenance: `docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json`; evidence: Natural workload.
-- **Warm native/selected cost, 8B:** 1.015x  Provenance: `docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json`; evidence: Natural workload.
-- **Warm native/selected cost, 14B:** 0.980x; interval includes parity  Provenance: `docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json`; evidence: Natural workload.
-- **Reduced consumer-layer profile:** CALIBRATION_PENDING  Provenance: `docs/papers/shared/results/paper6_2_mlx/model_consumer_scaling_m5/m5_corrected/summary/model_consumer_scaling_summary.json`; evidence: Candidate.
+- **Post-fix same-consumer gate:** 7/7 token- and final-logit-exact; zero selected-history re-encoding, selection pack bytes, and allocator delta  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/mlx_interval_metal_sparse_lifecycle_task02_090_v2.json`; evidence: Controlled.
+- **Matched workload economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`; evidence: Not measured.
+- **Reduced consumer-layer profile:** CALIBRATION_PENDING  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`; evidence: Candidate.
 
 Unknown metrics remain `NOT_MEASURED`; this page does not convert them to
 zero or infer economic benefit from token reduction alone.
@@ -124,17 +124,17 @@ Choose it for one-shot context, unqualified models, or the simplest operational 
 
 ## When Native Memory may help
 
-Consider it for multi-query reuse over immutable resources when the exact model profile has passed quality gates.
+Use only within the named post-fix mechanism gate until clean exact-identity workload reruns pass.
 
 ## Limitations
 
-- The segmented implementation is not fully fused
+- Pre-gate model-scaling and workload economics are quarantined
 - Reduced consumer-layer profiles did not pass held-out quality gates
-- The 16 GiB M5 cannot load the measured 32B configuration
+- Broad model and serving qualification remains pending
 
 ## Research evidence
 
-Current public evidence label: **Natural workload**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
+Current public evidence label: **Controlled**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
 
 ## Troubleshooting
 
@@ -143,4 +143,4 @@ Current public evidence label: **Natural workload**. See the [research appendix]
 
 ## Production recommendation
 
-Use BALANCED only where measured; keep reduced profiles at CALIBRATION_PENDING.
+Use Selected Context; keep Native Memory experimental and reduced profiles at CALIBRATION_PENDING.

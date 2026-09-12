@@ -1,6 +1,8 @@
 # OpenVINO
 
-_Evidence current through 2026-09-01; generated from checked-in registries._
+_Registry reviewed through 2026-09-12; generated from checked-in registries._
+
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
 
 ## What this engine is for
 

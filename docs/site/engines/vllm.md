@@ -1,6 +1,8 @@
 # vLLM
 
-_Evidence current through 2026-09-01; generated from checked-in registries._
+_Registry reviewed through 2026-09-12; generated from checked-in registries._
+
+**Historical-engine-evidence notice:** Pre-gate Native Memory workload values are retained for audit only. They do not support current exactness, latency, throughput, memory, cache-hit, K/V-copy, or byte-saving claims. Current evidence is limited to the explicitly named post-fix mechanism gates; matched workload economics remain NOT_MEASURED.
 
 ## What this engine is for
 
@@ -36,14 +38,14 @@ reuse native semantic memory on qualified integrations.
 | --- | --- |
 | Selected Context | ✅ Validated |
 | Typed PRA Transport | ✅ Validated |
-| Native Memory | 🧪 Candidate |
+| Native Memory | 🧪 Candidate (bounded post-fix scheduler-page gate; workload economics NOT_MEASURED) |
 | Native Serving | 🧪 Candidate |
 
 **Key:** ✅ qualified evidence · 🧪 candidate/research · ⏳ pending/unmeasured · ⛔ unavailable.
 
 ## Architecture
 
-Controlled native concurrency recovered all expected values without cross-request leakage, but it is not yet a complete selected-versus-native serving comparison.
+A bounded post-fix scheduler-page alias gate passes exactness, lifecycle, and copy-accounting checks. Earlier connector throughput and recovery counts are quarantined.
 
 ```text
 application -> typed context -> PRA route/select/materialize
@@ -103,13 +105,13 @@ the named model, workload, hardware, and engine version rather than every deploy
 
 | Metric | Value | Evidence | Source |
 | --- | --- | --- | --- |
-| Controlled shared-native concurrency 8 | 48.9 requests/s; 45/45 recoveries; zero leakage | Controlled | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper6_vllm/cuda_connector_concurrency_rtx5060_summary.json) |
-| Matched native economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/pra_product_matrix_v2.json) |
+| Post-fix scheduler-page alias gate | 7 turns and 14 concurrent borrowers exact; zero K/V copy, H2D, and selected-history re-encoding | Controlled | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_scheduler_alias_task02_full7_090_qwen15_v2.json) |
+| Matched native economics | NOT_MEASURED | Not measured | [artifact](https://github.com/einnovator/pdattention/blob/research/paper4-5-runtime/docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md) |
 
 ## Metrics and explicit gaps
 
-- **Controlled shared-native concurrency 8:** 48.9 requests/s; 45/45 recoveries; zero leakage  Provenance: `docs/papers/shared/results/paper6_vllm/cuda_connector_concurrency_rtx5060_summary.json`; evidence: Controlled.
-- **Matched native economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/pra_product_matrix_v2.json`; evidence: Not measured.
+- **Post-fix scheduler-page alias gate:** 7 turns and 14 concurrent borrowers exact; zero K/V copy, H2D, and selected-history re-encoding  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_cuda_scheduler_alias_task02_full7_090_qwen15_v2.json`; evidence: Controlled.
+- **Matched native economics:** NOT_MEASURED  Provenance: `docs/papers/shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`; evidence: Not measured.
 
 Unknown metrics remain `NOT_MEASURED`; this page does not convert them to
 zero or infer economic benefit from token reduction alone.
@@ -124,12 +126,13 @@ Reconsider after matched cold, hot, warm, APC, transfer, and tail-latency rows a
 
 ## Limitations
 
-- Native candidate is not the default runtime provider
+- Current CUDA gate is in-process V1 with complete pages and one homogeneous K/V group
+- Pre-gate connector throughput is quarantined
 - Final HBM, transfer, and tail-latency economics are incomplete
 
 ## Research evidence
 
-Current public evidence label: **Serving**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
+Current public evidence label: **Controlled**. See the [research appendix](../research/index.md) for paper-level names and the [qualification contract](../metrics.md) before comparing engines.
 
 ## Troubleshooting
 

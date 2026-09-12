@@ -9,6 +9,7 @@
 \newcommand{\QualityMax}{\texttt{QUALITY\_\allowbreak MAX}}
 \newcommand{\ReferenceCorrectness}{\texttt{REFERENCE\_\allowbreak CORRECTNESS}}
 \newcommand{\CalibrationPending}{\texttt{CALIBRATION\_\allowbreak PENDING}}
+\newcommand{\EngineContract}{\texttt{live-kv-original-\allowbreak position-\allowbreak lifecycle-v1}}
 \graphicspath{{../shared/results/paper4_5_runtime/}{../shared/results/paper4_5_runtime_productization/rag/}}
 \input{../shared/results/paper4_5_runtime/generated_runtime_results.tex}
 \input{../shared/results/paper4_5_runtime/generated_agent_plugin_results.tex}
@@ -46,7 +47,7 @@ ten bundle headline rows, and their 24 raw artifacts remain historical
 diagnostics but do not support current exactness or economic claims. Structural
 bundle metadata and selection/router-only evidence remain valid. Replacement
 measurements must identify the corrected
-\texttt{live-kv-original-position-lifecycle-v1} contract, PRA commit, and
+\EngineContract{} contract, PRA commit, and
 engine-gate commit and must report re-encoding, K/V copy, and consumer temporary
 memory independently. The post-fix engine gates establish the mechanism; the
 remaining question is whether corrected execution preserves agent behavior and
@@ -472,6 +473,14 @@ profiling records peak allocator state separately.
 
 \subsection{Native-reference semantic gate}
 
+\paragraph{Historical pre-gate diagnostic.}
+The quantitative native-execution results in this subsection predate
+\EngineContract{}. They are retained to document
+the development path, but do not support current Native Memory exactness,
+quality, copy-avoidance, or product-qualification claims. The admissible HF
+replacement is the bounded same-consumer agent gate reported later in this
+paper; workload economics remain unmeasured.
+
 Reference K/V is captured at source-relative positions. The direct query must
 therefore begin strictly after every source key that it may attend to. For
 independent records $r$ with source lengths $L_r$, the runtime uses
@@ -641,6 +650,13 @@ retrieved context.
 
 \subsection{Corrected layer-profile calibration}
 
+\paragraph{Historical pre-gate diagnostic.}
+The model-consumer measurements below were described as corrected relative to
+an earlier position-base bug, but they still precede the current live-history,
+copy-accounting, same-consumer, and lifecycle contract. Their numerical values
+remain useful for diagnosis only; structural profile declarations and
+selection/router-only results remain valid.
+
 The earlier sparse column was a diagnostic, not a calibrated deployment
 profile. We therefore inject all eligible layers once and replay one fixed,
 complete reference identity through a common profile sweep. Qwen uses all 28
@@ -714,6 +730,12 @@ default instead stores only the chosen profile and re-encodes explicitly if a
 later request asks for missing detail.
 
 \subsection{Larger-model profile scaling on Apple Silicon}
+
+\paragraph{Historical pre-gate diagnostic.}
+All Native-Memory parity, latency, memory, and scaling values in this subsection
+are quarantined pending clean exact-identity reruns under
+\EngineContract{}. They must not be read as
+current MLX qualification or economics.
 
 The small semantic cases above establish a profile contract, not a scaling
 law. We therefore apply the same normalized suffix space to pinned 4-bit
@@ -944,6 +966,10 @@ domain without being enabled globally, while unsupported physical state never
 silently degrades to a misleading K/V-only implementation.
 
 \paragraph{Evidence-to-card publication.}
+The following exported Native-Memory headline is historical pre-gate evidence.
+It is retained for auditability, but no longer qualifies a bundle or current
+engine behavior; the current public catalog recommends Selected Context until
+the corrected exact-identity reruns complete.
 A schema-checked importer now reads the paired MLX artifacts rather than
 copying numbers into model cards. It rejects a mismatch in model ID, immutable
 revision, quantization, engine/version, profile, or execution mode. For the
@@ -956,6 +982,13 @@ cohorts support \textsc{Engine Qualified}, not production-wide qualification.
 Router recall is printed only under research diagnostics.
 
 \subsection{Product profile and benchmark matrix}
+
+\paragraph{Historical pre-gate native rows.}
+The registry snapshot and generated tables below preserve the classifications
+made when the measurements were captured. Every engine-dependent E2 value in
+that snapshot is now \texttt{HISTORICAL\_PRE\_GATE}; labels such as
+\textsc{Measured} record the decision at that time, not current qualification.
+Structural profiles and explicit \textsc{Not Measured} cells remain usable.
 
 The registry also emits a strict machine-readable product row rather than
 mixing numbers and labels such as ``not measured.'' Schema 2.0 keeps numeric
@@ -1596,7 +1629,7 @@ Q_{\mathrm{useful}}&=(\mathrm{requests/s})P(\mathrm{quality\ pass}).
 \end{align}
 Here $C$ must use one stated accounting boundary and $T$ one stated materialized
 unit; the ratios are not interchangeable. In the scheduler-invisible CUDA
-vLLM fixture, scheduler-accounted tokens give
+vLLM fixture, a historical pre-gate diagnostic, scheduler-accounted tokens give
 $G_{\mathrm{context}}=276/36=7.67$ and
 $G_{\mathrm{native}}=36/20=1.80$; E2 carries no scheduler-visible source token,
 but the 20 query tokens remain. In the separate 50-turn agent trace, resource-
@@ -1606,6 +1639,12 @@ E0, 45.46 for HOT E2, and 42.44 for WARM E2. Context and Native Gain therefore
 do not imply a throughput win.
 
 \subsection{RAG results: engine realization only}
+
+\paragraph{Historical pre-gate diagnostic.}
+Every Native-Memory exactness, latency, throughput, and memory value in this
+subsection predates \EngineContract{}. The raw
+values are retained for audit and hypothesis formation only; they do not
+qualify current MLX behavior or workload economics.
 
 Papers~3.2 and~3.3 report retrieval, selection, evidence coverage, and answer
 quality.  Their current policy keeps generic document selection unqualified.
@@ -2038,6 +2077,11 @@ It establishes policy parity, exact lossless recovery, and a measurable reason
 to defer transient writes; natural lifecycle distributions remain open, while
 the following small probe begins engine-native promotion measurement.
 
+\paragraph{Historical pre-gate engine evidence.}
+The engine measurements in the remainder of this subsection predate the
+corrected live-history, original-position, copy-accounting, and lifecycle
+contract and do not qualify current exactness or economics.
+
 The next probe replaces the in-memory HOT bridge with live attention objects:
 reserved vLLM-Metal pages, SGLang MLX arrays backed by the built-in HiCache
 file API, and MLX arrays. Each of three natural QASPER selections is generated
@@ -2305,8 +2349,9 @@ Paper 4.5 result\\
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Measured companion native-mechanism matrix. These rows calibrate
-engine realizations; they do not promote Paper 4.5's HF-centered profile evidence.}
+\caption{Historical pre-gate companion native-mechanism matrix. These rows are
+retained for audit only and do not qualify current engine realization or
+economics.}
 \input{../shared/results/generated_engine_product_matrix.tex}
 \label{tab:engine-product-matrix}
 \end{table}
@@ -2364,9 +2409,10 @@ pressure-test method and a strong E0 baseline, not a hardware ranking.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Frozen matched E0 selected-text versus E2 native-K/V quality. Each
+\caption{Historical pre-gate frozen matched E0 selected-text versus E2 native-K/V quality. Each
 dataset contains 20 routed examples; selection is fixed before cold, warm,
-multi-query, and concurrency-eight engine consumption.}
+multi-query, and concurrency-eight engine consumption. Values are retained for
+audit only and do not establish current engine exactness.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_quality_table.tex}}
 \label{tab:engine-matched-quality}
@@ -2375,9 +2421,10 @@ multi-query, and concurrency-eight engine consumption.}
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Macro E2/E0 execution-cost ratios; lower is better. Cold includes
+\caption{Historical pre-gate macro E2/E0 execution-cost ratios; lower is better. Cold includes
 one-time ingestion, warm and multi-query use median completion, concurrent uses
-inverse requests/s, and E2 usable is milliseconds.}
+inverse requests/s, and E2 usable is milliseconds. These ratios are not current
+workload economics.}
 \resizebox{\linewidth}{!}{%
 \input{../shared/results/matched_e0_e2/generated_matched_latency_table.tex}}
 \label{tab:engine-matched-latency}
@@ -2565,6 +2612,9 @@ more total latency for BF16, 10.0--10.7\% for INT8, and 14.8--16.1\% for INT4.
 The row retains the quality delta only as a guardrail. Because this historical
 cohort changed both selector and representation, it is not a selector-frozen
 transport comparison; Papers~3.2 and~3.3 own its retrieval interpretation.
+It also predates \EngineContract{}; all native
+exactness and cost values in this study are historical diagnostics, not current
+precision qualification.
 
 \begin{table}[H]
 \centering
@@ -2584,13 +2634,15 @@ non-Qwen replication, Qwen3-14B BF16, and peak-memory measurement remain
 \texttt{NEEDS\_RUN}; absent adaptor arms remain
 \texttt{NO\_QUALIFIED\_ADAPTER}.
 
-The expanded confirmation raises each engine to 149 unique questions and
+The historical pre-gate expanded confirmation raises each engine to 149 unique questions and
 2,086 paired requests. Every engine is 2,086/2,086 exact, for 6,258/6,258 pairs
 overall; the pooled Wilson 95\% lower bound is 0.9994. Visible-token reduction
 is 90.4--93.0\%. The macro ratios in Table~\ref{tab:engine-matched-expanded}
 show why semantic and economic gates remain separate: vLLM-Metal is within
 0.9\% of parity in every regime, SGLang-MLX pays 5.4--7.4\% on reused paths,
 and MLX-LM pays 7.2--13.9\% while using the same frozen evidence.
+These values are retained for audit only and do not establish current engine
+parity or economics.
 
 \begin{table}[H]
 \centering
@@ -4248,15 +4300,14 @@ remaining gate is workload-scale calibration and production multi-tenant
 throughput rather than mechanism availability.
 
 Deeper engine integration remains outside Paper 4.5. Companion engine papers
-have established SGLang and MLX native mechanism baselines and controlled vLLM
-generation on Metal and CUDA. A shared matched benchmark now closes E0/E2
-semantic parity for all three engines. The corrected vLLM-Metal geometry reaches
-3,360/3,360 exact cross-family pairs, while expanded Qwen confirmations preserve
-2,086/2,086 per engine. SGLang and MLX still expose unfused decode overhead on
-reused paths. Those results remain environment-specific and do not turn the
-generic provider into an unconditional E2 claim. Native APC and offline
-concurrency now pass on pinned Metal and CUDA paths when cache identity includes
-native selection and geometry; online queued concurrency, LMCache, broader
+established historical SGLang, MLX, and vLLM baselines, but their matched
+workload parity and economics predate the current engine contract and remain
+quarantined. The post-fix evidence is limited to the bounded same-consumer and
+lifecycle gates reported above; it does not replace the historical 3,360/3,360
+or 2,086/2,086 cohorts. Native APC and bounded offline concurrency pass on the
+pinned post-fix paths when cache identity includes native selection and
+geometry; matched latency, throughput, and memory economics remain
+\texttt{NOT\_MEASURED}. Online queued concurrency, LMCache, broader
 positions, masks, GQA, and heterogeneous batching must pass before portable
 speed comparisons. Controlled off-node WARM transfer and affinity now pass
 outside the SGLang generation path; engine-owned distributed placement remains
@@ -4344,10 +4395,13 @@ plain with empty patches.  vLLM's 7B AWQ no-offload 4K path is fast and stable,
 but its tested plain Task~13 also fails.  Their PRA arms are therefore not run.
 Easy-14 expansion remains locked until every target engine has a qualified
 plain/PRA-100/PRA-90 task sequence.  Under the
-RAG workload, frozen contiguous MLX selections are output-exact: retained K/V
-cuts total latency by 78.9\% for Qwen3-4B at 2K, 86.9\% at 4K, and 82.1\% for
-Qwen3-8B, while cold native execution is 1.8--3.3\% slower. Independent chunks
-remain an experimental composition mode because their outputs are not exact.
+historical pre-gate RAG workload, frozen contiguous MLX selections produced
+matching outputs and retained K/V cut total latency by 78.9\% for Qwen3-4B at
+2K, 86.9\% at 4K, and
+82.1\% for Qwen3-8B, while cold native execution was 1.8--3.3\% slower. Those
+pre-gate values are retained for audit only and do not support current MLX
+economics. Independent chunks remain an experimental composition mode because
+their historical outputs were not exact.
 The practical
 conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
