@@ -1,0 +1,378 @@
+{
+  "schema_version": "paper1_headline_audit_v1",
+  "audit_date": "2026-09-13",
+  "repository_revision_before_editorial_changes": "f2e69d6aa8936ca429f5fe425358d4396b283d51",
+  "scope": "Frozen-artifact verification only; no training or inference rerun.",
+  "status": "PASS",
+  "artifacts": {
+    "fragmentation": {
+      "path": "docs/papers/shared/results/pra_parameter_sensitivity_fragmentation.json",
+      "sha256": "ec79b8016497691eb4f71e7cedf9bf8eef27c3ce95b1318d7ecf1789e62e754d"
+    },
+    "scale": {
+      "path": "docs/papers/shared/results/pra_scale_sensitivity.json",
+      "sha256": "2e37b2668a4d63f9c1323674c03f1221c92739b8ea5820af7aac3649b2ce0c25"
+    },
+    "bounded": {
+      "path": "docs/papers/shared/results/pra_head_beyond_native_context.json",
+      "sha256": "eec9304351566f62cd9a5b6a9c810462809cea0f581ec0caed83b6e96e67c9a6"
+    },
+    "residency": {
+      "path": "docs/papers/shared/results/pra_kv_residency.json",
+      "sha256": "5e0b0dbad759fb643502445ec3cf47b14517c5ef10c6d55d0d422af97e922674"
+    },
+    "routing": {
+      "path": "docs/papers/shared/results/pra_routing_index_reuse.json",
+      "sha256": "5a15232b9fc85bebbb7ff9c37cb6377329ffe62a5ba902783a7bc1cf8f1c80fb"
+    },
+    "pretrained": {
+      "path": "docs/papers/shared/results/paper1_standalone_pra/mac_context_dilution/mlx_long_context_summary.json",
+      "sha256": "fb512e61460547d6d7552c648ac3f6a9c5d78355f611c77266dd21eb0decddc9"
+    }
+  },
+  "checks": [
+    {
+      "name": "fragmentation.hotpotqa.independent_oracle_rcb_3dp",
+      "observed": 0.546,
+      "expected": 0.546,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "fragmentation.hotpotqa.block8_oracle_rcb_3dp",
+      "observed": 0.996,
+      "expected": 0.996,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "fragmentation.hotpotqa.native_slice_routed_rcb_3dp",
+      "observed": 0.876,
+      "expected": 0.876,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "fragmentation.qasper.independent_oracle_rcb_3dp",
+      "observed": 0.748,
+      "expected": 0.748,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "fragmentation.qasper.block8_oracle_rcb_3dp",
+      "observed": 0.999,
+      "expected": 0.999,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "fragmentation.qasper.native_slice_routed_rcb_3dp",
+      "observed": 0.994,
+      "expected": 0.994,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.active_fraction_split64_3dp",
+      "observed": 0.179,
+      "expected": 0.179,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.active_fraction_split256_3dp",
+      "observed": 0.044,
+      "expected": 0.044,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.fixed_fraction_coverage_split64_3dp",
+      "observed": 0.756,
+      "expected": 0.756,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.fixed_fraction_coverage_split128_3dp",
+      "observed": 0.772,
+      "expected": 0.772,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.fixed_fraction_coverage_split256_3dp",
+      "observed": 0.762,
+      "expected": 0.762,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.physical_kv_min_ge_10",
+      "observed": true,
+      "expected": true,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.hotpotqa.physical_kv_max_le_13",
+      "observed": true,
+      "expected": true,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.active_fraction_split64_3dp",
+      "observed": 0.187,
+      "expected": 0.187,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.active_fraction_split256_3dp",
+      "observed": 0.049,
+      "expected": 0.049,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.fixed_fraction_coverage_split64_3dp",
+      "observed": 0.794,
+      "expected": 0.794,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.fixed_fraction_coverage_split128_3dp",
+      "observed": 0.803,
+      "expected": 0.803,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.fixed_fraction_coverage_split256_3dp",
+      "observed": 0.8,
+      "expected": 0.8,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.physical_kv_min_ge_10",
+      "observed": true,
+      "expected": true,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "scale.qasper.physical_kv_max_le_13",
+      "observed": true,
+      "expected": true,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.routed_loss_4dp",
+      "observed": 1.0567,
+      "expected": 1.0567,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.truncation_loss_4dp",
+      "observed": 1.2287,
+      "expected": 1.2287,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.logical_tokens",
+      "observed": 192,
+      "expected": 192,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.direct_tokens",
+      "observed": 8,
+      "expected": 8,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.displaced_head_tokens",
+      "observed": 184,
+      "expected": 184,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.max_source_input",
+      "observed": 20.0,
+      "expected": 20,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.max_retained_memory",
+      "observed": 20.0,
+      "expected": 20,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "bounded.max_combined_attention_kv",
+      "observed": 28.0,
+      "expected": 28,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "routing.split256.warm_min_1dp",
+      "observed": 5.5,
+      "expected": 5.5,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "routing.split256.warm_max_1dp",
+      "observed": 11.6,
+      "expected": 11.6,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "routing.split256.speedup_min_0dp",
+      "observed": 94,
+      "expected": 94,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "routing.split256.speedup_max_0dp",
+      "observed": 103,
+      "expected": 103,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.cache_mib_min_3dp",
+      "observed": 0.734,
+      "expected": 0.734,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.cache_mib_max_3dp",
+      "observed": 3.42,
+      "expected": 3.42,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.transfer_kib_min_1dp",
+      "observed": 24.6,
+      "expected": 24.6,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.transfer_kib_max_1dp",
+      "observed": 87.9,
+      "expected": 87.9,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.transfer_ms_min_1dp",
+      "observed": 4.0,
+      "expected": 4.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.transfer_ms_max_1dp",
+      "observed": 8.9,
+      "expected": 8.9,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.warm_overhead_ms_min_1dp",
+      "observed": 4.0,
+      "expected": 4.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "residency.warm_overhead_ms_max_1dp",
+      "observed": 13.5,
+      "expected": 13.5,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.8b_8k.sequence_agreement",
+      "observed": 1.0,
+      "expected": 1.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.14b_8k.sequence_agreement",
+      "observed": 1.0,
+      "expected": 1.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.32b_8k.sequence_agreement",
+      "observed": 0.8666666666666667,
+      "expected": 0.8666666666666667,
+      "tolerance": 1e-12,
+      "passed": true
+    },
+    {
+      "name": "pretrained.8b_selected_mib_1dp",
+      "observed": 39.6,
+      "expected": 39.6,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.8b_8k_full_mib",
+      "observed": 1152.0,
+      "expected": 1152.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.8b_32k_full_mib",
+      "observed": 4608.0,
+      "expected": 4608.0,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.8b_8k_logprob_delta_3dp",
+      "observed": 1.192,
+      "expected": 1.192,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.14b_8k_logprob_delta_3dp",
+      "observed": -1.485,
+      "expected": -1.485,
+      "tolerance": 0.0,
+      "passed": true
+    },
+    {
+      "name": "pretrained.32b_8k_logprob_delta_3dp",
+      "observed": -0.999,
+      "expected": -0.999,
+      "tolerance": 0.0,
+      "passed": true
+    }
+  ]
+}

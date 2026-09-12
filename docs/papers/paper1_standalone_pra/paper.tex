@@ -30,7 +30,7 @@
 }
 
 \title{Progressive Retrieval Attention: Bounded Sparse Native-KV for Addressable Logical Memory}
-\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\author{Jorge Sim\~ao\\EInnovator R\&D, Portugal}
 \date{\today}
 \hypersetup{
   pdftitle={Progressive Retrieval Attention: Bounded Sparse Native-KV for Addressable Logical Memory},
@@ -117,9 +117,10 @@ and encoding granularity separated from routing granularity. This combination le
 availability grow without requiring either every available token or a compressed surrogate of
 every token to enter one attention operation.
 
-We test that claim with small, controlled PyTorch models rather than a production-scale
-language model. The experiments separate four issues that would otherwise be easy to
-confuse: whether cached native K/V carries useful detail, whether the router finds the
+The primary causal tests use small, controlled PyTorch models rather than a production
+serving stack; a separate pretrained MLX calibration tests only transport compatibility
+and payload accounting. The experiments separate four issues that would otherwise be easy
+to confuse: whether cached native K/V carries useful detail, whether the router finds the
 annotated source, how quality changes as selection becomes sparse, and whether every
 underlying model call remains within a declared length bound.
 
@@ -158,11 +159,12 @@ The headline is not that one operating point solves long context. It is that log
 routing resolution, active native K/V, and device residency are separately controllable and
 separately measurable.
 
-The remainder of the paper first explains the mechanism, then evaluates transport,
-routing, scaling, and bounded execution in that order. Positional extrapolation is treated
-only as a boundary here; RoPE-specific semantics belong to the companion position paper.
-Pretrained Hugging Face adaptation, iterative multi-hop retrieval, multi-gist routing,
-and production serving are separate extensions.
+The remainder of the paper first explains the mechanism, then evaluates controlled
+transport, routing, scaling, and bounded execution before separating the pretrained
+calibration and systems costs. Positional extrapolation is treated only as a boundary here;
+RoPE-specific semantics belong to the companion position paper. Pretrained architecture
+retrofit, iterative multi-hop retrieval, multi-gist routing, and production serving are
+separate extensions.
 
 \section{PRA in 60 Seconds}
 \label{sec:sixty-seconds}
@@ -381,39 +383,67 @@ Canonical artifacts & \texttt{shared/results/pra\_scale\_sensitivity.json} and
 \end{table}
 
 The remaining result families use the same reporting discipline but different frozen cohorts.
-Table~\ref{tab:artifact-map} prevents evidence from one family from silently supplying the
-denominator of another.
+Table~\ref{tab:artifact-map} is the compact experiment-level configuration map: it prevents
+evidence from one family from silently supplying the denominator of another. The accompanying
+machine audit checks every number used by the abstract and headline table against these frozen
+artifacts.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Artifact and cohort map. Paths are relative to \texttt{docs/papers}.}
+\caption{Experimental configurations and evidence artifacts. ``Native bound'' is the largest
+declared operation limit, not the logical source size. Paths are relative to
+\texttt{docs/papers}.}
 \label{tab:artifact-map}
-\begin{tabularx}{\textwidth}{P{0.17\textwidth}P{0.28\textwidth}P{0.28\textwidth}Y}
+\begin{tabularx}{\textwidth}{P{0.13\textwidth}P{0.17\textwidth}P{0.22\textwidth}P{0.10\textwidth}P{0.18\textwidth}Y}
 \toprule
-Result family & Frozen cohort / unit & Canonical artifact & Interpretation boundary \\
+Experiment & Model / train data & Logical source / routing & Native bound & Independent units & ID \\
 \midrule
-Transport and fragmentation & HotpotQA- and QASPER-derived answer-code probes; five paired
-seeds; splits 2--64 & \path{shared/results/native_kv_hotpotqa.json} and
-\path{shared/results/native_kv_qasper.json} & Full-context self-attention followed by weight-preserving
-PRA conversion; first answer token, not generated QA \\
-Scale and residency & Same 32 question identities per seed at nested 63/127/255-unit sources;
-five paired seeds & \path{shared/results/pra_scale_sensitivity.json} and
-\path{shared/results/pra_kv_residency.json} & Seed-level
-aggregates retained; not 256 independent documents and not a process-memory benchmark \\
-Bounded head and budget & Synthetic fixed-target v5; 4 generated examples crossed with 4 target
-positions = 16 cases per seed, 80 cases over five seeds; GTX 950M
-& \path{shared/results/pra_head_beyond_native_context.json},
-\path{shared/results/pra_materialization_budget.json},
-\path{shared/results/pra_context_budget.json} & Source-call,
-direct, retained-memory, and combined-attention lengths are distinct \\
-Pretrained calibration & 15 unique questions per 8K Qwen3 model point; three at 8B/32K
-& \path{shared/results/paper1_standalone_pra/mac_context_dilution/mlx_long_context_summary.json}
-& Shared with the positional study; annotated selection,
-one quantized family, payload bytes rather than peak allocation \\
+Transport & Controlled small decoder; HotpotQA-/QASPER-derived answer-code training
+& Fixed source, splits 2--32; annotated oracle versus routed/shuffled
+& 768-token cap & Five paired seeds; 32 questions/seed
+& T \\
+Fragmentation & Frozen controlled checkpoints; no retraining in sweep
+& Split 64; independent, block-slice, global-position, native-slice interventions
+& 768-token cap & Five paired seeds; paired questions
+& F \\
+Sparse scale & Tiny/small controlled decoders; one training run per dataset and seed
+& Nested 63/127/255-unit sources; exact gist ranking; $k=8$ plus ranking cutoffs
+& 768-token cap & Five paired seeds; 32 questions/seed
+& S \\
+Bounded head & Controlled decoder; synthetic fixed-target v5
+& 192 logical tokens; exact routing with 20-token materialization budget
+& $L_{\max}=32$ & 5 seeds $\times$ 4 examples $\times$ 4 target positions = 80
+& B \\
+Routing cost & Same frozen tiny/small checkpoints; no training
+& Exact packed versus scalar routing over up to 255 candidates
+& inherited & Five seeds; 8 timed queries after 2 warmups
+& R \\
+Residency & Same frozen tiny/small checkpoints; no training
+& GPU- versus CPU-resident source K/V; identical selected identities
+& inherited & Five seeds; 4 examples/seed
+& K \\
+Pretrained calibration & Qwen3 8B/14B/32B 4-bit; no training
+& Annotated evidence; selected text versus selected native K/V versus 8K/32K full context
+& No PRA bound test & 15 questions/model at 8K; 3 at 8B/32K
+& P \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+Evidence keys are: T, \path{shared/results/native_kv_hotpotqa.json} and
+\path{shared/results/native_kv_qasper.json}; F,
+\path{shared/results/pra_parameter_sensitivity_fragmentation.json}; S,
+\path{shared/results/pra_scale_sensitivity.json}; B,
+\path{shared/results/pra_head_beyond_native_context.json}; R,
+\path{shared/results/pra_routing_index_reuse.json}; K,
+\path{shared/results/pra_kv_residency.json}; and P,
+\path{shared/results/paper1_standalone_pra/mac_context_dilution/mlx_long_context_summary.json}.
+The executable audit and its receipt are
+\path{../../scripts/audit_paper1_headlines.py} and
+\path{paper1_standalone_pra/NUMERICAL_AUDIT.json}. The receipt records SHA-256 hashes for
+each input artifact and 49 pass/fail checks. It verifies frozen outputs only; it is not an
+independent training or inference replication.
 
 We report loss and exact target accuracy where defined. For memory contribution, the
 recovered-context-benefit ratio is
@@ -434,66 +464,6 @@ selected memory has lower measured loss than full context, not only sampling var
 is not a general correctness score. We separately report annotated target
 coverage, active K/V fraction, physical K/V tokens, and operation length. This separation
 prevents a successful transport path from being mistaken for a successful learned router.
-
-\section{Pretrained Scale and Context Dilution}
-\label{sec:pretrained-dilution}
-
-The controlled models above isolate mechanism, but they cannot answer whether a
-larger pretrained decoder simply becomes insensitive to irrelevant context. A
-separate MLX calibration therefore uses pinned 4-bit Qwen3-8B, 14B, and 32B
-checkpoints on a 48~GiB M4 Pro. Five unique examples from each of QASPER,
-HotpotQA, and 2Wiki provide frozen annotated evidence. The same selection is
-rendered as at most 384 visible tokens for E0 and as native K/V for E2, while
-deterministic same-dataset distractors extend the dense condition to 8K source
-tokens. An 8B boundary sample extends three examples to 32K. The requested 64K
-condition is recorded as \texttt{NOT\_RUN\_MODEL\_CONTEXT\_LIMIT}, because the
-pinned checkpoints advertise 40,960 positions; no row is silently truncated.
-
-\begin{table}[H]
-\centering
-\scriptsize
-\caption{\textbf{Larger pretrained models do not make context dilution
-monotonic.} $\Delta$ is full minus selected, so positive log-probability favors
-the full prompt. E2 agreement compares frozen selected native K/V with selected
-text. Full MiB is the all-layer native-K/V representation of the dense source,
-included to expose physical scaling rather than as a deployment
-recommendation.}
-\resizebox{\linewidth}{!}{\input{../shared/results/paper1_standalone_pra/mac_context_dilution/generated_context_dilution_table.tex}}
-\label{tab:pretrained-dilution}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=.72\linewidth]{../shared/results/paper1_standalone_pra/mac_context_dilution/mlx_context_dilution.pdf}
-\caption{Full-minus-selected answer log-probability changes sign across model
-size and context. Selection bounds active evidence; it does not guarantee a
-quality advantage on every question.}
-\label{fig:pretrained-dilution}
-\end{figure}
-
-At 8K, full context improves mean gold-answer log probability by 1.192 nats at
-8B but lowers it by 1.485 nats at 14B and 0.999 nats at 32B. F1 moves in the
-same direction for all three 8K cohorts, including 8B; only the three-example
-8B 32K boundary has likelihood and F1 moving in opposite directions. The defensible
-result is therefore non-monotonicity, not a universal selected-context quality
-gain. Larger models still require an explicit dilution measurement.
-
-The physical result is clearer. At 8B, selected all-layer native K/V remains
-about 39.6 MiB while full native K/V grows from 1,152 MiB at 8K to 4,608 MiB at
-32K. At 14B the corresponding 8K values are 43.9 and 1,280 MiB; at 32B they are
-70.3 and 2,048 MiB. Selected E2 preserves all sequences at 8B/14B and 13/15 at
-32B, where its mean likelihood shift is only $+0.030$ nats. Thus the bounded-working-set claim survives
-pretrained scale in this calibration even though the quality sign depends on
-model and example. It does not establish benchmark QA accuracy or a learned
-router at 8B--32B.
-
-This is a shared MLX campaign with the companion positional study, not an independent
-replication. Here it supports context-dilution and all-layer payload accounting; coordinate
-and position-reset interventions are analyzed there. E0 re-renders the frozen annotated
-selection as visible text, whereas E2 injects native K/V sliced from the encoded selected
-layout. Output-sequence agreement tests the consumer behavior of those two paths but does
-not prove equality of every internal tensor. The MiB figures are serialized all-layer K/V
-payload sizes, not measured peak unified-memory allocation or whole-process savings.
 
 \section{Does Selected Native K/V Carry the Needed Detail?}
 \label{sec:transport}
@@ -776,6 +746,65 @@ Long-form generation quality \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+\section{Pretrained Scale and Context Dilution}
+\label{sec:pretrained-dilution}
+
+\paragraph{Pretrained calibration boundary.}
+\textbf{This experiment tests transport compatibility and payload accounting in pretrained
+models; it does not evaluate PRA routing on these models.} The controlled experiments above
+isolate mechanism, but they cannot answer whether a larger pretrained decoder simply becomes
+insensitive to irrelevant context. A separate MLX calibration therefore uses pinned 4-bit
+Qwen3-8B, 14B, and 32B checkpoints on a 48~GiB M4 Pro. Five unique examples from each of
+QASPER, HotpotQA, and 2Wiki provide frozen annotated evidence. The same selection is rendered
+as at most 384 visible tokens for E0 and as native K/V for E2, while deterministic same-dataset
+distractors extend the dense condition to 8K source tokens. An 8B boundary sample extends
+three examples to 32K. The requested 64K condition is recorded as
+\texttt{NOT\_RUN\_MODEL\_CONTEXT\_LIMIT}, because the pinned checkpoints advertise 40,960
+positions; no row is silently truncated.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{\textbf{Larger pretrained models do not make context dilution monotonic.}
+$\Delta$ is full minus selected, so positive log-probability favors the full prompt. E2
+agreement compares frozen selected native K/V with selected text. Full MiB is the all-layer
+native-K/V representation of the dense source, included to expose physical scaling rather
+than as a deployment recommendation.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper1_standalone_pra/mac_context_dilution/generated_context_dilution_table.tex}}
+\label{tab:pretrained-dilution}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper1_standalone_pra/mac_context_dilution/mlx_context_dilution.pdf}
+\caption{Full-minus-selected answer log-probability changes sign across model size and
+context. Selection bounds active evidence; it does not guarantee a quality advantage on
+every question.}
+\label{fig:pretrained-dilution}
+\end{figure}
+
+At 8K, full context improves mean gold-answer log probability by 1.192 nats at 8B but lowers
+it by 1.485 nats at 14B and 0.999 nats at 32B. F1 moves in the same direction for all three
+8K cohorts, including 8B; only the three-example 8B 32K boundary has likelihood and F1 moving
+in opposite directions. The defensible result is therefore non-monotonicity, not a universal
+selected-context quality gain. Larger models still require an explicit dilution measurement.
+
+The physical result is clearer. At 8B, selected all-layer native K/V remains about 39.6 MiB
+while full native K/V grows from 1,152 MiB at 8K to 4,608 MiB at 32K. At 14B the corresponding
+8K values are 43.9 and 1,280 MiB; at 32B they are 70.3 and 2,048 MiB. Selected E2 preserves all
+sequences at 8B/14B and 13/15 at 32B, where its mean likelihood shift is only $+0.030$ nats.
+Thus the bounded-working-set claim survives pretrained scale in this calibration even though
+the quality sign depends on model and example. It does not establish benchmark QA accuracy
+or a learned router at 8B--32B.
+
+This is a shared MLX campaign with the companion positional study, not an independent
+replication. Here it supports context-dilution and all-layer payload accounting; coordinate
+and position-reset interventions are analyzed there. E0 re-renders the frozen annotated
+selection as visible text, whereas E2 injects native K/V sliced from the encoded selected
+layout. Output-sequence agreement tests the consumer behavior of those two paths but does
+not prove equality of every internal tensor. The MiB figures are serialized all-layer K/V
+payload sizes, not measured peak unified-memory allocation or whole-process savings.
 
 \section{Related Work by Changed Resource}
 

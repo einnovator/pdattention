@@ -75,4 +75,8 @@ Suggested audience: empirical ML architecture and memory systems. **TMLR** is a 
 
 **Sol handoff:** resolve P0 accounting and protocol questions first; correct the F1 sentence and scaling-law wording; build the target-hit/miss analysis from frozen traces; then revise abstract and conclusion. If causal source rebuilding is not run, narrow the retrieval interpretation. Return a claim-to-artifact ledger and identify any remaining new experiment separately from completed edits.
 
-Preflight: literal TeX inputs and cited keys resolve; no undefined cross-reference labels or duplicate labels were found. The generated pretrained table was inspected. Full numerical replication and rendered-PDF checks remain outstanding.
+Resolution addendum (2026-09-13): the principal configuration contract and a compact
+all-experiment evidence map are now in the manuscript; the controlled/pretrained boundary is
+explicit; the fragmentation artifact mapping is corrected; and a 49-check frozen-artifact
+audit with SHA-256 input receipts passes. The final PDF was rebuilt and visually inspected.
+This verifies the reported frozen outputs and layout, not a new training/inference replication.
