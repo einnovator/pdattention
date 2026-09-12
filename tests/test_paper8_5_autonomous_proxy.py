@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
 from pathlib import Path
+import tarfile
 import threading
 import urllib.error
 import urllib.request
@@ -18,8 +19,13 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
 )
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
     build_agent_command,
+    build_grader_command,
     load_locked_task,
     summarize_trace,
+)
+from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
+    AUXILIARY_WORKSPACE_STATE_LABEL,
+    create_auxiliary_workspace_state_prediction,
 )
 
 
@@ -132,6 +138,187 @@ def _write_receipt(
         "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
         "observation_metadata": metadata,
     }))
+
+
+def _write_workspace_checkpoint(
+    root: Path,
+    *,
+    step: int,
+    patch: bytes,
+    complete: bool = True,
+    workspace_stable: bool = True,
+    index_patch: bytes = b"",
+) -> None:
+    session = root / "container-session"
+    session.mkdir(parents=True, exist_ok=True)
+    worktree_path = session / f"decision_{step:04d}.worktree.patch"
+    index_path = session / f"decision_{step:04d}.index.patch"
+    archive_path = session / f"decision_{step:04d}.untracked.tar.gz"
+    worktree_path.write_bytes(patch)
+    index_path.write_bytes(index_patch)
+    with tarfile.open(archive_path, "w:gz"):
+        pass
+    command_digest = hashlib.sha256(f"cat foo.py {step}".encode()).hexdigest()
+    fingerprint = f"workspace-{step}"
+    decision = {
+        "schema_version": 1,
+        "scope": "git_HEAD_plus_tracked_diff_plus_nonignored_untracked_files",
+        "step": step,
+        "command_sha256": command_digest,
+        "workspace_version_fingerprint": fingerprint,
+        "index_patch": index_path.name,
+        "index_patch_sha256": hashlib.sha256(index_patch).hexdigest(),
+        "index_capture_complete": complete,
+        "worktree_patch": worktree_path.name,
+        "worktree_patch_sha256": hashlib.sha256(patch).hexdigest(),
+        "worktree_capture_complete": complete,
+        "untracked_archive": archive_path.name,
+        "untracked_archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+        "untracked_capture_complete": complete,
+        "checkpoint_complete": complete,
+    }
+    (session / f"decision_{step:04d}.json").write_text(json.dumps(decision))
+    post_fingerprint = fingerprint if workspace_stable else f"workspace-{step}-changed"
+    execution = {
+        "schema_version": 1,
+        "step": step,
+        "command_sha256": command_digest,
+        "pre_state": {
+            "complete": True,
+            "workspace_version_fingerprint": fingerprint,
+        },
+        "post_state": {
+            "complete": True,
+            "workspace_version_fingerprint": post_fingerprint,
+        },
+    }
+    (session / f"execution_{step:04d}.json").write_text(json.dumps(execution))
+
+
+def _write_primary_predictions(path: Path, patch: str = "source excerpt") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "org__repo-1": {
+            "model_name_or_path": "openai/locked-model",
+            "instance_id": "org__repo-1",
+            "model_patch": patch,
+        }
+    }))
+
+
+def test_auxiliary_workspace_state_copies_verified_final_patch(tmp_path):
+    patch = (
+        b"diff --git a/foo.py b/foo.py\n"
+        b"--- a/foo.py\n"
+        b"+++ b/foo.py\n"
+        b"@@ -1 +1 @@\n-old\n+new\n"
+    )
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(instrumentation, step=0, patch=patch)
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "available"
+    assert outcome["outcome_label"] == AUXILIARY_WORKSPACE_STATE_LABEL
+    assert outcome["evidence_role"] == "auxiliary_only"
+    assert outcome["replaces_official_submission"] is False
+    assert outcome["checkpoint_step"] == 0
+    assert outcome["last_action_workspace_stable"] is True
+    assert outcome["primary_submission_looks_like_git_diff"] is False
+    assert Path(outcome["patch"]).read_bytes() == patch
+    auxiliary_predictions = json.loads(Path(outcome["predictions"]).read_text())
+    assert auxiliary_predictions["org__repo-1"]["model_patch"].encode() == patch
+    assert json.loads(primary.read_text())["org__repo-1"]["model_patch"] == "source excerpt"
+
+
+def test_auxiliary_workspace_state_does_not_fall_back_from_incomplete_last_checkpoint(
+    tmp_path,
+):
+    patch = b"diff --git a/foo.py b/foo.py\n--- a/foo.py\n+++ b/foo.py\n"
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(instrumentation, step=0, patch=patch)
+    _write_workspace_checkpoint(
+        instrumentation, step=1, patch=patch, complete=False
+    )
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "unavailable"
+    assert outcome["reason"] == "last_checkpoint_incomplete"
+    assert not (tmp_path / "run" / "auxiliary_workspace_state_preds.json").exists()
+    assert not (tmp_path / "run" / "auxiliary_workspace_state.patch").exists()
+
+
+@pytest.mark.parametrize(
+    ("workspace_stable", "index_patch", "reason"),
+    (
+        (False, b"", "final_action_changed_or_unverified_workspace"),
+        (True, b"diff --git a/bar.py b/bar.py\n", "staged_and_unstaged_composition_unsupported"),
+    ),
+)
+def test_auxiliary_workspace_state_rejects_unsafe_final_state(
+    tmp_path, workspace_stable, index_patch, reason
+):
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+        workspace_stable=workspace_stable,
+        index_patch=index_patch,
+    )
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "unavailable"
+    assert outcome["reason"] == reason
+
+
+def test_auxiliary_workspace_state_rejects_checkpoint_digest_mismatch(tmp_path):
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+    )
+    source = (
+        instrumentation / "container-session" / "decision_0000.worktree.patch"
+    )
+    source.write_bytes(source.read_bytes() + b"tampered\n")
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "unavailable"
+    assert outcome["reason"] == "checkpoint_digest_mismatch"
+    assert outcome["official_grading_completed"] is False
 
 
 def test_sidecar_join_enables_guarded_h2_without_leaking_extra(tmp_path):
@@ -372,6 +559,24 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert (
         "environment.image=docker.io/swebench/"
         "sweb.eval.x86_64.org_1776_repo-2:latest" in joined
+    )
+
+
+def test_auxiliary_grader_command_uses_separate_predictions_and_run_id(tmp_path):
+    args = argparse.Namespace(split="test", run_id="primary", grader_workers=1)
+    predictions = tmp_path / "auxiliary_workspace_state_preds.json"
+    command = build_grader_command(
+        args,
+        dataset="org/dataset",
+        instance_id="org__repo-1",
+        predictions=predictions,
+        output=tmp_path,
+        run_id="primary-aux-workspace-state",
+    )
+
+    assert command[command.index("-p") + 1] == str(predictions)
+    assert command[command.index("--run_id") + 1] == (
+        "primary-aux-workspace-state"
     )
 
 

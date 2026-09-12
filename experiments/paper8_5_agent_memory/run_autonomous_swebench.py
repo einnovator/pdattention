@@ -20,6 +20,10 @@ import sys
 import time
 from typing import Any, Mapping, Sequence
 
+from .auxiliary_workspace_state import (
+    AUXILIARY_WORKSPACE_STATE_LABEL,
+    create_auxiliary_workspace_state_prediction,
+)
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
 from .materialization import MaterializationMode
 from .negative_selection import NEGATIVE_POLICY_RULES
@@ -140,6 +144,7 @@ def build_grader_command(
     instance_id: str,
     predictions: Path,
     output: Path,
+    run_id: str | None = None,
 ) -> list[str]:
     return [
         sys.executable,
@@ -154,7 +159,7 @@ def build_grader_command(
         "--instance_ids",
         instance_id,
         "--run_id",
-        str(args.run_id),
+        str(run_id or args.run_id),
         "--max_workers",
         str(args.grader_workers),
         "--cache_level",
@@ -401,6 +406,16 @@ def run(args: argparse.Namespace) -> Path:
         predictions=agent_output / "preds.json",
         output=output,
     )
+    auxiliary_run_id = f"{args.run_id}-aux-workspace-state"
+    auxiliary_predictions = output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}_preds.json"
+    auxiliary_grader_command = build_grader_command(
+        args,
+        dataset=str(card["dataset"]),
+        instance_id=instance_id,
+        predictions=auxiliary_predictions,
+        output=output,
+        run_id=auxiliary_run_id,
+    )
     manifest = {
         "schema_version": 1,
         "study": "paper8_5_autonomous_agent_memory",
@@ -444,6 +459,19 @@ def run(args: argparse.Namespace) -> Path:
         "agent_command_template": agent_command,
         "grader_command": grader_command,
         "official_grading_enabled": not args.skip_grading,
+        "auxiliary_workspace_state": {
+            "outcome_label": AUXILIARY_WORKSPACE_STATE_LABEL,
+            "evidence_role": "auxiliary_only",
+            "replaces_official_submission": False,
+            "extraction_enabled": args.instrument_observations,
+            "official_grading_requested": args.grade_auxiliary_workspace_state,
+            "official_grading_enabled": (
+                args.grade_auxiliary_workspace_state and not args.skip_grading
+            ),
+            "predictions": str(auxiliary_predictions),
+            "grader_run_id": auxiliary_run_id,
+            "grader_command": auxiliary_grader_command,
+        },
         "preflight_only": args.preflight_only,
         "engine_or_kv_metrics_claimed": False,
     }
@@ -483,9 +511,20 @@ def run(args: argparse.Namespace) -> Path:
     predictions = agent_output / "preds.json"
     if not predictions.is_file():
         raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
+    auxiliary = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=args.instrumentation_output_root,
+        output=output,
+        primary_predictions=predictions,
+        instance_id=instance_id,
+    )
+    auxiliary["official_grading_requested"] = bool(
+        args.grade_auxiliary_workspace_state and not args.skip_grading
+    )
+    _write_json(output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}.json", auxiliary)
     metrics = summarize_trace(trace_path)
     metrics["agent_wall_time_seconds"] = agent_wall_time
     metrics["instance_id"] = instance_id
+    metrics["auxiliary_workspace_state"] = auxiliary
     _write_json(output / "autonomous_metrics.json", metrics)
     if metrics["calls"] == 0:
         raise RuntimeError(
@@ -505,8 +544,46 @@ def run(args: argparse.Namespace) -> Path:
     result = _official_report(output, args.run_id, instance_id)
     result["grader_wall_time_seconds"] = grader_wall_time
     result["autonomous_metrics"] = str(output / "autonomous_metrics.json")
-    _write_json(output / "official_result.json", result)
+    official_result_path = output / "official_result.json"
+    _write_json(official_result_path, result)
+    auxiliary["primary_official_result"] = str(official_result_path)
+    auxiliary["primary_official_result_sha256"] = _sha256_bytes(
+        official_result_path.read_bytes()
+    )
     metrics["official_result"] = result
+    if args.grade_auxiliary_workspace_state and auxiliary["status"] == "available":
+        try:
+            auxiliary_grader_wall_time = _run(
+                auxiliary_grader_command,
+                log=output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}_grader.log",
+                environment=environment,
+                timeout_seconds=args.timeout_seconds,
+                cwd=output,
+            )
+            auxiliary_result = _official_report(
+                output, auxiliary_run_id, instance_id
+            )
+            auxiliary_result.update({
+                "outcome_label": AUXILIARY_WORKSPACE_STATE_LABEL,
+                "evidence_role": "auxiliary_only",
+                "replaces_official_submission": False,
+                "grader_wall_time_seconds": auxiliary_grader_wall_time,
+                "predictions": str(auxiliary_predictions),
+                "workspace_state_provenance": str(
+                    output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}.json"
+                ),
+            })
+            auxiliary_result_path = (
+                output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}_official_result.json"
+            )
+            _write_json(auxiliary_result_path, auxiliary_result)
+            auxiliary["official_grading_completed"] = True
+            auxiliary["official_result"] = str(auxiliary_result_path)
+            auxiliary["official_result_summary"] = auxiliary_result
+        except Exception as error:  # Auxiliary grading cannot replace primary outcome.
+            auxiliary["official_grading_error"] = str(error)
+    _write_json(output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}.json", auxiliary)
+    metrics["auxiliary_workspace_state"] = auxiliary
     _write_json(output / "autonomous_metrics.json", metrics)
     return output / "official_result.json"
 
@@ -580,6 +657,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")
+    parser.add_argument(
+        "--grade-auxiliary-workspace-state",
+        action="store_true",
+        help=(
+            "Separately grade a fail-closed final workspace patch when one is "
+            "available; never replaces the official submitted-patch outcome."
+        ),
+    )
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument(
         "--allow-whitespace-tokenizer",

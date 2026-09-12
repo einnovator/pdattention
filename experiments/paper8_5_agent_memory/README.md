@@ -196,6 +196,30 @@ content-only full/selected/materialized token counts, exclusion provenance,
 immediate resource reacquisition, action counts, and repeated search/read/test
 signatures, then invokes the official SWE-bench grader by default.
 
+The autonomous runner also attempts a fail-closed auxiliary workspace-state
+outcome. This is useful when an agent changed the repository correctly but put
+a source excerpt, rather than a Git diff, in its submission. The extractor
+accepts only the chronologically last pre-action checkpoint from one complete,
+contiguous instrumentation session. Its paired final execution receipt must
+show the same complete workspace fingerprint before and after the action; every
+checkpoint digest must match; the untracked archive must be empty; and at most
+one of the staged and unstaged patches may be non-empty. An incomplete latest
+checkpoint is never replaced with an older one. These restrictions avoid
+calling stale, post-mutation, partially captured, or ambiguously composed state
+the final workspace.
+
+When admitted, the runner copies the exact index and worktree components to
+`auxiliary_workspace_state.index.patch` and
+`auxiliary_workspace_state.worktree.patch`, writes the single representable
+tracked delta to `auxiliary_workspace_state.patch`, and creates a separate
+`auxiliary_workspace_state_preds.json`. Provenance and rejection reasons are
+recorded in `auxiliary_workspace_state.json`. The original `agent/preds.json`
+and `official_result.json` are never modified or replaced. Pass
+`--grade-auxiliary-workspace-state` to invoke a second official grader run; its
+separately labeled result is written to
+`auxiliary_workspace_state_official_result.json`. `--skip-grading` suppresses
+both grader invocations while retaining extraction provenance.
+
 mini-swe-agent 2.4.6 strips observation `extra` fields before HTTP transport.
 The proxy therefore joins `execution_*.json` sidecars from the instrumented
 Docker environment into a selector-only copy using the complete ordered command
