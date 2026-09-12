@@ -15,6 +15,7 @@ interaction_history=${PRA_AGENT_HISTORY:-/Users/admin.jorge.simao/git/rd/paper45
 turns=${PRA_AGENT_REPLAY_TURNS:-31}
 
 mkdir -p "$runs"
+mkdir -p "$runs/slots"
 export PYTHONPATH="$runtime/src:$runtime:$paper67"
 
 server_pid=
