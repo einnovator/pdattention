@@ -70,9 +70,39 @@ autonomous quality evidence.
 
 The [`autonomous_task01_qwen30`](autonomous_task01_qwen30/README.md) cohort is
 the first fresh-workspace mini-swe-agent execution with official SWE-bench
-grading. Full history resolves one of two repeated executions. H3 with
+grading. The primary full-history submission resolves one of two repeated
+executions. H3 with
 `Kr=1` saves 6.43% of cumulative message-content tokens, changes reasoning at
 the first real exclusion and the command at the following call, reacquires
 excluded state six times, and does not produce a valid final patch. Because a
 full-history repeat also fails, this is evidence that H3 is not behaviorally
-inert, not yet an estimate of its task-success penalty.
+inert, not yet an estimate of its population task-success penalty. A separate
+auxiliary grade of terminal tracked-workspace state resolves FULL-B but not H3:
+the former is a submission-protocol failure, whereas H3's workspace contains
+the malformed duplicate guard. The auxiliary grade is explicitly secondary and
+does not replace the primary official submission outcome. FULL-A auxiliary
+extraction fails closed because its checkpoint contains untracked `patch.txt`.
+
+## Replicated FULL-control instability
+
+The [`autonomous_task02_qwen30`](autonomous_task02_qwen30/README.md) cohort adds
+two FULL-history controls on a second task identity,
+`django__django-15368`. FULL-A resolves in 30 calls; FULL-B stops after 13 calls
+and submits a source excerpt rather than a unified diff, producing a primary
+official patch-application error. All 43 requests are exact pass-through, both controls
+start from the same image and exact workspace/environment fingerprints, and
+there are no selection exclusions, upstream errors, or reacquisitions.
+
+The requests remain identical through call 5. On the identical call-5 request,
+assistant content differs while the command remains equal; the accumulated
+requests and commands first differ at call 6. Task 02 therefore independently
+repeats Task 01's 1/2 FULL outcome. Temperature zero and a fixed seed describe
+the decoding configuration but do not establish deterministic autonomous
+trajectories. The auxiliary 731-byte final-workspace patch from FULL-B resolves
+officially, showing that its primary failure is submission protocol rather than
+solution state. FULL-A auxiliary extraction is unavailable because untracked
+`bulk_update_fix.patch` and `test_fix.py` make a tracked-only reconstruction
+incomplete. The predeclared gate required both primary Task 02 FULL submissions
+to solve with sufficiently stable behavior, so it failed and no Task 02
+heuristic arm was run. Certified and strict exclusions remain fail-closed when
+their evidence gates are not met.

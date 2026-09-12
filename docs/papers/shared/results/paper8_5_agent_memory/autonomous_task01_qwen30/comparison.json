@@ -7,16 +7,37 @@
   "top_p": 1.0,
   "seed": 0,
   "result_scope": "single_task_pilot_not_population_success_rate",
+  "outcome_definitions": {
+    "primary_official_submission": "official grader applied to the model_patch submitted through the normal mini-swe-agent protocol; this remains the primary endpoint",
+    "auxiliary_workspace_state": "post-hoc official grader applied to a provenance-checked patch extracted from the terminal tracked workspace; auxiliary only and never replaces the primary submission"
+  },
   "full_controls": {
     "runs": 2,
-    "resolved": 1,
-    "resolution_rate": 0.5,
+    "primary_submission_resolved": 1,
+    "primary_submission_resolution_rate": 0.5,
     "calls": [26, 29],
-    "note": "FULL-B made the intended edit but submitted a source excerpt rather than a unified diff."
+    "primary_outcomes": {
+      "full_a": "resolved",
+      "full_b": "patch_apply_failed_non_diff_source_excerpt"
+    },
+    "auxiliary_workspace_state": {
+      "full_a": {
+        "status": "unavailable",
+        "reason": "untracked_files_not_representable",
+        "untracked_files": ["patch.txt"]
+      },
+      "full_b": {
+        "status": "available",
+        "resolved": true,
+        "patch_bytes": 749,
+        "patch_sha256": "01522b061b86c4b974793f938c2a9764b5feff09dff7d2f9c788d29eb390bf2d"
+      }
+    },
+    "note": "FULL-B made a resolving workspace change but submitted a source excerpt rather than a unified diff; its primary failure is a submission-protocol failure, not a solution-state failure."
   },
   "h3_kr1": {
     "qualified_runs": 1,
-    "resolved": 0,
+    "primary_submission_resolved": 0,
     "calls": 19,
     "cumulative_full_tokens": 91520,
     "cumulative_selected_tokens": 85640,
@@ -26,8 +47,15 @@
     "first_exclusion_call": 6,
     "first_assistant_content_divergence_call": 6,
     "first_command_divergence_call": 7,
-    "official_outcome": "patch_apply_error",
+    "primary_official_outcome": "patch_apply_error",
+    "auxiliary_workspace_state": {
+      "status": "available",
+      "resolved": false,
+      "patch_bytes": 1090,
+      "patch_sha256": "b1171e2c84ff57d3f9f3f31985f559489016100c112c3af0624153c8aba2694d",
+      "failure": "malformed duplicate guard in BinaryField"
+    },
     "replication_note": "A pre-fix diagnostic H3 execution produced the identical model-visible trajectory, but is excluded from the qualified denominator."
   },
-  "inference": "H3 is not behaviorally inert, but these runs do not identify a task-success penalty because FULL itself resolved only one of two executions."
+  "inference": "The primary submission endpoint is 1/2 for FULL because FULL-B violates the submission protocol, while its auxiliary final workspace resolves. FULL trajectories remain unstable in calls and actions. H3 is not behaviorally inert and fails under both the primary submission and auxiliary workspace-state outcomes."
 }

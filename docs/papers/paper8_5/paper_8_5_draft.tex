@@ -55,8 +55,16 @@ recency, and that its first benefit appears as equal task success with fewer
 calls, rereads, and retained tokens. In the first autonomous single-task pilot,
 however, same-version/span read supersession saves 6.43\% of cumulative input
 tokens, changes the trajectory at its first exclusion, and ends in official
-failure. Full history itself resolves only one of two executions, so this is
-evidence of a behavioral effect rather than an identified task-success penalty.
+failure. The primary full-history submission resolves only one of two
+executions, so this is evidence of a behavioral effect rather than an identified
+task-success penalty. On a second task identity, two new full-history controls
+again resolve one of two primary submissions despite identical declared
+generation settings and exact initial
+workspace identity. Post-hoc auxiliary grading of the two failed full-history
+submissions shows that both terminal workspaces contain resolving patches: the
+failures are in submission protocol rather than solution state. Calls and
+actions nevertheless remain unstable, so we stop the second task before any
+heuristic arm. The H3 terminal workspace also fails its auxiliary grade.
 \end{abstract}
 
 \section{Introduction}
@@ -812,33 +820,48 @@ the official SWE-bench Docker grader. Earlier pilot attempts that were no-ops
 or otherwise invalid were quarantined and do not enter
 Table~\ref{tab:first-autonomous}. The corrected proxy forwards the incoming
 request exactly while a negative policy is a logical no-op; the included H3
-run records five such exact decisions before its first exclusion.
+run records five such exact decisions before its first exclusion. The primary
+endpoint is the official grade of the model patch submitted through the normal
+agent protocol. We additionally report a post-hoc official grade of a
+provenance-checked patch extracted from terminal tracked-workspace state. This
+auxiliary outcome diagnoses solution state; it never replaces or relabels the
+primary submission outcome. Extraction fails closed if untracked state makes a
+tracked-only patch incomplete.
 
 \begin{table}[H]
 \centering
-\small
+\scriptsize
 \caption{First autonomous single-task pilot. Token totals are
 cumulative message-content tokens and exclude chat-template tokens. Because
 the rollouts diverge, their full-history totals and call counts are not paired
 request prefixes. H3's lower call count is failure termination, not fewer calls
-to solution.}
+to solution. ``Aux.'' is the separately labelled final-workspace outcome.}
 \label{tab:first-autonomous}
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrrrr}
 \toprule
-Policy & Resolved & Calls & Full tok. & Selected tok. & Saving & Reacq. \\
+Policy & Primary & Aux. & Calls & Full tok. & Selected tok. & Saving & Reacq. \\
 \midrule
-\textsc{Full}-A & 1/1 & 26 & 131,530 & 131,530 & 0.00\% & 0 \\
-\textsc{Full}-B & 0/1 & 29 & 154,173 & 154,173 & 0.00\% & 0 \\
-H3, $K_r=1$ & 0/1 & 19 & 91,520 & 85,640 & 6.43\% & 6 \\
+\textsc{Full}-A & 1/1 & unavailable & 26 & 131,530 & 131,530 & 0.00\% & 0 \\
+\textsc{Full}-B & 0/1 & 1/1 & 29 & 154,173 & 154,173 & 0.00\% & 0 \\
+H3, $K_r=1$ & 0/1 & 0/1 & 19 & 91,520 & 85,640 & 6.43\% & 6 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textsc{Full}-A passes the official grader. \textsc{Full}-B makes the intended
-code change but diverges from \textsc{Full}-A at call 9 and finally prints a
-source excerpt rather than a unified diff; its submission is therefore rejected.
-Thus this nominally deterministic configuration is only 1/2 for \textsc{Full}
-on this task, and one H3 failure cannot estimate a causal success-rate delta.
+\textsc{Full}-A passes the primary official grader. Its auxiliary extraction is
+unavailable because the terminal checkpoint includes untracked
+\texttt{patch.txt}; rejecting an incomplete tracked-only reconstruction is the
+required fail-closed outcome. \textsc{Full}-B makes the intended code change but
+diverges from \textsc{Full}-A at call 9 and finally prints a source excerpt
+rather than a unified diff, so its primary submission is rejected. The
+provenance-checked 749-byte auxiliary workspace patch (SHA-256 prefix
+\texttt{01522b}) resolves officially. Thus \textsc{Full}-B's primary failure is
+submission protocol, not solution state.
+
+The primary \textsc{Full} submission endpoint remains 1/2 on this task, while
+the available primary and auxiliary evidence establishes resolving code states
+for both executions. The trajectories still vary materially in calls and
+actions. One H3 failure cannot estimate a population success-rate delta.
 A separate fixed first-request probe reproduces assistant content and command
 exactly in 3/3 calls; this does not qualify a growing autonomous trajectory,
 where generated reasoning and environment observations enter later requests.
@@ -854,25 +877,85 @@ the intended guard appears in \texttt{CharField}, but the already guarded
 \texttt{BinaryField} is also rewritten, producing a malformed duplicate
 \texttt{if}. The final submission command prints broad \texttt{grep} context
 rather than a Git diff; consequently, the submitted \texttt{model\_patch} is
-not a diff and the official grader reports a patch-application error.
+not a diff and the primary grader reports a patch-application error. Unlike
+\textsc{Full}-B, the H3 workspace is not a resolving solution: its 1,090-byte
+auxiliary patch (SHA-256 prefix \texttt{b1171e}) contains the malformed duplicate
+guard and also scores 0/1.
 
 The scientific conclusion is deliberately narrow. H3's same-version/span
 condition is not behaviorally inert: a newer source read can supersede exposed
 bytes without proving the older record's localization, reasoning, or mutation
 intent irrelevant. The model-visible H3 trajectory and failure mechanism were
 reproduced exactly in a second execution after the no-op request fix, but only
-the corrected execution enters the table. Because \textsc{Full}-B also fails,
-these rows do not yet prove an H3 task-success penalty. Frozen replay remains a
-screening tool, while autonomous claims require repeated \textsc{Full} controls
-and multiple task identities. The next H3 treatment should preserve a compact
-model-visible source/progress tombstone or require stronger evidence than
-shared resource-version and span.
+the corrected execution enters the table. The auxiliary comparison separates
+the observed failure mechanisms: \textsc{Full}-B reaches a resolving state but
+violates the submission protocol, whereas H3 fails under both outcome
+definitions. This single task still does not estimate a population H3 penalty.
+Frozen replay remains a screening tool, while autonomous claims require
+repeated \textsc{Full} controls and multiple task identities. H3 is explicitly a
+heuristic arm; certificate-backed and strict exclusions continue to fail closed
+when their evidence predicates are not met. The next H3 treatment should
+preserve a compact model-visible source/progress tombstone or require stronger
+evidence than shared resource-version and span.
+
+\subsection{FULL-control replication on a second task}
+
+We repeated the two-control procedure on
+\texttt{django\_\_django-15368}. The two executions use the same pinned model,
+tokenizer and decoding fields as Task~01, fresh containers from the same image,
+and identical initial workspace and environment fingerprints. All 43 model
+requests are exact FULL pass-through and no request has an upstream error.
+Table~\ref{tab:full-control-replication} summarizes the result.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Autonomous FULL-control replication across task identities. P is the
+primary submission outcome and A is the auxiliary final-workspace outcome.
+Calls are shown in parentheses. First command divergence compares the two FULL
+controls within a task; it is not a policy divergence.}
+\label{tab:full-control-replication}
+\begin{tabular}{lrrrrrr}
+\toprule
+Task & A:P & A:A & B:P & B:A & First cmd. div. & Heuristic \\
+\midrule
+Task 01 & 1/1 (26) & unavailable & 0/1 (29) & 1/1 & 9 & H3 pilot \\
+Task 02 & 1/1 (30) & unavailable & 0/1 (13) & 1/1 & 6 & none \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Task~02 FULL-A resolves officially. FULL-B submits a source excerpt instead of
+a unified diff and receives a primary official patch-application error. The
+provenance-checked 731-byte auxiliary workspace patch (SHA-256 prefix
+\texttt{f5d867}) resolves 1/1. As on Task~01, FULL-B therefore reaches a
+resolving solution state but fails the submission protocol. FULL-A's auxiliary
+extraction is unavailable because untracked \texttt{bulk\_update\_fix.patch}
+and \texttt{test\_fix.py} make a tracked-only reconstruction incomplete.
+
+The Task~02 request sequence is identical through call 5. On that identical
+call-5 request, the assistant content differs while the Bash command remains
+equal; the accumulated request and command first differ at call 6. The
+auxiliary success narrows the failure to submission behavior, but does not
+remove the material instability in reasoning, calls, and actions. Temperature
+zero and a fixed seed cannot be treated as a guarantee of repeatable generation
+or agent protocol adherence for this endpoint.
+
+The predeclared Task~02 gate required both FULL controls to resolve with
+sufficiently stable trajectories before testing strict H1. That primary gate
+fails, so we run no Task~02 H1, H2a, H3, or combined policy. Across two task
+identities, the primary FULL submission resolves exactly one of two controls on
+each, while auxiliary grading shows that both FULL-B workspaces resolve. This
+replicated protocol and trajectory instability strengthens the need for
+repeated FULL controls, but four runs are not a population estimate of model or
+agent reliability.
 
 The auditable artifacts are under
 \texttt{docs/papers/shared/results/paper8\_5\_agent\_memory/}
-\texttt{autonomous\_task01\_qwen30}; they include per-request selection
-receipts, full trajectories, token counters, official results, and frozen run
-provenance.
+\texttt{autonomous\_task01\_qwen30} and
+\texttt{autonomous\_task02\_qwen30}; they include per-request selection
+receipts, full trajectories, token counters, primary submission outcomes,
+separately labelled auxiliary workspace outcomes, and frozen run provenance.
 
 \section{Semantic-Role Ablations}
 
@@ -1002,7 +1085,12 @@ browser, or multimodal agents. Semantic record labels may depend on heuristics
 during the first implementation.
 
 These limitations are deliberate. This paper isolates logical memory selection
-before introducing engine-specific physical state.
+before introducing engine-specific physical state. The current autonomous
+controls also show that fixed temperature and seed fields do not eliminate
+trajectory variation or submission failures in the tested endpoint; repeated
+FULL controls and separately labelled solution-state diagnostics are needed
+before attributing success or failure to a memory policy. Auxiliary workspace
+grades are post-hoc diagnostics and never replace the primary agent submission.
 
 \section{Conclusion}
 
@@ -1013,7 +1101,13 @@ incorrect engine implementation. We therefore study memory selection first,
 using an engine-independent record interface and a minimal software-engineering
 agent. The resulting policy frontier should provide a semantic contract for
 later native-memory runtimes: engines realize a frozen memory plan; they do not
-decide what the agent ought to remember.
+decide what the agent ought to remember. The first autonomous evidence further
+shows that this frontier cannot be estimated from a single control trajectory:
+the primary FULL submission resolves only one of two executions on each of two
+task identities, even though auxiliary grading shows both FULL-B workspaces
+contain resolving patches. The second task therefore fails the gate for
+heuristic evaluation. H3 remains negative under both primary and auxiliary
+outcomes on the first task.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}
@@ -1036,7 +1130,9 @@ Each request/run should persist:
     \item selected record IDs/spans;
     \item selected token count;
     \item next model response/action;
-    \item autonomous task result;
+    \item primary autonomous submission result;
+    \item separately labelled auxiliary final-workspace result and extraction
+    availability;
     \item reread/retest/recovery counters;
     \item failure taxonomy labels.
 \end{itemize}

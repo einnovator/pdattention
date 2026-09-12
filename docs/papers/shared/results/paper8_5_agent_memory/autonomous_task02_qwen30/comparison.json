@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_autonomous_full_control_replication",
+  "instance_id": "django__django-15368",
+  "model": "qwen3-coder:30b",
+  "model_digest": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 0,
+  "max_completion_tokens": 1024,
+  "result_scope": "full_history_control_stability_not_policy_quality",
+  "outcome_definitions": {
+    "primary_official_submission": "official grader applied to the model_patch submitted through the normal mini-swe-agent protocol; this remains the primary endpoint",
+    "auxiliary_workspace_state": "post-hoc official grader applied to a provenance-checked patch extracted from the terminal tracked workspace; auxiliary only and never replaces the primary submission"
+  },
+  "full_controls": {
+    "runs": 2,
+    "primary_submission_resolved": 1,
+    "primary_submission_resolution_rate": 0.5,
+    "calls": [30, 13],
+    "cumulative_full_tokens": [153318, 42951],
+    "cumulative_selected_tokens": [153318, 42951],
+    "exact_request_passthrough": [30, 13],
+    "reacquisition_events": [0, 0],
+    "auxiliary_workspace_state": {
+      "full_a": {
+        "status": "unavailable",
+        "reason": "untracked_files_not_representable",
+        "untracked_files": ["bulk_update_fix.patch", "test_fix.py"]
+      },
+      "full_b": {
+        "status": "available",
+        "resolved": true,
+        "patch_bytes": 731,
+        "patch_sha256": "f5d867f28cde646c6c844a3ea9745075b0ab696268f0c7f79508e37f20922158"
+      }
+    }
+  },
+  "execution_identity": {
+    "container_image": "docker.io/swebench/sweb.eval.x86_64.django_1776_django-15368:latest",
+    "image_pull_digest_observed_before_controls": "sha256:f41ed3068a209a8372d6e78847c4be434c582ef63550c87b86c5d3acc3da0f43",
+    "initial_workspace_version_fingerprint": "be9dbef6c71d2f782ccc442677b4886379866da3507b313706e17c3ae02be968",
+    "environment_fingerprint": "0a84e315f503688e6f693c4287df54e2e1bba89e944855709b07f8f84626ad57",
+    "identical_across_controls": true
+  },
+  "trajectory_comparison": {
+    "identical_request_prefix_calls": 5,
+    "first_assistant_content_divergence_call": 5,
+    "first_request_divergence_call": 6,
+    "first_command_divergence_call": 6,
+    "note": "Call 5 consumed an identical request and produced different reasoning but the same command; that reasoning difference entered call 6 history."
+  },
+  "official_outcomes": {
+    "full_a": "resolved",
+    "full_b": "patch_apply_failed_non_diff_source_excerpt"
+  },
+  "predeclared_gate": {
+    "required": "both FULL controls resolve and exhibit sufficiently stable trajectory behavior",
+    "passed": false,
+    "consequence": "no Task02 H1, H2a, H3, or combined heuristic arm was run"
+  },
+  "inference": "The primary submission endpoint again resolves one of two FULL executions, but FULL-B's provenance-checked auxiliary final workspace resolves; its primary failure is submission protocol rather than solution state. Temperature-zero generation under this endpoint is not assumed deterministic because calls and actions still diverge on identical growing-history input."
+}
