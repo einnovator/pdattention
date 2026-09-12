@@ -653,9 +653,12 @@ class SGLangMLXAgentHistoryExecutor:
         additional_stop_token_ids: Sequence[int] = (),
         default_repetition_penalty: float = 1.0,
         default_repeat_last_n: int = 64,
+        prefill_step_size: int = 2048,
     ) -> None:
         if wire_tail_tokens <= 0:
             raise ValueError("wire_tail_tokens must be positive.")
+        if prefill_step_size <= 0:
+            raise ValueError("prefill_step_size must be positive.")
         self.runner = runner
         self.tokenizer = tokenizer
         self.model_id = str(model_id)
@@ -679,6 +682,7 @@ class SGLangMLXAgentHistoryExecutor:
         )
         self.default_repetition_penalty = float(default_repetition_penalty)
         self.default_repeat_last_n = int(default_repeat_last_n)
+        self.prefill_step_size = int(prefill_step_size)
         if not self.default_repetition_penalty > 0.0:
             raise ValueError("default_repetition_penalty must be positive.")
         _repetition_token_ids((), self.default_repeat_last_n)
@@ -713,6 +717,7 @@ class SGLangMLXAgentHistoryExecutor:
             "effective_stop_token_ids": tuple(sorted(self._eos_ids())),
             "default_repetition_penalty": self.default_repetition_penalty,
             "default_repeat_last_n": self.default_repeat_last_n,
+            "prefill_step_size": self.prefill_step_size,
         }
 
     @staticmethod
@@ -790,6 +795,50 @@ class SGLangMLXAgentHistoryExecutor:
     def _eval(self, pending: object) -> None:
         self.runner.eval_pending(pending)
 
+    def _prefill_tokens(
+        self,
+        request_id: str,
+        token_ids: Sequence[int],
+        *,
+        needs_final_logits: bool,
+    ) -> int:
+        """Evaluate a prompt in bounded chunks and return its final token.
+
+        Non-final chunks use the runner's headless trunk.  This avoids
+        materializing a prompt-by-vocabulary logit tensor merely to populate
+        K/V, while preserving the runner's normal cache and token bookkeeping.
+        """
+
+        values = list(map(int, token_ids))
+        if not values:
+            raise ValueError("SGLang-MLX prefill requires at least one token.")
+        chunks = [
+            values[start : start + self.prefill_step_size]
+            for start in range(0, len(values), self.prefill_step_size)
+        ]
+        first = chunks[0]
+        pending = self.runner.prefill_start(
+            request_id,
+            first,
+            first,
+            [],
+            [],
+            0,
+            needs_logits=needs_final_logits and len(chunks) == 1,
+        )
+        self._eval(pending)
+        token = int(self.runner.prefill_finalize(pending))
+        for index, chunk in enumerate(chunks[1:], start=1):
+            pending = self.runner.extend_start(
+                request_id,
+                chunk,
+                [],
+                needs_logits=needs_final_logits and index == len(chunks) - 1,
+            )
+            self._eval(pending)
+            token = int(self.runner.extend_finalize(pending))
+        return token
+
     def _ordinary_generate(
         self,
         request_id: str,
@@ -809,11 +858,9 @@ class SGLangMLXAgentHistoryExecutor:
             repeat_last_n=repeat_last_n,
         )
         try:
-            pending = self.runner.prefill_start(
-                request_id, prompt, prompt, [], [], 0
+            token = self._prefill_tokens(
+                request_id, prompt, needs_final_logits=True
             )
-            self._eval(pending)
-            token = int(self.runner.prefill_finalize(pending))
             eos = self._eos_ids()
             while len(generated) < max_tokens:
                 if token in eos:
@@ -845,11 +892,9 @@ class SGLangMLXAgentHistoryExecutor:
                 "append-stable template and will not fall back to re-prefill."
             )
         if not self.runner.has_request(state.owner_request_id):
-            pending = self.runner.prefill_start(
-                state.owner_request_id, source, source, [], [], 0
+            self._prefill_tokens(
+                state.owner_request_id, source, needs_final_logits=False
             )
-            self._eval(pending)
-            self.runner.prefill_finalize(pending)
             state.canonical_tokens = list(source)
             return len(source), 0
 

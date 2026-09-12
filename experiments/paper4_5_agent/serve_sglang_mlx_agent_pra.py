@@ -192,6 +192,7 @@ def main() -> None:
     )
     parser.add_argument("--default-repetition-penalty", type=float, default=1.0)
     parser.add_argument("--default-repeat-last-n", type=int, default=64)
+    parser.add_argument("--prefill-step-size", type=int, default=2048)
     args = parser.parse_args()
     served_model = args.served_model or args.model
 
@@ -241,6 +242,7 @@ def main() -> None:
         additional_stop_token_ids=additional_stop_token_ids,
         default_repetition_penalty=args.default_repetition_penalty,
         default_repeat_last_n=args.default_repeat_last_n,
+        prefill_step_size=args.prefill_step_size,
     )
     adapter = SGLangEngineAdapter(
         "http://in-process",

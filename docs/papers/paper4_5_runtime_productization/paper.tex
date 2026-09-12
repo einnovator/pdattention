@@ -3484,11 +3484,36 @@ request must also clear a dense same-subset reference gate at maximum logit
 delta 0.005.  Request borrowing, exact-once release, and session termination
 are contract-tested, while interval packing, dense-reference packing,
 canonical graft/reallocation, H2D traffic, and consumer temporary bytes are
-reported separately.  Nineteen focused tests pass and four hardware tests
-skip.  No model smoke is claimed from the 16~GB M5 because its concurrent
-Paper~3.3, Docker, and existing model workloads left only about 4~GB free under
-heavy swap pressure; real allocation and autonomous-task qualification remain
-open.
+reported separately.  The Qwen2.5-Coder-14B 4-bit / Task~01 pair now clears
+plain admission and the PRA-100 autonomous gate on the 48~GB M4 Pro.  Both
+fresh runs resolve 1/1 in six actions and have the same ordered action digest,
+with identical cumulative logical prompt and output token counts.  PRA-100
+reports zero selected-history re-encoding, zero selected-history K/V copy, and
+1.0 realized retention.  This result required two engine-neutral correctness
+repairs: lifecycle fixtures now split at completed record boundaries, and a
+union of adjacent record intervals that covers the complete source is treated
+as full retention rather than being sent through disjoint attention.
+
+The same run is not a runtime win.  MLX canonical-cache growth copies
+5,556,928,512 bytes cumulatively across the six requests, including
+92,798,976 bytes of suffix graft, while cumulative consumer temporary
+allocation is 3,337,912,320 bytes with a 651,476,992-byte request peak.  Wall
+time is 198.7~s versus 190.1~s for plain; this single non-isolated pair is
+provenance, not a speed estimate.  It demonstrates why logical retention,
+selected-history copy, canonical growth copy, consumer temporaries, and wall
+time must remain separate fields.
+
+PRA-90 then passes the first four requests exactly and reaches its first truly
+sparse request at call five: 2,414 of 2,637 completed-history tokens are
+selected (91.54\%), omitting only the oldest completed assistant--observation
+bundle.  Storage, original positions, and the zero-copy alias path are exact,
+and a frozen 16-token continuation has the same token IDs as an ordinary dense
+MLX consumer of that identical subset.  However, the maximum logit delta is
+0.0546875, above the predeclared 0.005 gate.  Eager disjoint attention, a
+single score-concatenation softmax, and native-fast Metal math do not remove
+the discrepancy.  The row therefore remains a strict numerical negative and
+the autonomous PRA-90 task is withheld; the tolerance is not relaxed after
+observing the result.
 
 HF now has the corresponding direct, no-gateway agent bridge in code.  It keeps
 a persistent canonical \texttt{DynamicCache}, treats PRA-100 as the dense

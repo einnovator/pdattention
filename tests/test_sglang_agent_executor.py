@@ -53,6 +53,82 @@ def test_complete_record_coverage_uses_direct_canonical_execution() -> None:
     )
 
 
+def test_sglang_prefill_is_bounded_and_only_final_chunk_needs_logits() -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def prefill_start(
+            self, request_id, new_tokens, full_tokens, prefix, slots, pool,
+            *, needs_logits,
+        ):
+            self.calls.append(
+                ("prefill", request_id, list(new_tokens), needs_logits)
+            )
+            return ("prefill", needs_logits)
+
+        def prefill_finalize(self, pending):
+            return 91 if pending[1] else 0
+
+        def extend_start(self, request_id, tokens, slots, *, needs_logits):
+            self.calls.append(
+                ("extend", request_id, list(tokens), needs_logits)
+            )
+            return ("extend", needs_logits)
+
+        def extend_finalize(self, pending):
+            return 92 if pending[1] else 0
+
+        def eval_pending(self, pending):
+            self.calls.append(("eval", pending[0], pending[1]))
+
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    executor.runner = Runner()
+    executor.prefill_step_size = 2
+
+    token = executor._prefill_tokens(
+        "request", [1, 2, 3, 4, 5], needs_final_logits=True
+    )
+
+    assert token == 92
+    assert [row for row in executor.runner.calls if row[0] != "eval"] == [
+        ("prefill", "request", [1, 2], False),
+        ("extend", "request", [3, 4], False),
+        ("extend", "request", [5], True),
+    ]
+
+
+def test_canonical_owner_prefill_skips_logit_head_for_every_chunk() -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.needs_logits = []
+
+        def prefill_start(self, *args, needs_logits):
+            self.needs_logits.append(needs_logits)
+            return ("prefill", needs_logits)
+
+        def prefill_finalize(self, pending):
+            return 0
+
+        def extend_start(self, *args, needs_logits):
+            self.needs_logits.append(needs_logits)
+            return ("extend", needs_logits)
+
+        def extend_finalize(self, pending):
+            return 0
+
+        def eval_pending(self, pending):
+            return None
+
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    executor.runner = Runner()
+    executor.prefill_step_size = 2
+    executor._prefill_tokens(
+        "owner", [1, 2, 3, 4, 5], needs_final_logits=False
+    )
+    assert executor.runner.needs_logits == [False, False, False]
+
+
 def test_qwen_projection_supports_qwen2_without_qk_norm_and_qwen3_with_it() -> None:
     class Projection:
         def __init__(self, width: int) -> None:
