@@ -45,7 +45,11 @@ def negative_structural_screen(
     configurations: list[tuple[str, NegativeSelectionConfig]] = []
     for policy in policies:
         rules = NEGATIVE_POLICY_RULES[policy]
-        kf_values = search_delays if policy == "h1_search_consumed" else (0,)
+        kf_values = (
+            search_delays
+            if any(rule.value.startswith("H1_") for rule in rules)
+            else (0,)
+        )
         kw_values = write_delays if policy == "h2_bare_aggressive" else (1,)
         kr_values = read_keeps if policy == "h3_read_superseded" else (1,)
         kx_values = working_sets if policy == "h4_working_set" else (4,)

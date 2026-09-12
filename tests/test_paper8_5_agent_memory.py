@@ -41,6 +41,7 @@ from experiments.paper8_5_agent_memory.export_review_history import (
 )
 from experiments.paper8_5_agent_memory.run_structural_screen import structural_screen
 from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
+    DEFAULT_POLICIES,
     negative_structural_screen,
 )
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
@@ -656,6 +657,69 @@ def test_h1_retires_consumed_search_only_after_kf_delay():
     assert [row.causal_group_id for row in immediate] == ["turn:t0000"]
     assert [row.causal_group_id for row in delayed] == ["turn:t0000"]
     assert not too_late
+
+
+def test_strict_h1_abstains_when_any_discovered_branch_is_unresolved():
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("find . -name '*.py'", "./a.py\n./b.py", complete),
+        ("cat a.py", "a", complete),
+        ("pwd", "/workspace", complete),
+    ))
+    rows = build_negative_exclusions(
+        history,
+        _negative_config(NegativeRule.H1_ALL_BRANCHES_CONSUMED),
+    )
+    assert rows == ()
+
+
+def test_strict_h1_fires_only_after_all_reads_and_non_read_transition():
+    assert "h1_all_branches_consumed_strict" in DEFAULT_POLICIES
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    without_transition = recordize_minisweagent_messages(_heuristic_messages(
+        ("find . -name '*.py'", "./a.py\n./b.py", complete),
+        ("cat a.py", "a", complete),
+        ("git diff -- b.py", "b diff", complete),
+    ))
+    assert build_negative_exclusions(
+        without_transition,
+        _negative_config(NegativeRule.H1_ALL_BRANCHES_CONSUMED),
+    ) == ()
+
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("find . -name '*.py'", "./a.py\n./b.py", complete),
+        ("cat a.py", "a", complete),
+        ("git diff -- b.py", "b diff", complete),
+        ("pytest", "1 passed", complete),
+    ))
+    rows = build_negative_exclusions(
+        history,
+        _negative_config(
+            NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+            search_delay_turns=0,
+        ),
+    )
+    assert [row.causal_group_id for row in rows] == ["turn:t0000"]
+    assert rows[0].classification == "strict_all_branch_supersession_not_certificate"
+    assert set(rows[0].resource_ids) >= {"a.py", "b.py"}
+    assert set(rows[0].witness_record_ids) >= {"m2", "m4", "m6", "m8"}
+
+    delayed = build_negative_exclusions(
+        history,
+        _negative_config(
+            NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+            search_delay_turns=1,
+        ),
+    )
+    assert delayed == ()
 
     still_exploring = recordize_minisweagent_messages(_heuristic_messages(
         ("find . -name foo.py", "./src/foo.py", None),

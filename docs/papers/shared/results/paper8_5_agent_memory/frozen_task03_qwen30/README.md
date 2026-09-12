@@ -85,4 +85,34 @@ the exact command at decision 12, and the conservative shell action at decision
 only 68.2% conservative action equivalence, with six immediate resource
 reacquisitions and one policy-excess reacquisition.  Delayed H1 and the other
 isolated heuristics remain separate treatments rather than being hidden inside
-a combined policy.
+a combined policy.  Delaying H1 to `Kf=4` saves 1,900 cumulative tokens
+(0.95%) and moves first conservative action divergence from decision 13 to 16,
+but action equivalence reaches only 72.7%; five immediate reacquisitions and one
+policy-excess reacquisition remain.  Delay alone therefore does not establish
+safe supersession.
+
+H2a likewise does not qualify as safe exclusion on this trace.  A complete
+same-version read/diff permits retirement of one 119-token successful-write
+turn, saving 833 cumulative tokens (0.42%), but conservative action equivalence
+falls to 77.3% beginning at decision 17.  There are two immediate
+reacquisitions, one policy-excess reacquisition, and an action-validity change
+at decision 20.  Current file bytes do not preserve all mutation-intent and
+progress information carried by the write turn.
+
+Guarded H2b abstains because this trajectory lacks an explicit verification-to-
+resource dependency receipt.  Its 23 seeded outputs match FULL exactly and it
+saves no tokens.  That validates fail-closed behavior; it does not yet validate
+the quality of H2b on a trace where the rule can fire.
+
+H3 with `Kr=1` retires exactly the same old read as the trace-exact DAG
+certificate on this trajectory.  Its selected histories and outputs therefore
+coincide with DAG-EXCLUDE: 603 cumulative tokens saved, first conservative
+action divergence at decision 21, and 95.5% action equivalence.  This trace
+cannot distinguish H3's weaker version/span criterion from byte-identical
+duplicate elimination.
+
+Aggressive H4 at `Kx=2` saves 11,370 cumulative tokens (5.71%) but first
+changes the action at decision 9 and preserves only 59.1% conservative action
+equivalence.  It records no immediate reacquisition; that does not imply safe
+exclusion because each frozen decision is independent and changed actions need
+not explicitly reread the hidden resource.

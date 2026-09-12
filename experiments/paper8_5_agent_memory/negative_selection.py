@@ -38,6 +38,7 @@ class BashOperation(str, Enum):
 
 class NegativeRule(str, Enum):
     H1_SEARCH_CONSUMED = "H1_SEARCH_CONSUMED"
+    H1_ALL_BRANCHES_CONSUMED = "H1_ALL_BRANCHES_CONSUMED"
     H2A_WRITE_CURRENT_READ = "H2A_WRITE_CURRENT_READ"
     H2B_VERIFIED_WRITE = "H2B_VERIFIED_WRITE"
     H2_BARE_AGGRESSIVE = "H2_BARE_AGGRESSIVE"
@@ -47,6 +48,9 @@ class NegativeRule(str, Enum):
 
 NEGATIVE_POLICY_RULES: Mapping[str, tuple[NegativeRule, ...]] = {
     "h1_search_consumed": (NegativeRule.H1_SEARCH_CONSUMED,),
+    "h1_all_branches_consumed_strict": (
+        NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+    ),
     "h2a_write_current_read": (NegativeRule.H2A_WRITE_CURRENT_READ,),
     "h2b_verified_write": (NegativeRule.H2B_VERIFIED_WRITE,),
     "h2_bare_aggressive": (NegativeRule.H2_BARE_AGGRESSIVE,),
@@ -313,6 +317,22 @@ def _metadata_resource_ids(rows: Iterable[AgentRecord], key: str) -> set[str]:
     return result
 
 
+def _complete_successful_observation(semantics: TurnSemantics) -> bool:
+    """Require a complete causal result and complete, non-truncated output."""
+
+    return bool(
+        semantics.turn.complete
+        and semantics.successful
+        and semantics.observations
+        and all(
+            row.metadata.get("output_complete") is True
+            and row.metadata.get("timed_out") is not True
+            and row.metadata.get("output_truncated") is not True
+            for row in semantics.observations
+        )
+    )
+
+
 def _candidate(
     *,
     history: CanonicalAgentHistory,
@@ -414,6 +434,70 @@ def build_negative_exclusions(
                     *witness.turn.record_ids,
                     *transition_witness.turn.record_ids,
                 ),
+                count_tokens=count_tokens,
+            ))
+
+    if NegativeRule.H1_ALL_BRANCHES_CONSUMED in enabled:
+        for index, older in enumerate(turns):
+            if (
+                older.operation != BashOperation.SEARCH_DISCOVERY
+                or not _complete_successful_observation(older)
+            ):
+                continue
+            concrete = {
+                resource for resource in older.discovered_resources
+                if not resource.startswith("search:")
+            }
+            if not concrete:
+                continue
+            consumers: dict[str, TurnSemantics] = {}
+            consumer_indexes: dict[str, int] = {}
+            for later_index, later in enumerate(turns[index + 1 :], start=index + 1):
+                if (
+                    later.operation not in {BashOperation.READ, BashOperation.DIFF}
+                    or not _complete_successful_observation(later)
+                ):
+                    continue
+                for resource in concrete.intersection(later.resources):
+                    consumers.setdefault(resource, later)
+                    consumer_indexes.setdefault(resource, later_index)
+            if set(consumers) != concrete:
+                continue
+            final_consumer_index = max(consumer_indexes.values())
+            transition = next((
+                (later_index, later)
+                for later_index, later in enumerate(
+                    turns[final_consumer_index + 1 :],
+                    start=final_consumer_index + 1,
+                )
+                if later.operation not in {
+                    BashOperation.SEARCH_DISCOVERY,
+                    BashOperation.READ,
+                    BashOperation.DIFF,
+                }
+                and later.turn.complete
+            ), None)
+            if transition is None:
+                continue
+            transition_index, transition_turn = transition
+            if len(turns) - 1 - transition_index < config.search_delay_turns:
+                continue
+            witnesses = [*older.turn.record_ids]
+            for resource in sorted(concrete):
+                witnesses.extend(consumers[resource].turn.record_ids)
+            witnesses.extend(transition_turn.turn.record_ids)
+            candidates.append(_candidate(
+                history=history,
+                semantics=older,
+                rule=NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+                classification="strict_all_branch_supersession_not_certificate",
+                reason=(
+                    "every concrete discovered resource has a complete successful "
+                    "read/diff, followed by a non-read transition; "
+                    f"Kf={config.search_delay_turns} completed later turns elapsed"
+                ),
+                resources=older.discovered_resources,
+                witnesses=witnesses,
                 count_tokens=count_tokens,
             ))
 

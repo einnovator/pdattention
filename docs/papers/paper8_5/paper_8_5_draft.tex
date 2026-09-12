@@ -707,6 +707,11 @@ Treatment & Mean ret. & Saving & Exact text & Exact cmd. & Cons. action & First 
 \textsc{Dag-Exclude}@100 & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
 Matched token tail & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
 H1 consumed search, $K_f=0$ & 98.9\% & 1.3\% & 52.2\% & 59.1\% & 68.2\% & 10 & yes \\
+H1 consumed search, $K_f=4$ & 99.2\% & 1.0\% & 65.2\% & 68.2\% & 72.7\% & 14 & yes \\
+H2a current-state read & 99.7\% & 0.4\% & 73.9\% & 77.3\% & 77.3\% & 17 & yes \\
+H2b verified write & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
+H3 same span, $K_r=1$ & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
+H4 working set, $K_x=2$ & 95.1\% & 5.7\% & 43.5\% & 54.5\% & 59.1\% & 9 & yes \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -736,8 +741,37 @@ conservatively different shell action at decision 13. Across all prefixes it
 saves 2,660 tokens (1.34\%) but preserves only 68.2\% conservative action
 agreement, with six immediate reacquisitions and one policy-excess
 reacquisition. A search listing can remain a durable navigation map after one
-file is opened; delayed H1 is therefore a required variant, not a cosmetic
-ablation.
+file is opened. Delaying retirement to $K_f=4$ moves first conservative action
+divergence from decision 13 to 16 and raises action agreement only to 72.7\%,
+while five immediate reacquisitions remain. Delay is therefore insufficient:
+the next H1 refinement must protect unresolved discovery branches or retain a
+compact resource-map tombstone.
+
+H2a also fails as a safe-exclusion claim. Retiring a 119-token successful-write
+turn after a complete same-version read/diff saves 833 cumulative tokens
+(0.42\%), but first changes the shell action at decision 17, preserves only
+77.3\% conservative action agreement, and changes action validity at decision
+20. The current bytes represent file state, but they do not necessarily carry
+the mutation's intent or the agent's progress state. A model-visible mutation
+tombstone and the stricter verified-write H2b arm must therefore be evaluated
+separately. H2b correctly abstains on this trace because the verification
+record lacks explicit dependency metadata; its 23 outputs exactly match
+\textsc{Full}. This is fail-closed correctness, not evidence that H2b can save
+context when a verification receipt is available.
+
+On this trace H3 at $K_r=1$ retires exactly the same older read as the
+trace-exact DAG certificate, so all selected histories and generated outcomes
+coincide: 603 cumulative tokens saved and 95.5\% conservative action
+agreement. This does not establish the safety of H3's weaker version/span
+criterion; a task containing non-identical overlapping reads is required to
+separate it from byte-identical duplicate elimination.
+
+H4 at $K_x=2$ reaches the largest saving, 11,370 cumulative tokens (5.71\%),
+but changes the action as soon as it first fires at decision 9 and preserves
+only 59.1\% conservative action agreement. Its zero immediate-reacquisition
+count is not exculpatory: frozen decisions do not compound, and the generated
+action can change without explicitly rereading the hidden resource. H4 remains
+an aggressive capacity baseline, not a safe rule.
 
 \section{Semantic-Role Ablations}
 

@@ -195,6 +195,32 @@ def test_reducer_distinguishes_same_policy_with_different_budget_contracts():
     assert summary["arms"][2]["treatment"] == "middle_recency@90%-floor"
 
 
+def test_reducer_distinguishes_parameterized_negative_policy_variants():
+    full, first, _ = _comparison_artifacts()
+    full_digest = _digest(full)
+    first["policy"] = "h1_search_consumed"
+    first["run_configuration"].update({
+        "seed": 0,
+        "negative_selection": {
+            "search_delay_turns_kf": 0,
+            "positive_fallback": "none",
+        },
+    })
+    first["run_configuration_digest"] = _digest(first["run_configuration"])
+    delayed = copy.deepcopy(first)
+    delayed["run_configuration"]["negative_selection"]["search_delay_turns_kf"] = 4
+    delayed["run_configuration_digest"] = _digest(delayed["run_configuration"])
+
+    summary = reduce_replays([full, first, delayed])
+
+    assert summary["arms"][1]["treatment"] == (
+        "h1_search_consumed@100%-ceiling;Kf=0;seed=0"
+    )
+    assert summary["arms"][2]["treatment"] == (
+        "h1_search_consumed@100%-ceiling;Kf=4;seed=0"
+    )
+
+
 def test_reducer_uses_materialized_budget_for_matched_token_tail():
     full, candidate, _ = _comparison_artifacts()
     matched = copy.deepcopy(candidate)

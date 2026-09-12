@@ -361,7 +361,29 @@ def _treatment_label(artifact: Mapping[str, Any]) -> str:
         contract = "floor" if interpretation == "retention_floor_round_up" else "ceiling"
         budget = f"{100 * fraction:g}%-{contract}"
     seed = configuration.get("seed")
-    suffix = f";seed={seed}" if seed is not None else ""
+    qualifiers: list[str] = []
+    negative = configuration.get("negative_selection")
+    if isinstance(negative, Mapping):
+        # Parameterized negative arms must remain distinct treatments.  Without
+        # these qualifiers Kf/Kw/Kr/Kx sweeps collide in the reducer even though
+        # they materialize different histories.
+        parameter_keys = (
+            ("h1", "search_delay_turns_kf", "Kf"),
+            ("h2_bare", "write_delay_turns_kw", "Kw"),
+            ("h3", "same_span_reads_to_keep_kr", "Kr"),
+            ("h4", "working_set_resources_kx", "Kx"),
+        )
+        for marker, key, short in parameter_keys:
+            if marker in policy and key in negative:
+                qualifiers.append(f"{short}={negative[key]}")
+        fallback = negative.get("positive_fallback")
+        if fallback not in (None, "none"):
+            qualifiers.append(f"fallback={fallback}")
+        if "h2b" in policy and negative.get("h2b_allow_workspace_verification"):
+            qualifiers.append("workspace_verify=1")
+    if seed is not None:
+        qualifiers.append(f"seed={seed}")
+    suffix = "" if not qualifiers else ";" + ";".join(qualifiers)
     return f"{policy}@{budget}{suffix}"
 
 

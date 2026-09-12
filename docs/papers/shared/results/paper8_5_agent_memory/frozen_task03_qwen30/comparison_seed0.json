@@ -9,7 +9,7 @@
     "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
     "full_replay_digest": "8ae9109a5b809a28305e8b76fa34e24cf0089a25f52a925ff044200dd9a17aa7"
   },
-  "arm_count": 4,
+  "arm_count": 10,
   "arms": [
     {
       "policy": "full",
@@ -179,7 +179,7 @@
     },
     {
       "policy": "h1_search_consumed",
-      "treatment": "h1_search_consumed@100%-ceiling;seed=0",
+      "treatment": "h1_search_consumed@100%-ceiling;Kf=0;seed=0",
       "decisions_attempted": 23,
       "decisions_completed": 23,
       "valid_action_decisions": 22,
@@ -244,6 +244,393 @@
         "H1_SEARCH_CONSUMED": {
           "groups": 14,
           "tokens": 2660
+        }
+      }
+    },
+    {
+      "policy": "h1_search_consumed",
+      "treatment": "h1_search_consumed@100%-ceiling;Kf=4;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 22,
+      "valid_action_rate": 0.9565217391304348,
+      "exact_content_decisions": 15,
+      "exact_content_rate_vs_full": 0.6521739130434783,
+      "exact_command_decisions": 15,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.6818181818181818,
+      "conservative_action_equivalent_decisions": 16,
+      "conservative_action_equivalent_rate_vs_full": 0.7272727272727273,
+      "first_content_divergence": 14,
+      "first_command_divergence": 14,
+      "first_conservative_action_divergence": 16,
+      "first_action_validity_divergence": null,
+      "realized_retention": {
+        "mean": 0.9922968701640242,
+        "min": 0.9804988196654008,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9922968701640242,
+        "min": 0.9804988196654008,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 197209,
+      "cumulative_selected_whole_record_tokens": 197209,
+      "cumulative_materialized_tokens": 197209,
+      "logical_token_saving_tokens": 1900,
+      "logical_token_saving_fraction": 0.009542511890472054,
+      "materialized_token_saving_tokens": 1900,
+      "materialized_token_saving_fraction": 0.009542511890472054,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 1900,
+      "unused_matched_budget_tokens": 1900,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 1,
+      "format_invalid_decision_ids": [
+        22
+      ],
+      "cumulative_excluded_group_decisions": 10,
+      "cumulative_excluded_tokens": 1900,
+      "decisions_with_exclusion": 10,
+      "decisions_with_immediate_reacquisition": 5,
+      "immediate_reacquisition_decision_ids": [
+        15,
+        17,
+        19,
+        20,
+        21
+      ],
+      "false_exclusion_proxy_decisions": 1,
+      "false_exclusion_proxy_decision_ids": [
+        21
+      ],
+      "excluded_by_rule": {
+        "H1_SEARCH_CONSUMED": {
+          "groups": 10,
+          "tokens": 1900
+        }
+      }
+    },
+    {
+      "policy": "h2a_write_current_read",
+      "treatment": "h2a_write_current_read@100%-ceiling;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 22,
+      "valid_action_rate": 0.9565217391304348,
+      "exact_content_decisions": 17,
+      "exact_content_rate_vs_full": 0.7391304347826086,
+      "exact_command_decisions": 17,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.7727272727272727,
+      "conservative_action_equivalent_decisions": 17,
+      "conservative_action_equivalent_rate_vs_full": 0.7727272727272727,
+      "first_content_divergence": 17,
+      "first_command_divergence": 17,
+      "first_conservative_action_divergence": 17,
+      "first_action_validity_divergence": 20,
+      "realized_retention": {
+        "mean": 0.9967452305231312,
+        "min": 0.9886569440472787,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9967452305231312,
+        "min": 0.9886569440472787,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 198276,
+      "cumulative_selected_whole_record_tokens": 198276,
+      "cumulative_materialized_tokens": 198276,
+      "logical_token_saving_tokens": 833,
+      "logical_token_saving_fraction": 0.004183638107770116,
+      "materialized_token_saving_tokens": 833,
+      "materialized_token_saving_fraction": 0.004183638107770116,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 833,
+      "unused_matched_budget_tokens": 833,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 1,
+      "format_invalid_decision_ids": [
+        20
+      ],
+      "cumulative_excluded_group_decisions": 7,
+      "cumulative_excluded_tokens": 833,
+      "decisions_with_exclusion": 7,
+      "decisions_with_immediate_reacquisition": 2,
+      "immediate_reacquisition_decision_ids": [
+        17,
+        18
+      ],
+      "false_exclusion_proxy_decisions": 1,
+      "false_exclusion_proxy_decision_ids": [
+        18
+      ],
+      "excluded_by_rule": {
+        "H2A_WRITE_CURRENT_READ": {
+          "groups": 7,
+          "tokens": 833
+        }
+      }
+    },
+    {
+      "policy": "h2b_verified_write",
+      "treatment": "h2b_verified_write@100%-ceiling;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 22,
+      "valid_action_rate": 0.9565217391304348,
+      "exact_content_decisions": 23,
+      "exact_content_rate_vs_full": 1.0,
+      "exact_command_decisions": 22,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 1.0,
+      "conservative_action_equivalent_decisions": 22,
+      "conservative_action_equivalent_rate_vs_full": 1.0,
+      "first_content_divergence": null,
+      "first_command_divergence": null,
+      "first_conservative_action_divergence": null,
+      "first_action_validity_divergence": null,
+      "realized_retention": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 1.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 199109,
+      "cumulative_selected_whole_record_tokens": 199109,
+      "cumulative_materialized_tokens": 199109,
+      "logical_token_saving_tokens": 0,
+      "logical_token_saving_fraction": 0.0,
+      "materialized_token_saving_tokens": 0,
+      "materialized_token_saving_fraction": 0.0,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "unused_matched_budget_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 1,
+      "format_invalid_decision_ids": [
+        22
+      ],
+      "cumulative_excluded_group_decisions": 0,
+      "cumulative_excluded_tokens": 0,
+      "decisions_with_exclusion": 0,
+      "decisions_with_immediate_reacquisition": 0,
+      "immediate_reacquisition_decision_ids": [],
+      "false_exclusion_proxy_decisions": 0,
+      "false_exclusion_proxy_decision_ids": [],
+      "excluded_by_rule": {}
+    },
+    {
+      "policy": "h3_read_superseded",
+      "treatment": "h3_read_superseded@100%-ceiling;Kr=1;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 22,
+      "valid_action_rate": 0.9565217391304348,
+      "exact_content_decisions": 21,
+      "exact_content_rate_vs_full": 0.9130434782608695,
+      "exact_command_decisions": 21,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.9545454545454546,
+      "conservative_action_equivalent_decisions": 21,
+      "conservative_action_equivalent_rate_vs_full": 0.9545454545454546,
+      "first_content_divergence": 21,
+      "first_command_divergence": 21,
+      "first_conservative_action_divergence": 21,
+      "first_action_validity_divergence": null,
+      "realized_retention": {
+        "mean": 0.9977368757234872,
+        "min": 0.9822406785651175,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9977368757234872,
+        "min": 0.9822406785651175,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 198506,
+      "cumulative_selected_whole_record_tokens": 198506,
+      "cumulative_materialized_tokens": 198506,
+      "logical_token_saving_tokens": 603,
+      "logical_token_saving_fraction": 0.0030284919315550778,
+      "materialized_token_saving_tokens": 603,
+      "materialized_token_saving_fraction": 0.0030284919315550778,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 603,
+      "unused_matched_budget_tokens": 603,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 1,
+      "format_invalid_decision_ids": [
+        22
+      ],
+      "cumulative_excluded_group_decisions": 3,
+      "cumulative_excluded_tokens": 603,
+      "decisions_with_exclusion": 3,
+      "decisions_with_immediate_reacquisition": 1,
+      "immediate_reacquisition_decision_ids": [
+        21
+      ],
+      "false_exclusion_proxy_decisions": 1,
+      "false_exclusion_proxy_decision_ids": [
+        21
+      ],
+      "excluded_by_rule": {
+        "H3_READ_SUPERSEDED": {
+          "groups": 3,
+          "tokens": 603
+        }
+      }
+    },
+    {
+      "policy": "h4_working_set",
+      "treatment": "h4_working_set@100%-ceiling;Kx=2;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 23,
+      "valid_action_rate": 1.0,
+      "exact_content_decisions": 10,
+      "exact_content_rate_vs_full": 0.43478260869565216,
+      "exact_command_decisions": 12,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.5454545454545454,
+      "conservative_action_equivalent_decisions": 13,
+      "conservative_action_equivalent_rate_vs_full": 0.5909090909090909,
+      "first_content_divergence": 9,
+      "first_command_divergence": 9,
+      "first_conservative_action_divergence": 9,
+      "first_action_validity_divergence": 22,
+      "realized_retention": {
+        "mean": 0.951010546663747,
+        "min": 0.9110850439882698,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.951010546663747,
+        "min": 0.9110850439882698,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 187739,
+      "cumulative_selected_whole_record_tokens": 187739,
+      "cumulative_materialized_tokens": 187739,
+      "logical_token_saving_tokens": 11370,
+      "logical_token_saving_fraction": 0.057104400102456446,
+      "materialized_token_saving_tokens": 11370,
+      "materialized_token_saving_fraction": 0.057104400102456446,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 11370,
+      "unused_matched_budget_tokens": 11370,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 0,
+      "format_invalid_decision_ids": [],
+      "cumulative_excluded_group_decisions": 15,
+      "cumulative_excluded_tokens": 11370,
+      "decisions_with_exclusion": 15,
+      "decisions_with_immediate_reacquisition": 0,
+      "immediate_reacquisition_decision_ids": [],
+      "false_exclusion_proxy_decisions": 0,
+      "false_exclusion_proxy_decision_ids": [],
+      "excluded_by_rule": {
+        "H4_WORKING_SET": {
+          "groups": 15,
+          "tokens": 11370
+        }
+      }
+    },
+    {
+      "policy": "safe2_h1_h3",
+      "treatment": "safe2_h1_h3@100%-ceiling;Kf=0;Kr=1;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 23,
+      "valid_action_rate": 1.0,
+      "exact_content_decisions": 11,
+      "exact_content_rate_vs_full": 0.4782608695652174,
+      "exact_command_decisions": 12,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.5454545454545454,
+      "conservative_action_equivalent_decisions": 13,
+      "conservative_action_equivalent_rate_vs_full": 0.5909090909090909,
+      "first_content_divergence": 10,
+      "first_command_divergence": 12,
+      "first_conservative_action_divergence": 12,
+      "first_action_validity_divergence": 22,
+      "realized_retention": {
+        "mean": 0.9864262144043868,
+        "min": 0.965453260293338,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9864262144043868,
+        "min": 0.965453260293338,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 195846,
+      "cumulative_selected_whole_record_tokens": 195846,
+      "cumulative_materialized_tokens": 195846,
+      "logical_token_saving_tokens": 3263,
+      "logical_token_saving_fraction": 0.016388008578215953,
+      "materialized_token_saving_tokens": 3263,
+      "materialized_token_saving_fraction": 0.016388008578215953,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 3263,
+      "unused_matched_budget_tokens": 3263,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 0,
+      "format_invalid_decision_ids": [],
+      "cumulative_excluded_group_decisions": 17,
+      "cumulative_excluded_tokens": 3263,
+      "decisions_with_exclusion": 14,
+      "decisions_with_immediate_reacquisition": 6,
+      "immediate_reacquisition_decision_ids": [
+        11,
+        15,
+        17,
+        19,
+        20,
+        21
+      ],
+      "false_exclusion_proxy_decisions": 1,
+      "false_exclusion_proxy_decision_ids": [
+        21
+      ],
+      "excluded_by_rule": {
+        "H1_SEARCH_CONSUMED": {
+          "groups": 14,
+          "tokens": 2660
+        },
+        "H3_READ_SUPERSEDED": {
+          "groups": 3,
+          "tokens": 603
         }
       }
     }
