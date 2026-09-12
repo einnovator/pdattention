@@ -621,30 +621,25 @@ def disjoint_segmented_selected_attention(
             masked_scores.append(values)
         score_segments = masked_scores
 
-    maximum = mx.max(score_segments[0], axis=-1, keepdims=True)
-    for values in score_segments[1:]:
-        maximum = mx.maximum(maximum, mx.max(values, axis=-1, keepdims=True))
-
-    denominator = None
-    for score in score_segments:
-        partial_denominator = mx.sum(
-            mx.exp(score - maximum), axis=-1, keepdims=True
-        )
-        denominator = (
-            partial_denominator
-            if denominator is None
-            else denominator + partial_denominator
-        )
+    # Scores are small compared with K/V. Concatenating only the score rows
+    # lets MLX apply one native softmax reduction across the complete selected
+    # axis without ever packing resident keys or values. This also avoids the
+    # segment-count-dependent denominator rounding of independent exp/sum
+    # reductions.
+    normalized = mx.softmax(mx.concatenate(score_segments, axis=-1), axis=-1)
 
     numerator = None
     all_values = (*value_segments, local_values)
+    cursor = 0
     for score, values in zip(score_segments, all_values):
         # Normalize globally before narrowing weights to the model dtype.  This
         # avoids casting the resident value segment to fp32 (which materialized
         # a selected-K/V-sized temporary) while following the native attention
         # contract: high-precision softmax, model-dtype value product, and a
         # small fp32 output accumulation across intervals.
-        weights = (mx.exp(score - maximum) / denominator).astype(values.dtype)
+        width = int(score.shape[-1])
+        weights = normalized[..., cursor : cursor + width].astype(values.dtype)
+        cursor += width
         expanded_values = mx.expand_dims(values, axis=2)
         partial_numerator = (weights @ expanded_values).astype(mx.float32)
         numerator = (
