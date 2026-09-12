@@ -373,6 +373,11 @@ def test_registry_extends_full_source_with_request_suffix_page_identities() -> N
     assert telemetry.alias_prepare_events == 1
     assert telemetry.alias_commit_events == 1
     registry.finish_request("request")
-    pool.free_blocks(reversed(request_blocks.blocks[0]))
+    # The successor already pins the complete old prefix, so rollover can
+    # release the superseded source pin before vLLM drains deferred request
+    # aliases.  The request references keep every page live until that drain.
     assert registry.evict_source("source-g1", generation=1) == (10, 11, 12)
+    assert [block.ref_cnt for block in source] == [2, 1, 2]
+    pool.free_blocks(reversed(request_blocks.blocks[0]))
+    assert [block.ref_cnt for block in source] == [1, 1, 1]
     assert registry.snapshot()["sources"]["source-g2"]["block_ids"] == [10, 11, 12, 20]

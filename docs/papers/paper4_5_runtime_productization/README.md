@@ -53,6 +53,9 @@ The implementation adds:
 - a bounded vLLM 0.28 CUDA stateful page-alias gate whose seven-turn PRA-100
   replay is 7/7 token-exact to dense full history, observes every lifecycle
   callback, and reports zero selected-history re-encoding, K/V copy, and H2D;
+- a frozen vLLM 0.28 CUDA Task-05 agent gate whose ordinary and PRA-100 arms
+  both resolve 1/1 in 15 byte-exact assistant actions with the same patch,
+  while selected-history re-encoding, physical K/V copy, and H2D remain zero;
 - a corrected HF CUDA same-resident-state gate whose seven-turn PRA-100 dense
   no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
   interval packing, and H2D remain zero; measurement-only cache forks are

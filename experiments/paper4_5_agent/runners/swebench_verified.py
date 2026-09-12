@@ -276,7 +276,10 @@ def gateway_preflight(
         }
     probe: dict[str, Any] = {
         "model": args.served_model,
-        "messages": [{"role": "user", "content": "Reply with OK."}],
+        "messages": [{
+            "role": "user",
+            "content": "PRA selected-context consumption probe. Reply with OK.",
+        }],
         "temperature": 0,
         "top_p": float(getattr(args, "top_p", 1.0)),
         "seed": int(getattr(args, "sampling_seed", 0)),
@@ -304,7 +307,10 @@ def gateway_preflight(
                     b"PRA selected-context consumption probe."
                 ).hexdigest(),
                 "authorization_scope": "paper4-5-preflight",
-                "metadata": {"purpose": "live_consumption_probe"},
+                "metadata": {
+                    "purpose": "live_consumption_probe",
+                    "message_index": 0,
+                },
             }],
             "budget": {"max_resources": 1, "max_selected_tokens": 8},
             "allow_text_fallback": not native_required,
@@ -312,6 +318,22 @@ def gateway_preflight(
             "pra_policy": {"profile": "swebench-balanced-v1"},
             "metadata": {
                 "requested_mode": "native-memory" if native_required else "selected-context",
+                # Stateful agent adapters deliberately keep ordinary OpenAI
+                # traffic on their plain path.  Exercise the same live-history
+                # contract used by the treatment proxy so this probe reaches
+                # the native engine path it is intended to qualify.
+                "history_projection": "live-agent-kv-v1",
+                "logical_message_manifest": [{
+                    "message_index": 0,
+                    "role": "user",
+                    "content_sha256": hashlib.sha256(
+                        b"PRA selected-context consumption probe. Reply with OK."
+                    ).hexdigest(),
+                }],
+                "mandatory_message_indices": [0],
+                "target_retention_fraction": 1.0,
+                "selection_contract": "preflight-full-history-v1",
+                "chat_template_digest": chat_template_digest,
                 # A readiness probe must not alter the K/V occupancy seen by
                 # the subsequent experiment.  The engine wrapper releases
                 # this session after constructing the response.
@@ -350,13 +372,16 @@ def gateway_preflight(
     if native_required:
         pra = completion.get("pra") or {}
         native_trace = completion.get("pra_trace") or ()
-        attached = any(
-            row.get("stage") in {"llama_cpp_native_attach", "native_attach"}
+        consumed_natively = any(
+            row.get("native_kv_used") is True
+            or row.get("stage") in {
+                "llama_cpp_native_attach", "native_attach",
+            }
             for row in native_trace if isinstance(row, dict)
         )
-        if pra.get("native_kv") is not True or not attached:
+        if pra.get("native_kv") is not True or not consumed_natively:
             raise RuntimeError(
-                "native PRA consumption probe did not prove physical native attachment"
+                "native PRA consumption probe did not prove physical native consumption"
             )
         native_consumption_probe = "passed"
     return {

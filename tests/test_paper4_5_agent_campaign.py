@@ -2934,11 +2934,18 @@ def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path:
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["pra"]["required_capabilities"] == ["logical_refs", "native_kv"]
             assert body["pra"]["metadata"]["ephemeral_session"] is True
+            assert body["pra"]["metadata"]["history_projection"] == "live-agent-kv-v1"
+            assert body["pra"]["metadata"]["mandatory_message_indices"] == [0]
+            assert body["pra"]["resources"][0]["metadata"]["message_index"] == 0
             Handler.session_ids.append(body["pra"]["session_id"])
             encoded = json.dumps({
                 "choices": [{"message": {"role": "assistant", "content": "OK"}}],
                 "pra": {"native_kv": True},
-                "pra_trace": [{"stage": "llama_cpp_native_attach", "native_tokens": 4}],
+                "pra_trace": [{
+                    "stage": "vllm_scheduler_agent_alias",
+                    "native_kv_used": True,
+                    "native_tokens": 4,
+                }],
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

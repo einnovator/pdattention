@@ -131,6 +131,32 @@ def test_100_percent_rejects_engine_runtime_identity_mismatch(tmp_path: Path) ->
     assert result["gates"]["pra_100_behavioral_parity"] is False
 
 
+def test_consumer_peak_falls_back_to_largest_per_request_temporary_bytes(
+    tmp_path: Path,
+) -> None:
+    plain, pra100 = tmp_path / "plain", tmp_path / "pra100"
+    _run(plain, mode="no-pra", resolved=True, commands=["ls"], retention=1.0)
+    _run(
+        pra100, mode="direct-native-pra", resolved=True,
+        commands=["ls", "edit"], retention=1.0,
+    )
+    telemetry = [
+        {"consumer_temporary_bytes": 128},
+        {"consumer_temporary_bytes": 512},
+    ]
+    (pra100 / "request_telemetry.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in telemetry), encoding="utf-8",
+    )
+
+    result = summarize(
+        engine="test", instance_id=INSTANCE,
+        plain_dir=plain, pra100_dir=pra100, pra90_dir=None,
+    )
+
+    assert result["pra_100"]["consumer_temporary_bytes"] == 640
+    assert result["pra_100"]["consumer_temporary_peak_bytes"] == 512
+
+
 def test_published_llamacpp_task01_gate() -> None:
     root = Path(__file__).resolve().parents[1]
     path = (
@@ -153,4 +179,31 @@ def test_published_llamacpp_task01_gate() -> None:
     assert result["pra_90"]["physical_kv_copy_bytes"] == 0
     assert result["pra_90"]["host_to_device_bytes"] == 0
     assert result["pra_90"]["consumer_temporary_bytes"] is None
+    assert result["gates"]["easy14_expansion_allowed"] is False
+
+
+def test_published_vllm_task05_pra100_gate() -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = (
+        root
+        / "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents"
+        / "engine_gates/vllm_qwen25coder7b_task05_pra100_agent_gate_20260912.json"
+    )
+    result = json.loads(path.read_text(encoding="utf-8"))
+
+    assert result["plain"]["task_success"] is True
+    assert result["pra_100"]["task_success"] is True
+    assert result["plain"]["calls_to_solution"] == 15
+    assert result["pra_100"]["calls_to_solution"] == 15
+    assert result["gates"]["pra_100_exact_action_trajectory"] is True
+    assert result["gates"]["pra_100_exact_patch"] is True
+    assert result["gates"]["pra_100_chat_template_digest_match"] is True
+    assert result["pra_100"]["realized_retention_fraction"] == 1.0
+    assert result["pra_100"]["selected_history_reencoded_tokens"] == 0
+    assert result["pra_100"]["physical_kv_copy_bytes"] == 0
+    assert result["pra_100"]["total_kv_copy_bytes"] == 0
+    assert result["pra_100"]["host_to_device_bytes"] == 0
+    assert result["pra_100"]["consumer_temporary_peak_bytes"] == 148832768
+    assert result["pra_90"] is None
+    assert result["gates"]["engine_task_gate_complete"] is False
     assert result["gates"]["easy14_expansion_allowed"] is False

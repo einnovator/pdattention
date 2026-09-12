@@ -328,17 +328,32 @@ class VLLMCudaSchedulerPageRegistry:
             return True
 
     def evict_source(self, logical_key: str, *, generation: int) -> tuple[int, ...]:
-        """Drop an unborrowed source pin; reject eviction while any alias exists."""
+        """Drop an unborrowed source pin once its pages remain safely owned."""
 
         key = str(logical_key)
         with self._lock:
             source = self._require_generation(key, generation)
             if source.borrowers or source.pending:
                 raise RuntimeError("Cannot evict a borrowed CUDA source generation.")
-            if not self._only_source_pin_remains(source):
+            successor_covers_source = any(
+                candidate is not source
+                and not candidate.tombstoned
+                and len(candidate.blocks) >= len(source.blocks)
+                and all(
+                    actual is expected
+                    for actual, expected in zip(candidate.blocks, source.blocks)
+                )
+                for candidate in self._sources.values()
+            )
+            if not self._only_source_pin_remains(source) and not successor_covers_source:
                 raise RuntimeError(
                     "Cannot evict CUDA source pages with scheduler/in-flight aliases."
                 )
+            # A committed successor pins the complete old prefix before the
+            # scheduler releases the request's deferred physical aliases.  In
+            # that rollover window it is safe to drop only the superseded
+            # registry pin: both the successor and the request still own the
+            # exact block objects, so no page can return to the free pool.
             ids = tuple(int(block.block_id) for block in source.blocks)
             self._drop_source_locked(key, source)
             return ids

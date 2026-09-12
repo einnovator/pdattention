@@ -1610,9 +1610,11 @@ Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and an admitted 25-call PRA-90 solve at 93.32\%
 model-visible retention. Direct MLX and SGLang-MLX add action-exact six-call
 plain/PRA-100 Task-01 solves; SGLang-MLX PRA-90 also resolves 1/1 in six calls
-with exact commands. & HF and vLLM still lack an admitted plain-success
-model/task pair; direct MLX PRA-90 remains below its same-subset numerical gate.
-Easy-14 and 75\% are locked, and learned-adaptor cells still fail closed. \\
+with exact commands. vLLM CUDA adds a 15-action exact plain/PRA-100 Task-05
+solve. & HF still lacks an admitted plain-success model/task pair; vLLM CUDA
+has not run its now-admissible PRA-90 arm, and direct MLX PRA-90 remains below
+its same-subset numerical gate. Easy-14 and 75\% are locked, and learned-adaptor
+cells still fail closed. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
@@ -3372,11 +3374,13 @@ runtime gates.  A campaign-level lock prevents the resumable Easy-50 scheduler
 from launching treatment cells before that status is explicitly promoted.  The gate is now
 \texttt{QUALIFIED} only for a llama.cpp wrapper with prefix caching enabled and
 a configured slot checkpoint directory.  HF, MLX, vLLM, and SGLang now clear
-bounded sparse-consumer mechanism gates, but their autonomous end-to-end
-agent gates remain pending.  The campaign is therefore frozen at one task per
-engine: each engine must first pass the 100\% semantic-no-op control before its
-90\% treatment can run, and no Easy-14 expansion is permitted until every
-qualified engine completes that sequence.
+bounded sparse-consumer mechanism gates.  vLLM additionally clears one
+autonomous plain/PRA-100 gate; HF remains blocked on plain task success, direct
+MLX remains blocked at its same-subset numerical gate, and SGLang-MLX and
+llama.cpp have completed their frozen autonomous sequences.  The campaign is
+therefore frozen at one task per engine: each engine must first pass the 100\%
+semantic-no-op control before its 90\% treatment can run, and no Easy-14
+expansion is permitted until every qualified engine completes that sequence.
 
 \subsubsection{Claim 4: observed coding-agent utility frontier}
 
@@ -3507,8 +3511,41 @@ plus grading in 16.1~s.  It nevertheless grades 0/1 with an empty patch: the 7B
 model repeats the same invalid \texttt{grep} command rather than adding the
 required end-of-options marker.  A Task~04 follow-up reaches five valid calls
 before an SSH transport reset and is classified as infrastructure-invalid.
-Thus the fast no-offload configuration is operational, but no vLLM PRA arm is
-admitted until a plain-success pair is found.
+Thus these runs establish the fast no-offload operating point, but do not by
+themselves admit a vLLM PRA arm.
+
+A subsequent frozen Task~05 admission supplies the missing pair.  On
+\texttt{pytest-dev\_\_pytest-7982}, Qwen2.5-Coder-7B-Instruct-AWQ under
+vLLM~0.28.0 V1 uses an 8,192-token context, no CPU offload, temperature zero,
+and the same append-stable renderer in both arms.  Plain and PRA-100 each
+resolve 1/1 in 15 calls and submit the same one-line patch.  Their ordered
+assistant text plus parsed shell actions are byte-exact, with action digest
+\texttt{2f5ab573\ldots a3ab}; the patch and chat-template digests also match and
+the frozen configuration diff is empty.  Full normalized transcripts are not
+required to match because two user observations contain nondeterministic
+package/test progress and timing text; the formal gate compares the complete
+ordered assistant action trajectory and final patch.
+
+The PRA-100 lifecycle contains one initial store and 14 dense semantic no-ops.
+All 14 updates observe alias prepare, commit, hit, and release; realized total
+and engine-reported history retention are 1.0 on every request.  Selected-
+history re-encoding, selected-history and total physical K/V copy, interval
+copy, and host-to-device transfer are all zero.  New-history partial pages
+account for 165 separately reported re-evaluated tokens (77 maximum on one
+request), which are not selected-history re-encoding.  The sum of reported
+request-temporary allocations is 517,376,512 bytes and the largest request is
+148,832,768 bytes.
+
+This run also converts two previously hidden integration assumptions into
+regressions.  The native readiness probe now supplies the live-agent history
+projection and accepts engine-native consumption evidence rather than a
+llama.cpp-specific stage name.  During source rollover, a committed successor
+may release the superseded registry pin while deferred request aliases remain,
+but only when that successor owns the exact complete old prefix; without such
+a successor, eviction remains fail-closed.  The result qualifies this bounded
+vLLM task/model pair for PRA-90 execution, not the engine's full sequence:
+PRA-90 was deliberately withheld here, Easy-14 remains locked, and the same
+in-process V1, homogeneous-group, complete-page boundary still applies.
 
 The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
 smoke.  The model returns the frozen
@@ -4371,9 +4408,12 @@ through interval descriptors and is matched-consumer logit exact.  A bounded
 vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
 existing-page aliasing with zero K/V copy, host-to-device transfer, or selected-
 history re-encoding across all seven eligible task-02 turns and its lifecycle
-smoke.  It is not yet a
-general product path: multiprocess execution, hybrid K/V groups, partial pages,
-autonomous agent execution, and runtime economics remain open.  MLX and SGLang
+smoke.  The same bounded path now clears an autonomous Task~05 plain/PRA-100
+gate: both arms resolve 1/1 in 15 byte-exact assistant actions and submit the
+same patch, while selected-history re-encoding, physical K/V copy, and H2D
+remain zero.  It is not yet a general product path: PRA-90, multiprocess
+execution, hybrid K/V groups, partial pages, and runtime economics remain open.
+MLX and SGLang
 now consume the canonical source plus interval descriptors through one fused
 Metal kernel: their measured first-layer transient falls from roughly one
 selected K/V layer to at most 24,043 bytes (with a maximum per-turn ratio of
@@ -4391,8 +4431,9 @@ was 32 model tokens below the nominal floor until causal groups were rounded
 with the engine tokenizer.  Direct MLX PRA-90 remains withheld after its
 same-subset numerical gate fails.  HF's bounded 7B path is now free of the
 autograd, prompt-logit, and prompt-activation OOMs, but two tested tasks fail
-plain with empty patches.  vLLM's 7B AWQ no-offload 4K path is fast and stable,
-but its tested plain Task~13 also fails.  Their PRA arms are therefore not run.
+plain with empty patches, so its PRA arms are not run.  vLLM's earlier 7B AWQ
+plain Task~13 also fails, but the independent 8K Task~05 pair now admits PRA-90;
+that treatment was intentionally not launched in this gate-only run.
 Easy-14 expansion remains locked until every target engine has a qualified
 plain/PRA-100/PRA-90 task sequence.  Under the
 historical pre-gate RAG workload, frozen contiguous MLX selections produced

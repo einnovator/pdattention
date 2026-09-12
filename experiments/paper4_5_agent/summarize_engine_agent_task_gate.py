@@ -204,7 +204,11 @@ def _run_summary(run_dir: Path | None, instance_id: str) -> dict[str, Any] | Non
             (
                 max(int(item.get("consumer_temporary_peak_bytes") or 0) for item in telemetry)
                 if any(item.get("consumer_temporary_peak_bytes") is not None for item in telemetry)
-                else None
+                else (
+                    max(int(item.get("consumer_temporary_bytes") or 0) for item in telemetry)
+                    if any(item.get("consumer_temporary_bytes") is not None for item in telemetry)
+                    else None
+                )
             )
             if telemetry else row.get("consumer_temporary_peak_bytes")
         ),
