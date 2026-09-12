@@ -254,6 +254,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 "source_tokens": len(source_ids),
                 "wire_suffix_tokens": len(wire_tail),
                 "source_prefix_reused_tokens": common,
+                "new_history_encoded_tokens": len(source_ids) - common,
                 "selected_kv_tokens": plan.selected_tokens,
                 "source_position_base": plan.source_position_base,
                 "decode_position_start": plan.source_position_base,
@@ -272,7 +273,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 ),
                 "persistent_interval_pack": selected.physical_kv_copy,
                 "interval_pack_bytes": selected.interval_pack_bytes,
-                "selected_history_kv_copy_bytes": 0,
+                "selected_history_kv_copy_bytes": (
+                    int(selected.interval_pack_bytes)
+                    if selected.physical_kv_copy
+                    else 0
+                ),
                 "measurement_state_fork_copy_bytes": same_state_fork_bytes,
                 "measurement_state_fork_copy_scope": (
                     "two isolated oracle branches; excluded from production PRA attachment"
@@ -326,8 +331,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "zero_selected_text_reencoding": all(
             row["selected_text_reencoded_tokens"] == 0 for row in rows
         ),
-        "selected_history_reencoded_tokens": 0,
-        "selected_history_kv_copy_bytes": 0,
+        "selected_history_reencoded_tokens": sum(
+            int(row["selected_text_reencoded_tokens"]) for row in rows
+        ),
+        "selected_history_kv_copy_bytes": sum(
+            int(row["selected_history_kv_copy_bytes"]) for row in rows
+        ),
         "zero_physical_kv_copy": all(
             not row["physical_kv_copy"] for row in rows
         ),
@@ -386,6 +395,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     result["max_abs_logit_delta"] = max(
         (float(row["max_abs_logit_delta"]) for row in rows), default=0.0
     )
+    result["copy_accounting"] = {
+        "selected_history_reencoded_tokens": result[
+            "selected_history_reencoded_tokens"
+        ],
+        "selected_history_kv_copy_bytes": result[
+            "selected_history_kv_copy_bytes"
+        ],
+        "physical_kv_copy_bytes": 0 if result["zero_physical_kv_copy"] else None,
+        "host_to_device_bytes": 0,
+        "interval_pack_bytes": sum(int(row["interval_pack_bytes"]) for row in rows),
+        "measurement_state_fork_copy_bytes": result[
+            "measurement_state_fork_copy_bytes"
+        ],
+        "measurement_state_fork_in_production_path": False,
+    }
     result["logit_tolerance"] = args.max_logit_delta
     result["logits_within_tolerance"] = bool(
         result["max_abs_logit_delta"] <= args.max_logit_delta
