@@ -712,6 +712,9 @@ H2a current-state read & 99.7\% & 0.4\% & 73.9\% & 77.3\% & 77.3\% & 17 & yes \\
 H2b verified write & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
 H3 same span, $K_r=1$ & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
 H4 working set, $K_x=2$ & 95.1\% & 5.7\% & 43.5\% & 54.5\% & 59.1\% & 9 & yes \\
+H1+H3 & 98.6\% & 1.6\% & 47.8\% & 54.5\% & 59.1\% & 10 & yes \\
+H2a+H3 & 99.4\% & 0.7\% & 73.9\% & 77.3\% & 77.3\% & 17 & yes \\
+All guarded, $K_x=4$ & 98.3\% & 2.1\% & 52.2\% & 59.1\% & 63.6\% & 10 & yes \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -747,6 +750,14 @@ while five immediate reacquisitions remain. Delay is therefore insufficient:
 the next H1 refinement must protect unresolved discovery branches or retain a
 compact resource-map tombstone.
 
+We implemented the strict unresolved-branch variant separately. It requires a
+complete successful read/diff for every concrete resource returned by the
+search, followed by the transition and $K_f$ delay. It abstains at every prefix
+for all $K_f\in\{0,1,2,4\}$ on this trace because several discovered example
+and test-file branches were never consumed. This is the correct conservative
+outcome, but supplies no saving; a compact model-visible resource-map stub is
+the next discriminating treatment.
+
 H2a also fails as a safe-exclusion claim. Retiring a 119-token successful-write
 turn after a complete same-version read/diff saves 833 cumulative tokens
 (0.42\%), but first changes the shell action at decision 17, preserves only
@@ -772,6 +783,20 @@ only 59.1\% conservative action agreement. Its zero immediate-reacquisition
 count is not exculpatory: frozen decisions do not compound, and the generated
 action can change without explicitly rereading the hidden resource. H4 remains
 an aggressive capacity baseline, not a safe rule.
+
+The two-rule combinations show no positive interaction on this trace. H1+H3
+saves 3,263 cumulative tokens (1.64\%) but falls to 59.1\% conservative action
+agreement, below H1 alone. H2a+H3 saves 1,436 (0.72\%) and retains H2a's
+77.3\% action agreement because H2a has already changed the late decisions on
+which H3 fires. The predeclared three-rule H1+H3+H2b arm is input-equivalent to
+H1+H3 here because H2b abstains; it is recorded as a deterministic equivalence,
+not charged as another model cohort.
+
+Finally, the all-guarded treatment at $K_x=4$ saves 4,096 cumulative tokens
+(2.06\%) with 63.6\% conservative action agreement. H2b and H4 abstain at that
+setting, so this is effectively H1+H2a+H3. Its slight recovery relative to
+H1+H3 despite removing more context demonstrates non-monotone model
+sensitivity, not a robust policy improvement.
 
 \section{Semantic-Role Ablations}
 

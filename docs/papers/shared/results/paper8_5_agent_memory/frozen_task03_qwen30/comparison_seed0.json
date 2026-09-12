@@ -9,7 +9,7 @@
     "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
     "full_replay_digest": "8ae9109a5b809a28305e8b76fa34e24cf0089a25f52a925ff044200dd9a17aa7"
   },
-  "arm_count": 10,
+  "arm_count": 12,
   "arms": [
     {
       "policy": "full",
@@ -627,6 +627,154 @@
         "H1_SEARCH_CONSUMED": {
           "groups": 14,
           "tokens": 2660
+        },
+        "H3_READ_SUPERSEDED": {
+          "groups": 3,
+          "tokens": 603
+        }
+      }
+    },
+    {
+      "policy": "h2a_h3",
+      "treatment": "h2a_h3@100%-ceiling;Kr=1;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 22,
+      "valid_action_rate": 0.9565217391304348,
+      "exact_content_decisions": 17,
+      "exact_content_rate_vs_full": 0.7391304347826086,
+      "exact_command_decisions": 17,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.7727272727272727,
+      "conservative_action_equivalent_decisions": 17,
+      "conservative_action_equivalent_rate_vs_full": 0.7727272727272727,
+      "first_content_divergence": 17,
+      "first_command_divergence": 17,
+      "first_conservative_action_divergence": 17,
+      "first_action_validity_divergence": 20,
+      "realized_retention": {
+        "mean": 0.9944821062466185,
+        "min": 0.971726453437003,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9944821062466185,
+        "min": 0.971726453437003,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 197673,
+      "cumulative_selected_whole_record_tokens": 197673,
+      "cumulative_materialized_tokens": 197673,
+      "logical_token_saving_tokens": 1436,
+      "logical_token_saving_fraction": 0.007212130039325194,
+      "materialized_token_saving_tokens": 1436,
+      "materialized_token_saving_fraction": 0.007212130039325194,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 1436,
+      "unused_matched_budget_tokens": 1436,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 1,
+      "format_invalid_decision_ids": [
+        20
+      ],
+      "cumulative_excluded_group_decisions": 10,
+      "cumulative_excluded_tokens": 1436,
+      "decisions_with_exclusion": 7,
+      "decisions_with_immediate_reacquisition": 3,
+      "immediate_reacquisition_decision_ids": [
+        17,
+        18,
+        21
+      ],
+      "false_exclusion_proxy_decisions": 2,
+      "false_exclusion_proxy_decision_ids": [
+        18,
+        21
+      ],
+      "excluded_by_rule": {
+        "H2A_WRITE_CURRENT_READ": {
+          "groups": 7,
+          "tokens": 833
+        },
+        "H3_READ_SUPERSEDED": {
+          "groups": 3,
+          "tokens": 603
+        }
+      }
+    },
+    {
+      "policy": "all_h1_h2a_h2b_h3_h4",
+      "treatment": "all_h1_h2a_h2b_h3_h4@100%-ceiling;Kf=0;Kr=1;Kx=4;seed=0",
+      "decisions_attempted": 23,
+      "decisions_completed": 23,
+      "valid_action_decisions": 23,
+      "valid_action_rate": 1.0,
+      "exact_content_decisions": 12,
+      "exact_content_rate_vs_full": 0.5217391304347826,
+      "exact_command_decisions": 13,
+      "reference_command_decisions": 22,
+      "exact_command_rate_vs_full": 0.5909090909090909,
+      "conservative_action_equivalent_decisions": 14,
+      "conservative_action_equivalent_rate_vs_full": 0.6363636363636364,
+      "first_content_divergence": 10,
+      "first_command_divergence": 12,
+      "first_conservative_action_divergence": 12,
+      "first_action_validity_divergence": 22,
+      "realized_retention": {
+        "mean": 0.9831714449275181,
+        "min": 0.9549390351652235,
+        "max": 1.0
+      },
+      "realized_materialized_retention": {
+        "mean": 0.9831714449275181,
+        "min": 0.9549390351652235,
+        "max": 1.0
+      },
+      "cumulative_full_history_tokens": 199109,
+      "cumulative_selected_logical_tokens": 195013,
+      "cumulative_selected_whole_record_tokens": 195013,
+      "cumulative_materialized_tokens": 195013,
+      "logical_token_saving_tokens": 4096,
+      "logical_token_saving_fraction": 0.02057164668598607,
+      "materialized_token_saving_tokens": 4096,
+      "materialized_token_saving_fraction": 0.02057164668598607,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 4096,
+      "unused_matched_budget_tokens": 4096,
+      "materialized_budget_overshoot_tokens": 0,
+      "transport_failures": 0,
+      "transport_failure_decisions": [],
+      "format_invalid_decisions": 0,
+      "format_invalid_decision_ids": [],
+      "cumulative_excluded_group_decisions": 24,
+      "cumulative_excluded_tokens": 4096,
+      "decisions_with_exclusion": 14,
+      "decisions_with_immediate_reacquisition": 6,
+      "immediate_reacquisition_decision_ids": [
+        11,
+        15,
+        17,
+        19,
+        20,
+        21
+      ],
+      "false_exclusion_proxy_decisions": 1,
+      "false_exclusion_proxy_decision_ids": [
+        21
+      ],
+      "excluded_by_rule": {
+        "H1_SEARCH_CONSUMED": {
+          "groups": 14,
+          "tokens": 2660
+        },
+        "H2A_WRITE_CURRENT_READ": {
+          "groups": 7,
+          "tokens": 833
         },
         "H3_READ_SUPERSEDED": {
           "groups": 3,

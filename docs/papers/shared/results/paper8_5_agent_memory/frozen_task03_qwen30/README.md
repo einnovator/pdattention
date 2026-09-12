@@ -91,6 +91,13 @@ but action equivalence reaches only 72.7%; five immediate reacquisitions and one
 policy-excess reacquisition remain.  Delay alone therefore does not establish
 safe supersession.
 
+`h1_strict_structural_exact.json` evaluates the stricter unresolved-branch
+refinement.  It requires every concrete discovered resource to have a complete
+successful downstream read/diff before the transition and delay gates apply.
+The rule correctly abstains for `Kf=0,1,2,4` on all 23 prefixes because several
+discovered branches remain unread.  This supplies no saving on the current
+trace and therefore does not require another model replay.
+
 H2a likewise does not qualify as safe exclusion on this trace.  A complete
 same-version read/diff permits retirement of one 119-token successful-write
 turn, saving 833 cumulative tokens (0.42%), but conservative action equivalence
@@ -116,3 +123,15 @@ changes the action at decision 9 and preserves only 59.1% conservative action
 equivalence.  It records no immediate reacquisition; that does not imply safe
 exclusion because each frozen decision is independent and changed actions need
 not explicitly reread the hidden resource.
+
+The first pairwise combinations do not improve the tradeoff.  H1+H3 saves
+3,263 cumulative tokens (1.64%) with 59.1% conservative action equivalence;
+H2a+H3 saves 1,436 (0.72%) with 77.3%.  Since H2b abstains on every prefix, the
+three-rule H1+H3+H2b treatment is materialized-input-equivalent to H1+H3 and is
+not rerun as though it were an independent model cohort.
+
+The all-guarded arm at `Kx=4` saves 4,096 cumulative tokens (2.06%) and
+preserves 63.6% conservative action equivalence.  H2b and H4 abstain at this
+setting, making the realized arm H1+H2a+H3.  Its small action-agreement recovery
+relative to H1+H3 despite greater exclusion is non-monotone sensitivity, not a
+quality claim.
