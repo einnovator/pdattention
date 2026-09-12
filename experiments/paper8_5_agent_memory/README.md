@@ -186,3 +186,42 @@ python -m experiments.paper8_5_agent_memory.export_review_history \
 
 The Markdown view excerpts large content with explicit omission counts and a
 full-content digest; the JSON retains every canonical record verbatim.
+
+Autonomous single-task qualification uses a local OpenAI-compatible proxy. The
+mini-swe-agent process retains its full canonical history; the proxy derives a
+fresh logical plan for each call and forwards an ordinary text-only request.
+`FULL` preserves the incoming messages exactly. Negative arms preserve the
+system prompt, task statement, and latest causal turn. The runner records
+content-only full/selected/materialized token counts, exclusion provenance,
+immediate resource reacquisition, action counts, and repeated search/read/test
+signatures, then invokes the official SWE-bench grader by default.
+
+mini-swe-agent 2.4.6 strips observation `extra` fields before HTTP transport.
+The proxy therefore joins `execution_*.json` sidecars from the instrumented
+Docker environment into a selector-only copy using the complete ordered command
+digest sequence. Missing, malformed, mismatched, or multi-session receipts fail
+closed: the affected decision falls back to FULL instead of applying a negative
+policy. This is recorded as `selection_abstained_for_sidecar`; the switch can be
+disabled only as an explicit uninstrumented diagnostic.
+Neither metadata nor tombstones are serialized into the model request.
+
+Example for one predeclared task (run `full` first, then change only `--policy`):
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_autonomous_swebench \
+  --benchmark-card experiments/paper4_5_agent/benchmarks/swebench_verified_easy50_baseline_success14.json \
+  --task-index 1 --output /results/paper8_5/task01/full_seed0 \
+  --run-id paper85-task01-full-seed0 \
+  --upstream-base-url http://MODEL_HOST:PORT/v1 \
+  --model qwen3-coder:30b --served-model qwen3-coder:30b \
+  --model-revision MODEL_REVISION \
+  --tokenizer TOKENIZER_ID --tokenizer-revision TOKENIZER_REVISION \
+  --policy full --budget-fraction 1.0 \
+  --temperature 0 --top-p 1 --seed 0 --max-calls 40 \
+  --docker-executable /usr/local/bin/docker
+```
+
+`--tokenizer whitespace --allow-whitespace-tokenizer` exists only for local
+structural diagnostics and cannot be treated as paper evidence. `--preflight-only`
+writes the task lock, exact policy/generation provenance, and command templates
+without starting the proxy, agent, model calls, Docker, or grading.
