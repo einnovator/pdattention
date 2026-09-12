@@ -7,6 +7,7 @@ import experiments.paper8_5_agent_memory.run_frozen_replay as frozen_replay
 
 from experiments.paper8_5_agent_memory import (
     AgentMemoryBudget,
+    BashOperation,
     DagCertifiedExclusionSelector,
     ExclusionClass,
     AgentRecordRole,
@@ -16,13 +17,19 @@ from experiments.paper8_5_agent_memory import (
     MaterializationMode,
     MatchedTokenTailConfig,
     MiddleSelectionStrategy,
+    NegativeHeuristicSelector,
+    NegativeRule,
+    NegativeSelectionConfig,
     ToolObservationMaterializer,
     build_resource_effect_dag,
+    build_negative_exclusions,
+    classify_bash_operation,
     exclude_certified_groups,
     leave_one_bundle_out_cases,
     materialize_matched_token_tail,
     materialize_plan,
     recordize_minisweagent_messages,
+    reacquired_excluded_resources,
     serialize_materialized_messages,
     validate_minisweagent_chat,
 )
@@ -33,6 +40,9 @@ from experiments.paper8_5_agent_memory.export_review_history import (
     export_trajectory,
 )
 from experiments.paper8_5_agent_memory.run_structural_screen import structural_screen
+from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
+    negative_structural_screen,
+)
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
 from experiments.paper8_5_agent_memory.workspace_checkpoint import (
     repository_state,
@@ -588,6 +598,188 @@ def test_dag_marks_write_invalidation_as_diagnostic_not_safe_exclusion():
     assert not dag.certified_excluded_groups
 
 
+def _heuristic_messages(*turns):
+    messages = [
+        {"role": "system", "content": "Use one bash command."},
+        {"role": "user", "content": "Fix the reported issue."},
+    ]
+    for command, output, extra in turns:
+        messages.extend((
+            {
+                "role": "assistant",
+                "content": f"THOUGHT: act\n```mswea_bash_command\n{command}\n```",
+            },
+            {
+                "role": "user",
+                "content": f"<returncode>0</returncode>\n<output>{output}</output>",
+                "extra": {"returncode": 0, **(extra or {})},
+            },
+        ))
+    return messages
+
+
+def _negative_config(*rules, **overrides):
+    values = {
+        "rules": rules,
+        "protected_head_turns": 0,
+        "protected_tail_turns": 0,
+    }
+    values.update(overrides)
+    return NegativeSelectionConfig(**values)
+
+
+def test_negative_operation_parser_separates_discovery_from_source_grep():
+    assert classify_bash_operation("find . -name '*.py'") == BashOperation.SEARCH_DISCOVERY
+    assert classify_bash_operation("rg --files src") == BashOperation.SEARCH_DISCOVERY
+    assert classify_bash_operation("grep -Rl needle src") == BashOperation.SEARCH_DISCOVERY
+    assert classify_bash_operation("grep -n needle src/foo.py") == BashOperation.READ
+    assert classify_bash_operation("rg -n needle src/foo.py") == BashOperation.READ
+
+
+def test_h1_retires_consumed_search_only_after_kf_delay():
+    messages = _heuristic_messages(
+        ("find . -name foo.py", "./src/foo.py", None),
+        ("cat src/foo.py", "source", None),
+        ("pwd", "/workspace", None),
+    )
+    history = recordize_minisweagent_messages(messages)
+    immediate = build_negative_exclusions(
+        history, _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=0)
+    )
+    delayed = build_negative_exclusions(
+        history, _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=1)
+    )
+    too_late = build_negative_exclusions(
+        history, _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=2)
+    )
+    assert [row.causal_group_id for row in immediate] == ["turn:t0000"]
+    assert [row.causal_group_id for row in delayed] == ["turn:t0000"]
+    assert not too_late
+
+
+def test_h2a_requires_current_version_read_and_h2b_explicit_verification_dependency():
+    write_extra = {
+        "post_resource_version_fingerprints": {"foo.py": "v2"},
+    }
+    read_extra = {"resource_version_fingerprints": {"foo.py": "v2"}}
+    verify_extra = {"verification_resource_ids": ["foo.py"]}
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        (
+            "python -c \"from pathlib import Path; Path('foo.py').write_text('fixed')\"",
+            "", write_extra,
+        ),
+        ("cat foo.py", "fixed", read_extra),
+        ("pytest tests/test_foo.py", "1 passed", verify_extra),
+    ))
+    h2a = build_negative_exclusions(
+        history, _negative_config(NegativeRule.H2A_WRITE_CURRENT_READ)
+    )
+    h2b = build_negative_exclusions(
+        history, _negative_config(NegativeRule.H2B_VERIFIED_WRITE)
+    )
+    assert h2a[0].rule_id == "H2A_WRITE_CURRENT_READ"
+    assert h2b[0].rule_id == "H2B_VERIFIED_WRITE"
+    assert h2a[0].causal_group_id == h2b[0].causal_group_id == "turn:t0000"
+
+    mismatched = recordize_minisweagent_messages(_heuristic_messages(
+        (
+            "python -c \"from pathlib import Path; Path('foo.py').write_text('fixed')\"",
+            "", write_extra,
+        ),
+        ("cat foo.py", "stale", {"resource_version_fingerprints": {"foo.py": "v1"}}),
+    ))
+    assert not build_negative_exclusions(
+        mismatched, _negative_config(NegativeRule.H2A_WRITE_CURRENT_READ)
+    )
+
+
+def test_h2_bare_is_explicitly_aggressive_and_obeys_kw():
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("echo fixed > foo.py", "", None),
+        ("pwd", "/workspace", None),
+    ))
+    rows = build_negative_exclusions(
+        history,
+        _negative_config(NegativeRule.H2_BARE_AGGRESSIVE, write_delay_turns=1),
+    )
+    assert rows[0].classification == "aggressive_unsafe_ablation"
+    assert "does not imply" in rows[0].reason
+
+
+def test_h3_keeps_kr_newest_reads_for_the_same_resource_version_and_span():
+    extra = {"resource_version_fingerprints": {"foo.py": "v1"}}
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("sed -n '1,10p' foo.py", "first", extra),
+        ("sed -n '1,10p' foo.py", "second", extra),
+        ("sed -n '1,10p' foo.py", "third", extra),
+    ))
+    rows = build_negative_exclusions(
+        history,
+        _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=2),
+    )
+    assert [row.causal_group_id for row in rows] == ["turn:t0000"]
+
+    different_span = recordize_minisweagent_messages(_heuristic_messages(
+        ("sed -n '1,10p' foo.py", "first", extra),
+        ("sed -n '20,30p' foo.py", "second", extra),
+    ))
+    assert not build_negative_exclusions(
+        different_span,
+        _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
+    )
+
+
+def test_h4_is_dependency_pinned_and_reacquisition_proxy_compares_with_full():
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("cat a.py", "a", None),
+        ("cat b.py", "b", None),
+        ("cat c.py", "c", None),
+        ("cat d.py", "d", None),
+    ))
+    selector = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H4_WORKING_SET, working_set_resources=2
+    ))
+    plan = selector.select(
+        history=history,
+        query="fix",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "turn:t0000", "turn:t0001"
+    }
+    assert plan.selected_tokens + sum(row.excluded_tokens for row in plan.exclusions) == (
+        plan.full_history_tokens
+    )
+    assert plan.mandatory_tokens < plan.selected_tokens
+    assert plan.head_turns == plan.tail_turns == 0
+    assert reacquired_excluded_resources("cat a.py", plan.exclusions) == ("a.py",)
+    assert reacquired_excluded_resources("pytest", plan.exclusions) == ()
+    assert all("INACTIVE group=" in row.tombstone for row in plan.exclusions)
+    serialized = serialize_materialized_messages(
+        history,
+        materialize_plan(
+            history,
+            plan,
+            ToolObservationMaterializer(),
+            query="fix",
+        ),
+    )
+    validate_minisweagent_chat(serialized)
+
+    pinned_messages = _heuristic_messages(
+        ("cat a.py", "a", None),
+        ("cat b.py", "b", None),
+        ("cat c.py", "c", None),
+        ("cat d.py", "d", None),
+    )
+    pinned_messages[1]["content"] = "Fix a.py."
+    pinned = build_negative_exclusions(
+        recordize_minisweagent_messages(pinned_messages),
+        _negative_config(NegativeRule.H4_WORKING_SET, working_set_resources=2),
+    )
+    assert {row.causal_group_id for row in pinned} == {"turn:t0001"}
+
+
 def test_oracle_cases_ablate_whole_bundles_without_task_leakage():
     history = recordize_minisweagent_messages(_messages(3))
     full = FullHistorySelector().select(
@@ -633,6 +825,35 @@ def test_structural_screen_aggregates_without_claiming_task_quality(tmp_path):
     assert "decision_rows" not in result
 
 
+def test_negative_structural_screen_reports_opportunity_without_quality_claim(tmp_path):
+    trajectory = tmp_path / "task.traj.json"
+    trajectory.write_text(json.dumps({
+        "instance_id": "task-1",
+        "messages": _heuristic_messages(
+            ("cat a.py", "a", None),
+            ("cat b.py", "b", None),
+            ("cat c.py", "c", None),
+            ("cat d.py", "d", None),
+        ),
+    }), encoding="utf-8")
+    result = negative_structural_screen(
+        [trajectory],
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        policies=("h4_working_set",),
+        working_sets=(2,),
+        protected_head_turns=0,
+        protected_tail_turns=0,
+        include_decision_rows=True,
+    )
+    assert result["evidence_class"] == (
+        "structural_opportunity_only_not_behavior_or_task_quality"
+    )
+    assert result["reacquisition_metrics_status"].startswith("not_measured")
+    assert result["summary_rows"][0]["excluded_tokens"] > 0
+    assert result["decision_rows"][-1]["inactive_tombstones"]
+
+
 def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     messages = _messages(2)
     references = [messages[2]["content"], messages[4]["content"]]
@@ -666,6 +887,42 @@ def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     assert len(calls) == 2
     assert references[0] not in [row["content"] for row in calls[0]]
     assert calls[1][-1]["role"] == "user"
+
+
+def test_frozen_replay_records_policy_excess_immediate_reacquisition(monkeypatch):
+    messages = _heuristic_messages(
+        ("cat a.py", "a", None),
+        ("cat b.py", "b", None),
+        ("cat c.py", "c", None),
+        ("cat d.py", "d", None),
+    )
+    calls = 0
+
+    def fake_post(url, payload, *, api_key, timeout):
+        nonlocal calls
+        calls += 1
+        content = (
+            messages[calls * 2]["content"]
+            if calls < 4 else
+            "THOUGHT: reacquire\n```mswea_bash_command\ncat a.py\n```"
+        )
+        return {"choices": [{"message": {"content": content}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        policy="h4_working_set",
+        head=0,
+        tail=0,
+        working_set_resources=2,
+    ))
+    row = result["rows"][-1]
+    assert row["excluded_group_count"] == 1
+    assert row["generated_reacquired_excluded_resource_ids"] == ("a.py",)
+    assert row["full_reference_reacquired_excluded_resource_ids"] == ()
+    assert row["false_exclusion_immediate_reacquisition_proxy"] is True
+    assert row["exclusions"][0]["tombstone_in_model_request"] is False
 
 
 @pytest.mark.parametrize(

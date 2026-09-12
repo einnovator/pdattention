@@ -192,6 +192,24 @@ def _arm_summary(
         for row in rows
         if not row["action_valid"] and not _is_transport_failure(row)
     ]
+    exclusion_rows = [row for row in rows if int(row.get("excluded_group_count", 0))]
+    reacquisition_rows = [
+        row for row in rows
+        if row.get("generated_reacquired_excluded_resource_ids")
+    ]
+    excess_reacquisition_rows = [
+        row for row in rows
+        if row.get("false_exclusion_immediate_reacquisition_proxy")
+    ]
+    excluded_by_rule: dict[str, dict[str, int]] = {}
+    for row in rows:
+        for exclusion in row.get("exclusions", ()):
+            if not isinstance(exclusion, Mapping):
+                continue
+            rule = str(exclusion.get("rule_id", "unknown"))
+            aggregate = excluded_by_rule.setdefault(rule, {"groups": 0, "tokens": 0})
+            aggregate["groups"] += 1
+            aggregate["tokens"] += int(exclusion.get("excluded_tokens", 0))
     return {
         "policy": artifact.get("policy"),
         "treatment": _treatment_label(artifact),
@@ -304,6 +322,22 @@ def _arm_summary(
         "transport_failure_decisions": transport_decisions,
         "format_invalid_decisions": len(format_invalid_decisions),
         "format_invalid_decision_ids": format_invalid_decisions,
+        "cumulative_excluded_group_decisions": sum(
+            int(row.get("excluded_group_count", 0)) for row in rows
+        ),
+        "cumulative_excluded_tokens": sum(
+            int(row.get("excluded_tokens", 0)) for row in rows
+        ),
+        "decisions_with_exclusion": len(exclusion_rows),
+        "decisions_with_immediate_reacquisition": len(reacquisition_rows),
+        "immediate_reacquisition_decision_ids": [
+            int(row["decision"]) for row in reacquisition_rows
+        ],
+        "false_exclusion_proxy_decisions": len(excess_reacquisition_rows),
+        "false_exclusion_proxy_decision_ids": [
+            int(row["decision"]) for row in excess_reacquisition_rows
+        ],
+        "excluded_by_rule": excluded_by_rule,
     }
 
 
@@ -455,6 +489,27 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"| {arm['transport_failures']} | {arm['format_invalid_decisions']} |"
         )
     lines.extend(("", "`—` means no divergence or no defined denominator.", ""))
+    if any(arm["decisions_with_exclusion"] for arm in summary["arms"]):
+        lines.extend((
+            "## Negative-exclusion diagnostics",
+            "",
+            "The false-exclusion value is a narrow immediate proxy: the candidate "
+            "reacquired a hidden resource when contemporaneous FULL did not. It is "
+            "not a causal error rate and autonomous reacquisition remains primary.",
+            "",
+            "| Policy | Decisions with exclusion | Cumulative group decisions | Excluded tokens | Immediate reacquisition | Policy-excess proxy |",
+            "|---|---:|---:|---:|---:|---:|",
+        ))
+        for arm in summary["arms"]:
+            policy = str(arm["treatment"]).replace("|", "\\|")
+            lines.append(
+                f"| {policy} | {arm['decisions_with_exclusion']} "
+                f"| {arm['cumulative_excluded_group_decisions']} "
+                f"| {arm['cumulative_excluded_tokens']} "
+                f"| {arm['decisions_with_immediate_reacquisition']} "
+                f"| {arm['false_exclusion_proxy_decisions']} |"
+            )
+        lines.append("")
     return "\n".join(lines)
 
 

@@ -198,6 +198,11 @@ def recordize_minisweagent_messages(
                 "resource_version_fingerprints": extra.get(
                     "resource_version_fingerprints"
                 ),
+                "post_resource_version_fingerprints": extra.get(
+                    "post_resource_version_fingerprints"
+                ),
+                "verification_resource_ids": extra.get("verification_resource_ids"),
+                "dependency_resource_ids": extra.get("dependency_resource_ids"),
                 "output_complete": extra.get("output_complete"),
                 "timed_out": extra.get("timed_out"),
                 "output_truncated": extra.get("output_truncated"),

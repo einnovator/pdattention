@@ -62,3 +62,6 @@ evidence.  It uses the exact model tokenizer rather than whitespace counts and
 compares generated next actions with a contemporaneous FULL replay.  Its named
 90% treatments use a minimum-retention floor with whole-turn round-up; this is
 a different budget contract from the ceiling-based structural pilot above.
+Its directory also contains a separately labelled whitespace-only H1--H4
+opportunity screen; the heuristic rows must not be interpreted as frozen or
+autonomous quality evidence.

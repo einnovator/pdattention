@@ -27,6 +27,12 @@ from .matched_token_tail import (
     materialize_matched_token_tail,
 )
 from .model import AgentMemoryBudget
+from .negative_selection import (
+    NEGATIVE_POLICY_RULES,
+    NegativeHeuristicSelector,
+    NegativeSelectionConfig,
+    reacquired_excluded_resources,
+)
 from .recordizer import recordize_minisweagent_messages
 from .run_structural_screen import _policy_selectors, _query, _token_counter
 from .selectors import FullHistorySelector
@@ -144,14 +150,55 @@ def _chat_endpoint(base_url: str) -> str:
     return normalized if normalized.endswith(suffix) else f"{normalized}{suffix}"
 
 
-def _selector(label: str, *, head: int, tail: int, round_up: bool = False):
+def _selector(
+    label: str,
+    *,
+    head: int,
+    tail: int,
+    round_up: bool = False,
+    search_delay_turns: int = 0,
+    write_delay_turns: int = 1,
+    same_span_reads_to_keep: int = 1,
+    working_set_resources: int = 4,
+    negative_fallback: str = "none",
+    h2b_allow_workspace_verification: bool = False,
+):
     if label == "full":
         return FullHistorySelector()
     selectors = dict(_policy_selectors(head, tail, round_up=round_up))
+    if label in NEGATIVE_POLICY_RULES:
+        fallback = None
+        if negative_fallback != "none":
+            fallback_labels = {
+                "recency": "middle_recency",
+                "lexical": "middle_lexical",
+                "spine_lexical": "spine_plus_lexical",
+            }
+            try:
+                fallback = selectors[fallback_labels[negative_fallback]]
+            except KeyError as error:
+                raise ValueError(
+                    "negative_fallback must be none, recency, lexical, or spine_lexical"
+                ) from error
+        return NegativeHeuristicSelector(
+            NegativeSelectionConfig(
+                rules=NEGATIVE_POLICY_RULES[label],
+                search_delay_turns=search_delay_turns,
+                write_delay_turns=write_delay_turns,
+                same_span_reads_to_keep=same_span_reads_to_keep,
+                working_set_resources=working_set_resources,
+                protected_head_turns=head,
+                protected_tail_turns=tail,
+                h2b_allow_workspace_verification=h2b_allow_workspace_verification,
+            ),
+            fallback,
+        )
     try:
         return selectors[label]
     except KeyError as error:
-        choices = ", ".join(("full", "matched_token_tail", *selectors))
+        choices = ", ".join((
+            "full", "matched_token_tail", *selectors, *NEGATIVE_POLICY_RULES,
+        ))
         raise ValueError(f"unknown policy {label!r}; choose one of {choices}") from error
 
 
@@ -296,6 +343,12 @@ def replay(
     progress_path: Path | None = None,
     restart: bool = False,
     round_up_whole_turns: bool = False,
+    search_delay_turns: int = 0,
+    write_delay_turns: int = 1,
+    same_span_reads_to_keep: int = 1,
+    working_set_resources: int = 4,
+    negative_fallback: str = "none",
+    h2b_allow_workspace_verification: bool = False,
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
@@ -326,6 +379,12 @@ def replay(
             head=head,
             tail=tail,
             round_up=round_up_whole_turns,
+            search_delay_turns=search_delay_turns,
+            write_delay_turns=write_delay_turns,
+            same_span_reads_to_keep=same_span_reads_to_keep,
+            working_set_resources=working_set_resources,
+            negative_fallback=negative_fallback,
+            h2b_allow_workspace_verification=h2b_allow_workspace_verification,
         )
     )
     effective_materialization_mode = (
@@ -373,6 +432,14 @@ def replay(
         ),
         "reference_replay_digest": reference_replay_digest,
         "matched_budget_source_digest": matched_budget_source_digest,
+        "negative_selection": {
+            "search_delay_turns_kf": search_delay_turns,
+            "write_delay_turns_kw": write_delay_turns,
+            "same_span_reads_to_keep_kr": same_span_reads_to_keep,
+            "working_set_resources_kx": working_set_resources,
+            "positive_fallback": negative_fallback,
+            "h2b_allow_workspace_verification": h2b_allow_workspace_verification,
+        } if policy in NEGATIVE_POLICY_RULES else None,
     }
     rows: list[dict[str, Any]] = []
     if progress_path is not None and progress_path.exists() and not restart:
@@ -492,6 +559,15 @@ def replay(
         generated, failure_reason, response_diagnostics = _response_diagnostics(raw)
         reference_command = _command(reference)
         generated_command = _command(generated)
+        generated_reacquisition = reacquired_excluded_resources(
+            generated_command, plan.exclusions
+        )
+        reference_reacquisition = reacquired_excluded_resources(
+            reference_command, plan.exclusions
+        )
+        policy_excess_reacquisition = tuple(sorted(
+            set(generated_reacquisition).difference(reference_reacquisition)
+        ))
         transport_failure = failure_reason == "empty_generated_content"
         rows.append({
             "decision": decision,
@@ -547,6 +623,30 @@ def replay(
             ),
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
+            "excluded_group_count": len(plan.exclusions),
+            "excluded_record_count": sum(len(row.record_ids) for row in plan.exclusions),
+            "excluded_tokens": sum(row.excluded_tokens for row in plan.exclusions),
+            "exclusions": [
+                {
+                    "causal_group_id": row.causal_group_id,
+                    "record_ids": row.record_ids,
+                    "rule_id": row.rule_id,
+                    "classification": row.classification,
+                    "reason": row.reason,
+                    "resource_ids": row.resource_ids,
+                    "witness_record_ids": row.witness_record_ids,
+                    "inactive_tombstone": row.tombstone,
+                    "excluded_tokens": row.excluded_tokens,
+                    "tombstone_in_model_request": False,
+                }
+                for row in plan.exclusions
+            ],
+            "generated_reacquired_excluded_resource_ids": generated_reacquisition,
+            "full_reference_reacquired_excluded_resource_ids": reference_reacquisition,
+            "policy_excess_reacquired_resource_ids": policy_excess_reacquisition,
+            "false_exclusion_immediate_reacquisition_proxy": bool(
+                policy_excess_reacquisition
+            ),
             "materialized_records": [
                 {
                     "record_id": row.record_id,
@@ -584,6 +684,21 @@ def main() -> None:
     parser.add_argument("--head", type=int, default=1)
     parser.add_argument("--tail", type=int, default=2)
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument("--search-delay-turns", type=int, default=0, metavar="Kf")
+    parser.add_argument("--write-delay-turns", type=int, default=1, metavar="Kw")
+    parser.add_argument("--same-span-reads-to-keep", type=int, default=1, metavar="Kr")
+    parser.add_argument("--working-set-resources", type=int, default=4, metavar="Kx")
+    parser.add_argument(
+        "--negative-fallback",
+        choices=("none", "recency", "lexical", "spine_lexical"),
+        default="none",
+        help="positive selector applied only after negative exclusion",
+    )
+    parser.add_argument(
+        "--h2b-allow-workspace-verification",
+        action="store_true",
+        help="relaxed H2b arm; a passing workspace check may retire a write",
+    )
     parser.add_argument(
         "--materialization-mode",
         type=MaterializationMode,
@@ -655,6 +770,12 @@ def main() -> None:
         progress_path=args.output,
         restart=args.restart,
         round_up_whole_turns=args.round_up_whole_turns,
+        search_delay_turns=args.search_delay_turns,
+        write_delay_turns=args.write_delay_turns,
+        same_span_reads_to_keep=args.same_span_reads_to_keep,
+        working_set_resources=args.working_set_resources,
+        negative_fallback=args.negative_fallback,
+        h2b_allow_workspace_verification=args.h2b_allow_workspace_verification,
     )
     print(json.dumps({key: result[key] for key in (
         "instance_id", "policy", "completed_decisions", "exact_command_rate",

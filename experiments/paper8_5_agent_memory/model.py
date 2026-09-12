@@ -70,6 +70,26 @@ class CanonicalAgentHistory:
 
 
 @dataclass(frozen=True)
+class AgentMemoryExclusion:
+    """Auditable description of one inactive causal group.
+
+    ``tombstone`` is controller/provenance metadata.  It is deliberately not
+    serialized into the ordinary chat request: doing so would confound record
+    exclusion with a summarization/materialization treatment.
+    """
+
+    causal_group_id: str
+    record_ids: tuple[str, ...]
+    rule_id: str
+    classification: str
+    reason: str
+    resource_ids: tuple[str, ...]
+    witness_record_ids: tuple[str, ...]
+    tombstone: str
+    excluded_tokens: int
+
+
+@dataclass(frozen=True)
 class AgentMemoryBudget:
     max_tokens: int
     max_records: int | None = None
@@ -96,6 +116,7 @@ class AgentMemoryPlan:
     tail_turns: int
     middle_candidate_turns: int
     middle_selected_turns: int
+    exclusions: tuple[AgentMemoryExclusion, ...] = ()
 
     @property
     def realized_retention_fraction(self) -> float:
@@ -113,6 +134,19 @@ class AgentMemoryPlan:
             "requested_budget_tokens": self.requested_budget_tokens,
             "head_turns": self.head_turns,
             "tail_turns": self.tail_turns,
+            "exclusions": [
+                {
+                    "causal_group_id": row.causal_group_id,
+                    "record_ids": row.record_ids,
+                    "rule_id": row.rule_id,
+                    "classification": row.classification,
+                    "resource_ids": row.resource_ids,
+                    "witness_record_ids": row.witness_record_ids,
+                    "tombstone": row.tombstone,
+                    "excluded_tokens": row.excluded_tokens,
+                }
+                for row in self.exclusions
+            ],
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()

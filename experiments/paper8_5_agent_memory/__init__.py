@@ -31,11 +31,22 @@ from .dag import (
 )
 from .model import (
     AgentMemoryBudget,
+    AgentMemoryExclusion,
     AgentMemoryPlan,
     AgentRecord,
     AgentRecordRole,
     AgentTurn,
     CanonicalAgentHistory,
+)
+from .negative_selection import (
+    BashOperation,
+    NEGATIVE_POLICY_RULES,
+    NegativeHeuristicSelector,
+    NegativeRule,
+    NegativeSelectionConfig,
+    build_negative_exclusions,
+    classify_bash_operation,
+    reacquired_excluded_resources,
 )
 from .oracle import OracleAblationCase, leave_one_bundle_out_cases
 from .recordizer import extract_resource_ids, recordize_minisweagent_messages
@@ -49,6 +60,7 @@ from .serialization import serialize_materialized_messages, validate_minisweagen
 
 __all__ = [
     "AgentMemoryBudget",
+    "AgentMemoryExclusion",
     "AgentMemoryPlan",
     "AgentRecord",
     "AgentRecordRole",
@@ -66,6 +78,11 @@ __all__ = [
     "CompositeToolSemanticsProvider",
     "HarnessMetadataSemanticsProvider",
     "MiniSweBashSemanticsProvider",
+    "BashOperation",
+    "NEGATIVE_POLICY_RULES",
+    "NegativeHeuristicSelector",
+    "NegativeRule",
+    "NegativeSelectionConfig",
     "FullHistorySelector",
     "HeadMiddleTailConfig",
     "HeadMiddleTailSelector",
@@ -80,14 +97,17 @@ __all__ = [
     "ToolObservationMaterializer",
     "leave_one_bundle_out_cases",
     "build_resource_effect_dag",
+    "build_negative_exclusions",
     "bash_semantics_are_certifiable",
     "classify_bash_effect",
+    "classify_bash_operation",
     "exclude_certified_groups",
     "materialize_plan",
     "materialize_matched_token_tail",
     "materialize_tool_observation_tail_to_ceiling",
     "extract_resource_ids",
     "recordize_minisweagent_messages",
+    "reacquired_excluded_resources",
     "serialize_materialized_messages",
     "validate_minisweagent_chat",
 ]

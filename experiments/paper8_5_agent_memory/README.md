@@ -36,6 +36,29 @@ regex inference is diagnostic and fails closed. Even a certificate proves only
 operational obsolescence under that abstraction; identical LLM behavior remains
 an empirical frozen/autonomous outcome.
 
+`negative_selection.py` adds four separately switchable, causal-group-safe
+heuristic families. They are deliberately not promoted to `DAG_CERTIFIED`:
+
+- H1 retires a discovery search only after one of its returned resources is
+  consumed by a concrete read; `Kf` delays retirement.
+- H2a retires an actual changed-file write only after a later read/diff exposes
+  the same post-write resource version. H2b requires a successful verification
+  with an explicit resource dependency. The bare "not rewritten" rule is
+  available only as `h2_bare_aggressive` and `Kw` delays it.
+- H3 retains the latest `Kr` reads that cover each `(resource, version, span)`;
+  disjoint source spans do not supersede one another.
+- H4 keeps the latest `Kx` distinct read resources and pins task, mutation,
+  failure, and declared-dependency resources. It is a capacity heuristic, not
+  a safety rule.
+
+Every retired causal group carries an inactive controller tombstone with rule,
+resource, and witness IDs. Tombstones are persisted in the plan/artifact but
+are not inserted into the model prompt, because doing that would create a
+separate summarization treatment. Frozen replay reports immediate reacquisition
+of excluded resources and the narrower policy-excess proxy (candidate
+reacquires but contemporaneous FULL does not). Autonomous reacquisition and
+official task success remain the primary endpoints.
+
 mini-swe-agent uses `MiniSweBashSemanticsProvider` because its only tool is
 generic Bash. `HarnessMetadataSemanticsProvider` is the portable path: a future
 agent SDK supplies generic effects and version metadata, while engines consume
@@ -69,6 +92,38 @@ python -m experiments.paper8_5_agent_memory.run_structural_screen \
   --tokenizer /path/to/frozen/tokenizer \
   --output structural_screen.json
 ```
+
+Screen heuristic opportunity without loading a model:
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_negative_heuristic_screen \
+  --trajectory task1.traj.json task2.traj.json \
+  --tokenizer /path/to/frozen/tokenizer \
+  --head 0 --tail 2 \
+  --output negative_structural.json --include-decision-rows
+```
+
+Then run isolated frozen arms against one contemporaneous `full.json`:
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_frozen_replay \
+  --trajectory task1.traj.json --output h1_kf0.json \
+  --base-url http://host:port --model MODEL --tokenizer TOKENIZER \
+  --reference-replay full.json --policy h1_search_consumed \
+  --head 0 --tail 2 --search-delay-turns 0
+
+python -m experiments.paper8_5_agent_memory.run_frozen_replay \
+  --trajectory task1.traj.json --output h3_kr1.json \
+  --base-url http://host:port --model MODEL --tokenizer TOKENIZER \
+  --reference-replay full.json --policy h3_read_superseded \
+  --head 0 --tail 2 --same-span-reads-to-keep 1
+```
+
+Available combination labels are `safe2_h1_h3`, `h2a_h3`, `h2b_h3`,
+`safe3_h1_h3_h2b`, and `all_h1_h2a_h2b_h3_h4`. Use
+`--negative-fallback recency|lexical|spine_lexical` only when testing the
+second stage at a budget below the residual history. Configuration and budget
+semantics are hashed into the resume contract.
 
 Primary autonomous metrics are official resolution, calls to solution,
 selected logical input tokens, avoidable reacquisition calls, repeated

@@ -313,6 +313,52 @@ as an authority on current state but does not by itself authorize semantic
 deletion. Similarly, a later passing test does not automatically erase a prior
 failure's diagnostic information.
 
+\subsubsection{Auditable negative-selection heuristic ladder}
+
+Certification coverage will initially be sparse, so we test four explicitly
+non-certified negative-selection families before invoking learned relevance.
+All retire complete action--observation groups, preserve independent head and
+tail floors, and emit a compact inactive tombstone containing the rule,
+resource, and witness identities. The tombstone is controller provenance and
+is not serialized into the model request; serializing it would be a distinct
+summarization treatment.
+
+\textsc{H1--Consumed Search} retires a discovery operation such as
+\texttt{find}, \texttt{fd}, \texttt{rg --files}, or filename-only
+\texttt{grep -l} after a returned resource is consumed by a concrete source
+read. Source-bearing \texttt{grep -n} and ordinary \texttt{rg} matches count
+as reads, not discovery. The delay $K_f\in\{0,1,2,4\}$ measures whether the
+location evidence retains short-lived value after consumption. An unresolved
+search branch is not claimed irrelevant.
+
+\textsc{H2--Write Consolidation} is split because absence of a rewrite does
+not imply that a mutation was good. H2a requires an observed resource change
+and a later read or diff of the same post-write version. H2b requires a
+successful verification with an explicit dependency on the written resource;
+a workspace-wide passing check is a separately labelled relaxed arm. Only the
+raw write bundle is retired, while the later current-state or verification
+evidence remains. The bare ``no later rewrite'' rule is retained solely as an
+aggressive ablation with $K_w\in\{1,2,4\}$.
+
+\textsc{H3--Read Supersession} retains the latest $K_r$ observations, for
+$K_r\in\{1,2,3\}$, covering each resource--version--span key. A whole-file
+read covers a line span; a later disjoint \texttt{sed} region does not;
+grep/tail projections require the same query signature. Missing versions use a
+no-intervening-write epoch only in the heuristic tier and never become a
+certificate.
+
+\textsc{H4--Bounded Working Set} retains the latest
+$K_x\in\{2,3,4,6\}$ distinct read resources while pinning resources named by
+the task, mutated state, unresolved failures, the current tail, and declared
+dependencies. Cross-file software dependencies make H4 the riskiest family;
+it is reported as a capacity heuristic rather than safe exclusion.
+
+The predeclared sequence isolates H1, H2a, H2b, H3, and H4 before combining
+H1+H3, H2+H3, H1+H2+H3, and finally all four. If the negative stage remains
+over budget, the original absolute budget is passed to the positive selector.
+This ordering identifies whether failure came from a particular retirement
+rule or from subsequent relevance selection.
+
 \subsubsection{Tool-semantics ownership and runtime handoff}
 
 mini-swe-agent exposes only one generic Bash tool, so the Paper~8.5 harness
@@ -496,6 +542,14 @@ overlapping source rereads, repeated searches for the same fact, repeated tests
 without relevant intervening mutation, and repeated failed edits. We call this
 \emph{reacquisition overhead}.
 
+For every negative arm we also report exclusions and tokens by rule, the
+resource and witness provenance stored in inactive tombstones, and the fraction
+of exclusions whose information is later reacquired. Frozen replay includes a
+narrow immediate false-exclusion proxy: the selected-history generation reads
+a hidden resource when contemporaneous \textsc{Full} does not. This proxy is
+not a causal error rate---the primary evidence remains autonomous
+reacquisition, calls-to-solution, and official task success.
+
 \subsection{Dependency horizon}
 
 For a useful historical record $r_i$ consumed at turn $t$, define
@@ -585,6 +639,21 @@ Spine + lexical & 91.6\% & 80.0\% & 67.4\% & 66.5\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+We also ran a structural-only opportunity screen for H1--H4 over the 23
+growing prefixes of the first instrumented trajectory, with $h=0$, two tail
+turns pinned, and a whitespace counter. H1 with $K_f=0$ retires 1,340
+cumulative whitespace tokens (1.5\%); delaying to $K_f=4$ reduces this to
+1,139 (1.3\%). Version-guarded H2a retires 308 (0.3\%), and H3 with $K_r=1$
+retires 177 (0.2\%); $K_r\geq2$ finds no opportunity on this trace. Guarded
+H2b correctly abstains because the captured verification lacks an explicit
+resource dependency. H4 with $K_x=2$ has the largest opportunity, 3,180 tokens
+(3.5\%), while $K_x\geq3$ abstains after dependency pins. H1+H3 removes 1,517
+(1.7\%), and all guarded rules plus H4 at $K_x=4$ remove 1,825 (2.0\%). These
+are cumulative prefix occurrences rather than unique records, and they measure
+neither tokenizer-exact saving, next-action quality, nor task success. Their
+purpose is to confirm that the arms fire differently before spending model
+calls; frozen and autonomous rows remain pending.
 
 \subsection{First instrumented frozen cohort}
 

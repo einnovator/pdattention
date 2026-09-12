@@ -42,3 +42,13 @@ Headline observations from `comparison.json`:
 `comparison.md` is the concise human table; `comparison.json` is the
 machine-readable reduction.  `trajectory.json` and each arm preserve the raw
 messages, selections, generated responses, token accounting, and digests.
+
+`negative_heuristic_structural_whitespace.json` is a no-model opportunity
+screen over H1--H4 and their first combinations. It deliberately uses the
+whitespace counter, `head=0`, and two protected tail turns to expose whether
+each rule fires; it is not part of the tokenizer-exact frozen comparison.
+H1 is the largest guarded opportunity on this trace (1.5% cumulative
+whitespace-token saving at `Kf=0`), H2a removes 0.3%, H3 `Kr=1` removes 0.2%,
+and guarded H2b abstains because verification-resource dependency metadata is
+absent. H4 `Kx=2` reaches 3.5% but is explicitly an aggressive working-set
+heuristic. No next-action or task-success result is attached to these rows.

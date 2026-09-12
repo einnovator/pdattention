@@ -228,6 +228,27 @@ def test_conservative_action_equivalence_ignores_comment_only_lines():
     assert arm["first_conservative_action_divergence"] == 3
 
 
+def test_reducer_aggregates_negative_exclusion_and_reacquisition_diagnostics():
+    full, candidate, _ = _comparison_artifacts()
+    candidate["rows"][1].update({
+        "excluded_group_count": 1,
+        "excluded_tokens": 17,
+        "generated_reacquired_excluded_resource_ids": ["foo.py"],
+        "false_exclusion_immediate_reacquisition_proxy": True,
+        "exclusions": [{"rule_id": "H3_READ_SUPERSEDED", "excluded_tokens": 17}],
+    })
+    summary = reduce_replays([full, candidate])
+    arm = summary["arms"][1]
+    assert arm["decisions_with_exclusion"] == 1
+    assert arm["cumulative_excluded_tokens"] == 17
+    assert arm["decisions_with_immediate_reacquisition"] == 1
+    assert arm["false_exclusion_proxy_decision_ids"] == [2]
+    assert arm["excluded_by_rule"]["H3_READ_SUPERSEDED"] == {
+        "groups": 1, "tokens": 17,
+    }
+    assert "## Negative-exclusion diagnostics" in render_markdown(summary)
+
+
 @pytest.mark.parametrize(
     ("field", "message"),
     [
