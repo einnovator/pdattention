@@ -125,6 +125,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=18125)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
+    parser.add_argument(
+        "--cpu-offload-gb",
+        type=float,
+        default=0.0,
+        help="GiB of model weights to offload to CPU through vLLM.",
+    )
     parser.add_argument("--storage", default=".pra/vllm-cuda-agent")
     args = parser.parse_args()
     served_model = args.served_model or args.model
@@ -142,6 +148,7 @@ def main() -> None:
         max_model_len=args.max_model_len,
         max_num_seqs=1,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        cpu_offload_gb=args.cpu_offload_gb,
         enable_prefix_caching=True,
         enforce_eager=True,
         disable_hybrid_kv_cache_manager=True,
