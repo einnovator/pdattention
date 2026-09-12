@@ -4,14 +4,14 @@
 \usepackage[hidelinks]{hyperref}
 \graphicspath{{../shared/results/paper2_6_hybrid_pra/}{../shared/results/paper2_6_hybrid_pra/channel_geometry/}{../shared/results/paper2_6_hybrid_pra/channel_selection/}{../shared/results/paper2_6_hybrid_pra/channel_selection/normalized_efficiency/}{../shared/results/paper2_6_hybrid_pra/final_iteration/}{../shared/results/paper2_6_hybrid_pra/indexed_confirmation/}{../shared/results/paper2_6_hybrid_pra/end_to_end_confirmation/}{../shared/results/paper2_6_hybrid_pra/interaction_confirmation/}}
 \setlength{\emergencystretch}{3em}
-\title{Multi-Representational Memory Discovery for Progressive Retrieval Attention}
+\title{Retrieval Representation and Native-State Consumption Under a Bounded Memory Budget}
 \author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
 \date{\today}
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Progressive Retrieval Attention (PRA) exposes a large logical memory while admitting only a small native-key/value working set to attention. That design moves a basic question upstream: how should the system discover the few memory objects worth materializing? We compare contextual semantic gists with exact model-token identity, BM25, approximate token matching, and state-dependent hybrid search. The representations fail differently. In a fresh Gate B evaluation with 20 validation and 50 held-out identities per dataset, Qwen3-0.6B and SmolLM2-135M reproduce the same dataset-level ordering: BM25 leads HotpotQA evidence recall at 0.665 and 0.662, whereas approximate matching leads QASPER at 0.747 and 0.783. A sparse posting-list prototype preserves exhaustive Top-4 output for every paired query while scoring about one tenth of candidates and reducing mean Python routing time by 68.4x; at 4,096 chunks, exact indexed lookup is 283--300x faster. Fuzzy paths remain too slow for production serving. We then carry selected identities through a matched four-chunk, 128-token native-K/V materializer. On HotpotQA, correct memory improves frozen-model gold-answer likelihood, and an evidence oracle beats irrelevant memory for both model families. On QASPER, retrieval transfers across models but fixed-channel likelihood gains over disabled memory remain unresolved, even though oracle memory still beats irrelevant memory. Generated EM/F1 is weak throughout. A broader four-dataset study further shows that root and successor search prefer different representations on three datasets. The resulting conclusion is deliberately split: multi-representational sparse discovery is feasible, but retrieval success and useful model consumption are separate problems. PRA should expose retrieval representation as an explicit action rather than hide it inside one universal score.
+Progressive Retrieval Attention (PRA) exposes a logical memory while admitting a bounded native key/value working set. We ask which representation should retrieve the identities to admit, comparing contextual semantic gists, exact model-token identity, BM25, approximate matching, and hybrid search. The primary evaluation is an annotation-constructed mechanism benchmark: evidence strings are prepended to a 1,536-token source before retrieval. A same-budget first-four positional control consequently reaches 0.990--0.995 HotpotQA and 0.954 QASPER evidence recall, above every routed channel; these results do not establish ordinary document retrieval. Within this controlled setting, BM25 leads held-out HotpotQA and approximate matching leads QASPER for both tested model/tokenizer families on the same 50 questions per dataset. The learned ensemble remains below a validation-selected fixed channel in three of four panels. A posting-list prototype matches exhaustive Top-4 on all 96 synthetic scaling queries while scoring about one tenth of rows, but its 68.4x mean routing speedup is relative to the matching Python exhaustive implementation and its semantic reserve still requires full-corpus scores. After selected identities enter a matched four-layer native-K/V materializer, Qwen HotpotQA semantic memory improves gold-answer token likelihood over disabled, shuffled, and irrelevant controls; generated-F1 improvement remains unresolved. On QASPER, evidence retrieval is high but routed likelihood gains over disabled memory remain unresolved, although oracle memory beats irrelevant memory. Retrieval success and useful frozen-model consumption are therefore separate empirical questions.
 \end{abstract}
 
 \section{Introduction}
@@ -32,14 +32,15 @@ S_{\mathrm{root}}\neq S_{\mathrm{succ}}.
 \]
 The same distinction separates this work from static sparse--dense fusion. We do not propose hybrid information retrieval as a novelty. We ask which retrieval representation should address identity-aligned PRA memory at each stage, whether those choices can be indexed sparsely, and whether the selected memory produces a causal effect after native-K/V admission.
 
-The paper answers four questions. First, no single measured representation suffices: semantic, exact, BM25, and approximate channels recover different evidence. Second, this heterogeneity replicates on fresh identities across two tested model/tokenizer families. Third, posting-list candidate generation preserves Top-4 retrieval in the measured suite while touching about 10\% of candidates on average. Fourth, correctly discovered HotpotQA memory produces useful frozen-model likelihood effects, whereas QASPER demonstrates that strong retrieval can coexist with unresolved fixed-channel consumption.
+The paper answers four questions within this annotation-constructed mechanism setting. First, measured semantic, exact, BM25, and approximate channels recover different evidence, but a positional first-four control exposes the shortcut created by evidence front-loading. Second, channel ordering repeats across two tested model/tokenizer families evaluated on the same held-out questions; this is model replication on a shared task sample, not two independent samples. Third, posting-list candidate generation empirically preserves Top-4 retrieval in the synthetic scaling suite while touching about 10\% of rows during final channel scoring. Fourth, routed HotpotQA memory produces likelihood effects under specific controls, whereas QASPER demonstrates that high retrieval recall can coexist with unresolved fixed-channel consumption.
 
 Our contributions are:
 \begin{enumerate}[leftmargin=*]
 \item a multi-representational PRA discovery formulation that separates semantic relatedness from token and reference identity;
-\item fresh cross-model evidence that retrieval representation is heterogeneous, with BM25 leading HotpotQA and approximate matching leading QASPER;
-\item sparse indexed candidate generation that preserves measured Top-4 behavior while substantially reducing prototype routing work;
-\item a matched native-K/V Gate B showing causal HotpotQA likelihood gains and a QASPER retrieval-to-consumption counterexample;
+\item a controlled, annotation-constructed comparison of retrieval representations, including a positional baseline that reveals the construction's substantial front-loading advantage;
+\item shared-question model replication of channel heterogeneity, with paired question-level uncertainty and an explicit negative result for the tested adaptive ensemble;
+\item sparse indexed candidate generation that preserves measured Top-4 behavior on a synthetic scaling suite while substantially reducing work relative to its Python exhaustive implementation;
+\item a matched native-K/V evaluation showing routed-content HotpotQA likelihood effects and a QASPER retrieval-to-consumption counterexample, without a generated-answer gain;
 \item root/successor and interaction evidence showing dependence on stage, budget, granularity, and model; and
 \item a versioned retrieval-action and provenance interface for downstream adaptive control.
 \end{enumerate}
@@ -67,17 +68,17 @@ $\downarrow$\\[-1pt]
 $\downarrow$\\[-1pt]
 \fbox{\parbox{.84\linewidth}{\centering Frozen-model consumption: gold-answer likelihood, generated EM/F1, causal controls, and physical accounting}}
 \end{tabular}
-\caption{Discovery, materialization, and consumption are separate interfaces. Paper~2.6 changes the representation used to discover logical identities, holds native-K/V materialization fixed in Gate B, and then measures whether the frozen consumer benefits.}
+\caption{Discovery, materialization, and consumption are separate interfaces. Paper~2.6 changes the representation used to discover logical identities, holds native-K/V materialization fixed in the held-out mechanism evaluation, and then measures whether the frozen consumer benefits.}
 \label{fig:architecture}
 \end{figure}
 
-For evaluation, let $E$ be the required evidence identities and $K$ the deduplicated selected set. We introduce three quality quantities together:
+For evaluation, let $E$ be the nonempty set of required evidence-span identities, $S$ the deduplicated selected chunk identities, $I(S)\subseteq E$ the evidence spans intersected by $S$, and $H(S)\subseteq S$ the selected chunks intersecting any evidence span. We report
 \[
-R_E=\frac{|K\cap E|}{|E|},\qquad
-P_E=\frac{|K\cap E|}{|K|},\qquad
-C_E=\mathbf 1[E\subseteq K].
+R_E=\frac{|I(S)|}{|E|},\qquad
+P_E=\frac{|H(S)|}{|S|},\qquad
+C_E=\mathbf 1[I(S)=E].
 \]
-Candidate-normalized cost is reported separately as $K/N$, where $N$ is the logical candidate count, and $K/E$, the selected working-set overhead relative to required evidence. We never substitute candidates scored for chunks selected, physical K/V tokens, layer-token states, or wall-clock time.
+The loaders exclude empty-evidence examples. Metrics map each annotation string to its first exact occurrence in the constructed source; selected chunk identities are deduplicated before scoring. Candidate-normalized cost is reported separately as $|S|/N$, where $N$ is the logical candidate count, and $|S|/|E|$, the selected working-set overhead relative to required evidence. We never substitute candidates scored for chunks selected, physical K/V tokens, layer-token states, or wall-clock time.
 
 \section{Retrieval Representations}
 Table~\ref{tab:representations} summarizes the primary actions. All channels return stable row identities and retain provenance. The semantic channel scores a contextual query $q_{t,\ell}$ against layer-aligned chunk gist $g_{i,\ell}$,
@@ -104,7 +105,7 @@ Hybrid/stateful & complementary channels and newly exposed state & distractor di
 \end{tabularx}
 \end{table}
 
-The token-native sidecar uses the host tokenizer rather than a second NLP vocabulary. It stores raw token IDs, normalized pieces, token $n$-grams, BM25 terms, character trigrams, stable URIs, and row-aligned source offsets. Unicode NFKC and case folding repair compatibility forms, while aliases can come from headings, parenthetical names, or an application registry. Bounded token edit distance and mean host-input-embedding similarity are diagnostic extensions rather than silent defaults.
+The token-native sidecar uses the host tokenizer rather than a second tokenizer vocabulary. It stores raw token IDs, normalized pieces, token $n$-grams, character trigrams, stable URIs, and row-aligned source offsets. BM25 nevertheless adds a lexical term layer: model tokens are decoded, word terms are normalized, and corpus document frequencies are maintained. Unicode NFKC and case folding repair compatibility forms, while aliases can come from headings, parenthetical names, or an application registry. Bounded token edit distance and mean host-input-embedding similarity are diagnostic extensions rather than silent defaults.
 
 \subsection{Sparse Indexed Candidate Generation}
 Exhaustive Python scoring makes routing cost proportional to the full logical memory even when only a few rows share query evidence. The indexed path instead constructs a deduplicated candidate union
@@ -116,7 +117,7 @@ q\rightarrow\mathcal U(q)=
 \]
 then applies the requested channel only inside the bounded pool. A reserved semantic slice prevents lexical postings from removing every semantically plausible row. Stable identities deduplicate cross-channel unions before ranking.
 
-Across 256, 1,024, and 4,096 chunks and both tokenizers, a 64-row pool reproduces exhaustive Top-4 output for every paired query. Averaged over the scaling suite, the indexed path scores 9.99\% of candidates and is 68.36x faster than the matching exhaustive Python implementation. At 4,096 chunks, exact lookup falls from 33.6--37.0~s to 119--125~ms, a 283--300x speedup. Weighted, approximate, and cascade paths improve by 56--64x but still take 0.50--0.65~s per query. These are mechanism and prototype cost results, not production-serving claims.
+Across 256, 1,024, and 4,096 synthetic chunks and both tokenizers, a 64-row pool reproduces exhaustive Top-4 output on all 96 templated identifier-query comparisons. This is empirical parity on the measured suite, not a guarantee for arbitrary queries or corpora. Averaged over the suite, the indexed path sends 9.99\% of rows to final channel scoring and is 68.36x faster than the matching exhaustive Python implementation. The percentage excludes posting collection and semantic-score production: the current reserve receives a full semantic score vector and sorts it to retain semantically plausible rows. At 4,096 chunks, exact lookup falls from 33.6--37.0~s to 119--125~ms, a 283--300x prototype speedup. Weighted, approximate, and cascade paths improve by 56--64x but still take 0.50--0.65~s per query. These timings exclude model inference and are not comparisons with a production search engine.
 
 \begin{figure}[H]
 \centering
@@ -125,54 +126,96 @@ Across 256, 1,024, and 4,096 chunks and both tokenizers, a 64-row pool reproduce
 \label{fig:indexed-latency}
 \end{figure}
 
-The immutable index rebuilds corpus statistics when references are added. At 4,096 chunks, cold construction takes 3.37~s for Qwen and 2.76~s for SmolLM; adding 64 chunks by full-statistics rebuild takes about 0.80~s. Serialized payload size is 10.06 and 10.94~MiB, excluding Python-object overhead. Appendix~\ref{app:index} gives the detailed timing and implementation contract.
+The immutable index rebuilds corpus statistics when references are added. At 4,096 chunks, cold construction takes 3.37~s for Qwen and 2.76~s for SmolLM; adding 64 chunks by full-statistics rebuild takes about 0.80~s. Warm lookup is reported separately. The index's estimated serialized payload is 10.06 and 10.94~MiB, excluding Python-object overhead and the external semantic-score computation. Appendix~\ref{app:index} gives the detailed timing and implementation contract.
 
-\section{Main Evaluation: Fresh Two-Model Gate B}
+\section{Held-out Retrieval and Consumption Evaluation}
 \subsection{Protocol}
-Gate B is the primary HotpotQA/QASPER evaluation. It uses Qwen3-0.6B and SmolLM2-135M with identities disjoint from the earlier discovery cohort. For each dataset, 20 examples tune only observable selector parameters and 50 fresh examples form the held-out test. A serialized audit confirms no overlap among the 48 legacy, 40 validation, 100 test, and 16 interaction identities.
+The campaign recorded as Gate B is the primary HotpotQA/QASPER mechanism evaluation. It uses Qwen3-0.6B and SmolLM2-135M with identities disjoint from the earlier discovery cohort. For each dataset, 20 examples tune only observable selector parameters and 50 fresh examples form the held-out test. Both model families evaluate the same questions. A serialized audit confirms no overlap among the four identity groups in Table~\ref{tab:cohorts}.
 
-The mechanism construction places annotated evidence strings first, appends the original source, bounds the result to 1,536 tokens, and partitions it into 32-token chunks. Gold labels do not enter fixed or learned channel scores, but evidence-first construction is annotation dependent; Gate B is not an unmodified QA benchmark. Every routed condition receives four chunks, at most 128 unique native-K/V tokens, and the same four late consumption layers. Disabled and empty controls use no memory; shuffled and irrelevant controls preserve the memory budget with wrong content; bounded direct context places the source in the ordinary prompt and is not compute matched. The oracle is an annotated ceiling.
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Identity groups covered by the serialized overlap audit. Counts combine HotpotQA and QASPER equally. Model rows reuse the same question identities.}
+\label{tab:cohorts}
+\begin{tabularx}{\linewidth}{lrr>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+\toprule
+Group & IDs & Per dataset & Use and construction & Models / seeds\\
+\midrule
+Legacy exclusion & 48 & 24 & overlap guard for prior HotpotQA/QASPER work & Qwen; data seed 20260811\\
+Validation & 40 & 20 & annotation-first; observable selector tuning & both models; data seed 20260823, five controller seeds\\
+Held-out test & 100 & 50 & annotation-first; retrieval and consumption endpoints & both models; data seed 20260823\\
+Interaction & 16 & 8 & annotation-first; descriptive configuration grid & both models; data seed 20260823\\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-\subsection{Retrieval Heterogeneity Replicates}
-Table~\ref{tab:gateb-retrieval} gives the complete fixed-channel comparison. Dataset-level ordering is stable across two model/tokenizer families: BM25 leads HotpotQA at 0.665 and 0.662 recall, whereas approximate matching leads QASPER at 0.747 and 0.783. The five-seed validation-trained selector remains below those strongest fixed channels; its Qwen recall ranges only 0.540--0.560 on HotpotQA and 0.556--0.576 on QASPER. The deficit is therefore not explained by one unlucky initialization.
+The mechanism construction places deduplicated annotated evidence strings first, appends the original source, bounds the result to 1,536 tokens, and partitions it into 32-token chunks. This only deduplicates the prepended list; evidence generally remains duplicated inside the appended source. Gold labels do not enter fixed or learned channel scores, but they determine source construction and metric locations, so this is not an unmodified QA benchmark. A tokenization-only audit finds that a same-budget first-four-chunk control already recovers .990--.995 HotpotQA evidence and .954 QASPER evidence. Literal evidence duplication remains in 48--50 of 50 examples per panel. Thus the experiment compares mechanisms under favorable annotation-constructed evidence placement; original-order, randomized-location, and fully deduplicated-source conditions remain unperformed.
+
+Every routed condition receives four chunks, at most 128 unique native-K/V tokens, and the same four late consumption layers. Disabled and empty controls admit no external PRA memory; shuffled and irrelevant controls preserve the memory budget with wrong content. Bounded direct context places the source in the ordinary prompt and is neither compute nor quality matched. The oracle is an annotated ceiling.
+
+\subsection{Shared-Question Retrieval Differences}
+Table~\ref{tab:gateb-retrieval} gives the complete fixed-channel comparison and the positional construction control. Among routed methods, dataset-level ordering repeats across two model/tokenizer families on the same questions: BM25 leads HotpotQA at 0.665 and 0.662 recall, whereas approximate matching leads QASPER at 0.747 and 0.783. Paired winner-minus-semantic intervals exclude zero in all four panels (Table~\ref{tab:paired-retrieval}), but the winners were identified descriptively on held-out means and the intervals do not remove that post-selection caveat. The five-seed validation-trained ensemble remains below the strongest fixed channel; this architecture exposes representation choice but has not demonstrated a successful runtime selector.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Gate B held-out evidence recall, 50 examples per dataset and model. Bold marks the best fixed channel in each row. All routes select at most four chunks.}
+\caption{Annotation-constructed held-out evidence recall, 50 shared question identities per dataset and model. Bold marks the best routed fixed channel; Pos.-4 selects the first four chunks without retrieval. All conditions use at most four chunks.}
 \label{tab:gateb-retrieval}
-\begin{tabular}{llrrrrrr}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llrrrrrrr}
 \toprule
-Model & Dataset & Semantic & Exact & BM25 & Approx. & Hybrid & Adaptive\\
+Model & Dataset & Semantic & Exact & BM25 & Approx. & Hybrid & Adaptive & Pos.-4\\
 \midrule
-Qwen & HotpotQA & .473 & .482 & \textbf{.665} & .593 & .505 & .543\\
-Qwen & QASPER & .364 & .619 & .228 & \textbf{.747} & .457 & .576\\
-SmolLM & HotpotQA & .320 & .450 & \textbf{.662} & .593 & .422 & .518\\
-SmolLM & QASPER & .348 & .609 & .328 & \textbf{.783} & .437 & .446\\
+Qwen & HotpotQA & .473 & .482 & \textbf{.665} & .593 & .505 & .543 & .995\\
+Qwen & QASPER & .364 & .619 & .228 & \textbf{.747} & .457 & .576 & .954\\
+SmolLM & HotpotQA & .320 & .450 & \textbf{.662} & .593 & .422 & .518 & .990\\
+SmolLM & QASPER & .348 & .609 & .328 & \textbf{.783} & .437 & .446 & .954\\
 \bottomrule
-\end{tabular}
+\end{tabular}}
+\end{table}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Paired question-level evidence-recall differences with 95\% bootstrap intervals (2,000 draws). Win$-$Sem and Hybrid$-$Best use held-out descriptive choices. Adaptive$-$Frozen compares the ensemble with the validation-selected fixed channel: BM25 on HotpotQA and exact on QASPER.}
+\label{tab:paired-retrieval}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llrrr}
+\toprule
+Model & Dataset & Win$-$Sem & Hybrid$-$Best & Adaptive$-$Frozen\\
+\midrule
+Qwen & HotpotQA & $+.192\ [+.032,+.343]$ & $-.160\ [-.323,.000]$ & $-.122\ [-.222,-.030]$\\
+Qwen & QASPER & $+.382\ [+.204,+.562]$ & $-.290\ [-.447,-.130]$ & $-.043\ [-.190,+.100]$\\
+SmolLM & HotpotQA & $+.342\ [+.203,+.477]$ & $-.240\ [-.367,-.108]$ & $-.143\ [-.250,-.050]$\\
+SmolLM & QASPER & $+.436\ [+.273,+.589]$ & $-.347\ [-.477,-.217]$ & $-.163\ [-.300,-.037]$\\
+\bottomrule
+\end{tabular}}
 \end{table}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=.96\linewidth]{end_to_end_retrieval.pdf}
-\caption{Cross-model Gate B evidence recall. Retrieval preference follows the dataset more consistently than the model family, while the observable selector stays below the strongest fixed channel.}
+\caption{Shared-question cross-model evidence recall within the annotation-constructed evaluation. Routed-channel preference follows the dataset more consistently than the model family, while the observable selector stays below the strongest fixed channel. The positional control is reported in Table~\ref{tab:gateb-retrieval}.}
 \label{fig:gateb-retrieval}
 \end{figure}
 
-\subsection{Correct Memory Helps on HotpotQA}
-Retrieval becomes useful to PRA only when the frozen model responds beneficially after native-K/V materialization. Table~\ref{tab:gateb-consumption} reports the paired likelihood effects that test this boundary. On HotpotQA, semantic memory improves mean gold-answer token log probability over disabled PRA by 0.744 for Qwen and 0.185 for SmolLM; both paired bootstrap intervals exclude zero. More stringently, oracle evidence beats equal-budget irrelevant memory by 0.770 and 0.256. Correct memory identity therefore matters after admission rather than merely perturbing logits because extra K/V exists.
+\subsection{Routed-Content Likelihood Effects on HotpotQA}
+Retrieval becomes useful to PRA only when the frozen model responds beneficially after native-K/V materialization. Gold-answer likelihood is the arithmetic mean of teacher-forced log probabilities over the model tokens of one stored reference continuation. HotpotQA contributes its dataset answer; QASPER contributes the yes/no value from the first eligible annotation. The evaluation does not maximize over additional accepted answers or annotations.
+
+Table~\ref{tab:gateb-consumption} reports paired likelihood effects. On HotpotQA, semantic memory improves mean gold-answer token log probability over disabled PRA by 0.744 for Qwen and 0.185 for SmolLM. For Qwen, the routed semantic payload also beats equal-budget shuffled and irrelevant memory by 0.410 and 0.426, with both intervals excluding zero. Oracle evidence beats equal-budget irrelevant memory by 0.770 and 0.256. These controls establish a content-specific likelihood effect in the stated panels, not a general answer-quality gain.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Gate B causal consumption effects. Values are paired mean changes in gold-answer token log probability with 95\% bootstrap intervals.}
+\caption{Held-out consumption effects. Values are paired mean changes in the per-answer-token mean gold log probability with 95\% bootstrap intervals.}
 \label{tab:gateb-consumption}
 \begin{tabularx}{\linewidth}{llXr}
 \toprule
 Dataset & Model & Contrast & Effect [95\% CI]\\
 \midrule
 HotpotQA & Qwen & semantic memory $-$ disabled & $+.744\ [+.414,+1.132]$\\
+HotpotQA & Qwen & semantic memory $-$ shuffled & $+.410\ [+.101,+.751]$\\
+HotpotQA & Qwen & semantic memory $-$ irrelevant & $+.426\ [+.102,+.803]$\\
 HotpotQA & SmolLM & semantic memory $-$ disabled & $+.185\ [+.038,+.345]$\\
 HotpotQA & Qwen & oracle evidence $-$ irrelevant memory & $+.770\ [+.508,+1.052]$\\
 HotpotQA & SmolLM & oracle evidence $-$ irrelevant memory & $+.256\ [+.163,+.354]$\\
@@ -191,6 +234,8 @@ QASPER approximate matching recovers roughly three quarters of evidence for both
 \]
 This counterexample redirects later work toward admission, attention competition, consumer adaptation, and PRA-aware training rather than treating higher recall as sufficient.
 
+Retrieval recall and likelihood also disagree within HotpotQA. For Qwen, BM25 has the highest routed evidence recall (.665) but a smaller disabled-relative likelihood change (+.545) than semantic retrieval (+.744); its shuffled-memory contrast is +.211 with interval $[-.026,+.457]$. The channel that finds more annotated spans is therefore not necessarily the channel whose admitted payload most helps this frozen consumer.
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=.96\linewidth]{end_to_end_confirmation.pdf}
@@ -198,17 +243,17 @@ This counterexample redirects later work toward admission, attention competition
 \label{fig:gateb-logp}
 \end{figure}
 
-Physical accounting confirms the intended match. Routed conditions materialize 127.8--128.0 unique tokens, 8.33--9.36\% of the bounded source, at each of four late layers. This is approximately 512 layer-token states, or 1.05~MiB of fp16 K/V for Qwen and 0.39~MiB for SmolLM under their grouped-query head geometries. Disabled and empty conditions report no active K/V.
+Physical accounting confirms a near match rather than fictitious identity. Mean realized payload ranges from 127.32 to 128.00 unique tokens across routed panels, or 8.33--9.37\% of the bounded source, at each of four late layers. At exactly 128 tokens this is 512 layer-token states. The recorded grouped-query geometries (8 Qwen or 3 SmolLM K/V heads, head width 64, K and V, two bytes per element) imply 1.00~MiB and 0.375~MiB of 16-bit payload. These are formula-derived payload sizes, not allocator measurements. Disabled and empty conditions report zero external PRA K/V; they still use the decoder's ordinary prompt and generation state.
 
-Generated answers remain weak. Qwen HotpotQA memory conditions obtain EM 0.00--0.02 and F1 0.074--0.120; SmolLM EM is zero. Bounded direct context reaches Qwen HotpotQA F1 0.183 but takes 5.28~s per example, versus about 1.4~s for 128-token PRA memory. These models make teacher-forced likelihood the more sensitive causal measure. We do not reinterpret it as a QA-accuracy gain.
+Generated answers remain weak. Qwen semantic-minus-disabled HotpotQA F1 is only $+.00894$ with interval $[-.02971,+.04589]$; it does not establish a generated-answer improvement. Qwen HotpotQA memory conditions obtain EM 0.00--0.02 and F1 0.074--0.120; SmolLM EM is zero. Bounded direct context reaches Qwen HotpotQA F1 0.183 at 5.28~s per example, while 128-token PRA conditions take about 1.4~s at lower quality. These are separate quality--cost operating points, not a quality-matched speedup; source encoding and index construction also have different amortization boundaries. Teacher-forced likelihood is the more sensitive causal endpoint here, and we do not reinterpret it as a QA-accuracy gain.
 
 \section{Breadth: Four-Dataset Channel Geometry}
-Gate B establishes replication and consumption on HotpotQA/QASPER. The earlier frozen-feature cohort adds breadth across QASPER, HotpotQA, 2Wiki, and MuSiQue while holding model, layer, chunk size, and four-chunk request budget fixed. Table~\ref{tab:four-channel} shows a different winning channel on three task regimes: QASPER favors exact spans, HotpotQA and 2Wiki favor BM25, and MuSiQue favors approximate matching. Static and iterative hybrid search improve over semantic gists in several rows but never dominate the best individual channel.
+The held-out mechanism evaluation supplies shared-question model replication and consumption measurements on HotpotQA/QASPER. The earlier frozen-feature cohort adds breadth across QASPER, HotpotQA, 2Wiki, and MuSiQue while holding model, layer, chunk size, and four-chunk request budget fixed. Its QASPER exact winner differs from the approximate winner in the fresh held-out construction; the cohorts and settings differ, so these are not interchangeable estimates. Table~\ref{tab:four-channel} shows a different winning channel on three task regimes. Static and iterative hybrid search improve over semantic gists in several rows but never dominate the best individual channel.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Legacy held-out recall/precision at four requested 32-token chunks. This breadth study is secondary to fresh Gate B.}
+\caption{Legacy held-out recall/precision at four requested 32-token chunks. This breadth study is secondary to the fresh held-out mechanism evaluation.}
 \label{tab:four-channel}
 \resizebox{\linewidth}{!}{%
 \begin{tabular}{lrrrrrr}
@@ -269,7 +314,7 @@ QASPER retains exact identity at both stages. HotpotQA and MuSiQue prefer lexica
 Simple observable selectors do not recover the oracle. A validation-trained linear selector remains below the best held-out fixed channel on three datasets and ties only MuSiQue. Root disagreement has correlation 0.052 with true per-example oracle headroom. Paper~2.6 therefore exports $S_{\mathrm{root}}$ and $S_{\mathrm{succ}}$ as actions rather than claiming adaptive control. Full oracle, selector, confidence, and transition diagnostics appear in Appendices~\ref{app:selector} and~\ref{app:root-successor}.
 
 \section{Representation, Budget, Granularity, and Model}
-The interaction study crosses eight channels with 16-, 32-, and 64-token chunks, Top-2/4/8 selection, early/late routing layers, two datasets, and two model families. Its eight examples per dataset are disjoint from the legacy, validation, and Gate B sets. Because it contains only 16 identities, it diagnoses coupling rather than replacing Gate B.
+The interaction study crosses eight channels with 16-, 32-, and 64-token chunks, Top-2/4/8 selection, early/late routing layers, two datasets, and two model families. Its eight examples per dataset are disjoint from the legacy, validation, and held-out test sets. Because it contains only 16 identities, it diagnoses coupling rather than replacing the held-out evaluation.
 
 At 32-token granularity, broader selection buys coverage at the cost of selectivity. Averaged over channels, late-layer Qwen HotpotQA recall rises from 0.562 to 0.703 to 0.883 as Top-$K$ grows from 2 to 4 to 8; complete recovery rises from 0.406 to 0.562 to 0.812, while precision falls from 0.414 to 0.229. SmolLM follows the same pattern, reaching 0.953 recall and 0.906 complete recovery at Top-8 while precision falls to 0.225. QASPER reaches 0.917 and 0.943 recall at Top-8 for Qwen and SmolLM. Thus
 \[
@@ -293,16 +338,16 @@ within the measured scope. This is a reason to expose configuration dimensions, 
 
 \section{Discussion}
 \paragraph{Meaning and identity are complementary.}
-Semantic gists recover contextual relations, while exact, BM25, and approximate channels preserve different surface evidence. Their stable cross-model dataset ordering in Gate B makes heterogeneity more than a one-tokenizer curiosity.
+Semantic gists recover contextual relations, while exact, BM25, and approximate channels preserve different surface evidence. Repeated ordering across two tokenizers/models on the same held-out questions makes this more than a one-tokenizer curiosity, but it is not independent task-sample replication and all primary sources are annotation constructed.
 
 \paragraph{Static fusion is not enough.}
 Channels retrieve complementary evidence and complementary distractors. Under a small working-set budget, uncalibrated union or rank fusion can spend scarce slots on the latter. The useful object is an explicit retrieval action with provenance, not a larger undifferentiated score vector.
 
 \paragraph{Sparse discovery is feasible, but the fuzzy path is unfinished.}
-Posting lists preserve the measured Top-4 outputs while reducing candidate work and exact-query latency sharply. Character and edit-based fallback still consumes hundreds of milliseconds in Python, and the current immutable rebuild is not an incremental production index.
+Posting lists preserve the measured Top-4 outputs on synthetic templated queries while reducing final scoring work and exact-query latency relative to exhaustive Python. The semantic reserve still needs full-corpus scores and sorting. Character and edit-based fallback consumes hundreds of milliseconds, and the current immutable rebuild is not an incremental production index.
 
 \paragraph{Retrieval and consumption are distinct bottlenecks.}
-HotpotQA supplies the positive bridge: correct sparse memory improves frozen-model likelihood and beats wrong memory. QASPER supplies the limiting case: high retrieval recall does not establish a fixed-channel gain over disabled memory. Later PRA work must study admission, attention competition, model adaptation, and training alongside retrieval.
+HotpotQA supplies the positive bridge: routed semantic memory changes frozen-model likelihood relative to disabled and wrong-memory controls, while generated F1 remains unresolved. QASPER supplies the limiting case: high retrieval recall does not establish a fixed-channel gain over disabled memory. Later PRA work must study admission, attention competition, model adaptation, and training alongside retrieval.
 
 \paragraph{Representation belongs in the control interface.}
 Root and successor choices differ, and channel preference interacts with granularity and budget. The versioned action contract preserves independent root/successor methods, confidence status, provenance, and cost fields for adaptive control in Paper~3.5~\cite{simao2026adaptive}. Paper~3 separately controls how selected identities become physical K/V~\cite{simao2026materialization}.
@@ -318,28 +363,28 @@ MDR conditions later dense retrieval on earlier passages; IRRR builds a reasonin
 Approximate matching handles insertions, deletions, substitutions, and related surface changes~\cite{navarro2001approx}. Contextual entity linking, such as BLINK's bi-encoder retrieval and cross-encoder reranking, addresses the harder problem of resolving ambiguous mentions~\cite{wu2020blink}. Our token-native resolver is intentionally lighter. Its typo and alias gains coexist with stale-alias and wrong-instance failures, so it should not be read as a full entity linker.
 
 \paragraph{Long-context and K/V memory.}
-RETRO retrieves neighboring text chunks into a trained decoder, while Memorizing Transformers query a store of prior activation keys and values~\cite{borgeaud2022retro,wu2022memorizing}. Quest and RetrievalAttention perform query-aware physical K/V selection or indexing~\cite{tang2024quest,liu2025retrievalattention}. Paper~2.6 operates primarily upstream, discovering identity-bearing logical objects, then uses Gate B to verify their native-K/V consumption. The distinction is
+RETRO retrieves neighboring text chunks into a trained decoder, while Memorizing Transformers query a store of prior activation keys and values~\cite{borgeaud2022retro,wu2022memorizing}. Quest and RetrievalAttention perform query-aware physical K/V selection or indexing~\cite{tang2024quest,liu2025retrievalattention}. Paper~2.6 operates primarily upstream, discovering identity-bearing logical objects, then uses the held-out mechanism evaluation to test their native-K/V consumption. The distinction is
 \[
 \boxed{\text{logical memory discovery}}\neq
 \boxed{\text{physical K/V selection or compression}}.
 \]
 
 \section{Limitations}
-Gate B covers two small frozen model families and only HotpotQA/QASPER. Its evidence-first bounded construction is annotation dependent and does not reproduce an unmodified document benchmark. 2Wiki and MuSiQue appear only in the smaller legacy frozen-feature breadth study. The interaction cohort has eight examples per dataset. Five selector seeds measure optimization variability, not independent sample uncertainty.
+The primary evaluation covers two small frozen model families and only HotpotQA/QASPER. Both models reuse the same held-out identities. Its evidence-first bounded construction is annotation dependent, nearly saturates a first-four positional baseline, and frequently duplicates evidence in the appended source; it does not reproduce an unmodified document benchmark. Original-order, randomized-location, and fully deduplicated-source conditions are unperformed, so claims are restricted to mechanism behavior under the constructed source. 2Wiki and MuSiQue appear only in the smaller legacy frozen-feature breadth study. The interaction cohort has eight examples per dataset. Five selector seeds measure optimization variability, not independent sample uncertainty.
 
-Generated EM/F1 is weak, and the positive end-to-end claim is limited to paired gold-answer likelihood on HotpotQA. QASPER fixed-channel consumption remains unresolved. Natural top-reference correctness is only an evidence-overlap proxy, not adjudicated coreference. Validation-fitted confidence does not transfer reliably, confidently wrong references remain possible, and no learned selector closes the fixed-channel gap.
+Generated EM/F1 is weak, and the positive end-to-end claim is limited to paired gold-answer likelihood on HotpotQA. The likelihood metric scores one stored continuation and does not maximize over multiple acceptable answers. QASPER fixed-channel consumption remains unresolved. Natural top-reference correctness is only an evidence-overlap proxy, not adjudicated coreference. Validation-fitted confidence does not transfer reliably, confidently wrong references remain possible, and the tested learned ensemble does not close the fixed-channel gap.
 
-The index reports serialized payload bytes rather than Python-object memory. It rebuilds corpus statistics on update. Exact lookup is promising, but 0.50--0.65~s fuzzy routes are not production ready. The study does not test larger models, learned contextual entity linking, incremental serving indexes, larger selector-training sets, or PRA-aware fine-tuning. Failure to reproduce indexed parity, cross-model channel ordering, or the paired correct-versus-wrong-memory effects would falsify the corresponding claims independently.
+The index study uses synthetic rows and templated queries. Its candidate fraction excludes semantic-score production, and its payload estimate excludes Python-object memory. It rebuilds corpus statistics on update. Exact lookup is promising, but 0.50--0.65~s fuzzy routes are not production ready. The study does not compare an optimized production lexical engine or test arbitrary-query parity, larger models, learned contextual entity linking, incremental serving indexes, larger selector-training sets, or PRA-aware fine-tuning. Failure to reproduce measured-suite indexed parity, shared-question channel ordering, or the paired routed-content effects would falsify the corresponding claims independently.
 
 \section{Conclusion}
-One retrieval representation does not suffice for PRA memory discovery. Semantic meaning, exact identity, BM25-weighted terms, and approximate surface matching recover different evidence, and their dataset-level preferences replicate across the two tested model/tokenizer families. Sparse posting-list narrowing preserves measured Top-4 behavior while substantially reducing prototype work. Correctly discovered HotpotQA memory then produces a causal frozen-model likelihood benefit after native-K/V admission.
+Within the annotation-constructed sources, semantic meaning, exact identity, BM25-weighted terms, and approximate surface matching recover different evidence, and their dataset-level preferences repeat across two tested model/tokenizer families on shared questions. Yet the near-saturating positional control prevents interpreting these results as an ordinary retrieval benchmark, and the tested adaptive ensemble does not beat its fixed comparator. Sparse posting-list narrowing preserves measured synthetic-suite Top-4 behavior while reducing prototype work relative to exhaustive Python. Routed HotpotQA semantic memory then produces a content-specific frozen-model likelihood effect after native-K/V admission, without a resolved generated-F1 gain.
 
-The boundary is equally important. QASPER shows that high evidence recall does not guarantee useful fixed-channel consumption. Root and successor search can prefer different representations, static fusion does not reliably solve that heterogeneity, and simple observable selectors remain inadequate. Paper~2.6 therefore solves neither adaptive control nor consumer training. It supplies a portable, indexed, multi-representational discovery interface and establishes where retrieval succeeds and where retrieval-to-consumption remains open.
+The boundary is equally important. QASPER shows that high evidence recall does not guarantee useful fixed-channel consumption. Root and successor search can prefer different representations descriptively, static fusion does not reliably solve that heterogeneity, and simple observable selectors remain inadequate. Paper~2.6 therefore solves neither general document retrieval, adaptive control, nor consumer training. It supplies a measured multi-representational discovery interface and identifies where retrieval-to-consumption remains open.
 
 \appendix
 \section{Original Discovery Experiment}
 \label{app:original}
-The original Qwen frozen-feature experiment used eight validation and 16 held-out examples per dataset, layer-27 attention-input states, 32-token mean gists, and four requested chunks. It predates Gate B and is retained for provenance rather than treated as primary evidence. Broad semantic Top-8 deliberately used twice the request budget; the oracle admitted annotated evidence and is only a ceiling.
+The original Qwen frozen-feature experiment used eight validation and 16 held-out examples per dataset, layer-27 attention-input states, 32-token mean gists, and four requested chunks. It predates the fresh held-out campaign and is retained for provenance rather than treated as primary evidence. Broad semantic Top-8 deliberately used twice the request budget; the oracle admitted annotated evidence and is only a ceiling.
 
 \begin{table}[H]
 \centering
@@ -367,7 +412,7 @@ oracle & .876 & 1.000 & 1.000 & .633 & 1.000 & 1.000\\
 \end{tabular}}
 \end{table}
 
-Iterative hybrid improves HotpotQA gist recall by 0.129, with paired 95\% bootstrap interval $[0.018,0.242]$, but remains below BM25. Its QASPER improvement over gist is 0.043 with interval $[-0.014,0.111]$; exact instead improves by 0.140 with interval $[0.053,0.244]$. These small-cohort results anticipated representation heterogeneity but are superseded by Gate B for HotpotQA/QASPER.
+Iterative hybrid improves HotpotQA gist recall by 0.129, with paired 95\% bootstrap interval $[0.018,0.242]$, but remains below BM25. Its QASPER improvement over gist is 0.043 with interval $[-0.014,0.111]$; exact instead improves by 0.140 with interval $[0.053,0.244]$. These small-cohort results anticipated representation heterogeneity but are superseded by the fresh held-out evaluation for HotpotQA/QASPER.
 
 \section{Full Four-Dataset Geometry}
 \label{app:geometry}
@@ -393,7 +438,7 @@ The leakage-audited replay exports 1,255 candidate rows with top score, score ga
 \caption{True selection opportunity and validation instability with identity-paired bootstrap intervals. Oracle effects remain diagnostic ceilings.}
 \end{figure}
 
-Natural Gate B top-reference accuracy further shows that retrieval score is not referential probability. Approximate top-one accuracy is 0.94 on HotpotQA but only 0.36--0.40 on QASPER. Except for approximate HotpotQA, validation thresholds targeting 0.80 precision transfer below 0.64 and often below 0.20 held-out precision.
+Natural held-out top-reference accuracy further shows that retrieval score is not referential probability. Approximate top-one accuracy is 0.94 on HotpotQA but only 0.36--0.40 on QASPER. Except for approximate HotpotQA, validation thresholds targeting 0.80 precision transfer below 0.64 and often below 0.20 held-out precision.
 
 \section{New Addresses and Controlled Chains}
 \label{app:addresses}
@@ -432,7 +477,7 @@ The controlled suite includes stale aliases, wrong instances, wrong relations, s
 \begin{table}[H]
 \centering
 \small
-\caption{Warm routing at 4,096 chunks. Milliseconds are per query; payload MiB excludes Python-object overhead.}
+\caption{Warm routing at 4,096 synthetic chunks with templated identifier queries. Milliseconds are per query against the matching exhaustive Python implementation; payload MiB excludes Python-object overhead and model inference.}
 \begin{tabular}{llrrrr}
 \toprule
 Tokenizer & Channel & Exhaustive & Indexed & Speedup & Payload MiB\\
@@ -449,7 +494,7 @@ SmolLM & cascade & 36886 & 577 & 64x & 10.94\\
 \end{tabular}
 \end{table}
 
-\texttt{TokenNativeIndex} in \path{src/pra_hf/hybrid_discovery.py} owns aligned rows, tokenization, postings, aliases, payload estimates, immutable rebuilds, and channel scoring. Its candidate-union method reserves semantic rows, inserts explicit URI rows, and deduplicates stable identities. Expensive feature families are gated by the requested channel. \texttt{IterativeGistRouter.route} in \path{src/pra_hf/iterative.py} performs root and successor sparse scoring, scatters returned rows into the aligned tensor index, and reuses the inherited visited-set, branch, beam, depth, confidence, and unique-chunk limits.
+\texttt{TokenNativeIndex} in \path{src/pra_hf/hybrid_discovery.py} owns aligned rows, tokenization, postings, aliases, payload estimates, immutable rebuilds, and channel scoring. Its candidate-union method ranks at most half of the 64-row pool from lexical posting votes, fills the remainder from a full semantic-score ranking, inserts explicit URI rows, and deduplicates stable identities. Thus the final scorer is sparse while semantic candidate production is not yet sparse. Expensive final-scoring feature families are gated by the requested channel. \texttt{IterativeGistRouter.route} in \path{src/pra_hf/iterative.py} performs root and successor sparse scoring, scatters returned rows into the aligned tensor index, and reuses the inherited visited-set, branch, beam, depth, confidence, and unique-chunk limits.
 
 \texttt{PRAForCausalLM} constructs the sidecar, validates explicit reference URIs, runs discovery, maps selected conceptual identities across consumption layers, and only then marks K/V as materialized. The public generation API records resolved URI state and physical statistics. Explicit URI priority is therefore a deterministic caller-supplied path, not evidence that the router inferred the correct reference.
 
@@ -519,7 +564,7 @@ SmolLM & QASPER & 64 & exact & 1.000 & .875 & 1.000\\
 \label{app:contract}
 The version-2 action specification freezes five root actions---semantic, exact, BM25, approximate, and hybrid---and five successor actions---native semantic, exact new address, BM25 state, approximate new address, and hybrid state. Each action names its implementation identifier, required state and indexes, legal parameters, confidence outputs, cost metrics, and known failures. Legacy names remain explicit aliases. The schema records whether a source experiment materialized K/V so that discovery-only artifacts cannot be mistaken for consumption measurements.
 
-Committed artifacts include per-example retrieval rows, cohort-overlap audits, controller seed rows, paired causal effects, physical K/V accounting, indexed latency and parity summaries, tokenizer perturbations, complete root--successor matrices, interaction rows, confidence diagnostics, and claim audits. The canonical locations are \path{docs/papers/shared/results/paper2_6_hybrid_pra/} and \path{experiments/paper2_6_hybrid_pra/}. This contract lets Paper~3.5 consume actions and observable fields without importing dataset identity or gold evidence into its controller.
+Committed artifacts include per-example retrieval rows, cohort-overlap audits, controller seed rows, paired retrieval and causal effects, a source-construction audit, physical K/V accounting, indexed latency and parity summaries, tokenizer perturbations, complete root--successor matrices, interaction rows, confidence diagnostics, and claim audits. The claim-to-artifact ledger is \path{docs/papers/paper2_6_hybrid_pra/CLAIM_LEDGER.md}; canonical results and implementation traces are under \path{docs/papers/shared/results/paper2_6_hybrid_pra/} and \path{experiments/paper2_6_hybrid_pra/}. This contract lets Paper~3.5 consume actions and observable fields without importing dataset identity or gold evidence into its controller.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
