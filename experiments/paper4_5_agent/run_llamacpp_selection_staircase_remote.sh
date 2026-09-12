@@ -14,6 +14,7 @@ model=${PRA_AGENT_MODEL_PATH:-/Users/admin.jorge.simao/.ollama/models/blobs/sha2
 interaction_history=${PRA_AGENT_HISTORY:-/Users/admin.jorge.simao/git/rd/paper45-easy50-runs/e2e_gate/llamacpp_task01_pra100_v1/interaction_history.jsonl}
 turns=${PRA_AGENT_REPLAY_TURNS:-31}
 condition_list=${PRA_AGENT_STAIRCASE_CONDITIONS:-"0 1"}
+forced_bundle_start=${PRA_AGENT_FORCED_BUNDLE_START:-}
 
 mkdir -p "$runs"
 mkdir -p "$runs/slots"
@@ -72,15 +73,22 @@ start_engine() {
 run_condition() {
   local omitted=$1
   local label="omit-${omitted}-bundles"
+  local forced_args=()
+  if [[ -n $forced_bundle_start ]]; then
+    label="forced-bundle-${forced_bundle_start}"
+    forced_args=(--forced-bundle-start "$forced_bundle_start")
+  fi
   start_engine "$label"
   cd "$runtime"
+  set +e
   "$python" -m experiments.paper4_5_agent.run_selection_staircase_replay \
     --interaction-history "$interaction_history" \
     --output "$runs/$label.json" \
     --base-url http://127.0.0.1:18101/v1 \
     --model qwen3-coder:30b --engine llama.cpp \
-    --max-omitted-bundles "$omitted" --turns "$turns"
+    --max-omitted-bundles "$omitted" ${forced_args[@]} --turns "$turns"
   local run_status=$?
+  set -e
   cleanup
   return $run_status
 }

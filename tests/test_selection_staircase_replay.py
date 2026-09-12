@@ -1,5 +1,6 @@
 from experiments.paper4_5_agent.run_selection_staircase_replay import (
     ablate_physical_payload,
+    forced_old_causal_bundle,
     oldest_eligible_causal_bundles,
 )
 
@@ -66,3 +67,16 @@ def test_zero_step_is_exact_full_selection():
     assert len(physical["pra"]["resources"]) == 7
     assert audit["omitted_message_indices"] == []
     assert physical["pra"]["metadata"]["selection_complete"] is True
+
+
+def test_forced_bundle_can_ablate_early_progress_after_it_leaves_recent_tail():
+    assert forced_old_causal_bundle(_messages(), 2) == [[2, 3]]
+    physical, audit = ablate_physical_payload(
+        _request_row(), max_omitted_bundles=0, forced_bundle_start=2,
+    )
+    retained = {row["metadata"]["message_index"] for row in physical["pra"]["resources"]}
+    assert retained == {1, 4, 5, 6, 7}
+    assert audit["forced_bundle_start"] == 2
+    assert physical["pra"]["metadata"]["selection_ablation"] == (
+        "forced_old_complete_causal_bundle_v1"
+    )

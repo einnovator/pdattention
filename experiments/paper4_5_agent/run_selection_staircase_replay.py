@@ -107,15 +107,51 @@ def oldest_eligible_causal_bundles(
     return eligible[:max_bundles]
 
 
+def forced_old_causal_bundle(
+    messages: Sequence[Mapping[str, Any]], start_index: int,
+) -> list[list[int]]:
+    """Select one named completed bundle after it leaves the active/recent tail.
+
+    This diagnostic deliberately ignores semantic progress pinning. It tests
+    whether an early analysis/search turn is actually dispensable instead of
+    assuming that a regex match proves causal importance.
+    """
+
+    mandatory = _mandatory_indices(messages)
+    task = _pinned_task_indices(messages, mandatory)
+    recent, _ = _progress_pinned_indices(
+        messages,
+        mandatory | task,
+        recent_turns=2,
+        source_turns=0,
+        progress_turns=0,
+        mutation_turns=0,
+        verification_turns=0,
+    )
+    candidates = [
+        index for index in range(len(messages))
+        if index not in mandatory | task | recent
+    ]
+    return [
+        bundle for bundle in _turn_index_bundles(messages, candidates)
+        if bundle and bundle[0] == start_index
+    ][:1]
+
+
 def ablate_physical_payload(
     request_row: Mapping[str, Any], *, max_omitted_bundles: int,
+    forced_bundle_start: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Drop selected whole records and make the realized selection auditable."""
 
     logical = request_row.get("logical_payload") or {}
     messages = [dict(row) for row in logical.get("messages", ())]
     physical = json.loads(json.dumps(request_row.get("physical_payload") or logical))
-    bundles = oldest_eligible_causal_bundles(messages, max_omitted_bundles)
+    bundles = (
+        forced_old_causal_bundle(messages, forced_bundle_start)
+        if forced_bundle_start is not None
+        else oldest_eligible_causal_bundles(messages, max_omitted_bundles)
+    )
     omitted_indices = {index for bundle in bundles for index in bundle}
     envelope = dict(physical.get("pra") or {})
     resources = list(envelope.get("resources") or ())
@@ -145,8 +181,13 @@ def ablate_physical_payload(
     )
     metadata.update({
         "selection_complete": not removed,
-        "selection_ablation": "oldest_complete_causal_bundles_v1",
+        "selection_ablation": (
+            "forced_old_complete_causal_bundle_v1"
+            if forced_bundle_start is not None
+            else "oldest_complete_causal_bundles_v1"
+        ),
         "selection_ablation_max_bundles": int(max_omitted_bundles),
+        "selection_ablation_forced_bundle_start": forced_bundle_start,
         "selection_ablation_omitted_message_indices": sorted(omitted_indices),
         "selection_ablation_omitted_resource_ids": [
             str(row.get("resource_id")) for row in removed
@@ -168,6 +209,7 @@ def ablate_physical_payload(
         "removed_resource_count": len(removed),
         "selection_granularity": "whole_logical_records",
         "subrecord_kv_selection_qualified": False,
+        "forced_bundle_start": forced_bundle_start,
     }
     return physical, audit
 
@@ -196,6 +238,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "temperature": 0,
         "max_omitted_causal_bundles_per_request": args.max_omitted_bundles,
+        "forced_bundle_start": args.forced_bundle_start,
         "policy": {
             "task_statement": "always retained in full",
             "current_action_observation": "always retained in full",
@@ -211,6 +254,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for request_row, response_row in interactions[: args.turns or None]:
         physical, selection = ablate_physical_payload(
             request_row, max_omitted_bundles=args.max_omitted_bundles,
+            forced_bundle_start=args.forced_bundle_start,
         )
         physical["model"] = args.model
         physical.update({
@@ -258,6 +302,7 @@ def main() -> None:
     parser.add_argument("--model", required=True)
     parser.add_argument("--engine", required=True)
     parser.add_argument("--max-omitted-bundles", type=int, default=0)
+    parser.add_argument("--forced-bundle-start", type=int)
     parser.add_argument("--turns", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=1200)
     args = parser.parse_args()
