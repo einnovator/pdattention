@@ -166,6 +166,25 @@ def gateway_preflight(
     runtime_identity = health.get("runtime_identity")
     if runtime_identity is not None and not isinstance(runtime_identity, dict):
         raise RuntimeError("endpoint runtime_identity must be a JSON object")
+    max_model_len = health.get(
+        "max_model_len",
+        engine.get("max_model_len", effective.get("max_model_len")),
+    )
+    direct_hf_admission = (
+        str(getattr(args, "engine", "")) == "huggingface"
+        and expected_mode is None
+        and bool(getattr(args, "require_endpoint_preflight", False))
+    )
+    if direct_hf_admission:
+        if max_model_len is None:
+            raise RuntimeError(
+                "direct HF admission requires an advertised max_model_len"
+            )
+        if int(max_model_len) != int(args.context_limit):
+            raise RuntimeError(
+                "direct HF admission context mismatch: "
+                f"expected {args.context_limit}, observed {max_model_len}"
+            )
     if native_required and not bool(effective.get("native_kv") or engine.get("native_kv")):
         raise RuntimeError("native PRA treatment requires effective native_kv capability")
     agent_history_qualified = bool(
@@ -272,6 +291,7 @@ def gateway_preflight(
             "chat_template_profile": chat_template_profile,
             "chat_template_digest": chat_template_digest,
             "runtime_identity": runtime_identity,
+            "max_model_len": max_model_len,
             "generation_probe_replayed": True,
         }
     probe: dict[str, Any] = {
@@ -398,6 +418,7 @@ def gateway_preflight(
         "chat_template_profile": chat_template_profile,
         "chat_template_digest": chat_template_digest,
         "runtime_identity": runtime_identity,
+        "max_model_len": max_model_len,
     }
 
 

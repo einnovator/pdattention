@@ -60,6 +60,13 @@ The implementation adds:
   no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
   interval packing, and H2D remain zero; measurement-only cache forks are
   reported outside the production attachment boundary;
+- an HF direct-agent context-window guard that rejects the full rendered
+  logical prompt plus declared completion allowance before plain cache
+  allocation or native canonical-K/V extension, advertises `max_model_len`,
+  and requires exact runner-preflight agreement. A Windows-hosted 7B NF4
+  Task-05 plain retry is valid but unresolved after 30 calls with no patch;
+  Task-01 is quarantined because the pre-fix endpoint let 17 calls exceed the
+  nominal 8,192-token window. No HF PRA-100 arm was launched;
 - portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
 - tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
 - request attachment guards that bind native selections to tenant/session scope

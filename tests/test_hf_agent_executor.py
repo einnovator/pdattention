@@ -160,6 +160,64 @@ def test_hf_agent_bounds_prefill_and_preserves_absolute_positions() -> None:
     assert result.generated == []
 
 
+def test_hf_agent_context_window_guard_counts_declared_completion() -> None:
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.max_model_len = 8
+
+    executor._enforce_context_window(6, 2)
+    with pytest.raises(ValueError, match=(
+        r"prompt_tokens=7, max_new_tokens=2, requested_total=9, "
+        r"max_model_len=8"
+    )):
+        executor._enforce_context_window(7, 2)
+
+
+def test_hf_agent_rejects_nonpositive_context_window() -> None:
+    with pytest.raises(ValueError, match="max_model_len must be positive"):
+        HFAgentHistoryExecutor(
+            object(), object(),
+            model_id="model",
+            model_revision="revision",
+            max_model_len=0,
+        )
+
+
+def test_hf_agent_plain_path_checks_context_before_allocating_cache() -> None:
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.tokenizer = _RoundTripTokenizer()
+    executor.max_model_len = 8
+    executor._checked_template_kwargs = lambda request: {}
+    executor._new_cache = lambda: pytest.fail("over-limit request allocated a cache")
+
+    with pytest.raises(ValueError, match="configured context window"):
+        executor._ordinary_generate(PRAWireRequest(
+            model="model",
+            messages=({"role": "user", "content": "too long"},),
+            max_new_tokens=2,
+        ))
+
+
+def test_hf_agent_native_path_checks_logical_context_before_owner_extension() -> None:
+    executor = object.__new__(HFAgentHistoryExecutor)
+    executor.tokenizer = _RoundTripTokenizer()
+    executor.max_model_len = 8
+    executor._checked_template_kwargs = lambda request: {}
+    executor._ensure_owner = lambda state, source: pytest.fail(
+        "over-limit request extended canonical K/V"
+    )
+    state = SimpleNamespace(ledger=AgentHistoryLedger())
+
+    with pytest.raises(ValueError, match="configured context window"):
+        executor._generate_native(
+            PRAWireRequest(
+                model="model",
+                messages=({"role": "user", "content": "too long"},),
+                max_new_tokens=2,
+            ),
+            state,
+        )
+
+
 def test_ledger_restores_history_but_never_tokenizes_selected_resource() -> None:
     tokenizer = _Tokenizer()
     ledger = AgentHistoryLedger()

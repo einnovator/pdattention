@@ -3754,6 +3754,32 @@ model/scaffold admission failures after the runtime repair, not PRA
 regressions.  HF PRA-100 remains withheld until a plain-success model/task pair
 is found.
 
+A subsequent exact-revision retry moves only the model process to Windows and
+keeps mini-swe-agent and the official grader in WSL, joined by a transparent
+loopback relay.  This avoids the earlier WSL memory-pressure failure without
+changing the model, tokenizer, native template, NF4/FP16 quantization,
+temperature-zero sampling, or scaffold.  Task~05
+(\texttt{pytest-dev\_\_pytest-7982}) is a valid 8,192-token plain admission
+failure: it remains within the declared window (6,402 prompt tokens at maximum,
+7,426 including the requested 1,024-token completion allowance), reaches the
+30-call limit in 378.5~s, modifies no file, submits an empty patch, and grades
+0/1.  The model repeatedly searches configuration files for
+\texttt{follow\_symlinks=False}; this is model/task behavior, not a PRA result.
+
+The one permitted follow-up, Task~01, also reaches 30 calls without a mutation
+or patch and receives an observed 0/1 grade.  That row is nevertheless
+quarantined rather than counted as frozen 8,192-token evidence: the pre-fix HF
+endpoint advertised no context limit and silently accepted prompts through
+14,797 tokens.  Call 13's prompt plus declared completion allowance is 8,190
+tokens; call 14 is the first overflow, and 17 calls lie beyond the nominal
+limit.  The correction adds an explicit \texttt{max\_model\_len=8192} engine
+guard for both ordinary and native requests.  It checks the full rendered
+logical position extent plus the declared maximum completion before allocating
+a plain cache or extending canonical K/V, advertises the limit in health, and
+requires the runner preflight to match it exactly.  Sparse selected width is
+not substituted for logical position extent.  No HF PRA-100 request was run:
+one valid plain pair failed and the second row violated its frozen cap.
+
 This also changes the comparison with ordinary prefix caching. Prefix caching
 can reuse only the common leading run and must either keep every middle turn or
 evaluate a replacement suffix when selection changes. Live-record PRA keeps
@@ -4448,8 +4474,10 @@ and only the final non-operative reasoning text differs.  These runs also demons
 why estimated and realized retention cannot be conflated: an earlier request
 was 32 model tokens below the nominal floor until causal groups were rounded
 with the engine tokenizer.  HF's bounded 7B path is now free of the
-autograd, prompt-logit, and prompt-activation OOMs, but two tested tasks fail
-plain with empty patches, so its PRA arms are not run.  vLLM's earlier 7B AWQ
+autograd, prompt-logit, and prompt-activation OOMs, but the valid Task~05 retry
+fails plain with an empty patch; Task~01 is separately quarantined after its
+pre-fix endpoint exceeds the nominal context cap.  The corrected endpoint now
+enforces and advertises that cap, but no HF PRA arm is run.  vLLM's earlier 7B AWQ
 plain Task~13 also fails, but the independent 8K Task~05 pair now admits PRA-90;
 that treatment was intentionally not launched in this gate-only run.
 Easy-14 expansion remains locked until every target engine has a qualified

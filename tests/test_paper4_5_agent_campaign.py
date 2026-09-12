@@ -2892,6 +2892,70 @@ def test_gateway_preflight_requires_mode_and_pinned_model() -> None:
         thread.join(timeout=5)
 
 
+def test_direct_hf_preflight_requires_matching_context_window() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        max_model_len = 8192
+
+        def do_GET(self) -> None:  # noqa: N802
+            payload = (
+                {
+                    "status": "ok",
+                    "gateway_mode": None,
+                    "prefix_cache_enabled": False,
+                    "max_model_len": self.max_model_len,
+                    "effective_capabilities": {
+                        "engine_type": "huggingface",
+                        "max_model_len": self.max_model_len,
+                    },
+                }
+                if self.path == "/health"
+                else {"data": [{"id": "qwen2.5-coder-7b-nf4"}]}
+            )
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_POST(self) -> None:  # noqa: N802
+            self.rfile.read(int(self.headers["Content-Length"]))
+            encoded = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "OK"}}]
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    args = SimpleNamespace(
+        mode="no-pra",
+        base_url=f"http://127.0.0.1:{server.server_port}/v1",
+        served_model="qwen2.5-coder-7b-nf4",
+        engine="huggingface",
+        context_limit=8192,
+        require_endpoint_preflight=True,
+        prefix_caching=False,
+    )
+    try:
+        result = gateway_preflight(args)
+        assert result["max_model_len"] == 8192
+        Handler.max_model_len = 16384
+        with pytest.raises(RuntimeError, match="context mismatch"):
+            gateway_preflight(args)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_native_preflight_requires_consumption_and_active_prefix_cache(tmp_path: Path) -> None:
     class Handler(BaseHTTPRequestHandler):
         prefix_enabled = True

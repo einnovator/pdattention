@@ -57,6 +57,7 @@ def _direct_handler(executor: object, model_id: str):
                     "endpoint_type": "engine",
                     "gateway_mode": None,
                     "prefix_cache_enabled": False,
+                    "max_model_len": executor.max_model_len,
                     "dense_attention_implementation": getattr(
                         executor, "dense_attention_implementation", None
                     ),
@@ -82,6 +83,7 @@ def _direct_handler(executor: object, model_id: str):
             if urllib.parse.urlsplit(self.path).path != "/v1/chat/completions":
                 self._json(404, {"error": "not_found"})
                 return
+            request = None
             try:
                 payload = json.loads(
                     self.rfile.read(int(self.headers.get("Content-Length", "0")))
@@ -90,8 +92,6 @@ def _direct_handler(executor: object, model_id: str):
                     raise ValueError("streaming is disabled for the frozen agent gate")
                 request = PRAWireRequest.from_openai(payload)
                 result = executor.generate(request)
-                if bool(request.metadata.get("ephemeral_session", False)):
-                    executor.close_session(str(request.session_id))
                 self._json(200, _completion(request, result))
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
@@ -101,6 +101,11 @@ def _direct_handler(executor: object, model_id: str):
                     "error": "engine_internal_error",
                     "message": str(error),
                 })
+            finally:
+                if request is not None and bool(
+                    request.metadata.get("ephemeral_session", False)
+                ):
+                    executor.close_session(str(request.session_id))
 
         def do_DELETE(self) -> None:  # noqa: N802
             prefix = "/v1/pra/sessions/"
@@ -131,6 +136,7 @@ def main() -> None:
     parser.add_argument("--revision", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18123)
+    parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument(
         "--prefill-step-size",
@@ -203,6 +209,7 @@ def main() -> None:
         model_revision=args.revision,
         wire_tail_tokens=args.wire_tail_tokens,
         prefill_step_size=args.prefill_step_size,
+        max_model_len=args.max_model_len,
         chat_template_profile=args.chat_template_profile,
         chat_template_digest=template_digest,
     )

@@ -486,6 +486,7 @@ class HFAgentHistoryExecutor:
         model_revision: str,
         wire_tail_tokens: int = 32,
         prefill_step_size: int = 256,
+        max_model_len: int | None = None,
         chat_template_profile: str = "native",
         chat_template_digest: str | None = None,
     ) -> None:
@@ -493,6 +494,8 @@ class HFAgentHistoryExecutor:
             raise ValueError("wire_tail_tokens must be positive.")
         if prefill_step_size <= 0:
             raise ValueError("prefill_step_size must be positive.")
+        if max_model_len is not None and max_model_len <= 0:
+            raise ValueError("max_model_len must be positive when configured.")
         self.model = model
         evaluate = getattr(model, "eval", None)
         if callable(evaluate):
@@ -502,6 +505,9 @@ class HFAgentHistoryExecutor:
         self.model_revision = str(model_revision)
         self.wire_tail_tokens = int(wire_tail_tokens)
         self.prefill_step_size = int(prefill_step_size)
+        self.max_model_len = (
+            None if max_model_len is None else int(max_model_len)
+        )
         self.chat_template_profile = str(chat_template_profile)
         selected = str(getattr(tokenizer, "chat_template", "") or "")
         observed = hashlib.sha256(selected.encode("utf-8")).hexdigest()
@@ -536,9 +542,25 @@ class HFAgentHistoryExecutor:
             "physical_kv_copy_reported": True,
             "prefix_cache_enabled": False,
             "prefill_step_size": self.prefill_step_size,
+            "max_model_len": self.max_model_len,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
         }
+
+    def _enforce_context_window(
+        self, prompt_tokens: int, max_new_tokens: int
+    ) -> None:
+        """Reject requests whose declared decode can exceed the admitted window."""
+
+        if self.max_model_len is None:
+            return
+        requested = int(prompt_tokens) + int(max_new_tokens)
+        if requested > self.max_model_len:
+            raise ValueError(
+                "HF request exceeds the configured context window: "
+                f"prompt_tokens={prompt_tokens}, max_new_tokens={max_new_tokens}, "
+                f"requested_total={requested}, max_model_len={self.max_model_len}."
+            )
 
     @staticmethod
     def _session_id(request: PRAWireRequest) -> str:
@@ -876,6 +898,9 @@ class HFAgentHistoryExecutor:
             messages,
             chat_template_kwargs=template_kwargs,
         )
+        self._enforce_context_window(
+            len(prompt), request.resolved_max_new_tokens
+        )
         newly_encoded, reencoded, owner_copy = self._ensure_owner(state, source)
         requested = float(
             request.metadata.get(
@@ -1083,6 +1108,9 @@ class HFAgentHistoryExecutor:
             request.messages,
             generation_prompt=True,
             chat_template_kwargs=self._checked_template_kwargs(request),
+        )
+        self._enforce_context_window(
+            len(prompt), request.resolved_max_new_tokens
         )
         cache = self._new_cache()
         started = time.perf_counter()
