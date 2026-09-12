@@ -16,6 +16,7 @@ from .model import AgentMemoryBudget
 from .negative_selection import (
     NEGATIVE_POLICY_RULES,
     NegativeHeuristicSelector,
+    NegativeRule,
     NegativeSelectionConfig,
 )
 from .recordizer import recordize_minisweagent_messages
@@ -23,6 +24,11 @@ from .run_structural_screen import _decision_prefixes, _query, _token_counter
 
 
 DEFAULT_POLICIES = tuple(NEGATIVE_POLICY_RULES)
+LONG_HORIZON_SEARCH_DELAYS = (0, 2, 4, 8, 12, 16)
+LONG_HORIZON_WRITE_DELAYS = (1, 2, 4, 8, 12)
+LONG_HORIZON_READ_KEEPS = (1, 2, 3, 4, 6, 8)
+LONG_HORIZON_WORKING_SETS = (2, 3, 4, 6, 8, 12)
+LONG_HORIZON_SUFFIXES = (1, 10, 15, 20)
 
 
 def negative_structural_screen(
@@ -37,22 +43,35 @@ def negative_structural_screen(
     working_sets: Sequence[int] = (2, 3, 4, 6),
     protected_head_turns: int = 1,
     protected_tail_turns: int = 2,
+    decision_suffixes: Sequence[int] = (1,),
     include_decision_rows: bool = False,
 ) -> dict[str, Any]:
     unknown = set(policies).difference(NEGATIVE_POLICY_RULES)
     if unknown:
         raise ValueError(f"unknown policies: {', '.join(sorted(unknown))}")
+    if not decision_suffixes or any(value < 1 for value in decision_suffixes):
+        raise ValueError("decision suffixes must contain positive one-based ordinals")
+    decision_suffixes = tuple(sorted(set(decision_suffixes)))
     configurations: list[tuple[str, NegativeSelectionConfig]] = []
     for policy in policies:
         rules = NEGATIVE_POLICY_RULES[policy]
         kf_values = (
             search_delays
-            if any(rule.value.startswith("H1_") for rule in rules)
+            if any(rule in {
+                NegativeRule.H1_SEARCH_CONSUMED,
+                NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+            } for rule in rules)
             else (0,)
         )
-        kw_values = write_delays if policy == "h2_bare_aggressive" else (1,)
-        kr_values = read_keeps if policy == "h3_read_superseded" else (1,)
-        kx_values = working_sets if policy == "h4_working_set" else (4,)
+        kw_values = (
+            write_delays if NegativeRule.H2_BARE_AGGRESSIVE in rules else (1,)
+        )
+        kr_values = (
+            read_keeps if NegativeRule.H3_READ_SUPERSEDED in rules else (1,)
+        )
+        kx_values = (
+            working_sets if NegativeRule.H4_WORKING_SET in rules else (4,)
+        )
         for kf in kf_values:
             for kw in kw_values:
                 for kr in kr_values:
@@ -79,7 +98,9 @@ def negative_structural_screen(
             "path": str(path),
             "message_count": len(messages),
         })
-        for decision_index, prefix in _decision_prefixes(messages):
+        for decision_ordinal, (decision_index, prefix) in enumerate(
+            _decision_prefixes(messages), start=1
+        ):
             history = recordize_minisweagent_messages(prefix)
             full_tokens = sum(count_tokens(row.content) for row in history.records)
             for treatment, config in configurations:
@@ -97,6 +118,7 @@ def negative_structural_screen(
                     by_rule[exclusion.rule_id]["tokens"] += exclusion.excluded_tokens
                 rows.append({
                     "instance_id": instance_id,
+                    "decision_ordinal": decision_ordinal,
                     "decision_message_index": decision_index,
                     "treatment": treatment,
                     "policy": plan.policy,
@@ -141,8 +163,44 @@ def negative_structural_screen(
                 aggregate["selected_tokens"] / full if full else 1.0
             ),
         })
+    suffix_aggregates: dict[tuple[str, str, int], dict[str, Any]] = defaultdict(
+        lambda: {
+            "decision_count": 0,
+            "full_history_tokens": 0,
+            "selected_tokens": 0,
+            "excluded_tokens": 0,
+            "decisions_with_exclusion": 0,
+        }
+    )
+    for row in rows:
+        for suffix_start in decision_suffixes:
+            if row["decision_ordinal"] < suffix_start:
+                continue
+            aggregate = suffix_aggregates[
+                (row["instance_id"], row["treatment"], suffix_start)
+            ]
+            aggregate["decision_count"] += 1
+            for field in ("full_history_tokens", "selected_tokens", "excluded_tokens"):
+                aggregate[field] += row[field]
+            aggregate["decisions_with_exclusion"] += int(
+                row["excluded_group_count"] > 0
+            )
+    suffix_summary_rows = []
+    for (instance_id, treatment, suffix_start), aggregate in sorted(
+        suffix_aggregates.items()
+    ):
+        full = aggregate["full_history_tokens"]
+        suffix_summary_rows.append({
+            "instance_id": instance_id,
+            "treatment": treatment,
+            "decision_suffix_start": suffix_start,
+            **aggregate,
+            "aggregate_retention_fraction": (
+                aggregate["selected_tokens"] / full if full else 1.0
+            ),
+        })
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "study": "paper8_5_negative_heuristic_structural_screen",
         "evidence_class": "structural_opportunity_only_not_behavior_or_task_quality",
         "tokenizer": tokenizer_identity,
@@ -155,11 +213,13 @@ def negative_structural_screen(
             "Kx": list(working_sets),
             "protected_head_turns": protected_head_turns,
             "protected_tail_turns": protected_tail_turns,
+            "decision_suffixes": list(decision_suffixes),
         },
         "reacquisition_metrics_status": (
             "not_measured_requires_candidate_generation_or_autonomous_rollout"
         ),
         "summary_rows": summary_rows,
+        "suffix_summary_rows": suffix_summary_rows,
     }
     if include_decision_rows:
         result["decision_rows"] = rows
@@ -176,10 +236,29 @@ def main() -> None:
     parser.add_argument("--write-delays", nargs="+", type=int, default=(1, 2, 4))
     parser.add_argument("--read-keeps", nargs="+", type=int, default=(1, 2, 3))
     parser.add_argument("--working-sets", nargs="+", type=int, default=(2, 3, 4, 6))
+    parser.add_argument(
+        "--long-horizon",
+        action="store_true",
+        help=(
+            "use the predeclared larger K* grid and report call-10/15/20 "
+            "suffixes for long successful trajectories"
+        ),
+    )
+    parser.add_argument("--decision-suffixes", nargs="+", type=int)
     parser.add_argument("--head", type=int, default=1)
     parser.add_argument("--tail", type=int, default=2)
     parser.add_argument("--include-decision-rows", action="store_true")
     args = parser.parse_args()
+    if args.long_horizon:
+        args.search_delays = LONG_HORIZON_SEARCH_DELAYS
+        args.write_delays = LONG_HORIZON_WRITE_DELAYS
+        args.read_keeps = LONG_HORIZON_READ_KEEPS
+        args.working_sets = LONG_HORIZON_WORKING_SETS
+    decision_suffixes = (
+        args.decision_suffixes
+        if args.decision_suffixes is not None
+        else LONG_HORIZON_SUFFIXES if args.long_horizon else (1,)
+    )
     counter, tokenizer_identity = _token_counter(args.tokenizer)
     result = negative_structural_screen(
         args.trajectory,
@@ -192,6 +271,7 @@ def main() -> None:
         working_sets=args.working_sets,
         protected_head_turns=args.head,
         protected_tail_turns=args.tail,
+        decision_suffixes=decision_suffixes,
         include_decision_rows=args.include_decision_rows,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

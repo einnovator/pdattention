@@ -106,8 +106,12 @@ def structural_screen(
     heads: Sequence[int] = DEFAULT_HEADS,
     tails: Sequence[int] = DEFAULT_TAILS,
     budgets: Sequence[float] = DEFAULT_BUDGETS,
+    decision_suffixes: Sequence[int] = (1,),
     include_decision_rows: bool = False,
 ) -> dict[str, Any]:
+    if not decision_suffixes or any(value < 1 for value in decision_suffixes):
+        raise ValueError("decision suffixes must contain positive one-based ordinals")
+    decision_suffixes = tuple(sorted(set(decision_suffixes)))
     rows: list[dict[str, Any]] = []
     inputs: list[dict[str, Any]] = []
     for path in trajectory_paths:
@@ -122,7 +126,9 @@ def structural_screen(
             "path": str(path),
             "message_count": len(messages),
         })
-        for decision_turn, prefix in _decision_prefixes(messages):
+        for decision_ordinal, (decision_turn, prefix) in enumerate(
+            _decision_prefixes(messages), start=1
+        ):
             history = recordize_minisweagent_messages(prefix)
             dag = build_resource_effect_dag(history)
             certified_groups = {
@@ -158,6 +164,7 @@ def structural_screen(
                             )
                             rows.append({
                                 "instance_id": instance_id,
+                                "decision_ordinal": decision_ordinal,
                                 "decision_message_index": decision_turn,
                                 "policy": label,
                                 "head_turns_requested": head,
@@ -234,6 +241,47 @@ def structural_screen(
             ),
         })
 
+    suffix_aggregates: dict[tuple[Any, ...], dict[str, Any]] = defaultdict(
+        lambda: {
+            "decision_count": 0,
+            "full_history_tokens_sum": 0,
+            "selected_tokens_sum": 0,
+            "mandatory_overflow_decisions": 0,
+        }
+    )
+    for row in rows:
+        for suffix_start in decision_suffixes:
+            if row["decision_ordinal"] < suffix_start:
+                continue
+            key = (
+                row["instance_id"], row["policy"], row["head_turns_requested"],
+                row["tail_turns_requested"], row["budget_fraction_requested"],
+                suffix_start,
+            )
+            aggregate = suffix_aggregates[key]
+            aggregate["decision_count"] += 1
+            aggregate["full_history_tokens_sum"] += row["full_history_tokens"]
+            aggregate["selected_tokens_sum"] += row["selected_tokens"]
+            aggregate["mandatory_overflow_decisions"] += int(
+                row["mandatory_overflow_tokens"] > 0
+            )
+    suffix_summary_rows = []
+    for key, aggregate in sorted(suffix_aggregates.items()):
+        instance_id, policy, head, tail, fraction, suffix_start = key
+        full = aggregate["full_history_tokens_sum"]
+        suffix_summary_rows.append({
+            "instance_id": instance_id,
+            "policy": policy,
+            "head_turns_requested": head,
+            "tail_turns_requested": tail,
+            "budget_fraction_requested": fraction,
+            "decision_suffix_start": suffix_start,
+            **aggregate,
+            "aggregate_realized_retention_fraction": (
+                aggregate["selected_tokens_sum"] / full if full else 0.0
+            ),
+        })
+
     result = {
         "schema_version": 1,
         "implementation": "paper8_5_agent_memory_v1",
@@ -244,8 +292,10 @@ def structural_screen(
         "head_values": list(heads),
         "tail_values": list(tails),
         "budget_fractions": list(budgets),
+        "decision_suffixes": list(decision_suffixes),
         "decision_row_count": len(rows),
         "summary_rows": summary_rows,
+        "suffix_summary_rows": suffix_summary_rows,
     }
     if include_decision_rows:
         result["decision_rows"] = rows
@@ -257,6 +307,10 @@ def main() -> None:
     parser.add_argument("--trajectory", nargs="+", type=Path, required=True)
     parser.add_argument("--tokenizer")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--heads", nargs="+", type=int, default=DEFAULT_HEADS)
+    parser.add_argument("--tails", nargs="+", type=int, default=DEFAULT_TAILS)
+    parser.add_argument("--budgets", nargs="+", type=float, default=DEFAULT_BUDGETS)
+    parser.add_argument("--decision-suffixes", nargs="+", type=int, default=(1,))
     parser.add_argument("--include-decision-rows", action="store_true")
     args = parser.parse_args()
     counter, tokenizer_identity = _token_counter(args.tokenizer)
@@ -264,6 +318,10 @@ def main() -> None:
         args.trajectory,
         count_tokens=counter,
         tokenizer_identity=tokenizer_identity,
+        heads=args.heads,
+        tails=args.tails,
+        budgets=args.budgets,
+        decision_suffixes=args.decision_suffixes,
         include_decision_rows=args.include_decision_rows,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

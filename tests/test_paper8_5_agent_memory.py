@@ -933,10 +933,14 @@ def test_structural_screen_aggregates_without_claiming_task_quality(tmp_path):
         heads=(1,),
         tails=(1,),
         budgets=(0.9,),
+        decision_suffixes=(1, 2),
     )
     assert result["evidence_class"] == "structural_only_not_task_quality"
     assert result["decision_row_count"] == 14
     assert len(result["summary_rows"]) == 7
+    assert {row["decision_suffix_start"] for row in result["suffix_summary_rows"]} == {
+        1, 2
+    }
     assert "decision_rows" not in result
 
 
@@ -959,6 +963,7 @@ def test_negative_structural_screen_reports_opportunity_without_quality_claim(tm
         working_sets=(2,),
         protected_head_turns=0,
         protected_tail_turns=0,
+        decision_suffixes=(1, 3),
         include_decision_rows=True,
     )
     assert result["evidence_class"] == (
@@ -967,6 +972,40 @@ def test_negative_structural_screen_reports_opportunity_without_quality_claim(tm
     assert result["reacquisition_metrics_status"].startswith("not_measured")
     assert result["summary_rows"][0]["excluded_tokens"] > 0
     assert result["decision_rows"][-1]["inactive_tombstones"]
+    assert result["schema_version"] == 2
+    assert {row["decision_suffix_start"] for row in result["suffix_summary_rows"]} == {
+        1, 3
+    }
+    late = next(
+        row for row in result["suffix_summary_rows"]
+        if row["decision_suffix_start"] == 3
+    )
+    assert late["decision_count"] == 2
+
+
+def test_negative_combination_sweeps_all_relevant_large_k_parameters(tmp_path):
+    trajectory = tmp_path / "task.traj.json"
+    trajectory.write_text(json.dumps({
+        "instance_id": "task-1",
+        "messages": _heuristic_messages(
+            ("find . -name '*.py'", "./a.py", None),
+            ("cat a.py", "a", None),
+            ("cat b.py", "b", None),
+            ("cat c.py", "c", None),
+        ),
+    }), encoding="utf-8")
+    result = negative_structural_screen(
+        [trajectory],
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        policies=("all_h1_h2a_h2b_h3_h4",),
+        search_delays=(0, 8),
+        read_keeps=(1, 6),
+        working_sets=(2, 8),
+        protected_head_turns=0,
+        protected_tail_turns=0,
+    )
+    assert len(result["summary_rows"]) == 8
 
 
 def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
