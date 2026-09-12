@@ -55,6 +55,7 @@ from .hf_live_kv import (
     pack_segmented_dynamic_cache_reference,
     segmented_qwen_attention,
     select_dynamic_cache,
+    select_full_dynamic_cache_noop,
 )
 from .agent_executor import (
     AgentHistoryLedger,
@@ -619,6 +620,7 @@ __all__ = [
     "pack_segmented_dynamic_cache_reference",
     "segmented_qwen_attention",
     "select_dynamic_cache",
+    "select_full_dynamic_cache_noop",
 ]
 
 __all__ += [

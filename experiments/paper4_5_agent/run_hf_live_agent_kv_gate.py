@@ -17,6 +17,7 @@ from pra_hf.hf_live_kv import (
     enable_qwen_sparse_live_kv,
     pack_segmented_dynamic_cache_reference,
     select_dynamic_cache,
+    select_full_dynamic_cache_noop,
 )
 from pra_hf.live_history import LiveKVSelectionPlan
 
@@ -29,6 +30,20 @@ from .run_hf_agent_cache_equivalence import (
     _prefill,
 )
 from .sparse_gate_common import sparse_causal_plan
+
+
+def _cache_bytes(cache: object) -> int:
+    """Count a measurement fork without charging it to PRA attachment."""
+
+    total = 0
+    for layer in getattr(cache, "layers", ()):
+        keys = getattr(layer, "keys", None)
+        values = getattr(layer, "values", None)
+        if keys is None or values is None:
+            continue
+        total += int(keys.numel()) * int(keys.element_size())
+        total += int(values.numel()) * int(values.element_size())
+    return total
 
 
 @torch.inference_mode()
@@ -109,14 +124,15 @@ def _positioned_tail_generation(
 def run(args: argparse.Namespace) -> dict[str, object]:
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model, local_files_only=args.local_files_only
-    )
+    load_kwargs = {"local_files_only": args.local_files_only}
+    if args.revision:
+        load_kwargs["revision"] = args.revision
+    tokenizer = AutoTokenizer.from_pretrained(args.model, **load_kwargs)
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         torch_dtype=dtype,
-        local_files_only=args.local_files_only,
         attn_implementation=args.attn_implementation,
+        **load_kwargs,
     ).to(device).eval()
     enable_qwen_sparse_live_kv(model)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
@@ -166,7 +182,36 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             # groups. They are not evidence for a sparse mechanism gate.
             prior_ids = source_ids
             continue
-        selected = select_dynamic_cache(source_cache, plan)
+        same_state_fork_bytes = 0
+        dense_semantic_noop_identity = False
+        if plan.full_retention:
+            if wire_tail:
+                raise RuntimeError("PRA-100 same-state gate unexpectedly split a wire tail.")
+            # The two clones are measurement-only forks from one resident K/V
+            # state. They are not part of production selection or attachment.
+            ordinary_cache = _clone_cache(source_cache)
+            candidate_cache = _clone_cache(source_cache)
+            same_state_fork_bytes = _cache_bytes(ordinary_cache) + _cache_bytes(
+                candidate_cache
+            )
+            selected = select_full_dynamic_cache_noop(candidate_cache, plan)
+            dense_semantic_noop_identity = selected.cache is candidate_cache
+            ordinary_tokens, ordinary_logits = _generate_from_logits(
+                model,
+                source.logits,
+                ordinary_cache,
+                args.continuation_tokens,
+                device,
+            )
+            pra_tokens, pra_logits = _generate_from_logits(
+                model,
+                source.logits,
+                selected.cache,
+                args.continuation_tokens,
+                device,
+            )
+        else:
+            selected = select_dynamic_cache(source_cache, plan)
         if wire_tail:
             reference = pack_segmented_dynamic_cache_reference(
                 _clone_cache(source_cache), plan
@@ -188,7 +233,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 continuation_tokens=args.continuation_tokens,
                 device=device,
             )
-        else:
+        elif not plan.full_retention:
             ordinary_tokens, ordinary_logits = _generate_from_logits(
                 model,
                 source.logits,
@@ -227,6 +272,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 ),
                 "persistent_interval_pack": selected.physical_kv_copy,
                 "interval_pack_bytes": selected.interval_pack_bytes,
+                "selected_history_kv_copy_bytes": 0,
+                "measurement_state_fork_copy_bytes": same_state_fork_bytes,
+                "measurement_state_fork_copy_scope": (
+                    "two isolated oracle branches; excluded from production PRA attachment"
+                ),
+                "dense_semantic_noop_identity": dense_semantic_noop_identity,
                 "transient_attention_bytes": selected.transient_attention_bytes,
                 "transient_kv_copy_bytes": selected.transient_kv_copy_bytes,
                 "max_transient_kv_tile_bytes": selected.max_transient_kv_tile_bytes,
@@ -241,11 +292,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         prior_ids = source_ids
 
     result = {
-        "schema_version": "paper4.5.agent-history-kv-gate.v1",
-        "probe": "hf_same_state_live_agent_kv",
+        "schema_version": "paper4.5.agent-history-kv-gate.v2",
+        "probe": (
+            "hf_same_state_live_agent_kv_100"
+            if args.retention_fraction == 1
+            else "hf_same_state_live_agent_kv_sparse"
+        ),
         "engine": "transformers-pytorch",
         "model": args.model_label or args.model,
         "model_source": args.model,
+        "model_revision": args.revision or getattr(model.config, "_commit_hash", None),
         "torch_version": torch.__version__,
         "transformers_version": __import__("transformers").__version__,
         "python_version": platform.python_version(),
@@ -258,7 +314,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             Path(inspect.getfile(select_dynamic_cache)).read_bytes()
         ).hexdigest(),
         "retention_fraction": args.retention_fraction,
-        "adaptor": "none",
+        "adaptor": (
+            "dense_semantic_noop"
+            if args.retention_fraction == 1
+            else "original_position_sparse_views"
+        ),
         "same_resident_kv_fork": True,
         "completed_turns": len(rows),
         "exact_turns": sum(int(row["token_exact"]) for row in rows),
@@ -266,6 +326,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "zero_selected_text_reencoding": all(
             row["selected_text_reencoded_tokens"] == 0 for row in rows
         ),
+        "selected_history_reencoded_tokens": 0,
+        "selected_history_kv_copy_bytes": 0,
         "zero_physical_kv_copy": all(
             not row["physical_kv_copy"] for row in rows
         ),
@@ -293,11 +355,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "first_divergent_turn": next(
             (row["turn"] for row in rows if not row["token_exact"]), None
         ),
-        "reference_condition": "packed-value oracle preserving the candidate segment boundaries and original positions under the identical sparse consumer",
+        "measurement_state_fork_copy_bytes": sum(
+            int(row["measurement_state_fork_copy_bytes"]) for row in rows
+        ),
+        "measurement_state_fork_copy_scope": (
+            "two isolated oracle branches from one resident cache; excluded from production PRA attachment"
+        ),
+        "reference_condition": (
+            "ordinary dense continuation and PRA-100 dense semantic no-op forked from the identical resident DynamicCache"
+            if args.retention_fraction == 1
+            else "packed-value oracle preserving the candidate segment boundaries and original positions under the identical sparse consumer"
+        ),
         "consumer_implementation": (
-            "fused_interval_addressed_triton"
-            if device.type == "cuda"
-            else "two_pass_segmented_sdpa"
+            "ordinary_dense_attention_semantic_noop"
+            if args.retention_fraction == 1
+            else (
+                "fused_interval_addressed_triton"
+                if device.type == "cuda"
+                else "two_pass_segmented_sdpa"
+            )
         ),
         "sparse_numerical_policy": (
             "one fused Triton online softmax over canonical source intervals and request-local K/V"
@@ -314,6 +390,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     result["logits_within_tolerance"] = bool(
         result["max_abs_logit_delta"] <= args.max_logit_delta
     )
+    result["pra100_same_state_gate_valid"] = bool(
+        args.retention_fraction == 1
+        and len(rows) == args.turns
+        and result["all_exact"]
+        and result["max_abs_logit_delta"] == 0.0
+        and result["zero_selected_text_reencoding"]
+        and result["zero_physical_kv_copy"]
+        and result["zero_interval_pack_bytes"]
+        and all(row["selection_plan"]["full_retention"] for row in rows)
+        and all(row["dense_semantic_noop_identity"] for row in rows)
+    )
     result["sparse_position_gate_valid"] = bool(
         args.retention_fraction < 1
         and result["all_exact"]
@@ -326,7 +413,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
     )
     result["zero_copy_engine_gate_valid"] = bool(
-        result["sparse_position_gate_valid"] and result["zero_physical_kv_copy"]
+        (
+            result["pra100_same_state_gate_valid"]
+            or result["sparse_position_gate_valid"]
+        )
+        and result["zero_physical_kv_copy"]
     )
     result["qualification_blockers"] = []
     if not result["logits_within_tolerance"]:
@@ -348,6 +439,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--model-label")
+    parser.add_argument("--revision")
     parser.add_argument("--turns", type=int, default=10)
     parser.add_argument("--continuation-tokens", type=int, default=32)
     parser.add_argument("--retention-fraction", type=float, default=1.0)
@@ -372,7 +464,7 @@ def main() -> None:
         "zero_selected_text_reencoding", "first_divergent_turn",
         "max_abs_logit_delta", "logits_within_tolerance",
     )}, indent=2))
-    raise SystemExit(0 if result["sparse_position_gate_valid"] else 1)
+    raise SystemExit(0 if result["zero_copy_engine_gate_valid"] else 1)
 
 
 if __name__ == "__main__":

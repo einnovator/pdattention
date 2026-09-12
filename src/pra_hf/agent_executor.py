@@ -25,6 +25,7 @@ from .hf_live_kv import (
     HFSparseDynamicCache,
     _layer_pair,
     enable_qwen_sparse_live_kv,
+    select_full_dynamic_cache_noop,
 )
 from .live_history import LiveKVInterval, LiveKVSelectionPlan
 
@@ -915,8 +916,12 @@ class HFAgentHistoryExecutor:
                 # A 100% request is the ordinary live prefix-cache continuation,
                 # not a numerically different sparse-attention implementation.
                 prior_cache = state.canonical_cache
+                full_selection = select_full_dynamic_cache_noop(
+                    state.canonical_cache, plan
+                )
+                selected_cache = full_selection.cache
                 decoded = self._decode_with_cache(
-                    state.canonical_cache,
+                    selected_cache,
                     wire,
                     start=len(source),
                     max_tokens=request.resolved_max_new_tokens,

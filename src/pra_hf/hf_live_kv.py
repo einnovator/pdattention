@@ -1048,3 +1048,42 @@ def select_dynamic_cache(
         )
     selected = HFSparseDynamicCache(selected_layers, plan)
     return HFResidentKVSelection(selected, plan, False, interval_pack_bytes=0)
+
+
+def select_full_dynamic_cache_noop(
+    source_cache: object, plan: LiveKVSelectionPlan
+) -> HFResidentKVSelection:
+    """Return the canonical dense cache unchanged for a 100% owner continuation.
+
+    This is the production PRA-100 semantic no-op. Unlike
+    :func:`select_dynamic_cache`, it must only be used by the canonical cache
+    owner because ordinary Transformers decode appends K/V in place. A request
+    borrowing an immutable source still needs a request-local descriptor.
+    """
+
+    if not plan.full_retention:
+        raise ValueError("Dense HF cache continuation requires full retention.")
+    layers = getattr(source_cache, "layers", None)
+    if layers is None:
+        raise TypeError("Dense HF cache continuation requires a cache with layers.")
+    observed_layers = 0
+    for source_layer in layers:
+        keys, values, _key_name, _value_name = _layer_pair(source_layer)
+        if int(keys.shape[-2]) != plan.source_tokens:
+            raise ValueError(
+                "Dense HF cache length disagrees with the full-retention plan."
+            )
+        if int(values.shape[-2]) != plan.source_tokens:
+            raise ValueError(
+                "Dense HF value-cache length disagrees with the full-retention plan."
+            )
+        observed_layers += 1
+    if plan.source_tokens and observed_layers == 0:
+        raise ValueError("Dense HF cache has no materialized layers.")
+    return HFResidentKVSelection(
+        source_cache,
+        plan,
+        False,
+        selected_text_reencoded_tokens=0,
+        interval_pack_bytes=0,
+    )

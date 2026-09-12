@@ -15,6 +15,7 @@ from pra_hf.hf_live_kv import (
     pack_segmented_dynamic_cache_reference,
     segmented_qwen_attention,
     select_dynamic_cache,
+    select_full_dynamic_cache_noop,
 )
 from pra_hf.live_history import (
     LiveKVSessionTerminatedError,
@@ -124,6 +125,31 @@ def test_hf_full_and_sparse_selection_are_source_views_without_pack_copy() -> No
         [0, 4],
         [16, 20],
     ]
+
+
+def test_hf_pra100_dense_selection_is_an_identity_noop() -> None:
+    torch = pytest.importorskip("torch")
+    keys = torch.arange(24, dtype=torch.float32).reshape(1, 1, 6, 4)
+    values = keys + 100
+    source = SimpleNamespace(layers=[SimpleNamespace(keys=keys, values=values)])
+
+    selected = select_full_dynamic_cache_noop(
+        source, LiveKVSelectionPlan.full(6)
+    )
+
+    assert selected.cache is source
+    assert selected.plan.full_retention
+    assert selected.selected_text_reencoded_tokens == 0
+    assert selected.interval_pack_bytes == 0
+    assert selected.physical_kv_copy is False
+    with pytest.raises(ValueError, match="requires full retention"):
+        select_full_dynamic_cache_noop(
+            source, LiveKVSelectionPlan.create(6, ((0, 5),))
+        )
+    with pytest.raises(ValueError, match="length disagrees"):
+        select_full_dynamic_cache_noop(
+            source, LiveKVSelectionPlan.full(5)
+        )
 
 
 def test_hf_segmented_qwen_attention_matches_identical_dense_subset() -> None:
