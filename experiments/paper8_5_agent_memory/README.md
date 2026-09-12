@@ -83,6 +83,12 @@ ceilings for its recency control through `--matched-budget-replay dag.json`;
 whole causal turns are rounded down to that ceiling, and the unused remainder
 is reported rather than silently filled with a partial turn.
 
+Nominal retention treatments use the opposite boundary rule. Pass
+`--round-up-whole-turns` for a 90% (or lower) treatment: ranked complete causal
+turns are admitted until realized selected tokens meet or exceed the requested
+floor. The artifact reports whole-turn overshoot separately. A run that retains
+less than its nominal treatment fraction is not labeled as that treatment.
+
 The replay request specifies only temperature zero by default, matching the
 mini-swe-agent baseline; endpoint defaults remain unspecified. `--seed` and
 `--max-output-tokens` are opt-in and must be used in both baseline and candidate

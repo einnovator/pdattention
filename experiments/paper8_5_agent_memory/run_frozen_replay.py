@@ -132,10 +132,10 @@ def _post(
         return json.load(response)
 
 
-def _selector(label: str, *, head: int, tail: int):
+def _selector(label: str, *, head: int, tail: int, round_up: bool = False):
     if label == "full":
         return FullHistorySelector()
-    selectors = dict(_policy_selectors(head, tail))
+    selectors = dict(_policy_selectors(head, tail, round_up=round_up))
     try:
         return selectors[label]
     except KeyError as error:
@@ -283,6 +283,7 @@ def replay(
     matched_budget_replay: Mapping[str, Any] | None = None,
     progress_path: Path | None = None,
     restart: bool = False,
+    round_up_whole_turns: bool = False,
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
@@ -293,7 +294,12 @@ def replay(
     ]
     if max_decisions is not None:
         assistant_indexes = assistant_indexes[:max_decisions]
-    selector = _selector(policy, head=head, tail=tail)
+    selector = _selector(
+        policy,
+        head=head,
+        tail=tail,
+        round_up=round_up_whole_turns,
+    )
     materializer = ToolObservationMaterializer(
         mode=materialization_mode,
         threshold_tokens=materialization_threshold_tokens,
@@ -324,6 +330,10 @@ def replay(
         "max_output_tokens": max_output_tokens,
         "timeout": timeout,
         "invalid_generation_policy": "record_and_stop",
+        "whole_turn_budget_interpretation": (
+            "retention_floor_round_up"
+            if round_up_whole_turns else "hard_ceiling_round_down"
+        ),
         "reference_replay_digest": reference_replay_digest,
         "matched_budget_source_digest": matched_budget_source_digest,
     }
@@ -446,6 +456,12 @@ def replay(
             "requested_budget_tokens": plan.requested_budget_tokens,
             "realized_record_retention_fraction": plan.realized_retention_fraction,
             "mandatory_overflow_tokens": plan.mandatory_overflow_tokens,
+            "whole_turn_budget_overshoot_tokens": max(
+                0, plan.selected_tokens - plan.requested_budget_tokens
+            ),
+            "whole_turn_budget_undershoot_tokens": max(
+                0, plan.requested_budget_tokens - plan.selected_tokens
+            ),
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
             "plan_digest": plan.digest,
@@ -483,6 +499,14 @@ def main() -> None:
     parser.add_argument("--max-decisions", type=int)
     parser.add_argument("--max-output-tokens", type=int)
     parser.add_argument("--seed", type=int)
+    parser.add_argument(
+        "--round-up-whole-turns",
+        action="store_true",
+        help=(
+            "treat the token target as a minimum retention floor and include "
+            "the ranked causal turn that crosses it"
+        ),
+    )
     parser.add_argument(
         "--restart",
         action="store_true",
@@ -532,6 +556,7 @@ def main() -> None:
         matched_budget_replay=matched_budget_replay,
         progress_path=args.output,
         restart=args.restart,
+        round_up_whole_turns=args.round_up_whole_turns,
     )
     print(json.dumps({key: result[key] for key in (
         "instance_id", "policy", "completed_decisions", "exact_command_rate",

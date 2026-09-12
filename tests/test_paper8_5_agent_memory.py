@@ -93,6 +93,38 @@ def test_head_and_tail_are_independent_and_selection_is_middle_only():
     assert plan.middle_candidate_turns == 3
 
 
+def test_retention_floor_rounds_up_at_whole_causal_turn_boundary():
+    history = recordize_minisweagent_messages(_messages(4))
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    target = int(full_tokens * 0.9)
+    ceiling = HeadMiddleTailSelector(HeadMiddleTailConfig(
+        head_turns=1,
+        tail_turns=1,
+        middle_strategy=MiddleSelectionStrategy.RECENCY,
+    )).select(
+        history=history,
+        query="foo.py",
+        budget=AgentMemoryBudget(max_tokens=target),
+        count_tokens=whitespace_tokens,
+    )
+    floor = HeadMiddleTailSelector(HeadMiddleTailConfig(
+        head_turns=1,
+        tail_turns=1,
+        middle_strategy=MiddleSelectionStrategy.RECENCY,
+        round_up_to_budget=True,
+    )).select(
+        history=history,
+        query="foo.py",
+        budget=AgentMemoryBudget(max_tokens=target),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert ceiling.selected_tokens <= target
+    assert floor.selected_tokens >= target
+    assert floor.selected_tokens > ceiling.selected_tokens
+    assert floor.policy.endswith(":round_up")
+
+
 def test_role_floor_rounds_up_the_whole_middle_causal_bundle():
     history = recordize_minisweagent_messages(_messages(5))
     selector = HeadMiddleTailSelector(HeadMiddleTailConfig(

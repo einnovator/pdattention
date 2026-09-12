@@ -399,7 +399,8 @@ temperature zero, generation parameters, and decision snapshots, we run:
     \item \textsc{Dag-Exclude} at a nominal 100\% ceiling;
     \item a recency/token-tail control matched to the DAG arm's realized token
     count at each decision;
-    \item head--middle--tail policies at a 90\% ceiling.
+    \item head--middle--tail policies at a 90\% minimum-retention floor,
+    rounded upward at whole causal-turn boundaries.
 \end{enumerate}
 
 Failure of \textsc{Full} stops interpretation of later arms because it means the
@@ -407,6 +408,16 @@ frozen baseline itself was not reproduced. Autonomous qualification and oracle
 add-back tests begin only after this ordered next-action gate. The matched-tail
 control distinguishes the value of certified semantic exclusion from the value
 of merely removing the same number of old tokens.
+
+The two budget contracts are intentionally different.  The matched-tail arm
+must not exceed the DAG arm's realized token count, so it rounds down and
+reports unused capacity.  A treatment named ``90\%'', however, must retain at
+least $\lceil0.9N\rceil$ logical tokens: it follows the policy ranking until the
+next indivisible causal bundle crosses that floor and reports the resulting
+whole-turn overshoot.  A preliminary implementation treated 90\% as a hard
+ceiling and retained only 71.9\% on one decision; that partial run is
+quarantined as a budget-contract failure rather than interpreted as policy
+quality.
 
 The repository state is part of the frozen decision point. Replaying turn $t$
 restores the exact pre-action repository state within the declared checkpoint

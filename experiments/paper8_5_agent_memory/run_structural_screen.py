@@ -53,14 +53,16 @@ def _decision_prefixes(messages: Sequence[dict[str, Any]]):
             yield index, messages[:index]
 
 
-def _policy_selectors(head: int, tail: int):
+def _policy_selectors(head: int, tail: int, *, round_up: bool = False):
     yield "middle_none", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
         middle_strategy=MiddleSelectionStrategy.NONE,
+        round_up_to_budget=round_up,
     ))
     yield "middle_recency", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
         middle_strategy=MiddleSelectionStrategy.RECENCY,
+        round_up_to_budget=round_up,
     ))
     yield "progress_spine", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
@@ -70,10 +72,12 @@ def _policy_selectors(head: int, tail: int):
         verification_turns=1,
         progress_turns=1,
         error_turns=1,
+        round_up_to_budget=round_up,
     ))
     yield "middle_lexical", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
         middle_strategy=MiddleSelectionStrategy.LEXICAL,
+        round_up_to_budget=round_up,
     ))
     hybrid = HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
@@ -83,6 +87,7 @@ def _policy_selectors(head: int, tail: int):
         verification_turns=1,
         progress_turns=1,
         error_turns=1,
+        round_up_to_budget=round_up,
     ))
     yield "spine_plus_lexical", hybrid
     yield "dag_certified_exclusion", DagCertifiedExclusionSelector(

@@ -132,6 +132,12 @@ class HeadMiddleTailConfig:
     error_turns: int = 0
     oracle_utilities: Mapping[str, float] | None = None
     recency_weight: float = 0.15
+    round_up_to_budget: bool = False
+    """Treat ``max_tokens`` as a retention floor at whole-turn boundaries.
+
+    This mode is used for nominal retention treatments such as PRA-90.  The
+    ordinary mode remains a hard ceiling for matched-token controls.
+    """
 
     def __post_init__(self) -> None:
         values = (
@@ -219,9 +225,12 @@ class HeadMiddleTailSelector:
                 costs[rid] for rid in added
             )
             projected_records = len(selected_ids) + len(added)
-            if projected_tokens > budget.max_tokens:
-                continue
             if budget.max_records is not None and projected_records > budget.max_records:
+                continue
+            if self.config.round_up_to_budget:
+                if sum(costs[rid] for rid in selected_ids) >= budget.max_tokens:
+                    break
+            elif projected_tokens > budget.max_tokens:
                 continue
             selected_turn_ids.add(turn.turn_id)
             selected_ids.update(added)
@@ -229,7 +238,10 @@ class HeadMiddleTailSelector:
                 reasons[rid] = f"middle:{self.config.middle_strategy.value}"
 
         return _plan(
-            policy=f"head_middle_tail:{self.config.middle_strategy.value}",
+            policy=(
+                f"head_middle_tail:{self.config.middle_strategy.value}"
+                + (":round_up" if self.config.round_up_to_budget else "")
+            ),
             history=history,
             selected_ids=selected_ids,
             reasons=reasons,
