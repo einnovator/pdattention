@@ -40,7 +40,8 @@ an empirical frozen/autonomous outcome.
 heuristic families. They are deliberately not promoted to `DAG_CERTIFIED`:
 
 - H1 retires a discovery search only after one of its returned resources is
-  consumed by a concrete read; `Kf` delays retirement.
+  consumed by a concrete read and the trajectory subsequently moves to a
+  non-read operation; `Kf` delays retirement from that transition.
 - H2a retires an actual changed-file write only after a later read/diff exposes
   the same post-write resource version. H2b requires a successful verification
   with an explicit resource dependency. The bare "not rewritten" rule is
@@ -54,7 +55,9 @@ heuristic families. They are deliberately not promoted to `DAG_CERTIFIED`:
 Every retired causal group carries an inactive controller tombstone with rule,
 resource, and witness IDs. Tombstones are persisted in the plan/artifact but
 are not inserted into the model prompt, because doing that would create a
-separate summarization treatment. Frozen replay reports immediate reacquisition
+separate summarization treatment. A predeclared follow-up materialization arm
+will compare this binary retirement with a model-visible compact provenance
+stub; stub tokens will count against its realized budget. Frozen replay reports immediate reacquisition
 of excluded resources and the narrower policy-excess proxy (candidate
 reacquires but contemporaneous FULL does not). Autonomous reacquisition and
 official task success remain the primary endpoints.

@@ -641,6 +641,7 @@ def test_h1_retires_consumed_search_only_after_kf_delay():
         ("find . -name foo.py", "./src/foo.py", None),
         ("cat src/foo.py", "source", None),
         ("pwd", "/workspace", None),
+        ("echo done", "done", None),
     )
     history = recordize_minisweagent_messages(messages)
     immediate = build_negative_exclusions(
@@ -655,6 +656,16 @@ def test_h1_retires_consumed_search_only_after_kf_delay():
     assert [row.causal_group_id for row in immediate] == ["turn:t0000"]
     assert [row.causal_group_id for row in delayed] == ["turn:t0000"]
     assert not too_late
+
+    still_exploring = recordize_minisweagent_messages(_heuristic_messages(
+        ("find . -name foo.py", "./src/foo.py", None),
+        ("cat src/foo.py", "source", None),
+        ("grep -n needle src/foo.py", "1:needle", None),
+    ))
+    assert not build_negative_exclusions(
+        still_exploring,
+        _negative_config(NegativeRule.H1_SEARCH_CONSUMED, search_delay_turns=0),
+    )
 
 
 def test_h2a_requires_current_version_read_and_h2b_explicit_verification_dependency():

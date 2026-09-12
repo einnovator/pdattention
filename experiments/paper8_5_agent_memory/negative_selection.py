@@ -352,7 +352,27 @@ def build_negative_exclusions(
             if consumed is None:
                 continue
             consumed_index, witness = consumed
-            if len(turns) - 1 - consumed_index < config.search_delay_turns:
+            # A concrete read establishes that the search result was consumed,
+            # but the requested H1 transition also requires the trajectory to
+            # move on to a non-discovery/non-read operation.  Without this
+            # guard, a still-active search/read exploration chain would be
+            # retired prematurely merely because its first candidate was
+            # opened.
+            transition = next((
+                (later_index, later)
+                for later_index, later in enumerate(
+                    turns[consumed_index + 1 :], start=consumed_index + 1
+                )
+                if later.operation not in {
+                    BashOperation.SEARCH_DISCOVERY,
+                    BashOperation.READ,
+                    BashOperation.DIFF,
+                }
+            ), None)
+            if transition is None:
+                continue
+            transition_index, transition_witness = transition
+            if len(turns) - 1 - transition_index < config.search_delay_turns:
                 continue
             candidates.append(_candidate(
                 history=history,
@@ -360,11 +380,16 @@ def build_negative_exclusions(
                 rule=NegativeRule.H1_SEARCH_CONSUMED,
                 classification="high_confidence_supersession_not_certificate",
                 reason=(
-                    "discovery output was consumed by a concrete downstream read; "
+                    "discovery output was consumed by a concrete downstream read "
+                    "and followed by a non-read transition; "
                     f"Kf={config.search_delay_turns} completed later turns elapsed"
                 ),
                 resources=older.discovered_resources,
-                witnesses=(*older.turn.record_ids, *witness.turn.record_ids),
+                witnesses=(
+                    *older.turn.record_ids,
+                    *witness.turn.record_ids,
+                    *transition_witness.turn.record_ids,
+                ),
                 count_tokens=count_tokens,
             ))
 

@@ -326,10 +326,11 @@ summarization treatment.
 \textsc{H1--Consumed Search} retires a discovery operation such as
 \texttt{find}, \texttt{fd}, \texttt{rg --files}, or filename-only
 \texttt{grep -l} after a returned resource is consumed by a concrete source
-read. Source-bearing \texttt{grep -n} and ordinary \texttt{rg} matches count
-as reads, not discovery. The delay $K_f\in\{0,1,2,4\}$ measures whether the
-location evidence retains short-lived value after consumption. An unresolved
-search branch is not claimed irrelevant.
+read and the trajectory subsequently advances to a non-read operation.
+Source-bearing \texttt{grep -n} and ordinary \texttt{rg} matches count as
+reads, not discovery. The delay $K_f\in\{0,1,2,4\}$ starts at that transition
+and measures whether the location evidence retains short-lived value after
+consumption. An unresolved search/read exploration chain is not retired.
 
 \textsc{H2--Write Consolidation} is split because absence of a rewrite does
 not imply that a mutation was good. H2a requires an observed resource change
@@ -413,7 +414,8 @@ For selected records, we compare:
     \item matched source span;
     \item bounded head/tail;
     \item hierarchical child span;
-    \item optional summary.
+    \item optional summary;
+    \item compact provenance stub for an excluded record.
 \end{itemize}
 
 The first experiments use whole-record materialization so that selector effects
@@ -423,6 +425,16 @@ test outputs retain the command, return code, failed-test identities, exception,
 and relevant stack frames; search results retain matched lines and locations;
 mutations retain their changed span or diff. This reuses gateway-style
 compaction semantics without introducing a gateway or an engine into the study.
+
+Negative exclusion therefore has two separately measured realizations. The
+primary arm removes the retired payload from the model request while retaining
+its tombstone only in controller state. A second \emph{model-visible stub} arm
+replaces it with compact metadata such as resource, mutation/verification
+status, and superseding-witness identity. The latter may preserve useful
+provenance, but it is a materialization/compression treatment rather than pure
+exclusion and its stub tokens count against the realized budget. This cleanly
+separates binary HOT$\rightarrow$WARM retirement from
+HOT$\rightarrow$STUB presentation.
 
 \section{Experimental Design}
 
