@@ -18,6 +18,7 @@ from pra_hf.agent_executor import (
     enforce_retention_floor,
     qwen3_append_stable_no_thinking_template,
     selected_record_plan,
+    split_generation_prompt,
     validate_append_stable_template,
 )
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
@@ -266,6 +267,19 @@ def test_direct_completion_keeps_selection_copy_zero_and_graft_visible() -> None
 def test_common_prefix_distinguishes_append_from_rewrite() -> None:
     assert _common_prefix([1, 2, 3], [1, 2, 3, 4]) == 3
     assert _common_prefix([1, 2, 3], [1, 9, 3]) == 1
+
+
+def test_generation_split_uses_completed_record_boundary_not_fixed_tail() -> None:
+    tokenizer = _Tokenizer()
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "x"},
+    )
+    prompt, source, wire = split_generation_prompt(tokenizer, messages)
+
+    assert prompt == [*source, *wire]
+    assert wire == list(map(ord, "<assistant>"))
+    assert source[-len("</user>") :] == list(map(ord, "</user>"))
 
 
 def test_tiny_qwen_executes_dense_noop_then_sparse_without_history_reencoding() -> None:

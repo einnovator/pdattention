@@ -26,6 +26,7 @@ from pra_sglang.agent_executor import (
     enforce_retention_floor,
     qwen3_append_stable_no_thinking_template,
     selected_record_plan,
+    split_generation_prompt,
 )
 from pra_sglang.adapter import SGLangEngineAdapter
 from pra_sglang.mlx_native import _qwen_projections
@@ -79,6 +80,19 @@ class _Tokenizer:
         if add_generation_prompt:
             text += "<assistant>"
         return [ord(char) for char in text]
+
+
+def test_generation_split_keeps_short_tool_record_in_resident_source() -> None:
+    tokenizer = _Tokenizer()
+    messages = (
+        {"role": "assistant", "content": "command"},
+        {"role": "user", "content": "x"},
+    )
+    prompt, source, wire = split_generation_prompt(tokenizer, messages)
+
+    assert prompt == [*source, *wire]
+    assert wire == list(map(ord, "<assistant>"))
+    assert source[-len("</user>") :] == list(map(ord, "</user>"))
 
 
 def _manifest(messages):
