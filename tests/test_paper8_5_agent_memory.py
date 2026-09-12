@@ -500,3 +500,67 @@ def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     assert len(calls) == 2
     assert references[0] not in [row["content"] for row in calls[0]]
     assert calls[1][-1]["role"] == "user"
+
+
+def test_frozen_replay_can_use_contemporaneous_full_output_as_reference(monkeypatch):
+    messages = _messages(1)
+    generated = messages[2]["content"].replace("inspect turn 0", "new reasoning")
+
+    def fake_post(url, payload, *, api_key, timeout):
+        return {"choices": [{"message": {"content": generated}}], "usage": {}}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    full_reference = {"rows": [{"decision": 1, "generated_content": generated}]}
+    result = frozen_replay.replay(
+        trajectory={"instance_id": "task-1", "messages": messages},
+        model="test-model",
+        base_url="http://example.invalid",
+        policy="full",
+        head=1,
+        tail=1,
+        budget_fraction=1.0,
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        materialization_threshold_tokens=20,
+        max_decisions=None,
+        seed=0,
+        max_output_tokens=128,
+        api_key=None,
+        timeout=1,
+        reference_replay=full_reference,
+    )
+    assert result["comparison_reference"] == "contemporaneous_full_replay"
+    assert result["rows"][0]["exact_content"] is True
+    assert result["rows"][0]["historical_reference_content_sha256"] != result["rows"][0]["generated_content_sha256"]
+
+
+def test_frozen_replay_accepts_per_decision_matched_token_ceiling(monkeypatch):
+    messages = _messages(1)
+
+    def fake_post(url, payload, *, api_key, timeout):
+        return {"choices": [{"message": {"content": messages[2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    matched = {"rows": [{"decision": 1, "selected_whole_record_tokens": 7}]}
+    result = frozen_replay.replay(
+        trajectory={"instance_id": "task-1", "messages": messages},
+        model="test-model",
+        base_url="http://example.invalid",
+        policy="middle_recency",
+        head=0,
+        tail=0,
+        budget_fraction=1.0,
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        materialization_threshold_tokens=20,
+        max_decisions=None,
+        seed=0,
+        max_output_tokens=128,
+        api_key=None,
+        timeout=1,
+        matched_budget_replay=matched,
+    )
+    assert result["rows"][0]["requested_budget_tokens"] == 7
+    assert result["matched_budget_source_digest"] is not None

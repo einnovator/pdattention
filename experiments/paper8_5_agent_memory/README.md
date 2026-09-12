@@ -74,3 +74,11 @@ Primary autonomous metrics are official resolution, calls to solution,
 selected logical input tokens, avoidable reacquisition calls, repeated
 verification, repeated failed edits, and first divergence. Latency, TTFT,
 physical K/V copy, and re-encoding belong to Paper 4.5.
+
+Frozen arms must be executed in order. First write a `full.json` artifact. Pass
+that artifact through `--reference-replay full.json` for every later arm so
+agreement is measured against a contemporaneous FULL generation rather than
+only a historical trajectory. `DAG-EXCLUDE@100` supplies the per-decision token
+ceilings for its recency control through `--matched-budget-replay dag.json`;
+whole causal turns are rounded down to that ceiling, and the unused remainder
+is reported rather than silently filled with a partial turn.

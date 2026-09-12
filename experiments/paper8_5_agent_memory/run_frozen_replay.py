@@ -88,6 +88,8 @@ def replay(
     max_output_tokens: int,
     api_key: str | None,
     timeout: int,
+    reference_replay: Mapping[str, Any] | None = None,
+    matched_budget_replay: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
@@ -104,17 +106,35 @@ def replay(
         threshold_tokens=materialization_threshold_tokens,
     )
     rows = []
+    replay_references = {
+        int(row["decision"]): row
+        for row in (reference_replay or {}).get("rows", ())
+    }
+    matched_budgets = {
+        int(row["decision"]): int(row["selected_whole_record_tokens"])
+        for row in (matched_budget_replay or {}).get("rows", ())
+    }
     endpoint = f"{base_url.rstrip('/')}/v1/chat/completions"
     for decision, assistant_index in enumerate(assistant_indexes, start=1):
         prefix = messages[:assistant_index]
-        reference = str(messages[assistant_index].get("content", ""))
+        historical_reference = str(messages[assistant_index].get("content", ""))
+        replay_reference = replay_references.get(decision)
+        reference = (
+            str(replay_reference["generated_content"])
+            if replay_reference is not None
+            else historical_reference
+        )
         history = recordize_minisweagent_messages(prefix)
         full_tokens = sum(count_tokens(record.content) for record in history.records)
+        requested_budget = matched_budgets.get(
+            decision,
+            max(1, math.ceil(full_tokens * budget_fraction)),
+        )
         plan = selector.select(
             history=history,
             query=_query(prefix),
             budget=AgentMemoryBudget(
-                max_tokens=max(1, math.ceil(full_tokens * budget_fraction))
+                max_tokens=requested_budget
             ),
             count_tokens=count_tokens,
         )
@@ -145,8 +165,14 @@ def replay(
         rows.append({
             "decision": decision,
             "trajectory_message_index": assistant_index,
+            "comparison_reference": (
+                "contemporaneous_full_replay"
+                if replay_reference is not None else "historical_trajectory"
+            ),
+            "historical_reference_content_sha256": _digest(historical_reference),
             "reference_content_sha256": _digest(reference),
             "generated_content_sha256": _digest(generated),
+            "generated_content": generated,
             "exact_content": generated == reference,
             "reference_command": reference_command,
             "generated_command": generated_command,
@@ -173,10 +199,22 @@ def replay(
         "model": model,
         "tokenizer": tokenizer_identity,
         "generation": {"temperature": 0, "seed": seed},
+        "comparison_reference": (
+            "contemporaneous_full_replay"
+            if reference_replay is not None else "historical_trajectory"
+        ),
+        "reference_replay_digest": (
+            _digest(json.dumps(reference_replay, sort_keys=True))
+            if reference_replay is not None else None
+        ),
         "policy": policy,
         "head_turns": head,
         "tail_turns": tail,
         "budget_fraction": budget_fraction,
+        "matched_budget_source_digest": (
+            _digest(json.dumps(matched_budget_replay, sort_keys=True))
+            if matched_budget_replay is not None else None
+        ),
         "materialization_mode": materialization_mode.value,
         "completed_decisions": len(rows),
         "exact_command_decisions": exact_commands,
@@ -211,9 +249,27 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--timeout", type=int, default=1200)
+    parser.add_argument(
+        "--reference-replay",
+        type=Path,
+        help="FULL replay artifact used as the contemporaneous comparison reference",
+    )
+    parser.add_argument(
+        "--matched-budget-replay",
+        type=Path,
+        help="artifact whose per-decision selected-token count supplies the ceiling",
+    )
     args = parser.parse_args()
     counter, tokenizer_identity = _token_counter(args.tokenizer)
     trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
+    reference_replay = (
+        json.loads(args.reference_replay.read_text(encoding="utf-8"))
+        if args.reference_replay else None
+    )
+    matched_budget_replay = (
+        json.loads(args.matched_budget_replay.read_text(encoding="utf-8"))
+        if args.matched_budget_replay else None
+    )
     result = replay(
         trajectory=trajectory,
         model=args.model,
@@ -231,6 +287,8 @@ def main() -> None:
         max_output_tokens=args.max_output_tokens,
         api_key=os.environ.get(args.api_key_env),
         timeout=args.timeout,
+        reference_replay=reference_replay,
+        matched_budget_replay=matched_budget_replay,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
