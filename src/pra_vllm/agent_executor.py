@@ -423,6 +423,8 @@ class VLLMCudaAgentHistoryExecutor:
             "request_lifetime": True,
             "streaming": False,
             "prefix_cache_enabled": True,
+            "automatic_prefix_cache": True,
+            "prefix_cache_mode": "automatic_prefix_cache",
             "complete_pages_only": True,
             "multiprocess_qualified": False,
             "hybrid_kv_groups_qualified": False,

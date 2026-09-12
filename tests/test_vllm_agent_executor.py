@@ -199,6 +199,20 @@ def test_plain_control_bypasses_scheduler_aliases_and_reports_usage() -> None:
     assert result.raw["usage"]["completion_tokens"] == 1
 
 
+def test_vllm_agent_advertises_its_enabled_automatic_prefix_cache() -> None:
+    executor = VLLMCudaAgentHistoryExecutor(
+        _Driver(),
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest="digest",
+    )
+
+    capabilities = executor.capabilities()
+    assert capabilities["prefix_cache_enabled"] is True
+    assert capabilities["automatic_prefix_cache"] is True
+    assert capabilities["prefix_cache_mode"] == "automatic_prefix_cache"
+
+
 def test_sparse_request_uses_complete_selected_pages_and_original_extent() -> None:
     driver = _Driver()
     executor = VLLMCudaAgentHistoryExecutor(
