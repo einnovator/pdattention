@@ -200,13 +200,21 @@ The autonomous runner also attempts a fail-closed auxiliary workspace-state
 outcome. This is useful when an agent changed the repository correctly but put
 a source excerpt, rather than a Git diff, in its submission. The extractor
 accepts only the chronologically last pre-action checkpoint from one complete,
-contiguous instrumentation session. Its paired final execution receipt must
-show the same complete workspace fingerprint before and after the action; every
-checkpoint digest must match; the untracked archive must be empty; and at most
-one of the staged and unstaged patches may be non-empty. An incomplete latest
-checkpoint is never replaced with an older one. These restrictions avoid
-calling stale, post-mutation, partially captured, or ambiguously composed state
-the final workspace.
+contiguous instrumentation session. Normally its paired final execution receipt
+must show the same complete workspace fingerprint before and after the action.
+mini-swe-agent's terminal submission raises before that receipt is written, so
+an exact `N` decision / `N-1` execution sequence has a second guarded path: one
+unique trajectory must end in `Submitted`, the final assistant command digest
+must equal the unmatched decision, the submitted-output digest must equal the
+primary prediction, and the command must begin with the exact submission
+sentinel followed only by an allowlisted read/diff pipeline. Extra shell
+commands, control operators, redirection, command substitution, editing `sed`,
+output-writing or external `git diff` modes, and unclassified programs are
+rejected. Every checkpoint digest must match; the untracked archive must be
+empty; and at most one of the staged and unstaged patches may be non-empty. An
+incomplete latest checkpoint is never replaced with an older one. These
+restrictions avoid calling stale, post-mutation, partially captured, or
+ambiguously composed state the final workspace.
 
 When admitted, the runner copies the exact index and worktree components to
 `auxiliary_workspace_state.index.patch` and

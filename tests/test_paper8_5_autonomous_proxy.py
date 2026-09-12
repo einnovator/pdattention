@@ -148,6 +148,7 @@ def _write_workspace_checkpoint(
     complete: bool = True,
     workspace_stable: bool = True,
     index_patch: bytes = b"",
+    command: str | None = None,
 ) -> None:
     session = root / "container-session"
     session.mkdir(parents=True, exist_ok=True)
@@ -158,7 +159,8 @@ def _write_workspace_checkpoint(
     index_path.write_bytes(index_patch)
     with tarfile.open(archive_path, "w:gz"):
         pass
-    command_digest = hashlib.sha256(f"cat foo.py {step}".encode()).hexdigest()
+    command = command or f"cat foo.py {step}"
+    command_digest = hashlib.sha256(command.encode()).hexdigest()
     fingerprint = f"workspace-{step}"
     decision = {
         "schema_version": 1,
@@ -206,6 +208,35 @@ def _write_primary_predictions(path: Path, patch: str = "source excerpt") -> Non
     }))
 
 
+def _write_submitted_trajectory(
+    primary_predictions: Path,
+    *,
+    command: str,
+    submission: str = "source excerpt",
+) -> None:
+    trajectory = primary_predictions.parent / "org__repo-1" / "org__repo-1.traj.json"
+    trajectory.parent.mkdir(parents=True, exist_ok=True)
+    trajectory.write_text(json.dumps({
+        "instance_id": "org__repo-1",
+        "trajectory_format": "mini-swe-agent-1",
+        "info": {"exit_status": "Submitted"},
+        "messages": [
+            {
+                "role": "assistant",
+                "content": f"```mswea_bash_command\n{command}\n```",
+            },
+            {
+                "role": "exit",
+                "content": submission,
+                "extra": {
+                    "exit_status": "Submitted",
+                    "submission": submission,
+                },
+            },
+        ],
+    }))
+
+
 def test_auxiliary_workspace_state_copies_verified_final_patch(tmp_path):
     patch = (
         b"diff --git a/foo.py b/foo.py\n"
@@ -236,6 +267,125 @@ def test_auxiliary_workspace_state_copies_verified_final_patch(tmp_path):
     auxiliary_predictions = json.loads(Path(outcome["predictions"]).read_text())
     assert auxiliary_predictions["org__repo-1"]["model_patch"].encode() == patch
     assert json.loads(primary.read_text())["org__repo-1"]["model_patch"] == "source excerpt"
+
+
+def test_auxiliary_workspace_state_accepts_certified_terminal_read_pipeline(tmp_path):
+    command = (
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && "
+        "cat /testbed/foo.py | sed -n '1,5p'"
+    )
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+        command=command,
+    )
+    (instrumentation / "container-session" / "execution_0000.json").unlink()
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+    _write_submitted_trajectory(primary, command=command)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "available"
+    assert outcome["final_state_certificate"] == (
+        "submitted_read_only_terminal_checkpoint"
+    )
+    assert outcome["decision_receipt_count"] == 1
+    assert outcome["execution_receipt_count"] == 0
+    assert outcome["last_action_workspace_stable"] is False
+    assert outcome["terminal_command_programs"] == ["cat", "sed"]
+    assert outcome["terminal_submission_matches_primary_prediction"] is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py && rm foo.py",
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py; cat bar.py",
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py | tee copied.py",
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py > copied.py",
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && python3 -c 'print(1)'",
+    ),
+)
+def test_auxiliary_workspace_state_rejects_uncertified_terminal_shell(
+    tmp_path, command
+):
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+        command=command,
+    )
+    (instrumentation / "container-session" / "execution_0000.json").unlink()
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+    _write_submitted_trajectory(primary, command=command)
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "unavailable"
+    assert outcome["reason"] == "terminal_command_not_certified_read_only"
+
+
+@pytest.mark.parametrize(
+    ("trajectory_command", "submission", "reason"),
+    (
+        (
+            "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat other.py",
+            "source excerpt",
+            "terminal_command_digest_mismatch",
+        ),
+        (
+            "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py",
+            "different excerpt",
+            "terminal_submission_digest_mismatch",
+        ),
+    ),
+)
+def test_auxiliary_workspace_state_binds_terminal_command_and_submission(
+    tmp_path, trajectory_command, submission, reason
+):
+    checkpoint_command = (
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat foo.py"
+    )
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+        command=checkpoint_command,
+    )
+    (instrumentation / "container-session" / "execution_0000.json").unlink()
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary)
+    _write_submitted_trajectory(
+        primary,
+        command=trajectory_command,
+        submission=submission,
+    )
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "unavailable"
+    assert outcome["reason"] == reason
 
 
 def test_auxiliary_workspace_state_does_not_fall_back_from_incomplete_last_checkpoint(

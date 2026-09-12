@@ -11,11 +11,15 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
+import shlex
 import tarfile
 from typing import Any, Mapping
 
 
 AUXILIARY_WORKSPACE_STATE_LABEL = "auxiliary_workspace_state"
+_COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
+_SUBMIT_PREFIX = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && "
 
 
 class _Unavailable(ValueError):
@@ -52,8 +56,8 @@ def _single_session_paths(root: Path) -> tuple[list[Path], list[Path], Path]:
         raise _Unavailable("instrumentation_root_missing", "instrumentation root is absent")
     decisions = sorted(root.rglob("decision_*.json"))
     executions = sorted(root.rglob("execution_*.json"))
-    if not decisions or not executions:
-        raise _Unavailable("checkpoint_receipts_missing", "decision or execution receipts are absent")
+    if not decisions:
+        raise _Unavailable("checkpoint_receipts_missing", "decision receipts are absent")
     parents = {path.parent.resolve() for path in (*decisions, *executions)}
     if len(parents) != 1:
         raise _Unavailable(
@@ -132,6 +136,164 @@ def _primary_prediction(path: Path, instance_id: str) -> tuple[dict[str, Any], s
     return row, model_name
 
 
+def _read_only_terminal_pipeline(command: str) -> tuple[str, ...]:
+    if not command.startswith(_SUBMIT_PREFIX):
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal command lacks the exact submission sentinel prefix",
+        )
+    pipeline = command[len(_SUBMIT_PREFIX):].strip()
+    if not pipeline or any(value in pipeline for value in ("\n", ";", "&", "<", ">", "`", "$")):
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal command contains a non-pipeline shell control or redirection",
+        )
+    if "||" in pipeline:
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal command contains a conditional pipeline",
+        )
+    raw_segments = pipeline.split("|")
+    if any(not segment.strip() for segment in raw_segments):
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal command contains an empty pipeline segment",
+        )
+    programs: list[str] = []
+    for index, raw_segment in enumerate(raw_segments):
+        try:
+            tokens = shlex.split(raw_segment, posix=True)
+        except ValueError as error:
+            raise _Unavailable(
+                "terminal_command_not_certified_read_only",
+                f"terminal command is not valid shell text: {error}",
+            ) from error
+        if not tokens:
+            raise _Unavailable(
+                "terminal_command_not_certified_read_only",
+                "terminal command contains an empty segment",
+            )
+        program = tokens[0]
+        programs.append(program)
+        if program == "git":
+            if index != 0 or len(tokens) < 2 or tokens[1] not in {"diff", "show"}:
+                raise _Unavailable(
+                    "terminal_command_not_certified_read_only",
+                    "only a leading git diff/show producer is permitted",
+                )
+            unsafe_git_options = {"--ext-diff", "--textconv", "--output"}
+            if any(
+                token in unsafe_git_options
+                or any(token.startswith(option + "=") for option in unsafe_git_options)
+                for token in tokens[2:]
+            ):
+                raise _Unavailable(
+                    "terminal_command_not_certified_read_only",
+                    "git producer requests an external or output-writing mode",
+                )
+            continue
+        if program == "sed":
+            if "-n" not in tokens[1:] or any(
+                token == "-i" or token.startswith("--in-place")
+                for token in tokens[1:]
+            ):
+                raise _Unavailable(
+                    "terminal_command_not_certified_read_only",
+                    "only non-editing sed -n is permitted",
+                )
+            continue
+        if program in {"cat", "grep", "head", "tail"}:
+            continue
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            f"unclassified terminal program: {program}",
+        )
+    if programs[0] not in {"cat", "grep", "head", "tail", "sed", "git"}:
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal pipeline has no read-only producer",
+        )
+    return tuple(programs)
+
+
+def _terminal_submission_certificate(
+    *,
+    primary_path: Path,
+    primary_model_patch: str,
+    instance_id: str,
+    decision: Mapping[str, Any],
+) -> dict[str, Any]:
+    trajectory_paths = sorted(primary_path.parent.rglob("*.traj.json"))
+    if len(trajectory_paths) != 1:
+        raise _Unavailable(
+            "terminal_trajectory_ambiguous",
+            f"expected one terminal trajectory, found {len(trajectory_paths)}",
+        )
+    trajectory_path = trajectory_paths[0]
+    trajectory = _read_object(trajectory_path)
+    info = trajectory.get("info")
+    messages = trajectory.get("messages")
+    if (
+        trajectory.get("instance_id") != instance_id
+        or not isinstance(info, Mapping)
+        or info.get("exit_status") != "Submitted"
+        or not isinstance(messages, list)
+        or len(messages) < 2
+    ):
+        raise _Unavailable(
+            "terminal_trajectory_not_submitted",
+            "trajectory is not a unique Submitted outcome for the locked instance",
+        )
+    assistant = messages[-2]
+    terminal = messages[-1]
+    terminal_extra = terminal.get("extra") if isinstance(terminal, Mapping) else None
+    if (
+        not isinstance(assistant, Mapping)
+        or assistant.get("role") != "assistant"
+        or not isinstance(terminal, Mapping)
+        or terminal.get("role") != "exit"
+        or not isinstance(terminal_extra, Mapping)
+        or terminal_extra.get("exit_status") != "Submitted"
+        or not isinstance(terminal_extra.get("submission"), str)
+    ):
+        raise _Unavailable(
+            "terminal_trajectory_not_submitted",
+            "trajectory does not end with assistant then Submitted exit records",
+        )
+    assistant_content = assistant.get("content")
+    matches = _COMMAND.findall(assistant_content) if isinstance(assistant_content, str) else []
+    if len(matches) != 1:
+        raise _Unavailable(
+            "terminal_command_ambiguous",
+            f"expected one terminal Bash command, found {len(matches)}",
+        )
+    command = matches[0].strip()
+    command_digest = _sha256_bytes(command.encode("utf-8"))
+    if command_digest != decision.get("command_sha256"):
+        raise _Unavailable(
+            "terminal_command_digest_mismatch",
+            "terminal assistant command does not match the unmatched checkpoint",
+        )
+    submission = str(terminal_extra["submission"])
+    submission_digest = _sha256_bytes(submission.encode("utf-8"))
+    primary_digest = _sha256_bytes(primary_model_patch.encode("utf-8"))
+    if submission_digest != primary_digest:
+        raise _Unavailable(
+            "terminal_submission_digest_mismatch",
+            "terminal submission does not match the primary predictions model_patch",
+        )
+    programs = _read_only_terminal_pipeline(command)
+    return {
+        "terminal_trajectory": str(trajectory_path),
+        "terminal_trajectory_sha256": _sha256_file(trajectory_path),
+        "terminal_command": command,
+        "terminal_command_sha256": command_digest,
+        "terminal_command_programs": list(programs),
+        "terminal_submission_sha256": submission_digest,
+        "terminal_submission_matches_primary_prediction": True,
+    }
+
+
 def create_auxiliary_workspace_state_prediction(
     *,
     instrumentation_root: str | Path,
@@ -164,10 +326,10 @@ def create_auxiliary_workspace_state_prediction(
         decision_paths, execution_paths, session = _single_session_paths(root)
         decisions = _ordered_receipts(decision_paths, "decision")
         executions = _ordered_receipts(execution_paths, "execution")
-        if len(decisions) != len(executions):
+        if len(decisions) not in {len(executions), len(executions) + 1}:
             raise _Unavailable(
                 "receipt_sequence_mismatch",
-                "decision and execution receipt counts differ",
+                "decision and execution counts are neither N/N nor terminal N/N-1",
             )
         if any(
             decision_row.get("command_sha256")
@@ -179,7 +341,6 @@ def create_auxiliary_workspace_state_prediction(
                 "decision and execution command-digest sequences differ",
             )
         decision_path, decision = decisions[-1]
-        execution_path, execution = executions[-1]
         step = len(decisions) - 1
         if (
             type(decision.get("schema_version")) is not int
@@ -200,31 +361,50 @@ def create_auxiliary_workspace_state_prediction(
                 "last_checkpoint_incomplete",
                 "the chronologically last pre-action checkpoint is incomplete",
             )
-        if (
-            type(execution.get("schema_version")) is not int
-            or execution["schema_version"] != 1
-        ):
-            raise _Unavailable("unsupported_execution_schema", "execution schema is not version 1")
-        if decision.get("command_sha256") != execution.get("command_sha256"):
-            raise _Unavailable("receipt_sequence_mismatch", "last command digests differ")
-        pre_state = execution.get("pre_state")
-        post_state = execution.get("post_state")
-        if not isinstance(pre_state, Mapping) or not isinstance(post_state, Mapping):
-            raise _Unavailable("invalid_execution_state", "last execution state is absent")
-        pre_fingerprint = pre_state.get("workspace_version_fingerprint")
-        post_fingerprint = post_state.get("workspace_version_fingerprint")
-        if (
-            pre_state.get("complete") is not True
-            or post_state.get("complete") is not True
-            or not isinstance(pre_fingerprint, str)
-            or not pre_fingerprint
-            or pre_fingerprint != post_fingerprint
-            or pre_fingerprint != decision.get("workspace_version_fingerprint")
-        ):
-            raise _Unavailable(
-                "final_action_changed_or_unverified_workspace",
-                "the final action did not preserve one complete checkpointed workspace state",
+        execution_path: Path | None = None
+        terminal_certificate: dict[str, Any] = {}
+        if len(decisions) == len(executions):
+            execution_path, execution = executions[-1]
+            if (
+                type(execution.get("schema_version")) is not int
+                or execution["schema_version"] != 1
+            ):
+                raise _Unavailable(
+                    "unsupported_execution_schema", "execution schema is not version 1"
+                )
+            pre_state = execution.get("pre_state")
+            post_state = execution.get("post_state")
+            if not isinstance(pre_state, Mapping) or not isinstance(post_state, Mapping):
+                raise _Unavailable("invalid_execution_state", "last execution state is absent")
+            pre_fingerprint = pre_state.get("workspace_version_fingerprint")
+            post_fingerprint = post_state.get("workspace_version_fingerprint")
+            if (
+                pre_state.get("complete") is not True
+                or post_state.get("complete") is not True
+                or not isinstance(pre_fingerprint, str)
+                or not pre_fingerprint
+                or pre_fingerprint != post_fingerprint
+                or pre_fingerprint != decision.get("workspace_version_fingerprint")
+            ):
+                raise _Unavailable(
+                    "final_action_changed_or_unverified_workspace",
+                    "the final action did not preserve one complete checkpointed workspace state",
+                )
+            final_state_certificate = "stable_complete_execution_pre_and_post"
+        else:
+            pre_fingerprint = decision.get("workspace_version_fingerprint")
+            if not isinstance(pre_fingerprint, str) or not pre_fingerprint:
+                raise _Unavailable(
+                    "invalid_checkpoint_receipt",
+                    "terminal checkpoint workspace fingerprint is absent",
+                )
+            terminal_certificate = _terminal_submission_certificate(
+                primary_path=primary_path,
+                primary_model_patch=primary_model_patch,
+                instance_id=instance_id,
+                decision=decision,
             )
+            final_state_certificate = "submitted_read_only_terminal_checkpoint"
 
         index_source, index_patch = _checkpoint_artifact(
             decision_path, decision, "index_patch", "index_patch_sha256"
@@ -275,11 +455,19 @@ def create_auxiliary_workspace_state_prediction(
             "checkpoint_step": step,
             "workspace_version_fingerprint": pre_fingerprint,
             "last_action_command_sha256": decision["command_sha256"],
-            "last_action_workspace_stable": True,
+            "last_action_workspace_stable": execution_path is not None,
+            "final_state_certificate": final_state_certificate,
+            "decision_receipt_count": len(decisions),
+            "execution_receipt_count": len(executions),
             "source_decision_receipt": str(decision_path),
             "source_decision_receipt_sha256": _sha256_file(decision_path),
-            "source_execution_receipt": str(execution_path),
-            "source_execution_receipt_sha256": _sha256_file(execution_path),
+            "source_execution_receipt": (
+                str(execution_path) if execution_path is not None else None
+            ),
+            "source_execution_receipt_sha256": (
+                _sha256_file(execution_path) if execution_path is not None else None
+            ),
+            **terminal_certificate,
             "source_index_patch": str(index_source),
             "source_index_patch_sha256": decision["index_patch_sha256"],
             "source_worktree_patch": str(worktree_source),
