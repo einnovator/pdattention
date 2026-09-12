@@ -744,8 +744,8 @@ def _metal_disjoint_selected_attention(
             float score = shared_score;
             float next_max = metal::max(running_max, score);
             float prior_scale = isinf(running_max)
-                ? 0.0f : metal::precise::exp(running_max - next_max);
-            float weight = metal::precise::exp(score - next_max);
+                ? 0.0f : metal::fast::exp(running_max - next_max);
+            float weight = metal::fast::exp(score - next_max);
             if (d < head_dim) {{
                 uint v_index = kvhead * source_v_strides[1]
                     + kt * source_v_strides[2] + d * source_v_strides[3];
@@ -783,8 +783,8 @@ def _metal_disjoint_selected_attention(
         float score = shared_score;
         float next_max = metal::max(running_max, score);
         float prior_scale = isinf(running_max)
-            ? 0.0f : metal::precise::exp(running_max - next_max);
-        float weight = metal::precise::exp(score - next_max);
+            ? 0.0f : metal::fast::exp(running_max - next_max);
+        float weight = metal::fast::exp(score - next_max);
         if (d < head_dim) {{
             uint v_index = kvhead * local_v_strides[1]
                 + kt * local_v_strides[2] + d * local_v_strides[3];
@@ -808,7 +808,7 @@ def _metal_disjoint_selected_attention(
             output_names=("out",),
             source=source,
             ensure_row_contiguous=False,
-            compile_options={"math_mode": "safe"},
+            compile_options={"math_mode": "fast"},
         )
         _DISJOINT_METAL_KERNELS[kernel_key] = kernel
 
