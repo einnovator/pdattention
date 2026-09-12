@@ -261,9 +261,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     result = {
         "schema_version": "paper4.5.full-history-engine-parity.v1",
         "engine": args.engine,
+        "engine_version": args.engine_version,
         "model": args.model_source or args.model,
         "served_model": args.model,
         "model_revision": args.revision,
+        "pra_commit": args.pra_commit,
         "python_version": platform.python_version(),
         "hardware": args.hardware_label,
         "temperature": 0,
@@ -288,9 +290,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--engine", required=True)
+    parser.add_argument("--engine-version", required=True)
     parser.add_argument("--model", required=True, help="Served OpenAI model ID.")
     parser.add_argument("--model-source")
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--pra-commit", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-tokens", type=int, default=32)
     parser.add_argument("--session-prefix", default="paper45-full-history-parity")
