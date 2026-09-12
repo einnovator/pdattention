@@ -2,6 +2,7 @@ import json
 import hashlib
 import subprocess
 import tarfile
+import pytest
 import experiments.paper8_5_agent_memory.run_frozen_replay as frozen_replay
 
 from experiments.paper8_5_agent_memory import (
@@ -568,3 +569,144 @@ def test_frozen_replay_accepts_per_decision_matched_token_ceiling(monkeypatch):
     )
     assert result["rows"][0]["requested_budget_tokens"] == 7
     assert result["matched_budget_source_digest"] is not None
+
+
+def _replay_arguments(messages, progress_path, **overrides):
+    arguments = {
+        "trajectory": {"instance_id": "task-1", "messages": messages},
+        "model": "test-model",
+        "base_url": "http://example.invalid",
+        "policy": "full",
+        "head": 1,
+        "tail": 1,
+        "budget_fraction": 1.0,
+        "count_tokens": whitespace_tokens,
+        "tokenizer_identity": "test-tokenizer",
+        "materialization_mode": MaterializationMode.WHOLE_RECORD,
+        "materialization_threshold_tokens": 20,
+        "max_decisions": None,
+        "seed": 0,
+        "max_output_tokens": 128,
+        "api_key": None,
+        "timeout": 1,
+        "progress_path": progress_path,
+    }
+    arguments.update(overrides)
+    return arguments
+
+
+def test_frozen_replay_resumes_without_requerying_completed_decisions(
+    monkeypatch, tmp_path
+):
+    messages = _messages(2)
+    progress = tmp_path / "full.json"
+    queried_prefix_lengths = []
+
+    def interrupted_post(url, payload, *, api_key, timeout):
+        queried_prefix_lengths.append(len(payload["messages"]))
+        if len(queried_prefix_lengths) == 2:
+            raise ConnectionError("endpoint disappeared")
+        return {"choices": [{"message": {"content": messages[2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", interrupted_post)
+    with pytest.raises(ConnectionError, match="endpoint disappeared"):
+        frozen_replay.replay(**_replay_arguments(messages, progress))
+
+    saved = json.loads(progress.read_text(encoding="utf-8"))
+    assert saved["attempted_decisions"] == saved["completed_decisions"] == 1
+    assert saved["rows"][0]["decision_status"] == "completed"
+    assert not list(tmp_path.glob(".full.json.*.tmp"))
+
+    def resumed_post(url, payload, *, api_key, timeout):
+        queried_prefix_lengths.append(len(payload["messages"]))
+        return {"choices": [{"message": {"content": messages[4]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", resumed_post)
+    result = frozen_replay.replay(**_replay_arguments(messages, progress))
+    assert queried_prefix_lengths == [2, 4, 4]
+    assert result["completed_decisions"] == 2
+    assert result["run_configuration_digest"]
+
+
+def test_frozen_replay_resume_rejects_configuration_and_reference_changes(
+    monkeypatch, tmp_path
+):
+    messages = _messages(1)
+    progress = tmp_path / "full.json"
+    calls = 0
+
+    def fake_post(url, payload, *, api_key, timeout):
+        nonlocal calls
+        calls += 1
+        return {"choices": [{"message": {"content": messages[2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    frozen_replay.replay(**_replay_arguments(messages, progress))
+
+    with pytest.raises(ValueError, match="run configuration does not match"):
+        frozen_replay.replay(**_replay_arguments(
+            messages, progress, model="different-model"
+        ))
+    with pytest.raises(ValueError, match="reference_replay_digest does not match"):
+        frozen_replay.replay(**_replay_arguments(
+            messages,
+            progress,
+            reference_replay={
+                "rows": [{"decision": 1, "generated_content": messages[2]["content"]}]
+            },
+        ))
+    assert calls == 1
+
+
+def test_frozen_replay_records_invalid_generation_and_requires_restart(
+    monkeypatch, tmp_path
+):
+    messages = _messages(2)
+    progress = tmp_path / "full.json"
+    calls = 0
+
+    def truncated_post(url, payload, *, api_key, timeout):
+        nonlocal calls
+        calls += 1
+        content = messages[2]["content"] if calls == 1 else "THOUGHT: truncated"
+        return {
+            "id": f"response-{calls}",
+            "model": "test-model",
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"role": "assistant", "content": content},
+            }],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+        }
+
+    monkeypatch.setattr(frozen_replay, "_post", truncated_post)
+    with pytest.raises(frozen_replay.ReplayGenerationError, match="decision 2 stopped"):
+        frozen_replay.replay(**_replay_arguments(messages, progress))
+
+    saved = json.loads(progress.read_text(encoding="utf-8"))
+    assert saved["attempted_decisions"] == 2
+    assert saved["completed_decisions"] == 1
+    assert saved["terminal_failure"] == {
+        "decision": 2,
+        "reason": "missing_generated_command",
+    }
+    failed = saved["rows"][1]
+    assert failed["decision_status"] == "failed_invalid_generation"
+    assert failed["response_diagnostics"]["finish_reason"] == "length"
+    assert failed["response_diagnostics"]["response_id"] == "response-2"
+    assert failed["response_diagnostics"]["message_keys"] == ["content", "role"]
+
+    with pytest.raises(ValueError, match="terminal failure at decision 2"):
+        frozen_replay.replay(**_replay_arguments(messages, progress))
+    assert calls == 2
+
+    def healthy_post(url, payload, *, api_key, timeout):
+        decision = len(payload["messages"]) // 2
+        return {"choices": [{"message": {"content": messages[decision * 2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", healthy_post)
+    restarted = frozen_replay.replay(**_replay_arguments(
+        messages, progress, restart=True
+    ))
+    assert restarted["completed_decisions"] == 2
+    assert restarted["terminal_failure"] is None
