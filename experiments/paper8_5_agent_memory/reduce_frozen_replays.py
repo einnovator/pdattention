@@ -118,6 +118,19 @@ def _first_divergence(
     )
 
 
+def _canonical_shell_action(command: Any) -> str | None:
+    """Apply only syntax-preserving cleanup used for a conservative metric."""
+
+    if not isinstance(command, str):
+        return None
+    lines = [
+        line.strip()
+        for line in command.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    return "\n".join(lines)
+
+
 def _arm_summary(
     artifact: Mapping[str, Any],
     rows: Sequence[Mapping[str, Any]],
@@ -138,6 +151,14 @@ def _arm_summary(
         full_by_decision[int(row["decision"])].get("generated_command") is not None
         and row.get("generated_command")
         == full_by_decision[int(row["decision"])].get("generated_command")
+        for row in rows
+    )
+    equivalent_command = sum(
+        full_by_decision[int(row["decision"])].get("generated_command") is not None
+        and _canonical_shell_action(row.get("generated_command"))
+        == _canonical_shell_action(
+            full_by_decision[int(row["decision"])].get("generated_command")
+        )
         for row in rows
     )
     retentions = [float(row["realized_record_retention_fraction"]) for row in rows]
@@ -169,6 +190,12 @@ def _arm_summary(
             if reference_command_decisions
             else None
         ),
+        "conservative_action_equivalent_decisions": equivalent_command,
+        "conservative_action_equivalent_rate_vs_full": (
+            equivalent_command / reference_command_decisions
+            if reference_command_decisions
+            else None
+        ),
         "first_content_divergence": _first_divergence(
             rows,
             full_by_decision,
@@ -178,6 +205,15 @@ def _arm_summary(
             rows,
             full_by_decision,
             lambda row, full: row.get("generated_command") != full.get("generated_command"),
+        ),
+        "first_conservative_action_divergence": _first_divergence(
+            rows,
+            full_by_decision,
+            lambda row, full: (
+                full.get("generated_command") is not None
+                and _canonical_shell_action(row.get("generated_command"))
+                != _canonical_shell_action(full.get("generated_command"))
+            ),
         ),
         "first_action_validity_divergence": _first_divergence(
             rows,
@@ -322,8 +358,8 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "as the denominator and compare directly with contemporaneous FULL."
         ),
         "",
-        "| Policy | Tried/done | Valid | Exact content | Exact command | First content/command/validity divergence | Retention mean/min/max | Full/selected/materialized tokens | Logical saving | Overflow | Unused matched budget | Transport failures | Format-invalid |",
-        "|---|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|",
+        "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence | First content/command/action/validity divergence | Retention mean/min/max | Full/selected/materialized tokens | Logical saving | Overflow | Unused matched budget | Transport failures | Format-invalid |",
+        "|---|---:|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|",
     ]
     for arm in summary["arms"]:
         retention = arm["realized_retention"]
@@ -333,6 +369,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         divergence = "/".join(_decision(arm[key]) for key in (
             "first_content_divergence",
             "first_command_divergence",
+            "first_conservative_action_divergence",
             "first_action_validity_divergence",
         ))
         tokens = "/".join(str(arm[key]) for key in (
@@ -350,6 +387,7 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             f"| {_rate(arm['valid_action_rate'])} "
             f"| {_rate(arm['exact_content_rate_vs_full'])} "
             f"| {_rate(arm['exact_command_rate_vs_full'])} "
+            f"| {_rate(arm['conservative_action_equivalent_rate_vs_full'])} "
             f"| {divergence} | {retention_text} | {tokens} | {saving} "
             f"| {arm['mandatory_overflow_tokens']} "
             f"| {arm['unused_matched_budget_tokens']} "

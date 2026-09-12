@@ -137,6 +137,7 @@ def test_reducer_reports_matched_metrics_and_markdown():
     assert recency["valid_action_rate"] == pytest.approx(2 / 3)
     assert recency["exact_content_rate_vs_full"] == pytest.approx(1 / 3)
     assert recency["exact_command_rate_vs_full"] == pytest.approx(2 / 3)
+    assert recency["conservative_action_equivalent_rate_vs_full"] == pytest.approx(2 / 3)
     assert recency["first_content_divergence"] == 2
     assert recency["first_command_divergence"] == 3
     assert recency["first_action_validity_divergence"] == 3
@@ -158,8 +159,8 @@ def test_reducer_reports_matched_metrics_and_markdown():
     assert summary["arms"][2]["transport_failure_decisions"] == [3]
 
     markdown = render_markdown(summary)
-    assert "| Policy | Tried/done | Valid | Exact content | Exact command |" in markdown
-    assert "| middle_recency@100%-ceiling | 3/3 | 66.7% | 33.3% | 66.7% | 2/3/3 |" in markdown
+    assert "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence |" in markdown
+    assert "| middle_recency@100%-ceiling | 3/3 | 66.7% | 33.3% | 66.7% | 66.7% | 2/3/3/3 |" in markdown
     assert "| tail@100%-ceiling | 3/2" in markdown
 
 
@@ -179,6 +180,19 @@ def test_reducer_distinguishes_same_policy_with_different_budget_contracts():
 
     assert summary["arms"][1]["treatment"] == "middle_recency@matched-ceiling:aaaaaaaa"
     assert summary["arms"][2]["treatment"] == "middle_recency@90%-floor"
+
+
+def test_conservative_action_equivalence_ignores_comment_only_lines():
+    full, candidate, _ = _comparison_artifacts()
+    candidate["rows"][0]["generated_command"] = "# same operation\ncmd-a"
+
+    summary = reduce_replays([full, candidate])
+    arm = summary["arms"][1]
+
+    assert arm["exact_command_decisions"] == 1
+    assert arm["conservative_action_equivalent_decisions"] == 2
+    assert arm["first_command_divergence"] == 1
+    assert arm["first_conservative_action_divergence"] == 3
 
 
 @pytest.mark.parametrize(
