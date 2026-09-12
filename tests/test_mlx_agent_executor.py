@@ -111,10 +111,12 @@ class _Model:
         self.layers = (object(),)
         self.sparse_delta = float(sparse_delta)
         self.calls = 0
+        self.call_widths = []
 
     def __call__(self, input_ids, *, cache):
         self.calls += 1
         values = list(map(int, input_ids[0]))
+        self.call_widths.append(len(values))
         for wrapped in cache:
             getattr(wrapped, "local_cache", wrapped).append(values)
         logits = np.zeros((1, len(values), 8), dtype=np.float32)
@@ -205,6 +207,29 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     assert not executor._sessions
 
 
+def test_plain_prefill_is_chunked_and_only_materializes_last_token_logits(fake_mlx) -> None:
+    model = _Model()
+    executor = MLXAgentHistoryExecutor(
+        model,
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        prefill_step_size=2,
+    )
+
+    result = executor.generate(PRAWireRequest(
+        model="fake",
+        messages=({"role": "user", "content": "long prompt"},),
+        max_new_tokens=1,
+    ))
+
+    assert result.text == "A"
+    assert model.call_widths[-1] == 1
+    assert max(model.call_widths[:-1]) <= 2
+    assert sum(model.call_widths) == result.trace[0]["prompt_tokens"]
+
+
 def test_short_tool_result_cannot_move_source_boundary_backwards(fake_mlx) -> None:
     executor = MLXAgentHistoryExecutor(
         _Model(),
@@ -273,6 +298,39 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert executor.runtime.registry.view(source_id) is not None
     executor.close_session("session")
     assert executor.runtime.registry.view(source_id) is None
+
+
+def test_qualified_profile_reports_zero_candidate_selection_copy(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_abs_logit_delta=0.005,
+        agent_history_qualified=True,
+    )
+    initial = (
+        {"role": "system", "content": "S" * 40},
+        {"role": "user", "content": "U" * 40},
+        {"role": "assistant", "content": "old" * 20},
+        {"role": "user", "content": "output" * 20},
+    )
+    executor.generate(_request(initial))
+    logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "current" * 20},
+    )
+    result = executor.generate(_request(
+        logical,
+        request_messages=(logical[0], logical[1], logical[-1]),
+        retention=0.5,
+        request_id="qualified-sparse",
+    ))
+
+    assert executor.capabilities()["agent_history_kv_qualified"] is True
+    assert result.trace[0]["selected_history_kv_copy_bytes"] == 0
+    assert result.trace[0]["physical_kv_copy"] is False
+    assert result.trace[0]["total_kv_copy_bytes"] is not None
 
 
 def test_sparse_same_subset_mismatch_fails_closed_and_releases_borrows(fake_mlx) -> None:

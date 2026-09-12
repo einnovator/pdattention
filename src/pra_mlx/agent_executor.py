@@ -104,11 +104,15 @@ class MLXAgentHistoryExecutor:
         chat_template_digest: str | None = None,
         max_abs_logit_delta: float = 0.005,
         require_same_subset_reference: bool = True,
+        agent_history_qualified: bool = False,
+        prefill_step_size: int = 2048,
     ) -> None:
         if wire_tail_tokens <= 0:
             raise ValueError("wire_tail_tokens must be positive.")
         if max_abs_logit_delta < 0:
             raise ValueError("max_abs_logit_delta cannot be negative.")
+        if prefill_step_size <= 0:
+            raise ValueError("prefill_step_size must be positive.")
         self.model = model
         self.tokenizer = tokenizer
         self.model_id = str(model_id)
@@ -122,11 +126,20 @@ class MLXAgentHistoryExecutor:
         self.chat_template_digest = observed
         self.max_abs_logit_delta = float(max_abs_logit_delta)
         self.require_same_subset_reference = bool(require_same_subset_reference)
+        self.agent_history_qualified = bool(agent_history_qualified)
+        self.prefill_step_size = int(prefill_step_size)
         self.runtime = MLXLiveKVRuntime()
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.RLock()
         self.prefix_cache_enabled = False
         self.patched_layers = install_qwen3_segmented_attention(model, compiled=False)
+        if self.agent_history_qualified and (
+            self.patched_layers <= 0 or not self.require_same_subset_reference
+        ):
+            raise ValueError(
+                "Qualified MLX agent history requires segmented attention and "
+                "the per-request same-subset correctness gate."
+            )
 
     def capabilities(self) -> Mapping[str, object]:
         return {
@@ -150,9 +163,13 @@ class MLXAgentHistoryExecutor:
             # Selection-time interval packing is zero in the disjoint path.
             # MLX slice aliasing and attention temporaries remain measured,
             # rather than being promoted to a blanket zero-copy claim.
-            "selected_history_physical_copy_known": False,
-            "agent_history_kv_qualified": False,
-            "qualification_status": "per-request same-subset gate required",
+            "selected_history_physical_copy_known": self.agent_history_qualified,
+            "agent_history_kv_qualified": self.agent_history_qualified,
+            "qualification_status": (
+                "qualified model/profile with per-request same-subset enforcement"
+                if self.agent_history_qualified
+                else "per-request same-subset gate required"
+            ),
             "segmented_attention_layers": self.patched_layers,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
@@ -239,6 +256,31 @@ class MLXAgentHistoryExecutor:
         mx.eval(logits)
         return logits
 
+    def _prefill(self, token_ids: Sequence[int], cache: Sequence[object]) -> int:
+        """Evaluate cache state in bounded chunks without materializing prompt logits."""
+
+        import mlx.core as mx
+
+        calls = 0
+        values = list(map(int, token_ids))
+        for start in range(0, len(values), self.prefill_step_size):
+            chunk = values[start : start + self.prefill_step_size]
+            logits = self.model(mx.array([chunk], dtype=mx.int32), cache=cache)
+            states = [getattr(row, "state", None) for row in cache]
+            states = [row for row in states if row is not None]
+            if states:
+                mx.eval(states)
+            else:
+                # Test doubles and unusual cache implementations may not expose
+                # state.  Keep their behavior correct without using this fallback
+                # for normal mlx-lm prompt caches.
+                mx.eval(logits)
+            clear = getattr(mx, "clear_cache", None)
+            if callable(clear):
+                clear()
+            calls += 1
+        return calls
+
     def _capture(self, cache: Sequence[object], tokens: int) -> MLXNativeMemory:
         from pra_hf.live_history import LiveKVSelectionPlan
 
@@ -305,7 +347,7 @@ class MLXAgentHistoryExecutor:
 
         if state.canonical_memory is None:
             cache = self._new_cache()
-            self._evaluate(source, cache)
+            self._prefill(source, cache)
             state.canonical_memory = self._capture(cache, len(source))
             state.canonical_tokens = list(source)
             return len(source), 0, None
@@ -328,7 +370,7 @@ class MLXAgentHistoryExecutor:
             segmented=bool(self.patched_layers),
             query_position_base=len(state.canonical_tokens),
         )
-        self._evaluate(delta, caches)
+        self._prefill(delta, caches)
         updated, metrics = self._graft(
             state.canonical_memory, caches, expected_local_tokens=len(delta)
         )
@@ -342,10 +384,11 @@ class MLXAgentHistoryExecutor:
     ) -> tuple[str, list[int], float, int]:
         started = time.perf_counter()
         cache = self._new_cache()
-        logits = self._evaluate(prompt, cache)
+        calls = self._prefill(prompt[:-1], cache)
+        logits = self._evaluate(prompt[-1:], cache)
         generated: list[int] = []
         eos = self._eos_ids()
-        calls = 1
+        calls += 1
         while len(generated) < max_tokens:
             token = int(__import__("mlx.core", fromlist=["argmax"]).argmax(
                 logits[0, -1]
@@ -569,12 +612,16 @@ class MLXAgentHistoryExecutor:
             # physical-copy verdict unknown until hardware allocation
             # qualification covers both stages.
             "physical_kv_copy": (
-                False if plan.full_retention else None
+                False
+                if plan.full_retention or self.agent_history_qualified
+                else None
             ),
             "selection_physical_kv_copy": candidate.selection.physical_kv_copy,
             "selected_interval_pack_bytes": selected_pack,
             "selected_history_kv_copy_bytes": (
-                0 if plan.full_retention else None
+                0
+                if plan.full_retention or self.agent_history_qualified
+                else None
             ),
             "canonical_extension_copy_bytes": extension_copy,
             "canonical_suffix_graft_d2d_bytes": (
@@ -587,8 +634,12 @@ class MLXAgentHistoryExecutor:
                 extension_copy + graft_metrics.total_kv_copy_bytes + selected_pack
             ),
             "total_kv_copy_bytes": (
-                extension_copy + graft_metrics.total_kv_copy_bytes
-                if plan.full_retention else None
+                extension_copy
+                + graft_metrics.total_kv_copy_bytes
+                + selected_pack
+                + reference_pack_bytes
+                if plan.full_retention or self.agent_history_qualified
+                else None
             ),
             "host_to_device_bytes": 0,
             "consumer_temporary_active_delta_bytes": consumer_active_delta,

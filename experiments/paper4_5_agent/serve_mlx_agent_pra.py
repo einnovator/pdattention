@@ -130,6 +130,14 @@ def main() -> None:
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
+        "--agent-history-qualified",
+        action="store_true",
+        help=(
+            "Advertise sparse agent-history qualification for this explicitly "
+            "validated model/profile; same-subset checking remains mandatory."
+        ),
+    )
+    parser.add_argument(
         "--chat-template-profile",
         choices=("native", "qwen3-stable-no-thinking", "pure-chatml-stable"),
         default="qwen3-stable-no-thinking",
@@ -169,6 +177,7 @@ def main() -> None:
         chat_template_profile=args.chat_template_profile,
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
+        agent_history_qualified=args.agent_history_qualified,
     )
     try:
         ThreadingHTTPServer(
