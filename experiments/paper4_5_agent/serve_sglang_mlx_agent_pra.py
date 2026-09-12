@@ -164,6 +164,10 @@ def _direct_handler(adapter: object, model: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="mlx-community/Qwen3-14B-4bit")
+    parser.add_argument(
+        "--served-model",
+        help="Stable OpenAI model name; defaults to the model load path.",
+    )
     parser.add_argument("--revision", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18121)
@@ -187,6 +191,7 @@ def main() -> None:
     parser.add_argument("--default-repetition-penalty", type=float, default=1.0)
     parser.add_argument("--default-repeat-last-n", type=int, default=64)
     args = parser.parse_args()
+    served_model = args.served_model or args.model
 
     from pra_hf.engine_memory import LogicalPRABlockStore
     from pra_sglang import (
@@ -225,7 +230,7 @@ def main() -> None:
     executor = SGLangMLXAgentHistoryExecutor(
         runner,
         tokenizer,
-        model_id=args.model,
+        model_id=served_model,
         model_revision=args.revision,
         block_store=block_store,
         wire_tail_tokens=args.wire_tail_tokens,
@@ -242,7 +247,7 @@ def main() -> None:
     )
     try:
         ThreadingHTTPServer(
-            (args.host, args.port), _direct_handler(adapter, args.model)
+            (args.host, args.port), _direct_handler(adapter, served_model)
         ).serve_forever()
     finally:
         executor.close()

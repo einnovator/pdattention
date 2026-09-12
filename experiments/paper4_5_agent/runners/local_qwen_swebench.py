@@ -35,6 +35,22 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument(
+        "--model",
+        default=MODEL,
+        help="Scientific model identity recorded in the run manifest.",
+    )
+    parser.add_argument(
+        "--served-model",
+        default=MODEL,
+        help="OpenAI model name advertised by the direct engine endpoint.",
+    )
+    parser.add_argument("--model-revision", default=MODEL_REVISION)
+    parser.add_argument("--tokenizer-revision", default=MODEL_REVISION)
+    parser.add_argument("--dtype", default="mixed")
+    parser.add_argument("--quantization", default="Q4_K_M")
+    parser.add_argument("--kv-cache-dtype", default="f16")
+    parser.add_argument("--context-limit", type=int, default=32768)
+    parser.add_argument(
         "--base-url",
         default=os.environ.get("PRA_EASY_AGENT_BASE_URL", "http://192.168.1.102:11435/v1"),
     )
@@ -114,22 +130,22 @@ def main() -> None:
         benchmark_card=options.benchmark_card,
         task_index=options.task_index,
         output=options.output,
-        model=MODEL,
-        served_model=MODEL,
-        model_revision=MODEL_REVISION,
-        tokenizer_revision=MODEL_REVISION,
+        model=options.model,
+        served_model=options.served_model,
+        model_revision=options.model_revision,
+        tokenizer_revision=options.tokenizer_revision,
         benchmark_revision=PINNED_DATASET_REVISION,
         base_url=options.base_url,
         engine=options.engine,
         engine_version=options.engine_version,
-        dtype="mixed",
-        quantization="Q4_K_M",
-        kv_cache_dtype="f16",
+        dtype=options.dtype,
+        quantization=options.quantization,
+        kv_cache_dtype=options.kv_cache_dtype,
         harness_version="2.4.6",
         grader_version="4.1.0",
         scaffold="swebench_backticks.yaml",
         grading="SWE-bench 4.1.0 official Docker harness",
-        context_limit=32768,
+        context_limit=options.context_limit,
         max_steps=50,
         max_completion_tokens=options.max_completion_tokens,
         run_id=options.run_id,

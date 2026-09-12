@@ -114,12 +114,17 @@ def _handler(executor: object, model_id: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--served-model",
+        help="Stable OpenAI model name; defaults to the model load path.",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18125)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.72)
     parser.add_argument("--storage", default=".pra/vllm-cuda-agent")
     args = parser.parse_args()
+    served_model = args.served_model or args.model
 
     from vllm import LLM
 
@@ -153,10 +158,12 @@ def main() -> None:
     executor = VLLMCudaAgentHistoryExecutor(
         VLLMInProcessSchedulerDriver(llm),
         tokenizer,
-        model_id=args.model,
+        model_id=served_model,
         chat_template_digest=digest,
     )
-    ThreadingHTTPServer((args.host, args.port), _handler(executor, args.model)).serve_forever()
+    ThreadingHTTPServer(
+        (args.host, args.port), _handler(executor, served_model)
+    ).serve_forever()
 
 
 if __name__ == "__main__":

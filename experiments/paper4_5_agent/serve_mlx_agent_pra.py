@@ -117,6 +117,10 @@ def _direct_handler(executor: object, model_id: str):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
+    parser.add_argument(
+        "--served-model",
+        help="Stable OpenAI model name; defaults to the model load path.",
+    )
     parser.add_argument("--revision", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18124)
@@ -128,6 +132,7 @@ def main() -> None:
         default="qwen3-stable-no-thinking",
     )
     args = parser.parse_args()
+    served_model = args.served_model or args.model
 
     from mlx_lm import load
 
@@ -155,7 +160,7 @@ def main() -> None:
     executor = MLXAgentHistoryExecutor(
         model,
         tokenizer,
-        model_id=args.model,
+        model_id=served_model,
         model_revision=args.revision,
         wire_tail_tokens=args.wire_tail_tokens,
         chat_template_profile=args.chat_template_profile,
@@ -164,7 +169,7 @@ def main() -> None:
     )
     try:
         ThreadingHTTPServer(
-            (args.host, args.port), _direct_handler(executor, args.model)
+            (args.host, args.port), _direct_handler(executor, served_model)
         ).serve_forever()
     finally:
         executor.close()
