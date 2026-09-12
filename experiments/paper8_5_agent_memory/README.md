@@ -42,6 +42,21 @@ agent SDK supplies generic effects and version metadata, while engines consume
 only the resulting logical plan and never embed Bash- or application-specific
 reasoning.
 
+For instrumented mini-swe-agent runs, set:
+
+```yaml
+environment:
+  environment_class: experiments.paper8_5_agent_memory.miniswe_environment.InstrumentedDockerEnvironment
+  instrumentation_output_root: /absolute/host/result/checkpoints
+  capture_workspace_checkpoints: true
+```
+
+The subclass leaves observation text unchanged and adds generic metadata under
+the observation's `extra` object. Pre-action checkpoints contain the base HEAD,
+separate binary index and worktree diffs, and non-ignored untracked files. This is an exact
+repository-state snapshot under that declared scope; ignored build products and
+external state are intentionally outside it.
+
 Structural screening is not task-quality evidence. It may use the whitespace
 counter only for code-path validation. Scientific rows must pass the exact
 frozen model tokenizer through `--tokenizer`.

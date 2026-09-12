@@ -47,7 +47,7 @@ def _return_code(content: str, message: Mapping[str, Any]) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _resource_ids(command: str | None, content: str) -> tuple[str, ...]:
+def extract_resource_ids(command: str | None, content: str) -> tuple[str, ...]:
     values: list[str] = []
     for value in _PATH.findall("\n".join(part for part in (command, content) if part)):
         normalized = value.rstrip(":,;)")
@@ -122,7 +122,7 @@ def recordize_minisweagent_messages(
             records.append(AgentRecord(
                 record_id, "task", "task", index, role, content,
                 AgentRecordRole.TASK, (AgentRecordRole.TASK,),
-                resource_ids=_resource_ids(None, content),
+                resource_ids=extract_resource_ids(None, content),
             ))
             continue
 
@@ -146,7 +146,7 @@ def recordize_minisweagent_messages(
                 record_id, turn_id, group_id, index, role, content,
                 AgentRecordRole.ASSISTANT_ACTION, roles,
                 command=last_command,
-                resource_ids=_resource_ids(last_command, content),
+                resource_ids=extract_resource_ids(last_command, content),
             ))
             continue
 
@@ -190,7 +190,7 @@ def recordize_minisweagent_messages(
             roles,
             command=last_command,
             return_code=return_code,
-            resource_ids=_resource_ids(last_command, content),
+            resource_ids=extract_resource_ids(last_command, content),
             metadata={
                 "observation_for_command": last_command,
                 "cwd": extra.get("cwd"),

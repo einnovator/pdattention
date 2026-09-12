@@ -23,6 +23,8 @@ from .dag import (
     ToolEffectAnalysis,
     ToolSemanticsProvider,
     build_resource_effect_dag,
+    bash_semantics_are_certifiable,
+    classify_bash_effect,
     exclude_certified_groups,
 )
 from .model import (
@@ -34,7 +36,7 @@ from .model import (
     CanonicalAgentHistory,
 )
 from .oracle import OracleAblationCase, leave_one_bundle_out_cases
-from .recordizer import recordize_minisweagent_messages
+from .recordizer import extract_resource_ids, recordize_minisweagent_messages
 from .selectors import (
     FullHistorySelector,
     HeadMiddleTailConfig,
@@ -75,8 +77,11 @@ __all__ = [
     "ToolObservationMaterializer",
     "leave_one_bundle_out_cases",
     "build_resource_effect_dag",
+    "bash_semantics_are_certifiable",
+    "classify_bash_effect",
     "exclude_certified_groups",
     "materialize_plan",
+    "extract_resource_ids",
     "recordize_minisweagent_messages",
     "serialize_materialized_messages",
     "validate_minisweagent_chat",

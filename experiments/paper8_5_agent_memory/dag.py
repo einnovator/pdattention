@@ -130,6 +130,25 @@ _VERIFY = re.compile(
 )
 
 
+def bash_semantics_are_certifiable(command: str | None) -> bool:
+    """Return whether the built-in Bash adapter can fully describe a command.
+
+    This is deliberately much narrower than :func:`classify_bash_effect`.
+    Pipelines, lists, substitutions, redirections, heredocs, and multiline
+    scripts can hide additional reads or writes, so runtime snapshots alone do
+    not make their statically inferred effect set complete.
+    """
+
+    if not command or "\n" in command or "\r" in command:
+        return False
+    if any(token in command for token in ("&&", "||", ";", "|", "`", "$(", ">", "<")):
+        return False
+    return classify_bash_effect(command) in {
+        EffectKind.READ,
+        EffectKind.PURE,
+    }
+
+
 class MiniSweBashSemanticsProvider:
     """Special support for mini-swe-agent's single generic Bash tool.
 
@@ -143,7 +162,7 @@ class MiniSweBashSemanticsProvider:
         observations: tuple[AgentRecord, ...],
     ) -> ToolEffectAnalysis:
         rows = (action, *observations)
-        kind = _effect_kind(action.command)
+        kind = classify_bash_effect(action.command)
         resources = tuple(dict.fromkeys(
             resource for row in rows for resource in row.resource_ids
         )) or ("resource:unknown",)
@@ -220,7 +239,7 @@ class CompositeToolSemanticsProvider:
         return declared if not declared.unknown_barrier else self.bash.analyze(action, observations)
 
 
-def _effect_kind(command: str | None) -> EffectKind:
+def classify_bash_effect(command: str | None) -> EffectKind:
     if not command:
         return EffectKind.UNKNOWN
     if _WRITE.search(command):

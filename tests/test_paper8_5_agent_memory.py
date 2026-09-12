@@ -1,4 +1,7 @@
 import json
+import hashlib
+import subprocess
+import tarfile
 import experiments.paper8_5_agent_memory.run_frozen_replay as frozen_replay
 
 from experiments.paper8_5_agent_memory import (
@@ -20,8 +23,15 @@ from experiments.paper8_5_agent_memory import (
     serialize_materialized_messages,
     validate_minisweagent_chat,
 )
+from experiments.paper8_5_agent_memory.observation_instrumentation import (
+    build_bash_observation_metadata,
+)
 from experiments.paper8_5_agent_memory.run_structural_screen import structural_screen
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
+from experiments.paper8_5_agent_memory.workspace_checkpoint import (
+    repository_state,
+    restore_repository_checkpoint,
+)
 
 
 def _messages(turns: int = 5):
@@ -235,6 +245,158 @@ def test_dag_certifies_operational_duplicate_with_complete_runtime_identity():
         count_tokens=whitespace_tokens,
     )
     assert "turn:t0000" in protected_plan.selected_causal_group_ids
+
+
+def test_runtime_observation_metadata_certifies_only_simple_complete_reads():
+    state = {
+        "complete": True,
+        "workspace_version_fingerprint": "workspace-sha",
+        "resource_version_fingerprints": {"foo.py": "file-sha"},
+    }
+    metadata = build_bash_observation_metadata(
+        command="sed -n '1,20p' foo.py",
+        cwd="/workspace/repo",
+        raw_output="line\n",
+        return_code=0,
+        exception_info="",
+        pre_state=state,
+        post_state=state,
+        environment_fingerprint="env-sha",
+    )
+    assert metadata["tool_semantics"]["provenance"] == "runtime_traced"
+    assert metadata["tool_semantics"]["complete"] is True
+    assert metadata["tool_semantics"]["effects"] == [{
+        "kind": "read",
+        "resource_id": "foo.py",
+        "resource_version_fingerprint": "file-sha",
+    }]
+
+
+def test_runtime_observation_metadata_fails_closed_for_compound_bash():
+    state = {
+        "complete": True,
+        "workspace_version_fingerprint": "workspace-sha",
+        "resource_version_fingerprints": {"foo.py": "file-sha"},
+    }
+    metadata = build_bash_observation_metadata(
+        command="cat foo.py | grep bug",
+        cwd="/workspace/repo",
+        raw_output="bug\n",
+        return_code=0,
+        exception_info="",
+        pre_state=state,
+        post_state=state,
+        environment_fingerprint="env-sha",
+    )
+    assert metadata["tool_semantics"]["complete"] is False
+    assert metadata["tool_semantics"]["unknown_barrier"] is True
+    assert metadata["tool_semantics"]["provenance"] == "static_heuristic"
+
+
+def test_runtime_observation_metadata_fails_closed_for_truncated_output():
+    state = {
+        "complete": True,
+        "workspace_version_fingerprint": "workspace-sha",
+        "resource_version_fingerprints": {"foo.py": "file-sha"},
+    }
+    metadata = build_bash_observation_metadata(
+        command="cat foo.py",
+        cwd="/workspace/repo",
+        raw_output="x" * 10_000,
+        return_code=0,
+        exception_info="",
+        pre_state=state,
+        post_state=state,
+        environment_fingerprint="env-sha",
+    )
+    assert metadata["output_truncated"] is True
+    assert metadata["tool_semantics"]["complete"] is False
+
+
+def test_repository_state_fingerprints_untracked_file_contents(tmp_path):
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=repository, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "paper8.5@example.invalid"),
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Paper 8.5 Test"),
+        cwd=repository,
+        check=True,
+    )
+    tracked = repository / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=repository, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=repository, check=True)
+    untracked = repository / "observation.txt"
+    untracked.write_text("first\n", encoding="utf-8")
+    first = repository_state(repository)
+    untracked.write_text("second\n", encoding="utf-8")
+    second = repository_state(repository)
+    assert first["workspace_version_fingerprint"] != second["workspace_version_fingerprint"]
+
+
+def test_checkpoint_restore_preserves_index_worktree_and_untracked_state(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=source, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "paper8.5@example.invalid"),
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Paper 8.5 Test"),
+        cwd=source,
+        check=True,
+    )
+    tracked = source / "tracked.txt"
+    tracked.write_text("base\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=source, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=source, check=True)
+    head = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=source).decode().strip()
+    tracked.write_text("staged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tracked.txt"), cwd=source, check=True)
+    tracked.write_text("worktree\n", encoding="utf-8")
+    (source / "new.txt").write_text("untracked\n", encoding="utf-8")
+
+    index_path = tmp_path / "decision.index.patch"
+    worktree_path = tmp_path / "decision.worktree.patch"
+    archive_path = tmp_path / "decision.untracked.tar.gz"
+    index_path.write_bytes(subprocess.check_output(
+        ("git", "diff", "--cached", "--binary", "--full-index"), cwd=source
+    ))
+    worktree_path.write_bytes(subprocess.check_output(
+        ("git", "diff", "--binary", "--full-index"), cwd=source
+    ))
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(source / "new.txt", arcname="new.txt")
+    expected = repository_state(source)
+    receipt_path = tmp_path / "decision.json"
+    receipt_path.write_text(json.dumps({
+        "checkpoint_complete": True,
+        "head": head,
+        "workspace_version_fingerprint": expected["workspace_version_fingerprint"],
+        "index_patch": str(index_path),
+        "index_patch_sha256": hashlib.sha256(index_path.read_bytes()).hexdigest(),
+        "worktree_patch": str(worktree_path),
+        "worktree_patch_sha256": hashlib.sha256(worktree_path.read_bytes()).hexdigest(),
+        "untracked_archive": str(archive_path),
+        "untracked_archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+    }), encoding="utf-8")
+
+    target = tmp_path / "target"
+    subprocess.run(("git", "clone", "-q", str(source), str(target)), check=True)
+    restored = restore_repository_checkpoint(receipt_path, target)
+    assert restored == expected
+    assert subprocess.check_output(
+        ("git", "diff", "--cached", "--name-only"), cwd=target
+    ).decode().strip() == "tracked.txt"
+    assert (target / "tracked.txt").read_text(encoding="utf-8") == "worktree\n"
+    assert (target / "new.txt").read_text(encoding="utf-8") == "untracked\n"
 
 
 def test_dag_marks_write_invalidation_as_diagnostic_not_safe_exclusion():

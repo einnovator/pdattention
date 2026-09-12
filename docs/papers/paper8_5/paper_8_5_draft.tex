@@ -310,7 +310,22 @@ mini-swe-agent exposes only one generic Bash tool, so the Paper~8.5 harness
 provides a Bash-specific semantics adapter that classifies common commands and,
 when available, augments them with runtime filesystem/version tracing. This
 special case belongs in the harness-facing adapter, not in a PRA inference
-engine. Arbitrary shell constructs remain unknown unless traced.
+engine. The first implementation certifies only simple allowlisted read or pure
+commands. Pipelines, lists, substitutions, redirections, heredocs, multiline
+scripts, timeouts, and truncated observations fail closed even when a coarse
+regex suggests a familiar command category.
+
+The instrumented Docker environment leaves the model-visible observation text
+unchanged and attaches a versioned metadata envelope containing canonical cwd,
+environment identity, return and completeness status, pre/post resource
+fingerprints, and pre/post repository-state fingerprints. Before every action
+it also stores the base commit, separate binary index and worktree patches, and
+an archive of nonignored untracked files. Untracked file contents, not only
+their names, participate in the state digest. This is an exact, restorable
+repository state under the declared scope; ignored artifacts, container-global
+state, network state, and resources outside the repository remain explicitly
+out of scope. A restore verifier refuses incomplete receipts, dirty targets,
+digest mismatches, and unsafe archive paths.
 
 The portable interface is instead a tool-semantics provider. A developer or
 agent SDK can declare generic reads, writes, deletes, verification targets,
@@ -375,9 +390,29 @@ We measure:
 Frozen screening permits broad policy and budget sweeps without paying for full
 autonomous reruns.
 
+The first frozen cohort follows a gate rather than a Cartesian sweep. On the
+same instrumented successful trajectory, frozen model revision, tokenizer,
+temperature zero, generation parameters, and decision snapshots, we run:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textsc{Full}, establishing contemporaneous reproducibility;
+    \item \textsc{Dag-Exclude} at a nominal 100\% ceiling;
+    \item a recency/token-tail control matched to the DAG arm's realized token
+    count at each decision;
+    \item head--middle--tail policies at a 90\% ceiling.
+\end{enumerate}
+
+Failure of \textsc{Full} stops interpretation of later arms because it means the
+frozen baseline itself was not reproduced. Autonomous qualification and oracle
+add-back tests begin only after this ordered next-action gate. The matched-tail
+control distinguishes the value of certified semantic exclusion from the value
+of merely removing the same number of old tokens.
+
 The repository state is part of the frozen decision point. Replaying turn $t$
-restores the exact pre-action workspace, not merely the textual history, so a
-candidate command is evaluated against the same files as the reference action.
+restores the exact pre-action repository state within the declared checkpoint
+scope, not merely the textual history, so a candidate command is evaluated
+against the same tracked, staged, worktree, and nonignored-untracked contents as
+the reference action.
 
 \subsection{Phase II: autonomous evaluation}
 
