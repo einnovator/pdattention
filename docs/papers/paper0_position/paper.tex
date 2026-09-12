@@ -43,29 +43,21 @@
 \maketitle
 
 \begin{abstract}
-Large language models commonly expose non-parametric information as a flat prompt, even
-when only a small and changing subset is useful. This paper argues for a complementary
-interface: \emph{Progressive Retrieval Attention} (PRA), an inference-time sparse
-approximation to long-context self-attention. URI references and an implicit bounded prompt
-head define logical memory. Long sources are processed as contiguous, model-safe encoding
-blocks and sliced into smaller routing chunks. Compact gists index those chunks, while
-selected full-detail, layer-native K/V joins direct K/V under the host decoder's attention
-operation. The routing representation is therefore not the attention payload, and logical,
-requested, resident, and materialized memory are separate quantities. This article records
-the original position and updates its implementation gateway to the mature native-KV
-design. It labels the earlier adapted cross-attention prototype as historical and summarizes
-the evidence subsequently established by the companion series: fragmentation-aware native
-transport, bounded execution, positional continuity and RoPE rebinding, distinct semantic
-and attention geometries, and exact pretrained-family retrofits. A usable one-shot SDK now
-exists for sparse direct-memory workloads, but the work does not yet establish production
-  serving economics or a general solution to multi-hop retrieval. Bounded associative discovery,
-  evidence-centered materialization, and adaptive effort control now have controlled prototype
-  evidence, but reliable entry routing, broad task transfer, and optimized off-device serving
-  remain explicit next steps. Corrected layer-placement studies further separate address,
-  detail-K/V, routing, and consumer roles: fixed profiles must be calibrated by model, workload,
-  materialization, and quality--cost objective rather than inherited as a universal suffix. The
-proposal is falsifiable by quality per materialized K/V token, latency, transfer, resident
-memory, and content-causal counterfactuals against strong long-context and retrieval baselines.
+Large language models commonly expose non-parametric information as a flat prompt even
+when only a small, changing subset is useful. We argue for an explicit memory interface
+that separates five operations often collapsed under ``retrieval'': naming a source,
+encoding contextual state, selecting useful identities, admitting a bounded working set,
+and consuming that state in attention. Progressive Retrieval Attention (PRA) is one design
+that realizes this separation with URI-like handles, compact routing representations, and
+selected layer-native K/V. Its central proposition is methodological: addressable external
+memory should be evaluated through distinct retrieval, contextual-state, active-attention,
+and task-utility contracts. Controlled companion experiments show that native-state
+transport can remain accurate under a bounded payload, but also expose independent failures
+from fragmentation, routing, position handling, and memory consumption. These observations
+do not establish production serving economics, general multi-hop retrieval, or superiority
+to optimized long context, retrieval, and prefix caching. The proposal is falsifiable by
+matched-budget task quality, active and resident bytes, transfer and latency, cache reuse,
+and content-causal counterfactuals.
 \end{abstract}
 
 \section{Introduction}
@@ -82,23 +74,20 @@ and streaming rollover are implicit addressable-memory forms that use the same m
 
 Retrieval-augmented generation (RAG) addresses part of this issue by selecting external passages before generation \cite{lewis2020rag,guu2020realm,karpukhin2020dpr}. However, standard RAG often makes a single retrieval decision at the boundary of the model call. The retrieved passages are still inserted as flat prompt text, and the model must consume them whether or not each passage becomes useful later. Agentic systems take the opposite approach: they inspect tool descriptions, issue searches, open files, follow references, and progressively disclose detail only when needed \cite{yao2023react,schick2023toolformer}. This behavior is effective but expensive because the loop is mediated by external actions, repeated model invocations, and hand-designed orchestration.
 
-This paper proposes Progressive Retrieval Attention as a research program for internalizing part of that progressive-disclosure pattern.  Consider a model diagnosing a failing authentication test in a large repository.  Its local prompt can advertise compact handles such as \texttt{<REF\_1>}, whose local reference table maps to \texttt{repo://app/auth\#module}.  The runtime resolves that object, encodes it in bounded contiguous blocks, slices the resulting state into routing chunks, and exposes detailed layer-specific memory only for selected chunks.  The released SDK default is one-shot.  Paper 2.5 separately evaluates bounded memory-to-memory discovery; online recursive decode-resume behavior remains a research target rather than an implied property of one forward pass.
+This paper proposes Progressive Retrieval Attention as one way to internalize part of that progressive-disclosure pattern.  Consider a model diagnosing a failing authentication test in a large repository.  Its local prompt can advertise compact handles such as \texttt{<REF\_1>}, whose local reference table maps to \texttt{repo://app/auth\#module}.  The runtime resolves that object, encodes it in bounded contiguous blocks, slices the resulting state into routing chunks, and exposes detailed layer-specific memory only for selected chunks.  The current SDK default is one-shot; bounded memory-to-memory discovery has been studied separately, while online recursive decode-resume behavior remains a research target rather than an implied property of one forward pass.
 
 The central question is therefore: \emph{can a model obtain better quality per unit of active context, latency, and memory by treating external information as a progressively materialized context graph rather than an eagerly flattened token sequence?}  The paper develops the vocabulary needed to answer that question, separates architectural, runtime, optimization, and evaluation claims that are often collapsed under ``retrieval,'' and states experiments that could reject the proposal.
 
 \subsection{Scope and Claim Types}
 
-The paper makes an architectural proposal, reports implementation facts, summarizes
-historical evidence, and advances hypotheses.  The proposal is the separation among
-naming, encoding, routing, admission, and native attention.  The current standalone
-implementation establishes bounded source encoding, smaller routing chunks, multi-gist
-indexes, exact packed routing, reusable row-isolated caches, implicit-head slicing, one
-global materialization budget, and CPU-backed native K/V.  Companion work subsequently
-established exact disabled-path pretrained integration and a cross-family research SDK.
-These are implementation and controlled-mechanism results.  They do not establish
-production throughput, unrestricted benchmark accuracy, recursive retrieval benefit, or
-the economics of a serving-optimized deployment.  This distinction is maintained
-throughout the paper so that a working mechanism is not mistaken for a general advantage.
+The paper makes an architectural proposal, reports scoped implementation facts, and
+advances testable hypotheses.  The proposal is the separation among naming, encoding,
+routing, admission, and native attention.  Existing prototypes establish bounded source
+encoding, finer routing chunks, exact packed routing, row-isolated caches, one global
+materialization budget, and selected pretrained-family integrations.  These are controlled
+mechanism results, not evidence of production throughput, unrestricted benchmark accuracy,
+recursive retrieval benefit, or serving economics.  This distinction is maintained so
+that a working mechanism is not mistaken for a general advantage.
 
 Figure~\ref{fig:evolution} locates the proposal among neighboring interfaces.  The
 horizontal arrangement expresses increasing separation between the local token stream
@@ -127,10 +116,9 @@ PRA should replace the earlier interfaces.
 \label{fig:evolution}
 \end{figure}
 
-Because this position paper also serves as the entry point to a multi-paper program, the
-research-program roadmap in Table~\ref{tab:program-roadmap} separates the original proposal,
-implemented mechanisms, active investigations, and future tests.  Later papers refine and test
-the architecture; they are not evidence that every detail was present in the initial formulation.
+The rest of the article defines the interface, its contracts, its closest alternatives,
+the evidence presently supporting it, and the experiments that could reject it.  Detailed
+project chronology and publication numbering are kept outside the main argument.
 
 \section{Motivation}
 
@@ -490,16 +478,19 @@ chunk. Once selected, the payload is the host layer's full-detail native K/V, in
 head layout, dtype, positional treatment, and cache convention. Canonical PRA introduces no
 separate memory output projection or residual scale; the historical cross-attention mode does.
 
-Third, accounting follows the lifecycle rather than one ambiguous ``context fraction.'' Let
-$T_{\rm logical}$ be all addressable source tokens, $T_{\rm requested}$ the tokens belonging to
-selected references or parents, and $T_{\rm materialized}$ the K/V tokens admitted to an active
-operation. Then
+Third, accounting follows the lifecycle rather than one ambiguous ``context fraction.'' For
+the ordering below, all three quantities count \emph{unique source positions at one named
+layer}: $T_{\rm logical}$ is every addressable source position, $T_{\rm requested}$ is the
+union belonging to selected references or parents, and $T_{\rm materialized}$ is the subset
+admitted to one active operation. Then
 \begin{equation}
 0 \le T_{\rm materialized} \le T_{\rm requested} \le T_{\rm logical},
 \end{equation}
-but equality is not assumed. Routing gists, host-resident K/V bytes, transferred bytes, padded
-attention allocation, and attended physical K/V tokens are reported separately. This prevents
-a logical selection rate from being presented as a physical memory saving.
+but equality is not assumed. The inequality does not apply to layer-summed token states,
+padded slots, physical duplicates, or bytes: each can exceed its unique-position analogue
+without violating the admission contract. Routing gists, resident detail K/V, transferred
+bytes, padded attention allocation, and cumulative attended K/V work are therefore reported
+separately. This prevents a logical selection rate from being presented as a physical saving.
 
 Finally, the lifecycle remains bounded. Every source encode, direct-plus-memory attention
 operation, resolver expansion, transfer, and cache admission is subject to explicit token,
@@ -547,27 +538,42 @@ backing storage, an executable lookup policy, bounded native operations, and mea
 cost.  They do not imply mathematically infinite memory, constant lookup time, or quality that is
 independent of corpus scale.
 
-The target GPU footprint is approximately
+For one concurrently active request, the auditable peak-device target is a maximum over
+time of non-overlapping accounting categories. Every $M$ term below is device bytes at time $t$:
 \begin{equation}
-M_{\mathrm{GPU}} \approx M_{\mathrm{model}} + M_{\mathrm{head}}
-+ \sum_{\ell\in L_{\mathrm{consume}}}M_{\mathrm{active}}^{(\ell)}
-+ M_{\mathrm{runtime}},
+\begin{aligned}
+M_{\mathrm{GPU,peak}} \approx \max_t\!\bigl[{}
+&M_{\mathrm{model}} + M_{\mathrm{direct}}(t) + M_{\mathrm{index}}(t) \\
+&{}+ M_{\mathrm{resident\ detail}}(t) + M_{\mathrm{active\ extra}}(t) \\
+&{}+ M_{\mathrm{workspace}}(t) + M_{\mathrm{transfer}}(t)\bigr].
+\end{aligned}
 \end{equation}
-where $L_{\mathrm{consume}}$ is the calibrated set of consumer layers.  The intended signature is that
-$M_{\mathrm{active}}$ depends primarily on the task/query working set, not on every token in the
-logical store.  Routing and index work may still grow with the store, CPU/reference memory grows
-with retained content, and a poor policy may broaden the working set.  Scale-independent physical
-memory is therefore an experimental target, not a present claim.
+where $M_{\mathrm{direct}}$ is live prompt/history K/V, $M_{\mathrm{index}}$ is routing and
+address metadata resident on device, and $M_{\mathrm{resident\ detail}}$ is persistent reusable
+source K/V. $M_{\mathrm{active\ extra}}$ contains only attention-specific allocations not already
+counted as direct or resident detail---for example a gathered K/V copy or padding; a zero-copy
+view contributes no second copy. $M_{\mathrm{workspace}}$ is kernel scratch, and
+$M_{\mathrm{transfer}}$ is non-overlapping staging storage present at the same instant. Allocation
+ownership must make these categories disjoint; one tensor cannot be charged twice merely because
+it is both resident and attended. These terms are peak co-resident allocations, not a sum of
+separate per-stage maxima or per-layer traffic; cumulative K/V copies and attention work are
+separate counters. The intended signature is that active-state and workspace cost
+depend primarily on the task working set. Index memory, backing-store memory, and routing
+work may still grow with the corpus, resident detail depends on cache policy, and a poor
+selector may broaden the working set. Scale-independent physical memory is therefore an
+experimental target, not a present claim.
 
-Later results refine the early ``chunk equals page'' analogy into three granularities:
+Later results refine the early ``chunk equals page'' analogy into three independently
+configurable granularities:
 \begin{equation}
-G_{\mathrm{encode}} \neq G_{\mathrm{search}} \neq G_{\mathrm{materialize}}.
+G_{\mathrm{encode}},\quad G_{\mathrm{search}},\quad G_{\mathrm{materialize}}.
 \end{equation}
 $G_{\mathrm{encode}}$ is the context used to create meaningful representations;
 $G_{\mathrm{search}}$ is the conceptual routing or native-graph node; and
 $G_{\mathrm{materialize}}$ is the actual native-K/V interval loaded into active attention.
 Coarser encoding can contextualize finer search nodes, while physical materialization may later
-union or window several selected nodes.  Paper 2.5 shows why the separation matters: finer search
+union or window several selected nodes. Equality is allowed when a workload does not benefit
+from separating them. Existing traversal experiments show why the choice matters: finer search
 nodes can reduce conceptual payload while also removing useful associative edges.
 
 Sparsity also has a layer axis.  PRA may be sparse over
@@ -614,6 +620,47 @@ only the final native-K/V intervals and consumer layers determine active attenti
 \label{fig:virtual-memory}
 \end{figure}
 
+\subsection{Current Evidence and Its Boundaries}
+
+Table~\ref{tab:position-evidence} freezes the evidence used by this article as of
+11 September 2026. It is a map from architectural propositions to scoped observations,
+not a claim that the observations are independent replications. Detailed campaign status,
+artifact paths, and chronology remain in the versioned companion ledger
+\path{virtual_memory_status.json} and the article's claim ledger.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Evidence supporting the position, with counterexamples and unresolved tests kept
+equally visible. Results are companion measurements rather than original experiments of
+this position article.}
+\label{tab:position-evidence}
+\begin{tabularx}{\textwidth}{@{}P{0.20\linewidth}P{0.27\linewidth}P{0.25\linewidth}X@{}}
+\toprule
+Architectural proposition & Strongest supporting observation & Counterexample or boundary & Unresolved test \\
+\midrule
+Contextual native state can be selected under a bounded payload
+& Encode-once slicing preserves the controlled transport benefit through the split-256 condition (255 addressable source units) while fixed-$k$ active fraction falls to about 5\%.
+& Annotated target coverage remains incomplete, so preserved task loss is not proof of natural semantic retrieval.
+& Matched long-context, selected-text, and native-K/V execution on natural tasks. \\
+Position is part of memory identity
+& A controlled attention operator is invariant to common translation when relative geometry is
+unchanged; tested reset and distance policies show scoped, policy-dependent recovery.
+& Correct transport does not make semantic routing and attention geometry interchangeable.
+& Frozen cross-family replication under the same positional interventions. \\
+Discovery and consumption are separate contracts
+& Bounded associative traversal can recover annotated descendants and exposes native Q/K topology.
+& Better traversal does not reliably improve generated answers; entry competition and broad activation remain harmful.
+& Learned entry, traversal, and consumption on an untouched task cohort. \\
+Logical selection is not physical reuse
+& Selected K/V can remain off device or be attached from a resident cache without re-encoding in scoped prototypes.
+& Transfer, cache churn, temporary buffers, or low reuse can erase the theoretical saving.
+& Concurrent serving with eviction, cancellation, measured hit rates, and end-to-end cost. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\iffalse
 \subsection{Living Architecture Status}
 
 Table~\ref{tab:vm-status-a} is a living contract between this position paper and the later PRA
@@ -841,6 +888,7 @@ prevents a successful result at one layer from being misinterpreted as success o
 system.  Successful stages may eventually motivate unnumbered branches on learned memory
 representations, continual write and consolidation, neural modules, or adaptive cognitive
 architectures; none is claimed as an established result or committed publication.
+\fi
 
 \subsection{Address Spaces, Protection, and Lifetime}
 
@@ -863,16 +911,28 @@ A conventional page fault is generated by an exact address access. A model's ``c
 CPU pages are intended to preserve exact program semantics regardless of placement. Neural memory is approximate, content-dependent, and transformed by model parameters. Loading a document into K/V does not guarantee that the model will use it correctly. Attention can blend untrusted entries, positional semantics may matter, and encoding may be more expensive than transport. The virtual-memory analogy is therefore valuable for identifying address, isolation, admission, working-set, and eviction problems; it is not evidence that operating-system policies can be copied unchanged.
 
 Classical translation starts from an exact virtual address and follows deterministic page tables.
-PRA translation is learned and content-addressed:
+PRA instead separates three operations. \emph{Resolution} maps an advertised URI and version
+to an object and can be exact and deterministic. \emph{Semantic selection} predicts which
+objects or regions are useful for the current query and may be learned or heuristic.
+\emph{Speculative expansion} proposes related descendants or neighbors before their usefulness
+is known:
 \begin{equation}
-\text{question} \rightarrow \text{semantic candidates} \rightarrow
-\text{associative expansion} \rightarrow \text{materialized native K/V}.
+\begin{aligned}
+\text{question} &\rightarrow \text{semantic candidates}
+\rightarrow \text{exact URI resolution} \\
+&\rightarrow \text{optional expansion}
+\rightarrow \text{admitted native K/V}.
+\end{aligned}
 \end{equation}
-It therefore has semantic failure modes with no direct analogue in ordinary virtual memory: a
-wrong root, distractor competition, a missing native edge, over-broad activation, or a
-miscalibrated controller.  Conversely, PRA can propose content-related neighbors and perform
-associative prefetch rather than waiting for an exact address.  That extra capability is useful
-only when its recall, false activation, and physical cost are measured together.
+Selection and expansion therefore have semantic failure modes with no direct analogue in
+ordinary virtual memory: a wrong root, distractor competition, a missing native edge,
+over-broad activation, or a miscalibrated controller. Resolution failure, stale versions, and
+authorization failure are different address/lifecycle errors. Moreover, a published cache may
+already contain every source K/V tensor, in which case a ``miss'' means admission or transfer,
+not cold encoding. Only an absent compatible representation triggers source encoding. Eagerly
+publishing all K/V and later selecting transfers is evidence about admission and reuse, not
+evidence that cold source encoding itself is demand driven. Associative prefetch is useful only
+when recall, false activation, and physical cost are measured together.
 
 \subsection{Decisive Virtual-Memory Scaling Experiment}
 
@@ -925,7 +985,7 @@ move only selected K/V from CPU or other backing storage when needed.
 \node[memnode, text width=2.2cm, left=of route] (budget) {global admission +\\transfer budget};
 \node[selected, memnode, text width=2.2cm, below=7mm of budget] (selectedkv) {selected full-detail\\native K/V};
 \node[pranode, text width=2.2cm, right=of selectedkv] (attention) {direct + memory\\native attention};
-\node[future, text width=2.2cm, right=of attention] (iterate) {Paper 2.5: bounded\\associative discovery};
+\node[future, text width=2.2cm, right=of attention] (iterate) {optional bounded\\associative discovery};
 \node[future, text width=2.45cm, left=of selectedkv] (partial) {future: partial/smart\\materialization};
 \draw[flow] (source) -- (blocks);
 \draw[flow] (blocks) -- (kv);
@@ -941,8 +1001,8 @@ move only selected K/V from CPU or other backing storage when needed.
 \end{tikzpicture}
 \caption{Canonical PRA architecture. Solid arrows are the one-shot whole-chunk SDK path.
 The compact index selects identities; attention consumes selected full-detail, layer-native K/V.
-The dashed discovery loop is exercised by Paper 2.5 experiments but is not the SDK default;
-partial materialization remains planned.}
+The dashed discovery loop is an optional experimental extension, not the one-shot default;
+partial materialization remains a separate design choice.}
 \label{fig:lifecycle}
 \end{figure}
 
@@ -984,6 +1044,7 @@ None of the three terms repairs another.  A strong layer profile cannot rescue K
 incompatible RoPE frame.  Exact evidence cannot rescue a consumer topology that amplifies
 interference.  Conversely, all-layer consumption can be transport-correct while lowering quality.
 
+\iffalse
 \subsection{What the current evidence supports}
 
 The corrected Paper-3 retrospective fixes source-offset query positions and holds oracle identity
@@ -1057,6 +1118,17 @@ fewer trainable memory projections and trains faster, but one tiny model and an 
 cannot determine a placement law.  The next scaling test should compare optimal normalized
 consumer depth against model depth and parameter count while stratifying lexical, syntactic,
 relational, and answer-generation workloads.
+\fi
+
+\subsection{Calibration without test-set selection}
+
+Layer profiles are policies, not architectural constants. A candidate profile must be selected
+on a validation cohort with the model, tokenizer, workload, materialization policy, and cost
+definition frozen; the final quality and cost estimate must then use untouched test identities.
+Reference-correctness activates every eligible consumer as a conservative fallback when no sparse
+profile is qualified. Quality-max, balanced, and economy profiles denote different predeclared
+objectives on the validation frontier, never optima selected from the reported test set. Every
+registry entry must record provenance, uncertainty over independent identities, and a safe override.
 
 \section{Relationship to Existing Work}
 
@@ -1138,7 +1210,13 @@ explicit approximation rather than a sufficient recurrent state.
 
 PagedAttention manages serving-time KV allocation, while Prompt Cache reuses schema-named prompt
 modules and CacheBlend selectively recomputes cached chunks to restore missing cross-chunk
-context \cite{kwon2023vllm,gim2023promptcache,yao2024cacheblend}. These systems change where
+context \cite{kwon2023vllm,gim2023promptcache,yao2024cacheblend}. RetrievalAttention instead
+retrieves a sparse subset of the long-context KV cache through an attention-aware vector index
+\cite{liu2024retrievalattention}; it is the closest direct comparison to PRA's selected native
+state. Its optimized serving path targets long-context attention, whereas PRA additionally
+requires persistent object identity, explicit admission/materialization contracts, and optional
+hierarchical expansion; the present PRA prototypes do not match its production-scale runtime
+evidence. These systems change where
 prompt state resides and how much prefill is repeated. PRA shares their concern with positional
 validity, reuse, transfer, and backing storage, but adds semantic routing over addressable
 objects and a hard active-K/V admission budget. Conversely, PRA does not yet provide their
@@ -1287,6 +1365,9 @@ PRA & URI-addressed memory cache & Demand-driven latent expansion & Requires lea
 \end{tabularx}
 \end{table}
 
+% Detailed chronological experiment tables are retained source-side for the versioned
+% online supplement. They are excluded from the fixed scholarly argument below.
+\iffalse
 \section{Historical Feasibility Evidence}
 
 This section preserves the experimental path by which the proposal was corrected. The
@@ -1553,6 +1634,7 @@ but transfer and unbatched cold offload add latency.}
 \label{fig:position-kv-residency}
 \end{figure}
 
+\fi
 \section{Evaluation Doctrine}
 
 PRA requires counterfactual evaluation because a single task score cannot reveal how memory was used. At minimum, a promising checkpoint should be evaluated with valid references, a disabled reference path, shuffled references, irrelevant references, empty references, oracle references, and all evidence visible in local context. Targets and prompt structure must remain fixed across these conditions. Shuffling must occur across examples while preserving reference count and approximate length, and batched caches must prevent cross-example leakage.
@@ -1569,6 +1651,8 @@ Four families of outcomes should be reported together:
 Evidence of genuine reference use requires more than a disabled-path gap. A branch can act as a generic domain adapter regardless of supplied content. Valid references should outperform shuffled and irrelevant content, ideally by larger margins on examples proven to be locally insufficient. Reference routing and chunk routing should separately rank known relevant objects and evidence spans above controls. Claims should be repeated across seeds and reported with matched token, parameter, and compute budgets.
 
 \section{Research Agenda}
+
+\iffalse
 
 The original agenda proceeded through controlled standalone models, positional validation,
 and pretrained integration. Those stages now have dedicated companion papers. The remaining
@@ -1627,6 +1711,17 @@ Compare isolated reference-path adaptation, joint fine-tuning, adapters, low-ran
 
 \paragraph{Safety, provenance, and access control.}
 Treat reference resolution as a privileged operation. Study signed or versioned URIs, tenant isolation, policy-aware cache keys, provenance traces, revocation, poisoning detection, and whether the model can infer protected content through shared memory representations.
+\fi
+
+The remaining agenda has four decisive tests. First, compare full context, sparse attention,
+selected-text retrieval, agentic search, and native-state selection on identical natural-task
+cohorts and token/output budgets. Second, scale logical memory from 32K to at least 8M tokens while
+reporting task quality, retrieval causality, active and resident bytes, index/backing-store cost,
+transfer, latency, and reuse. Third, select routing, materialization, and consumer policies on
+validation identities and evaluate them once on untouched identities across model families.
+Fourth, exercise concurrent lifecycle behavior---authorization, versioning, cancellation,
+eviction, restoration, and tenant isolation---under realistic cache pressure. These tests, rather
+than a paper chronology, determine whether the position survives.
 
 \subsection{Falsification Criteria}
 
@@ -1636,12 +1731,17 @@ The research program should be abandoned or substantially revised if repeated, w
 \item valid references do not outperform shuffled or irrelevant references once formatting and capacity are controlled;
 \item equivalent prompt concatenation or RAG matches quality at lower end-to-end cost;
 \item reference encoding and cache management erase any savings from shorter local context, even with reuse;
-\item learned expansion policies fail to outperform simple oracle-budgeted retrieval or cannot maintain recall;
+\item learned expansion policies repeatedly fail to match feasible retrieval or cache-selection
+baselines at the same materialized-token and latency budget; a miss against an unattainable
+oracle diagnoses the router rather than falsifying the architecture;
 \item local language ability degrades unacceptably under the adaptation needed to use memory;
 \item URI and cache isolation cannot be enforced under realistic batching and multi-tenant serving.
 \end{itemize}
 
-These criteria make PRA a testable systems-and-model hypothesis rather than a label that can absorb any retrieval mechanism after the fact.
+Each criterion rejects or narrows the corresponding router, workload, or systems claim.
+Failure at one scale does not invalidate an exact native-state transport result established
+under another contract. These criteria make PRA a testable family of systems-and-model
+hypotheses rather than a label that can absorb any retrieval mechanism after the fact.
 
 \section{Risks and Limitations}
 
@@ -1663,26 +1763,27 @@ under this sparse memory interface.  No current paper demonstrates that complete
 
 The long-term vision is a foundation-model memory stack with explicit boundaries among parametric knowledge, working context, episodic history, semantic resources, procedures and tools, and changing world state. URI identity, provenance, freshness, hierarchy, permissions, and cache lifetime become architectural concerns rather than application-side annotations. Protocols such as MCP can expose resources and actions, agents can manage high-level plans, and PRA-like runtimes can test whether repeated read-oriented access can move closer to attention without losing governance.
 
-The historical cross-attention follow-up supports preservation controls but fails its
-content-causality gate. Native-KV experiments provide stronger mechanism evidence: contextual
-slicing preserves transport through 256 addressable units, fixed-$k$ active fraction falls to
-roughly 5\%, and model-bounded encoding demonstrates a logical head 5.75 times the native limit.
-Paper 1.5 adds positional continuity and separates semantic search from native attention geometry.
-Paper 2 then establishes exact disabled pretrained paths, cross-family adapters, and a useful
-one-shot QASPER regime while identifying HotpotQA as the multi-hop boundary. Paper 2.5
-demonstrates bounded associative discovery and native graph structure, while showing that entry
-competition, granularity, broad activation, and memory-use interference still limit sparse
-end-to-end gains.  Paper 3 adds controlled evidence-centered disclosure and corrected Qwen
-consumer-placement evidence; Paper 4.5 turns the four layer roles into versioned, cross-model
-runtime profiles.  Those results support coherent late bands for the tested MuSiQue/2Wiki replay
-but broader parity profiles for the tested Qwen, Llama, and Gemma topologies, not a universal depth
-rule.  Paper 3.5 adds observable-only effort control and runtime prototypes; none establishes
-production speed.  Together these results make PRA a usable research SDK and
-support the narrow claim that named logical context can grow faster than the K/V materialized in
-one operation. They do not yet show that PRA is generally better than optimized long context or RAG
-in production. The decisive next tests are learned sparse-memory assimilation, the matched
-32K--8M+ scaling experiment, and production serving under realistic batching and cache pressure;
-failure there should narrow or reject the broader virtual-context thesis.
+The strongest existing evidence is diagnostic. Contextual native-state slicing preserves the
+controlled transport benefit through the split-256 condition (255 addressable source units) while a fixed-$k$ active fraction
+falls to roughly 5\%; scoped position controls and pretrained adapters establish additional
+mechanism exactness. Yet target coverage is incomplete, semantic and attention geometries differ,
+better associative traversal does not reliably improve answers, and reduced K/V does not by
+itself establish lower end-to-end latency. These companion observations support the narrow claim
+that named logical scope can grow faster than the K/V admitted to one operation. They do not show
+that PRA is generally better than optimized long context, retrieval, or prefix caching.
+
+The decisive next tests are learned sparse-memory assimilation on untouched cohorts, matched
+32K--8M+ scaling, and production serving under realistic reuse, batching, cancellation, eviction,
+and cache pressure. Low reuse, dense evidence dependence, cheap selected-text injection,
+frequently changing sources, or routing and transfer costs larger than saved attention are all
+regimes in which PRA is unlikely to help. In a simple repeated-use model, a published resource is
+competitive only if
+\begin{equation}
+\frac{C_{\rm publish}+C_{\rm index}}{R}+C_{\rm route}+C_{\rm transfer}+C_{\rm sparse}
+< C_{\rm matched\ baseline},
+\end{equation}
+where $R$ is the realized reuse count. Failure of those matched tests should narrow or reject the
+corresponding virtual-context claim.
 
 \bibliographystyle{plain}
 \bibliography{../shared/references}
