@@ -598,9 +598,16 @@ class MLXAgentHistoryExecutor:
             "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
             "completion_tokens": len(generated),
             "requested_retention_fraction": requested,
+            "realized_retention_fraction": (
+                plan.selected_tokens / max(len(source), 1)
+            ),
             "realized_historical_kv_retention_fraction": (
                 plan.selected_tokens / max(len(source), 1)
             ),
+            "engine_reported_history_kv_retention_fraction": (
+                plan.selected_tokens / max(len(source), 1)
+            ),
+            "full_retention": bool(plan.full_retention),
             "selection_contract": contract or "minimum-retention-floor",
             "pra_100_semantic_noop": bool(plan.full_retention),
             "exact_trajectory_eligible": bool(plan.full_retention),

@@ -163,6 +163,8 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
         + second.trace[0]["new_suffix_tokens_submitted"]
     )
     assert second.trace[0]["consumption_mode"] == "dense_semantic_noop"
+    assert second.trace[0]["full_retention"] is True
+    assert second.trace[0]["realized_retention_fraction"] == 1.0
     assert second.trace[0]["selected_history_reencoded_tokens"] == 0
     assert second.trace[0]["selected_history_kv_copy_bytes"] == 0
     assert second.trace[0]["host_to_device_bytes"] == 0
@@ -236,6 +238,10 @@ def test_sparse_request_uses_complete_selected_pages_and_original_extent() -> No
     trace = result.trace[0]
     command = driver.commands[-1]
     assert trace["consumption_mode"] == "sparse_original_position_pages"
+    assert trace["full_retention"] is False
+    assert trace["realized_retention_fraction"] == trace[
+        "engine_reported_history_kv_retention_fraction"
+    ]
     assert command.source_tokens % driver.block_size == 0
     assert command.source_position_base >= command.source_tokens
     assert trace["selected_kv_tokens"] == len(trace["selected_page_indices"]) * 8

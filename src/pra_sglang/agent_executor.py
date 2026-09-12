@@ -1117,6 +1117,10 @@ class SGLangMLXAgentHistoryExecutor:
             "wire_tokens": len(wire),
             "requested_retention_fraction": requested,
             "realized_retention_fraction": plan.selected_tokens / max(len(source), 1),
+            "engine_reported_history_kv_retention_fraction": (
+                plan.selected_tokens / max(len(source), 1)
+            ),
+            "full_retention": bool(plan.full_retention),
             "selection_contract": selection_contract or "minimum-retention-floor",
             "selected_history_reencoded_tokens": reencoded,
             "new_history_encoded_tokens": newly_encoded,

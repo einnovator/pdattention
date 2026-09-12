@@ -265,6 +265,9 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert first.text == "A"
     first_trace = first.trace[0]
     assert first_trace["pra_100_semantic_noop"] is True
+    assert first_trace["full_retention"] is True
+    assert first_trace["realized_retention_fraction"] == 1.0
+    assert first_trace["engine_reported_history_kv_retention_fraction"] == 1.0
     assert first_trace["exact_trajectory_eligible"] is True
     assert first_trace["selected_history_reencoded_tokens"] == 0
     assert first_trace["selected_history_kv_copy_bytes"] == 0
@@ -283,7 +286,11 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     trace = second.trace[0]
     assert second.text == "A"
     assert trace["pra_100_semantic_noop"] is False
+    assert trace["full_retention"] is False
     assert 0.9 <= trace["realized_historical_kv_retention_fraction"] < 1
+    assert trace["realized_retention_fraction"] == trace[
+        "realized_historical_kv_retention_fraction"
+    ]
     assert trace["selected_history_reencoded_tokens"] == 0
     assert trace["selected_interval_pack_bytes"] == 0
     assert trace["physical_kv_copy"] is None

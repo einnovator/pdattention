@@ -716,8 +716,15 @@ class VLLMCudaAgentHistoryExecutor:
                 "selected_page_indices": list(page_indices),
                 "selected_kv_tokens": selected_tokens,
                 "requested_retention_fraction": requested,
+                "realized_retention_fraction": selected_tokens
+                / max(command.source_position_base, 1),
                 "realized_historical_kv_retention": selected_tokens
                 / max(command.source_position_base, 1),
+                "engine_reported_history_kv_retention_fraction": selected_tokens
+                / max(command.source_position_base, 1),
+                "full_retention": bool(
+                    selected_tokens == command.source_position_base
+                ),
                 "selection_contract": request.metadata.get(
                     "selection_contract", "minimum-retention-floor"
                 ),
