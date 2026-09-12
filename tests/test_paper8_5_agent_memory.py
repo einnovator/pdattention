@@ -581,6 +581,35 @@ def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     assert calls[1][-1]["role"] == "user"
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "http://example.invalid",
+        "http://example.invalid/",
+        "http://example.invalid/v1/chat/completions",
+        "http://example.invalid/v1/chat/completions/",
+    ),
+)
+def test_frozen_replay_normalizes_root_or_complete_chat_endpoint(
+    monkeypatch, base_url
+):
+    messages = _messages(1)
+    endpoints = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        endpoints.append(url)
+        return {"choices": [{"message": {"content": messages[2]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        base_url=base_url,
+    ))
+
+    assert endpoints == ["http://example.invalid/v1/chat/completions"]
+
+
 def test_frozen_replay_can_use_contemporaneous_full_output_as_reference(monkeypatch):
     messages = _messages(1)
     generated = messages[2]["content"].replace("inspect turn 0", "new reasoning")

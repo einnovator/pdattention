@@ -132,6 +132,14 @@ def _post(
         return json.load(response)
 
 
+def _chat_endpoint(base_url: str) -> str:
+    """Accept either a server root or an already-complete OpenAI chat URL."""
+
+    normalized = base_url.rstrip("/")
+    suffix = "/v1/chat/completions"
+    return normalized if normalized.endswith(suffix) else f"{normalized}{suffix}"
+
+
 def _selector(label: str, *, head: int, tail: int, round_up: bool = False):
     if label == "full":
         return FullHistorySelector()
@@ -311,7 +319,7 @@ def replay(
         _json_digest(matched_budget_replay)
         if matched_budget_replay is not None else None
     )
-    endpoint = f"{base_url.rstrip('/')}/v1/chat/completions"
+    endpoint = _chat_endpoint(base_url)
     run_configuration = {
         "contract": "paper8_5_frozen_replay_resume_v1",
         "trajectory_digest": _json_digest(trajectory),
