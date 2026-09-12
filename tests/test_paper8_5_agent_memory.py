@@ -27,6 +27,9 @@ from experiments.paper8_5_agent_memory import (
 from experiments.paper8_5_agent_memory.observation_instrumentation import (
     build_bash_observation_metadata,
 )
+from experiments.paper8_5_agent_memory.export_review_history import (
+    export_trajectory,
+)
 from experiments.paper8_5_agent_memory.run_structural_screen import structural_screen
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
 from experiments.paper8_5_agent_memory.workspace_checkpoint import (
@@ -752,3 +755,38 @@ def test_frozen_replay_stops_on_empty_transport_generation_and_requires_restart(
     ))
     assert restarted["completed_decisions"] == 2
     assert restarted["terminal_failure"] is None
+
+
+def test_review_export_keeps_full_json_and_compacts_markdown(tmp_path):
+    messages = _messages(1)
+    messages[3]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(f"unique-output-line-{index}" for index in range(30))
+        + "\n</output>"
+    )
+    trajectory = tmp_path / "task.traj.json"
+    trajectory.write_text(json.dumps({
+        "instance_id": "owner__task-1",
+        "messages": messages,
+        "info": {"exit_status": "Submitted"},
+    }), encoding="utf-8")
+
+    json_path, markdown_path = export_trajectory(
+        trajectory,
+        tmp_path / "review",
+        head_lines=2,
+        tail_lines=2,
+        max_line_chars=80,
+    )
+
+    exported = json.loads(json_path.read_text(encoding="utf-8"))
+    markdown = markdown_path.read_text(encoding="utf-8")
+    observation = next(
+        row for row in exported["records"]
+        if "tool_observation" in row["semantic_roles"]
+    )
+    assert "unique-output-line-15" in observation["content"]
+    assert "unique-output-line-15" not in markdown
+    assert "lines omitted" in markdown
+    assert observation["content_sha256"] in markdown
+    assert f"[{json_path.name}]({json_path.name})" in markdown

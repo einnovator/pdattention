@@ -87,3 +87,15 @@ The replay request specifies only temperature zero by default, matching the
 mini-swe-agent baseline; endpoint defaults remain unspecified. `--seed` and
 `--max-output-tokens` are opt-in and must be used in both baseline and candidate
 arms if a campaign freezes those parameters.
+
+For human and AI policy inspection, export each task as adjacent complete JSON
+and economical Markdown files:
+
+```bash
+python -m experiments.paper8_5_agent_memory.export_review_history \
+  --trajectory task1.traj.json task2.traj.json \
+  --output-directory docs/papers/shared/results/paper8_5_agent_memory/human_review
+```
+
+The Markdown view excerpts large content with explicit omission counts and a
+full-content digest; the JSON retains every canonical record verbatim.
