@@ -586,6 +586,86 @@ Spine + lexical & 91.6\% & 80.0\% & 67.4\% & 66.5\% \\
 \end{tabular}
 \end{table}
 
+\subsection{First instrumented frozen cohort}
+
+We then executed the ordered frozen gate on
+\texttt{scikit-learn\_\_scikit-learn-13135}.  The reference is a successful
+23-decision ordinary-text mini-swe-agent trajectory using
+\texttt{qwen3-coder:30b}, its pinned tokenizer, temperature zero, and restored
+decision-point workspaces.  This is next-action evidence, not yet an
+autonomous policy success rate.  Table~\ref{tab:first-frozen-cohort} compares
+each arm directly with a contemporaneous \textsc{Full} replay.  Exact-command
+and conservative-action rates use the 22 decisions on which \textsc{Full}
+emitted a command; \textsc{Full}'s decision 22 is itself format-invalid.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{First instrumented frozen cohort. Saving is cumulative over growing
+decision prefixes. ``Final'' means equality of the frozen decision-23 action,
+not autonomous SWE-bench resolution.}
+\label{tab:first-frozen-cohort}
+\begin{tabular}{lrrrrrrc}
+\toprule
+Treatment & Mean ret. & Saving & Exact text & Exact cmd. & Cons. action & First div. & Final \\
+\midrule
+\textsc{Full} & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
+\textsc{Dag-Exclude}@100 & 99.8\% & 0.3\% & 91.3\% & 95.5\% & 95.5\% & 21 & yes \\
+Matched causal tail & 97.1\% & 3.9\% & 87.0\% & 90.9\% & 90.9\% & 21 & no \\
+Recency@90 floor & 100.0\% & 0.0\% & 100.0\% & 100.0\% & 100.0\% & -- & yes \\
+Lexical@90 floor & 94.7\% & 5.9\% & 30.4\% & 45.5\% & 59.1\% & 6 & yes \\
+Spine+lexical@90 floor & 95.5\% & 5.2\% & 39.1\% & 45.5\% & 59.1\% & 8 & yes \\
+DAG+spine+lexical@90 & 95.7\% & 4.9\% & 39.1\% & 45.5\% & 59.1\% & 8 & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three mechanism findings matter.  First, recency with a 90\% floor retains
+the entire history on this trace: the last ranked large turn is needed to cross
+the floor, producing 19,899 cumulative tokens of whole-turn overshoot.  Lexical
+ranking reaches a closer 94.7\% mean and delays no protocol failure, but changes
+many next actions; comment-only normalization explains some, not all, of the
+gap.  Adding the progress spine delays first divergence from decision 6 to 8
+and improves exact text, but saves fewer tokens and creates one overlong,
+format-invalid action at decision 9.  A role floor is therefore not sufficient
+evidence of improved policy quality.
+
+Applying certified exclusion before the same spine-plus-lexical floor produces
+identical frozen responses to the non-DAG arm but retains slightly more, 95.7\%
+versus 95.5\%.  Once the duplicate is removed, the whole-turn fallback chooses
+a larger replacement to cross the 90\% floor.  A two-stage exclusion-plus-floor
+policy is therefore not monotone in realized token saving; negative and
+positive stages must be evaluated as a composed policy.
+
+A conservative human action audit further separates command-string mismatch
+from workflow damage.  Among lexical@90's 13 non-exact actions, three differ
+only in shell comments, six are likely operationally equivalent diagnostics or
+edits, two are materially different but plausibly useful, and two alter the
+submission path.  For spine+lexical the corresponding counts are three, three,
+three, and three, plus one format-invalid action.  The recurring dangerous
+omissions concern failed-environment status, successful mutation,
+post-mutation verification, and patch/submission-artifact state.  These become
+explicit ablation and oracle-add-back targets rather than being inferred from
+lexical score alone.
+
+Second, the instrumented trace supports one
+\textsc{Trace-Exact-Operation-Result} certificate: two complete reads execute
+the same command and return the same bytes for the same cwd, environment, and
+resource version despite different reasoning prose.  Removing the older turn
+saves only 603 cumulative tokens.  It changes decisions 21--22, from writing a
+temporary diff to displaying it and then another invalid response, but returns
+to the exact final submission action at decision 23.  Operational proof and
+behavioral identity are therefore empirically distinct even in the strongest
+current DAG tier.
+
+Third, the causal-tail ``matched'' control cannot actually match this small
+exclusion: its next indivisible turn drops retention to 77--78\% on decisions
+21--23, leaving 7,197 cumulative target tokens unused and removing 7,800 tokens
+versus the DAG arm's 603.  Its worse final action cannot be attributed to
+recency versus DAG semantics at equal context.  A genuine token-tail control
+with bounded within-observation materialization is required before that causal
+comparison is admissible.
+
 \section{Semantic-Role Ablations}
 
 For the typed progress spine, we remove one role at a time:

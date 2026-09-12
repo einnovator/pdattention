@@ -52,3 +52,13 @@ not a task-quality result.
 Source trajectories are read-only inputs from the Paper 4.5 pass-through
 campaign. Their successful completion only qualifies them as reference
 histories; it does not validate any policy in this directory.
+
+## First instrumented frozen cohort
+
+The later [`frozen_task03_qwen30`](frozen_task03_qwen30/README.md) cohort uses a
+new 23-decision successful Task 03 trajectory with cwd, completeness,
+environment, workspace-checkpoint, resource-version, and traced-tool-semantics
+evidence.  It uses the exact model tokenizer rather than whitespace counts and
+compares generated next actions with a contemporaneous FULL replay.  Its named
+90% treatments use a minimum-retention floor with whole-turn round-up; this is
+a different budget contract from the ceiling-based structural pilot above.
