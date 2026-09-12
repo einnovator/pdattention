@@ -469,6 +469,10 @@ class MLXAgentHistoryExecutor:
             mandatory_message_indices=mandatory,
             selected_message_indices=selected,
             chat_template_kwargs=template_kwargs,
+            round_up_to_retention_floor=(
+                request.metadata.get("selection_budget_policy")
+                == "causal_bundle_round_up_v1"
+            ),
         )
         contract = request.metadata.get("selection_contract")
         enforce_retention_floor(

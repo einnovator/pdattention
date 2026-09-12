@@ -384,6 +384,41 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert executor.runtime.registry.view(source_id) is None
 
 
+def test_causal_round_up_uses_authoritative_mlx_token_spans(
+    fake_mlx, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pra_mlx.agent_executor as executor_module
+
+    original = executor_module.selected_record_plan
+    observed: dict[str, object] = {}
+
+    def selected_record_plan(*args, **kwargs):
+        observed.update(kwargs)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(executor_module, "selected_record_plan", selected_record_plan)
+    executor = _executor()
+    initial = (
+        {"role": "system", "content": "S" * 40},
+        {"role": "user", "content": "U" * 40},
+    )
+    executor.generate(_request(initial))
+    logical = (*initial, {"role": "assistant", "content": "A"}, {
+        "role": "user", "content": "O" * 40,
+    })
+    request = _request(
+        logical,
+        request_messages=(logical[0], logical[1], logical[3]),
+        retention=0.9,
+        request_id="rounded",
+    )
+    request.metadata["selection_budget_policy"] = "causal_bundle_round_up_v1"
+
+    executor.generate(request)
+
+    assert observed["round_up_to_retention_floor"] is True
+
+
 def test_qualified_profile_reports_zero_candidate_selection_copy(fake_mlx) -> None:
     executor = MLXAgentHistoryExecutor(
         _Model(),
