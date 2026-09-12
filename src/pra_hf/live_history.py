@@ -101,11 +101,15 @@ class LiveKVSelectionPlan:
 
     @property
     def full_retention(self) -> bool:
-        return (
-            self.source_tokens == self.source_position_base
-            and self.intervals
-            == (LiveKVInterval(0, self.source_tokens, "full-history", "full-history"),)
-        ) or self.source_tokens == 0
+        # Full retention is a coverage property, not an interval-identity
+        # property. Record-aware plans commonly preserve adjacent logical
+        # identities even when their union covers the complete source. Those
+        # plans must take the dense semantic-no-op path instead of introducing
+        # a segmented reduction solely because a record boundary is present.
+        return self.source_tokens == 0 or (
+            self.source_position_base == self.source_tokens
+            and self.selected_tokens == self.source_tokens
+        )
 
     @property
     def has_holes(self) -> bool:

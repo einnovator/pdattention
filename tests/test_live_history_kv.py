@@ -53,6 +53,20 @@ def test_live_plan_keeps_selected_width_and_position_extent_separate() -> None:
     assert not plan.full_retention
 
 
+def test_adjacent_record_intervals_covering_source_are_full_retention() -> None:
+    plan = LiveKVSelectionPlan.create(
+        12,
+        (
+            LiveKVInterval(0, 5, "system", "preamble"),
+            LiveKVInterval(5, 12, "task", "preamble"),
+        ),
+    )
+
+    assert plan.selected_tokens == 12
+    assert not plan.has_holes
+    assert plan.full_retention
+
+
 def test_live_plan_rejects_overlap_and_duplicate_record_identity() -> None:
     with pytest.raises(ValueError, match="ordered and disjoint"):
         LiveKVSelectionPlan.create(20, ((0, 10), (9, 15)))
