@@ -319,6 +319,56 @@ def test_page_selection_rejects_underfilled_declared_retention_arm() -> None:
         requested_fraction=0.9,
         selection_contract="arbitrary-subset-mechanism-probe",
     )
+    _enforce_page_retention_floor(
+        selected_tokens=80,
+        source_tokens=100,
+        requested_fraction=0.9,
+        selection_contract="frozen-agent-memory-plan-v1",
+    )
+
+
+def test_frozen_agent_memory_plan_is_page_rounded_without_adding_records() -> None:
+    driver = _Driver()
+    executor = VLLMCudaAgentHistoryExecutor(
+        driver,
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest="digest",
+    )
+    initial = (
+        {"role": "system", "content": "rules-long-enough"},
+        {"role": "user", "content": "task-long-enough"},
+        {"role": "assistant", "content": "old-action-long-enough"},
+        {"role": "user", "content": "old-output-long-enough"},
+        {"role": "assistant", "content": "recent-action"},
+        {"role": "user", "content": "recent-output"},
+    )
+    executor.generate(_request(initial, range(len(initial))))
+    logical = tuple(executor._sessions["s"].ledger.messages) + (
+        {"role": "user", "content": "current"},
+    )
+    selected_message = len(logical) - 2
+    result = executor.generate(_request(
+        logical,
+        (0, 1, len(logical) - 1),
+        retention=0.99,
+        resources=(PRAWireResource(
+            resource_id="latest",
+            uri="pra://latest",
+            text="A",
+            metadata={"message_index": selected_message},
+        ),),
+        selection_contract="frozen-agent-memory-plan-v1",
+    ))
+
+    trace = result.trace[0]
+    assert trace["retention_rounded_up"] is False
+    assert trace["requested_selected_message_indices"] == (
+        trace["realized_selected_message_indices"]
+    )
+    assert trace["realized_retention_fraction"] < 0.99
+    assert trace["selected_history_reencoded_tokens"] == 0
+    assert trace["physical_kv_copy_bytes"] == 0
 
 
 def test_bridge_fails_closed_when_commit_callback_receipt_is_missing() -> None:

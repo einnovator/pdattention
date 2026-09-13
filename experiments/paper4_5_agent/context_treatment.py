@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote, urlparse
 
 from pra_hf.large_record_index import LargeRecordIndex, LargeRecordSearchPolicy
@@ -51,6 +51,13 @@ CONSUMPTION_POLICIES = (
     "verification-enforced-v1",
 )
 
+AGENT_HISTORY_SELECTION_POLICIES = (
+    "task-aware-v1",
+    "paper8.5-matched-causal-token-tail-v1",
+)
+MATCHED_CAUSAL_TOKEN_TAIL_POLICY = AGENT_HISTORY_SELECTION_POLICIES[1]
+FROZEN_AGENT_MEMORY_PLAN_CONTRACT = "frozen-agent-memory-plan-v1"
+
 
 @dataclass(frozen=True)
 class TreatmentTrace:
@@ -71,6 +78,10 @@ class TreatmentTrace:
     selected_resource_digest: str | None
     route_time_s: float
     token_estimator: str = "whitespace_v1"
+    agent_history_selection_policy: str = "task-aware-v1"
+    requested_budget_tokens: int | None = None
+    logical_budget_unused_tokens: int | None = None
+    mandatory_overflow_tokens: int = 0
 
 
 def apply_consumption_policy(
@@ -131,10 +142,20 @@ def transform_chat_payload(
     preserve_action_observation_pairs: bool | None = None,
     causal_bundle_round_up: bool | None = None,
     frozen_selection: Sequence[tuple[str, str]] | None = None,
+    agent_history_selection_policy: str = "task-aware-v1",
+    count_tokens: Callable[[str], int] | None = None,
+    tokenizer_identity: str = "whitespace_v1",
 ) -> tuple[dict[str, Any], TreatmentTrace]:
     """Apply a matched budget, optionally replaying an exact recorded selection."""
 
     mode = ContextTreatment(mode)
+    if agent_history_selection_policy not in AGENT_HISTORY_SELECTION_POLICIES:
+        raise ValueError(
+            "unknown agent-history selection policy "
+            f"{agent_history_selection_policy!r}; expected one of "
+            f"{AGENT_HISTORY_SELECTION_POLICIES}"
+        )
+    exact_count = count_tokens or _count_tokens
     request_envelope = payload.get("pra") or {}
     request_metadata = (
         request_envelope.get("metadata") or {}
@@ -196,7 +217,7 @@ def transform_chat_payload(
     if not messages:
         raise ValueError("chat payload requires messages")
     session_id = session_id_for_messages(messages)
-    logical_tokens = sum(_count_tokens(row.get("content")) for row in messages)
+    logical_tokens = sum(exact_count(str(row.get("content") or "")) for row in messages)
     if mode in {ContextTreatment.PASSTHROUGH, ContextTreatment.HEADROOM}:
         if frozen_selection is not None:
             raise ValueError(f"{mode.value} mode cannot replay a context selection")
@@ -207,25 +228,39 @@ def transform_chat_payload(
 
     mandatory_indices = _mandatory_indices(messages)
     task_indices = _pinned_task_indices(messages, mandatory_indices)
-    progress_indices, progress_classes = _progress_pinned_indices(
-        messages, mandatory_indices | task_indices,
-        recent_turns=policy.recent_completed_turns,
-        recent_records_per_turn=policy.recent_records_per_turn,
-        source_turns=policy.recent_source_turns,
-        progress_turns=policy.recent_progress_turns,
-        mutation_turns=policy.recent_mutation_turns,
-        verification_turns=policy.recent_verification_turns,
-        max_records_per_turn_before_chunking=(
-            policy.max_records_per_turn_before_chunking
-        ),
-        preserve_action_observation_pairs=policy.preserve_action_observation_pairs,
-    )
+    if agent_history_selection_policy == MATCHED_CAUSAL_TOKEN_TAIL_POLICY:
+        progress_indices = set()
+        progress_classes = {
+            "recent": set(), "source": set(), "progress_state": set(),
+            "mutation": set(), "verification": set(),
+        }
+    else:
+        progress_indices, progress_classes = _progress_pinned_indices(
+            messages, mandatory_indices | task_indices,
+            recent_turns=policy.recent_completed_turns,
+            recent_records_per_turn=policy.recent_records_per_turn,
+            source_turns=policy.recent_source_turns,
+            progress_turns=policy.recent_progress_turns,
+            mutation_turns=policy.recent_mutation_turns,
+            verification_turns=policy.recent_verification_turns,
+            max_records_per_turn_before_chunking=(
+                policy.max_records_per_turn_before_chunking
+            ),
+            preserve_action_observation_pairs=policy.preserve_action_observation_pairs,
+        )
     pinned_indices = task_indices | progress_indices
-    mandatory_tokens = sum(_count_tokens(messages[index].get("content")) for index in mandatory_indices)
-    pinned_tokens = sum(_count_tokens(messages[index].get("content")) for index in pinned_indices)
+    mandatory_tokens = sum(
+        exact_count(str(messages[index].get("content") or ""))
+        for index in mandatory_indices
+    )
+    pinned_tokens = sum(
+        exact_count(str(messages[index].get("content") or ""))
+        for index in pinned_indices
+    )
+    requested_budget_tokens = math.ceil(logical_tokens * budget_fraction)
     target_tokens = max(
         mandatory_tokens + pinned_tokens,
-        math.ceil(logical_tokens * budget_fraction),
+        requested_budget_tokens,
     )
     resource_budget = max(0, target_tokens - mandatory_tokens)
     available_tokens = max(0, resource_budget - pinned_tokens)
@@ -240,7 +275,9 @@ def transform_chat_payload(
         selected = [
             (index, messages[index]) for index in sorted(pinned_indices)
         ] + _truncate_recent(messages, candidate_indices, available_tokens)
-        selected_tokens = sum(_count_tokens(row[1].get("content")) for row in selected)
+        selected_tokens = sum(
+            exact_count(str(row[1].get("content") or "")) for row in selected
+        )
         keep = [(index, messages[index]) for index in mandatory_indices] + selected
         transformed["messages"] = [row for _, row in sorted(keep, key=lambda item: item[0])]
         candidate_segments = len(candidate_indices) + len(pinned_indices)
@@ -256,17 +293,33 @@ def transform_chat_payload(
             preserve_action_observation_pairs=policy.preserve_action_observation_pairs,
         )
         segments = [segment for bundle in bundles for segment in bundle]
-        selected_texts = (
-            list(frozen_selection)
-            if frozen_selection is not None
-            else _sort_segments([
+        matched_logical_tokens: int | None = None
+        if frozen_selection is not None:
+            selected_texts = list(frozen_selection)
+        elif agent_history_selection_policy == MATCHED_CAUSAL_TOKEN_TAIL_POLICY:
+            matched_indices = _select_matched_causal_token_tail_indices(
+                messages,
+                candidate_indices,
+                available_tokens,
+                count_tokens=exact_count,
+            )
+            materialized_indices = sorted(pinned_indices | set(matched_indices))
+            selected_texts = _segments(
+                messages, materialized_indices, segment_tokens
+            )
+            matched_logical_tokens = sum(
+                exact_count(str(messages[index].get("content") or ""))
+                for index in materialized_indices
+            )
+        else:
+            selected_texts = _sort_segments([
                 *pinned_segments,
                 *_select_turn_bundles(
                     bundles, query, available_tokens,
                     round_up=policy.causal_bundle_round_up,
+                    count_tokens=exact_count,
                 ),
             ])
-        )
         if frozen_selection is not None:
             valid_segments = _sort_segments([*pinned_segments, *segments])
             valid_by_id = dict(valid_segments)
@@ -301,7 +354,31 @@ def transform_chat_payload(
                     "frozen selection omits or changes pinned task segments: "
                     + ", ".join(missing_pinned)
                 )
-        selected_tokens = sum(_count_tokens(text) for _, text in selected_texts)
+        selected_tokens = (
+            matched_logical_tokens
+            if matched_logical_tokens is not None
+            else sum(exact_count(text) for _, text in selected_texts)
+        )
+        selected_digest = _selection_digest(selected_texts)
+        selection_materialization = (
+            "whole-causal-records-v1"
+            if agent_history_selection_policy
+            == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+            else "record-aligned-segments-v1"
+        )
+        agent_memory_plan_digest = hashlib.sha256(json.dumps(
+            {
+                "contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
+                "policy": agent_history_selection_policy,
+                "tokenizer_identity": tokenizer_identity,
+                "budget_fraction": float(budget_fraction),
+                "materialization": selection_materialization,
+                "mandatory_message_indices": sorted(mandatory_indices),
+                "selected_resource_digest": selected_digest,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
         transformed["messages"] = [messages[index] for index in sorted(mandatory_indices)]
         resources = [
             {
@@ -312,7 +389,16 @@ def transform_chat_payload(
                 "version": "v4-progress-spine",
                 "source_fingerprint": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 "authorization_scope": "swebench-agent-visible",
-                "metadata": _segment_metadata(segment_id, messages),
+                "metadata": _segment_metadata(
+                    segment_id,
+                    messages,
+                    selection_policy=(
+                        MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                        if agent_history_selection_policy
+                        == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                        else "typed_bm25_embedding_rrf"
+                    ),
+                ),
             }
             for segment_id, text in selected_texts
         ]
@@ -336,7 +422,14 @@ def transform_chat_payload(
             },
             "allow_text_fallback": not native_requested,
             "required_capabilities": ["logical_refs", "native_kv"] if native_requested else [],
-            "pra_policy": {"profile": "swebench-balanced-v1"},
+            "pra_policy": {
+                "profile": (
+                    MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    if agent_history_selection_policy
+                    == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    else "swebench-balanced-v1"
+                )
+            },
             "metadata": {
                 **dict(envelope.get("metadata") or {}),
                 "requested_mode": "native-memory" if native_requested else "selected-context",
@@ -346,21 +439,36 @@ def transform_chat_payload(
                 "benchmark_fairness": "agent-visible-messages-only",
                 "budget_fraction": float(budget_fraction),
                 "target_retention_fraction": float(budget_fraction),
+                "selection_contract": (
+                    FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+                    if agent_history_selection_policy
+                    == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    else "minimum-retention-floor"
+                ),
+                "agent_history_selection_policy": agent_history_selection_policy,
+                "selection_tokenizer_identity": tokenizer_identity,
+                "selection_materialization": selection_materialization,
+                "agent_memory_plan_digest": agent_memory_plan_digest,
                 "realized_retention_fraction": (
                     (mandatory_tokens + selected_tokens) / logical_tokens
                     if logical_tokens else 1.0
                 ),
                 "retention_rounded_up": (
-                    mandatory_tokens + selected_tokens > target_tokens
+                    mandatory_tokens + selected_tokens > requested_budget_tokens
                 ),
                 "selection_budget_policy": (
-                    "causal_bundle_round_up_v1"
-                    if policy.causal_bundle_round_up
-                    else "causal_bundle_hard_cap_v1"
+                    "matched_causal_token_tail_strict_ceiling_v1"
+                    if agent_history_selection_policy
+                    == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    else (
+                        "causal_bundle_round_up_v1"
+                        if policy.causal_bundle_round_up
+                        else "causal_bundle_hard_cap_v1"
+                    )
                 ),
-                "target_physical_tokens_estimate": target_tokens,
+                "target_physical_tokens_estimate": requested_budget_tokens,
                 "causal_round_up_tokens_estimate": max(
-                    0, mandatory_tokens + selected_tokens - target_tokens,
+                    0, mandatory_tokens + selected_tokens - requested_budget_tokens,
                 ),
                 "retention_policy": policy.to_dict(),
                 # Moving completed chat turns from the inline message list to
@@ -407,12 +515,18 @@ def transform_chat_payload(
             },
         })
         transformed["pra"] = envelope
-        selected_digest = _selection_digest(selected_texts)
     physical_tokens = mandatory_tokens + selected_tokens
     return transformed, _trace(
         request_index, session_id, mode, budget_fraction, logical_tokens, mandatory_tokens,
         selected_tokens, physical_tokens, candidate_segments, selected_segments,
         selected_digest, time.perf_counter() - started,
+        token_estimator=tokenizer_identity,
+        agent_history_selection_policy=agent_history_selection_policy,
+        requested_budget_tokens=requested_budget_tokens,
+        logical_budget_unused_tokens=max(0, requested_budget_tokens - physical_tokens),
+        mandatory_overflow_tokens=max(
+            0, mandatory_tokens + pinned_tokens - requested_budget_tokens
+        ),
     )
 
 
@@ -952,10 +1066,11 @@ def _turn_index_bundles(
 
 def _segment_metadata(
     segment_id: str, messages: Sequence[Mapping[str, Any]] | None = None,
+    *, selection_policy: str = "task-aware-v1",
 ) -> dict[str, Any]:
     """Expose causal position without relying on resource retrieval order."""
 
-    metadata: dict[str, Any] = {"selection_policy": "typed_bm25_embedding_rrf"}
+    metadata: dict[str, Any] = {"selection_policy": selection_policy}
     match = re.fullmatch(r"m(\d+)-(\d+)-(.+)", segment_id)
     if match is not None:
         metadata.update(
@@ -996,13 +1111,15 @@ def _causal_group_id(
 def _select_turn_bundles(
     bundles: Sequence[Sequence[tuple[str, str]]], query: str, budget: int,
     *, round_up: bool = True,
+    count_tokens: Callable[[str], int] | None = None,
 ) -> list[tuple[str, str]]:
     """Rank whole turns and round the retention floor up to the next bundle."""
 
     if not bundles or budget <= 0:
         return []
+    count = count_tokens or _count_tokens
     texts = ["".join(text for _, text in bundle) for bundle in bundles]
-    costs = [sum(_count_tokens(text) for _, text in bundle) for bundle in bundles]
+    costs = [sum(count(text) for _, text in bundle) for bundle in bundles]
     index = LargeRecordIndex(texts)
     result = index.search(
         query, policy=LargeRecordSearchPolicy.HYBRID,
@@ -1030,17 +1147,65 @@ def _select_turn_bundles(
     ]
 
 
+def _select_matched_causal_token_tail_indices(
+    messages: Sequence[Mapping[str, Any]],
+    candidate_indices: Sequence[int],
+    budget: int,
+    *,
+    count_tokens: Callable[[str], int],
+) -> list[int]:
+    """Select a contiguous newest-first tail of complete causal turns.
+
+    This is the whole-record native transfer of Paper 8.5's matched token-tail
+    control.  The ordinary-text study may compact an oversized boundary tool
+    observation; the native vLLM gate deliberately does not claim that
+    capability until record-internal K/V spans are supported.  Consequently a
+    boundary turn that does not fit ends selection and leaves the remainder of
+    the strict ceiling unused.
+    """
+
+    if budget <= 0:
+        return []
+    bundles = _turn_index_bundles(messages, candidate_indices)
+    selected: list[Sequence[int]] = []
+    remaining = int(budget)
+    for bundle in reversed(bundles):
+        cost = sum(
+            count_tokens(str(messages[index].get("content") or ""))
+            for index in bundle
+        )
+        if cost > remaining:
+            break
+        selected.append(bundle)
+        remaining -= cost
+    selected_ids = {index for bundle in selected for index in bundle}
+    return [
+        index
+        for bundle in bundles
+        for index in bundle
+        if index in selected_ids
+    ]
+
+
 def _trace(
     request_index: int, session_id: str, mode: ContextTreatment, budget_fraction: float,
     logical: int, mandatory: int, selected: int, physical: int,
     candidates: int, selected_segments: int, selected_resource_digest: str | None,
     route_time_s: float,
+    *,
+    token_estimator: str = "whitespace_v1",
+    agent_history_selection_policy: str = "task-aware-v1",
+    requested_budget_tokens: int | None = None,
+    logical_budget_unused_tokens: int | None = None,
+    mandatory_overflow_tokens: int = 0,
 ) -> TreatmentTrace:
     avoided = max(0, logical - physical)
     return TreatmentTrace(
         request_index, session_id, mode.value, budget_fraction, logical, mandatory, selected,
         physical, avoided, avoided / logical if logical else 0.0,
         candidates, selected_segments, selected_resource_digest, route_time_s,
+        token_estimator, agent_history_selection_policy, requested_budget_tokens,
+        logical_budget_unused_tokens, mandatory_overflow_tokens,
     )
 
 
@@ -1105,6 +1270,9 @@ class TreatmentProxy:
         causal_bundle_round_up: bool = True,
         consumption_policy: str = "standard",
         session_namespace: str | None = None,
+        agent_history_selection_policy: str = "task-aware-v1",
+        count_tokens: Callable[[str], int] | None = None,
+        tokenizer_identity: str = "whitespace_v1",
     ) -> None:
         if selection_record_path is not None and selection_replay_path is not None:
             raise ValueError("selection recording and replay are mutually exclusive")
@@ -1134,6 +1302,14 @@ class TreatmentProxy:
                 f"expected one of {CONSUMPTION_POLICIES}"
             )
         self.consumption_policy = consumption_policy
+        if agent_history_selection_policy not in AGENT_HISTORY_SELECTION_POLICIES:
+            raise ValueError(
+                "unknown agent-history selection policy "
+                f"{agent_history_selection_policy!r}"
+            )
+        self.agent_history_selection_policy = agent_history_selection_policy
+        self.count_tokens = count_tokens or _count_tokens
+        self.tokenizer_identity = str(tokenizer_identity)
         self.session_namespace = (
             None if session_namespace is None else str(session_namespace)
         )
@@ -1294,6 +1470,11 @@ class TreatmentProxy:
                     effective_retention.preserve_action_observation_pairs
                 ),
                 causal_bundle_round_up=effective_retention.causal_bundle_round_up,
+                agent_history_selection_policy=(
+                    self.agent_history_selection_policy
+                ),
+                count_tokens=self.count_tokens,
+                tokenizer_identity=self.tokenizer_identity,
             )
             native_session_id = trace.session_id
             if self.session_namespace and isinstance(payload.get("pra"), Mapping):

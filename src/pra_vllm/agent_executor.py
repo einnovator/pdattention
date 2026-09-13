@@ -23,6 +23,23 @@ from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 from .cuda_sparse_protocol import SparseCudaConnectorCommand
 
 
+FROZEN_AGENT_MEMORY_PLAN_CONTRACT = "frozen-agent-memory-plan-v1"
+
+
+def _selection_requires_retention_floor(selection_contract: str | None) -> bool:
+    """Whether the engine may add records to satisfy a nominal floor.
+
+    Frozen agent-memory plans own their logical subset.  The engine may round
+    those spans to resident pages, but must not silently select another causal
+    record.  The arbitrary-subset label remains limited to mechanism probes.
+    """
+
+    return selection_contract not in {
+        "arbitrary-subset-mechanism-probe",
+        FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
+    }
+
+
 def _encode(tokenizer: object, text: str) -> list[int]:
     encoded = tokenizer.encode(text, add_special_tokens=False)
     values = encoded.tolist() if hasattr(encoded, "tolist") else encoded
@@ -80,7 +97,7 @@ def _enforce_page_retention_floor(
     minimum = math.ceil(float(requested_fraction) * int(source_tokens))
     if int(selected_tokens) >= minimum:
         return
-    if selection_contract == "arbitrary-subset-mechanism-probe":
+    if not _selection_requires_retention_floor(selection_contract):
         return
     raise RuntimeError(
         "Selected vLLM pages underfill the requested retention floor: "
@@ -682,7 +699,11 @@ class VLLMCudaAgentHistoryExecutor:
                     required_tokens = math.ceil(state.source_tokens * requested)
                     if (
                         selected_tokens < required_tokens
-                        and selection_contract != "arbitrary-subset-mechanism-probe"
+                        and _selection_requires_retention_floor(
+                            None
+                            if selection_contract is None
+                            else str(selection_contract)
+                        )
                     ):
                         selected_indices, page_indices = record_rounded_selected_indices(
                             messages,

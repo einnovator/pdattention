@@ -21,8 +21,11 @@ from typing import Any
 
 from ..benchmark import load_benchmark_card
 from ..context_treatment import (
+    AGENT_HISTORY_SELECTION_POLICIES,
     CONSUMPTION_POLICIES,
     ContextTreatment,
+    FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
+    MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
     TreatmentProxy,
     session_id_for_messages,
 )
@@ -34,6 +37,42 @@ EXPECTED_PACKAGES = {
     "vllm": "0.22.1",
 }
 PINNED_DATASET_REVISION = "c104f840cc67f8b6eec6f759ebc8b2693d585d4a"
+
+
+def _agent_history_token_counter(args: argparse.Namespace):
+    """Load the frozen model tokenizer only for exact-token policy arms."""
+
+    policy = getattr(args, "selection_policy", "task-aware-v1")
+    if policy != MATCHED_CAUSAL_TOKEN_TAIL_POLICY:
+        return None, "whitespace_v1", None
+    tokenizer_name = getattr(args, "selection_tokenizer", None) or args.model
+    revision = (
+        getattr(args, "selection_tokenizer_revision", None)
+        or args.tokenizer_revision
+    )
+    if not revision or revision == "NOT_REPORTED_BY_SOURCE":
+        raise ValueError(
+            "matched causal token-tail requires a pinned selection tokenizer revision"
+        )
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, revision=revision)
+    backend = getattr(tokenizer, "backend_tokenizer", None)
+    if backend is not None and callable(getattr(backend, "to_str", None)):
+        identity_material = backend.to_str()
+    else:
+        identity_material = json.dumps(
+            tokenizer.get_vocab(), sort_keys=True, separators=(",", ":")
+        )
+    digest = hashlib.sha256(identity_material.encode("utf-8")).hexdigest()
+    identity = f"hf_exact_content_v1:{tokenizer_name}@{revision}:{digest}"
+
+    def count_tokens(text: str) -> int:
+        encoded = tokenizer.encode(str(text), add_special_tokens=False)
+        values = encoded.tolist() if hasattr(encoded, "tolist") else encoded
+        return len(values)
+
+    return count_tokens, identity, digest
 
 
 def derive_task_card(
@@ -478,7 +517,10 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
     selection_record = getattr(args, "selection_record", None)
     selection_replay = getattr(args, "selection_replay", None)
     selection_contract = (
-        "frozen_replay" if selection_replay
+        FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+        if getattr(args, "selection_policy", "task-aware-v1")
+        == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+        else "frozen_replay" if selection_replay
         else "route_owned" if args.mode in {
             ContextTreatment.PRA_SELECTED_CONTEXT.value,
             ContextTreatment.DIRECT_NATIVE_PRA.value,
@@ -521,6 +563,20 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         "selection_replay_sha256": (
             hashlib.sha256(selection_replay.read_bytes()).hexdigest()
             if selection_replay else None
+        ),
+        "agent_history_selection_policy": getattr(
+            args, "selection_policy", "task-aware-v1"
+        ),
+        "selection_tokenizer": getattr(args, "selection_tokenizer", None),
+        "selection_tokenizer_revision": (
+            getattr(args, "selection_tokenizer_revision", None)
+            or args.tokenizer_revision
+        ),
+        "selection_tokenizer_identity": getattr(
+            args, "selection_tokenizer_identity", "whitespace_v1"
+        ),
+        "selection_tokenizer_digest": getattr(
+            args, "selection_tokenizer_digest", None
         ),
         **treatment_placement(args.mode),
         "context_budget_fraction": args.budget_fraction,
@@ -582,12 +638,30 @@ def run(args: argparse.Namespace) -> Path:
         ContextTreatment.GATEWAY_NATIVE_PRA.value,
     }:
         raise ValueError("selection fixtures are restricted to native-PRA treatments")
+    if getattr(args, "selection_policy", "task-aware-v1") == (
+        MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+    ):
+        if args.mode != ContextTreatment.DIRECT_NATIVE_PRA.value:
+            raise ValueError(
+                "Paper 8.5 matched causal token-tail is initially restricted "
+                "to direct native PRA"
+            )
+        if selection_replay:
+            raise ValueError(
+                "matched causal token-tail is a frozen policy, not a request-digest "
+                "selection replay"
+            )
     card = load_benchmark_card(args.benchmark_card)
     card = derive_task_card(
         card, getattr(args, "task_index", None), source=args.benchmark_card,
     )
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    count_tokens, tokenizer_identity, tokenizer_digest = (
+        _agent_history_token_counter(args)
+    )
+    args.selection_tokenizer_identity = tokenizer_identity
+    args.selection_tokenizer_digest = tokenizer_digest
     receipt = preflight(args, card)
     receipt["interaction_history_path"] = str(output / "interaction_history.jsonl")
     receipt["interaction_history_contract"] = "logical-physical-response-v1"
@@ -632,6 +706,11 @@ def run(args: argparse.Namespace) -> Path:
             causal_bundle_round_up=getattr(args, "causal_bundle_round_up", True),
             consumption_policy=getattr(args, "consumption_policy", "standard"),
             session_namespace=str(args.run_id),
+            agent_history_selection_policy=getattr(
+                args, "selection_policy", "task-aware-v1"
+            ),
+            count_tokens=count_tokens,
+            tokenizer_identity=tokenizer_identity,
             request_overrides={
                 "prefix_caching": bool(getattr(args, "prefix_caching", False))
             },
@@ -1131,7 +1210,10 @@ def _write_task_rows(
             "dtype": args.dtype, "mode": args.mode,
             **placement,
             "selection_contract": (
-                "frozen_replay" if getattr(args, "selection_replay", None)
+                FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+                if getattr(args, "selection_policy", "task-aware-v1")
+                == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                else "frozen_replay" if getattr(args, "selection_replay", None)
                 else "route_owned" if args.mode in {
                     ContextTreatment.PRA_SELECTED_CONTEXT.value,
                     ContextTreatment.DIRECT_NATIVE_PRA.value,
@@ -1166,6 +1248,15 @@ def _write_task_rows(
             "tokens_avoided_estimate": trace.get("tokens_avoided_estimate"),
             "token_saving_fraction_estimate": trace.get("token_saving_fraction_estimate"),
             "token_estimator": trace.get("token_estimator"),
+            "agent_history_selection_policy": trace.get(
+                "agent_history_selection_policy",
+                getattr(args, "selection_policy", "task-aware-v1"),
+            ),
+            "requested_budget_tokens": trace.get("requested_budget_tokens"),
+            "logical_budget_unused_tokens": trace.get(
+                "logical_budget_unused_tokens"
+            ),
+            "mandatory_overflow_tokens": trace.get("mandatory_overflow_tokens"),
             "selected_resource_digests": trace.get("selected_resource_digests"),
             "prefix_caching": bool(getattr(args, "prefix_caching", False)),
             "prefix_cached_tokens": trace.get("prefix_cached_tokens"),
@@ -1387,6 +1478,18 @@ def _aggregate_traces(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "token_saving_fraction_estimate": max(0, logical - physical) / logical if logical else 0.0,
         "route_time_s": sum(float(row.get("route_time_s") or 0) for row in rows),
         "token_estimator": rows[0].get("token_estimator"),
+        "agent_history_selection_policy": rows[0].get(
+            "agent_history_selection_policy"
+        ),
+        "requested_budget_tokens": sum(
+            int(row.get("requested_budget_tokens") or 0) for row in rows
+        ),
+        "logical_budget_unused_tokens": sum(
+            int(row.get("logical_budget_unused_tokens") or 0) for row in rows
+        ),
+        "mandatory_overflow_tokens": sum(
+            int(row.get("mandatory_overflow_tokens") or 0) for row in rows
+        ),
         "selected_resource_digests": [
             row["selected_resource_digest"]
             for row in rows if row.get("selected_resource_digest")
@@ -1521,6 +1624,23 @@ def main() -> None:
         default="no-pra",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
+    parser.add_argument(
+        "--selection-policy",
+        choices=AGENT_HISTORY_SELECTION_POLICIES,
+        default="task-aware-v1",
+        help=(
+            "Frozen logical agent-history policy. The Paper 8.5 matched tail "
+            "uses exact tokenizer counts and whole causal turns."
+        ),
+    )
+    parser.add_argument(
+        "--selection-tokenizer",
+        help="Tokenizer source for exact logical selection; defaults to --model.",
+    )
+    parser.add_argument(
+        "--selection-tokenizer-revision",
+        help="Immutable tokenizer revision; defaults to --tokenizer-revision.",
+    )
     parser.add_argument("--sampling-seed", type=int, default=0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--recent-completed-turns", type=int, default=2)

@@ -111,6 +111,13 @@ winner from those screens.  It imports a frozen policy and asks whether each
 engine preserves live-K/V semantics, lifecycle safety, task behavior, and
 measurable resource use.
 
+More precisely, Paper~8.5 decides which logical records or observation spans
+remain visible.  Paper~4.5 consumes a frozen, hashable
+\texttt{AgentMemoryPlan} and tests whether an engine realizes that identical
+plan from resident K/V with original positions, no selected-history
+re-encoding or physical copy, safe lifecycle, and separately reported
+temporary and runtime costs.  Engine outcomes do not retune the selector.
+
 The unified runtime, gateway, authenticated resource lifecycle, typed tool and
 result surfaces, and engine-specific adapters are the implementation needed to
 test those claims.  They are not additional evidence categories.  In
@@ -1609,10 +1616,12 @@ declared batch-one Qwen/CUDA geometry; the Metal kernel is limited to head
 dimension at most 256 and direct MLX batch one, while SGLang evaluates batched
 rows independently.  vLLM CUDA still excludes partial pages, hybrid groups,
 and multiprocess execution. \\
-Agent retention semantics & Task-03 restore-only replay recovers the efficient
-action in 3/3; task-04 changes whole-file rereading to targeted localization in
-3/3.  Typed causal policies preserve source and progress records. & Superiority
-to fixed token windows on official end-task outcomes is not yet established. \\
+Agent retention semantics & Paper~8.5 supplies backend-neutral plans and
+matched-budget controls.  Its current high-retention frozen screen favors a
+causal-valid matched tail over H1+H3 on exact commands, so structured-policy
+superiority remains unestablished. & Task-03/04 restore-only replays localize
+valuable state, but superiority to recency or fixed token windows on official
+end-task outcomes is not yet established. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and a 25-call PRA-90 solve at 93.32\% retention.
 Direct MLX and SGLang-MLX add action-exact six-call plain/PRA-100 Task-01 solves
@@ -4029,6 +4038,23 @@ latest source evidence both survive the 90\% policy.
 
 \subsubsection{Claim 4: locked next-stage matrix}
 
+Paper~8.5 has not yet qualified a structured agent-memory winner.  We therefore
+import its causal-valid matched token-tail only as a control plan.  In the
+current two-task, 18-decision frozen screen, this control retains 97.16\% of
+tokens and reproduces 14/18 exact commands, compared with 97.22\% and 11/18
+for delayed consumed-search exclusion plus two-read supersession (H1+H3);
+exact response content is tied at 7/18.  The ordinary-text control can trim the
+boundary tool observation, whereas the first native implementation retains
+whole causal records and admits newest complete turns under the same strict
+token ceiling.  We report that materialization difference explicitly rather
+than presenting the two treatments as identical.
+
+At 100\%, exact trajectory parity remains an engine implementation gate.
+Below 100\%, Paper~4.5 compares engines on the same frozen logical plan;
+divergence after a passed 100\% gate is a selection/consumption-quality
+observation, not by itself an engine defect or evidence that one selection
+policy is superior.
+
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
 adaptor condition (no adaptor versus an immutable model-adaptor bundle) while
@@ -4370,6 +4396,15 @@ evidence. Paper~4.5 imports their product boundary without reproducing those
 experiments: immutable contiguous-block reuse is qualified, while independent
 record composition and reduced materialization remain
 \texttt{CALIBRATION\_PENDING}.
+
+Paper~8.5 analogously owns agent-policy and oracle evidence.  A DAG certificate
+proves operational obsolescence only under declared resource-state assumptions;
+it does not prove behavioral irrelevance to the model.  Current certificate-
+backed exclusion shows no matched-budget advantage over recency, and broader
+H1/H3 deletion can remove assistant reasoning or progress paired with an
+obsolete observation.  Consequently \textsc{Dag-Exclude}@100 is not PRA-100,
+no DAG heuristic is promoted here, and the next Paper~8.5 treatment retains
+typed resource/version/span stubs instead of deleting complete causal groups.
 
 The Paper 4.5 gateway and agent-transport profiles are deterministic transport
 experiments. They do not by themselves measure physical prefix-cache hits,

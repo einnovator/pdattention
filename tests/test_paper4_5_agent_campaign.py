@@ -55,6 +55,8 @@ from experiments.paper4_5_agent.analyze_transport_equivalence import (
 )
 from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
+    FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
+    MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
     TreatmentProxy,
     _load_selection_fixture,
     _selection_digest,
@@ -105,6 +107,7 @@ from experiments.paper4_5_agent.schema import (
     ReproductionStatus,
 )
 from experiments.paper4_5_agent.runners.swebench_verified import (
+    _agent_history_token_counter,
     _aggregate_traces,
     _chunk_receipt_reusable,
     _completion_token_overrides,
@@ -584,6 +587,94 @@ def test_full_budget_selection_preserves_causal_order_and_formatting() -> None:
         "parent_record_id": "m1",
         "causal_group_id": "record:m1",
     }
+
+
+def test_matched_causal_token_tail_uses_exact_counter_and_preserves_task_and_active_turn() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "original task"},
+            {"role": "assistant", "content": "old action has many many many tokens"},
+            {"role": "user", "content": "old result has many many many tokens"},
+            {"role": "assistant", "content": "recent action"},
+            {"role": "user", "content": "recent result"},
+            {"role": "assistant", "content": "current action"},
+            {"role": "user", "content": "current observation"},
+        ]
+    }
+    calls: list[str] = []
+
+    def exact_count(text: str) -> int:
+        calls.append(text)
+        return len(text.split())
+
+    transformed, trace = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.75,
+        agent_history_selection_policy=MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+        count_tokens=exact_count,
+        tokenizer_identity="exact-test-tokenizer",
+    )
+
+    metadata = transformed["pra"]["metadata"]
+    selected_indices = {
+        row["metadata"]["message_index"] for row in transformed["pra"]["resources"]
+    }
+    assert calls
+    assert 1 in selected_indices  # Original task is immutable.
+    assert 2 not in selected_indices and 3 not in selected_indices
+    assert 4 in selected_indices and 5 in selected_indices
+    assert metadata["mandatory_message_indices"] == [0, 6, 7]
+    assert transformed["messages"] == [
+        payload["messages"][0], payload["messages"][6], payload["messages"][7]
+    ]
+    assert metadata["selection_contract"] == FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+    assert metadata["selection_budget_policy"] == (
+        "matched_causal_token_tail_strict_ceiling_v1"
+    )
+    assert metadata["selection_tokenizer_identity"] == "exact-test-tokenizer"
+    assert metadata["selection_materialization"] == "whole-causal-records-v1"
+    assert len(metadata["agent_memory_plan_digest"]) == 64
+    assert trace.agent_history_selection_policy == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+    assert trace.token_estimator == "exact-test-tokenizer"
+    assert trace.physical_input_tokens_estimate <= trace.requested_budget_tokens
+
+
+def test_matched_tail_counter_loads_the_pinned_actual_tokenizer(monkeypatch) -> None:
+    class Tokenizer:
+        backend_tokenizer = SimpleNamespace(to_str=lambda: "frozen-tokenizer-json")
+
+        @staticmethod
+        def encode(text, *, add_special_tokens):
+            assert add_special_tokens is False
+            return list(range(len(text)))
+
+    class AutoTokenizer:
+        @staticmethod
+        def from_pretrained(name, *, revision):
+            assert name == "Qwen/frozen"
+            assert revision == "revision-1"
+            return Tokenizer()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoTokenizer=AutoTokenizer),
+    )
+    args = SimpleNamespace(
+        selection_policy=MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+        selection_tokenizer="Qwen/frozen",
+        selection_tokenizer_revision="revision-1",
+        tokenizer_revision="revision-1",
+        model="served-alias",
+    )
+
+    counter, identity, digest = _agent_history_token_counter(args)
+
+    assert counter("abcd") == 4
+    assert identity == f"hf_exact_content_v1:Qwen/frozen@revision-1:{digest}"
+    assert digest == hashlib.sha256(b"frozen-tokenizer-json").hexdigest()
 
 
 def test_record_aligned_children_keep_causal_and_result_metadata() -> None:
