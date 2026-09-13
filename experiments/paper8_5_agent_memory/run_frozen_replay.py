@@ -43,7 +43,21 @@ from .selectors import FullHistorySelector
 from .serialization import serialize_materialized_messages
 
 
-_COMMAND = re.compile(r"```(?:mswea_bash_command|bash)?\s*\n(.*?)\n```", re.DOTALL)
+_MINISWE_COMMAND = re.compile(
+    r"^```mswea_bash_command[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
+_FALLBACK_COMMAND = re.compile(
+    r"^```(?:bash)?[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def _command_matches(text: str) -> list[str]:
+    """Prefer mini-swe's executable tag and never open at a closing fence."""
+
+    tagged = _MINISWE_COMMAND.findall(text)
+    return tagged if tagged else _FALLBACK_COMMAND.findall(text)
 
 
 class ReplayGenerationError(RuntimeError):
@@ -84,7 +98,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _command(text: str) -> str | None:
-    matches = _COMMAND.findall(text)
+    matches = _command_matches(text)
     return matches[0].strip() if len(matches) == 1 else None
 
 
@@ -97,7 +111,7 @@ def _response_diagnostics(raw: Any) -> tuple[str, str | None, dict[str, Any]]:
     message = message if isinstance(message, Mapping) else {}
     content = message.get("content")
     generated = content if isinstance(content, str) else ""
-    commands = _COMMAND.findall(generated)
+    commands = _command_matches(generated)
     if not generated.strip():
         failure_reason = "empty_generated_content"
     elif not commands:

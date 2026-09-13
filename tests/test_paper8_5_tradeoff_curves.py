@@ -12,6 +12,7 @@ from experiments.paper8_5_agent_memory.tradeoff_curves import (
     pareto_frontier,
     summarize_autonomous,
 )
+from experiments.paper8_5_agent_memory.run_frozen_replay import _command
 
 
 def _run(
@@ -238,3 +239,11 @@ def test_adaptive_gate_does_not_count_renamed_same_evidence_as_replication():
 
 def test_task_cluster_bootstrap_treats_single_task_as_one_unit():
     assert _cluster_bootstrap_mean_ci([.5]) == (.5, .5)
+
+
+def test_frozen_replay_prefers_tagged_action_after_explanatory_fence():
+    response = (
+        "THOUGHT\n```python\nprint('example')\n```\n"
+        "text\n```mswea_bash_command\ngit diff > patch.txt\n```"
+    )
+    assert _command(response) == "git diff > patch.txt"

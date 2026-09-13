@@ -101,6 +101,17 @@ def test_recordizer_prefers_the_executable_miniswe_tag_over_explanatory_fences()
     assert history.record_by_id["m2"].command == "cat foo.py"
 
 
+def test_recordizer_never_treats_an_explanatory_closing_fence_as_an_action():
+    rows = _messages(1)
+    rows[2]["content"] = (
+        "THOUGHT: example\n```python\nprint('not an action')\n```\n"
+        "now act\n```mswea_bash_command\ngit diff > patch.txt\n```"
+    )
+    history = recordize_minisweagent_messages(rows)
+
+    assert history.record_by_id["m2"].command == "git diff > patch.txt"
+
+
 def test_head_and_tail_are_independent_and_selection_is_middle_only():
     history = recordize_minisweagent_messages(_messages(6))
     selector = HeadMiddleTailSelector(HeadMiddleTailConfig(

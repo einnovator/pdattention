@@ -13,9 +13,13 @@ from .miniswe_semantics import (
 
 
 _MINISWE_COMMAND_BLOCK = re.compile(
-    r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL
+    r"^```mswea_bash_command[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
 )
-_COMMAND_BLOCK = re.compile(r"```(?:bash)?\s*\n(.*?)\n```", re.DOTALL)
+_COMMAND_BLOCK = re.compile(
+    r"^```(?:bash)?[ \t]*\r?\n(.*?)\r?\n^```[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
 _RETURN_CODE = re.compile(r"<returncode>(-?\d+)</returncode>")
 _SOURCE_COMMAND = re.compile(
     r"(?:^|[;&|]\s*)(?:cat|head|tail|less|more|sed\s+-n|rg|grep)\b"
