@@ -903,6 +903,47 @@ def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
         upstream.close()
 
 
+def test_proxy_charges_the_next_observation_to_a_reacquisition(tmp_path):
+    upstream = _Upstream()
+    trace = tmp_path / "trace.jsonl"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="h4_working_set",
+            expected_model="locked-model",
+            protected_head_turns=0,
+            protected_tail_turns=1,
+            working_set_resources=2,
+            max_calls=2,
+            require_exact_sidecars=False,
+        ),
+        trace_path=trace,
+    )
+    url = proxy.start()
+    try:
+        first = _payload()
+        assert _post(f"{url}/chat/completions", first)[0] == 200
+        second = _payload()
+        second["messages"].extend((
+            {
+                "role": "assistant",
+                "content": "```mswea_bash_command\ncat a.py\n```",
+            },
+            {
+                "role": "user",
+                "content": "<returncode>0</returncode>\n<output>one two three</output>",
+            },
+        ))
+        assert _post(f"{url}/chat/completions", second)[0] == 200
+        rows = [json.loads(line) for line in trace.read_text().splitlines()]
+        assert rows[1]["previous_reacquisition_count"] == 1
+        assert rows[1]["previous_reacquisition_resources"] == ["a.py"]
+        assert rows[1]["reacquired_observation_tokens_from_previous_action"] > 0
+    finally:
+        proxy.close()
+        upstream.close()
+
+
 def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     ids = ["org__repo-1", "org__repo-2"]
     digest = hashlib.sha256(("\n".join(ids) + "\n").encode()).hexdigest()
@@ -991,6 +1032,9 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
             "assistant_is_read": operation == "read",
             "assistant_is_test": operation == "verify",
             "reacquisition_count": len(reacquired),
+            "reacquired_observation_tokens_from_previous_action": (
+                17 if reacquired else 0
+            ),
             "excluded_causal_group_count": 1,
             "excluded_tokens": 10,
             "budget_satisfied": True,
@@ -1005,6 +1049,7 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
         "search": 1, "read": 1, "test": 0
     }
     assert summary["reacquisition_events"] == 1
+    assert summary["reacquired_observation_tokens"] == 17
     assert summary["cumulative_logical_retention_fraction"] == pytest.approx(0.9)
     assert summary["reported_usage_coverage_calls"] == 5
     assert summary["cumulative_reported_completion_tokens"] == 35

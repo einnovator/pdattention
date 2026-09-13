@@ -360,6 +360,10 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "reacquisition_events": sum(
             int(row.get("reacquisition_count") or 0) for row in rows
         ),
+        "reacquired_observation_tokens": sum(
+            int(row.get("reacquired_observation_tokens_from_previous_action") or 0)
+            for row in rows
+        ),
         "requests_over_budget": sum(not bool(row.get("budget_satisfied")) for row in rows),
         "upstream_error_calls": sum(int(row.get("upstream_status") or 0) >= 400 for row in rows),
         "metric_note": (

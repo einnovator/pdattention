@@ -1571,6 +1571,58 @@ def test_oracle_addback_rejects_matched_token_tail():
         ))
 
 
+def test_frozen_replay_oracle_omits_one_complete_middle_group(monkeypatch):
+    messages = _heuristic_messages(
+        ("cat a.py", "a", None),
+        ("cat b.py", "b", None),
+        ("cat c.py", "c", None),
+        ("cat d.py", "d", None),
+    )
+    requests = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        requests.append(payload["messages"])
+        return {"choices": [{"message": {"content": messages[8]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        policy="full",
+        head=0,
+        tail=1,
+        min_decision=4,
+        max_decisions=1,
+        oracle_omit_causal_group_ids=("turn:t0000",),
+    ))
+
+    row = result["rows"][0]
+    audit = row["oracle_omission"]
+    assert audit["omitted_causal_group_ids"] == ("turn:t0000",)
+    assert audit["omitted_record_ids"] == ("m2", "m3")
+    assert audit["omitted_tokens"] > 0
+    prompt = "\n".join(message["content"] for message in requests[0])
+    assert "cat a.py" not in prompt
+    assert "cat c.py" in prompt
+    assert result["run_configuration"]["oracle_omit_causal_group_ids"] == (
+        "turn:t0000",
+    )
+
+
+def test_oracle_omission_rejects_a_protected_tail_group():
+    with pytest.raises(ValueError, match="intersects immutable/protected"):
+        frozen_replay.replay(**_replay_arguments(
+            _messages(3),
+            progress_path=None,
+            policy="full",
+            head=0,
+            tail=1,
+            min_decision=3,
+            max_decisions=1,
+            oracle_omit_causal_group_ids=("turn:t0001",),
+        ))
+
+
 def test_frozen_replay_observation_receipt_is_prefix_only_and_reports_separate_tokens(
     monkeypatch,
 ):

@@ -39,25 +39,18 @@
       "budget_fraction": 0.90
     },
     {
-      "arm_id": "dag_progress90",
-      "policy": "dag_certified_progress_spine",
-      "negative_realization": "protocol_stub",
-      "negative_fallback": "none",
-      "budget_fraction": 0.90
-    },
-    {
-      "arm_id": "matched_tail80",
-      "policy": "matched_token_tail",
+      "arm_id": "whole_record_h1h3",
+      "policy": "safe2_h1_h3",
       "negative_realization": "drop",
       "negative_fallback": "none",
-      "budget_fraction": 0.80
+      "budget_fraction": 1.0
     },
     {
-      "arm_id": "dag_progress80",
-      "policy": "dag_certified_progress_spine",
-      "negative_realization": "protocol_stub",
+      "arm_id": "payload_stub_h1h3",
+      "policy": "safe2_h1_h3",
+      "negative_realization": "observation_receipt",
       "negative_fallback": "none",
-      "budget_fraction": 0.80
+      "budget_fraction": 1.0
     }
   ],
   "adaptive_stopping": {
@@ -68,7 +61,7 @@
     "minimum_task_resolution": 0.80
   },
   "expansion_after_gate": {
-    "requested_saving_fractions": [0.05, 0.15, 0.30],
-    "rule": "Add only around nondominated arms after the locked five-task gate; do not run combinations containing a stopped arm."
+    "requested_saving_fractions": [0.05, 0.10, 0.15],
+    "rule": "Freeze only matched recency and the better of whole-record versus payload-stub retirement after the three-task gate. Run 80% only if 90% preserves quality; defer lexical, dense, model and harness expansion."
   }
 }

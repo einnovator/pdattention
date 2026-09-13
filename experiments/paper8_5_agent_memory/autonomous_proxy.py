@@ -727,6 +727,8 @@ class AutonomousSelectionProxy:
         )
         self._lock = threading.Lock()
         self._request_count = 0
+        self._pending_reacquisition_count = 0
+        self._pending_reacquisition_resources: tuple[str, ...] = ()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -873,6 +875,20 @@ class AutonomousSelectionProxy:
             response_headers = error.headers
 
         if transformation is not None:
+            raw_messages = payload.get("messages") or ()
+            with self._lock:
+                pending_reacquisition_count = self._pending_reacquisition_count
+                pending_reacquisition_resources = self._pending_reacquisition_resources
+            previous_observation_tokens = 0
+            if (
+                pending_reacquisition_count
+                and raw_messages
+                and isinstance(raw_messages[-1], Mapping)
+                and raw_messages[-1].get("role") in {"user", "tool"}
+            ):
+                previous_observation_tokens = self.count_tokens(
+                    str(raw_messages[-1].get("content", ""))
+                )
             assistant_content = _assistant_content(response_body)
             response_usage = _response_usage(response_body)
             command = _assistant_command(response_body)
@@ -912,8 +928,18 @@ class AutonomousSelectionProxy:
                 "reacquired_excluded_resources": list(reacquired),
                 "reacquisition_count": len(reacquired),
                 "reacquisition_proxy_for_false_exclusion": bool(reacquired),
+                "previous_reacquisition_count": pending_reacquisition_count,
+                "previous_reacquisition_resources": list(
+                    pending_reacquisition_resources
+                ),
+                "reacquired_observation_tokens_from_previous_action": (
+                    previous_observation_tokens
+                ),
             }
             self._append_trace(trace)
+            with self._lock:
+                self._pending_reacquisition_count = len(reacquired)
+                self._pending_reacquisition_resources = tuple(reacquired)
 
         handler.send_response(status)
         for key in ("Content-Type", "Retry-After"):

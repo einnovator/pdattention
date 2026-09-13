@@ -13,6 +13,13 @@ saving--accuracy, saving--tool-count, and saving--first-divergence curves.  It
 also records adaptive stop/control/probe decisions so weak simple rules do not
 enter an unnecessary combination grid.
 
+The [`recordizer_audit_v1`](recordizer_audit_v1/README.md) directory contains
+a deterministic blinded worksheet sampling 150 of 164 records from three task
+trajectories. It is stratified by task, automatic primary role and trajectory
+tercile, and is bound to the source trajectories by SHA-256. Its human-label
+columns are intentionally empty; it is an audit instrument, not yet a
+recordizer-accuracy result.
+
 The [`autonomous_screen_qwen8_task03`](autonomous_screen_qwen8_task03/README.md)
 directory preserves a failed FULL-model admission screen. It is intentionally
 excluded from policy curves because the model produced an empty patch before

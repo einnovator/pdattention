@@ -20,6 +20,7 @@ from experiments.paper8_5_agent_memory.run_frozen_replay import _command
 def _run(
     root: Path, name: str, *, policy: str, calls: int, tokens: int,
     resolved: bool, command_prefix: str | None = None, pair_id: str | None = None,
+    reacquired_observation_tokens: int = 0,
 ):
     path = root / name
     path.mkdir()
@@ -43,6 +44,7 @@ def _run(
         "cumulative_full_tokens": calls * 100,
         "cumulative_materialized_tokens": calls * tokens,
         "reacquisition_events": 0,
+        "reacquired_observation_tokens": reacquired_observation_tokens,
         "official_result": {"resolved": resolved},
     }
     (path / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -69,9 +71,12 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     candidate = load_autonomous_run(_run(
         tmp_path, "candidate", policy="h3_read_superseded", calls=8,
         tokens=70, resolved=True, pair_id="pair",
+        reacquired_observation_tokens=40,
     ))
     pair_autonomous(candidate, full)
     assert candidate["saving_fraction"] == pytest.approx(.3)
+    assert candidate["reacquisition_adjusted_gross_saving_fraction"] == pytest.approx(.25)
+    assert candidate["reacquired_observation_tokens"] == 40
     assert candidate["paired_net_saving_fraction"] == pytest.approx(.44)
     assert candidate["call_delta"] == -2
     assert candidate["tool_call_delta"] == -2

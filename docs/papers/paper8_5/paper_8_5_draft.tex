@@ -36,23 +36,22 @@ which records should remain active for the next model call?
 We introduce an engine-independent record abstraction and evaluate bounded
 memory policies for software-engineering agents. The first harness is
 mini-swe-agent, whose linear message history, bash-only action interface, and
-minimal control loop make memory selection directly observable. We compare full
-history, token and turn tails, independently controlled head and tail turns,
-causal-bundle recency, a typed progress spine,
-lexical and dense retrieval over prior records, hybrid policies, and oracle
-utility selection. We separate record selection from within-record
-materialization and evaluate both frozen-trajectory counterfactuals and
-autonomous SWE-bench runs.
+minimal control loop make memory selection directly observable. We concentrate
+on full history, matched token/causal recency, whole-record state-aware
+retirement, and payload-only retirement that preserves compact
+provenance/control evidence. An offline oracle estimates removable-history
+headroom. We separate record selection from within-record materialization and
+evaluate both frozen-trajectory counterfactuals and autonomous SWE-bench runs.
 
-The primary outcomes are official task resolution, model calls, selected input
+The primary outcomes separate final solution-state success from correct agent
+submission, and report official task resolution, model calls, selected input
 tokens, repeated source acquisition, repeated verification, and first-divergence
-behavior. We additionally measure the age and semantic type of historical
-records that remain causally useful. The goal is not to optimize one serving
-engine, but to derive a portable agent-memory policy that can later be realized
-as text, persistent native K/V, or other backend state. We hypothesize that
-typed causal retention preserves agent quality more efficiently than token
-recency, and that its first benefit appears as equal task success with fewer
-calls, rereads, and retained tokens. In the first autonomous single-task pilot,
+behavior. The goal is not to optimize one serving engine, but to derive a
+portable agent-memory policy that can later be realized as text, persistent
+native K/V, or other backend state. The evidence challenges the premise that
+state supersession implies safe memory deletion: operationally obsolete payload
+can remain useful as trajectory provenance, localization evidence, or control
+state. In the first autonomous single-task pilot,
 however, same-version/span read supersession saves 6.43\% of cumulative input
 tokens, changes the trajectory at its first exclusion, and ends in official
 failure. The primary full-history submission resolves only one of two
@@ -73,6 +72,9 @@ actions. Model-visible H1/H2 receipts require an explicit tokenizer-based size
 gate: short receipts fail closed to canonical bytes, while oversized synthetic
 controls compress observations by more than 95\% and retain valid terminal
 actions. These receipt rows qualify the mechanism, not autonomous task utility.
+The resulting thesis is that obsolete state and obsolete agent memory are
+different concepts; bounded memory should retire payload separately from
+provenance and control.
 \end{abstract}
 
 \section{Introduction}
@@ -119,32 +121,29 @@ This minimizes hidden harness state and makes memory intervention easy to audit.
 \paragraph{Research questions.}
 We ask:
 \begin{enumerate}[leftmargin=*]
-    \item How much agent history can be removed before official task quality
-    degrades?
-    \item Are causal-bundle and semantic-role policies more efficient than token
-    or turn recency?
-    \item Which record types---source views, mutations, verification, progress,
-    or task state---have the longest useful lifetimes?
-    \item Does bounded memory increase recovery behaviors such as rereading
-    source or repeating tests?
-    \item How well do lexical, dense, and hybrid record retrieval approximate an
-    oracle future-utility policy?
-    \item Do the best policies transfer to another agent harness and to
-    persistent-native-memory execution?
+    \item What accuracy--saving frontier does simple matched recency establish,
+    and how much additional removable-history headroom does an offline oracle
+    reveal?
+    \item At matched model-visible tokens, does typed payload retirement that
+    preserves provenance/control outperform whole-record semantic retirement
+    and simple recency?
+    \item When bounded memory changes behavior, how much cost appears as direct
+    reacquisition, trajectory inflation, submission failure, or loss of a
+    resolving workspace state?
 \end{enumerate}
 
 \paragraph{Contributions planned.}
-We target five contributions:
+We target four contributions:
 \begin{enumerate}[leftmargin=*]
-    \item An engine-independent typed record model for agent trajectories.
-    \item A controlled policy ladder from token recency to causal,
-    head--middle--tail, and role-aware retention.
+    \item An engine-independent typed record model that separates state,
+    provenance, control, and semantic-evidence utility.
+    \item A matched-budget factorial over full history, recency, whole-record
+    retirement, and payload-only retirement with provenance stubs.
     \item A two-stage evaluation combining frozen-trajectory counterfactuals
-    with autonomous SWE-bench runs.
-    \item Agent-specific efficiency metrics including avoidable rereads,
-    repeated verification, and memory dependency horizon.
-    \item A frozen set of qualified logical policies that can later be realized
-    by native-K/V runtimes without retuning the semantics.
+    and oracle headroom with repeat-qualified autonomous SWE-bench runs.
+    \item Agent-specific efficiency endpoints that separate solution and
+    submission reliability and charge direct reacquisition and trajectory
+    inflation.
 \end{enumerate}
 
 \section{Background and Motivation}
@@ -194,6 +193,32 @@ We normalize trajectory messages into typed records:
 Each record contains a stable identifier, turn index, semantic type, causal
 group, source identity/spans where applicable, mutation target, and logical
 creation time.
+
+\subsection{State, provenance, control, and semantic utility}
+
+A record has several lifetimes rather than one scalar relevance value. For a
+record $r$ at decision $t$, we use the conceptual decomposition
+\[
+U(r,t)=U_{\mathrm{state}}(r,t)+U_{\mathrm{provenance}}(r,t)
+      +U_{\mathrm{control}}(r,t)+U_{\mathrm{semantic}}(r,t).
+\]
+$U_{\mathrm{state}}$ measures whether the payload authoritatively describes
+the current external world, such as a file at a particular version.
+$U_{\mathrm{provenance}}$ records why the agent inspected or changed that
+resource. $U_{\mathrm{control}}$ carries progress, hypotheses, intended next
+steps, and finalization state. $U_{\mathrm{semantic}}$ captures facts useful
+for later reasoning even when they are no longer the current-state projection,
+such as an old traceback that exposes an architectural constraint.
+
+The DAG can sometimes establish that a payload is operationally superseded,
+but this proves only a reduction in $U_{\mathrm{state}}$. In particular,
+\[
+\text{state superseded}\ \not\Rightarrow\ \text{record behaviorally useless}.
+\]
+This distinction motivates partial retirement: retain action/provenance and a
+typed state transition while eliding replaceable bulk payload. It also
+explains why operational certificates and behavioral outcomes are separate
+measurements throughout the paper.
 
 \subsection{Causal bundles}
 
@@ -497,6 +522,21 @@ HOT$\rightarrow$STUB presentation.
 
 \section{Experimental Design}
 
+\subsection{Recordizer reliability}
+
+Policies cannot be credited for semantic types that the recordizer identifies
+unreliably. We therefore separate tool-grounded labels (operation, resource,
+version, return code, mutation, and verification) from prose-inferred labels
+such as \textsc{Progress}. A blinded worksheet has now sampled 150 of 164
+records from three frozen task trajectories, stratified by task, automatic
+primary role, and early/middle/late trajectory position. It reports
+per-type precision and recall plus exact causal-group boundary agreement.
+Policy results expose both the declared/runtime-grounded view and the inferred
+semantic view; low-precision inferred roles cannot support a default profile.
+The worksheet and digest-bound source manifest are released under
+\texttt{recordizer\_audit\_v1}; the present draft makes no reliability claim
+until its human-label columns are complete.
+
 \subsection{Phase I: frozen-trajectory screening}
 
 We begin from successful full-history trajectories. At each historical model
@@ -507,8 +547,11 @@ We measure:
 \begin{itemize}[leftmargin=*]
     \item exact next-response agreement;
     \item exact action/command agreement;
-    \item action equivalence;
-    \item target-file agreement;
+    \item command equivalence under the frozen operation normalizer;
+    \item target-resource agreement;
+    \item semantic state-transition agreement (read, write, verification, or
+    finalization with matching affected resources);
+    \item final solution-state success for resumed rollouts;
     \item first-divergence turn;
     \item retained tokens and records.
 \end{itemize}
@@ -584,12 +627,18 @@ Every request records both requested and realized retention.
 
 \subsection{Task outcome}
 
-Primary:
+We retain official SWE-bench resolution as the primary benchmark endpoint, but
+factor it into two separately reported agent outcomes:
 \[
-\text{SWE-bench resolved}.
+Y_{\mathrm{official}}=Y_{\mathrm{solve}}\land Y_{\mathrm{submit}}.
 \]
-
-Additional metrics are model calls to completion, shell actions, and final
+$Y_{\mathrm{solve}}$ asks whether the final workspace contains a resolving
+change; $Y_{\mathrm{submit}}$ asks whether the agent correctly emits that change
+through the required terminal protocol. An auxiliary workspace grade can
+identify $Y_{\mathrm{solve}}=1,Y_{\mathrm{submit}}=0$, but never replaces the
+primary official result. If the final workspace cannot be reconstructed under
+the fail-closed provenance rules, $Y_{\mathrm{solve}}$ is unknown rather than
+zero. Additional endpoints are calls to completion, shell actions, and final
 patch/test status.
 
 \subsection{Memory efficiency}
@@ -623,9 +672,27 @@ completion tokens and is not a complete billing or runtime measure. A failed
 run that stops early can have a favorable $N$; we never interpret that as
 efficiency.
 
+Direct recovery is also charged separately. Let $R_c$ be the token size of
+tool observations produced by actions that reacquire previously excluded
+resources. We report the diagnostic lower bound
+\[
+G^{\mathrm{reacq}}_c=
+\frac{\sum_t(F_{c,t}-M_{c,t})-R_c}{\sum_tF_{c,t}}.
+\]
+This is not added to $N_{c,f}$: the paired end-to-end quantity already includes
+tokens replayed by a longer candidate trajectory. Instead, we expose recovery
+as two complementary components,
+\[
+C_{\mathrm{recovery}}=C_{\mathrm{reacquire}}+C_{\mathrm{trajectory}},
+\]
+where the first is observed reread/search/test payload and the second is the
+paired call and total-input-token inflation. Their overlap is reported rather
+than summed into a potentially double-counted scalar.
+
 \subsection{Quality--saving and interaction curves}
 
-The primary frontier plots official task resolution against $G$ and $N$.
+The primary frontier plots official task resolution against $G$ and $N$, with
+$G^{\mathrm{reacq}}$ as a recovery-adjusted diagnostic.
 Trajectory agreement is a diagnostic proxy, not accuracy: a different action
 may still produce a resolving patch.  We therefore report separate curves for
 (i) official resolution versus saving, (ii) tool-call delta versus saving over
@@ -1259,13 +1326,17 @@ trajectories contain 16--33 calls and 123,003--287,951 cumulative prompt
 tokens.  This is a conditional preservation cohort, selected for policy
 development; it is not an unconditional SWE-bench accuracy sample.
 
-Each task receives two \textsc{Full} controls, followed arm-major by
-DAG-only exclusion at a 100\% ceiling, a head/tail recency control at 90\% and
-80\% requested retention, and DAG exclusion followed by progress-spine recency
-at the same targets.  The common configuration retains two initial and four
-recent complete turns, uses $K_f=8$, $K_w=1$, and $K_r=2$, and presents
-certified exclusions as metadata-only protocol stubs.  Nominal retention is
-not plotted: every point uses realized tokens.  The frozen generation contract
+Each task first receives two \textsc{Full} controls. A certificate-only DAG arm
+at a 100\% ceiling measures safe operational-exclusion yield and stops after
+two tasks if mean saving is below 2\%. The main matched-budget factorial then
+contains only three compressed presentations: token/causal tail, whole-record
+H1+H3 retirement, and the same H1+H3 decisions with the assistant
+action/provenance retained and only the observation payload replaced by a typed
+resource/version/witness stub. The first autonomous target is 90\%; 80\% is
+considered only after a 90\% condition preserves quality. The common
+configuration protects two initial and four recent complete turns and uses
+$K_f=8$, $K_w=1$, and $K_r=2$. Nominal retention is not plotted: every point
+uses realized model-visible tokens. The frozen generation contract
 also fixes a 1,024-token completion ceiling.  The campaign runner now rejects
 an absent or non-positive ceiling before launching: an uncapped response can
 run away, altering both agent behavior and end-to-end token cost rather than
@@ -1274,20 +1345,25 @@ This guard was added after an initial long-five launch omitted the ceiling:
 four completed controls from that launch and a third-task response that ran
 past 10,774 generated tokens are quarantined in full and contribute no paper
 outcome.  The replacement campaign has a new identity and reruns every
-control under the corrected ceiling.
+control under the corrected ceiling. Selector-only corrections may reuse those
+completed controls through a hash-bound import; the reducer permits only the
+disclosed repository-revision difference and rejects every other execution-
+identity mismatch.
 
 The primary ordinate is official task resolution.  The abscissae separately
 report within-run materialized-history saving, paired end-to-end input-token
 saving (therefore including additional calls), and a failure-aware coordinate.
 A failed candidate is charged at least its paired \textsc{Full} workload so
 early termination cannot masquerade as efficiency.  Calls-to-solution,
-reacquisition, and first action divergence remain secondary diagnostics.
+direct reacquisition tokens, calls-to-solution, and first action divergence
+remain secondary diagnostics.
 Endpoint-reported completion tokens form an additional total-model-token
 coordinate only when all calls provide usage.  The campaign stops an arm after
 two official failures, after less than 2\% mean gross saving on two tasks, or
-after resolution falls below 80\% on at least three tasks.  Only nondominated
-survivors are expanded to the predeclared 5\%, 15\%, and 30\% saving
-neighborhoods and then to the remaining Easy-14 tasks.
+after resolution falls below 80\% on at least three tasks. Only the better of
+whole-record retirement and payload-only retirement competes with matched
+recency beyond the first three tasks. No lexical, dense, learned, second-model,
+or second-harness search begins before this policy freeze.
 
 Failures enter a frozen, one-causal-group-at-a-time oracle add-back audit at
 the first command divergence.  Each counterfactual restores a complete
@@ -1600,10 +1676,13 @@ but still non-inert frontier: a conservative structured materializer saves
 actions, outperforming more aggressive positional materializers in agreement
 but not in compression. Observation receipts now fail closed when their own
 token cost is not smaller than the source and activate correctly on oversized
-mechanism controls. The next policy step is separately qualified
-witness-attached receipts and autonomous execution of the best materializer;
-neither result should be transferred to native K/V engines before those gates
-pass.
+mechanism controls. The evidence supports a sharper hypothesis than
+``semantic selection beats recency'': agent memory is not reducible to current
+world state. The next phase therefore measures oracle-removable headroom and
+directly compares matched recency, whole-record retirement, and
+witness-attached payload-only retirement. Only a repeat-qualified nondominated
+policy is transferred to native K/V engines; selector proliferation,
+additional models, and additional harnesses wait until that gate passes.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

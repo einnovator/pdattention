@@ -229,6 +229,15 @@ def test_certified_long5_campaign_uses_distinct_dag_and_combined_policies():
     validate_campaign_spec(spec)
     arms = {row["arm_id"]: row for row in spec["arms"]}
     assert arms["dag_certified100"]["policy"] == "dag_certified_exclusion"
-    assert arms["dag_progress90"]["policy"] == "dag_certified_progress_spine"
     assert arms["matched_tail90"]["policy"] == "matched_token_tail"
-    assert arms["dag_progress90"]["budget_fraction"] == pytest.approx(.90)
+    assert arms["whole_record_h1h3"] == {
+        "arm_id": "whole_record_h1h3",
+        "policy": "safe2_h1_h3",
+        "negative_realization": "drop",
+        "negative_fallback": "none",
+        "budget_fraction": 1.0,
+    }
+    assert arms["payload_stub_h1h3"]["negative_realization"] == (
+        "observation_receipt"
+    )
+    assert not any("80" in arm_id for arm_id in arms)

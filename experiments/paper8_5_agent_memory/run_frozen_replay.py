@@ -163,6 +163,101 @@ def apply_oracle_addback(
     }
 
 
+def apply_oracle_omission(
+    history,
+    plan,
+    causal_group_ids: Sequence[str],
+    *,
+    count_tokens,
+    protected_head_turns: int,
+    protected_tail_turns: int,
+):
+    """Remove complete middle causal groups for an explicit offline oracle."""
+
+    requested = tuple(dict.fromkeys(str(value) for value in causal_group_ids))
+    empty = {
+        "requested_causal_group_ids": (),
+        "omitted_causal_group_ids": (),
+        "not_yet_present_causal_group_ids": (),
+        "already_unselected_causal_group_ids": (),
+        "omitted_record_ids": (),
+        "omitted_tokens": 0,
+    }
+    if not requested:
+        return plan, empty
+    complete = [turn for turn in history.turns if turn.complete]
+    protected_turns = complete[:protected_head_turns]
+    if protected_tail_turns:
+        protected_turns = [*protected_turns, *complete[-protected_tail_turns:]]
+    protected = {turn.causal_group_id for turn in protected_turns}
+    protected.update(
+        record.causal_group_id for record in history.records
+        if record.turn_id in {"system", "task"}
+    )
+    conflicts = tuple(group for group in requested if group in protected)
+    if conflicts:
+        raise ValueError(
+            "oracle omission intersects immutable/protected groups: "
+            + ", ".join(conflicts)
+        )
+    records_by_group: dict[str, list[Any]] = {}
+    for record in history.records:
+        records_by_group.setdefault(record.causal_group_id, []).append(record)
+    selected_before = set(plan.selected_record_ids)
+    omitted_groups: list[str] = []
+    absent: list[str] = []
+    already_unselected: list[str] = []
+    omitted_records: list[str] = []
+    for group_id in requested:
+        group_records = records_by_group.get(group_id)
+        if not group_records:
+            absent.append(group_id)
+            continue
+        selected_group_records = [
+            row for row in group_records if row.record_id in selected_before
+        ]
+        if not selected_group_records:
+            already_unselected.append(group_id)
+            continue
+        omitted_groups.append(group_id)
+        omitted_records.extend(row.record_id for row in selected_group_records)
+    omitted_set = set(omitted_records)
+    selected_record_ids = tuple(
+        row.record_id for row in history.records
+        if row.record_id in selected_before and row.record_id not in omitted_set
+    )
+    selected_causal_group_ids = tuple(dict.fromkeys(
+        history.record_by_id[record_id].causal_group_id
+        for record_id in selected_record_ids
+    ))
+    selected_tokens = sum(
+        count_tokens(history.record_by_id[record_id].content)
+        for record_id in selected_record_ids
+    )
+    reasons = dict(plan.selection_reasons)
+    updated = replace(
+        plan,
+        policy=f"{plan.policy}+oracle_omission",
+        selected_record_ids=selected_record_ids,
+        selected_causal_group_ids=selected_causal_group_ids,
+        selection_reasons=tuple(
+            (record_id, reasons[record_id]) for record_id in selected_record_ids
+        ),
+        selected_tokens=selected_tokens,
+        middle_selected_turns=max(
+            0, plan.middle_selected_turns - len(omitted_groups)
+        ),
+    )
+    return updated, {
+        "requested_causal_group_ids": requested,
+        "omitted_causal_group_ids": tuple(omitted_groups),
+        "not_yet_present_causal_group_ids": tuple(absent),
+        "already_unselected_causal_group_ids": tuple(already_unselected),
+        "omitted_record_ids": tuple(omitted_records),
+        "omitted_tokens": plan.selected_tokens - selected_tokens,
+    }
+
+
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Durably replace ``path`` without exposing a partial JSON document."""
 
@@ -469,6 +564,7 @@ def replay(
     h2b_allow_workspace_verification: bool = False,
     min_decision: int = 1,
     oracle_addback_causal_group_ids: Sequence[str] = (),
+    oracle_omit_causal_group_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
@@ -481,6 +577,17 @@ def replay(
     if policy == "matched_token_tail" and oracle_addback_causal_group_ids:
         raise ValueError(
             "oracle causal-group add-back is incompatible with matched_token_tail"
+        )
+    if oracle_addback_causal_group_ids and oracle_omit_causal_group_ids:
+        raise ValueError("oracle add-back and omission cannot be combined")
+    if oracle_omit_causal_group_ids and (
+        policy != "full"
+        or materialization_mode != MaterializationMode.WHOLE_RECORD
+        or negative_realization != NegativeRealizationMode.DROP
+    ):
+        raise ValueError(
+            "oracle omission requires full policy, whole-record materialization, "
+            "and drop realization"
         )
     if (
         policy != "matched_token_tail"
@@ -593,6 +700,9 @@ def replay(
         "oracle_addback_causal_group_ids": tuple(
             dict.fromkeys(oracle_addback_causal_group_ids)
         ),
+        "oracle_omit_causal_group_ids": tuple(
+            dict.fromkeys(oracle_omit_causal_group_ids)
+        ),
     }
     rows: list[dict[str, Any]] = []
     if progress_path is not None and progress_path.exists() and not restart:
@@ -687,6 +797,14 @@ def replay(
                 ),
                 count_tokens=count_tokens,
             )
+            plan, oracle_omission = apply_oracle_omission(
+                history,
+                plan,
+                oracle_omit_causal_group_ids,
+                count_tokens=count_tokens,
+                protected_head_turns=head,
+                protected_tail_turns=tail,
+            )
             plan, oracle_addback = apply_oracle_addback(
                 history,
                 plan,
@@ -701,6 +819,14 @@ def replay(
                 count_tokens=count_tokens,
             )
         if policy == "matched_token_tail":
+            oracle_omission = {
+                "requested_causal_group_ids": (),
+                "omitted_causal_group_ids": (),
+                "not_yet_present_causal_group_ids": (),
+                "already_unselected_causal_group_ids": (),
+                "omitted_record_ids": (),
+                "omitted_tokens": 0,
+            }
             oracle_addback = {
                 "requested_causal_group_ids": (),
                 "restored_causal_group_ids": (),
@@ -815,6 +941,7 @@ def replay(
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
             "oracle_addback": oracle_addback,
+            "oracle_omission": oracle_omission,
             "negative_realization": negative_realization.value,
             "negative_candidate_group_count": len(plan.exclusions),
             "negative_candidate_record_count": sum(
@@ -1026,6 +1153,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--oracle-omit-group",
+        action="append",
+        default=[],
+        metavar="CAUSAL_GROUP_ID",
+        help=(
+            "offline oracle: omit one or more complete middle causal groups "
+            "from FULL; future actions remain scorer-only"
+        ),
+    )
+    parser.add_argument(
         "--round-up-whole-turns",
         action="store_true",
         help=(
@@ -1095,6 +1232,7 @@ def main() -> None:
         h2b_allow_workspace_verification=args.h2b_allow_workspace_verification,
         min_decision=args.min_decision,
         oracle_addback_causal_group_ids=args.oracle_addback_group,
+        oracle_omit_causal_group_ids=args.oracle_omit_group,
     )
     print(json.dumps({key: result[key] for key in (
         "instance_id", "policy", "completed_decisions", "exact_command_rate",

@@ -420,6 +420,17 @@ def load_autonomous_run(
         "calls": int(metrics.get("calls") or 0),
         "tool_calls": int(metrics.get("actions") or 0),
         "reacquisitions": int(metrics.get("reacquisition_events") or 0),
+        "reacquired_observation_tokens": int(
+            metrics.get("reacquired_observation_tokens") or 0
+        ),
+        "reacquisition_adjusted_gross_saving_fraction": (
+            (
+                full_tokens
+                - materialized_tokens
+                - int(metrics.get("reacquired_observation_tokens") or 0)
+            ) / full_tokens
+            if full_tokens else 0.0
+        ),
         "trace": trace,
         "pairing_identity": pairing_identity,
         "source": _portable_path(path),
@@ -716,6 +727,7 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         task_rates = []
         solution_state_rates = []
         task_savings = []
+        task_reacquisition_adjusted_savings = []
         for task_rows in by_task.values():
             valid = [
                 value for value in (_official_quality(row) for row in task_rows)
@@ -736,6 +748,13 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             )
             if task_full:
                 task_savings.append(1 - task_materialized / task_full)
+                task_reacquired = sum(
+                    int(row.get("reacquired_observation_tokens") or 0)
+                    for row in task_rows
+                )
+                task_reacquisition_adjusted_savings.append(
+                    (task_full - task_materialized - task_reacquired) / task_full
+                )
         paired = [
             row for row in strategy_rows
             if row.get("paired_net_saving_fraction") is not None
@@ -747,6 +766,10 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         full = sum(int(row["cumulative_full_tokens"]) for row in strategy_rows)
         materialized = sum(
             int(row["cumulative_materialized_tokens"]) for row in strategy_rows
+        )
+        reacquired_observation_tokens = sum(
+            int(row.get("reacquired_observation_tokens") or 0)
+            for row in strategy_rows
         )
         resolution_ci = (
             _cluster_bootstrap_mean_ci(task_rates) if task_rates else (None, None)
@@ -793,6 +816,13 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             "macro_task_gross_saving_ci95_upper": saving_ci[1],
             "mean_run_gross_saving": mean(
                 float(row["saving_fraction"]) for row in strategy_rows
+            ),
+            "reacquired_observation_tokens": reacquired_observation_tokens,
+            "workload_reacquisition_adjusted_gross_saving_ratio_of_sums": (
+                (full - materialized - reacquired_observation_tokens) / full
+            ),
+            "macro_task_reacquisition_adjusted_gross_saving": mean(
+                task_reacquisition_adjusted_savings
             ),
             "paired_runs": len(paired),
             "efficiency_qualified_pairs": len(qualified),
@@ -1041,6 +1071,11 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         "Within-run history-token saving (%)",
     )
     accuracy_plot(
+        autonomous, "reacquisition_adjusted_gross_saving_fraction",
+        "autonomous_reacquisition_adjusted_saving_vs_accuracy",
+        "Reacquisition-adjusted history-token saving (%)",
+    )
+    accuracy_plot(
         autonomous, "saving_fraction", "autonomous_saving_vs_workspace_capability",
         "Within-run history-token saving (%)",
         quality_key="solution_state_score",
@@ -1100,6 +1135,11 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
     tool_delta_plot(
         "saving_fraction", "autonomous_gross_saving_vs_tool_call_delta",
         "Within-run history-token saving (%)",
+    )
+    tool_delta_plot(
+        "reacquisition_adjusted_gross_saving_fraction",
+        "autonomous_reacquisition_adjusted_saving_vs_tool_call_delta",
+        "Reacquisition-adjusted history-token saving (%)",
     )
     tool_delta_plot(
         "paired_net_saving_fraction", "autonomous_net_saving_vs_tool_call_delta",
@@ -1222,6 +1262,7 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "primary_quality": "autonomous official task resolution",
             "frozen_quality_proxy": "conservative next-action agreement versus repeat-qualified FULL",
             "gross_saving": "one minus materialized/full tokens along the candidate trajectory",
+            "reacquisition_adjusted_gross_saving": "gross saved history tokens minus the directly observed token size of tool observations caused by actions that reacquire excluded resources, divided by full-history tokens; a diagnostic lower bound that is not added to paired net saving",
             "paired_net_saving": "one minus candidate materialized message-content input tokens / paired FULL materialized message-content input tokens; includes call-count divergence but excludes completion and chat-template tokens",
             "failure_aware_paired_net_saving": "paired net saving when both runs resolve; otherwise the failed candidate is charged at least the paired FULL input workload so early termination cannot appear efficient",
             "paired_total_model_token_saving": "one minus candidate / paired FULL for materialized input plus endpoint-reported completion tokens; emitted only with complete usage coverage",

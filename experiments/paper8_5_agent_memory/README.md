@@ -324,11 +324,14 @@ The current certificate-only task-quality campaign is declared in
 `configs/autonomous_long5_curve_certified_v3.json`. Its benchmark card locks the five
 longest tasks from the Easy-14 baseline-success stratum before any treatment
 outcomes are observed. It runs two FULL controls per task, then DAG-only,
-strict matched-token tail, and DAG-plus-progress-spine recency at requested 90%
-and 80% retention. The matched control preserves immutable prompt records and
-complete recent turns, trimming only an oversized boundary tool observation;
-it reports immutable-prompt overflow separately when the requested ceiling is
-impossible. Metadata-only protocol stubs are used for certified exclusions.
+strict matched-token tail at 90%, whole-record H1+H3 retirement, and the same
+retirement decisions with the assistant action/provenance retained and only
+the observation payload replaced by a typed receipt. The matched control
+preserves immutable prompt records and complete recent turns, trimming only an
+oversized boundary tool observation; it reports immutable-prompt overflow
+separately when the requested ceiling is impossible. No 80% arm, broader
+selector family, second model, or second harness is scheduled before the 90%
+and payload/provenance gates pass.
 The autonomous contract requires an explicit positive completion-token cap;
 the locked Qwen3-Coder campaign uses 1,024, matching its qualified Paper 8.5
 controls. An omitted cap is rejected before any task is launched because a
@@ -381,9 +384,10 @@ reproduction, but its historical arm ID `dag100` names the broader
 `task_aware_progress_spine_v4` heuristic. It is not certificate-only DAG
 exclusion and must be reported as state-authority heuristic selection. The v3
 spec removes that naming ambiguity: `dag_certified100` applies only exclusions
-proved from runtime-bound operation identity, while `dag_progress90` and
-`dag_progress80` apply those exclusions before a separately identified
-retention-floor selector.
+proved from runtime-bound operation identity. `whole_record_h1h3` and
+`payload_stub_h1h3` share exactly the same H1+H3 decisions and differ only in
+whether they delete the causal group or retain action/provenance plus a
+model-visible observation receipt.
 
 For a failed frozen policy decision, generate a one-group-at-a-time oracle
 diagnostic queue with:
@@ -400,3 +404,51 @@ command divergence and can be executed by adding the emitted arguments to
 tests the smallest counterfactual intervention. These trials diagnose which
 omission caused a divergence; they are explicitly oracle evidence and cannot
 be reported as autonomous policy quality.
+
+Oracle headroom uses the complementary `--oracle-omit-group` mode with
+`--policy full`. It removes only complete middle causal groups and rejects any
+requested system/task/head/tail group. For example, a leave-one-group-out
+decision probe is:
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_frozen_replay \
+  --trajectory /results/trajectory.json \
+  --output /results/oracle-turn-0007.json \
+  --base-url http://127.0.0.1:8092/v1 \
+  --model /exact/model/snapshot \
+  --tokenizer /exact/tokenizer/snapshot \
+  --policy full --head 2 --tail 4 \
+  --min-decision 20 --max-decisions 1 \
+  --oracle-omit-group turn:t0007
+```
+
+The future action is used only after generation for scoring. Single-group
+survivors can seed predeclared pair removals or bounded beam search; oracle
+outcomes never enter deployable-policy accuracy curves.
+
+### Recordizer reliability audit
+
+Prepare a blinded, stratified worksheet before crediting semantic policies to
+automatic record types:
+
+```bash
+python -m experiments.paper8_5_agent_memory.recordizer_audit prepare \
+  --trajectory /results/task01/trajectory.json \
+  --trajectory /results/task02/trajectory.json \
+  --trajectory /results/task03/trajectory.json \
+  --sample-size 150 \
+  --seed 850 \
+  --output /results/recordizer-audit
+```
+
+The sample balances task identity, automatic primary role and trajectory
+tercile. It keeps tool-grounded and prose-inferred labels explicit and emits
+economical head/tail previews rather than copying large observations into the
+worksheet. After a blinded human fills the `human_*` columns, score per-role
+precision/recall and exact multilabel agreement with:
+
+```bash
+python -m experiments.paper8_5_agent_memory.recordizer_audit score \
+  --audit-csv /results/recordizer-audit/recordizer_audit.csv \
+  --output /results/recordizer-audit/recordizer_audit_scores.json
+```
