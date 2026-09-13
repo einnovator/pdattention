@@ -18,6 +18,16 @@ and may prime a consolidation action. The predeclared next arm therefore keeps
 all H3 evidence out of prompt text and emits only a role-valid empty-result
 stub.
 
+That protocol-stub arm materializes 20,503 of 21,907 cumulative tokens: 1,404
+tokens saved, or 6.41%. Its two repeats share identical request hashes but
+agree on only 1/3 exact generated commands. Relative to the first FULL control,
+the A repeat agrees on 1/3 commands and the B repeat on 0/3; both first diverge
+at decision 22. The actions remain in the late verification/submission phase,
+so these differences do not establish a task-quality loss. They do establish
+that removing the semantic phrase does not restore action identity: selection
+and the empty observation envelope, not receipt wording alone, alter the next
+action distribution. Autonomous task outcome is the required quality gate.
+
 `v4_receipt_late3.json` was produced before the frozen-replay fence parser was
 fixed. Its decision-22 `generated_command` field is noncanonical: the stored
 `generated_content` contains a valid `mswea_bash_command` block. The B file was
