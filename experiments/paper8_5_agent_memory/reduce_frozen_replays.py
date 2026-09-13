@@ -67,15 +67,23 @@ def _validated_rows(
     completed = _require_int(artifact.get("completed_decisions"), f"{source}.completed_decisions")
     if attempted != len(rows):
         raise ValueError(f"{source}: attempted_decisions does not match rows")
+    configuration = artifact.get("run_configuration")
+    start_decision = _require_int(
+        configuration.get("min_decision", 1),
+        f"{source}.run_configuration.min_decision",
+    )
+    if start_decision < 1:
+        raise ValueError(f"{source}: min_decision must be positive")
     completed_rows = 0
-    for offset, row in enumerate(rows, start=1):
-        if not isinstance(row, Mapping) or row.get("decision") != offset:
-            raise ValueError(f"{source}: rows are not a contiguous decision prefix")
+    for offset, row in enumerate(rows):
+        decision = start_decision + offset
+        if not isinstance(row, Mapping) or row.get("decision") != decision:
+            raise ValueError(f"{source}: rows are not a contiguous decision range")
         if not isinstance(row.get("action_valid"), bool):
-            raise ValueError(f"{source}: decision {offset} lacks action_valid")
+            raise ValueError(f"{source}: decision {decision} lacks action_valid")
         status = row.get("decision_status")
         if not isinstance(status, str):
-            raise ValueError(f"{source}: decision {offset} lacks decision_status")
+            raise ValueError(f"{source}: decision {decision} lacks decision_status")
         completed_rows += int(status == "completed")
         for field in (
             "full_history_tokens",
@@ -84,23 +92,23 @@ def _validated_rows(
             "requested_budget_tokens",
             "mandatory_overflow_tokens",
         ):
-            value = _require_int(row.get(field), f"{source}.rows[{offset}].{field}")
+            value = _require_int(row.get(field), f"{source}.rows[{decision}].{field}")
             if value < 0:
-                raise ValueError(f"{source}: decision {offset} has negative {field}")
+                raise ValueError(f"{source}: decision {decision} has negative {field}")
         for field in (
             "whole_turn_budget_overshoot_tokens",
             "whole_turn_budget_undershoot_tokens",
         ):
             if row.get(field) is not None:
-                value = _require_int(row.get(field), f"{source}.rows[{offset}].{field}")
+                value = _require_int(row.get(field), f"{source}.rows[{decision}].{field}")
                 if value < 0:
-                    raise ValueError(f"{source}: decision {offset} has negative {field}")
+                    raise ValueError(f"{source}: decision {decision} has negative {field}")
         retention = _require_number(
             row.get("realized_record_retention_fraction"),
-            f"{source}.rows[{offset}].realized_record_retention_fraction",
+            f"{source}.rows[{decision}].realized_record_retention_fraction",
         )
         if not 0 <= retention <= 1:
-            raise ValueError(f"{source}: decision {offset} has invalid retention")
+            raise ValueError(f"{source}: decision {decision} has invalid retention")
     if completed != completed_rows:
         raise ValueError(f"{source}: completed_decisions does not match row statuses")
     return rows

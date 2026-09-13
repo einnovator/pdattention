@@ -177,6 +177,24 @@ def test_reducer_reports_matched_metrics_and_markdown():
     assert "| tail@100%-ceiling | 3/2" in markdown
 
 
+def test_reducer_accepts_aligned_contiguous_late_decision_ranges():
+    full, candidate, _ = _comparison_artifacts()
+    for artifact in (full, candidate):
+        artifact["run_configuration"]["min_decision"] = 20
+        for offset, row in enumerate(artifact["rows"]):
+            row["decision"] = 20 + offset
+        artifact["run_configuration_digest"] = _digest(artifact["run_configuration"])
+    full_digest = _digest(full)
+    candidate["reference_replay_digest"] = full_digest
+    candidate["run_configuration"]["reference_replay_digest"] = full_digest
+    candidate["run_configuration_digest"] = _digest(candidate["run_configuration"])
+
+    summary = reduce_replays([full, candidate])
+
+    assert summary["arms"][0]["decisions_attempted"] == 3
+    assert summary["arms"][1]["first_content_divergence"] == 21
+
+
 def test_reducer_distinguishes_same_policy_with_different_budget_contracts():
     full, candidate, _ = _comparison_artifacts()
     matched = copy.deepcopy(candidate)

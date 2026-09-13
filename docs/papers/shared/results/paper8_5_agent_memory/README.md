@@ -154,3 +154,14 @@ tail.
 These two exact-tokenizer artifacts remain structural opportunity evidence.
 They do not establish next-action agreement or autonomous success. The two
 `*_whitespace.json` companions are implementation cross-checks only.
+
+The subsequent direct-MLX frozen cohorts are in
+[`frozen_long_task01_qwen30`](frozen_long_task01_qwen30/README.md) and
+[`frozen_long_task02_qwen30`](frozen_long_task02_qwen30/README.md). Across 18
+late decisions, independent FULL repeats are byte-exact. At nearly matched
+materialized counts, H1 `Kf=8` + H3 `Kr=2` preserves 11/18 commands, while a
+blind token tail preserves 14/18. Exact content ties at 7/18. The semantic arm
+retains 97.22% and the tail 97.16% of cumulative FULL tokens. This is a
+negative result for the current whole-causal-group heuristics: larger horizons
+create late-run saving opportunity but do not yet improve logical efficiency
+over recency.

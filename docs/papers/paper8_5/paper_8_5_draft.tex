@@ -753,6 +753,58 @@ shared nominal $K$.  The long-horizon structural and high-retention JSON
 artifacts in the shared results directory preserve all cells and suffix
 aggregates.
 
+\subsubsection{Frozen quality at matched high retention}
+
+We screened the $K_f=8,K_r=2$ combination on the same two late suffixes using
+direct MLX and its 4-bit Qwen3-Coder-30B weights.  This runtime is a logical
+ordinary-text consumer here; no engine-performance result is inferred.  Two
+independent \textsc{Full} runs reproduce all 18 late responses and commands
+exactly.  We rejected the original Ollama endpoint for this comparison: its
+first \textsc{Full} replay matched all 30 historical responses, but an
+identical late repeat matched only 4/11 contents and 7/11 commands.
+
+Table~\ref{tab:long-horizon-frozen} pairs the semantic arm with a blind token
+tail using its per-decision materialized-token ceiling.  To obtain a close
+match while preserving role order, only the boundary tool observation may be
+trimmed; assistant actions remain whole.  The tail underfills by 20 cumulative
+tokens on \texttt{django-15277} and 60 on \texttt{django-15368}---0.065\% of
+the semantic arm's pooled materialized count.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Late-suffix direct-MLX frozen replay.  Exact command is relative to a
+contemporaneous, repeat-qualified \textsc{Full} response.}
+\label{tab:long-horizon-frozen}
+\begin{tabular}{lrrrrr}
+\toprule
+Task & Decisions & Semantic ret. & Semantic cmd. & Tail ret. & Tail cmd. \\
+\midrule
+django-15277 & 7 & 97.12\% & 4/7 & 97.08\% & 6/7 \\
+django-15368 & 11 & 97.29\% & 7/11 & 97.21\% & 8/11 \\
+\midrule
+Pooled & 18 & 97.22\% & 11/18 & 97.16\% & 14/18 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The hypothesis receives only partial support.  Late exclusion opportunity is
+indeed larger, but the current whole-group semantics do not exploit it better
+than age alone.  Pooled exact content is tied at 7/18, while the tail preserves
+77.8\% of commands versus 61.1\% for H1+H3 despite removing 80 more cumulative
+tokens.  On \texttt{django-15277}, delayed H1 retires two search maps and the
+assistant reasoning attached to them; the semantic arm records three immediate
+reacquisitions, one policy-excess reacquisition, and one invalid action.  On
+\texttt{django-15368}, H3 retires one older same-file read and first changes a
+command at decision 23, two decisions before the tail.
+
+This identifies a more precise next treatment.  State authority and reasoning
+provenance must be separated: retain the assistant action/progress record, but
+replace a superseded tool observation with a typed resource/version/span stub.
+For discovery, preserve a compact unresolved-resource map rather than deleting
+the search bundle.  The observation-only variants must again be compared with
+token tail at matched materialized counts before any autonomous rollout.
+
 \subsection{First instrumented frozen cohort}
 
 We then executed the ordered frozen gate on
