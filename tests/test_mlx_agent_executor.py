@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from pra_hf.deployment import PRAWireRequest
-from pra_mlx.agent_executor import MLXAgentHistoryExecutor
+from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
+from pra_mlx.agent_executor import MLXAgentHistoryExecutor, enforce_retention_floor
 
 
 class _FakeMX(ModuleType):
@@ -241,6 +242,20 @@ def test_plain_request_does_not_enter_resident_pra(fake_mlx) -> None:
     assert result.trace[0]["segmented_attention_dispatch"] == "sparse_only"
     assert not executor.model.call_attention_modes[-1]
     assert not executor._sessions
+
+
+def test_frozen_agent_memory_plan_may_underfill_nominal_fraction() -> None:
+    plan = LiveKVSelectionPlan.create(
+        100,
+        (LiveKVInterval(0, 87, record_id="selected", causal_group_id="turn:1"),),
+        source_position_base=100,
+    )
+
+    enforce_retention_floor(
+        plan,
+        0.9,
+        selection_contract="frozen-agent-memory-plan-v1",
+    )
 
 
 def test_plain_prefill_is_chunked_and_only_materializes_last_token_logits(fake_mlx) -> None:

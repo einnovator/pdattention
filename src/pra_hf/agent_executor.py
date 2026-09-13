@@ -383,23 +383,27 @@ def enforce_retention_floor(
     """Reject a selected record set that underfills its declared retention arm.
 
     Record-aligned selectors may round above a fractional target, but silently
-    rounding below it changes the experiment.  The sole exception is an
-    explicitly labelled arbitrary-subset mechanism probe, where the requested
-    fraction is descriptive rather than a minimum budget contract.
+    rounding below it changes the experiment.  An arbitrary-subset mechanism
+    probe and a frozen agent-memory plan own their exact logical subsets, so in
+    those two explicit contracts the requested fraction is descriptive rather
+    than a minimum budget contract.
     """
 
     requested = float(requested_fraction)
     minimum = math.ceil(requested * plan.source_tokens)
     if plan.selected_tokens >= minimum:
         return
-    if selection_contract == "arbitrary-subset-mechanism-probe":
+    if selection_contract in {
+        "arbitrary-subset-mechanism-probe",
+        "frozen-agent-memory-plan-v1",
+    }:
         return
     raise RuntimeError(
         "Selected live-history records underfill the requested retention floor: "
         f"selected={plan.selected_tokens}, required={minimum}, "
         f"source={plan.source_tokens}, requested={requested:.6f}. "
-        "Record-aligned selection must round up; label a deliberately arbitrary "
-        "subset with selection_contract='arbitrary-subset-mechanism-probe'."
+        "Record-aligned floor arms must round up; only an explicit mechanism "
+        "probe or frozen agent-memory plan may own an underfilled subset."
     )
 
 

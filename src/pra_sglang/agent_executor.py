@@ -623,22 +623,26 @@ def enforce_retention_floor(
 
     Record-aligned selection may round above the requested fraction, but an
     end-to-end arm must never materialize less history than it declares.  The
-    only exception is an explicitly labelled arbitrary-subset mechanism probe,
-    whose purpose is cache-mechanism validation rather than an efficacy arm.
+    explicit exceptions are an arbitrary-subset mechanism probe and a frozen
+    agent-memory plan.  Both own their exact logical subset, making the nominal
+    fraction descriptive rather than permission for the engine to add records.
     """
 
     requested = float(requested_fraction)
     minimum = math.ceil(requested * plan.source_tokens)
     if plan.selected_tokens >= minimum:
         return
-    if selection_contract == "arbitrary-subset-mechanism-probe":
+    if selection_contract in {
+        "arbitrary-subset-mechanism-probe",
+        "frozen-agent-memory-plan-v1",
+    }:
         return
     raise RuntimeError(
         "Selected live-history records underfill the requested retention floor: "
         f"selected={plan.selected_tokens}, required={minimum}, "
         f"source={plan.source_tokens}, requested={requested:.6f}. "
-        "Record-aligned selection must round up; label a deliberately arbitrary "
-        "subset with selection_contract='arbitrary-subset-mechanism-probe'."
+        "Record-aligned floor arms must round up; only an explicit mechanism "
+        "probe or frozen agent-memory plan may own an underfilled subset."
     )
 
 

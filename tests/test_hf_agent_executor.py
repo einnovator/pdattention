@@ -328,6 +328,11 @@ def test_declared_retention_floor_rejects_underfilled_record_selection() -> None
         0.9,
         selection_contract="arbitrary-subset-mechanism-probe",
     )
+    enforce_retention_floor(
+        plan,
+        0.9,
+        selection_contract="frozen-agent-memory-plan-v1",
+    )
 
 
 def test_full_retention_is_dense_semantic_noop_plan() -> None:
