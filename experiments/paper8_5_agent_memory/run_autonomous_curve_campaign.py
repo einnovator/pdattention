@@ -42,6 +42,22 @@ def _slug(instance_id: str) -> str:
     return instance_id.replace("__", "-").replace("/", "-")
 
 
+def validate_campaign_spec(spec: Mapping[str, Any]) -> None:
+    """Reject unbounded generations before launching an autonomous cohort."""
+
+    generation = spec.get("generation") or {}
+    max_completion_tokens = generation.get("max_completion_tokens")
+    if (
+        isinstance(max_completion_tokens, bool)
+        or not isinstance(max_completion_tokens, int)
+        or max_completion_tokens <= 0
+    ):
+        raise ValueError(
+            "autonomous quality campaigns require a positive, frozen "
+            "max_completion_tokens value"
+        )
+
+
 def campaign_cells(spec: Mapping[str, Any], task_ids: Sequence[str]) -> list[dict[str, Any]]:
     repeats = int((spec.get("controls") or {}).get("full_repeats", 2))
     if repeats < 2:
@@ -242,6 +258,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
     spec = _read(spec_path)
     if spec.get("schema_version") != 1:
         raise ValueError("unsupported campaign schema")
+    validate_campaign_spec(spec)
     benchmark = _resolve(spec_path, str(spec["benchmark_card"]))
     card = _read(benchmark)
     task_ids = list(card["instance_ids"])

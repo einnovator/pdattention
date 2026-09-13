@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     _retry_path,
     adaptive_gate,
     campaign_cells,
+    validate_campaign_spec,
     write_curve_spec,
 )
 
@@ -15,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _spec():
     return {
         "campaign_id": "campaign",
-        "generation": {"seed": 0},
+        "generation": {"seed": 0, "max_completion_tokens": 1024},
         "controls": {"full_repeats": 2},
         "arms": [
             {
@@ -36,6 +39,15 @@ def test_campaign_locks_two_controls_then_runs_arm_major():
         "task01-dag100", "task02-dag100",
     ]
     assert cells[0]["pair_id"] == cells[4]["pair_id"]
+
+
+def test_campaign_rejects_unbounded_autonomous_generation():
+    spec = _spec()
+    spec["generation"]["max_completion_tokens"] = None
+    with pytest.raises(ValueError, match="positive, frozen max_completion_tokens"):
+        validate_campaign_spec(spec)
+
+    validate_campaign_spec(_spec())
 
 
 def test_adaptive_gate_stops_two_failures():

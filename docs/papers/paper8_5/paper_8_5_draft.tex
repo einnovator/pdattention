@@ -1265,7 +1265,11 @@ DAG-only exclusion at a 100\% ceiling, a head/tail recency control at 90\% and
 at the same targets.  The common configuration retains two initial and four
 recent complete turns, uses $K_f=8$, $K_w=1$, and $K_r=2$, and presents
 certified exclusions as metadata-only protocol stubs.  Nominal retention is
-not plotted: every point uses realized tokens.
+not plotted: every point uses realized tokens.  The frozen generation contract
+also fixes a 1,024-token completion ceiling.  The campaign runner now rejects
+an absent or non-positive ceiling before launching: an uncapped response can
+run away, altering both agent behavior and end-to-end token cost rather than
+constituting a comparable policy observation.
 
 The primary ordinate is official task resolution.  The abscissae separately
 report within-run materialized-history saving, paired end-to-end input-token
