@@ -324,8 +324,11 @@ The current certificate-only task-quality campaign is declared in
 `configs/autonomous_long5_curve_certified_v3.json`. Its benchmark card locks the five
 longest tasks from the Easy-14 baseline-success stratum before any treatment
 outcomes are observed. It runs two FULL controls per task, then DAG-only,
-head/tail recency, and DAG-plus-progress-spine recency at requested 90% and 80%
-retention. Metadata-only protocol stubs are used for certified exclusions.
+strict matched-token tail, and DAG-plus-progress-spine recency at requested 90%
+and 80% retention. The matched control preserves immutable prompt records and
+complete recent turns, trimming only an oversized boundary tool observation;
+it reports immutable-prompt overflow separately when the requested ceiling is
+impossible. Metadata-only protocol stubs are used for certified exclusions.
 The autonomous contract requires an explicit positive completion-token cap;
 the locked Qwen3-Coder campaign uses 1,024, matching its qualified Paper 8.5
 controls. An omitted cap is rejected before any task is launched because a

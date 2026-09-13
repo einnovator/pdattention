@@ -8,7 +8,7 @@ for that decision, and records auditable content-token and exclusion metrics.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -26,8 +26,9 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
+from .matched_token_tail import MatchedTokenTailConfig, materialize_matched_token_tail
 from .dag import DagCertifiedExclusionSelector
-from .model import AgentMemoryBudget, AgentMemoryPlan
+from .model import AgentMemoryBudget, AgentMemoryPlan, AgentRecordRole
 from .negative_selection import (
     BashOperation,
     NEGATIVE_POLICY_RULES,
@@ -57,7 +58,7 @@ from .serialization import serialize_materialized_messages
 
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
-AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency",)
+AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency", "matched_token_tail")
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
     "dag_certified_progress_spine",
@@ -326,6 +327,10 @@ class AutonomousSelectionConfig:
                 middle_strategy=MiddleSelectionStrategy.RECENCY,
                 round_up_to_budget=True,
             ))
+        if self.policy == "matched_token_tail":
+            raise RuntimeError(
+                "matched_token_tail is realized directly under a materialized-token ceiling"
+            )
         if self.policy == "dag_certified_exclusion":
             return DagCertifiedExclusionSelector(
                 protected_head_turns=self.protected_head_turns,
@@ -414,31 +419,55 @@ def transform_autonomous_payload(
     full_tokens = sum(count_tokens(row.content) for row in history.records)
     budget_tokens = max(1, math.ceil(full_tokens * config.budget_fraction))
     sidecar_exact = sidecar_join["status"] in {"exact", "empty_exact"}
+    sidecar_dependent = bool(
+        config.policy in {*AUTONOMOUS_DAG_POLICIES, *NEGATIVE_POLICY_RULES}
+    )
     selection_abstained = bool(
-        config.policy != "full" and config.require_exact_sidecars and not sidecar_exact
+        sidecar_dependent and config.require_exact_sidecars and not sidecar_exact
     )
-    selector = FullHistorySelector() if selection_abstained else config.selector()
-    plan = selector.select(
-        history=history,
-        query=_query(messages),
-        budget=AgentMemoryBudget(max_tokens=budget_tokens),
-        count_tokens=count_tokens,
+    matched_tail = config.policy == "matched_token_tail" and not selection_abstained
+    mandatory_tokens = sum(
+        count_tokens(row.content) for row in history.records
+        if row.has_role(AgentRecordRole.SYSTEM) or row.has_role(AgentRecordRole.TASK)
     )
-    materializer = ToolObservationMaterializer(
-        mode=config.materialization_mode,
-        threshold_tokens=config.materialization_threshold_tokens,
-        head_lines=config.materialization_head_lines,
-        tail_lines=config.materialization_tail_lines,
-        match_context_lines=config.materialization_match_context_lines,
-        max_matched_lines=config.materialization_max_matched_lines,
-    )
-    materialized = materialize_plan(
-        history,
-        plan,
-        materializer,
-        query=_query(messages),
-        count_tokens=count_tokens,
-    )
+    mandatory_overflow_tokens = max(0, mandatory_tokens - budget_tokens)
+    if matched_tail:
+        materialized = materialize_matched_token_tail(
+            history,
+            max_materialized_tokens=max(budget_tokens, mandatory_tokens),
+            config=MatchedTokenTailConfig(),
+            count_tokens=count_tokens,
+        )
+        plan = replace(
+            materialized.logical_plan,
+            requested_budget_tokens=budget_tokens,
+            mandatory_tokens=mandatory_tokens,
+            mandatory_overflow_tokens=mandatory_overflow_tokens,
+        )
+        materialized = replace(materialized, logical_plan=plan)
+    else:
+        selector = FullHistorySelector() if selection_abstained else config.selector()
+        plan = selector.select(
+            history=history,
+            query=_query(messages),
+            budget=AgentMemoryBudget(max_tokens=budget_tokens),
+            count_tokens=count_tokens,
+        )
+        materializer = ToolObservationMaterializer(
+            mode=config.materialization_mode,
+            threshold_tokens=config.materialization_threshold_tokens,
+            head_lines=config.materialization_head_lines,
+            tail_lines=config.materialization_tail_lines,
+            match_context_lines=config.materialization_match_context_lines,
+            max_matched_lines=config.materialization_max_matched_lines,
+        )
+        materialized = materialize_plan(
+            history,
+            plan,
+            materializer,
+            query=_query(messages),
+            count_tokens=count_tokens,
+        )
     retention_floor = bool(
         config.policy in {"head_tail_recency", "dag_certified_progress_spine"}
         or config.negative_fallback == "recency"
@@ -462,6 +491,15 @@ def transform_autonomous_payload(
             - certified_exclusion_underfill_tokens,
         )
         if retention_floor else 0
+    )
+    matched_tail_unexplained_overflow_tokens = (
+        max(
+            0,
+            materialized.materialized_tokens
+            - budget_tokens
+            - mandatory_overflow_tokens,
+        )
+        if matched_tail else 0
     )
     receipt_realization = None
     if config.negative_realization in {
@@ -598,14 +636,22 @@ def transform_autonomous_payload(
         "logical_retention_fraction": plan.realized_retention_fraction,
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
         "budget_interpretation": (
+            "strict_materialized_token_ceiling_with_mandatory_overflow"
+            if matched_tail
+            else
             "certified_exclusion_then_retention_floor"
             if config.policy == "dag_certified_progress_spine"
             else "retention_floor_round_up" if retention_floor
             else "hard_ceiling"
         ),
         "budget_satisfied": (
-            unexplained_floor_underfill_tokens == 0
+            matched_tail_unexplained_overflow_tokens == 0
+            if matched_tail else unexplained_floor_underfill_tokens == 0
             if retention_floor else plan.selected_tokens <= budget_tokens
+        ),
+        "mandatory_budget_overflow_tokens": mandatory_overflow_tokens,
+        "unexplained_materialized_budget_overflow_tokens": (
+            matched_tail_unexplained_overflow_tokens
         ),
         "certified_exclusion_underfill_tokens": (
             certified_exclusion_underfill_tokens

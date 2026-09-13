@@ -81,6 +81,49 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["excluded_causal_group_count"] == 0
 
 
+def test_matched_token_tail_is_a_strict_autonomous_text_ceiling_without_sidecars():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="matched_token_tail",
+            budget_fraction=.70,
+            expected_model="locked-model",
+            task_id="task-1",
+        ),
+    )
+
+    assert result.trace["policy"] == "matched_token_tail"
+    assert result.trace["selection_abstained_for_sidecar"] is False
+    assert result.trace["budget_interpretation"] == (
+        "strict_materialized_token_ceiling_with_mandatory_overflow"
+    )
+    assert result.trace["budget_satisfied"] is True
+    assert result.trace["materialized_tokens"] <= result.trace["requested_budget_tokens"]
+    assert result.trace["selected_message_count"] < result.trace["full_message_count"]
+    assert [row["content"] for row in result.payload["messages"][:2]] == [
+        row["content"] for row in _payload()["messages"][:2]
+    ]
+
+
+def test_matched_token_tail_reports_unavoidable_immutable_prompt_overflow():
+    source = _payload()
+    source["messages"] = source["messages"][:2]
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="matched_token_tail",
+            budget_fraction=.50,
+            expected_model="locked-model",
+        ),
+    )
+
+    assert result.payload == source
+    assert result.trace["exact_request_passthrough"] is True
+    assert result.trace["mandatory_budget_overflow_tokens"] > 0
+    assert result.trace["unexplained_materialized_budget_overflow_tokens"] == 0
+    assert result.trace["budget_satisfied"] is True
+
+
 def test_abstaining_negative_policy_is_an_exact_request_noop():
     source = _payload()
     result = transform_autonomous_payload(
