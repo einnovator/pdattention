@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import random
 import re
 from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
@@ -91,6 +92,19 @@ def _strategy_id(selection: Mapping[str, Any]) -> str:
     budget = float(selection.get("budget_fraction", 1.0))
     if budget != 1.0:
         parts.append(f"B={budget:g}")
+    # Human-readable coordinates above are followed by a canonical digest of
+    # every policy/materialization switch. This prevents newly added options
+    # from silently collapsing into an older curve point.
+    if policy != "full":
+        excluded = {"expected_model", "task_id", "tokenizer_identity"}
+        coordinate = {
+            str(key): value for key, value in selection.items()
+            if key not in excluded
+        }
+        encoded = json.dumps(
+            coordinate, sort_keys=True, separators=(",", ":"), default=str
+        ).encode()
+        parts.append("cfg=" + hashlib.sha256(encoded).hexdigest()[:12])
     return ";".join(parts)
 
 
@@ -134,6 +148,11 @@ def load_frozen_comparison(
         rows.append({
             "evidence_class": "frozen_next_action",
             "cohort": cohort,
+            "independence_key": hashlib.sha256(json.dumps({
+                "instance_id": identity.get("instance_id"),
+                "model": identity.get("model"),
+                "full_replay_digest": identity.get("full_replay_digest"),
+            }, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "task_id": identity.get("instance_id"),
             "model": identity.get("model"),
             "strategy": treatment,
@@ -207,11 +226,14 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
     if len(trace) != int(metrics.get("calls") or 0):
         raise ValueError(f"{trace_path}: request count does not match metrics")
     pairing_keys = (
-        "repository_revision", "benchmark_card_sha256", "dataset_revision",
+        "repository_revision", "benchmark_card_sha256", "benchmark_ids_sha256",
+        "dataset", "dataset_revision", "split",
         "served_model", "model_revision", "tokenizer_revision", "temperature",
         "top_p", "seed", "max_calls", "max_completion_tokens",
-        "harness_version_observed", "grader_version_observed", "docker_platform",
-        "environment_image",
+        "harness_version_requested", "harness_version_observed",
+        "grader_version_requested", "grader_version_observed", "docker_platform",
+        "environment_image", "agent_config_sha256", "system_prompt_sha256",
+        "task_statement_sha256",
     )
     return {
         "evidence_class": "autonomous_task_quality",
@@ -284,6 +306,11 @@ def pair_autonomous(
     candidate["tool_call_delta"] = candidate["tool_calls"] - baseline["tool_calls"]
     candidate["efficiency_qualified"] = bool(
         candidate["official_resolved"] and baseline["official_resolved"]
+    )
+    candidate["trajectory_outcome"] = (
+        "both_resolved" if candidate["efficiency_qualified"]
+        else "candidate_failed" if not candidate["official_resolved"]
+        else "baseline_failed"
     )
     baseline_tokens = baseline["cumulative_materialized_tokens"]
     candidate["paired_net_saving_fraction"] = (
@@ -385,15 +412,26 @@ def adaptive_decisions(
     for row in frozen_rows:
         if row.get("adaptive_eligible", True):
             by_cohort[str(row.get("cohort"))].append(row)
-    frontier_ids = {
-        str(row.get("strategy_coordinate", row["strategy"]))
-        for cohort_rows in by_cohort.values()
-        for row in pareto_frontier(cohort_rows, quality_key="quality_proxy")
+    frontier_by_cohort = {
+        cohort: {
+            str(row.get("strategy_coordinate", row["strategy"]))
+            for row in pareto_frontier(rows, quality_key="quality_proxy")
+        }
+        for cohort, rows in by_cohort.items()
     }
     decisions = []
     for strategy, rows in sorted(groups.items()):
-        saving = mean(float(row["saving_fraction"]) for row in rows)
-        quality = mean(float(row["quality_proxy"]) for row in rows)
+        independent: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        for row in rows:
+            independent[str(row.get("independence_key", row.get("cohort")))].append(row)
+        saving = mean(
+            mean(float(row["saving_fraction"]) for row in cluster)
+            for cluster in independent.values()
+        )
+        quality = mean(
+            mean(float(row["quality_proxy"]) for row in cluster)
+            for cluster in independent.values()
+        )
         families = {str(row.get("strategy_family")) for row in rows}
         if not saving:
             action, reason = "abstention_control", "exact fail-closed arm with no observed saving"
@@ -409,9 +447,12 @@ def adaptive_decisions(
             action, reason = "stop", "saving is below the minimum campaign yield"
         elif quality < minimum_quality_for_promotion and saving < exceptional_saving:
             action, reason = "stop", "proxy quality falls too quickly for the observed saving"
-        elif strategy not in frontier_ids:
-            action, reason = "do_not_combine", "dominated on the observed frozen frontier"
-        elif len({str(row.get("cohort")) for row in rows}) < minimum_independent_cohorts_for_promotion:
+        elif any(
+            strategy not in frontier_by_cohort.get(str(row.get("cohort")), set())
+            for row in rows
+        ):
+            action, reason = "do_not_combine", "dominated in at least one observed matched cohort"
+        elif len(independent) < minimum_independent_cohorts_for_promotion:
             action, reason = "replicate_frozen", "nondominated but observed in too few independent cohorts"
         elif quality < minimum_quality_for_promotion:
             action, reason = "bounded_autonomous_probe", "exceptional saving clears the absolute floor but not the promotion-quality gate"
@@ -420,7 +461,7 @@ def adaptive_decisions(
         decisions.append({
             "strategy": strategy,
             "frozen_observations": len(rows),
-            "independent_cohorts": len({str(row.get("cohort")) for row in rows}),
+            "independent_cohorts": len(independent),
             "mean_saving_fraction": saving,
             "mean_quality_proxy": quality,
             "decision": action,
@@ -489,6 +530,26 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             ),
         })
     return summaries
+
+
+def _cluster_bootstrap_mean_ci(
+    values: Sequence[float], *, samples: int = 5000, seed: int = 0,
+) -> tuple[float, float]:
+    """Percentile interval over task-level means, not pseudo-Bernoulli runs."""
+
+    if not values:
+        raise ValueError("bootstrap interval requires at least one task")
+    if len(values) == 1:
+        return float(values[0]), float(values[0])
+    rng = random.Random(seed)
+    draws = sorted(
+        mean(rng.choice(values) for _ in values)
+        for _ in range(samples)
+    )
+    return (
+        float(draws[int(.025 * (samples - 1))]),
+        float(draws[int(.975 * (samples - 1))]),
+    )
 
 
 def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
@@ -612,14 +673,8 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
                 task_rates[str(row["task_id"])].append(bool(row["official_resolved"]))
             task_means = [mean(values) for values in task_rates.values()]
             n = len(task_means)
-            successes = sum(task_means)
-            rate = successes / n
-            z = 1.96
-            center = (rate + z * z / (2 * n)) / (1 + z * z / n)
-            half = z * math.sqrt(
-                rate * (1 - rate) / n + z * z / (4 * n * n)
-            ) / (1 + z * z / n)
-            lower, upper = max(0.0, center - half), min(1.0, center + half)
+            rate = mean(task_means)
+            lower, upper = _cluster_bootstrap_mean_ci(task_means)
             ax.errorbar(
                 x, 100 * rate,
                 yerr=[[100 * (rate - lower)], [100 * (upper - rate)]],
@@ -696,7 +751,10 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         y = first if first is not None else censored
         if y is None:
             continue
-        marker = "o" if first is not None else "^"
+        marker = (
+            "x" if not row.get("official_resolved")
+            else "o" if first is not None else "^"
+        )
         causal_saving = row.get("saving_through_first_divergence_fraction")
         if causal_saving is None:
             continue
@@ -710,6 +768,11 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
     ax.set(xlabel="Cumulative saving through divergence/censoring (%)",
            ylabel="First divergent tool action (call)",
            title="First action divergence by task")
+    ax.text(
+        .02, .02,
+        "o divergence in resolved run; ^ resolved/right-censored; x failed run",
+        transform=ax.transAxes, fontsize=7, va="bottom",
+    )
     ax.grid(alpha=.25)
     save(fig, "autonomous_saving_vs_first_action_divergence")
 
@@ -743,6 +806,29 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             pairing_reason=pair.get("pairing_reason"),
         )
     autonomous = list(autonomous_by_name.values())
+    unpaired_policies = [
+        name for name, row in autonomous_by_name.items()
+        if row.get("strategy_family") != "full" and name not in paired_candidates
+    ]
+    if unpaired_policies:
+        raise ValueError(
+            "non-FULL autonomous runs require paired FULL controls: "
+            + ", ".join(sorted(unpaired_policies))
+        )
+    for row in autonomous:
+        if row.get("strategy_family") == "full":
+            continue
+        controls = [
+            control for control in autonomous
+            if control.get("strategy_family") == "full"
+            and control.get("task_id") == row.get("task_id")
+            and control.get("model") == row.get("model")
+        ]
+        if len(controls) < 2:
+            raise ValueError(
+                "autonomous policy arms require two contemporaneous FULL controls "
+                f"for task/model: {row.get('task_id')}/{row.get('model')}"
+            )
     thresholds = spec.get("adaptive_pruning") or {}
     decisions = adaptive_decisions(
         frozen,
@@ -770,6 +856,8 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "paired_net_saving": "one minus candidate materialized message-content input tokens / paired FULL materialized message-content input tokens; includes call-count divergence but excludes completion and chat-template tokens",
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
+            "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",
+            "frozen_independence": "unique task/model/repeat-qualified-FULL digest, not analyst cohort label",
         },
         "frozen_observations": [_strip_trace(row) for row in frozen],
         "autonomous_observations": [_strip_trace(row) for row in autonomous],

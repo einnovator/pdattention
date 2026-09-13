@@ -85,11 +85,20 @@ this is required for a true no-op control. Synthetic structural gates are not mo
 or task-quality evidence; each generated trajectory is also compatible with
 the ordinary frozen replay runner.
 
-mini-swe-agent uses `MiniSweBashSemanticsProvider` because its only tool is
-generic Bash. `HarnessMetadataSemanticsProvider` is the portable path: a future
-agent SDK supplies generic effects and version metadata, while engines consume
-only the resulting logical plan and never embed Bash- or application-specific
-reasoning.
+mini-swe-agent uses an evaluation-only Bash adapter because its only tool is
+generic Bash. That adapter now emits portable `operation_kind`, resource access,
+version, span, discovery, mutation, completeness, and causal-group metadata.
+The state-authority selector consumes only those declarations: it no longer
+parses Bash commands. `HarnessMetadataSemanticsProvider` is the portable path
+for other agents, while engines consume only the resulting logical plan and
+never embed Bash- or application-specific reasoning.
+
+The same `WireAgentMemoryPlan` is realized by the ordinary-text evaluation
+proxy and the product mediator. Its source-history and plan digests reject stale
+or conflicting application. This means adding embedded/external gateway
+placement does not require rerunning every policy arm: byte-identical frozen
+plans need only a placement conformance test. A new quality run is required
+only when selected identities or model-visible replacement bytes change.
 
 For instrumented mini-swe-agent runs, set:
 

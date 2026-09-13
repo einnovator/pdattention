@@ -4,6 +4,27 @@ The gateway lets an OpenAI-compatible application use typed PRA context without
 changing the model endpoint protocol. It negotiates capabilities, preserves
 resource identity, and owns explicit fallback.
 
+The standalone gateway is the fallback placement for request mediation. Prefer
+embedded mediation when the PRA engine can host it: the engine already owns the
+exact tokenizer, logical history, and native K/V lifecycle. Use the standalone
+gateway when an ordinary or third-party engine cannot host PRA mediation; in
+that topology it assumes the context-mediation role of the Headroom gateway.
+Both placements run the same mediator and frozen plan format, so they must not
+be stacked.
+
+```bash
+pra gateway serve \
+  --mediation-config embedded-equivalent-external.yaml \
+  --mediation-tokenizer Qwen/Qwen3-1.7B \
+  --backend vllm --backend-url http://127.0.0.1:8000/v1
+```
+
+Set `location: external` in that YAML. An active generated history policy needs
+`--mediation-tokenizer` for exact size gates; a request carrying a precomputed
+frozen plan does not. A mediation stamp skips an identical repeat and rejects a
+different second-hop policy. Shadow history selection, result compaction, and
+tool disclosure remain model-visible no-ops.
+
 ## What the gateway does
 
 The gateway is the coordination boundary between an agent or application and a

@@ -11,25 +11,21 @@ from dataclasses import dataclass
 from dataclasses import replace
 from enum import Enum
 import hashlib
-import re
-from typing import Callable, Mapping, Protocol
+from typing import Callable, Mapping
 
 from .model import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
-
-
-class EffectKind(str, Enum):
-    READ = "read"
-    WRITE = "write"
-    VERIFY = "verify"
-    PURE = "pure"
-    UNKNOWN = "unknown"
-
-
-class EffectProvenance(str, Enum):
-    DECLARED_TOOL_SEMANTICS = "declared_tool_semantics"
-    RUNTIME_TRACED = "runtime_traced"
-    STATIC_HEURISTIC = "static_heuristic"
-    UNKNOWN = "unknown"
+from pra_hf.tool_semantics import (
+    DeclaredToolSemanticsProvider,
+    EffectKind,
+    EffectProvenance,
+    ResourceEffect,
+    ToolEffectAnalysis,
+    ToolSemanticsProvider,
+)
+from .miniswe_semantics import (
+    bash_semantics_are_certifiable,
+    classify_bash_effect,
+)
 
 
 class DagEdgeKind(str, Enum):
@@ -45,34 +41,6 @@ class ExclusionClass(str, Enum):
     SUPERSEDED_CURRENT_STATE = "superseded_current_state_not_semantic_proof"
     INVALIDATED_BY_WRITE = "invalidated_by_write_not_semantic_proof"
     RECOVERABLE_COLD = "recoverable_cold_not_irrelevant"
-
-
-@dataclass(frozen=True)
-class ResourceEffect:
-    record_id: str
-    resource_id: str
-    kind: EffectKind
-    resource_version_fingerprint: str | None = None
-    provenance: EffectProvenance = EffectProvenance.STATIC_HEURISTIC
-
-
-@dataclass(frozen=True)
-class ToolEffectAnalysis:
-    tool_category: str
-    effects: tuple[ResourceEffect, ...]
-    provenance: EffectProvenance
-    complete: bool
-    unknown_barrier: bool
-
-
-class ToolSemanticsProvider(Protocol):
-    """Harness-side adapter from tool semantics to generic resource effects."""
-
-    def analyze(
-        self,
-        action: AgentRecord,
-        observations: tuple[AgentRecord, ...],
-    ) -> ToolEffectAnalysis: ...
 
 
 @dataclass(frozen=True)
@@ -117,38 +85,6 @@ class AgentHistoryDag:
         )
 
 
-_READ_ONLY = re.compile(
-    r"^\s*(?:cat|head|tail|sed\s+-n|rg|grep|find|ls|pwd|git\s+(?:status|diff|show))\b"
-)
-_WRITE = re.compile(
-    r"(?:apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
-    r"(?:write_text|open\([^)]*,\s*['\"]w)|(?:^|[;&|]\s*)rm\b|>{1,2}\s*)"
-)
-_VERIFY = re.compile(
-    r"^\s*(?:pytest|tox|nox|python\s+-m\s+(?:pytest|unittest)|"
-    r"make\s+(?:test|check|lint)|ruff|mypy|npm\s+test|cargo\s+test)\b"
-)
-
-
-def bash_semantics_are_certifiable(command: str | None) -> bool:
-    """Return whether the built-in Bash adapter can fully describe a command.
-
-    This is deliberately much narrower than :func:`classify_bash_effect`.
-    Pipelines, lists, substitutions, redirections, heredocs, and multiline
-    scripts can hide additional reads or writes, so runtime snapshots alone do
-    not make their statically inferred effect set complete.
-    """
-
-    if not command or "\n" in command or "\r" in command:
-        return False
-    if any(token in command for token in ("&&", "||", ";", "|", "`", "$(", ">", "<")):
-        return False
-    return classify_bash_effect(command) in {
-        EffectKind.READ,
-        EffectKind.PURE,
-    }
-
-
 class MiniSweBashSemanticsProvider:
     """Special support for mini-swe-agent's single generic Bash tool.
 
@@ -181,46 +117,7 @@ class MiniSweBashSemanticsProvider:
         )
 
 
-class HarnessMetadataSemanticsProvider:
-    """Consume generic effect metadata emitted by an agent/tool harness."""
-
-    def analyze(
-        self,
-        action: AgentRecord,
-        observations: tuple[AgentRecord, ...],
-    ) -> ToolEffectAnalysis:
-        declaration = next((
-            row.metadata.get("tool_semantics") for row in reversed(observations)
-            if isinstance(row.metadata.get("tool_semantics"), Mapping)
-        ), None)
-        if declaration is None:
-            return ToolEffectAnalysis(
-                "unknown", (), EffectProvenance.UNKNOWN, False, True,
-            )
-        try:
-            provenance = EffectProvenance(str(declaration["provenance"]))
-            complete = bool(declaration["complete"])
-            effects = tuple(ResourceEffect(
-                action.record_id,
-                str(row["resource_id"]),
-                EffectKind(str(row["kind"])),
-                str(row["resource_version_fingerprint"])
-                if row.get("resource_version_fingerprint") is not None else None,
-                provenance,
-            ) for row in declaration.get("effects", ()))
-        except (KeyError, TypeError, ValueError) as error:
-            raise ValueError("invalid harness tool_semantics declaration") from error
-        trusted = provenance in {
-            EffectProvenance.DECLARED_TOOL_SEMANTICS,
-            EffectProvenance.RUNTIME_TRACED,
-        }
-        return ToolEffectAnalysis(
-            str(declaration.get("category", "generic")),
-            effects,
-            provenance,
-            complete,
-            not (trusted and complete and effects),
-        )
+HarnessMetadataSemanticsProvider = DeclaredToolSemanticsProvider
 
 
 class CompositeToolSemanticsProvider:
@@ -237,20 +134,6 @@ class CompositeToolSemanticsProvider:
     ) -> ToolEffectAnalysis:
         declared = self.declared.analyze(action, observations)
         return declared if not declared.unknown_barrier else self.bash.analyze(action, observations)
-
-
-def classify_bash_effect(command: str | None) -> EffectKind:
-    if not command:
-        return EffectKind.UNKNOWN
-    if _WRITE.search(command):
-        return EffectKind.WRITE
-    if _VERIFY.search(command):
-        return EffectKind.VERIFY
-    if _READ_ONLY.search(command):
-        return EffectKind.READ
-    if command.strip() in {"true", ":"}:
-        return EffectKind.PURE
-    return EffectKind.UNKNOWN
 
 
 def _turn_records(

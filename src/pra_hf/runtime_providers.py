@@ -289,6 +289,8 @@ class HFRuntimeProvider(RuntimeProvider):
             command += ["--pra-bundle", config.pra_bundle]
         if config.profile:
             command += ["--profile", config.profile]
+        if config.engine_options.get("mediation_config"):
+            command += ["--mediation-config", str(config.engine_options["mediation_config"])]
         command += ["--storage", config.storage_profile]
         if config.storage_config:
             command += ["--storage-config", config.storage_config]

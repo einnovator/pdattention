@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import torch
+import yaml
 
 from .deployment import HuggingFaceEngineAdapter
 from .bundle import PRAModelBundle
 from .gateway import PRAGateway, serve_gateway
+from .mediated_gateway import MediatedPRAGateway
+from .mediation import PRAMediationConfig
+from .agent_memory_planner import PortableStateAuthorityPlanner, tokenizer_counter
 from .hf_storage import HFReferenceHotBridge
 from .model import PRAForCausalLM
 from .observability import Observability, load_observability_config
@@ -40,6 +45,7 @@ def main() -> None:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--pra-bundle")
     parser.add_argument("--profile")
+    parser.add_argument("--mediation-config")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--storage", default="balanced")
@@ -119,15 +125,35 @@ def main() -> None:
         engine="hf",
     )
     storage_manager.start_maintenance()
-    gateway = PRAGateway(
-        HuggingFaceEngineAdapter(
-            model, storage_manager=storage_manager, observability=telemetry
-        ),
-        mode="G00",
-        observability=telemetry,
-        bundle_source=bundle_source,
-        default_profile=args.profile or "default",
+    engine_adapter = HuggingFaceEngineAdapter(
+        model, storage_manager=storage_manager, observability=telemetry
     )
+    if args.mediation_config:
+        document = yaml.safe_load(
+            Path(args.mediation_config).read_text(encoding="utf-8")
+        ) or {}
+        value = document.get("pra", document)
+        if isinstance(value, dict) and "mediation" in value:
+            value = value["mediation"]
+        mediation = PRAMediationConfig.from_mapping(value)
+        if mediation.location.value != "embedded":
+            raise ValueError("managed runtime mediation requires location: embedded")
+        gateway = MediatedPRAGateway(
+            engine_adapter,
+            mediation=mediation,
+            plan_builder=PortableStateAuthorityPlanner(tokenizer_counter(model.tokenizer)),
+            observability=telemetry,
+            bundle_source=bundle_source,
+            default_profile=args.profile or "default",
+        )
+    else:
+        gateway = PRAGateway(
+            engine_adapter,
+            mode="G00",
+            observability=telemetry,
+            bundle_source=bundle_source,
+            default_profile=args.profile or "default",
+        )
     management_server = None
     if args.management_api:
         from .management import (
@@ -151,7 +177,10 @@ def main() -> None:
                     revision=args.revision,
                     pra_bundle_id=bundle_source,
                     profile=args.profile or "default",
-                    execution_mode="G00",
+                    execution_mode=(
+                        "auto" if args.mediation_config and mediation.mode == "auto"
+                        else mediation.mode if args.mediation_config else "G00"
+                    ),
                     device_placement=device,
                     loaded_at=storage_manager.started_at if hasattr(storage_manager, "started_at") else None,
                 )],
@@ -160,6 +189,9 @@ def main() -> None:
                     "engine": "hf", "model": args.model, "revision": args.revision,
                     "profile": args.profile or "default", "device": device,
                     "storage": storage.profile,
+                    "mediation": (
+                        mediation.to_dict() if args.mediation_config else {"location": "none"}
+                    ),
                 },
                 storage_manager=storage_manager,
                 session_source=gateway.sessions,

@@ -72,6 +72,16 @@ def test_hf_provider_forwards_device_and_bundle() -> None:
     assert command[command.index("--profile") + 1] == "balanced"
 
 
+def test_hf_provider_forwards_embedded_mediation_config() -> None:
+    command = HFRuntimeProvider().build_command(RuntimeConfig(
+        engine="hf",
+        model="org/model",
+        engine_options={"mediation_config": "C:/config/mediation.yaml"},
+    ))
+
+    assert command[command.index("--mediation-config") + 1] == "C:/config/mediation.yaml"
+
+
 def test_runtime_doctor_distinguishes_missing_dependency(monkeypatch) -> None:
     monkeypatch.setattr("pra_hf.runtime_providers.importlib.util.find_spec", lambda _: None)
 

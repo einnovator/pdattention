@@ -26,6 +26,44 @@ The runtime keeps selection and physical execution separate. It can freeze
 selected identities, plan model-specific materialization, and inspect every
 lifecycle decision without changing task semantics.
 
+## Embedded request mediation
+
+For a PRA-aware engine, mediation should normally run in the model runtime. The
+embedded mediator infers standard OpenAI causal records (or consumes explicit
+`pra_record` metadata), applies one portable history plan, and hands stable
+logical identities to the engine. It does not parse Bash, browser commands, or
+agent-specific protocols.
+
+```yaml
+pra:
+  mediation:
+    location: embedded
+    mode: auto
+    strict_typed_contract: true
+    infer_records: true
+    history_selection:
+      mode: shadow
+      policy: task-aware-progress-spine-v4
+      head_turns: 2
+      tail_turns: 4
+      options:
+        retention_fraction: 0.90
+    result_compaction: shadow
+    tool_disclosure: shadow
+    prevent_double_mediation: true
+```
+
+Start the managed HF reference runtime with
+`--engine-arg mediation-config=PATH`. The runtime injects its exact tokenizer
+into the portable planner. Use `shadow` first: it records the frozen decision
+without changing messages. Promoting one feature to `active` changes only that
+feature's model-visible treatment and therefore requires its own quality gate.
+
+The request may instead carry a frozen `agent_memory_plan`. Its history and
+plan digests let the same selection be realized by another runtime without
+rerunning the policy. Stale plans and conflicting second mediation are rejected.
+This separates policy evaluation from engine/K/V qualification.
+
 ## Request-scoped agent-history retention
 
 Agent integrations can override history retention per request through typed

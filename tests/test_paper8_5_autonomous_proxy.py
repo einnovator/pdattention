@@ -27,6 +27,7 @@ from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
     AUXILIARY_WORKSPACE_STATE_LABEL,
     create_auxiliary_workspace_state_prediction,
 )
+from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
 
 
 def _messages() -> list[dict]:
@@ -530,6 +531,59 @@ def test_sidecar_join_enables_guarded_h2_without_leaking_extra(tmp_path):
     )
     assert all("extra" not in row for row in result.payload["messages"])
     assert payload["messages"] == messages
+
+
+def test_progress_spine_v4_keeps_action_and_receipts_superseded_observation(tmp_path):
+    commands = ("cat foo.py", "cat foo.py", "true")
+    large_old = "\n".join(f"old source line {index}" for index in range(200))
+    messages = [
+        {"role": "system", "content": "Use bash."},
+        {"role": "user", "content": "Fix foo.py."},
+    ]
+    for command, output in zip(commands, (large_old, "current source", "done")):
+        messages.extend((
+            {"role": "assistant", "content": f"```mswea_bash_command\n{command}\n```"},
+            {"role": "user", "content": f"<returncode>0</returncode>\n<output>{output}</output>"},
+        ))
+    common = {
+        "return_code": 0,
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    _write_receipt(tmp_path, 0, commands[0], {
+        **common, "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+    _write_receipt(tmp_path, 1, commands[1], {
+        **common, "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+    _write_receipt(tmp_path, 2, commands[2], common)
+    payload = {"model": "locked-model", "messages": messages}
+
+    result = transform_autonomous_payload(
+        payload,
+        AutonomousSelectionConfig(
+            policy="task_aware_progress_spine_v4",
+            negative_realization=NegativeRealizationMode.OBSERVATION_RECEIPT,
+            expected_model="locked-model",
+            protected_head_turns=0,
+            protected_tail_turns=1,
+        ),
+        instrumentation_root=tmp_path,
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "```mswea_bash_command\ncat foo.py\n```" in visible
+    assert "old source line 199" not in visible
+    assert "older read superseded" in visible
+    assert result.trace["receipt_count"] == 1
+    assert result.trace["receipt_token_saving"] > 0
+    assert result.trace["recordization"] == {
+        "source": "typed",
+        "explicit_records": len(messages),
+        "inferred_records": 0,
+        "ambiguity_reasons": [],
+    }
 
 
 def test_sidecar_sequence_mismatch_fails_closed(tmp_path):

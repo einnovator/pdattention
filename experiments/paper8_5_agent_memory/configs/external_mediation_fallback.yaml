@@ -1,0 +1,19 @@
+pra:
+  mediation:
+    location: external
+    mode: auto
+    strict_typed_contract: true
+    infer_records: true
+    history_selection:
+      mode: shadow
+      policy: task-aware-progress-spine-v4
+      head_turns: 2
+      tail_turns: 4
+      unknown_effect: retain_full
+      options:
+        retention_fraction: 0.90
+        same_span_reads_to_keep: 1
+        apply_middle_budget: true
+    result_compaction: shadow
+    tool_disclosure: shadow
+    prevent_double_mediation: true

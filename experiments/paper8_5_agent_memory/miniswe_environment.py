@@ -20,7 +20,7 @@ from .observation_instrumentation import (
     build_bash_observation_metadata,
     stable_environment_fingerprint,
 )
-from .recordizer import extract_resource_ids
+from .miniswe_semantics import extract_resource_ids
 
 
 class InstrumentedDockerEnvironmentConfig(DockerEnvironmentConfig):

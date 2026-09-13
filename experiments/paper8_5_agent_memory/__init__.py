@@ -39,15 +39,14 @@ from .model import (
     CanonicalAgentHistory,
 )
 from .negative_selection import (
-    BashOperation,
     NEGATIVE_POLICY_RULES,
     NegativeHeuristicSelector,
     NegativeRule,
     NegativeSelectionConfig,
     build_negative_exclusions,
-    classify_bash_operation,
     reacquired_excluded_resources,
 )
+from .miniswe_semantics import BashOperation, classify_bash_operation
 from .negative_receipts import (
     ModelVisibleReceipt,
     NegativeRealizationMode,
@@ -58,7 +57,11 @@ from .negative_receipts import (
     realize_negative_receipts,
 )
 from .oracle import OracleAblationCase, leave_one_bundle_out_cases
-from .recordizer import extract_resource_ids, recordize_minisweagent_messages
+from .recordizer import (
+    annotate_minisweagent_messages,
+    extract_resource_ids,
+    recordize_minisweagent_messages,
+)
 from .selectors import (
     FullHistorySelector,
     HeadMiddleTailConfig,
@@ -120,6 +123,7 @@ __all__ = [
     "materialize_plan",
     "materialize_matched_token_tail",
     "materialize_tool_observation_tail_to_ceiling",
+    "annotate_minisweagent_messages",
     "extract_resource_ids",
     "recordize_minisweagent_messages",
     "reacquired_excluded_resources",

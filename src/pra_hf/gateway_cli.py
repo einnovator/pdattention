@@ -12,6 +12,8 @@ from .bundle import BundleResolver
 from .deployment import HuggingFaceEngineAdapter, OpenAICompatibleEngineAdapter
 from .engine_profiles import EngineType
 from .gateway import FallbackInjectionPolicy, PRAGateway, serve_gateway
+from .mediated_gateway import MediatedPRAGateway
+from .mediation import PRAMediationConfig
 from .session_service import LocalSessionService
 from .observability import Observability, load_observability_config
 from .management_cli import ManagementClient, _emit
@@ -46,6 +48,8 @@ def gateway_cli() -> None:
 
 @gateway_cli.command("serve")
 @click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="YAML gateway configuration.")
+@click.option("--mediation-config", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Shared PRA mediation YAML; use only when mediation cannot run in the engine.")
+@click.option("--mediation-tokenizer", help="Tokenizer ID/path for exact external history-policy accounting.")
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8080, type=int, show_default=True)
 @click.option(
@@ -117,7 +121,7 @@ def gateway_cli() -> None:
 @click.option("--registry-instance-name", help="Human-readable managed gateway name.")
 @click.option("--registry-required", is_flag=True, help="Fail startup when initial registration fails.")
 def gateway_serve(
-    config_path, host, port, mode, backend, backend_url, backend_timeout, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
+    config_path, mediation_config, mediation_tokenizer, host, port, mode, backend, backend_url, backend_timeout, model, pra_bundle, profile, pra_level, research, prefix_cache_mode,
     session_state, incremental_messages, resource_delta, cache_affinity,
     fallback_injection, sessions_dir, observability, otel, otel_endpoint,
     prometheus, prometheus_port,
@@ -266,16 +270,38 @@ def gateway_serve(
         else:
             management_settings = None
 
-    gateway = PRAGateway(
-        gateway_adapter,
-        mode=resolved_mode,
-        session_service=LocalSessionService(sessions_dir) if sessions_dir else None,
-        fallback_injection=fallback_injection,
-        observability=gateway_observability,
-        bundle_source=bundle_source,
-        default_profile=profile,
-        models=(model,) if model else (),
-    )
+    common_gateway_args = {
+        "session_service": LocalSessionService(sessions_dir) if sessions_dir else None,
+        "fallback_injection": fallback_injection,
+        "observability": gateway_observability,
+        "bundle_source": bundle_source,
+        "default_profile": profile,
+        "models": (model,) if model else (),
+    }
+    if mediation_config is not None:
+        mediation = _load_mediation_yaml(mediation_config)
+        if mediation.location.value != "external":
+            raise click.UsageError("standalone gateway mediation requires location: external")
+        plan_builder = None
+        if mediation_tokenizer:
+            from transformers import AutoTokenizer
+            from .agent_memory_planner import PortableStateAuthorityPlanner, tokenizer_counter
+
+            tokenizer = AutoTokenizer.from_pretrained(mediation_tokenizer)
+            plan_builder = PortableStateAuthorityPlanner(tokenizer_counter(tokenizer))
+        gateway = MediatedPRAGateway(
+            gateway_adapter,
+            mediation=mediation,
+            plan_builder=plan_builder,
+            **common_gateway_args,
+        )
+        resolved_mode = "auto" if mediation.mode == "auto" else mediation.mode
+    else:
+        gateway = PRAGateway(
+            gateway_adapter,
+            mode=resolved_mode,
+            **common_gateway_args,
+        )
     management_server = None
     if management_settings is not None:
         from .gateway_management import start_gateway_management_api
@@ -288,8 +314,8 @@ def gateway_serve(
         )
         management_server = start_gateway_management_api(management_provider, management_settings)
     capabilities = adapter.capabilities()
-    selected_enabled = resolved_mode in {"G10", "G11"}
-    typed_enabled = resolved_mode == "G11"
+    selected_enabled = resolved_mode in {"G10", "G11", "auto"}
+    typed_enabled = resolved_mode in {"G11", "auto"} and bool(capabilities.logical_refs)
     native_available = bool(capabilities.native_kv)
     click.echo(f"PRA gateway on http://{host}:{port} -> {capabilities.adapter}/{capabilities.engine_type.value}")
     click.echo("Existing OpenAI-compatible clients: supported")
@@ -323,6 +349,16 @@ def _gateway_management_yaml(path: Path | None) -> dict:
     value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     gateway = dict(value.get("gateway", value))
     return dict(gateway.get("management_api", {}))
+
+
+def _load_mediation_yaml(path: Path) -> PRAMediationConfig:
+    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    value = document.get("pra", document)
+    if isinstance(value, dict) and "mediation" in value:
+        value = value["mediation"]
+    if not isinstance(value, dict):
+        raise click.UsageError("mediation configuration must be a YAML mapping")
+    return PRAMediationConfig.from_mapping(value)
 
 
 def _gateway_remote_options(function):

@@ -227,6 +227,12 @@ class PRAGateway:
 
     @staticmethod
     def _upgrade(request: PRAWireRequest) -> PRAWireRequest:
+        # A shared RequestMediator may already have normalized the complete
+        # trajectory into portable agent records.  Do not also reinterpret
+        # system/tool messages as detached resources: that would duplicate
+        # model-visible history and break the 100% no-op control.
+        if request.metadata.get("agent_records"):
+            return request
         inferred = tuple(
             resource
             for index, message in enumerate(request.messages)

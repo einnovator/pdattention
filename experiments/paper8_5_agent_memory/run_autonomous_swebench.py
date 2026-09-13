@@ -27,6 +27,7 @@ from .auxiliary_workspace_state import (
 from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
 from .materialization import MaterializationMode
 from .negative_selection import NEGATIVE_POLICY_RULES
+from .negative_receipts import NegativeRealizationMode
 from .selectors import whitespace_tokens
 
 
@@ -390,6 +391,7 @@ def run(args: argparse.Namespace) -> Path:
         tokenizer_identity=tokenizer_identity,
         task_id=instance_id,
         require_exact_sidecars=args.require_exact_sidecars,
+        negative_realization=NegativeRealizationMode(args.negative_realization),
     )
     trace_path = output / "request_selection.jsonl"
     agent_output = output / "agent"
@@ -434,6 +436,7 @@ def run(args: argparse.Namespace) -> Path:
         "selection": {
             **asdict(config),
             "materialization_mode": config.materialization_mode.value,
+            "negative_realization": config.negative_realization.value,
         },
         "model": args.model,
         "served_model": args.served_model,
@@ -634,6 +637,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--tokenizer-revision", required=True)
     parser.add_argument("--policy", choices=("full", *NEGATIVE_POLICY_RULES), default="full")
+    parser.add_argument(
+        "--negative-realization",
+        choices=tuple(mode.value for mode in NegativeRealizationMode),
+        default=NegativeRealizationMode.DROP.value,
+    )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--head", type=int, default=1)
     parser.add_argument("--tail", type=int, default=1)

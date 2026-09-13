@@ -432,12 +432,30 @@ or preferred-for-selection, with a certificate and witness IDs. Future tool
 categories implement the same effect vocabulary without teaching the engine
 about Bash, Excel, browsers, databases, or particular agent frameworks.
 
-When the policy returns to Paper~4.5, the PRA runtime consumes only a frozen
-logical plan and generic record metadata. It validates identities, dependencies,
-and lifecycle constraints and realizes the chosen records physically; it does
-not infer application-specific semantics or rerun the DAG policy inside each
-engine. This preserves one agent-independent engine contract while allowing a
-semantically richer harness or SDK to make selection decisions.
+The implementation now has a shared mediation layer that can run inside a PRA
+runtime or, only when the engine cannot host it, in the external gateway. Both
+placements consume the same content-addressed
+\texttt{WireAgent\-Memory\-Plan}; stale-history digests and conflicting second-hop
+mediation fail closed. Thus moving an unchanged plan between placements is a
+conformance test, not a reason to rerun the entire policy campaign.
+
+The common state-authority planner consumes only declared operation classes,
+resource evidence (identity, version, and span), output completeness, and causal identities. It
+contains no mini-swe-agent or Bash parser. The mini-swe-specific compatibility
+code is confined to the evaluation adapter that translates its nonstandard
+assistant--user Bash exchange to this portable schema. Standard typed tool
+traffic, or an agent SDK that emits the schema directly, bypasses that adapter.
+An embedded runtime supplies the exact model tokenizer for receipt size gates;
+an external fallback must load the same tokenizer or consume an already frozen
+plan.
+
+When the policy returns to Paper~4.5, the PRA engine validates and physically
+realizes selected logical identities; it does not infer application-specific
+semantics. Paper~8.5 freezes model-visible selected IDs and replacement bytes.
+Paper~4.5 then measures cache hits, K/V movement, re-encoding, latency, memory,
+and lifecycle on those same plans. Result compaction and tool disclosure are
+promoted independently from shadow, so later gateway capabilities do not
+silently invalidate unchanged history-policy evidence.
 
 \subsection{Oracle}
 

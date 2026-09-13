@@ -44,6 +44,7 @@ class NegativeRealizationMode(str, Enum):
 class ReceiptKind(str, Enum):
     RESOURCE_MAP = "resource_map"
     MUTATION = "mutation"
+    SUPERSEDED_READ = "superseded_read"
 
 
 class ReceiptAbstentionReason(str, Enum):
@@ -123,6 +124,8 @@ def _receipt_kind(rule_id: str) -> ReceiptKind | None:
         return ReceiptKind.RESOURCE_MAP
     if rule_id.startswith("H2"):
         return ReceiptKind.MUTATION
+    if rule_id == "H3_READ_SUPERSEDED":
+        return ReceiptKind.SUPERSEDED_READ
     return None
 
 
@@ -133,6 +136,8 @@ def _string_metadata(record: AgentRecord, key: str) -> str | None:
 
 def _versions(record: AgentRecord, resources: tuple[str, ...]) -> dict[str, str]:
     value = record.metadata.get("post_resource_version_fingerprints")
+    if not isinstance(value, Mapping):
+        value = record.metadata.get("resource_version_fingerprints")
     if not isinstance(value, Mapping):
         return {}
     wanted = set(resources)
@@ -176,7 +181,7 @@ def _receipt_payload(
     if kind == ReceiptKind.RESOURCE_MAP:
         common["state"] = "discovery_consumed"
         common["detail"] = "full discovery listing elided; mapped resources remain named"
-    else:
+    elif kind == ReceiptKind.MUTATION:
         common["state"] = (
             "mutation_represented_by_current_read"
             if exclusion.rule_id == "H2A_WRITE_CURRENT_READ"
@@ -188,6 +193,12 @@ def _receipt_payload(
         if versions:
             common["post_resource_versions"] = versions
         common["detail"] = "original mutation action retained; tool-output payload elided"
+    else:
+        common["state"] = "read_superseded_by_current_version_span"
+        versions = _versions(observation, concrete_resources)
+        if versions:
+            common["resource_versions"] = versions
+        common["detail"] = "original read action retained; older result payload elided"
     return common
 
 
@@ -213,6 +224,8 @@ def _render_receipt(payload: dict[str, object]) -> str:
         fact = f"mutation retained; current read confirms: {resource_text}"
     elif state == "mutation_followed_by_successful_verification":
         fact = f"mutation retained; verification passed for: {resource_text}"
+    elif state == "read_superseded_by_current_version_span":
+        fact = f"older read superseded; later current-version span retained for: {resource_text}"
     else:
         fact = f"mutation retained; output elided by aggressive rule: {resource_text}"
     completeness = payload["output_complete"]

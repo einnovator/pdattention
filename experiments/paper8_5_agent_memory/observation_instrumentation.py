@@ -6,12 +6,12 @@ import hashlib
 import json
 from typing import Any, Mapping
 
-from .dag import (
+from .miniswe_semantics import (
     EffectKind,
     bash_semantics_are_certifiable,
     classify_bash_effect,
+    extract_resource_ids,
 )
-from .recordizer import extract_resource_ids
 
 
 def stable_environment_fingerprint(values: Mapping[str, Any]) -> str:
@@ -38,6 +38,17 @@ def build_bash_observation_metadata(
     timed_out = "TimeoutExpired" in exception_info or "timed out" in exception_info.lower()
     output_truncated = len(raw_output) >= visible_output_limit
     resources = extract_resource_ids(command, "")
+    portable = {
+        "operation_kind": {
+            EffectKind.READ: "read",
+            EffectKind.WRITE: "write",
+            EffectKind.VERIFY: "verify",
+            EffectKind.PURE: "other",
+            EffectKind.UNKNOWN: "unknown",
+            EffectKind.DELETE: "write",
+        }[kind],
+        "tool_category": "bash",
+    }
     pre_versions = dict(pre_state.get("resource_version_fingerprints") or {})
     post_versions = dict(post_state.get("resource_version_fingerprints") or {})
     workspace_pre = pre_state.get("workspace_version_fingerprint")
@@ -75,6 +86,7 @@ def build_bash_observation_metadata(
         and not output_truncated
     )
     return {
+        **portable,
         "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
         "cwd": cwd,
         "return_code": return_code,

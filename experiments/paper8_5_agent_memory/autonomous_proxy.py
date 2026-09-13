@@ -35,7 +35,15 @@ from .negative_selection import (
     classify_bash_operation,
     reacquired_excluded_resources,
 )
-from .recordizer import extract_resource_ids, recordize_minisweagent_messages
+from .negative_receipts import (
+    NegativeRealizationMode,
+    realize_negative_receipts,
+)
+from .recordizer import extract_resource_ids
+from .recordizer import annotate_minisweagent_messages
+from pra_hf.agent_history import OpenAIRecordizer
+from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
+from pra_hf.mediation import RequestMediator, WireAgentMemoryPlan
 from .selectors import FullHistorySelector, TokenCounter, whitespace_tokens
 from .serialization import serialize_materialized_messages
 
@@ -233,6 +241,7 @@ class AutonomousSelectionConfig:
     tokenizer_identity: str = "whitespace_v1_diagnostic"
     task_id: str = "unassigned"
     require_exact_sidecars: bool = True
+    negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
 
     def __post_init__(self) -> None:
         if self.policy != "full" and self.policy not in NEGATIVE_POLICY_RULES:
@@ -251,6 +260,15 @@ class AutonomousSelectionConfig:
             raise ValueError("max_completion_tokens must be positive")
         if self.policy == "full" and self.materialization_mode != MaterializationMode.WHOLE_RECORD:
             raise ValueError("FULL is an exact ordinary-text control and cannot compact records")
+        if self.policy == "full" and self.negative_realization != NegativeRealizationMode.DROP:
+            raise ValueError("FULL cannot use a negative-selection realization")
+        if (
+            self.policy == "task_aware_progress_spine_v4"
+            and self.negative_realization != NegativeRealizationMode.OBSERVATION_RECEIPT
+        ):
+            raise ValueError(
+                "task_aware_progress_spine_v4 requires observation_receipt realization"
+            )
 
     def selector(self):
         if self.policy == "full":
@@ -295,7 +313,17 @@ def transform_autonomous_payload(
     selector_messages, sidecar_join = join_instrumentation_sidecars(
         messages, instrumentation_root
     )
-    history = recordize_minisweagent_messages(selector_messages)
+    typed_selector_messages = annotate_minisweagent_messages(selector_messages)
+    recordization = OpenAIRecordizer().recordize(
+        typed_selector_messages,
+        request_metadata={"session_id": config.task_id},
+    )
+    if not recordization.exact:
+        raise AssertionError(
+            "mini-swe compatibility adapter emitted ambiguous typed records: "
+            + ", ".join(recordization.ambiguity_reasons)
+        )
+    history = recordization.history
     full_tokens = sum(count_tokens(row.content) for row in history.records)
     budget_tokens = max(1, math.ceil(full_tokens * config.budget_fraction))
     sidecar_exact = sidecar_join["status"] in {"exact", "empty_exact"}
@@ -324,6 +352,15 @@ def transform_autonomous_payload(
         query=_query(messages),
         count_tokens=count_tokens,
     )
+    receipt_realization = None
+    if config.negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT:
+        receipt_realization = realize_negative_receipts(
+            history,
+            plan,
+            materialized,
+            count_tokens=count_tokens,
+        )
+        materialized = receipt_realization.materialized
 
     all_record_ids = tuple(row.record_id for row in history.records)
     exact_logical_noop = (
@@ -334,6 +371,17 @@ def transform_autonomous_payload(
             for row in materialized.records
         )
     )
+    wire_plan = WireAgentMemoryPlan(
+        schema_version=1,
+        policy=config.policy,
+        selected_record_ids=tuple(row.record_id for row in materialized.records),
+        record_replacements={
+            row.record_id: row.content
+            for row in materialized.records
+            if row.content != history.record_by_id[row.record_id].content
+        },
+        source_history_digest=history.digest,
+    )
     # FULL is the behavioral control.  A negative policy that currently has
     # nothing to remove must be the same control too: retain every incoming
     # message dictionary instead of silently changing the request envelope by
@@ -343,7 +391,42 @@ def transform_autonomous_payload(
     if config.policy == "full" or exact_logical_noop:
         selected_messages = messages
     else:
-        selected_messages = serialize_materialized_messages(history, materialized)
+        # Realize the frozen logical plan through the same common mediator used
+        # by external gateways and embedded runtimes.  The mini-swe adapter is
+        # used only to create typed input; plan consumption is agent-neutral.
+        mediated_request = PRAWireRequest(
+            model=str(payload.get("model") or config.expected_model or "model"),
+            messages=tuple(typed_selector_messages),
+            session_id=config.task_id,
+            metadata={"agent_memory_plan": wire_plan.to_dict()},
+        )
+        mediated = RequestMediator({
+            "location": "embedded",
+            "mode": "auto",
+            "history_selection": {
+                "mode": "active",
+                "policy": config.policy,
+            },
+            "result_compaction": (
+                "active" if wire_plan.record_replacements else "off"
+            ),
+            "tool_disclosure": "off",
+        }).prepare(
+            mediated_request,
+            PRAEngineCapabilities(
+                adapter="paper8.5-logical-consumer",
+                integration_level="E1",
+                logical_refs=True,
+                typed_records=True,
+            ),
+        )
+        selected_messages = [
+            {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
+            for row in mediated.request.messages
+        ]
+        legacy_projection = serialize_materialized_messages(history, materialized)
+        if selected_messages != legacy_projection:
+            raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
     selected_ids = set(plan.selected_record_ids)
     immutable_ids = {
         row.record_id for row in history.records
@@ -371,6 +454,8 @@ def transform_autonomous_payload(
         "policy": config.policy,
         "plan_policy": plan.policy,
         "plan_digest": plan.digest,
+        "wire_plan_digest": wire_plan.digest,
+        "wire_plan": wire_plan.to_dict(),
         "request_input_sha256": _digest(messages),
         "selected_messages_sha256": _digest(selected_messages),
         "request_message_roles": [str(row.get("role", "")) for row in messages],
@@ -402,12 +487,33 @@ def transform_autonomous_payload(
         "excluded_tokens": excluded_tokens,
         "excluded_causal_group_count": len(plan.exclusions),
         "exclusions": [asdict(row) for row in plan.exclusions],
+        "negative_realization": config.negative_realization.value,
+        "receipt_count": (
+            len(receipt_realization.receipts) if receipt_realization is not None else 0
+        ),
+        "receipt_tokens": (
+            receipt_realization.receipt_tokens if receipt_realization is not None else 0
+        ),
+        "receipt_token_saving": (
+            receipt_realization.receipt_token_saving
+            if receipt_realization is not None else 0
+        ),
+        "receipt_fail_closed_group_ids": (
+            list(receipt_realization.fail_closed_group_ids)
+            if receipt_realization is not None else []
+        ),
         "observation_metadata_coverage": {
             "observation_records": len(observations),
             "complete_status_records": completeness_rows,
             "resource_version_records": version_rows,
         },
         "instrumentation_sidecar_join": sidecar_join,
+        "recordization": {
+            "source": recordization.source,
+            "explicit_records": recordization.explicit_records,
+            "inferred_records": recordization.inferred_records,
+            "ambiguity_reasons": list(recordization.ambiguity_reasons),
+        },
         "selection_abstained_for_sidecar": selection_abstained,
     }
     return AutonomousTransformation(transformed, plan, materialized.materialized_tokens, trace)

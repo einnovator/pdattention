@@ -1,0 +1,29 @@
+pra:
+  mediation:
+    location: embedded
+    mode: auto
+    strict_typed_contract: true
+    record_inference:
+      enabled: true
+      profile: openai-standard-v1
+    history_selection:
+      mode: shadow
+      policy: task-aware-progress-spine-v4
+      head_turns: 2
+      tail_turns: 4
+      unknown_effect: retain_full
+      options:
+        retention_fraction: 0.90
+        same_span_reads_to_keep: 1
+        apply_middle_budget: true
+    result_compaction:
+      mode: shadow
+      size_gate: tokenizer_exact
+      preserve_exact_backing: true
+    tool_disclosure:
+      mode: shadow
+      profile: planning
+      max_tools: 10
+    idempotency:
+      prevent_double_mediation: true
+      on_conflict: skip_identical

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
-import hashlib
-import re
 from typing import Callable, Iterable, Mapping
+
+from pra_hf.tool_semantics import OperationKind, ResourceAccess
 
 from .model import (
     AgentMemoryBudget,
@@ -23,17 +23,15 @@ from .model import (
     AgentTurn,
     CanonicalAgentHistory,
 )
-from .recordizer import extract_resource_ids
+from .miniswe_semantics import (
+    classify_bash_operation,
+    extract_resource_ids,
+    normalize_resource as _normalize_resource,
+    search_signature as _search_signature,
+)
 from .selectors import FullHistorySelector, TokenCounter, whitespace_tokens
 
-
-class BashOperation(str, Enum):
-    SEARCH_DISCOVERY = "search_discovery"
-    READ = "read"
-    WRITE = "write"
-    DIFF = "diff"
-    VERIFY = "verify"
-    OTHER = "other"
+BashOperation = OperationKind
 
 
 class NegativeRule(str, Enum):
@@ -47,6 +45,12 @@ class NegativeRule(str, Enum):
 
 
 NEGATIVE_POLICY_RULES: Mapping[str, tuple[NegativeRule, ...]] = {
+    "task_aware_progress_spine_v4": (
+        NegativeRule.H1_ALL_BRANCHES_CONSUMED,
+        NegativeRule.H2A_WRITE_CURRENT_READ,
+        NegativeRule.H2B_VERIFIED_WRITE,
+        NegativeRule.H3_READ_SUPERSEDED,
+    ),
     "h1_search_consumed": (NegativeRule.H1_SEARCH_CONSUMED,),
     "h1_all_branches_consumed_strict": (
         NegativeRule.H1_ALL_BRANCHES_CONSUMED,
@@ -109,21 +113,11 @@ class NegativeSelectionConfig:
 
 
 @dataclass(frozen=True)
-class ResourceAccess:
-    resource_id: str
-    version: str
-    span_kind: str
-    span_start: int | None = None
-    span_end: int | None = None
-    signature: str | None = None
-
-
-@dataclass(frozen=True)
 class TurnSemantics:
     turn: AgentTurn
     action: AgentRecord
     observations: tuple[AgentRecord, ...]
-    operation: BashOperation
+    operation: OperationKind
     accesses: tuple[ResourceAccess, ...]
     discovered_resources: tuple[str, ...]
     changed_resources: tuple[str, ...]
@@ -137,47 +131,6 @@ class TurnSemantics:
         return tuple(dict.fromkeys(values))
 
 
-_SEARCH = re.compile(
-    r"(?:^|[;&|]\s*)(?:find\b|fd\b|rg\s+--files\b|"
-    r"(?:grep|rg)\b[^\n]*(?:\s-(?:[^\s]*l[^\s]*|files-with-matches)\b))"
-)
-_READ = re.compile(r"(?:^|[;&|]\s*)(?:cat|head|tail|less|more|sed\s+-n|grep|rg)\b")
-_WRITE = re.compile(
-    r"(?:apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
-    r"(?:write_text|write_bytes|open\([^)]*,\s*['\"]w)|>{1,2}\s*)"
-)
-_DIFF = re.compile(r"(?:^|[;&|]\s*)git\s+(?:diff|show)\b")
-_VERIFY = re.compile(
-    r"(?:^|[;&|]\s*)(?:pytest|tox|nox|python\s+-m\s+(?:pytest|unittest)|"
-    r"make\s+(?:test|check|lint)|ruff|mypy|npm\s+test|cargo\s+test)\b"
-)
-_SED_SPAN = re.compile(r"sed\s+-n\s+['\"]?(\d+)\s*,\s*(\d+)p")
-_HEAD_SPAN = re.compile(r"head(?:\s+-n)?\s+(\d+)\b")
-_GREP_PATTERN = re.compile(r"(?:grep|rg)\s+(?:-[^\s]+\s+)*(['\"]?[^\s'\"]+['\"]?)")
-
-
-def classify_bash_operation(command: str | None) -> BashOperation:
-    command = command or ""
-    if _WRITE.search(command):
-        return BashOperation.WRITE
-    if _DIFF.search(command):
-        return BashOperation.DIFF
-    if _VERIFY.search(command):
-        return BashOperation.VERIFY
-    if _SEARCH.search(command):
-        return BashOperation.SEARCH_DISCOVERY
-    if _READ.search(command):
-        return BashOperation.READ
-    return BashOperation.OTHER
-
-
-def _normalize_resource(value: str) -> str:
-    value = value.strip("'\"`[](){}:,;").replace("\\", "/")
-    while value.startswith("./"):
-        value = value[2:]
-    return value
-
-
 def _command_resources(command: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(
         normalized
@@ -186,37 +139,53 @@ def _command_resources(command: str | None) -> tuple[str, ...]:
     ))
 
 
-def _metadata_versions(
-    observations: tuple[AgentRecord, ...], key: str
-) -> dict[str, str]:
-    for observation in reversed(observations):
-        value = observation.metadata.get(key)
-        if isinstance(value, Mapping):
-            return {_normalize_resource(str(k)): str(v) for k, v in value.items()}
-    return {}
+def _declared_values(rows: Iterable[AgentRecord], key: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for row in rows:
+        raw = row.metadata.get(key)
+        if isinstance(raw, (list, tuple)):
+            values.extend(_normalize_resource(str(value)) for value in raw)
+    return tuple(dict.fromkeys(value for value in values if value))
 
 
-def _span(command: str, resource: str) -> tuple[str, int | None, int | None, str | None]:
-    if re.search(r"(?:^|[;&|]\s*)cat\b", command):
-        return "whole", None, None, None
-    if match := _SED_SPAN.search(command):
-        return "lines", int(match.group(1)), int(match.group(2)), None
-    if match := _HEAD_SPAN.search(command):
-        return "lines", 1, int(match.group(1)), None
-    if re.search(r"(?:^|[;&|]\s*)tail\b", command):
-        digest = hashlib.sha256(command.encode()).hexdigest()[:12]
-        return "query", None, None, f"tail:{resource}:{digest}"
-    if re.search(r"(?:^|[;&|]\s*)(?:grep|rg)\b", command):
-        match = _GREP_PATTERN.search(command)
-        query = match.group(1).strip("'\"") if match else command
-        digest = hashlib.sha256(query.encode()).hexdigest()[:12]
-        return "query", None, None, f"grep:{resource}:{digest}"
-    return "unknown", None, None, None
+def _declared_operation(rows: Iterable[AgentRecord]) -> OperationKind:
+    for row in rows:
+        value = row.metadata.get("operation_kind")
+        if value is not None:
+            try:
+                return OperationKind(str(value))
+            except ValueError:
+                return OperationKind.UNKNOWN
+    return OperationKind.UNKNOWN
 
 
-def _search_signature(command: str) -> str:
-    normalized = " ".join(command.split())
-    return "search:" + hashlib.sha256(normalized.encode()).hexdigest()[:12]
+def _declared_accesses(rows: Iterable[AgentRecord]) -> tuple[ResourceAccess, ...]:
+    accesses: list[ResourceAccess] = []
+    for row in rows:
+        value = row.metadata.get("resource_accesses")
+        if not isinstance(value, (list, tuple)):
+            continue
+        for raw in value:
+            if isinstance(raw, Mapping):
+                try:
+                    access = ResourceAccess.from_mapping(raw)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                accesses.append(replace(
+                    access, resource_id=_normalize_resource(access.resource_id)
+                ))
+    # Observation declarations supersede duplicate action declarations.
+    unique: dict[tuple[str, str, int | None, int | None, str | None], ResourceAccess] = {}
+    for access in accesses:
+        key = (
+            access.resource_id,
+            access.span_kind,
+            access.span_start,
+            access.span_end,
+            access.signature,
+        )
+        unique[key] = access
+    return tuple(unique.values())
 
 
 def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
@@ -239,47 +208,35 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
             and row.metadata.get("timed_out") is not True
             for row in observations
         )
-        operation = classify_bash_operation(action.command)
-        resources = _command_resources(action.command)
-        pre_versions = _metadata_versions(observations, "resource_version_fingerprints")
-        post_versions = _metadata_versions(
-            observations, "post_resource_version_fingerprints"
-        )
-        accesses: list[ResourceAccess] = []
-        changed_resources: list[str] = []
-        for resource in resources:
-            if operation == BashOperation.WRITE:
-                version = post_versions.get(resource)
+        declared_rows = (action, *observations)
+        operation = _declared_operation(declared_rows)
+        accesses = list(_declared_accesses(declared_rows))
+        resources = tuple(dict.fromkeys(
+            access.resource_id for access in accesses
+        )) or tuple(dict.fromkeys(
+            _normalize_resource(value)
+            for row in declared_rows for value in row.resource_ids
+        ))
+        if not accesses:
+            accesses = [
+                ResourceAccess(resource, f"inferred-epoch:{epochs.get(resource, 0)}")
+                for resource in resources
+            ]
+        if not observation_complete and operation in {
+            OperationKind.SEARCH_DISCOVERY, OperationKind.READ, OperationKind.DIFF,
+        }:
+            accesses = [replace(
+                access,
+                span_kind="unknown",
+                span_start=None,
+                span_end=None,
+                signature=None,
+            ) for access in accesses]
+        changed_resources = list(_declared_values(declared_rows, "changed_resource_ids"))
+        if operation == OperationKind.WRITE:
+            for resource in resources:
                 epochs[resource] = epochs.get(resource, 0) + 1
-                before = pre_versions.get(resource)
-                if version not in (None, "missing") and version != before:
-                    changed_resources.append(resource)
-            else:
-                version = pre_versions.get(resource)
-            version = version or f"inferred-epoch:{epochs.get(resource, 0)}"
-            kind, start, end, signature = _span(action.command or "", resource)
-            # An explicitly truncated tool result cannot establish whole-file
-            # or complete query coverage.  Missing completeness metadata is
-            # still usable in the labelled heuristic tier, but an observed
-            # negative receipt must fail closed.
-            if not observation_complete and operation in {
-                BashOperation.SEARCH_DISCOVERY,
-                BashOperation.READ,
-                BashOperation.DIFF,
-            }:
-                kind, start, end, signature = "unknown", None, None, None
-            accesses.append(ResourceAccess(resource, version, kind, start, end, signature))
-        discovered = ()
-        if operation == BashOperation.SEARCH_DISCOVERY:
-            output_resources = (
-                _normalize_resource(value)
-                for observation in observations
-                for value in extract_resource_ids(None, observation.content)
-            )
-            discovered = tuple(dict.fromkeys((
-                _search_signature(action.command or ""),
-                *(value for value in output_resources if value),
-            )))
+        discovered = _declared_values(declared_rows, "discovered_resource_ids")
         rows.append(TurnSemantics(
             turn,
             action,

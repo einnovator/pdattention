@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from experiments.paper8_5_agent_memory.tradeoff_curves import (
+    _cluster_bootstrap_mean_ci,
     _strategy_id,
     adaptive_decisions,
     load_autonomous_run,
@@ -208,3 +209,32 @@ def test_autonomous_summary_macro_averages_tasks_not_repeat_runs():
     assert summary["task_count"] == 2
     assert summary["macro_task_resolution"] == pytest.approx(.75)
     assert summary["workload_gross_saving_ratio_of_sums"] == pytest.approx(1 - 370 / 600)
+
+
+def test_adaptive_gate_does_not_count_renamed_same_evidence_as_replication():
+    rows = [
+        {"strategy": "candidate", "strategy_coordinate": "candidate",
+         "strategy_family": "candidate", "cohort": "slice-a",
+         "independence_key": "same-task-full", "saving_fraction": .2,
+         "quality_proxy": .95},
+        {"strategy": "candidate", "strategy_coordinate": "candidate",
+         "strategy_family": "candidate", "cohort": "slice-b",
+         "independence_key": "same-task-full", "saving_fraction": .2,
+         "quality_proxy": .95},
+        {"strategy": "full", "strategy_coordinate": "full",
+         "strategy_family": "full", "cohort": "slice-a",
+         "independence_key": "same-task-full", "saving_fraction": 0,
+         "quality_proxy": 1.0},
+    ]
+
+    decision = adaptive_decisions(
+        rows, low_yield_saving=.02, low_yield_quality=.8,
+        minimum_independent_cohorts_for_promotion=2,
+    )[0]
+
+    assert decision["independent_cohorts"] == 1
+    assert decision["decision"] == "replicate_frozen"
+
+
+def test_task_cluster_bootstrap_treats_single_task_as_one_unit():
+    assert _cluster_bootstrap_mean_ci([.5]) == (.5, .5)

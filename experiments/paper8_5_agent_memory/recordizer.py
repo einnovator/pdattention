@@ -6,6 +6,10 @@ import re
 from typing import Any, Mapping, Sequence
 
 from .model import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
+from .miniswe_semantics import (
+    declared_turn_metadata,
+    extract_resource_ids,
+)
 
 
 _MINISWE_COMMAND_BLOCK = re.compile(
@@ -13,9 +17,6 @@ _MINISWE_COMMAND_BLOCK = re.compile(
 )
 _COMMAND_BLOCK = re.compile(r"```(?:bash)?\s*\n(.*?)\n```", re.DOTALL)
 _RETURN_CODE = re.compile(r"<returncode>(-?\d+)</returncode>")
-_PATH = re.compile(
-    r"(?<![\w.-])(?:\.?\.?/)?(?:[\w.-]+/)*[\w.-]+\.[A-Za-z0-9_+-]+"
-)
 _SOURCE_COMMAND = re.compile(
     r"(?:^|[;&|]\s*)(?:cat|head|tail|less|more|sed\s+-n|rg|grep)\b"
 )
@@ -51,15 +52,6 @@ def _return_code(content: str, message: Mapping[str, Any]) -> int | None:
         return int(extra["returncode"])
     match = _RETURN_CODE.search(content)
     return int(match.group(1)) if match else None
-
-
-def extract_resource_ids(command: str | None, content: str) -> tuple[str, ...]:
-    values: list[str] = []
-    for value in _PATH.findall("\n".join(part for part in (command, content) if part)):
-        normalized = value.rstrip(":,;)")
-        if normalized not in values:
-            values.append(normalized)
-    return tuple(values[:32])
 
 
 def _assistant_roles(command: str | None, content: str) -> tuple[AgentRecordRole, ...]:
@@ -148,11 +140,13 @@ def recordize_minisweagent_messages(
             }
             last_command = _command(content)
             roles = _assistant_roles(last_command, content)
+            portable = declared_turn_metadata(command=last_command)
             records.append(AgentRecord(
                 record_id, turn_id, group_id, index, role, content,
                 AgentRecordRole.ASSISTANT_ACTION, roles,
                 command=last_command,
                 resource_ids=extract_resource_ids(last_command, content),
+                metadata=portable,
             ))
             continue
 
@@ -176,6 +170,11 @@ def recordize_minisweagent_messages(
         roles = _observation_roles(last_command, content, return_code)
         extra = message.get("extra")
         extra = extra if isinstance(extra, Mapping) else {}
+        portable = declared_turn_metadata(
+            command=last_command,
+            observation_content=content,
+            observation_metadata=extra,
+        )
         primary = (
             AgentRecordRole.ERROR_OR_REJECTION
             if AgentRecordRole.ERROR_OR_REJECTION in roles
@@ -198,6 +197,7 @@ def recordize_minisweagent_messages(
             return_code=return_code,
             resource_ids=extract_resource_ids(last_command, content),
             metadata={
+                **portable,
                 "observation_for_command": last_command,
                 "cwd": extra.get("cwd"),
                 "environment_fingerprint": extra.get("environment_fingerprint"),
@@ -230,3 +230,38 @@ def recordize_minisweagent_messages(
         for row in turn_rows
     )
     return CanonicalAgentHistory(tuple(records), turns)
+
+
+def annotate_minisweagent_messages(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project mini-swe-agent traffic into the portable ``pra_record`` schema.
+
+    This compatibility adapter is evaluation-side code.  The common PRA
+    mediator subsequently consumes the same typed schema used by standard
+    OpenAI tools or any other agent; no Bash or mini-swe syntax enters the
+    selector, gateway, runtime, or engine.
+    """
+
+    history = recordize_minisweagent_messages(messages)
+    by_index = {record.message_index: record for record in history.records}
+    annotated: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        copied = dict(message)
+        record = by_index[index]
+        metadata = dict(copied.get("metadata") or {})
+        metadata["pra_record"] = {
+            "schema_version": 1,
+            "record_id": record.record_id,
+            "turn_id": record.turn_id,
+            "causal_group_id": record.causal_group_id,
+            "primary_role": record.primary_role.value,
+            "semantic_roles": [role.value for role in record.semantic_roles],
+            "command": record.command,
+            "return_code": record.return_code,
+            "resource_ids": list(record.resource_ids),
+            "metadata": dict(record.metadata),
+        }
+        copied["metadata"] = metadata
+        annotated.append(copied)
+    return annotated
