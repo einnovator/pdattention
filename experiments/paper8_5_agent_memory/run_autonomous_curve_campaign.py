@@ -210,6 +210,8 @@ def _command(
         ))
     if args.docker_executable:
         command.extend(("--docker-executable", args.docker_executable))
+    if args.docker_platform:
+        command.extend(("--docker-platform", args.docker_platform))
     for value in args.pythonpath:
         command.extend(("--pythonpath", value))
     if args.skip_grading:
@@ -317,6 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-base-url", required=True)
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--docker-executable")
+    parser.add_argument("--docker-platform")
     parser.add_argument("--pythonpath", action="append", default=[])
     parser.add_argument("--task-index", type=int, action="append")
     parser.add_argument("--arm-id", action="append")
