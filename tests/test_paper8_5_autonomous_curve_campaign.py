@@ -1,9 +1,15 @@
+import json
+from pathlib import Path
+
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     _retry_path,
     adaptive_gate,
     campaign_cells,
     write_curve_spec,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _spec():
@@ -72,7 +78,6 @@ def test_curve_spec_pairs_candidates_only_after_two_controls(tmp_path):
               "arm_id": "dag", "output": str(tmp_path / "c")},
     }}
     path = write_curve_spec(state, tmp_path)
-    import json
     value = json.loads(path.read_text())
     assert {row["candidate"] for row in value["autonomous_pairs"]} == {"b", "c"}
     assert all(row["baseline"] == "a" for row in value["autonomous_pairs"])
@@ -86,3 +91,34 @@ def test_retry_path_preserves_incomplete_attempt(tmp_path):
     assert _retry_path(base) == tmp_path / "arm__retry01"
     (tmp_path / "arm__retry01").mkdir()
     assert _retry_path(base) == tmp_path / "arm__retry02"
+
+
+def test_long5_card_is_the_predeclared_top_five_success_workloads():
+    card = json.loads((
+        ROOT / "experiments/paper8_5_agent_memory/benchmarks/"
+        "easy14_longest_success5.json"
+    ).read_text())
+    parent = json.loads((
+        ROOT / "experiments/paper4_5_agent/benchmarks/"
+        "swebench_verified_easy50_baseline_success14.json"
+    ).read_text())
+    rows = [
+        json.loads(line) for line in (
+            ROOT / "docs/papers/shared/results/paper4_5_runtime_productization/"
+            "coding_agents/swebench_verified_easy50/no_pra/results.jsonl"
+        ).read_text().splitlines() if line.strip()
+    ]
+    success = set(parent["instance_ids"])
+    ranked = sorted(
+        (row for row in rows if row["instance_id"] in success),
+        key=lambda row: int(row["cumulative_prompt_tokens"]), reverse=True,
+    )[:5]
+    assert card["instance_ids"] == [row["instance_id"] for row in ranked]
+    assert card["baseline_ranking"] == [
+        {
+            "instance_id": row["instance_id"],
+            "cumulative_prompt_tokens": row["cumulative_prompt_tokens"],
+            "model_call_count": row["model_call_count"],
+        }
+        for row in ranked
+    ]
