@@ -98,7 +98,10 @@ def adaptive_gate(
     arm_results: Sequence[Mapping[str, Any]], thresholds: Mapping[str, Any]
 ) -> tuple[str, str]:
     completed = [row for row in arm_results if row.get("status") == "complete"]
-    grade_valid = [row for row in completed if not row.get("official_error", False)]
+    grade_valid = [
+        row for row in completed
+        if isinstance(row.get("official_resolved"), bool)
+    ]
     failures = sum(row.get("official_resolved") is False for row in grade_valid)
     if failures >= int(thresholds.get("stop_after_failures", 2)):
         return "stop", f"{failures} official failures reached the stop boundary"

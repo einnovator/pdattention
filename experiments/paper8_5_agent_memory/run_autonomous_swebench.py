@@ -370,7 +370,9 @@ def summarize_trace(path: Path) -> dict[str, Any]:
     }
 
 
-def _official_report(output: Path, run_id: str, instance_id: str) -> dict[str, Any]:
+def _official_report(
+    output: Path, run_id: str, instance_id: str, *, grader_log: Path | None = None,
+) -> dict[str, Any]:
     matches = sorted(output.glob(f"*.{run_id}.json"))
     if len(matches) != 1:
         raise RuntimeError(f"expected one official report for {run_id}, found {len(matches)}")
@@ -379,12 +381,24 @@ def _official_report(output: Path, run_id: str, instance_id: str) -> dict[str, A
     if submitted != {instance_id}:
         raise RuntimeError("official grader report does not match the locked single task")
     resolved = instance_id in set(raw.get("resolved_ids") or ())
+    error = instance_id in set(raw.get("error_ids") or ())
+    failure_class = None
+    if error:
+        grader_text = (
+            grader_log.read_text(encoding="utf-8", errors="replace")
+            if grader_log is not None and grader_log.is_file() else ""
+        )
+        failure_class = (
+            "patch_apply_failed" if "Patch Apply Failed" in grader_text
+            else "grader_reported_error"
+        )
     return {
         "official_grader": True,
         "instance_id": instance_id,
         "resolved": resolved,
         "score": 1.0 if resolved else 0.0,
-        "error": instance_id in set(raw.get("error_ids") or ()),
+        "error": error,
+        "failure_class": failure_class,
         "raw_report": str(matches[0]),
     }
 
@@ -597,7 +611,9 @@ def run(args: argparse.Namespace) -> Path:
             timeout_seconds=args.timeout_seconds,
             cwd=output,
         )
-        result = _official_report(output, args.run_id, instance_id)
+        result = _official_report(
+            output, args.run_id, instance_id, grader_log=output / "grader.log",
+        )
         result["grader_wall_time_seconds"] = grader_wall_time
     except Exception as error:
         prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
@@ -635,7 +651,8 @@ def run(args: argparse.Namespace) -> Path:
                 cwd=output,
             )
             auxiliary_result = _official_report(
-                output, auxiliary_run_id, instance_id
+                output, auxiliary_run_id, instance_id,
+                grader_log=output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}_grader.log",
             )
             auxiliary_result.update({
                 "outcome_label": AUXILIARY_WORKSPACE_STATE_LABEL,

@@ -61,7 +61,7 @@ def test_adaptive_gate_stops_two_failures():
     assert result[0] == "stop"
 
 
-def test_adaptive_gate_does_not_treat_grader_errors_as_task_failures():
+def test_adaptive_gate_counts_definitive_grader_errors_as_task_failures():
     result = adaptive_gate(
         [
             {"status": "complete", "official_resolved": False,
@@ -71,7 +71,7 @@ def test_adaptive_gate_does_not_treat_grader_errors_as_task_failures():
         ],
         {"stop_after_failures": 2, "minimum_tasks_before_accuracy_gate": 1},
     )
-    assert result[0] == "continue"
+    assert result[0] == "stop"
 
 
 def test_adaptive_gate_stops_low_yield_and_low_accuracy():

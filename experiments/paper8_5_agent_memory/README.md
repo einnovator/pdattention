@@ -349,9 +349,10 @@ trajectory agreement is emitted as its own control table rather than being
 attributed to a selection policy. The divergence curve charges only saving on
 requests strictly before the first changed action, and overlapping suffix and
 full-trajectory frozen cohorts are collapsed to the broadest coverage for
-adaptive decisions. Official grader errors remain visible as infrastructure
-outcomes but are excluded from accuracy denominators, task-failure stopping
-gates, and efficiency-qualified pairs.
+adaptive decisions. Grader-reported malformed-patch/apply errors remain task
+failures when the official report supplies a definitive Boolean grade. Only a
+run without a definitive grade is excluded from accuracy denominators,
+task-failure stopping gates, and efficiency-qualified pairs.
 
 For a failed frozen policy decision, generate a one-group-at-a-time oracle
 diagnostic queue with:

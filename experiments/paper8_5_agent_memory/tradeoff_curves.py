@@ -245,6 +245,17 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
     usage_coverage = int(metrics.get("reported_usage_coverage_calls") or 0)
     completion_tokens = int(metrics.get("cumulative_reported_completion_tokens") or 0)
     official_error = bool(official.get("error", False)) if official else False
+    grader_log = path / "grader.log"
+    grader_text = (
+        grader_log.read_text(encoding="utf-8", errors="replace")
+        if grader_log.is_file() else ""
+    )
+    failure_class = official.get("failure_class")
+    if not failure_class and official_error:
+        failure_class = (
+            "patch_apply_failed" if "Patch Apply Failed" in grader_text
+            else "grader_reported_error"
+        )
     if not isinstance(official.get("resolved"), bool):
         raise ValueError(f"{metrics_path}: missing completed official result")
     if full_tokens <= 0 or materialized_tokens < 0:
@@ -304,11 +315,15 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         "official_resolved": bool(official.get("resolved")) if official else None,
         "official_error": official_error if official else None,
         "official_score": (
-            None if official_error else bool(official.get("resolved"))
+            bool(official.get("resolved"))
+            if isinstance(official.get("resolved"), bool) else None
         ) if official else None,
+        "official_failure_class": failure_class,
         "official_outcome": (
-            "grader_error"
-            if official and bool(official.get("error", False))
+            "patch_apply_failed"
+            if official and failure_class == "patch_apply_failed"
+            else "grader_error"
+            if official and official_error
             else "resolved"
             if official and bool(official.get("resolved"))
             else "unresolved"
@@ -597,8 +612,6 @@ def _strip_trace(row: Mapping[str, Any]) -> dict[str, Any]:
 def _official_quality(row: Mapping[str, Any]) -> bool | None:
     """Return a grade only when the official grader produced a valid outcome."""
 
-    if row.get("official_error"):
-        return None
     if "official_score" in row:
         value = row.get("official_score")
         return bool(value) if value is not None else None
@@ -1058,7 +1071,7 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "paired_total_model_token_saving": "one minus candidate / paired FULL for materialized input plus endpoint-reported completion tokens; emitted only with complete usage coverage",
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
-            "grader_errors": "official grader errors are reported but excluded from accuracy denominators and cannot efficiency-qualify a pair",
+            "grader_errors": "a definitive Boolean unresolved grade remains a task failure, including malformed-patch/apply errors; only runs lacking a definitive Boolean grade are excluded",
             "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",
             "frozen_independence": "unique task/model/trajectory identity, not analyst cohort label; overlapping suffixes are collapsed to broadest coverage",
             "pre_divergence_saving": "cumulative saving over requests strictly before the first divergent action; the divergent request itself is excluded",

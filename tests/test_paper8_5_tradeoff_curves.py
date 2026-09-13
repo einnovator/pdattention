@@ -91,13 +91,17 @@ def test_loader_separates_grader_error_from_ordinary_unresolved(tmp_path):
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["official_result"]["error"] = True
     metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+    (path / "grader.log").write_text(
+        "task: >>>>> Patch Apply Failed: invalid patch", encoding="utf-8"
+    )
 
     loaded = load_autonomous_run(path)
 
     assert loaded["official_resolved"] is False
     assert loaded["official_error"] is True
-    assert loaded["official_score"] is None
-    assert loaded["official_outcome"] == "grader_error"
+    assert loaded["official_score"] is False
+    assert loaded["official_failure_class"] == "patch_apply_failed"
+    assert loaded["official_outcome"] == "patch_apply_failed"
 
 
 def test_pair_marks_early_termination_as_divergence_and_failed_efficiency(tmp_path):
