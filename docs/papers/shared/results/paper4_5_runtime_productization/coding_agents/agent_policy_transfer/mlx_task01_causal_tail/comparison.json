@@ -1,0 +1,50 @@
+{
+  "schema_version": "paper4.5.agent-policy-transfer.v1",
+  "recorded_at": "2026-09-13",
+  "engine": "mlx-lm",
+  "instance_id": "django__django-15277",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "temperature": 0,
+  "plain_pra100_reference": {
+    "artifact": "../../engine_agent_gates/mlx_task01_qwen25coder14b/gate.json",
+    "plain_resolved": true,
+    "pra100_resolved": true,
+    "pra100_exact_action_trajectory": true,
+    "calls": 6,
+    "patch_bytes": 1165
+  },
+  "task_aware_pra90_reference": {
+    "artifact": "../../engine_agent_gates/mlx_task01_qwen25coder14b/gate.json",
+    "resolved": true,
+    "calls": 6,
+    "aggregate_logical_retention_fraction": 0.9781390134529148,
+    "first_action_divergence": 6,
+    "selected_history_reencoded_tokens": 0,
+    "physical_selected_history_kv_copy_bytes": 0
+  },
+  "paper8_5_causal_tail_pra90": {
+    "selection_policy": "paper8.5-matched-causal-token-tail-v1",
+    "selection_contract": "frozen-agent-memory-plan-v1",
+    "pra_source_revision": "d282eddae06453096f24d0b0131fc3afb6ffc74e",
+    "official_resolved": false,
+    "calls": 9,
+    "first_action_divergence": 3,
+    "termination_reason": "Submitted",
+    "aggregate_logical_retention_fraction": 0.8957109608777568,
+    "estimated_token_saving_fraction": 0.10428903912224316,
+    "engine_history_kv_retention_fraction_min": 0.8371802869619464,
+    "engine_history_kv_retention_fraction_max": 1.0,
+    "sparse_requests": 7,
+    "selected_history_reencoded_tokens": 0,
+    "physical_selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "total_kv_copy_bytes": 15434317824,
+    "canonical_suffix_graft_device_copy_bytes": 197197824,
+    "consumer_temporary_bytes": 10402709504,
+    "consumer_temporary_peak_bytes": 2286600192,
+    "patch_bytes": 94017,
+    "patch_lines": 2544
+  },
+  "classification": "policy_quality_negative_after_exact_pra100_engine_gate",
+  "claim_boundary": "The causal-tail and task-aware PRA90 arms do not have a matched realized-retention budget, so this receipt does not establish structural policy superiority or a timing comparison. It shows that the frozen causal tail transfers through the corrected native MLX path without selected-history re-encoding, while losing the task trajectory and final solve at its realized retention."
+}

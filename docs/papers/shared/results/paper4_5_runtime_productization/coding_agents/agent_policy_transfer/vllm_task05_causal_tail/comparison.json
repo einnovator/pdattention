@@ -1,0 +1,53 @@
+{
+  "schema_version": "paper4.5.agent-policy-transfer.v1",
+  "recorded_at": "2026-09-13",
+  "engine": "vllm",
+  "instance_id": "pytest-dev__pytest-7982",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+  "temperature": 0,
+  "plain_pra100_reference": {
+    "artifact": "gate.json",
+    "plain_resolved": true,
+    "pra100_resolved": true,
+    "pra100_exact_action_trajectory": true,
+    "calls": 15,
+    "patch_bytes": 475
+  },
+  "task_aware_pra90_reference": {
+    "artifact": "../../engine_agent_gates/vllm_task05_qwen25coder7b/gate.json",
+    "resolved": false,
+    "calls": 15,
+    "first_action_divergence": 6,
+    "termination_reason": "Submitted",
+    "aggregate_logical_retention_fraction": 0.9424,
+    "selected_history_reencoded_tokens": 0,
+    "physical_selected_history_kv_copy_bytes": 0
+  },
+  "paper8_5_causal_tail_pra90": {
+    "selection_policy": "paper8.5-matched-causal-token-tail-v1",
+    "selection_contract": "frozen-agent-memory-plan-v1",
+    "runner_source_revision": "1dd52fb3",
+    "engine_source_revision": "2c1a14a7",
+    "official_resolved": false,
+    "calls": 28,
+    "first_action_divergence": 3,
+    "termination_reason": "ContextWindowExceededError",
+    "aggregate_logical_retention_fraction": 0.8804650558053281,
+    "estimated_token_saving_fraction": 0.11953494419467198,
+    "logical_retention_fraction_min": 0.7994530537830447,
+    "logical_retention_fraction_max": 1.0,
+    "engine_history_kv_retention_fraction_min": 0.7829457364341085,
+    "engine_history_kv_retention_fraction_max": 1.0,
+    "sparse_requests": 26,
+    "selected_history_reencoded_tokens": 0,
+    "physical_selected_history_kv_copy_bytes": 0,
+    "host_to_device_bytes": 0,
+    "total_kv_copy_bytes": 0,
+    "consumer_temporary_bytes": 903772160,
+    "consumer_temporary_peak_bytes": 148922880,
+    "patch_bytes": 0,
+    "bounded_context_exhaustion_admitted": true
+  },
+  "classification": "policy_quality_negative_after_exact_pra100_engine_gate",
+  "claim_boundary": "The task-aware and causal-tail PRA90 arms do not have a matched realized-retention budget. The causal-tail result nevertheless shows a stronger failure mode: after the exact PRA100 engine gate it diverges at action 3, repeats an irrelevant symlink setup action, and exhausts the fixed 8192-token context at 28 calls with zero selected-history re-encoding or K/V copy. This is policy-induced bounded task failure, not an engine correctness failure."
+}

@@ -65,6 +65,13 @@ The implementation adds:
   the same commands and patch. Their selected-history re-encoding, physical
   K/V copy, and H2D are zero; suffix-graft, lifecycle-copy, and consumer-
   temporary bytes remain separately reported;
+- a frozen Paper 8.5 causal-tail transfer on the already-qualified MLX Task-01
+  and vLLM Task-05 pairs. Both native engines preserve zero selected-history
+  re-encoding/copy, but both tasks fail: MLX diverges at action 3 and submits a
+  94 KB patch after nine calls at 89.57% logical retention; vLLM diverges at
+  action 3, loops to 28 calls, and reaches its fixed 8,192-token context bound
+  at 88.05% retention. These are policy-quality negatives, not engine-gate
+  regressions, and the unmatched retention budgets do not rank selectors;
 - a corrected HF CUDA same-resident-state gate whose seven-turn PRA-100 dense
   no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
   interval packing, and H2D remain zero; measurement-only cache forks are
@@ -213,7 +220,9 @@ records, reusable toolsets, local persistence, and per-call write authorization.
 Paper 8.5 separately owns engine-independent agent-memory selection, exclusion,
 oracle, and logical task-efficiency experiments. Paper 4.5 imports a frozen
 policy only to test engine semantic parity, lifecycle, task outcomes, and
-resource accounting; current Paper 8.5 screens do not establish a policy winner.
+resource accounting. The first native causal-tail transfer is negative on MLX
+and vLLM, so Paper 4.5 keeps its task-aware progress-spine policy while Paper
+8.5 continues matched-budget oracle and exclusion-policy work.
 
 Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
 OpenAI-compatible streaming; request-owned references remain active until decode

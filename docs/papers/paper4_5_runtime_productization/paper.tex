@@ -3593,6 +3593,36 @@ PRA-90 arm records \texttt{3a37ed22}.  The receipt therefore supports the
 post-fix policy-quality result and byte counters, but not a cross-arm timing
 claim.
 
+We then transferred Paper~8.5's matched causal-tail control without importing
+its text-only observation-boundary trimming: native K/V selection admits only
+whole causal records under the exact token ceiling.  This control is negative
+on both qualified engines tested.  On MLX Task~01 it diverges at action~3 and
+grades 0/1 after nine calls, versus the six-call plain/PRA-100 trajectory.  It
+retains 89.57\% of logical context (10.43\% estimated saving), re-encodes and
+copies zero selected-history K/V bytes, but accumulates 15.43~GB of lifecycle
+K/V copies and 10.40~GB of consumer temporaries (2.29~GB peak), then submits a
+94,017-byte patch rather than the 1,165-byte reference.  On vLLM Task~05 it
+also diverges at action~3, repeatedly recreates the same symlink experiment,
+and reaches the fixed 8,192-token context bound after 28 calls; the rejected
+request contains 8,234 input tokens.  Official grading records 0/1 with an
+empty patch.  Aggregate logical retention is 88.05\% (11.95\% estimated
+saving), while selected-history re-encoding, physical K/V copy, total K/V copy,
+and H2D remain zero; consumer temporaries total 903.8~MB with a 148.9~MB peak.
+The reducer now treats this post-trajectory context exhaustion like the frozen
+step/time limits---an explicitly labelled bounded task failure---rather than an
+infrastructure-invalid row.
+
+These transfers strengthen the ownership boundary rather than select a new
+runtime default.  The earlier task-aware MLX arm solves in six calls at 97.81\%
+retention, whereas its causal-tail transfer fails at a materially lower
+retention; vLLM's two 90\% policies both fail, but the causal tail doubles the
+call count before exhaustion.  Because those realized budgets are unmatched,
+the receipts do not prove structural superiority of either selector.  They do
+show that simple recency can discard the agent's progress spine even when the
+native engine consumes the selected K/V exactly.  Paper~4.5 therefore retains
+the task-aware progress-spine policy for subsequent engine work; matched-budget
+oracle and exclusion-policy development remains in Paper~8.5.
+
 The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
 smoke.  The model returns the frozen
 ``OK'' then ``DONE'' responses, the second prompt extends the resident source,
@@ -4534,7 +4564,13 @@ same patch, while selected-history re-encoding, physical K/V copy, and H2D
 remain zero.  Its corrected PRA-90 run is a valid policy-quality negative:
 0/1 after 15 calls, first divergence at action 6, 94.24\% aggregate retention,
 and an empty patch, again with zero selected-history re-encoding, K/V copy, or
-H2D.  It is not yet a general product path: multiprocess execution, hybrid K/V
+H2D.  Importing Paper~8.5's causal-tail control does not improve this frontier:
+it fails MLX Task~01 after nine calls and vLLM Task~05 after 28 calls, despite
+zero selected-history re-encoding/copy on both engines.  The latter terminates
+at bounded context exhaustion after a repeated-action loop.  This separates a
+portable native-K/V mechanism from an unqualified agent-memory policy and
+keeps task-aware progress state in the current runtime default.  The vLLM path
+is not yet general: multiprocess execution, hybrid K/V
 groups, partial pages, and runtime economics remain open.
 MLX and SGLang
 now consume the canonical source plus interval descriptors through one fused
@@ -4877,6 +4913,9 @@ agent-visible Selected Context proxy with per-request budget telemetry\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/}
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\
+\path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/agent_policy_transfer/}
+& Frozen Paper~8.5 causal-tail transfer receipts, official outcomes, interaction
+histories, and logical-versus-physical K/V accounting\\
 \path{experiments/paper4_5_agent/summarize_baseline.py} & Wilson uncertainty,
 trajectory distributions, and explicit insufficient-cohort gate\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/rag/paper3_2_runtime_policy.json}
