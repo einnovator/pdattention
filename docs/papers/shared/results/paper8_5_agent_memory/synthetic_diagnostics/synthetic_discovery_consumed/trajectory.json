@@ -1,0 +1,200 @@
+{
+  "instance_id": "synthetic_discovery_consumed",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a coding agent. Inspect the repository, make the smallest correct change, verify it, and emit exactly one command in a ```mswea_bash_command``` block per turn."
+    },
+    {
+      "role": "user",
+      "content": "In src/normalize.py, make normalize_name strip surrounding whitespace and lowercase the result. Run tests/test_normalize.py."
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Locate the candidate Python files.\n```mswea_bash_command\nfind src -name '*.py' -type f\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\nsrc/normalize.py\nsrc/legacy_normalize.py\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {},
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Read the implementation selected by the task.\n```mswea_bash_command\ncat src/normalize.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\ndef normalize_name(value):\n    return value\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/normalize.py": "sha256:norm-v1"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Consume the remaining discovery branch before leaving exploration.\n```mswea_bash_command\ncat src/legacy_normalize.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n# compatibility shim\nfrom .normalize import normalize_name\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/legacy_normalize.py": "sha256:legacy-v1"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: The discovery is complete; record the stable workspace location.\n```mswea_bash_command\npwd\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n/workspace\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {},
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Apply the localized one-line fix.\n```mswea_bash_command\npython -c \"from pathlib import Path; p=Path('src/normalize.py'); p.write_text(p.read_text().replace('return value', 'return value.strip().lower()'))\"\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/normalize.py": "sha256:norm-v1"
+        },
+        "post_resource_version_fingerprints": {
+          "src/normalize.py": "sha256:norm-v2"
+        },
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Verify the requested behavior.\n```mswea_bash_command\npytest -q tests/test_normalize.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n1 passed in 0.04s\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/normalize.py": "sha256:norm-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [
+          "src/normalize.py"
+        ],
+        "dependency_resource_ids": [
+          "src/normalize.py"
+        ],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Inspect the final patch before submission.\n```mswea_bash_command\ngit diff -- src/normalize.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n@@\n-    return value\n+    return value.strip().lower()\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/normalize.py": "sha256:norm-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    }
+  ],
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "synthetic-diagnostic-only",
+    "evidence_class": "synthetic_mechanism_diagnostic",
+    "purpose": "H1 must activate only after every discovered branch is read and exploration transitions."
+  },
+  "synthetic_expectations": {
+    "probe_decision": 7,
+    "reference_command": "git diff -- src/normalize.py",
+    "required_evidence": [
+      "normalize_name",
+      "return value",
+      "1 passed"
+    ],
+    "expected_excluded_groups": {
+      "h1_search_consumed": [
+        "turn:t0000"
+      ],
+      "h1_all_branches_consumed_strict": [
+        "turn:t0000"
+      ]
+    },
+    "materialization_marker": null
+  }
+}

@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_synthetic_mechanism_diagnostics",
+  "evidence_class": "synthetic_structural_only_not_model_or_task_quality",
+  "tokenizer": "whitespace_v1_structural_only",
+  "task_count": 3,
+  "all_mechanism_gates_passed": true,
+  "tasks": [
+    {
+      "task_id": "synthetic_discovery_consumed",
+      "purpose": "H1 must activate only after every discovered branch is read and exploration transitions.",
+      "probe_decision": 7,
+      "reference_command": "git diff -- src/normalize.py",
+      "policy_rows": [
+        {
+          "policy": "h1_search_consumed",
+          "expected_excluded_groups": [
+            "turn:t0000"
+          ],
+          "actual_excluded_groups": [
+            "turn:t0000"
+          ],
+          "activation_matches_expectation": true,
+          "required_evidence_retained": {
+            "normalize_name": true,
+            "return value": true,
+            "1 passed": true
+          },
+          "all_required_evidence_retained": true,
+          "full_tokens": 156,
+          "selected_tokens": 137,
+          "saving_fraction": 0.1217948717948718,
+          "plan_digest": "f57b5f31652659e8596db177565ccf1d10a1488e99215ff14ee73c572559d186"
+        },
+        {
+          "policy": "h1_all_branches_consumed_strict",
+          "expected_excluded_groups": [
+            "turn:t0000"
+          ],
+          "actual_excluded_groups": [
+            "turn:t0000"
+          ],
+          "activation_matches_expectation": true,
+          "required_evidence_retained": {
+            "normalize_name": true,
+            "return value": true,
+            "1 passed": true
+          },
+          "all_required_evidence_retained": true,
+          "full_tokens": 156,
+          "selected_tokens": 137,
+          "saving_fraction": 0.1217948717948718,
+          "plan_digest": "eb24e81b5018e3db2d6eae36a61618b95807f1fcd44410c6452855960c151cdc"
+        }
+      ],
+      "materialization_rows": [
+        {
+          "mode": "whole_record",
+          "full_selected_tokens": 156,
+          "materialized_tokens": 156,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record"
+          ]
+        },
+        {
+          "mode": "tool_head_tail",
+          "full_selected_tokens": 156,
+          "materialized_tokens": 156,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail"
+          ]
+        },
+        {
+          "mode": "tool_matched_span",
+          "full_selected_tokens": 156,
+          "materialized_tokens": 156,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span"
+          ]
+        },
+        {
+          "mode": "tool_structured_evidence",
+          "full_selected_tokens": 156,
+          "materialized_tokens": 156,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_structured_evidence"
+          ]
+        }
+      ],
+      "mechanism_gate_passed": true
+    },
+    {
+      "task_id": "synthetic_versioned_state_convergence",
+      "purpose": "H2/H3 must use explicit versions and witnesses rather than command recency alone.",
+      "probe_decision": 6,
+      "reference_command": "git diff -- src/config.py",
+      "policy_rows": [
+        {
+          "policy": "h2a_write_current_read",
+          "expected_excluded_groups": [
+            "turn:t0001"
+          ],
+          "actual_excluded_groups": [
+            "turn:t0001"
+          ],
+          "activation_matches_expectation": true,
+          "required_evidence_retained": {
+            "DEFAULT_RETRIES = 4": true,
+            "1 passed": true
+          },
+          "all_required_evidence_retained": true,
+          "full_tokens": 139,
+          "selected_tokens": 115,
+          "saving_fraction": 0.17266187050359716,
+          "plan_digest": "968e8a376de91234496666ecdcaebf116b78a7c964483fbed8c1e4c5c9d99df4"
+        },
+        {
+          "policy": "h2b_verified_write",
+          "expected_excluded_groups": [
+            "turn:t0001"
+          ],
+          "actual_excluded_groups": [
+            "turn:t0001"
+          ],
+          "activation_matches_expectation": true,
+          "required_evidence_retained": {
+            "DEFAULT_RETRIES = 4": true,
+            "1 passed": true
+          },
+          "all_required_evidence_retained": true,
+          "full_tokens": 139,
+          "selected_tokens": 115,
+          "saving_fraction": 0.17266187050359716,
+          "plan_digest": "b4958abd922c98c7f2f59d12c518c1ed91cb210591cc31262cc3bfd6be4d3327"
+        },
+        {
+          "policy": "h3_read_superseded",
+          "expected_excluded_groups": [
+            "turn:t0002"
+          ],
+          "actual_excluded_groups": [
+            "turn:t0002"
+          ],
+          "activation_matches_expectation": true,
+          "required_evidence_retained": {
+            "DEFAULT_RETRIES = 4": true,
+            "1 passed": true
+          },
+          "all_required_evidence_retained": true,
+          "full_tokens": 139,
+          "selected_tokens": 119,
+          "saving_fraction": 0.14388489208633093,
+          "plan_digest": "4e6c0a7a556fba97ec1f5fc89f27a3d1275382e1f3482e31f42c93bdf36c027e"
+        }
+      ],
+      "materialization_rows": [
+        {
+          "mode": "whole_record",
+          "full_selected_tokens": 139,
+          "materialized_tokens": 139,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record"
+          ]
+        },
+        {
+          "mode": "tool_head_tail",
+          "full_selected_tokens": 139,
+          "materialized_tokens": 139,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail",
+            "whole_record",
+            "tool_head_tail"
+          ]
+        },
+        {
+          "mode": "tool_matched_span",
+          "full_selected_tokens": 139,
+          "materialized_tokens": 139,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span",
+            "whole_record",
+            "tool_matched_span"
+          ]
+        },
+        {
+          "mode": "tool_structured_evidence",
+          "full_selected_tokens": 139,
+          "materialized_tokens": 139,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": null,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "tool_structured_evidence",
+            "whole_record",
+            "tool_structured_evidence"
+          ]
+        }
+      ],
+      "mechanism_gate_passed": true
+    },
+    {
+      "task_id": "synthetic_structured_failure_evidence",
+      "purpose": "A decisive traceback in the middle of a long tool result must survive without arbitrary head/tail dumping.",
+      "probe_decision": 2,
+      "reference_command": "sed -n '78,94p' src/cart.py",
+      "policy_rows": [],
+      "materialization_rows": [
+        {
+          "mode": "whole_record",
+          "full_selected_tokens": 412,
+          "materialized_tokens": 412,
+          "detail_reduction_fraction": 0.0,
+          "marker_retained": true,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "whole_record"
+          ]
+        },
+        {
+          "mode": "tool_head_tail",
+          "full_selected_tokens": 412,
+          "materialized_tokens": 78,
+          "detail_reduction_fraction": 0.8106796116504854,
+          "marker_retained": false,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_head_tail"
+          ]
+        },
+        {
+          "mode": "tool_matched_span",
+          "full_selected_tokens": 412,
+          "materialized_tokens": 122,
+          "detail_reduction_fraction": 0.7038834951456311,
+          "marker_retained": true,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_matched_span"
+          ]
+        },
+        {
+          "mode": "tool_structured_evidence",
+          "full_selected_tokens": 412,
+          "materialized_tokens": 112,
+          "detail_reduction_fraction": 0.7281553398058253,
+          "marker_retained": true,
+          "record_modes": [
+            "whole_record",
+            "whole_record",
+            "whole_record",
+            "tool_structured_evidence"
+          ]
+        }
+      ],
+      "mechanism_gate_passed": true
+    }
+  ]
+}

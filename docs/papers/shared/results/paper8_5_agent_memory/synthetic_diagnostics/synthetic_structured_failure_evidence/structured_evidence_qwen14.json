@@ -1,0 +1,212 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "synthetic_structured_failure_evidence",
+  "model": "qwen3:14b",
+  "tokenizer": "Qwen/Qwen3-14B",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "d73105c4b21bf91cdf98a7a74cb6227bcd2a00b83cc1c48e34c60b19284fa489",
+  "policy": "full",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "tool_structured_evidence",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "718aec0b44f537b66d732b54c1be575814ea54faf9b8147239496ddeeb520a41",
+    "model": "qwen3:14b",
+    "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "policy": "full",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "Qwen/Qwen3-14B",
+    "materialization_mode": "tool_structured_evidence",
+    "materialization_threshold_tokens": 1,
+    "max_decisions": 1,
+    "min_decision": 2,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 300,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "d73105c4b21bf91cdf98a7a74cb6227bcd2a00b83cc1c48e34c60b19284fa489",
+    "matched_budget_source_digest": null,
+    "negative_selection": null
+  },
+  "run_configuration_digest": "a28eb789cc2deb254aeb6608116c3404af7d60ea8c5d37fd799dae18ae15ec70",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 0,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 0.0,
+  "first_command_divergence": 2,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 2,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 4,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "2bf4fd8f764bce817f0b8db27f5cecba2d51c332c946dfe5c17892b8bd0eab90",
+      "reference_content_sha256": "c347e0502c0764216139c673f34d640c9f5db6ff26084a2bededc778f00192a0",
+      "generated_content_sha256": "b701b2535e11d8393b1fd4247c6660c955b95afed52a053ff9b2cbf9f9bb8e01",
+      "generated_content": "The current implementation rounds each line item individually before summing, which introduces rounding errors due to floating-point arithmetic. The correct approach is to:\n\n1. Sum all line items exactly (without rounding)\n2. Apply the discount to the total\n3. Round only once at the currency boundary\n\n```mswea_bash_command\nsed -i 's/return sum(round(item.price * Decimal('0.90'), 2) for item in items)/total = sum(item.price for item in items) * (1 - Decimal('0.10'))\\n    return round(total, 2)/' src/cart.py\n```",
+      "exact_content": false,
+      "reference_command": "sed -i 's/return sum(round(item.price * Decimal('0.90'), 2) for item in items)/total = sum(item.price * Decimal('0.90') for item in items)\\nreturn round(total, 2)/' src/cart.py",
+      "generated_command": "sed -i 's/return sum(round(item.price * Decimal('0.90'), 2) for item in items)/total = sum(item.price for item in items) * (1 - Decimal('0.10'))\\n    return round(total, 2)/' src/cart.py",
+      "exact_command": false,
+      "full_history_tokens": 951,
+      "selected_logical_tokens": 951,
+      "selected_whole_record_tokens": 951,
+      "materialized_tokens": 636,
+      "requested_budget_tokens": 951,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 0.668769716088328,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 315,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ]
+      ],
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 39,
+          "materialized_tokens": 39,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 24,
+          "materialized_tokens": 24,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 32,
+          "materialized_tokens": 32,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "tool_structured_evidence",
+          "original_tokens": 856,
+          "materialized_tokens": 541,
+          "selected_line_spans": [
+            [
+              0,
+              36
+            ],
+            [
+              38,
+              47
+            ],
+            [
+              79,
+              86
+            ]
+          ],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "18d4d505fc428fe79602b63af62f270614646cfdb3e76651e15e123d5a3a78cf",
+      "usage": {
+        "prompt_tokens": 661,
+        "completion_tokens": 724,
+        "total_tokens": 1385
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-533",
+        "response_model": "qwen3:14b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "reasoning",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 515,
+        "message_content_sha256": "b701b2535e11d8393b1fd4247c6660c955b95afed52a053ff9b2cbf9f9bb8e01",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 661,
+          "completion_tokens": 724,
+          "total_tokens": 1385
+        }
+      }
+    }
+  ]
+}

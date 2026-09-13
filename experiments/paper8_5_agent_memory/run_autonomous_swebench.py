@@ -618,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
             MaterializationMode.WHOLE_RECORD.value,
             MaterializationMode.TOOL_HEAD_TAIL.value,
             MaterializationMode.TOOL_MATCHED_SPAN.value,
+            MaterializationMode.TOOL_STRUCTURED_EVIDENCE.value,
         ),
         default=MaterializationMode.WHOLE_RECORD.value,
     )

@@ -380,11 +380,14 @@ def replay(
         index for index, message in enumerate(messages)
         if message.get("role") == "assistant"
     ), start=1))
-    if max_decisions is not None:
-        assistant_decisions = assistant_decisions[:max_decisions]
     assistant_decisions = [
         row for row in assistant_decisions if row[0] >= min_decision
     ]
+    if max_decisions is not None:
+        # ``max_decisions`` limits the selected suffix, not the trajectory
+        # prefix preceding ``min_decision``.  Applying the limit first made a
+        # request such as min=20/max=1 silently execute zero decisions.
+        assistant_decisions = assistant_decisions[:max_decisions]
     selector = (
         None
         if policy == "matched_token_tail"

@@ -1,0 +1,183 @@
+{
+  "instance_id": "synthetic_versioned_state_convergence",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a coding agent. Inspect the repository, make the smallest correct change, verify it, and emit exactly one command in a ```mswea_bash_command``` block per turn."
+    },
+    {
+      "role": "user",
+      "content": "Change src/config.py so DEFAULT_RETRIES is 4, then verify tests/test_config.py."
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Read the current configuration.\n```mswea_bash_command\ncat src/config.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\nDEFAULT_RETRIES = 3\nTIMEOUT_SECONDS = 10\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v1"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Write the requested new value.\n```mswea_bash_command\npython -c \"from pathlib import Path; p=Path('src/config.py'); p.write_text(p.read_text().replace('DEFAULT_RETRIES = 3', 'DEFAULT_RETRIES = 4'))\"\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v1"
+        },
+        "post_resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v2"
+        },
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Read back the post-write resource version.\n```mswea_bash_command\ncat src/config.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\nDEFAULT_RETRIES = 4\nTIMEOUT_SECONDS = 10\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Confirm the same current bytes before testing.\n```mswea_bash_command\ncat src/config.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\nDEFAULT_RETRIES = 4\nTIMEOUT_SECONDS = 10\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Verify the changed resource through its focused test.\n```mswea_bash_command\npytest -q tests/test_config.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n1 passed in 0.03s\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [
+          "src/config.py"
+        ],
+        "dependency_resource_ids": [
+          "src/config.py"
+        ],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Inspect the final patch.\n```mswea_bash_command\ngit diff -- src/config.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\n@@\n-DEFAULT_RETRIES = 3\n+DEFAULT_RETRIES = 4\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/config.py": "sha256:config-v2"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    }
+  ],
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "synthetic-diagnostic-only",
+    "evidence_class": "synthetic_mechanism_diagnostic",
+    "purpose": "H2/H3 must use explicit versions and witnesses rather than command recency alone."
+  },
+  "synthetic_expectations": {
+    "probe_decision": 6,
+    "reference_command": "git diff -- src/config.py",
+    "required_evidence": [
+      "DEFAULT_RETRIES = 4",
+      "1 passed"
+    ],
+    "expected_excluded_groups": {
+      "h2a_write_current_read": [
+        "turn:t0001"
+      ],
+      "h2b_verified_write": [
+        "turn:t0001"
+      ],
+      "h3_read_superseded": [
+        "turn:t0002"
+      ]
+    },
+    "materialization_marker": null
+  }
+}

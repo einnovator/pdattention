@@ -15,6 +15,7 @@ class MaterializationMode(str, Enum):
     WHOLE_RECORD = "whole_record"
     TOOL_HEAD_TAIL = "tool_head_tail"
     TOOL_MATCHED_SPAN = "tool_matched_span"
+    TOOL_STRUCTURED_EVIDENCE = "tool_structured_evidence"
     MATCHED_TOKEN_TAIL = "matched_token_tail"
 
 
@@ -98,17 +99,13 @@ class ToolObservationMaterializer:
             indices = set(range(min(self.head_lines, len(lines))))
             indices.update(range(max(0, len(lines) - self.tail_lines), len(lines)))
         elif self.mode == MaterializationMode.TOOL_MATCHED_SPAN:
-            terms = {
-                term.lower() for term in re.findall(r"[A-Za-z0-9_][A-Za-z0-9_./:-]*", query)
-                if len(term) > 2
-            }
+            evidence_query = query
+            if record.content and evidence_query.endswith(record.content):
+                evidence_query = evidence_query[: -len(record.content)]
+            terms = _query_terms(evidence_query)
             scored = []
             for index, line in enumerate(lines):
-                line_terms = {
-                    term.lower() for term in re.findall(
-                        r"[A-Za-z0-9_][A-Za-z0-9_./:-]*", line
-                    )
-                }
+                line_terms = _query_terms(line)
                 overlap = len(terms.intersection(line_terms))
                 if overlap:
                     scored.append((overlap, index))
@@ -123,6 +120,25 @@ class ToolObservationMaterializer:
                     max(0, hit - self.match_context_lines),
                     min(len(lines), hit + self.match_context_lines + 1),
                 ))
+        elif self.mode == MaterializationMode.TOOL_STRUCTURED_EVIDENCE:
+            indices = _structured_evidence_indices(
+                record,
+                lines,
+                query=query,
+                context_lines=self.match_context_lines,
+                max_anchor_lines=self.max_matched_lines,
+            )
+            # Unknown output is not safely compressible.  A structured policy
+            # must fail closed instead of quietly degenerating to arbitrary
+            # head/tail sampling.
+            if not indices:
+                return MaterializedRecord(
+                    record.record_id,
+                    record.content,
+                    MaterializationMode.WHOLE_RECORD,
+                    original_tokens,
+                    original_tokens,
+                )
         else:
             raise AssertionError(f"unsupported materialization mode: {self.mode}")
 
@@ -158,6 +174,140 @@ def _contiguous_spans(indices: list[int]) -> tuple[tuple[int, int], ...]:
         previous = index
     spans.append((start, previous + 1))
     return tuple(spans)
+
+
+_TERM = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*")
+_NUMBER_TERM = re.compile(r"\b\d{2,}\b")
+_PATH_LINE = re.compile(
+    r"(?:^|\s)(?:\.?\.?/)?(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9_+-]+(?::\d+)?"
+)
+_FAILURE = re.compile(
+    r"(?:Traceback|AssertionError|[A-Za-z]+(?:Error|Exception)\b|"
+    r"^E\s+|^FAILED\b|^ERROR\b|\bfailed\b|\bfailure\b)",
+    re.IGNORECASE,
+)
+_DIFF_STRUCTURE = re.compile(r"^(?:diff --git|index |--- |\+\+\+ |@@ )")
+_SOURCE_STRUCTURE = re.compile(
+    r"^\s*(?:async\s+def|def|class|function|interface|struct|enum)\s+[A-Za-z_]"
+)
+_SEARCH_COMMAND = re.compile(
+    r"(?:^|[;&|]\s*)(?:find\b|fd\b|rg\s+--files\b|"
+    r"(?:grep|rg)\b[^\n]*(?:\s-(?:[^\s]*l[^\s]*|files-with-matches)\b))"
+)
+_VERIFY_COMMAND = re.compile(
+    r"(?:^|[;&|]\s*)(?:pytest|tox|nox|python\s+-m\s+(?:pytest|unittest)|"
+    r"make\s+(?:test|check|lint)|ruff|mypy|npm\s+test|cargo\s+test)\b"
+)
+_DIFF_COMMAND = re.compile(r"(?:^|[;&|]\s*)git\s+(?:diff|show)\b")
+
+_QUERY_STOPWORDS = {
+    "about", "after", "again", "agent", "before", "change", "code", "file",
+    "from", "have", "into", "issue", "make", "only", "output", "reported",
+    "should", "task", "that", "their", "then", "this", "tool", "using", "with",
+}
+
+
+def _query_terms(query: str) -> set[str]:
+    terms: set[str] = set()
+    for raw in _TERM.findall(query):
+        term = raw.lower()
+        if len(term) <= 3 or term in _QUERY_STOPWORDS:
+            continue
+        terms.add(term)
+        terms.add(re.sub(r":\d+$", "", term))
+        if "/" in term:
+            terms.add(term.rsplit("/", 1)[-1])
+    # Multi-digit line numbers, status codes, and expected values are often the
+    # only discriminator between otherwise identical source/test lines.
+    terms.update(_NUMBER_TERM.findall(query))
+    return terms
+
+
+def _structured_evidence_indices(
+    record: AgentRecord,
+    lines: list[str],
+    *,
+    query: str,
+    context_lines: int,
+    max_anchor_lines: int,
+) -> set[int]:
+    """Select command-aware evidence lines, never arbitrary output positions.
+
+    The scorer uses only information already visible at the current decision:
+    the task/current query, the executed command stored on the observation, and
+    the observation itself.  It prefers failure/traceback, diff, source-symbol,
+    path, and lexical evidence.  Structural envelopes are retained separately.
+    If no positive evidence exists, the caller keeps the whole record.
+    """
+
+    command = record.command or str(record.metadata.get("observation_for_command") or "")
+    # The active observation is conventionally appended to the routing query.
+    # It must not retrieve itself: doing so assigns lexical credit to every
+    # line, including the exact noise that materialization is meant to remove.
+    evidence_query = query
+    if record.content and evidence_query.endswith(record.content):
+        evidence_query = evidence_query[: -len(record.content)]
+    terms = _query_terms(evidence_query)
+    command_resources = {
+        value.lower().replace("\\", "/")
+        for value in record.resource_ids
+        if value
+    }
+    verify = bool(_VERIFY_COMMAND.search(command))
+    diff = bool(_DIFF_COMMAND.search(command))
+    search = bool(_SEARCH_COMMAND.search(command))
+    scores: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped in {"<output>", "</output>"} or stripped.startswith(
+            "<returncode>"
+        ):
+            continue
+        lower = stripped.lower().replace("\\", "/")
+        line_terms = _query_terms(stripped)
+        lexical = len(terms.intersection(line_terms))
+        resource_match = sum(
+            1 for resource in command_resources
+            if resource in lower or resource.rsplit("/", 1)[-1] in lower
+        )
+        score = lexical * 8 + resource_match * 12
+        failure = bool(_FAILURE.search(stripped))
+        path = bool(_PATH_LINE.search(stripped))
+        if failure:
+            score += 80 if verify else 45
+        # A verbose test run may contain thousands of passing-test paths. A
+        # path is evidence only when the line is failing, task/resource linked,
+        # or the command is not a verifier.
+        if path and (not verify or failure or lexical or resource_match):
+            score += 35
+        if _DIFF_STRUCTURE.search(stripped):
+            score += 70 if diff else 30
+        if _SOURCE_STRUCTURE.search(stripped):
+            score += 30
+        if search and path:
+            score += 20
+        if score > 0:
+            scores.append((score, index))
+
+    anchors = [
+        index for _, index in sorted(scores, key=lambda row: (-row[0], row[1]))[
+            :max_anchor_lines
+        ]
+    ]
+    selected: set[int] = set()
+    for anchor in anchors:
+        selected.update(range(
+            max(0, anchor - context_lines),
+            min(len(lines), anchor + context_lines + 1),
+        ))
+
+    # Keep the conventional result envelope, but do not use unrelated head or
+    # tail body lines as evidence.
+    head, _, tail, _ = _tool_observation_regions(lines)
+    selected.update(range(len(head)))
+    if tail:
+        selected.update(range(len(lines) - len(tail), len(lines)))
+    return selected if anchors else set()
 
 
 def materialize_plan(

@@ -62,6 +62,24 @@ of excluded resources and the narrower policy-excess proxy (candidate
 reacquires but contemporaneous FULL does not). Autonomous reacquisition and
 official task success remain the primary endpoints.
 
+Before assigning a real-task loss to a heuristic, run the three synthetic
+mechanism diagnostics. They isolate consumed discovery, versioned write/read/
+verification convergence, and a decisive traceback buried in a long tool
+result:
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_synthetic_diagnostics \
+  --output-directory docs/papers/shared/results/paper8_5_agent_memory/synthetic_diagnostics
+```
+
+The `tool_structured_evidence` materializer is the first non-positional result
+compactor. It ranks only current-request evidence: failure/traceback lines,
+paths, diff structure, source symbols, command resources, and task/query terms.
+If none is present, it keeps the whole observation instead of silently falling
+back to arbitrary head/tail sampling. Synthetic structural gates are not model
+or task-quality evidence; each generated trajectory is also compatible with
+the ordinary frozen replay runner.
+
 mini-swe-agent uses `MiniSweBashSemanticsProvider` because its only tool is
 generic Bash. `HarnessMetadataSemanticsProvider` is the portable path: a future
 agent SDK supplies generic effects and version metadata, while engines consume

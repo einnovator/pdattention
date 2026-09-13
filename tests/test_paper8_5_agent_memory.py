@@ -44,6 +44,9 @@ from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
     DEFAULT_POLICIES,
     negative_structural_screen,
 )
+from experiments.paper8_5_agent_memory.run_synthetic_diagnostics import (
+    run_synthetic_diagnostics,
+)
 from experiments.paper8_5_agent_memory.selectors import whitespace_tokens
 from experiments.paper8_5_agent_memory.workspace_checkpoint import (
     repository_state,
@@ -1077,6 +1080,38 @@ def test_frozen_replay_can_target_a_late_decision_suffix(monkeypatch):
     assert len(calls) == 2
 
 
+def test_frozen_replay_limits_after_selecting_late_decision_suffix(monkeypatch):
+    messages = _messages(4)
+    calls = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        calls.append(payload["messages"])
+        return {"choices": [{"message": {"content": messages[6]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(
+        trajectory={"instance_id": "task-1", "messages": messages},
+        model="test-model",
+        base_url="http://example.invalid",
+        policy="full",
+        head=1,
+        tail=1,
+        budget_fraction=1.0,
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        materialization_threshold_tokens=20,
+        max_decisions=1,
+        seed=0,
+        max_output_tokens=128,
+        api_key=None,
+        timeout=1,
+        min_decision=3,
+    )
+    assert [row["decision"] for row in result["rows"]] == [3]
+    assert len(calls) == 1
+
+
 def test_frozen_replay_records_policy_excess_immediate_reacquisition(monkeypatch):
     messages = _heuristic_messages(
         ("cat a.py", "a", None),
@@ -1541,3 +1576,88 @@ def test_review_export_keeps_full_json_and_compacts_markdown(tmp_path):
     assert "lines omitted" in markdown
     assert observation["content_sha256"] in markdown
     assert f"[{json_path.name}]({json_path.name})" in markdown
+
+
+def test_structured_evidence_materializer_keeps_middle_failure_not_noise():
+    noise = "\n".join(f"unrelated passing test {index}" for index in range(40))
+    marker = "E   AssertionError: calculate_total expected 19.80 but got 19.79"
+    messages = _heuristic_messages((
+        "pytest -q tests/test_cart.py -vv",
+        f"{noise}\n{marker}\nsrc/cart.py:87: calculate_total\n{noise}",
+        {
+            "output_complete": True,
+            "verification_resource_ids": ["src/cart.py"],
+        },
+    ))
+    messages[1]["content"] = "Fix calculate_total rounding in src/cart.py."
+    history = recordize_minisweagent_messages(messages)
+    full = FullHistorySelector().select(
+        history=history,
+        query=messages[1]["content"],
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+
+    structured = materialize_plan(
+        history,
+        full,
+        ToolObservationMaterializer(
+            mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
+            threshold_tokens=1,
+            head_lines=2,
+            tail_lines=2,
+            match_context_lines=1,
+            max_matched_lines=6,
+        ),
+        query=messages[1]["content"],
+    )
+    compact = next(
+        row.content for row in structured.records if row.record_id == "m3"
+    )
+    assert marker in compact
+    assert "src/cart.py:87" in compact
+    assert "unrelated passing test 20" not in compact
+    assert structured.materialized_tokens < structured.full_selected_tokens
+
+
+def test_structured_evidence_materializer_fails_closed_without_anchors():
+    messages = _heuristic_messages((
+        "printf opaque",
+        "alpha\nbeta\ngamma\ndelta",
+        {"output_complete": True},
+    ))
+    history = recordize_minisweagent_messages(messages)
+    full = FullHistorySelector().select(
+        history=history,
+        query="unrelated query",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    materialized = materialize_plan(
+        history,
+        full,
+        ToolObservationMaterializer(
+            mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
+            threshold_tokens=1,
+        ),
+        query="unrelated query",
+    )
+    observation = next(
+        row for row in materialized.records if row.record_id == "m3"
+    )
+    assert observation.mode == MaterializationMode.WHOLE_RECORD
+    assert observation.content == history.record_by_id["m3"].content
+
+
+def test_synthetic_diagnostics_separate_rule_activation_from_model_quality():
+    result = run_synthetic_diagnostics()
+    assert result["evidence_class"] == (
+        "synthetic_structural_only_not_model_or_task_quality"
+    )
+    assert result["task_count"] == 3
+    assert result["all_mechanism_gates_passed"] is True
+    structured = next(
+        row for row in result["tasks"]
+        if row["task_id"] == "synthetic_structured_failure_evidence"
+    )
+    modes = {row["mode"]: row for row in structured["materialization_rows"]}
+    assert modes["tool_head_tail"]["marker_retained"] is False
+    assert modes["tool_structured_evidence"]["marker_retained"] is True

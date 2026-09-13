@@ -929,6 +929,74 @@ setting, so this is effectively H1+H2a+H3. Its slight recovery relative to
 H1+H3 despite removing more context demonstrates non-monotone model
 sensitivity, not a robust policy improvement.
 
+\subsection{Synthetic mechanism controls and structured result evidence}
+
+The preceding negative outcomes could arise from a policy weakness, a rule that
+does not implement its declared predicate, or an experiment-driver error. We
+therefore added three small mini-swe-agent-shaped diagnostic trajectories with
+predeclared dependency structure: (i) a search whose every returned branch is
+subsequently read before a non-read transition, (ii) a versioned write followed
+by two identical current-version reads and a resource-linked passing test, and
+(iii) a long test observation whose decisive assertion and source location lie
+away from both output boundaries. These are mechanism controls, not substitute
+software-engineering benchmarks.
+
+All structural gates pass: strict H1 removes exactly the consumed discovery
+bundle; H2a/H2b remove exactly the witnessed write; H3 removes only the older
+same-version duplicate read; and every predeclared necessary fact remains in
+the selected history. The exercise also exposed and corrected an independent
+replay-driver bug: the maximum-decision limit was applied before the minimum
+decision, so selecting one late probe could silently execute zero calls.
+
+We then queried one predeclared decision from each task using Ollama 0.30.8,
+Qwen3-14B, its matching tokenizer, temperature zero, seed zero, and a
+1,024-token output ceiling. Contemporaneous \textsc{Full} repeats reproduce all
+3/3 contents and commands exactly. Table~\ref{tab:synthetic-diagnostics}
+reports candidate behavior against those repeats. H3 is exactly inert in the
+constructed same-version duplicate case. Strict H1 and verified-write H2b
+change the exact terminal command, but both changes are between harmless
+\texttt{echo} completion acknowledgements after the requested fix has passed;
+this is a concrete reason to report completion-state/action equivalence beside
+exact command identity.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrl}
+\toprule
+Treatment & Retained & Exact command & Diagnostic action \\
+\midrule
+Strict H1 consumed search & 85.75\% & no & equivalent completion no-op \\
+H2b verified write & 78.53\% & no & equivalent completion no-op \\
+H3 duplicate current read & 84.18\% & yes & exact \textsc{Full} command \\
+Fixed head/tail tool result & 60.78\% & no & wrong phase: diff before edit \\
+Lexical matched-span result & 80.02\% & no & targeted edit, correct file \\
+Structured-evidence result & 66.88\% & no & targeted edit, correct file \\
+\bottomrule
+\end{tabular}
+\caption{Single-decision synthetic mechanism diagnostics. Retained is the
+tokenizer-measured materialized fraction of the full request. These rows test
+implementation and controlled sensitivity; they do not estimate autonomous
+task success.}
+\label{tab:synthetic-diagnostics}
+\end{table}
+
+The structured-evidence materializer is deliberately not another positional
+head/tail rule. It scores failure and traceback lines, source locations, diff
+headers and hunks, source symbols, command-resource identities, and current
+task/query matches; it preserves the return-code/output envelope and local
+context around selected anchors. If no positive structural evidence exists, it
+fails closed to the complete observation. In the long-result diagnostic, the
+tool observation contains 856 tokenizer tokens. Structured evidence removes
+315 of 951 total request tokens (33.12\%), versus 190 (19.98\%) for lexical
+matching. Both produce a targeted edit on the correct file rather than the
+exact \textsc{Full} command. Fixed head/tail loses the middle failure evidence
+and produces a premature diff action. The generated edits were not executed,
+so this is evidence about action phase and target rather than task correctness.
+It nevertheless supports carrying structured evidence forward as a candidate
+materializer, while whole-group H1/H2 retirement should next be compared with
+model-visible resource-map and mutation receipts.
+
 \subsection{First autonomous qualification}
 
 We next ran an autonomous pilot on

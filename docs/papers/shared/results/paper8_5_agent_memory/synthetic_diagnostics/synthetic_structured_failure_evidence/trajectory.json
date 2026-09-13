@@ -1,0 +1,80 @@
+{
+  "instance_id": "synthetic_structured_failure_evidence",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a coding agent. Inspect the repository, make the smallest correct change, verify it, and emit exactly one command in a ```mswea_bash_command``` block per turn."
+    },
+    {
+      "role": "user",
+      "content": "Fix calculate_total in src/cart.py. Discounted line items must be summed exactly and rounded once at the currency boundary."
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Run the focused test to obtain failure evidence.\n```mswea_bash_command\npytest -q tests/test_cart.py -vv\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>1</returncode>\n<output>\n============================= test session starts =============================\ntests/test_unrelated_00.py .\ntests/test_unrelated_01.py .\ntests/test_unrelated_02.py .\ntests/test_unrelated_03.py .\ntests/test_unrelated_04.py .\ntests/test_unrelated_05.py .\ntests/test_unrelated_06.py .\ntests/test_unrelated_07.py .\ntests/test_unrelated_08.py .\ntests/test_unrelated_09.py .\ntests/test_unrelated_10.py .\ntests/test_unrelated_11.py .\ntests/test_unrelated_12.py .\ntests/test_unrelated_13.py .\ntests/test_unrelated_14.py .\ntests/test_unrelated_15.py .\ntests/test_unrelated_16.py .\ntests/test_unrelated_17.py .\ntests/test_unrelated_18.py .\ntests/test_unrelated_19.py .\ntests/test_unrelated_20.py .\ntests/test_unrelated_21.py .\ntests/test_unrelated_22.py .\ntests/test_unrelated_23.py .\ntests/test_unrelated_24.py .\ntests/test_unrelated_25.py .\ntests/test_unrelated_26.py .\ntests/test_unrelated_27.py .\ntests/test_unrelated_28.py .\ntests/test_unrelated_29.py .\ntests/test_unrelated_30.py .\ntests/test_unrelated_31.py .\ntests/test_unrelated_32.py .\ntests/test_unrelated_33.py .\ntests/test_unrelated_34.py .\ntests/test_unrelated_35.py .\n_______________________ test_discount_rounding ________________________\ntests/test_cart.py:42: in test_discount_rounding\n    assert calculate_total(items, discount=0.10) == Decimal('19.80')\nE   AssertionError: calculate_total expected 19.80 but got 19.79\nsrc/cart.py:87: calculate_total\n    return sum(round(item.price * Decimal('0.90'), 2) for item in items)\nHINT: sum exact discounted values before applying the final currency rounding\nplugin diagnostic 00: no actionable finding\nplugin diagnostic 01: no actionable finding\nplugin diagnostic 02: no actionable finding\nplugin diagnostic 03: no actionable finding\nplugin diagnostic 04: no actionable finding\nplugin diagnostic 05: no actionable finding\nplugin diagnostic 06: no actionable finding\nplugin diagnostic 07: no actionable finding\nplugin diagnostic 08: no actionable finding\nplugin diagnostic 09: no actionable finding\nplugin diagnostic 10: no actionable finding\nplugin diagnostic 11: no actionable finding\nplugin diagnostic 12: no actionable finding\nplugin diagnostic 13: no actionable finding\nplugin diagnostic 14: no actionable finding\nplugin diagnostic 15: no actionable finding\nplugin diagnostic 16: no actionable finding\nplugin diagnostic 17: no actionable finding\nplugin diagnostic 18: no actionable finding\nplugin diagnostic 19: no actionable finding\nplugin diagnostic 20: no actionable finding\nplugin diagnostic 21: no actionable finding\nplugin diagnostic 22: no actionable finding\nplugin diagnostic 23: no actionable finding\nplugin diagnostic 24: no actionable finding\nplugin diagnostic 25: no actionable finding\nplugin diagnostic 26: no actionable finding\nplugin diagnostic 27: no actionable finding\nplugin diagnostic 28: no actionable finding\nplugin diagnostic 29: no actionable finding\nplugin diagnostic 30: no actionable finding\nplugin diagnostic 31: no actionable finding\nplugin diagnostic 32: no actionable finding\nplugin diagnostic 33: no actionable finding\nplugin diagnostic 34: no actionable finding\nplugin diagnostic 35: no actionable finding\n=========================== short test summary info ===========================\nFAILED tests/test_cart.py::test_discount_rounding - AssertionError\n1 failed, 36 passed in 0.42s\n</output>",
+      "extra": {
+        "returncode": 1,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/cart.py": "sha256:cart-v1"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [
+          "src/cart.py"
+        ],
+        "dependency_resource_ids": [
+          "src/cart.py"
+        ],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "THOUGHT: Use the traceback location to inspect the implementation.\n```mswea_bash_command\nsed -n '78,94p' src/cart.py\n```"
+    },
+    {
+      "role": "user",
+      "content": "<returncode>0</returncode>\n<output>\ndef calculate_total(items, discount):\n    return sum(round(item.price * (1 - discount), 2) for item in items)\n</output>",
+      "extra": {
+        "returncode": 0,
+        "cwd": "/workspace",
+        "environment_fingerprint": "paper8.5-synthetic-v1",
+        "resource_version_fingerprints": {
+          "src/cart.py": "sha256:cart-v1"
+        },
+        "post_resource_version_fingerprints": {},
+        "verification_resource_ids": [],
+        "dependency_resource_ids": [],
+        "output_complete": true,
+        "timed_out": false,
+        "output_truncated": false,
+        "tool_semantics": "synthetic-declared-bash-v1"
+      }
+    }
+  ],
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "synthetic-diagnostic-only",
+    "evidence_class": "synthetic_mechanism_diagnostic",
+    "purpose": "A decisive traceback in the middle of a long tool result must survive without arbitrary head/tail dumping."
+  },
+  "synthetic_expectations": {
+    "probe_decision": 2,
+    "reference_command": "sed -n '78,94p' src/cart.py",
+    "required_evidence": [
+      "E   AssertionError: calculate_total expected 19.80 but got 19.79",
+      "src/cart.py:87",
+      "sum exact discounted values"
+    ],
+    "expected_excluded_groups": {},
+    "materialization_marker": "E   AssertionError: calculate_total expected 19.80 but got 19.79"
+  }
+}
