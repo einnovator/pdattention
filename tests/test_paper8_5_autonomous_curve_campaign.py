@@ -10,6 +10,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     validate_campaign_spec,
     write_curve_spec,
 )
+from experiments.paper8_5_agent_memory.run_autonomous_swebench import _official_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +73,27 @@ def test_adaptive_gate_counts_definitive_grader_errors_as_task_failures():
         {"stop_after_failures": 2, "minimum_tasks_before_accuracy_gate": 1},
     )
     assert result[0] == "stop"
+
+
+def test_official_report_classifies_patch_apply_failure(tmp_path):
+    report = {
+        "submitted_ids": ["task"],
+        "resolved_ids": [],
+        "error_ids": ["task"],
+    }
+    (tmp_path / "model.run.json").write_text(json.dumps(report), encoding="utf-8")
+    grader_log = tmp_path / "grader.log"
+    grader_log.write_text(
+        "task: >>>>> Patch Apply Failed: invalid patch", encoding="utf-8"
+    )
+
+    result = _official_report(
+        tmp_path, "run", "task", grader_log=grader_log,
+    )
+
+    assert result["resolved"] is False
+    assert result["error"] is True
+    assert result["failure_class"] == "patch_apply_failed"
 
 
 def test_adaptive_gate_stops_low_yield_and_low_accuracy():
