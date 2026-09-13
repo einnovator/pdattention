@@ -262,6 +262,49 @@ def test_sparse_request_uses_complete_selected_pages_and_original_extent() -> No
     assert trace["selected_kv_tokens"] < command.source_position_base
 
 
+def test_declared_sparse_request_rounds_up_without_dropping_selected_records() -> None:
+    driver = _Driver()
+    executor = VLLMCudaAgentHistoryExecutor(
+        driver,
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest="digest",
+    )
+    initial = (
+        {"role": "system", "content": "rules-long-enough"},
+        {"role": "user", "content": "task-long-enough"},
+        {"role": "assistant", "content": "old-action-long-enough"},
+        {"role": "user", "content": "old-output-long-enough"},
+        {"role": "assistant", "content": "recent-action"},
+        {"role": "user", "content": "recent-output"},
+    )
+    executor.generate(_request(initial, range(len(initial))))
+    logical = tuple(executor._sessions["s"].ledger.messages) + (
+        {"role": "user", "content": "current"},
+    )
+    selected_message = len(logical) - 2
+    result = executor.generate(
+        _request(
+            logical,
+            (0, 1, len(logical) - 1),
+            retention=0.9,
+            resources=(PRAWireResource(
+                resource_id="latest",
+                uri="pra://latest",
+                text="A",
+                metadata={"message_index": selected_message},
+            ),),
+        )
+    )
+    trace = result.trace[0]
+    assert trace["retention_rounded_up"] is True
+    assert trace["realized_retention_fraction"] >= 0.9
+    assert selected_message in trace["realized_selected_message_indices"]
+    assert set(trace["requested_selected_message_indices"]).issubset(
+        trace["realized_selected_message_indices"]
+    )
+
+
 def test_page_selection_rejects_underfilled_declared_retention_arm() -> None:
     with pytest.raises(RuntimeError, match="underfill the requested retention floor"):
         _enforce_page_retention_floor(

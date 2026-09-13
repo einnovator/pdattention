@@ -9,7 +9,6 @@ are never sent through the model or copied to the worker.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import json
 import math
 import threading
@@ -115,8 +114,14 @@ def record_rounded_selected_indices(
     source_tokens: int,
     block_size: int,
     retention_fraction: float,
+    required_message_indices: Sequence[int] = (),
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """Drop old complete causal groups while rounding the page floor upward."""
+    """Round a logical selection upward with complete causal groups/pages.
+
+    ``required_message_indices`` is the selector's decision. Page rounding may
+    add older causal groups, but it must never remove a selected record merely
+    to obtain a numerically closer physical retention fraction.
+    """
 
     groups: list[list[int]] = (
         [[0, 1]] if len(messages) >= 2 else [list(range(len(messages)))]
@@ -126,34 +131,48 @@ def record_rounded_selected_indices(
             groups.append([index])
         else:
             groups[-1].append(index)
-    mandatory_groups = {0, *range(max(1, len(groups) - 2), len(groups))}
+    required_indices = {int(index) for index in required_message_indices}
+    mandatory_groups = {
+        0,
+        *range(max(1, len(groups) - 2), len(groups)),
+        *(
+            group_index
+            for group_index, group in enumerate(groups)
+            if required_indices.intersection(group)
+        ),
+    }
     eligible = [index for index in range(len(groups)) if index not in mandatory_groups]
     required = math.ceil(source_tokens * float(retention_fraction))
-    all_indices = tuple(range(len(messages)))
-    best: tuple[int, tuple[int, ...], tuple[int, ...]] | None = None
-    for count in range(1, len(eligible) + 1):
-        for dropped_groups in itertools.combinations(eligible, count):
-            dropped = {
-                index for group_index in dropped_groups for index in groups[group_index]
-            }
-            selected = tuple(index for index in all_indices if index not in dropped)
-            pages = _page_indices_for_spans(
-                spans,
-                selected,
-                source_tokens=source_tokens,
-                block_size=block_size,
-            )
-            selected_tokens = len(pages) * block_size
-            if required <= selected_tokens < source_tokens:
-                candidate = (selected_tokens, selected, pages)
-                if best is None or candidate[0] < best[0]:
-                    best = candidate
-    if best is None:
+    selected_groups = set(mandatory_groups)
+
+    def materialize() -> tuple[tuple[int, ...], tuple[int, ...]]:
+        selected = tuple(
+            message_index
+            for group_index, group in enumerate(groups)
+            if group_index in selected_groups
+            for message_index in group
+        )
+        return selected, _page_indices_for_spans(
+            spans,
+            selected,
+            source_tokens=source_tokens,
+            block_size=block_size,
+        )
+
+    selected, pages = materialize()
+    # Prefer the most recent omitted causal state when physical page rounding
+    # needs more K/V than the logical selector requested.
+    for group_index in reversed(eligible):
+        if len(pages) * block_size >= required:
+            break
+        selected_groups.add(group_index)
+        selected, pages = materialize()
+    if len(pages) * block_size < required:
         raise RuntimeError(
             "No whole old causal-group combination yields a sparse page-rounded "
             f"selection at or above {retention_fraction:.3f}."
         )
-    return best[1], best[2]
+    return selected, pages
 
 
 @dataclass(frozen=True)
@@ -616,6 +635,9 @@ class VLLMCudaAgentHistoryExecutor:
             )
             next_source_receipt: tuple[str, int, int] | None = None
             requested = float(request.metadata.get("target_retention_fraction", 1.0))
+            selected_indices = tuple(range(len(messages)))
+            requested_selected_indices = selected_indices
+            retention_rounded_up = False
             if state.source_tokens == 0:
                 source_tokens = (len(prompt) // block) * block
                 if source_tokens <= 0:
@@ -643,6 +665,8 @@ class VLLMCudaAgentHistoryExecutor:
                 mode = "initial_store"
             else:
                 selected_indices = self._selected_indices(request)
+                requested_selected_indices = selected_indices
+                selection_contract = request.metadata.get("selection_contract")
                 if requested >= 1:
                     page_indices = tuple(range(state.source_tokens // block))
                     mode = "dense_semantic_noop"
@@ -654,10 +678,25 @@ class VLLMCudaAgentHistoryExecutor:
                         block_size=block,
                     )
                     mode = "sparse_original_position_pages"
+                    selected_tokens = len(page_indices) * block
+                    required_tokens = math.ceil(state.source_tokens * requested)
+                    if (
+                        selected_tokens < required_tokens
+                        and selection_contract != "arbitrary-subset-mechanism-probe"
+                    ):
+                        selected_indices, page_indices = record_rounded_selected_indices(
+                            messages,
+                            state.message_spans,
+                            source_tokens=state.source_tokens,
+                            block_size=block,
+                            retention_fraction=requested,
+                            required_message_indices=selected_indices,
+                        )
+                        retention_rounded_up = True
+                        mode = "sparse_original_position_pages_rounded_up"
                 if not page_indices:
                     raise RuntimeError("PRA selection contains no complete resident page.")
                 selected_tokens = len(page_indices) * block
-                selection_contract = request.metadata.get("selection_contract")
                 _enforce_page_retention_floor(
                     selected_tokens=selected_tokens,
                     source_tokens=state.source_tokens,
@@ -746,6 +785,11 @@ class VLLMCudaAgentHistoryExecutor:
                 "canonical_source_tokens_after": state.source_tokens,
                 "selected_source_generation": old_generation,
                 "selected_page_indices": list(page_indices),
+                "requested_selected_message_indices": list(
+                    requested_selected_indices
+                ),
+                "realized_selected_message_indices": list(selected_indices),
+                "retention_rounded_up": retention_rounded_up,
                 "selected_kv_tokens": selected_tokens,
                 "requested_retention_fraction": requested,
                 "realized_retention_fraction": selected_tokens

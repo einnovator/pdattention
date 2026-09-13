@@ -43,7 +43,7 @@ def test_record_rounded_selector_preserves_pairs_and_rounds_up() -> None:
     assert len(pages) * 16 == 96
 
 
-def test_record_rounded_selector_fails_when_no_whole_group_fits_floor() -> None:
+def test_record_rounded_selector_rounds_to_full_when_no_sparse_group_fits() -> None:
     messages = [
         {"role": "system", "content": "s"},
         {"role": "user", "content": "task"},
@@ -53,11 +53,36 @@ def test_record_rounded_selector_fails_when_no_whole_group_fits_floor() -> None:
         {"role": "user", "content": "recent observation"},
     ]
     spans = {index: (index * 32, (index + 1) * 32) for index in range(6)}
-    with pytest.raises(RuntimeError, match="No whole old causal-group"):
-        record_rounded_selected_indices(
-            messages,
-            spans,
-            source_tokens=192,
-            block_size=16,
-            retention_fraction=0.9,
-        )
+    selected, pages = record_rounded_selected_indices(
+        messages,
+        spans,
+        source_tokens=192,
+        block_size=16,
+        retention_fraction=0.9,
+    )
+    assert selected == tuple(range(6))
+    assert len(pages) * 16 == 192
+
+
+def test_record_rounded_selector_never_drops_logically_selected_groups() -> None:
+    messages = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "selected old action"},
+        {"role": "user", "content": "selected old observation"},
+        {"role": "assistant", "content": "other old action"},
+        {"role": "user", "content": "other old observation"},
+        {"role": "assistant", "content": "recent action"},
+        {"role": "user", "content": "recent observation"},
+    ]
+    spans = {index: (index * 16, (index + 1) * 16) for index in range(8)}
+    selected, pages = record_rounded_selected_indices(
+        messages,
+        spans,
+        source_tokens=128,
+        block_size=16,
+        retention_fraction=0.75,
+        required_message_indices=(0, 1, 2, 3, 6, 7),
+    )
+    assert {0, 1, 2, 3, 6, 7}.issubset(selected)
+    assert len(pages) * 16 >= 96
