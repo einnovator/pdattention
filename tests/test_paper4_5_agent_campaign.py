@@ -677,6 +677,47 @@ def test_matched_tail_counter_loads_the_pinned_actual_tokenizer(monkeypatch) -> 
     assert digest == hashlib.sha256(b"frozen-tokenizer-json").hexdigest()
 
 
+def test_matched_tail_counter_reads_resolved_fast_tokenizer_without_transformers(
+    monkeypatch, tmp_path,
+) -> None:
+    (tmp_path / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    class Encoding:
+        ids = [1, 2, 3]
+
+    class FrozenTokenizer:
+        @staticmethod
+        def to_str():
+            return "resolved-fast-tokenizer"
+
+        @staticmethod
+        def encode(text, *, add_special_tokens):
+            assert text == "content"
+            assert add_special_tokens is False
+            return Encoding()
+
+    class Tokenizer:
+        @staticmethod
+        def from_file(path):
+            assert path == str(tmp_path / "tokenizer.json")
+            return FrozenTokenizer()
+
+    monkeypatch.setitem(sys.modules, "tokenizers", SimpleNamespace(Tokenizer=Tokenizer))
+    args = SimpleNamespace(
+        selection_policy=MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+        selection_tokenizer=str(tmp_path),
+        selection_tokenizer_revision="revision-1",
+        tokenizer_revision="revision-1",
+        model="served-alias",
+    )
+
+    counter, identity, digest = _agent_history_token_counter(args)
+
+    assert counter("content") == 3
+    assert identity == f"hf_exact_content_v1:{tmp_path}@revision-1:{digest}"
+    assert digest == hashlib.sha256(b"resolved-fast-tokenizer").hexdigest()
+
+
 def test_record_aligned_children_keep_causal_and_result_metadata() -> None:
     observation = (
         "return code: 1\n"

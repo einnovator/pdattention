@@ -54,23 +54,38 @@ def _agent_history_token_counter(args: argparse.Namespace):
         raise ValueError(
             "matched causal token-tail requires a pinned selection tokenizer revision"
         )
-    from transformers import AutoTokenizer
+    tokenizer_path = Path(str(tokenizer_name))
+    tokenizer_json = tokenizer_path / "tokenizer.json"
+    if tokenizer_json.is_file():
+        # Engine hosts commonly keep a resolved immutable snapshot but not a
+        # second Transformers-compatible runner environment.  Reading the
+        # same fast-tokenizer graph directly avoids dependency skew while
+        # preserving the exact content-token boundary used by the engine.
+        from tokenizers import Tokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, revision=revision)
-    backend = getattr(tokenizer, "backend_tokenizer", None)
-    if backend is not None and callable(getattr(backend, "to_str", None)):
-        identity_material = backend.to_str()
+        tokenizer = Tokenizer.from_file(str(tokenizer_json))
+        identity_material = tokenizer.to_str()
+
+        def count_tokens(text: str) -> int:
+            return len(tokenizer.encode(str(text), add_special_tokens=False).ids)
     else:
-        identity_material = json.dumps(
-            tokenizer.get_vocab(), sort_keys=True, separators=(",", ":")
-        )
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, revision=revision)
+        backend = getattr(tokenizer, "backend_tokenizer", None)
+        if backend is not None and callable(getattr(backend, "to_str", None)):
+            identity_material = backend.to_str()
+        else:
+            identity_material = json.dumps(
+                tokenizer.get_vocab(), sort_keys=True, separators=(",", ":")
+            )
+
+        def count_tokens(text: str) -> int:
+            encoded = tokenizer.encode(str(text), add_special_tokens=False)
+            values = encoded.tolist() if hasattr(encoded, "tolist") else encoded
+            return len(values)
     digest = hashlib.sha256(identity_material.encode("utf-8")).hexdigest()
     identity = f"hf_exact_content_v1:{tokenizer_name}@{revision}:{digest}"
-
-    def count_tokens(text: str) -> int:
-        encoded = tokenizer.encode(str(text), add_special_tokens=False)
-        values = encoded.tolist() if hasattr(encoded, "tolist") else encoded
-        return len(values)
 
     return count_tokens, identity, digest
 
