@@ -406,6 +406,22 @@ def test_dag_certifies_operational_duplicate_with_complete_runtime_identity():
     )
     assert "turn:t0000" in protected_plan.selected_causal_group_ids
 
+    exclusion_plan = DagCertifiedExclusionSelector(
+        protected_head_turns=0,
+        protected_tail_turns=0,
+    ).select(
+        history=history,
+        query="foo.py",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+        count_tokens=whitespace_tokens,
+    )
+    assert [row.causal_group_id for row in exclusion_plan.exclusions] == [
+        "turn:t0000"
+    ]
+    assert exclusion_plan.exclusions[0].rule_id == (
+        "TRACE_EXACT_OPERATION_RESULT_V1"
+    )
+
 
 def test_dag_operational_duplicate_allows_different_assistant_reasoning():
     messages = _messages(1)

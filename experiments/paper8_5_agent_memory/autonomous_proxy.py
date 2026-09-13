@@ -26,6 +26,7 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
+from .dag import DagCertifiedExclusionSelector
 from .model import AgentMemoryBudget, AgentMemoryPlan
 from .negative_selection import (
     BashOperation,
@@ -57,7 +58,11 @@ from .serialization import serialize_materialized_messages
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency",)
-AUTONOMOUS_POLICIES = ("full", *AUTONOMOUS_POSITIVE_POLICIES, *NEGATIVE_POLICY_RULES)
+AUTONOMOUS_DAG_POLICIES = ("dag_certified_exclusion",)
+AUTONOMOUS_POLICIES = (
+    "full", *AUTONOMOUS_POSITIVE_POLICIES, *AUTONOMOUS_DAG_POLICIES,
+    *NEGATIVE_POLICY_RULES,
+)
 
 
 def _digest(value: Any) -> str:
@@ -297,14 +302,14 @@ class AutonomousSelectionConfig:
         if self.policy not in NEGATIVE_POLICY_RULES and self.negative_fallback != "none":
             raise ValueError("negative_fallback requires a negative-selection policy")
         if (
-            self.policy == "task_aware_progress_spine_v4"
+            self.policy in {"task_aware_progress_spine_v4", *AUTONOMOUS_DAG_POLICIES}
             and self.negative_realization not in {
                 NegativeRealizationMode.OBSERVATION_RECEIPT,
                 NegativeRealizationMode.PROTOCOL_STUB,
             }
         ):
             raise ValueError(
-                "task_aware_progress_spine_v4 requires observation_receipt or "
+                f"{self.policy} requires observation_receipt or "
                 "protocol_stub realization"
             )
 
@@ -318,6 +323,11 @@ class AutonomousSelectionConfig:
                 middle_strategy=MiddleSelectionStrategy.RECENCY,
                 round_up_to_budget=True,
             ))
+        if self.policy == "dag_certified_exclusion":
+            return DagCertifiedExclusionSelector(
+                protected_head_turns=self.protected_head_turns,
+                protected_tail_turns=self.protected_tail_turns,
+            )
         fallback = None
         if self.negative_fallback == "recency":
             fallback = HeadMiddleTailSelector(HeadMiddleTailConfig(

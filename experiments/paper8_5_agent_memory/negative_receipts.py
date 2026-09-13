@@ -121,6 +121,8 @@ class NegativeReceiptRealization:
 
 
 def _receipt_kind(rule_id: str) -> ReceiptKind | None:
+    if rule_id == "TRACE_EXACT_OPERATION_RESULT_V1":
+        return ReceiptKind.SUPERSEDED_READ
     if rule_id.startswith("H1_"):
         return ReceiptKind.RESOURCE_MAP
     if rule_id.startswith("H2"):

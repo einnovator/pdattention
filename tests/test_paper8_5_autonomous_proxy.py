@@ -622,6 +622,79 @@ def test_progress_spine_v4_supports_metadata_only_protocol_stub(tmp_path):
     assert result.trace["receipt_count"] == 1
 
 
+def test_dag_certified_autonomous_policy_uses_only_runtime_bound_duplicates(tmp_path):
+    commands = ("cat foo.py", "cat foo.py", "true")
+    old_output = "same source line\n" * 200
+    messages = [
+        {"role": "system", "content": "Use bash."},
+        {"role": "user", "content": "Fix foo.py."},
+    ]
+    for index, (command, output) in enumerate(zip(
+        commands, (old_output, old_output, "done")
+    )):
+        messages.extend((
+            {
+                "role": "assistant",
+                "content": (
+                    f"THOUGHT: read attempt {index}\n"
+                    f"```mswea_bash_command\n{command}\n```"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"<returncode>0</returncode>\n<output>{output}</output>",
+            },
+        ))
+    read_metadata = {
+        "return_code": 0,
+        "cwd": "/workspace/repo",
+        "environment_fingerprint": "env-sha256",
+        "resource_version_fingerprints": {"foo.py": "file-sha256"},
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+        "tool_semantics": {
+            "category": "filesystem_read",
+            "provenance": "runtime_traced",
+            "complete": True,
+            "effects": [{
+                "kind": "read",
+                "resource_id": "foo.py",
+                "resource_version_fingerprint": "file-sha256",
+            }],
+        },
+    }
+    _write_receipt(tmp_path, 0, commands[0], read_metadata)
+    _write_receipt(tmp_path, 1, commands[1], read_metadata)
+    _write_receipt(tmp_path, 2, commands[2], {
+        "return_code": 0, "output_complete": True,
+        "timed_out": False, "output_truncated": False,
+    })
+
+    result = transform_autonomous_payload(
+        {"model": "locked-model", "messages": messages},
+        AutonomousSelectionConfig(
+            policy="dag_certified_exclusion",
+            negative_realization=NegativeRealizationMode.PROTOCOL_STUB,
+            expected_model="locked-model",
+            protected_head_turns=0,
+            protected_tail_turns=1,
+        ),
+        instrumentation_root=tmp_path,
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "read attempt 0" in visible
+    assert "read attempt 1" in visible
+    assert visible.count(old_output.rstrip()) == 1
+    assert "<returncode>0</returncode>\n<output></output>" in visible
+    assert result.trace["excluded_causal_group_count"] == 1
+    assert result.trace["receipt_count"] == 1
+    assert result.trace["exclusions"][0]["rule_id"] == (
+        "TRACE_EXACT_OPERATION_RESULT_V1"
+    )
+
+
 def test_head_tail_recency_uses_retention_floor_without_dag_rules():
     result = transform_autonomous_payload(
         _payload(),

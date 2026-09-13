@@ -13,7 +13,13 @@ from enum import Enum
 import hashlib
 from typing import Callable, Mapping
 
-from .model import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
+from .model import (
+    AgentMemoryExclusion,
+    AgentRecord,
+    AgentRecordRole,
+    AgentTurn,
+    CanonicalAgentHistory,
+)
 from pra_hf.tool_semantics import (
     DeclaredToolSemanticsProvider,
     EffectKind,
@@ -401,8 +407,9 @@ class DagCertifiedExclusionSelector:
             matching = [record for record in history.records if record.has_role(role)]
             if matching:
                 protected.add(matching[-1].causal_group_id)
+        dag = build_resource_effect_dag(history)
         filtered = exclude_certified_groups(
-            history,
+            history, dag,
             protected_causal_group_ids=tuple(protected),
         )
         selector = self.fallback_selector or FullHistorySelector()
@@ -413,9 +420,54 @@ class DagCertifiedExclusionSelector:
             count_tokens=count_tokens,
         )
         original_tokens = sum(count_tokens(record.content) for record in history.records)
+        records = history.record_by_id
+        turns = {
+            turn.causal_group_id: turn for turn in history.turns
+        }
+        exclusions = []
+        for candidate in dag.exclusion_candidates:
+            certificate = candidate.certificate
+            if (
+                not candidate.default_exclusion_eligible
+                or certificate is None
+                or candidate.causal_group_id in protected
+            ):
+                continue
+            turn = turns.get(candidate.causal_group_id)
+            if turn is None:
+                continue
+            resources = tuple(dict.fromkeys(
+                resource
+                for record_id in turn.record_ids
+                for resource in records[record_id].resource_ids
+            ))
+            excluded_tokens = sum(
+                count_tokens(records[record_id].content)
+                for record_id in turn.record_ids
+            )
+            exclusions.append(AgentMemoryExclusion(
+                causal_group_id=candidate.causal_group_id,
+                record_ids=turn.record_ids,
+                rule_id=certificate.rule_id,
+                classification=candidate.classification.value,
+                reason=candidate.reason,
+                resource_ids=resources,
+                witness_record_ids=certificate.witness_record_ids,
+                tombstone=(
+                    "INACTIVE group=" + candidate.causal_group_id
+                    + " rule=" + certificate.rule_id
+                    + " scope=" + certificate.proof_scope
+                ),
+                excluded_tokens=excluded_tokens,
+            ))
         policy = (
             "dag_certified_exclusion"
             if self.fallback_selector is None
             else f"dag_certified_exclusion+{plan.policy}"
         )
-        return replace(plan, policy=policy, full_history_tokens=original_tokens)
+        return replace(
+            plan,
+            policy=policy,
+            full_history_tokens=original_tokens,
+            exclusions=tuple(exclusions),
+        )
