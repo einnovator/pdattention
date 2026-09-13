@@ -244,6 +244,7 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
     )
     usage_coverage = int(metrics.get("reported_usage_coverage_calls") or 0)
     completion_tokens = int(metrics.get("cumulative_reported_completion_tokens") or 0)
+    official_error = bool(official.get("error", False)) if official else False
     if not isinstance(official.get("resolved"), bool):
         raise ValueError(f"{metrics_path}: missing completed official result")
     if full_tokens <= 0 or materialized_tokens < 0:
@@ -301,7 +302,10 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
             if usage_coverage == int(metrics.get("calls") or 0) else None
         ),
         "official_resolved": bool(official.get("resolved")) if official else None,
-        "official_error": bool(official.get("error", False)) if official else None,
+        "official_error": official_error if official else None,
+        "official_score": (
+            None if official_error else bool(official.get("resolved"))
+        ) if official else None,
         "official_outcome": (
             "grader_error"
             if official and bool(official.get("error", False))
@@ -371,15 +375,19 @@ def pair_autonomous(
     candidate["legacy_pairing_identity_mismatches"] = identity_mismatches
     candidate["baseline_official_resolved"] = baseline["official_resolved"]
     candidate["baseline_official_error"] = baseline.get("official_error")
+    candidate["baseline_official_score"] = baseline.get("official_score")
     candidate["baseline_official_outcome"] = baseline.get("official_outcome")
     candidate["baseline_auxiliary_resolved"] = baseline["auxiliary_resolved"]
     candidate["call_delta"] = candidate["calls"] - baseline["calls"]
     candidate["tool_call_delta"] = candidate["tool_calls"] - baseline["tool_calls"]
     candidate["efficiency_qualified"] = bool(
-        candidate["official_resolved"] and baseline["official_resolved"]
+        candidate.get("official_score") is True
+        and baseline.get("official_score") is True
     )
     candidate["trajectory_outcome"] = (
         "both_resolved" if candidate["efficiency_qualified"]
+        else "candidate_grader_error" if candidate.get("official_error")
+        else "baseline_grader_error" if baseline.get("official_error")
         else "candidate_failed" if not candidate["official_resolved"]
         else "baseline_failed"
     )
@@ -586,6 +594,18 @@ def _strip_trace(row: Mapping[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if key != "trace"}
 
 
+def _official_quality(row: Mapping[str, Any]) -> bool | None:
+    """Return a grade only when the official grader produced a valid outcome."""
+
+    if row.get("official_error"):
+        return None
+    if "official_score" in row:
+        value = row.get("official_score")
+        return bool(value) if value is not None else None
+    value = row.get("official_resolved")
+    return bool(value) if value is not None else None
+
+
 def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Aggregate runs without treating repeats of one task as new tasks."""
     grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
@@ -596,17 +616,21 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         by_task: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
         for row in strategy_rows:
             by_task[str(row["task_id"])].append(row)
-        task_rates = [
-            mean(bool(row["official_resolved"]) for row in task_rows)
-            for task_rows in by_task.values()
-        ]
+        task_rates = []
+        for task_rows in by_task.values():
+            valid = [
+                value for value in (_official_quality(row) for row in task_rows)
+                if value is not None
+            ]
+            if valid:
+                task_rates.append(mean(valid))
         paired = [
             row for row in strategy_rows
             if row.get("paired_net_saving_fraction") is not None
         ]
         qualified = [row for row in paired if row.get("efficiency_qualified")]
         baseline_success = [
-            row for row in paired if row.get("baseline_official_resolved") is True
+            row for row in paired if row.get("baseline_official_score") is True
         ]
         full = sum(int(row["cumulative_full_tokens"]) for row in strategy_rows)
         materialized = sum(
@@ -616,11 +640,15 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             "strategy": strategy,
             "runs": len(strategy_rows),
             "task_count": len(by_task),
+            "graded_task_count": len(task_rates),
             "task_ids": ";".join(sorted(by_task)),
             "official_success_runs": sum(
-                bool(row["official_resolved"]) for row in strategy_rows
+                _official_quality(row) is True for row in strategy_rows
             ),
-            "macro_task_resolution": mean(task_rates),
+            "official_grader_error_runs": sum(
+                bool(row.get("official_error")) for row in strategy_rows
+            ),
+            "macro_task_resolution": mean(task_rates) if task_rates else None,
             "workload_gross_saving_ratio_of_sums": 1 - materialized / full,
             "mean_run_gross_saving": mean(
                 float(row["saving_fraction"]) for row in strategy_rows
@@ -629,10 +657,10 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             "efficiency_qualified_pairs": len(qualified),
             "paired_baseline_successes": len(baseline_success),
             "paired_preserved_successes": sum(
-                bool(row.get("official_resolved")) for row in baseline_success
+                _official_quality(row) is True for row in baseline_success
             ),
             "paired_success_preservation": (
-                mean(bool(row.get("official_resolved")) for row in baseline_success)
+                mean(_official_quality(row) is True for row in baseline_success)
                 if baseline_success else None
             ),
             "mean_paired_net_saving_all": (
@@ -821,7 +849,7 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         fig, ax = plt.subplots(figsize=(7.2, 4.5))
         grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
         for row in rows:
-            if row.get(metric) is not None and row.get("official_resolved") is not None:
+            if row.get(metric) is not None and _official_quality(row) is not None:
                 grouped[str(row["strategy"])].append(row)
         for strategy, strategy_rows in grouped.items():
             if metric == "saving_fraction":
@@ -834,7 +862,9 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
                 x = 100 * mean(float(row[metric]) for row in strategy_rows)
             task_rates: dict[str, list[bool]] = defaultdict(list)
             for row in strategy_rows:
-                task_rates[str(row["task_id"])].append(bool(row["official_resolved"]))
+                quality = _official_quality(row)
+                if quality is not None:
+                    task_rates[str(row["task_id"])].append(quality)
             task_means = [mean(values) for values in task_rates.values()]
             n = len(task_means)
             rate = mean(task_means)
@@ -882,7 +912,7 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
                 and (not successful_only or row.get("efficiency_qualified"))
             ]
             for row in rows:
-                marker = "o" if row.get("official_resolved") else "x"
+                marker = "o" if _official_quality(row) is True else "x"
                 axis.scatter(100 * float(row[metric]), float(row["tool_call_delta"]),
                              s=48, marker=marker)
                 axis.annotate(str(row["strategy"]),
@@ -921,7 +951,7 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         if y is None:
             continue
         marker = (
-            "x" if not row.get("official_resolved")
+            "x" if _official_quality(row) is not True
             else "o" if first is not None else "^"
         )
         causal_saving = row.get("saving_before_first_action_divergence_fraction")
@@ -1028,6 +1058,7 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "paired_total_model_token_saving": "one minus candidate / paired FULL for materialized input plus endpoint-reported completion tokens; emitted only with complete usage coverage",
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
+            "grader_errors": "official grader errors are reported but excluded from accuracy denominators and cannot efficiency-qualify a pair",
             "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",
             "frozen_independence": "unique task/model/trajectory identity, not analyst cohort label; overlapping suffixes are collapsed to broadest coverage",
             "pre_divergence_saving": "cumulative saving over requests strictly before the first divergent action; the divergent request itself is excluded",

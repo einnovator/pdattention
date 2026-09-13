@@ -98,7 +98,8 @@ def adaptive_gate(
     arm_results: Sequence[Mapping[str, Any]], thresholds: Mapping[str, Any]
 ) -> tuple[str, str]:
     completed = [row for row in arm_results if row.get("status") == "complete"]
-    failures = sum(row.get("official_resolved") is False for row in completed)
+    grade_valid = [row for row in completed if not row.get("official_error", False)]
+    failures = sum(row.get("official_resolved") is False for row in grade_valid)
     if failures >= int(thresholds.get("stop_after_failures", 2)):
         return "stop", f"{failures} official failures reached the stop boundary"
     yield_n = int(thresholds.get("minimum_tasks_before_yield_gate", 2))
@@ -107,8 +108,8 @@ def adaptive_gate(
         if mean_saving < float(thresholds.get("minimum_gross_saving_fraction", .02)):
             return "stop", f"mean gross saving {mean_saving:.4f} is below the yield gate"
     accuracy_n = int(thresholds.get("minimum_tasks_before_accuracy_gate", 3))
-    if len(completed) >= accuracy_n:
-        accuracy = sum(bool(row.get("official_resolved")) for row in completed) / len(completed)
+    if len(grade_valid) >= accuracy_n:
+        accuracy = sum(bool(row.get("official_resolved")) for row in grade_valid) / len(grade_valid)
         if accuracy < float(thresholds.get("minimum_task_resolution", .8)):
             return "stop", f"official resolution {accuracy:.4f} is below the accuracy gate"
     return "continue", "arm remains within predeclared gates"

@@ -96,6 +96,7 @@ def test_loader_separates_grader_error_from_ordinary_unresolved(tmp_path):
 
     assert loaded["official_resolved"] is False
     assert loaded["official_error"] is True
+    assert loaded["official_score"] is None
     assert loaded["official_outcome"] == "grader_error"
 
 
