@@ -7,6 +7,7 @@ consulted only after generation, so it cannot leak into the selected request.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
 import json
 import math
@@ -70,6 +71,96 @@ def _digest(text: str) -> str:
 
 def _json_digest(value: Any) -> str:
     return _digest(json.dumps(value, sort_keys=True))
+
+
+def apply_oracle_addback(
+    history,
+    plan,
+    causal_group_ids: Sequence[str],
+    *,
+    count_tokens,
+):
+    """Restore requested complete causal groups to a selected logical plan.
+
+    This is an explicit oracle intervention for counterfactual diagnosis, not
+    a deployable policy.  Record order and group integrity come from the
+    canonical history; no individual action or observation can be restored in
+    isolation.
+    """
+
+    requested = tuple(dict.fromkeys(str(value) for value in causal_group_ids))
+    if not requested:
+        return plan, {
+            "requested_causal_group_ids": (),
+            "restored_causal_group_ids": (),
+            "already_selected_causal_group_ids": (),
+            "not_yet_present_causal_group_ids": (),
+            "restored_record_ids": (),
+            "restored_tokens": 0,
+        }
+    requested_set = set(requested)
+    records_by_group: dict[str, list[Any]] = {}
+    for record in history.records:
+        records_by_group.setdefault(record.causal_group_id, []).append(record)
+    selected_before = set(plan.selected_record_ids)
+    restored_groups: list[str] = []
+    already_selected: list[str] = []
+    absent: list[str] = []
+    restored_records: list[str] = []
+    for group_id in requested:
+        group_records = records_by_group.get(group_id)
+        if not group_records:
+            absent.append(group_id)
+        elif all(row.record_id in selected_before for row in group_records):
+            already_selected.append(group_id)
+        else:
+            restored_groups.append(group_id)
+            restored_records.extend(
+                row.record_id for row in group_records
+                if row.record_id not in selected_before
+            )
+    selected = selected_before | set(restored_records)
+    selected_record_ids = tuple(
+        row.record_id for row in history.records if row.record_id in selected
+    )
+    selected_causal_group_ids = tuple(dict.fromkeys(
+        row.causal_group_id
+        for row in history.records
+        if row.record_id in selected
+    ))
+    reasons = dict(plan.selection_reasons)
+    for record_id in restored_records:
+        group_id = history.record_by_id[record_id].causal_group_id
+        reasons[record_id] = f"oracle_addback:{group_id}"
+    selected_tokens = sum(
+        count_tokens(history.record_by_id[record_id].content)
+        for record_id in selected_record_ids
+    )
+    restored_group_set = set(restored_groups)
+    updated = replace(
+        plan,
+        selected_record_ids=selected_record_ids,
+        selected_causal_group_ids=selected_causal_group_ids,
+        selection_reasons=tuple(
+            (record_id, reasons[record_id]) for record_id in selected_record_ids
+        ),
+        selected_tokens=selected_tokens,
+        middle_selected_turns=(
+            plan.middle_selected_turns + len(restored_groups)
+        ),
+        exclusions=tuple(
+            row for row in plan.exclusions
+            if row.causal_group_id not in restored_group_set
+        ),
+    )
+    return updated, {
+        "requested_causal_group_ids": requested,
+        "restored_causal_group_ids": tuple(restored_groups),
+        "already_selected_causal_group_ids": tuple(already_selected),
+        "not_yet_present_causal_group_ids": tuple(absent),
+        "restored_record_ids": tuple(restored_records),
+        "restored_tokens": selected_tokens - plan.selected_tokens,
+    }
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -377,6 +468,7 @@ def replay(
     negative_fallback: str = "none",
     h2b_allow_workspace_verification: bool = False,
     min_decision: int = 1,
+    oracle_addback_causal_group_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     if not 0 < budget_fraction <= 1:
         raise ValueError("budget_fraction must be in (0, 1]")
@@ -386,6 +478,10 @@ def replay(
         raise ValueError("matched_token_tail requires a --matched-budget-replay artifact")
     if policy == "matched_token_tail" and round_up_whole_turns:
         raise ValueError("matched_token_tail is a strict ceiling and cannot round up")
+    if policy == "matched_token_tail" and oracle_addback_causal_group_ids:
+        raise ValueError(
+            "oracle causal-group add-back is incompatible with matched_token_tail"
+        )
     if (
         policy != "matched_token_tail"
         and materialization_mode == MaterializationMode.MATCHED_TOKEN_TAIL
@@ -494,6 +590,9 @@ def replay(
             "h2b_allow_workspace_verification": h2b_allow_workspace_verification,
             "realization": negative_realization.value,
         } if policy in NEGATIVE_POLICY_RULES else None,
+        "oracle_addback_causal_group_ids": tuple(
+            dict.fromkeys(oracle_addback_causal_group_ids)
+        ),
     }
     rows: list[dict[str, Any]] = []
     if progress_path is not None and progress_path.exists() and not restart:
@@ -588,6 +687,12 @@ def replay(
                 ),
                 count_tokens=count_tokens,
             )
+            plan, oracle_addback = apply_oracle_addback(
+                history,
+                plan,
+                oracle_addback_causal_group_ids,
+                count_tokens=count_tokens,
+            )
             materialized = materialize_plan(
                 history,
                 plan,
@@ -595,6 +700,15 @@ def replay(
                 query=_query(prefix),
                 count_tokens=count_tokens,
             )
+        if policy == "matched_token_tail":
+            oracle_addback = {
+                "requested_causal_group_ids": (),
+                "restored_causal_group_ids": (),
+                "already_selected_causal_group_ids": (),
+                "not_yet_present_causal_group_ids": (),
+                "restored_record_ids": (),
+                "restored_tokens": 0,
+            }
         receipt_realization = None
         if negative_realization in {
             NegativeRealizationMode.OBSERVATION_RECEIPT,
@@ -700,6 +814,7 @@ def replay(
             ),
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
+            "oracle_addback": oracle_addback,
             "negative_realization": negative_realization.value,
             "negative_candidate_group_count": len(plan.exclusions),
             "negative_candidate_record_count": sum(
@@ -901,6 +1016,16 @@ def main() -> None:
     parser.add_argument("--max-output-tokens", type=int)
     parser.add_argument("--seed", type=int)
     parser.add_argument(
+        "--oracle-addback-group",
+        action="append",
+        default=[],
+        metavar="CAUSAL_GROUP_ID",
+        help=(
+            "diagnostic oracle: restore one complete excluded causal group; "
+            "repeat to restore multiple groups"
+        ),
+    )
+    parser.add_argument(
         "--round-up-whole-turns",
         action="store_true",
         help=(
@@ -969,6 +1094,7 @@ def main() -> None:
         negative_fallback=args.negative_fallback,
         h2b_allow_workspace_verification=args.h2b_allow_workspace_verification,
         min_decision=args.min_decision,
+        oracle_addback_causal_group_ids=args.oracle_addback_group,
     )
     print(json.dumps({key: result[key] for key in (
         "instance_id", "policy", "completed_decisions", "exact_command_rate",

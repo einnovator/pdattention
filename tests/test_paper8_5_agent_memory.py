@@ -1472,6 +1472,59 @@ def test_frozen_replay_records_policy_excess_immediate_reacquisition(monkeypatch
     assert row["exclusions"][0]["tombstone_in_model_request"] is False
 
 
+def test_frozen_replay_oracle_addback_restores_complete_causal_group(monkeypatch):
+    messages = _heuristic_messages(
+        ("cat a.py", "a", None),
+        ("cat b.py", "b", None),
+        ("cat c.py", "c", None),
+        ("cat d.py", "d", None),
+    )
+    requests = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        requests.append(payload["messages"])
+        return {"choices": [{"message": {"content": messages[8]["content"]}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        policy="h4_working_set",
+        head=0,
+        tail=0,
+        working_set_resources=2,
+        min_decision=4,
+        max_decisions=1,
+        oracle_addback_causal_group_ids=("turn:t0000",),
+    ))
+
+    row = result["rows"][0]
+    audit = row["oracle_addback"]
+    assert audit["restored_causal_group_ids"] == ("turn:t0000",)
+    assert audit["restored_record_ids"] == ("m2", "m3")
+    assert audit["restored_tokens"] > 0
+    assert row["excluded_group_count"] == 0
+    prompt = "\n".join(message["content"] for message in requests[0])
+    assert "cat a.py" in prompt
+    assert result["run_configuration"]["oracle_addback_causal_group_ids"] == (
+        "turn:t0000",
+    )
+
+
+def test_oracle_addback_rejects_matched_token_tail():
+    with pytest.raises(ValueError, match="incompatible with matched_token_tail"):
+        frozen_replay.replay(**_replay_arguments(
+            _messages(1),
+            progress_path=None,
+            policy="matched_token_tail",
+            matched_budget_replay={"rows": [{
+                "decision": 1,
+                "materialized_tokens": 20,
+            }]},
+            oracle_addback_causal_group_ids=("turn:t0000",),
+        ))
+
+
 def test_frozen_replay_observation_receipt_is_prefix_only_and_reports_separate_tokens(
     monkeypatch,
 ):

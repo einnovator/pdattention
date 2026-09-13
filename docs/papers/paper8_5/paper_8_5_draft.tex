@@ -1153,7 +1153,7 @@ candidate admitted to a bounded task-utility probe.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.98\linewidth]{../shared/results/paper8_5_agent_memory/tradeoff_curves/frozen_saving_vs_action_agreement.pdf}
+\includegraphics[width=0.88\linewidth]{../shared/results/paper8_5_agent_memory/tradeoff_curves/frozen_saving_vs_action_agreement.pdf}
 \caption{Materialized-token saving versus conservative next-action agreement,
 separated by matched frozen cohort. Agreement is diagnostic and is not task
 accuracy.}
@@ -1279,6 +1279,14 @@ two official failures, after less than 2\% mean gross saving on two tasks, or
 after resolution falls below 80\% on at least three tasks.  Only nondominated
 survivors are expanded to the predeclared 5\%, 15\%, and 30\% saving
 neighborhoods and then to the remaining Easy-14 tasks.
+
+Failures enter a frozen, one-causal-group-at-a-time oracle add-back audit at
+the first command divergence.  Each counterfactual restores a complete
+action--observation group while holding the selected request and reference
+fixed otherwise; candidate groups are tried from the fewest restored tokens
+upward.  Recovery identifies a sufficient omitted group for diagnosis, not a
+deployable policy or a proof that the group was uniquely necessary.  The
+autonomous accuracy curve therefore never includes oracle-assisted outcomes.
 
 \subsection{First autonomous qualification}
 

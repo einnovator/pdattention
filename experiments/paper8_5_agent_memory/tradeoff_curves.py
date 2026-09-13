@@ -255,6 +255,16 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
             if usage_coverage == int(metrics.get("calls") or 0) else None
         ),
         "official_resolved": bool(official.get("resolved")) if official else None,
+        "official_error": bool(official.get("error", False)) if official else None,
+        "official_outcome": (
+            "grader_error"
+            if official and bool(official.get("error", False))
+            else "resolved"
+            if official and bool(official.get("resolved"))
+            else "unresolved"
+            if official
+            else None
+        ),
         "auxiliary_resolved": (
             bool(auxiliary_summary.get("resolved")) if auxiliary_summary else None
         ),
@@ -309,6 +319,8 @@ def pair_autonomous(
     candidate["pairing_reason"] = pairing_reason
     candidate["legacy_pairing_identity_mismatches"] = identity_mismatches
     candidate["baseline_official_resolved"] = baseline["official_resolved"]
+    candidate["baseline_official_error"] = baseline.get("official_error")
+    candidate["baseline_official_outcome"] = baseline.get("official_outcome")
     candidate["baseline_auxiliary_resolved"] = baseline["auxiliary_resolved"]
     candidate["call_delta"] = candidate["calls"] - baseline["calls"]
     candidate["tool_call_delta"] = candidate["tool_calls"] - baseline["tool_calls"]

@@ -114,6 +114,12 @@ def _completed_result(path: Path) -> dict[str, Any] | None:
     return {
         "status": "complete",
         "official_resolved": official["resolved"],
+        "official_error": bool(official.get("error", False)),
+        "official_outcome": (
+            "grader_error" if bool(official.get("error", False))
+            else "resolved" if bool(official["resolved"])
+            else "unresolved"
+        ),
         "calls": int(metrics.get("calls") or 0),
         "cumulative_full_tokens": full,
         "cumulative_materialized_tokens": materialized,

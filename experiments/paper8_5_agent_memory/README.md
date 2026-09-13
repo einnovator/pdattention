@@ -337,3 +337,19 @@ runner writes a reducer-ready `tradeoff_spec.json`; `--reduce` emits accuracy
 versus within-run, paired end-to-end, and failure-aware token-saving curves,
 plus tool-call and first-divergence diagnostics. Endpoint-reported completion
 tokens are included only when every call has usage coverage.
+
+For a failed frozen policy decision, generate a one-group-at-a-time oracle
+diagnostic queue with:
+
+```bash
+python -m experiments.paper8_5_agent_memory.oracle_addback_queue \
+  --candidate /results/policy-replay.json \
+  --output /results/policy-replay.oracle-addback.json
+```
+
+Each queued trial restores exactly one complete causal group at the first
+command divergence and can be executed by adding the emitted arguments to
+`run_frozen_replay`. Groups are ranked by restored tokens so the first trial
+tests the smallest counterfactual intervention. These trials diagnose which
+omission caused a divergence; they are explicitly oracle evidence and cannot
+be reported as autonomous policy quality.

@@ -71,6 +71,24 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["failure_aware_paired_net_saving_fraction"] == pytest.approx(.3)
     assert candidate["first_action_divergence"] == 1
     assert candidate["first_action_divergence_kind"] == "command_mismatch"
+    assert candidate["official_outcome"] == "resolved"
+
+
+def test_loader_separates_grader_error_from_ordinary_unresolved(tmp_path):
+    path = _run(
+        tmp_path, "grader-error", policy="full", calls=2, tokens=100,
+        resolved=False, pair_id="pair",
+    )
+    metrics_path = path / "autonomous_metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["official_result"]["error"] = True
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+
+    loaded = load_autonomous_run(path)
+
+    assert loaded["official_resolved"] is False
+    assert loaded["official_error"] is True
+    assert loaded["official_outcome"] == "grader_error"
 
 
 def test_pair_marks_early_termination_as_divergence_and_failed_efficiency(tmp_path):
