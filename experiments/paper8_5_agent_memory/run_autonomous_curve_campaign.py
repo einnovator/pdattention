@@ -252,6 +252,8 @@ def _command(
         command.extend(("--pythonpath", value))
     if args.skip_grading:
         command.append("--skip-grading")
+    if args.grade_auxiliary_workspace_state:
+        command.append("--grade-auxiliary-workspace-state")
     if args.preflight_only:
         command.append("--preflight-only")
     return command
@@ -373,6 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-runs", type=int)
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--skip-grading", action="store_true")
+    parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--reduce", action="store_true")

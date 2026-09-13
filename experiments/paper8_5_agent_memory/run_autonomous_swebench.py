@@ -638,8 +638,7 @@ def run(args: argparse.Namespace) -> Path:
     )
     metrics["official_result"] = result
     if (
-        not result.get("error")
-        and args.grade_auxiliary_workspace_state
+        args.grade_auxiliary_workspace_state
         and auxiliary["status"] == "available"
     ):
         try:

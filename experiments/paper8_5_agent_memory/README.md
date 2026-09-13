@@ -257,8 +257,11 @@ recorded in `auxiliary_workspace_state.json`. The original `agent/preds.json`
 and `official_result.json` are never modified or replaced. Pass
 `--grade-auxiliary-workspace-state` to invoke a second official grader run; its
 separately labeled result is written to
-`auxiliary_workspace_state_official_result.json`. `--skip-grading` suppresses
-both grader invocations while retaining extraction provenance.
+`auxiliary_workspace_state_official_result.json`. This second grade is still
+run when the primary submission has a patch-apply error: that is the diagnostic
+case needed to separate workspace capability from submission-protocol
+reliability. The campaign runner accepts the same flag. `--skip-grading`
+suppresses both grader invocations while retaining extraction provenance.
 
 mini-swe-agent 2.4.6 strips observation `extra` fields before HTTP transport.
 The proxy therefore joins `execution_*.json` sidecars from the instrumented
