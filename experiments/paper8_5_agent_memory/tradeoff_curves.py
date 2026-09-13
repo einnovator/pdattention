@@ -151,7 +151,7 @@ def load_frozen_comparison(
             "independence_key": hashlib.sha256(json.dumps({
                 "instance_id": identity.get("instance_id"),
                 "model": identity.get("model"),
-                "full_replay_digest": identity.get("full_replay_digest"),
+                "trajectory_digest": identity.get("trajectory_digest"),
             }, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "task_id": identity.get("instance_id"),
             "model": identity.get("model"),
@@ -194,6 +194,38 @@ def _trace(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _agent_behavior_digest(manifest: Mapping[str, Any]) -> str:
+    """Hash agent semantics while excluding per-run transport/output paths."""
+
+    command = manifest.get("agent_command_template")
+    if not isinstance(command, list) or not command:
+        raise ValueError("run manifest lacks an agent command template")
+    normalized: list[str] = ["<python>"]
+    index = 1
+    while index < len(command):
+        argument = str(command[index])
+        if argument == "-o":
+            index += 2
+            continue
+        if argument == "-c" and index + 1 < len(command):
+            value = str(command[index + 1])
+            key = value.split("=", 1)[0]
+            if key == "model.model_kwargs.api_base":
+                value = key + "=<proxy>"
+            elif key == "environment.executable":
+                value = key + "=<docker-executable>"
+            elif key == "environment.instrumentation_output_root":
+                value = key + "=<instrumentation-output>"
+            normalized.extend((argument, value))
+            index += 2
+            continue
+        normalized.append(argument)
+        index += 1
+    return hashlib.sha256(json.dumps(
+        normalized, separators=(",", ":"), ensure_ascii=False,
+    ).encode()).hexdigest()
+
+
 def load_autonomous_run(path: Path) -> dict[str, Any]:
     manifest_path = path / "run_manifest.json"
     metrics_path = path / "autonomous_metrics.json"
@@ -227,6 +259,17 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         raise ValueError(f"{trace_path}: sparse request indexes")
     if len(trace) != int(metrics.get("calls") or 0):
         raise ValueError(f"{trace_path}: request count does not match metrics")
+    trace_full_tokens = sum(int(row.get("full_tokens") or 0) for row in trace)
+    trace_materialized_tokens = sum(
+        int(row.get("materialized_tokens", row.get("selected_tokens", 0)) or 0)
+        for row in trace
+    )
+    if trace_full_tokens != full_tokens:
+        raise ValueError(f"{trace_path}: full-token total does not match metrics")
+    if trace_materialized_tokens != materialized_tokens:
+        raise ValueError(
+            f"{trace_path}: materialized-token total does not match metrics"
+        )
     pairing_keys = (
         "repository_revision", "benchmark_card_sha256", "benchmark_ids_sha256",
         "dataset", "dataset_revision", "split",
@@ -234,8 +277,11 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         "top_p", "seed", "max_calls", "max_completion_tokens",
         "harness_version_requested", "harness_version_observed",
         "grader_version_requested", "grader_version_observed", "docker_platform",
-        "environment_image", "agent_config_sha256", "system_prompt_sha256",
-        "task_statement_sha256",
+        "environment_image", "instrument_observations",
+    )
+    pairing_identity = {key: manifest.get(key) for key in pairing_keys}
+    pairing_identity["agent_behavior_sha256"] = (
+        manifest.get("agent_behavior_sha256") or _agent_behavior_digest(manifest)
     )
     return {
         "evidence_class": "autonomous_task_quality",
@@ -272,7 +318,7 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         "tool_calls": int(metrics.get("actions") or 0),
         "reacquisitions": int(metrics.get("reacquisition_events") or 0),
         "trace": trace,
-        "pairing_identity": {key: manifest.get(key) for key in pairing_keys},
+        "pairing_identity": pairing_identity,
         "source": _portable_path(path),
         "source_sha256": {
             "manifest": _sha256(manifest_path),
@@ -316,6 +362,11 @@ def pair_autonomous(
     if baseline.get("strategy") != "full" or baseline.get("saving_fraction") != 0.0:
         raise ValueError("paired autonomous baseline must be an uncompressed FULL run")
     candidate["baseline_strategy"] = baseline["strategy"]
+    candidate["pairing_role"] = (
+        "full_repeat_control"
+        if candidate.get("strategy_family") == "full"
+        else "policy_candidate"
+    )
     candidate["pairing_reason"] = pairing_reason
     candidate["legacy_pairing_identity_mismatches"] = identity_mismatches
     candidate["baseline_official_resolved"] = baseline["official_resolved"]
@@ -385,9 +436,16 @@ def pair_autonomous(
     candidate["first_selection_change"] = selection_change
     candidate["selection_to_action_divergence_lag"] = (
         first - selection_change
-        if first is not None and selection_change is not None else None
+        if first is not None and selection_change is not None
+        and first >= selection_change else None
     )
-    through = first if first is not None else candidate["divergence_right_censored_at"]
+    # The divergent request is downstream of the changed action. Measure only
+    # requests preceding it so post-divergence compression cannot be presented
+    # as a possible cause of the divergence.
+    through = (
+        first - 1 if first is not None
+        else candidate["divergence_right_censored_at"]
+    )
     causal_rows = [
         row for row in candidate["trace"]
         if through is not None and int(row["request_index"]) <= int(through)
@@ -397,9 +455,12 @@ def pair_autonomous(
         int(row.get("materialized_tokens", row.get("selected_tokens", 0)) or 0)
         for row in causal_rows
     )
-    candidate["saving_through_first_divergence_fraction"] = (
-        1.0 - causal_materialized / causal_full if causal_full else None
+    candidate["saving_before_first_action_divergence_fraction"] = (
+        1.0 - causal_materialized / causal_full if causal_full else 0.0
     )
+    candidate["saving_through_first_divergence_fraction"] = candidate[
+        "saving_before_first_action_divergence_fraction"
+    ]
 
 
 def pareto_frontier(
@@ -461,13 +522,26 @@ def adaptive_decisions(
         independent: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
         for row in rows:
             independent[str(row.get("independence_key", row.get("cohort")))].append(row)
+        # A suffix and its enclosing full-trajectory cohort are overlapping
+        # evidence. Within each task/trajectory cluster retain the broadest
+        # decision coverage, averaging only exact-coverage repeats.
+        representatives = []
+        collapsed = 0
+        for cluster in independent.values():
+            broadest = max(int(row.get("decisions") or 0) for row in cluster)
+            selected = [
+                row for row in cluster
+                if int(row.get("decisions") or 0) == broadest
+            ]
+            representatives.append(selected)
+            collapsed += len(cluster) - len(selected)
         saving = mean(
             mean(float(row["saving_fraction"]) for row in cluster)
-            for cluster in independent.values()
+            for cluster in representatives
         )
         quality = mean(
             mean(float(row["quality_proxy"]) for row in cluster)
-            for cluster in independent.values()
+            for cluster in representatives
         )
         families = {str(row.get("strategy_family")) for row in rows}
         if not saving:
@@ -499,6 +573,7 @@ def adaptive_decisions(
             "strategy": strategy,
             "frozen_observations": len(rows),
             "independent_cohorts": len(independent),
+            "overlapping_observations_collapsed": collapsed,
             "mean_saving_fraction": saving,
             "mean_quality_proxy": quality,
             "decision": action,
@@ -590,6 +665,35 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             ),
         })
     return summaries
+
+
+def summarize_full_repeat_controls(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Expose FULL-to-FULL instability separately from policy effects."""
+
+    repeats = [
+        row for row in rows if row.get("pairing_role") == "full_repeat_control"
+    ]
+    return [{
+        "task_id": row["task_id"],
+        "model": row["model"],
+        "pair_id": row.get("pair_id"),
+        "baseline_official_outcome": row.get("baseline_official_outcome"),
+        "repeat_official_outcome": row.get("official_outcome"),
+        "endpoint_agreement": (
+            row.get("baseline_official_outcome") == row.get("official_outcome")
+        ),
+        "exact_action_trajectory": (
+            row.get("first_action_divergence") is None
+            and row.get("call_delta") == 0
+        ),
+        "first_action_divergence": row.get("first_action_divergence"),
+        "first_action_divergence_kind": row.get("first_action_divergence_kind"),
+        "baseline_calls": row.get("calls") - row.get("call_delta", 0),
+        "repeat_calls": row.get("calls"),
+        "source": row.get("source"),
+    } for row in repeats]
 
 
 def _cluster_bootstrap_mean_ci(
@@ -820,7 +924,7 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
             "x" if not row.get("official_resolved")
             else "o" if first is not None else "^"
         )
-        causal_saving = row.get("saving_through_first_divergence_fraction")
+        causal_saving = row.get("saving_before_first_action_divergence_fraction")
         if causal_saving is None:
             continue
         ax.scatter(100 * float(causal_saving), int(y), s=48, marker=marker)
@@ -911,6 +1015,7 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
         bounded_probe_families=thresholds.get("bounded_probe_families") or (),
     )
     autonomous_summary = summarize_autonomous(autonomous)
+    full_repeat_summary = summarize_full_repeat_controls(autonomous)
     result = {
         "schema_version": 1,
         "study": "paper8_5_agent_memory_tradeoff_curves",
@@ -924,11 +1029,13 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
             "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",
-            "frozen_independence": "unique task/model/repeat-qualified-FULL digest, not analyst cohort label",
+            "frozen_independence": "unique task/model/trajectory identity, not analyst cohort label; overlapping suffixes are collapsed to broadest coverage",
+            "pre_divergence_saving": "cumulative saving over requests strictly before the first divergent action; the divergent request itself is excluded",
         },
         "frozen_observations": [_strip_trace(row) for row in frozen],
         "autonomous_observations": [_strip_trace(row) for row in autonomous],
         "autonomous_strategy_summary": autonomous_summary,
+        "full_repeat_control_summary": full_repeat_summary,
         "frozen_pareto_frontier_by_cohort": {
             cohort: [_strip_trace(row) for row in pareto_frontier(
                 cohort_rows, quality_key="quality_proxy"
@@ -950,6 +1057,7 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
     _write_csv(output / "frozen_observations.csv", frozen)
     _write_csv(output / "autonomous_observations.csv", autonomous)
     _write_csv(output / "autonomous_strategy_summary.csv", autonomous_summary)
+    _write_csv(output / "full_repeat_control_summary.csv", full_repeat_summary)
     _write_csv(output / "adaptive_decisions.csv", decisions)
     _plot(output, frozen, autonomous)
     return result

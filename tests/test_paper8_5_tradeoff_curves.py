@@ -11,6 +11,7 @@ from experiments.paper8_5_agent_memory.tradeoff_curves import (
     pair_autonomous,
     pareto_frontier,
     summarize_autonomous,
+    summarize_full_repeat_controls,
 )
 from experiments.paper8_5_agent_memory.run_frozen_replay import _command
 
@@ -28,12 +29,18 @@ def _run(
         "seed": 0,
         "pair_id": pair_id,
         "selection": {"policy": policy, "materialization_mode": "whole_record"},
+        "agent_command_template": [
+            "python", "-m", "minisweagent.run", "-c", "scaffold.yaml",
+            "-c", "model.model_kwargs.temperature=0.0",
+            "-c", "model.model_kwargs.api_base=http://127.0.0.1:1234/v1",
+            "-o", str(path / "agent"),
+        ],
     }
     metrics = {
         "calls": calls,
         "actions": calls - 1,
-        "cumulative_full_tokens": 100,
-        "cumulative_materialized_tokens": tokens,
+        "cumulative_full_tokens": calls * 100,
+        "cumulative_materialized_tokens": calls * tokens,
         "reacquisition_events": 0,
         "official_result": {"resolved": resolved},
     }
@@ -64,13 +71,14 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     ))
     pair_autonomous(candidate, full)
     assert candidate["saving_fraction"] == pytest.approx(.3)
-    assert candidate["paired_net_saving_fraction"] == pytest.approx(.3)
+    assert candidate["paired_net_saving_fraction"] == pytest.approx(.44)
     assert candidate["call_delta"] == -2
     assert candidate["tool_call_delta"] == -2
     assert candidate["efficiency_qualified"] is True
-    assert candidate["failure_aware_paired_net_saving_fraction"] == pytest.approx(.3)
+    assert candidate["failure_aware_paired_net_saving_fraction"] == pytest.approx(.44)
     assert candidate["first_action_divergence"] == 1
     assert candidate["first_action_divergence_kind"] == "command_mismatch"
+    assert candidate["saving_before_first_action_divergence_fraction"] == 0
     assert candidate["official_outcome"] == "resolved"
 
 
@@ -135,6 +143,32 @@ def test_pair_rejects_changed_frozen_execution_identity(tmp_path):
         pair_autonomous(candidate, full)
 
 
+def test_agent_behavior_pairing_ignores_paths_but_not_decoding(tmp_path):
+    full_path = _run(
+        tmp_path, "full", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair",
+    )
+    candidate_path = _run(
+        tmp_path, "candidate", policy="h3_read_superseded", calls=2,
+        tokens=90, resolved=True, pair_id="pair",
+    )
+    manifest_path = candidate_path / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    command = manifest["agent_command_template"]
+    command[command.index("-o") + 1] = "/different/output"
+    api_index = command.index("model.model_kwargs.api_base=http://127.0.0.1:1234/v1")
+    command[api_index] = "model.model_kwargs.api_base=http://127.0.0.1:9876/v1"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    pair_autonomous(load_autonomous_run(candidate_path), load_autonomous_run(full_path))
+
+    command[command.index("model.model_kwargs.temperature=0.0")] = (
+        "model.model_kwargs.temperature=0.5"
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="execution identity"):
+        pair_autonomous(load_autonomous_run(candidate_path), load_autonomous_run(full_path))
+
+
 def test_loader_rejects_incomplete_or_sparse_autonomous_artifact(tmp_path):
     path = _run(
         tmp_path, "candidate", policy="full", calls=3, tokens=100,
@@ -147,6 +181,19 @@ def test_loader_rejects_incomplete_or_sparse_autonomous_artifact(tmp_path):
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="sparse request indexes"):
+        load_autonomous_run(path)
+
+
+def test_loader_rejects_trace_token_totals_that_disagree_with_metrics(tmp_path):
+    path = _run(
+        tmp_path, "candidate", policy="full", calls=2, tokens=100,
+        resolved=True,
+    )
+    metrics_path = path / "autonomous_metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["cumulative_materialized_tokens"] += 1
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+    with pytest.raises(ValueError, match="materialized-token total"):
         load_autonomous_run(path)
 
 
@@ -255,6 +302,43 @@ def test_adaptive_gate_does_not_count_renamed_same_evidence_as_replication():
 
     assert decision["independent_cohorts"] == 1
     assert decision["decision"] == "replicate_frozen"
+
+
+def test_adaptive_gate_collapses_overlapping_suffix_to_broadest_coverage():
+    rows = [
+        {"strategy": "candidate", "strategy_coordinate": "candidate",
+         "strategy_family": "candidate", "cohort": "suffix",
+         "independence_key": "same-task", "saving_fraction": .50,
+         "quality_proxy": .50, "decisions": 7},
+        {"strategy": "candidate", "strategy_coordinate": "candidate",
+         "strategy_family": "candidate", "cohort": "full",
+         "independence_key": "same-task", "saving_fraction": .10,
+         "quality_proxy": .95, "decisions": 23},
+    ]
+    decision = adaptive_decisions(
+        rows, low_yield_saving=.02, low_yield_quality=.8,
+        minimum_independent_cohorts_for_promotion=1,
+    )[0]
+    assert decision["overlapping_observations_collapsed"] == 1
+    assert decision["mean_saving_fraction"] == pytest.approx(.10)
+    assert decision["mean_quality_proxy"] == pytest.approx(.95)
+
+
+def test_full_repeat_control_summary_exposes_endpoint_and_trajectory_instability(tmp_path):
+    full = load_autonomous_run(_run(
+        tmp_path, "full", policy="full", calls=2, tokens=100,
+        resolved=True, command_prefix="a", pair_id="pair",
+    ))
+    repeat = load_autonomous_run(_run(
+        tmp_path, "repeat", policy="full", calls=3, tokens=100,
+        resolved=False, command_prefix="b", pair_id="pair",
+    ))
+    pair_autonomous(repeat, full)
+    summary = summarize_full_repeat_controls([full, repeat])[0]
+    assert summary["endpoint_agreement"] is False
+    assert summary["exact_action_trajectory"] is False
+    assert summary["baseline_calls"] == 2
+    assert summary["repeat_calls"] == 3
 
 
 def test_task_cluster_bootstrap_treats_single_task_as_one_unit():

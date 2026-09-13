@@ -142,6 +142,37 @@ def build_agent_command(
     return command
 
 
+def agent_behavior_digest(command: Sequence[str]) -> str:
+    """Hash behavioral CLI state without run-local transport/output paths."""
+
+    if not command:
+        raise ValueError("agent command cannot be empty")
+    normalized: list[str] = ["<python>"]
+    index = 1
+    while index < len(command):
+        argument = str(command[index])
+        if argument == "-o":
+            index += 2
+            continue
+        if argument == "-c" and index + 1 < len(command):
+            value = str(command[index + 1])
+            key = value.split("=", 1)[0]
+            if key == "model.model_kwargs.api_base":
+                value = key + "=<proxy>"
+            elif key == "environment.executable":
+                value = key + "=<docker-executable>"
+            elif key == "environment.instrumentation_output_root":
+                value = key + "=<instrumentation-output>"
+            normalized.extend((argument, value))
+            index += 2
+            continue
+        normalized.append(argument)
+        index += 1
+    return _sha256_bytes(json.dumps(
+        normalized, separators=(",", ":"), ensure_ascii=False,
+    ).encode())
+
+
 def build_grader_command(
     args: argparse.Namespace,
     *,
@@ -479,6 +510,7 @@ def run(args: argparse.Namespace) -> Path:
         "instrument_observations": args.instrument_observations,
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
+        "agent_behavior_sha256": agent_behavior_digest(agent_command),
         "grader_command": grader_command,
         "official_grading_enabled": not args.skip_grading,
         "auxiliary_workspace_state": {

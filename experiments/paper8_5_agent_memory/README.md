@@ -340,7 +340,16 @@ efficiency coordinate, so early termination cannot appear as a saving. The
 runner writes a reducer-ready `tradeoff_spec.json`; `--reduce` emits accuracy
 versus within-run, paired end-to-end, and failure-aware token-saving curves,
 plus tool-call and first-divergence diagnostics. Endpoint-reported completion
-tokens are included only when every call has usage coverage.
+tokens are included only when every call has usage coverage. Pairing freezes
+the task/dataset, repository, model/tokenizer, decoding, harness/grader,
+environment image, instrumentation mode, and a normalized agent-command
+digest; run-local proxy, Docker-executable, instrumentation, and output paths
+are deliberately excluded from that digest. FULL-A versus FULL-B endpoint and
+trajectory agreement is emitted as its own control table rather than being
+attributed to a selection policy. The divergence curve charges only saving on
+requests strictly before the first changed action, and overlapping suffix and
+full-trajectory frozen cohorts are collapsed to the broadest coverage for
+adaptive decisions.
 
 For a failed frozen policy decision, generate a one-group-at-a-time oracle
 diagnostic queue with:
