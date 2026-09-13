@@ -1,4 +1,5 @@
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
+    _retry_path,
     adaptive_gate,
     campaign_cells,
     write_curve_spec,
@@ -75,3 +76,13 @@ def test_curve_spec_pairs_candidates_only_after_two_controls(tmp_path):
     value = json.loads(path.read_text())
     assert {row["candidate"] for row in value["autonomous_pairs"]} == {"b", "c"}
     assert all(row["baseline"] == "a" for row in value["autonomous_pairs"])
+
+
+def test_retry_path_preserves_incomplete_attempt(tmp_path):
+    base = tmp_path / "arm"
+    assert _retry_path(base) == base
+    base.mkdir()
+    (base / "run_manifest.json").write_text("{}")
+    assert _retry_path(base) == tmp_path / "arm__retry01"
+    (tmp_path / "arm__retry01").mkdir()
+    assert _retry_path(base) == tmp_path / "arm__retry02"

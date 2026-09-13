@@ -121,6 +121,16 @@ def _completed_result(path: Path) -> dict[str, Any] | None:
     }
 
 
+def _retry_path(base: Path) -> Path:
+    if not base.exists() or (base.is_dir() and not any(base.iterdir())):
+        return base
+    for attempt in range(1, 1000):
+        candidate = base.with_name(f"{base.name}__retry{attempt:02d}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"too many preserved retry attempts for {base}")
+
+
 def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
     complete = {
         str(cell_id): row for cell_id, row in state["cells"].items()
@@ -256,11 +266,21 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
     executed = 0
     for cell in cells:
         cell_id = str(cell["cell_id"])
-        cell_output = output / f"task_{cell['task_index']:02d}_{_slug(str(cell['instance_id']))}" / str(cell["arm_id"])
-        prior = _completed_result(cell_output)
+        base_output = output / f"task_{cell['task_index']:02d}_{_slug(str(cell['instance_id']))}" / str(cell["arm_id"])
+        recorded_output = Path(str(
+            state["cells"].get(cell_id, {}).get("output", base_output)
+        ))
+        prior = _completed_result(recorded_output) or _completed_result(base_output)
         if prior is not None:
-            state["cells"][cell_id] = {**cell, **prior, "output": str(cell_output)}
+            completed_output = (
+                recorded_output if _completed_result(recorded_output) is not None
+                else base_output
+            )
+            state["cells"][cell_id] = {
+                **cell, **prior, "output": str(completed_output)
+            }
             continue
+        cell_output = _retry_path(base_output)
         if not cell["is_control"]:
             prior_arm = [
                 row for row in state["cells"].values()
