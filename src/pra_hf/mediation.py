@@ -358,6 +358,18 @@ def _has_typed_input(request: PRAWireRequest) -> bool:
     )
 
 
+def _tool_semantics_by_name(request: PRAWireRequest) -> dict[str, Mapping[str, Any]]:
+    declarations: dict[str, Mapping[str, Any]] = {}
+    for tool in request.tools:
+        function = tool.get("function")
+        function = function if isinstance(function, Mapping) else {}
+        name = str(function.get("name") or tool.get("name") or "")
+        value = tool.get("x-pra-semantics", function.get("x-pra-semantics"))
+        if name and isinstance(value, Mapping):
+            declarations[name] = dict(value)
+    return declarations
+
+
 def resolve_auto_gateway_mode(
     request: PRAWireRequest,
     capabilities: PRAEngineCapabilities,
@@ -443,7 +455,11 @@ class RequestMediator:
         if self.config.record_inference.enabled:
             recordization = self.recordizer.recordize(
                 request.messages,
-                request_metadata={**request.metadata, "session_id": request.session_id},
+                request_metadata={
+                    **request.metadata,
+                    "session_id": request.session_id,
+                    "tool_semantics_by_name": _tool_semantics_by_name(request),
+                },
             )
             inference_exact = recordization.exact
             if not inference_exact and self.config.inference_failure == InferenceFailurePolicy.ERROR:

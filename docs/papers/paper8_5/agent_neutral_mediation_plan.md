@@ -29,7 +29,9 @@ protocol and emits the portable schema. Bash parsing is confined to
 `experiments/paper8_5_agent_memory/miniswe_semantics.py`; common PRA code never
 imports it. Standard OpenAI tool-call traffic needs no agent adapter. A future
 agent should normally emit `pra_record` and generic tool-effect metadata
-directly.
+directly. A standard OpenAI function may also put its static category and
+operation class in `function.x-pra-semantics`; execution middleware adds the
+realized resources, versions, spans, and completeness to its result record.
 
 ## Avoiding wholesale retests
 

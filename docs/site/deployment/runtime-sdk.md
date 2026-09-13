@@ -64,6 +64,27 @@ plan digests let the same selection be realized by another runtime without
 rerunning the policy. Stale plans and conflicting second mediation are rejected.
 This separates policy evaluation from engine/K/V qualification.
 
+Standard OpenAI tools can declare portable semantics directly in their function
+schema, so changing agents does not require a PRA code change:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "read_file",
+    "x-pra-semantics": {
+      "category": "filesystem",
+      "operation_kind": "read"
+    }
+  }
+}
+```
+
+Per-result metadata supplies the realized resource IDs, versions, spans, and
+completeness. Unknown operations are retention barriers. Compatibility parsing
+is needed only for agents such as mini-swe-agent that encode a generic tool
+inside nonstandard assistant/user text rather than standard tool-call records.
+
 ## Request-scoped agent-history retention
 
 Agent integrations can override history retention per request through typed

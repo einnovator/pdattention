@@ -247,6 +247,10 @@ class OpenAIRecordizer:
         request_metadata: Mapping[str, Any] | None = None,
     ) -> RecordizationResult:
         metadata = dict(request_metadata or {})
+        semantics_by_name = metadata.get("tool_semantics_by_name")
+        semantics_by_name = (
+            dict(semantics_by_name) if isinstance(semantics_by_name, Mapping) else {}
+        )
         session_id = str(metadata.get("session_id") or "stateless")
         records: list[AgentRecord] = []
         ambiguity: list[str] = []
@@ -305,6 +309,23 @@ class OpenAIRecordizer:
                     str(call.get("id")) for call in calls
                     if isinstance(call, Mapping) and call.get("id")
                 )
+                call_declarations = []
+                for call in calls:
+                    if not isinstance(call, Mapping):
+                        continue
+                    function = call.get("function")
+                    function = function if isinstance(function, Mapping) else {}
+                    name = str(function.get("name") or call.get("name") or "")
+                    declaration = semantics_by_name.get(name)
+                    call_declarations.append({
+                        "id": str(call.get("id") or ""),
+                        "name": name,
+                        "arguments": function.get("arguments", call.get("arguments")),
+                        **(
+                            {"declared_semantics": dict(declaration)}
+                            if isinstance(declaration, Mapping) else {}
+                        ),
+                    })
                 group_seed = ",".join(call_ids) or record_id
                 group_id = "turn:" + hashlib.sha256(group_seed.encode()).hexdigest()[:16]
                 turn_id = group_id.removeprefix("turn:")
@@ -342,7 +363,28 @@ class OpenAIRecordizer:
                 content=content,
                 primary_role=primary,
                 semantic_roles=semantic,
-                metadata=dict(message.get("metadata") or {}),
+                metadata={
+                    **dict(message.get("metadata") or {}),
+                    **(
+                        {
+                            "tool_calls": call_declarations,
+                            **(
+                                {
+                                    "operation_kind": call_declarations[0]["declared_semantics"].get(
+                                        "operation_kind", "unknown"
+                                    ),
+                                    "tool_category": call_declarations[0]["declared_semantics"].get(
+                                        "category", "generic"
+                                    ),
+                                }
+                                if len(call_declarations) == 1
+                                and isinstance(call_declarations[0].get("declared_semantics"), Mapping)
+                                else {}
+                            ),
+                        }
+                        if role == "assistant" else {}
+                    ),
+                },
             ))
 
         grouped: dict[str, list[AgentRecord]] = {}

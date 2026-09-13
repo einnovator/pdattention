@@ -61,6 +61,42 @@ def test_openai_recordizer_is_exact_for_standard_tool_call_traffic():
     assert result.history.records[-1].primary_role == AgentRecordRole.TOOL_OBSERVATION
 
 
+def test_standard_tool_schema_can_declare_portable_semantics_without_agent_adapter():
+    messages = [
+        {"role": "system", "content": "help"},
+        {"role": "user", "content": "inspect the project"},
+        {"role": "assistant", "content": "", "tool_calls": [{
+            "id": "call-1", "type": "function",
+            "function": {"name": "read_file", "arguments": '{"path":"a.py"}'},
+        }]},
+        {"role": "tool", "tool_call_id": "call-1", "content": "source"},
+    ]
+    request = PRAWireRequest(
+        model="model",
+        messages=tuple(messages),
+        tools=({
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "parameters": {"type": "object"},
+                "x-pra-semantics": {
+                    "category": "filesystem",
+                    "operation_kind": "read",
+                },
+            },
+        },),
+    )
+
+    prepared = RequestMediator({"location": "embedded"}).prepare(
+        request, _logical_capabilities()
+    )
+    action = prepared.recordization.history.records[2]
+
+    assert action.metadata["operation_kind"] == "read"
+    assert action.metadata["tool_category"] == "filesystem"
+    assert action.metadata["tool_calls"][0]["name"] == "read_file"
+
+
 def test_openai_recordizer_does_not_guess_nonstandard_user_observation():
     result = OpenAIRecordizer().recordize([
         {"role": "system", "content": "help"},
