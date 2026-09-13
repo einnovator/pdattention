@@ -320,8 +320,8 @@ mislabelled as profile candidates.
 
 ### Locked five-task autonomous curve
 
-The first task-quality campaign is declared in
-`configs/autonomous_long5_curve.json`. Its benchmark card locks the five
+The current certificate-only task-quality campaign is declared in
+`configs/autonomous_long5_curve_certified_v3.json`. Its benchmark card locks the five
 longest tasks from the Easy-14 baseline-success stratum before any treatment
 outcomes are observed. It runs two FULL controls per task, then DAG-only,
 head/tail recency, and DAG-plus-progress-spine recency at requested 90% and 80%
@@ -335,7 +335,7 @@ Run or resume one machine's task partition with:
 
 ```bash
 PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.run_autonomous_curve_campaign \
-  --spec experiments/paper8_5_agent_memory/configs/autonomous_long5_curve.json \
+  --spec experiments/paper8_5_agent_memory/configs/autonomous_long5_curve_certified_v3.json \
   --output /results/paper85-autonomous-long5 \
   --upstream-base-url http://127.0.0.1:11434/v1 \
   --tokenizer /exact/tokenizer/snapshot \
@@ -364,6 +364,15 @@ adaptive decisions. Grader-reported malformed-patch/apply errors remain task
 failures when the official report supplies a definitive Boolean grade. Only a
 run without a definitive grade is excluded from accuracy denominators,
 task-failure stopping gates, and efficiency-qualified pairs.
+
+The earlier frozen `configs/autonomous_long5_curve.json` remains available for
+reproduction, but its historical arm ID `dag100` names the broader
+`task_aware_progress_spine_v4` heuristic. It is not certificate-only DAG
+exclusion and must be reported as state-authority heuristic selection. The v3
+spec removes that naming ambiguity: `dag_certified100` applies only exclusions
+proved from runtime-bound operation identity, while `dag_progress90` and
+`dag_progress80` apply those exclusions before a separately identified
+retention-floor selector.
 
 For a failed frozen policy decision, generate a one-group-at-a-time oracle
 diagnostic queue with:

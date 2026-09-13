@@ -58,7 +58,10 @@ from .serialization import serialize_materialized_messages
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
 AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency",)
-AUTONOMOUS_DAG_POLICIES = ("dag_certified_exclusion",)
+AUTONOMOUS_DAG_POLICIES = (
+    "dag_certified_exclusion",
+    "dag_certified_progress_spine",
+)
 AUTONOMOUS_POLICIES = (
     "full", *AUTONOMOUS_POSITIVE_POLICIES, *AUTONOMOUS_DAG_POLICIES,
     *NEGATIVE_POLICY_RULES,
@@ -328,6 +331,23 @@ class AutonomousSelectionConfig:
                 protected_head_turns=self.protected_head_turns,
                 protected_tail_turns=self.protected_tail_turns,
             )
+        if self.policy == "dag_certified_progress_spine":
+            fallback = HeadMiddleTailSelector(HeadMiddleTailConfig(
+                head_turns=self.protected_head_turns,
+                tail_turns=self.protected_tail_turns,
+                middle_strategy=MiddleSelectionStrategy.RECENCY,
+                source_turns=1,
+                mutation_turns=1,
+                verification_turns=1,
+                progress_turns=1,
+                error_turns=1,
+                round_up_to_budget=True,
+            ))
+            return DagCertifiedExclusionSelector(
+                fallback,
+                protected_head_turns=self.protected_head_turns,
+                protected_tail_turns=self.protected_tail_turns,
+            )
         fallback = None
         if self.negative_fallback == "recency":
             fallback = HeadMiddleTailSelector(HeadMiddleTailConfig(
@@ -420,7 +440,28 @@ def transform_autonomous_payload(
         count_tokens=count_tokens,
     )
     retention_floor = bool(
-        config.policy == "head_tail_recency" or config.negative_fallback == "recency"
+        config.policy in {"head_tail_recency", "dag_certified_progress_spine"}
+        or config.negative_fallback == "recency"
+    )
+    certified_exclusion_tokens = (
+        sum(row.excluded_tokens for row in plan.exclusions)
+        if config.policy == "dag_certified_progress_spine" else 0
+    )
+    certified_exclusion_underfill_tokens = (
+        min(
+            max(0, budget_tokens - plan.selected_tokens),
+            certified_exclusion_tokens,
+        )
+        if retention_floor else 0
+    )
+    unexplained_floor_underfill_tokens = (
+        max(
+            0,
+            budget_tokens
+            - plan.selected_tokens
+            - certified_exclusion_underfill_tokens,
+        )
+        if retention_floor else 0
     )
     receipt_realization = None
     if config.negative_realization in {
@@ -557,12 +598,19 @@ def transform_autonomous_payload(
         "logical_retention_fraction": plan.realized_retention_fraction,
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
         "budget_interpretation": (
-            "retention_floor_round_up" if retention_floor else "hard_ceiling"
+            "certified_exclusion_then_retention_floor"
+            if config.policy == "dag_certified_progress_spine"
+            else "retention_floor_round_up" if retention_floor
+            else "hard_ceiling"
         ),
         "budget_satisfied": (
-            plan.selected_tokens >= budget_tokens
+            unexplained_floor_underfill_tokens == 0
             if retention_floor else plan.selected_tokens <= budget_tokens
         ),
+        "certified_exclusion_underfill_tokens": (
+            certified_exclusion_underfill_tokens
+        ),
+        "unexplained_floor_underfill_tokens": unexplained_floor_underfill_tokens,
         "whole_turn_budget_overshoot_tokens": (
             max(0, plan.selected_tokens - budget_tokens) if retention_floor else 0
         ),

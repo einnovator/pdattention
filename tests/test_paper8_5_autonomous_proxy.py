@@ -694,6 +694,26 @@ def test_dag_certified_autonomous_policy_uses_only_runtime_bound_duplicates(tmp_
         "TRACE_EXACT_OPERATION_RESULT_V1"
     )
 
+    budgeted = transform_autonomous_payload(
+        {"model": "locked-model", "messages": messages},
+        AutonomousSelectionConfig(
+            policy="dag_certified_progress_spine",
+            budget_fraction=0.9,
+            negative_realization=NegativeRealizationMode.PROTOCOL_STUB,
+            expected_model="locked-model",
+            protected_head_turns=0,
+            protected_tail_turns=1,
+        ),
+        instrumentation_root=tmp_path,
+    )
+    assert budgeted.trace["budget_interpretation"] == (
+        "certified_exclusion_then_retention_floor"
+    )
+    assert budgeted.trace["budget_satisfied"] is True
+    assert budgeted.trace["certified_exclusion_underfill_tokens"] > 0
+    assert budgeted.trace["unexplained_floor_underfill_tokens"] == 0
+    assert budgeted.trace["excluded_causal_group_count"] == 1
+
 
 def test_head_tail_recency_uses_retention_floor_without_dag_rules():
     result = transform_autonomous_payload(

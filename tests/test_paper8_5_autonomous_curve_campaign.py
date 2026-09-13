@@ -169,3 +169,17 @@ def test_long5_card_is_the_predeclared_top_five_success_workloads():
         }
         for row in ranked
     ]
+
+
+def test_certified_long5_campaign_uses_distinct_dag_and_combined_policies():
+    spec = json.loads((
+        ROOT / "experiments/paper8_5_agent_memory/configs/"
+        "autonomous_long5_curve_certified_v3.json"
+    ).read_text())
+
+    validate_campaign_spec(spec)
+    arms = {row["arm_id"]: row for row in spec["arms"]}
+    assert arms["dag_certified100"]["policy"] == "dag_certified_exclusion"
+    assert arms["dag_progress90"]["policy"] == "dag_certified_progress_spine"
+    assert arms["tail90"]["policy"] == "head_tail_recency"
+    assert arms["dag_progress90"]["budget_fraction"] == pytest.approx(.90)
