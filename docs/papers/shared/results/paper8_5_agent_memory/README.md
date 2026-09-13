@@ -7,6 +7,17 @@ replays the message geometry of three successful mini-swe-agent trajectories:
 - `django__django-15368` (30 model decisions);
 - `scikit-learn__scikit-learn-13135` (16 model decisions).
 
+The [`tradeoff_curves`](tradeoff_curves/README.md) reduction now normalizes the
+repeat-qualified frozen and autonomous evidence into separate saving--action,
+saving--accuracy, saving--tool-count, and saving--first-divergence curves.  It
+also records adaptive stop/control/probe decisions so weak simple rules do not
+enter an unnecessary combination grid.
+
+The [`autonomous_screen_qwen8_task03`](autonomous_screen_qwen8_task03/README.md)
+directory preserves a failed FULL-model admission screen. It is intentionally
+excluded from policy curves because the model produced an empty patch before
+any memory treatment was applied.
+
 At each of the 69 historical decision points, the screen recordizes the
 available history and evaluates 700 combinations: five budget fractions, four
 head floors, five tail floors, five middle policies, and two DAG-first
@@ -75,6 +86,11 @@ actions. A fresh whole-record repeat remains byte-exact on all 23 contents and
 4/8 conservative actions, versus 28.27% and 2/8 for lexical matched spans and
 30.28% and 1/8 for fixed head/tail. This is a frozen
 compression--agreement result, not autonomous success.
+An adaptive 256-token repeat produced the same materialized histories and
+5.54% saving as 512 but 63.6% rather than 54.5% conservative action agreement.
+The remaining within-class threshold sweep was stopped: the difference is
+repeat variability, not a quality--saving gradient. See
+[`structured_threshold_curve`](frozen_task03_qwen30/structured_threshold_curve/README.md).
 
 The [`synthetic_diagnostics/visible_receipts_qwen14/post_gate`](synthetic_diagnostics/visible_receipts_qwen14/post_gate/README.md)
 cohort tests model-visible H1 resource-map and H2 mutation receipts. A strict

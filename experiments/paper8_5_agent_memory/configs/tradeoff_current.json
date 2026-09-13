@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_agent_memory_tradeoff_curve_spec",
+  "frozen_comparisons": [
+    {
+      "cohort": "task03_negative_exclusion_seed0",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_task03_qwen30/comparison_seed0.json"
+    },
+    {
+      "cohort": "task01_late_semantic_vs_tail",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_long_task01_qwen30/comparison.json"
+    },
+    {
+      "cohort": "task02_late_semantic_vs_tail",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_long_task02_qwen30/comparison.json"
+    },
+    {
+      "cohort": "task03_materialization_d3_10",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_task03_qwen30/materialization_t512_d3_10_comparison.json",
+      "adaptive_eligible": false
+    },
+    {
+      "cohort": "task03_structured_materialization_all",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_task03_qwen30/structured_evidence_t512_comparison.json"
+    },
+    {
+      "cohort": "task03_structured_threshold_repeat",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/frozen_task03_qwen30/structured_threshold_curve/comparison_equivalent_thresholds.json",
+      "adaptive_eligible": false
+    }
+  ],
+  "autonomous_runs": [
+    {
+      "name": "task01_full_a",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/autonomous_task01_qwen30/full_seed0"
+    },
+    {
+      "name": "task01_full_b",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/autonomous_task01_qwen30/full_seed0_b"
+    },
+    {
+      "name": "task01_h3",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/autonomous_task01_qwen30/h3_kr1_seed0"
+    },
+    {
+      "name": "task02_full_a",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/autonomous_task02_qwen30/full_seed0_a"
+    },
+    {
+      "name": "task02_full_b",
+      "path": "../../../docs/papers/shared/results/paper8_5_agent_memory/autonomous_task02_qwen30/full_seed0_b"
+    }
+  ],
+  "autonomous_pairs": [
+    {
+      "candidate": "task01_full_b",
+      "baseline": "task01_full_a",
+      "allow_legacy_pair": true,
+      "pairing_reason": "repeat-control stochastic trajectory envelope"
+    },
+    {
+      "candidate": "task01_h3",
+      "baseline": "task01_full_b",
+      "allow_legacy_pair": true,
+      "pairing_reason": "identical model-visible request prefix through the first five calls"
+    },
+    {
+      "candidate": "task02_full_b",
+      "baseline": "task02_full_a",
+      "allow_legacy_pair": true,
+      "pairing_reason": "repeat-control stochastic trajectory envelope"
+    }
+  ],
+  "adaptive_pruning": {
+    "low_yield_saving_fraction": 0.02,
+    "low_yield_quality_proxy": 0.80,
+    "minimum_quality_proxy_for_promotion": 0.85,
+    "exceptional_saving_fraction": 0.20,
+    "minimum_independent_cohorts_for_promotion": 2,
+    "control_families": [
+      "matched_token_tail",
+      "tool_head_tail",
+      "tool_matched_span"
+    ],
+    "mechanism_only_families": [
+      "dag_certified_exclusion",
+      "h2b_verified_write",
+      "h3_read_superseded",
+      "h4_working_set"
+    ],
+    "bounded_probe_families": [
+      "tool_structured_evidence"
+    ],
+    "note": "A frozen stop decision prevents combinations and further frozen expansion; autonomous promotion still requires stable repeated FULL controls."
+  }
+}

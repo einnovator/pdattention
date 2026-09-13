@@ -587,6 +587,53 @@ certificate can be operationally sound while the LLM still changes behavior,
 so operational certificate validity and next-action survival are distinct
 metrics.
 
+We distinguish two savings quantities.  For an autonomous candidate trajectory
+$c$, gross history saving is
+\[
+G_c=1-\frac{\sum_t M_{c,t}}{\sum_t F_{c,t}},
+\]
+where $M_{c,t}$ is materialized input and $F_{c,t}$ is the full-history
+counterfactual at the same candidate call.  Gross saving isolates the memory
+policy but does not charge for a longer trajectory.  Against a declared paired
+\textsc{Full} execution $f$, end-to-end saving is
+\[
+N_{c,f}=1-\frac{\sum_t M_{c,t}}{\sum_t M_{f,t}}.
+\]
+$N$ includes extra or avoided calls and is therefore the end-to-end
+\emph{message-content input-token} endpoint. It excludes chat-template and
+completion tokens and is not a complete billing or runtime measure. A failed
+run that stops early can have a favorable $N$; we never interpret that as
+efficiency.
+
+\subsection{Quality--saving and interaction curves}
+
+The primary frontier plots official task resolution against $G$ and $N$.
+Trajectory agreement is a diagnostic proxy, not accuracy: a different action
+may still produce a resolving patch.  We therefore report separate curves for
+(i) official resolution versus saving, (ii) tool-call delta versus saving over
+all paired runs, (iii) tool-call delta restricted to pairs where both the
+candidate and its declared \textsc{Full} control resolve, and (iv) first
+tool-action divergence versus saving for every task.
+Auxiliary terminal-workspace grading diagnoses submission failures but never
+replaces official resolution.
+
+Because the tested endpoint is not autonomously deterministic even at
+temperature zero and a fixed seed, final quality curves use repeated paired
+\textsc{Full} controls and task-level uncertainty.  A conditional preservation
+analysis additionally evaluates candidates only on declared pairs for which
+\textsc{Full} resolves.  This avoids treating a baseline failure as a memory
+policy failure while retaining the unconditional resolution curve as the
+primary population result.
+
+The current autonomous curve is deliberately underpowered and is reported as
+a pilot, not a profile result. Across two tasks, repeated \textsc{Full}
+executions resolve 2/4; the second controls first diverge in tool command at
+calls 9 and 6 and both fail. On Task~1, H3 first changes selected history at
+call~6 and diverges in tool command at call~7, but both H3 and its paired
+\textsc{Full} control fail. Its apparent 44.5\% paired message-input reduction
+and ten fewer tool calls therefore describe early failure termination, not an
+efficiency gain. There is not yet any successful-pair compressed point.
+
 \subsection{Recovery behavior}
 
 A memory policy may preserve final task success by forcing the agent to
@@ -613,37 +660,43 @@ d(r_i,t)=t-\operatorname{created}(r_i).
 We report dependency-age distributions by record type. This estimates how long
 coding-agent memory must remain accessible.
 
-\section{Planned Policy Matrix}
+\section{Adaptive Policy Campaign}
 
 \begin{table}[H]
 \centering
 \small
-\caption{Primary selector-by-budget matrix. Each cell reports official task
-success, calls/task, selected tokens, and avoidable rereads.}
-\begin{tabular}{lccccc}
+\caption{Adaptive campaign stages. Frozen agreement prunes experiments but
+never substitutes for autonomous quality.}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.20\linewidth}
+                >{\raggedright\arraybackslash}p{0.25\linewidth}
+                >{\raggedright\arraybackslash}p{0.43\linewidth}}
 \toprule
-Policy & 100\% & 90\% & 75\% & 50\% & 25\% \\
+Stage & Arms & Advancement rule \\
 \midrule
-FULL & -- & -- & -- & -- & -- \\
-Token tail & TBD & TBD & TBD & TBD & TBD \\
-Turn tail & TBD & TBD & TBD & TBD & TBD \\
-Causal tail & TBD & TBD & TBD & TBD & TBD \\
-Progress spine & TBD & TBD & TBD & TBD & TBD \\
-Lexical & TBD & TBD & TBD & TBD & TBD \\
-Dense & TBD & TBD & TBD & TBD & TBD \\
-Hybrid & TBD & TBD & TBD & TBD & TBD \\
-DAG-certified exclusion & TBD & TBD & TBD & TBD & TBD \\
-DAG-certified + hybrid & TBD & TBD & TBD & TBD & TBD \\
-Oracle & TBD & TBD & TBD & TBD & TBD \\
+Mechanism & Every simple rule & Predicate, serialization, accounting, and
+fail-closed tests must pass. \\
+Frozen discovery & Simple rules and matched controls & Stop low-saving arms
+with rapid action-proxy loss; retain mechanism controls without promoting them. \\
+Bounded autonomous & Nondominated or information-preserving candidates & Run
+one to three tasks with repeated \textsc{Full}; require official success before
+task expansion. \\
+Combination search & Only promoted parents & Hill-climb one parameter at a
+time; do not combine stopped or dominated arms. \\
+Confirmation & Frozen policy set on held-out tasks & Report task-level quality,
+gross/net saving, calls, recovery, and uncertainty. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Within each structured-policy row, we first screen the independent
-head--tail grid. The selected middle policy is then compared at matched
-materialized token counts. This prevents a large mandatory head from being
-mistaken for superior middle retrieval and prevents percentage budgets from
-hiding mandatory round-up.
+The adaptive rule is versioned before each discovery stage. Current whole-group
+H1/H2a combinations are stopped because they lose the action proxy rapidly for
+small savings; H4 remains an aggressive mechanism bound. Matched token tail
+and positional materializers remain controls rather than parents. Structured
+evidence receives a bounded autonomous probe because it preserves all causal
+groups, but it does not expand unless task quality passes. This pilot-informed
+pruning is exploratory. Final profile claims use a subsequently frozen policy
+set and held-out tasks, preventing adaptive search from being mistaken for
+confirmatory evidence.
 
 \subsection{Pilot structural screen}
 
@@ -1011,8 +1064,9 @@ We next froze the successful \texttt{scikit-learn-13135} trajectory and applied
 the same 512-token materialization threshold without removing any logical
 record.  The trace contains a 2,526-token, 292-line source dump and later 685-
 and 737-token observations.  A third current \textsc{Full} repeat reproduces
-all 23 contents and all 22 defined commands byte-for-byte, so endpoint drift is
-not a plausible explanation for treatment differences.
+all 23 contents and all 22 defined commands byte-for-byte. This qualifies that
+control but, as the threshold-repeat audit below shows, does not establish
+universal endpoint determinism.
 
 Across all 23 decisions, structured evidence reduces 199,109 cumulative
 materialized tokens to 188,072, a 5.54\% saving.  It preserves 10/22 exact
@@ -1020,6 +1074,18 @@ commands and 12/22 conservatively equivalent shell actions; its 22/23
 format-valid decisions equal \textsc{Full}'s validity count.  Thus selective
 result evidence is more conservative than deleting causal groups, but it is
 not behavior preserving even though every logical record remains selected.
+
+An adaptive 256-token threshold repeat falls in the same effective
+materialization class as 512 on this trajectory: both retain exactly 188,072
+tokens at the same 23 decisions. The only additional record entering the
+structured path at 256 has 259 tokens, and all of its lines are retained, so
+the byte-identity no-op rule restores the canonical observation. Nevertheless,
+the 256 repeat preserves 14/22 conservative actions versus 12/22 at 512 (and
+12/22 versus 10/22 exact commands). This is same-input endpoint variability,
+not a threshold effect. We therefore stop the remaining within-class threshold
+sweep and require future curves to use observation-size breakpoints plus an
+explicit model-visible request digest. A nominal parameter grid is not a
+quality--saving curve when multiple settings materialize identical requests.
 
 Table~\ref{tab:real-materialization} holds decisions 3--10 fixed to compare the
 three result materializers on identical prefixes.  Structured evidence gives
@@ -1058,6 +1124,23 @@ artifact is quarantined.  Complete-line selection now returns the canonical
 record bytes, and a byte-identity regression test prevents recurrence.  This
 is the text-materialization analogue of the cache-identity rule: zero measured
 token change is not evidence of an identical model input.
+
+Figure~\ref{fig:frozen-frontiers} collects the repeat-qualified frozen
+comparisons without pooling incomparable decision cohorts.  It is intentionally
+labelled as a proxy frontier: only autonomous official-resolution experiments
+populate the accuracy--saving curve.  The figure makes the present screening
+decision visible---whole-group heuristics lose agreement rapidly, matched
+recency is a strong control, and structured materialization is the only current
+candidate admitted to a bounded task-utility probe.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper8_5_agent_memory/tradeoff_curves/frozen_saving_vs_action_agreement.pdf}
+\caption{Materialized-token saving versus conservative next-action agreement,
+separated by matched frozen cohort. Agreement is diagnostic and is not task
+accuracy.}
+\label{fig:frozen-frontiers}
+\end{figure}
 
 \subsection{Model-visible resource and mutation receipts}
 

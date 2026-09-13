@@ -280,3 +280,20 @@ python -m experiments.paper8_5_agent_memory.run_autonomous_swebench \
 structural diagnostics and cannot be treated as paper evidence. `--preflight-only`
 writes the task lock, exact policy/generation provenance, and command templates
 without starting the proxy, agent, model calls, Docker, or grading.
+
+## Adaptive quality--saving curves
+
+Build the common frozen/autonomous reduction with:
+
+```bash
+python -m experiments.paper8_5_agent_memory.tradeoff_curves \
+  --spec experiments/paper8_5_agent_memory/configs/tradeoff_current.json \
+  --output docs/papers/shared/results/paper8_5_agent_memory/tradeoff_curves
+```
+
+The reducer keeps official autonomous accuracy separate from frozen action
+agreement, and gross within-run compression separate from paired end-to-end
+token saving. Its adaptive decision table prevents dominated or sharply
+degrading whole-group heuristics from entering combinations or wider task
+cohorts. Controls and mechanism-only arms remain visible without being
+mislabelled as profile candidates.

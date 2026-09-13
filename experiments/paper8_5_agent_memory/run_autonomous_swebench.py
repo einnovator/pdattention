@@ -66,6 +66,11 @@ def load_locked_task(
     return card, selected, selected_index
 
 
+def swebench_image(instance_id: str) -> str:
+    docker_instance_id = instance_id.replace("__", "_1776_").lower()
+    return "docker.io/swebench/sweb.eval.x86_64." + docker_instance_id + ":latest"
+
+
 def build_agent_command(
     args: argparse.Namespace,
     *,
@@ -73,11 +78,7 @@ def build_agent_command(
     instance_id: str,
     agent_output: Path,
 ) -> list[str]:
-    docker_instance_id = instance_id.replace("__", "_1776_").lower()
-    task_image = (
-        "docker.io/swebench/"
-        f"sweb.eval.x86_64.{docker_instance_id}:latest"
-    )
+    task_image = swebench_image(instance_id)
     command = [
         sys.executable,
         "-m",
@@ -429,6 +430,7 @@ def run(args: argparse.Namespace) -> Path:
         "split": card["split"],
         "instance_id": instance_id,
         "task_index": task_index,
+        "pair_id": args.pair_id,
         "selection": {
             **asdict(config),
             "materialization_mode": config.materialization_mode.value,
@@ -453,6 +455,7 @@ def run(args: argparse.Namespace) -> Path:
         "upstream_api_key_environment": args.upstream_api_key_env,
         "docker_executable": str(args.docker_executable) if args.docker_executable else None,
         "docker_platform": args.docker_platform,
+        "environment_image": swebench_image(instance_id),
         "pythonpath": args.pythonpath,
         "instrument_observations": args.instrument_observations,
         "instrumentation_output_root": str(args.instrumentation_output_root),
@@ -534,24 +537,44 @@ def run(args: argparse.Namespace) -> Path:
     if args.skip_grading:
         return output / "autonomous_metrics.json"
 
-    grader_wall_time = _run(
-        grader_command,
-        log=output / "grader.log",
-        environment=environment,
-        timeout_seconds=args.timeout_seconds,
-        cwd=output,
-    )
-    result = _official_report(output, args.run_id, instance_id)
-    result["grader_wall_time_seconds"] = grader_wall_time
-    result["autonomous_metrics"] = str(output / "autonomous_metrics.json")
     official_result_path = output / "official_result.json"
+    try:
+        grader_wall_time = _run(
+            grader_command,
+            log=output / "grader.log",
+            environment=environment,
+            timeout_seconds=args.timeout_seconds,
+            cwd=output,
+        )
+        result = _official_report(output, args.run_id, instance_id)
+        result["grader_wall_time_seconds"] = grader_wall_time
+    except Exception as error:
+        prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
+        prediction = prediction_payload.get(instance_id) or {}
+        result = {
+            "official_grader": True,
+            "instance_id": instance_id,
+            "resolved": None,
+            "score": None,
+            "error": True,
+            "error_detail": str(error),
+            "submitted_patch_empty": not bool(
+                str(prediction.get("model_patch") or "").strip()
+            ),
+            "grader_log": str(output / "grader.log"),
+        }
+    result["autonomous_metrics"] = str(output / "autonomous_metrics.json")
     _write_json(official_result_path, result)
     auxiliary["primary_official_result"] = str(official_result_path)
     auxiliary["primary_official_result_sha256"] = _sha256_bytes(
         official_result_path.read_bytes()
     )
     metrics["official_result"] = result
-    if args.grade_auxiliary_workspace_state and auxiliary["status"] == "available":
+    if (
+        not result.get("error")
+        and args.grade_auxiliary_workspace_state
+        and auxiliary["status"] == "available"
+    ):
         try:
             auxiliary_grader_wall_time = _run(
                 auxiliary_grader_command,
@@ -596,6 +619,13 @@ def build_parser() -> argparse.ArgumentParser:
     task.add_argument("--instance-id")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument(
+        "--pair-id",
+        help=(
+            "Stable identifier shared by a FULL control and its candidate arm; "
+            "required by multi-task trade-off reducers for paired deltas."
+        ),
+    )
     parser.add_argument("--upstream-base-url", required=True)
     parser.add_argument("--upstream-api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--model", required=True, help="Published model identity.")

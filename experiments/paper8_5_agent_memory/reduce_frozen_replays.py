@@ -407,7 +407,11 @@ def _treatment_label(artifact: Mapping[str, Any]) -> str:
         if mode == "whole_record":
             return "FULL"
         threshold = configuration.get("materialization_threshold_tokens")
+        head = configuration.get("head_turns")
+        tail = configuration.get("tail_turns")
         suffix = f";threshold={threshold}" if threshold is not None else ""
+        if head is not None and tail is not None:
+            suffix += f";H={head};T={tail}"
         return f"FULL;materialization={mode}{suffix}"
     fraction = _require_number(
         artifact.get("budget_fraction", configuration.get("budget_fraction", 1.0)),
@@ -424,19 +428,29 @@ def _treatment_label(artifact: Mapping[str, Any]) -> str:
         budget = f"{100 * fraction:g}%-{contract}"
     seed = configuration.get("seed")
     qualifiers: list[str] = []
+    head = configuration.get("head_turns")
+    tail = configuration.get("tail_turns")
+    if head is not None and tail is not None:
+        qualifiers.append(f"H={head};T={tail}")
     negative = configuration.get("negative_selection")
     if isinstance(negative, Mapping):
         # Parameterized negative arms must remain distinct treatments.  Without
         # these qualifiers Kf/Kw/Kr/Kx sweeps collide in the reducer even though
         # they materialize different histories.
         parameter_keys = (
-            ("h1", "search_delay_turns_kf", "Kf"),
-            ("h2_bare", "write_delay_turns_kw", "Kw"),
-            ("h3", "same_span_reads_to_keep_kr", "Kr"),
-            ("h4", "working_set_resources_kx", "Kx"),
+            (("h1_search_consumed", "safe2_h1_h3", "safe3_h1_h3_h2b",
+              "all_h1_h2a_h2b_h3_h4"), "search_delay_turns_kf", "Kf"),
+            (("h2a_write_current_read", "h2b_verified_write", "h2a_h3", "h2b_h3",
+              "safe3_h1_h3_h2b", "all_h1_h2a_h2b_h3_h4"),
+             "write_delay_turns_kw", "Kw"),
+            (("h3_read_superseded", "safe2_h1_h3", "h2a_h3", "h2b_h3",
+              "safe3_h1_h3_h2b", "all_h1_h2a_h2b_h3_h4"),
+             "same_span_reads_to_keep_kr", "Kr"),
+            (("h4_working_set", "all_h1_h2a_h2b_h3_h4"),
+             "working_set_resources_kx", "Kx"),
         )
-        for marker, key, short in parameter_keys:
-            if marker in policy and key in negative:
+        for policies, key, short in parameter_keys:
+            if policy in policies and key in negative:
                 qualifiers.append(f"{short}={negative[key]}")
         fallback = negative.get("positive_fallback")
         if fallback not in (None, "none"):

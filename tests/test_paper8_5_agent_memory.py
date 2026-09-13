@@ -1326,6 +1326,9 @@ def test_frozen_replay_uses_reference_only_after_selected_request(monkeypatch):
     assert len(calls) == 2
     assert references[0] not in [row["content"] for row in calls[0]]
     assert calls[1][-1]["role"] == "user"
+    assert result["rows"][0]["request_messages_sha256"] == frozen_replay._json_digest(
+        calls[0]
+    )
 
 
 def test_frozen_replay_can_target_a_late_decision_suffix(monkeypatch):

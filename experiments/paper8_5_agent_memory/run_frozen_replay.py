@@ -638,6 +638,7 @@ def replay(
             "historical_reference_content_sha256": _digest(historical_reference),
             "reference_content_sha256": _digest(reference),
             "generated_content_sha256": _digest(generated),
+            "request_messages_sha256": _json_digest(selected_messages),
             "generated_content": generated,
             "exact_content": generated == reference,
             "reference_command": reference_command,
