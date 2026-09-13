@@ -28,6 +28,15 @@ from .selectors import (
 DEFAULT_HEADS = (0, 1, 2, 4)
 DEFAULT_TAILS = (1, 2, 3, 5, 10)
 DEFAULT_BUDGETS = (1.0, 0.9, 0.75, 0.5, 0.25)
+STRUCTURAL_POLICIES = (
+    "middle_none",
+    "middle_recency",
+    "progress_spine",
+    "middle_lexical",
+    "spine_plus_lexical",
+    "dag_certified_exclusion",
+    "dag_certified_plus_lexical",
+)
 
 
 def _token_counter(tokenizer_name: str | None) -> tuple[Callable[[str], int], str]:
@@ -118,10 +127,17 @@ def structural_screen(
     decision_suffixes: Sequence[int] = (1,),
     include_decision_rows: bool = False,
     round_up_to_budget: bool = False,
+    policies: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     if not decision_suffixes or any(value < 1 for value in decision_suffixes):
         raise ValueError("decision suffixes must contain positive one-based ordinals")
     decision_suffixes = tuple(sorted(set(decision_suffixes)))
+    selected_policies = tuple(dict.fromkeys(policies or STRUCTURAL_POLICIES))
+    unknown_policies = sorted(set(selected_policies) - set(STRUCTURAL_POLICIES))
+    if unknown_policies:
+        raise ValueError(
+            "unknown structural policies: " + ", ".join(unknown_policies)
+        )
     rows: list[dict[str, Any]] = []
     inputs: list[dict[str, Any]] = []
     for path in trajectory_paths:
@@ -168,6 +184,8 @@ def structural_screen(
                         for label, selector in _policy_selectors(
                             head, tail, round_up=round_up_to_budget
                         ):
+                            if label not in selected_policies:
+                                continue
                             plan = selector.select(
                                 history=history,
                                 query=query,
@@ -308,6 +326,7 @@ def structural_screen(
         "whole_turn_budget_interpretation": (
             "retention_floor_round_up" if round_up_to_budget else "hard_ceiling"
         ),
+        "policies": list(selected_policies),
         "decision_row_count": len(rows),
         "summary_rows": summary_rows,
         "suffix_summary_rows": suffix_summary_rows,
@@ -334,6 +353,10 @@ def main() -> None:
             "whole causal turn, matching autonomous nominal-retention arms."
         ),
     )
+    parser.add_argument(
+        "--policies", nargs="+", choices=STRUCTURAL_POLICIES,
+        help="Restrict a geometry screen to named policy families.",
+    )
     args = parser.parse_args()
     counter, tokenizer_identity = _token_counter(args.tokenizer)
     result = structural_screen(
@@ -346,6 +369,7 @@ def main() -> None:
         decision_suffixes=args.decision_suffixes,
         include_decision_rows=args.include_decision_rows,
         round_up_to_budget=args.round_up_to_budget,
+        policies=args.policies,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

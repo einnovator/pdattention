@@ -1283,8 +1283,11 @@ def test_structural_screen_can_match_autonomous_retention_floor(tmp_path):
         tails=(1,),
         budgets=(0.9,),
         round_up_to_budget=True,
+        policies=("middle_recency",),
     )
     assert result["whole_turn_budget_interpretation"] == "retention_floor_round_up"
+    assert result["policies"] == ["middle_recency"]
+    assert len(result["summary_rows"]) == 1
     recency = next(
         row for row in result["summary_rows"]
         if row["policy"] == "middle_recency"
