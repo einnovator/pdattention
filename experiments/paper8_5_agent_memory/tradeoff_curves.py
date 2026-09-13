@@ -630,6 +630,7 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         for row in strategy_rows:
             by_task[str(row["task_id"])].append(row)
         task_rates = []
+        task_savings = []
         for task_rows in by_task.values():
             valid = [
                 value for value in (_official_quality(row) for row in task_rows)
@@ -637,6 +638,12 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             ]
             if valid:
                 task_rates.append(mean(valid))
+            task_full = sum(int(row["cumulative_full_tokens"]) for row in task_rows)
+            task_materialized = sum(
+                int(row["cumulative_materialized_tokens"]) for row in task_rows
+            )
+            if task_full:
+                task_savings.append(1 - task_materialized / task_full)
         paired = [
             row for row in strategy_rows
             if row.get("paired_net_saving_fraction") is not None
@@ -648,6 +655,12 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         full = sum(int(row["cumulative_full_tokens"]) for row in strategy_rows)
         materialized = sum(
             int(row["cumulative_materialized_tokens"]) for row in strategy_rows
+        )
+        resolution_ci = (
+            _cluster_bootstrap_mean_ci(task_rates) if task_rates else (None, None)
+        )
+        saving_ci = (
+            _cluster_bootstrap_mean_ci(task_savings) if task_savings else (None, None)
         )
         summaries.append({
             "strategy": strategy,
@@ -662,7 +675,12 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
                 bool(row.get("official_error")) for row in strategy_rows
             ),
             "macro_task_resolution": mean(task_rates) if task_rates else None,
+            "macro_task_resolution_ci95_lower": resolution_ci[0],
+            "macro_task_resolution_ci95_upper": resolution_ci[1],
             "workload_gross_saving_ratio_of_sums": 1 - materialized / full,
+            "macro_task_gross_saving": mean(task_savings),
+            "macro_task_gross_saving_ci95_lower": saving_ci[0],
+            "macro_task_gross_saving_ci95_upper": saving_ci[1],
             "mean_run_gross_saving": mean(
                 float(row["saving_fraction"]) for row in strategy_rows
             ),

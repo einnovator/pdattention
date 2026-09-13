@@ -282,6 +282,9 @@ def test_autonomous_summary_macro_averages_tasks_not_repeat_runs():
     assert summary["task_count"] == 2
     assert summary["macro_task_resolution"] == pytest.approx(.75)
     assert summary["workload_gross_saving_ratio_of_sums"] == pytest.approx(1 - 370 / 600)
+    assert summary["macro_task_gross_saving"] == pytest.approx((.15 + .5) / 2)
+    assert summary["macro_task_resolution_ci95_lower"] is not None
+    assert summary["macro_task_gross_saving_ci95_upper"] is not None
 
 
 def test_adaptive_gate_does_not_count_renamed_same_evidence_as_replication():
