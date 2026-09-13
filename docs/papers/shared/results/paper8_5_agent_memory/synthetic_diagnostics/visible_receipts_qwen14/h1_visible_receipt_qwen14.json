@@ -1,0 +1,416 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "synthetic_discovery_consumed",
+  "model": "qwen3:14b",
+  "tokenizer": "Qwen/Qwen3-14B",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "1397974e5e9ba24612c1c4c450188fb9bd0eaee48d7b0b62aebd47aeaf628e29",
+  "policy": "h1_all_branches_consumed_strict",
+  "head_turns": 0,
+  "tail_turns": 0,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "84270afa18c8c6c86adc9a35d40c53d7db58f59ca87eac929d7c96b44b05ed86",
+    "model": "qwen3:14b",
+    "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "policy": "h1_all_branches_consumed_strict",
+    "head_turns": 0,
+    "tail_turns": 0,
+    "budget_fraction": 1.0,
+    "tokenizer": "Qwen/Qwen3-14B",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 7,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 300,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "1397974e5e9ba24612c1c4c450188fb9bd0eaee48d7b0b62aebd47aeaf628e29",
+    "matched_budget_source_digest": null,
+    "negative_selection": {
+      "search_delay_turns_kf": 0,
+      "write_delay_turns_kw": 1,
+      "same_span_reads_to_keep_kr": 1,
+      "working_set_resources_kx": 4,
+      "positive_fallback": "none",
+      "h2b_allow_workspace_verification": false,
+      "realization": "visible_receipt"
+    }
+  },
+  "run_configuration_digest": "1a97b896943895847afb88ffb4f99b789e754e298a0e2965be1c6893e23dfea3",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 0,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 0.0,
+  "first_command_divergence": 7,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 7,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": false,
+      "action_validation_reason": "missing_generated_command",
+      "trajectory_message_index": 14,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "dfcf4a9e8c75c4cf3b8276a44bc054e350c4307e6a77f234b68e04bfaa935cbf",
+      "reference_content_sha256": "9cd7c778daa08322d6231d28336882eb3526dd1829928358cb90734de260f914",
+      "generated_content_sha256": "2f6a536cb91f712321adebf347515657180c468e4d082b323f02fb456007501c",
+      "generated_content": "The task is complete. The `normalize_name` function now correctly strips surrounding whitespace and lowercases the result. The test suite in `tests/test_normalize.py` has been executed successfully, confirming the fix works as intended. No further changes are required.",
+      "exact_content": false,
+      "reference_command": "echo \"Fix applied and verified successfully.\"",
+      "generated_command": null,
+      "exact_command": false,
+      "full_history_tokens": 393,
+      "selected_logical_tokens": 393,
+      "selected_whole_record_tokens": 393,
+      "materialized_tokens": 501,
+      "requested_budget_tokens": 393,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 1.2748091603053435,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 108,
+      "materialized_budget_unused_tokens": 0,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "m13"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "model_visible_resource_map_receipt:H1_ALL_BRANCHES_CONSUMED"
+        ],
+        [
+          "m3",
+          "model_visible_resource_map_receipt:H1_ALL_BRANCHES_CONSUMED"
+        ],
+        [
+          "m4",
+          "full_history"
+        ],
+        [
+          "m5",
+          "full_history"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "full_history"
+        ],
+        [
+          "m9",
+          "full_history"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ],
+        [
+          "m12",
+          "full_history"
+        ],
+        [
+          "m13",
+          "full_history"
+        ]
+      ],
+      "negative_realization": "visible_receipt",
+      "negative_candidate_group_count": 1,
+      "negative_candidate_record_count": 2,
+      "negative_candidate_tokens": 56,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 1,
+      "receipt_source_observation_tokens": 26,
+      "receipt_tokens": 134,
+      "receipt_token_saving": -108,
+      "receipt_retained_action_tokens": 30,
+      "receipt_fail_closed_group_ids": [],
+      "model_visible_receipts": [
+        {
+          "causal_group_id": "turn:t0000",
+          "observation_record_id": "m3",
+          "source_record_ids": [
+            "m2",
+            "m3"
+          ],
+          "retained_action_record_ids": [
+            "m2"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "kind": "resource_map",
+          "content_sha256": "ddfeb11cf1b0973ac48b3d5839cff39d74a8c602d191806ebcdfd9302f655154",
+          "source_observation_tokens": 26,
+          "receipt_tokens": 134,
+          "observation_token_saving": -108,
+          "witness_record_ids": [
+            "m2",
+            "m3",
+            "m6",
+            "m7",
+            "m4",
+            "m5",
+            "m8",
+            "m9"
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "causal_group_id": "turn:t0000",
+          "record_ids": [
+            "m2",
+            "m3"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "classification": "strict_all_branch_supersession_not_certificate",
+          "reason": "every concrete discovered resource has a complete successful read/diff, followed by a non-read transition; Kf=0 completed later turns elapsed",
+          "resource_ids": [
+            "search:13bfd9970db8",
+            "src/normalize.py",
+            "src/legacy_normalize.py"
+          ],
+          "witness_record_ids": [
+            "m2",
+            "m3",
+            "m6",
+            "m7",
+            "m4",
+            "m5",
+            "m8",
+            "m9"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0000 rule=H1_ALL_BRANCHES_CONSUMED resources=search:13bfd9970db8,src/normalize.py,src/legacy_normalize.py witnesses=m2,m3,m6,m7,m4,m5,m8,m9",
+          "excluded_tokens": 56,
+          "tombstone_in_model_request": false,
+          "realization": "visible_receipt"
+        }
+      ],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 39,
+          "materialized_tokens": 39,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 26,
+          "materialized_tokens": 134,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 27,
+          "materialized_tokens": 27,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 24,
+          "materialized_tokens": 24,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "whole_record",
+          "original_tokens": 17,
+          "materialized_tokens": 17,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 59,
+          "materialized_tokens": 59,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m12",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m13",
+          "mode": "whole_record",
+          "original_tokens": 25,
+          "materialized_tokens": 25,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "4b5e71c9bb43b203458b5ae8fd1bdd8a4acbee8e07eb7eb8d6790cf658cf0a7b",
+      "usage": {
+        "prompt_tokens": 576,
+        "completion_tokens": 258,
+        "total_tokens": 834
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-496",
+        "response_model": "qwen3:14b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "reasoning",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 269,
+        "message_content_sha256": "2f6a536cb91f712321adebf347515657180c468e4d082b323f02fb456007501c",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 576,
+          "completion_tokens": 258,
+          "total_tokens": 834
+        }
+      }
+    }
+  ]
+}

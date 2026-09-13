@@ -66,6 +66,25 @@ Its directory also contains a separately labelled whitespace-only H1--H4
 opportunity screen; the heuristic rows must not be interpreted as frozen or
 autonomous quality evidence.
 
+That same successful trajectory now supplies the first real oversized-result
+materialization cohort. Structured evidence above a 512-token observation
+threshold saves 11,037 of 199,109 cumulative tokens (5.54%) across all 23
+frozen decisions and preserves 10/22 exact commands and 12/22 conservative
+actions. A fresh whole-record repeat remains byte-exact on all 23 contents and
+22 defined commands. On decisions 3--10, structured evidence saves 7.54% with
+4/8 conservative actions, versus 28.27% and 2/8 for lexical matched spans and
+30.28% and 1/8 for fixed head/tail. This is a frozen
+compression--agreement result, not autonomous success.
+
+The [`synthetic_diagnostics/visible_receipts_qwen14/post_gate`](synthetic_diagnostics/visible_receipts_qwen14/post_gate/README.md)
+cohort tests model-visible H1 resource-map and H2 mutation receipts. A strict
+tokenizer-based size gate restores short observations byte-for-byte when a
+receipt would be larger. In oversized mechanism controls, H1 compresses a
+1,082-token observation to a 43-token receipt and H2b compresses 1,071 to 46,
+while preserving valid terminal actions and prefix-only evidence. The H1 FULL
+repeat is not exact and the H2b sample is one decision, so these qualify the
+mechanism and its accounting rather than task utility.
+
 ## First autonomous pilot
 
 The [`autonomous_task01_qwen30`](autonomous_task01_qwen30/README.md) cohort is

@@ -33,6 +33,10 @@ from .negative_selection import (
     NegativeSelectionConfig,
     reacquired_excluded_resources,
 )
+from .negative_receipts import (
+    NegativeRealizationMode,
+    realize_negative_receipts,
+)
 from .recordizer import recordize_minisweagent_messages
 from .run_structural_screen import _policy_selectors, _query, _token_counter
 from .selectors import FullHistorySelector
@@ -346,6 +350,7 @@ def replay(
     max_output_tokens: int | None,
     api_key: str | None,
     timeout: int,
+    negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP,
     reference_replay: Mapping[str, Any] | None = None,
     matched_budget_replay: Mapping[str, Any] | None = None,
     progress_path: Path | None = None,
@@ -374,6 +379,18 @@ def replay(
         raise ValueError(
             "matched_token_tail materialization is available only through the "
             "matched_token_tail policy"
+        )
+    if materialization_mode == MaterializationMode.TOOL_NEGATIVE_RECEIPT:
+        raise ValueError(
+            "tool_negative_receipt is an internal realization mode; use "
+            "--negative-realization observation_receipt with an H1/H2 policy"
+        )
+    if (
+        negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT
+        and policy not in NEGATIVE_POLICY_RULES
+    ):
+        raise ValueError(
+            "observation_receipt realization requires a negative-selection policy"
         )
     messages: Sequence[Mapping[str, Any]] = trajectory["messages"]
     assistant_decisions = list(enumerate((
@@ -457,6 +474,7 @@ def replay(
             "working_set_resources_kx": working_set_resources,
             "positive_fallback": negative_fallback,
             "h2b_allow_workspace_verification": h2b_allow_workspace_verification,
+            "realization": negative_realization.value,
         } if policy in NEGATIVE_POLICY_RULES else None,
     }
     rows: list[dict[str, Any]] = []
@@ -559,6 +577,16 @@ def replay(
                 query=_query(prefix),
                 count_tokens=count_tokens,
             )
+        receipt_realization = None
+        if negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT:
+            receipt_realization = realize_negative_receipts(
+                history,
+                plan,
+                materialized,
+                count_tokens=count_tokens,
+            )
+            materialized = receipt_realization.materialized
+            plan = materialized.logical_plan
         selected_messages = serialize_materialized_messages(history, materialized)
         request_payload: dict[str, Any] = {
             "model": model,
@@ -578,11 +606,15 @@ def replay(
         generated, failure_reason, response_diagnostics = _response_diagnostics(raw)
         reference_command = _command(reference)
         generated_command = _command(generated)
+        effective_dropped_exclusions = (
+            receipt_realization.dropped_exclusions
+            if receipt_realization is not None else plan.exclusions
+        )
         generated_reacquisition = reacquired_excluded_resources(
-            generated_command, plan.exclusions
+            generated_command, effective_dropped_exclusions
         )
         reference_reacquisition = reacquired_excluded_resources(
-            reference_command, plan.exclusions
+            reference_command, effective_dropped_exclusions
         )
         policy_excess_reacquisition = tuple(sorted(
             set(generated_reacquisition).difference(reference_reacquisition)
@@ -642,9 +674,88 @@ def replay(
             ),
             "selected_record_ids": plan.selected_record_ids,
             "selection_reasons": plan.selection_reasons,
-            "excluded_group_count": len(plan.exclusions),
-            "excluded_record_count": sum(len(row.record_ids) for row in plan.exclusions),
-            "excluded_tokens": sum(row.excluded_tokens for row in plan.exclusions),
+            "negative_realization": negative_realization.value,
+            "negative_candidate_group_count": len(plan.exclusions),
+            "negative_candidate_record_count": sum(
+                len(row.record_ids) for row in plan.exclusions
+            ),
+            "negative_candidate_tokens": sum(
+                row.excluded_tokens for row in plan.exclusions
+            ),
+            "excluded_group_count": len(effective_dropped_exclusions),
+            "excluded_record_count": sum(
+                len(row.record_ids) for row in effective_dropped_exclusions
+            ),
+            "excluded_tokens": sum(
+                row.excluded_tokens for row in effective_dropped_exclusions
+            ),
+            "receipt_count": (
+                len(receipt_realization.receipts)
+                if receipt_realization is not None else 0
+            ),
+            "receipt_source_observation_tokens": (
+                receipt_realization.receipt_source_observation_tokens
+                if receipt_realization is not None else 0
+            ),
+            "receipt_tokens": (
+                receipt_realization.receipt_tokens
+                if receipt_realization is not None else 0
+            ),
+            "receipt_token_saving": (
+                receipt_realization.receipt_token_saving
+                if receipt_realization is not None else 0
+            ),
+            "receipt_retained_action_tokens": (
+                receipt_realization.retained_action_tokens
+                if receipt_realization is not None else 0
+            ),
+            "receipt_fail_closed_group_ids": (
+                receipt_realization.fail_closed_group_ids
+                if receipt_realization is not None else ()
+            ),
+            "receipt_abstained_source_observation_tokens": (
+                receipt_realization.abstained_source_observation_tokens
+                if receipt_realization is not None else 0
+            ),
+            "receipt_abstained_candidate_tokens": (
+                receipt_realization.abstained_candidate_receipt_tokens
+                if receipt_realization is not None else 0
+            ),
+            "receipt_abstentions": [
+                {
+                    "causal_group_id": abstention.causal_group_id,
+                    "source_record_ids": abstention.source_record_ids,
+                    "rule_id": abstention.rule_id,
+                    "reason": abstention.reason.value,
+                    "source_observation_tokens": (
+                        abstention.source_observation_tokens
+                    ),
+                    "candidate_receipt_tokens": abstention.candidate_receipt_tokens,
+                }
+                for abstention in (
+                    receipt_realization.abstentions
+                    if receipt_realization is not None else ()
+                )
+            ],
+            "model_visible_receipts": [
+                {
+                    "causal_group_id": receipt.causal_group_id,
+                    "observation_record_id": receipt.observation_record_id,
+                    "source_record_ids": receipt.source_record_ids,
+                    "retained_action_record_ids": receipt.retained_action_record_ids,
+                    "rule_id": receipt.rule_id,
+                    "kind": receipt.kind.value,
+                    "content_sha256": _digest(receipt.content),
+                    "source_observation_tokens": receipt.source_observation_tokens,
+                    "receipt_tokens": receipt.receipt_tokens,
+                    "observation_token_saving": receipt.observation_token_saving,
+                    "witness_record_ids": receipt.witness_record_ids,
+                }
+                for receipt in (
+                    receipt_realization.receipts
+                    if receipt_realization is not None else ()
+                )
+            ],
             "exclusions": [
                 {
                     "causal_group_id": row.causal_group_id,
@@ -657,6 +768,25 @@ def replay(
                     "inactive_tombstone": row.tombstone,
                     "excluded_tokens": row.excluded_tokens,
                     "tombstone_in_model_request": False,
+                    "realization": (
+                        "observation_receipt"
+                        if receipt_realization is not None
+                        and any(
+                            receipt.causal_group_id == row.causal_group_id
+                            for receipt in receipt_realization.receipts
+                        )
+                        else next(
+                            (
+                                f"fail_closed:{abstention.reason.value}"
+                                for abstention in receipt_realization.abstentions
+                                if abstention.causal_group_id == row.causal_group_id
+                            ),
+                            "drop",
+                        )
+                        if receipt_realization is not None
+                        and row.causal_group_id in receipt_realization.fail_closed_group_ids
+                        else "drop"
+                    ),
                 }
                 for row in plan.exclusions
             ],
@@ -717,6 +847,16 @@ def main() -> None:
         "--h2b-allow-workspace-verification",
         action="store_true",
         help="relaxed H2b arm; a passing workspace check may retire a write",
+    )
+    parser.add_argument(
+        "--negative-realization",
+        type=NegativeRealizationMode,
+        choices=tuple(NegativeRealizationMode),
+        default=NegativeRealizationMode.DROP,
+        help=(
+            "drop complete negative-selection groups, or keep the original "
+            "H1/H2 action and replace only its observation with a visible receipt"
+        ),
     )
     parser.add_argument(
         "--materialization-mode",
@@ -790,6 +930,7 @@ def main() -> None:
         max_output_tokens=args.max_output_tokens,
         api_key=os.environ.get(args.api_key_env),
         timeout=args.timeout,
+        negative_realization=args.negative_realization,
         reference_replay=reference_replay,
         matched_budget_replay=matched_budget_replay,
         progress_path=args.output,

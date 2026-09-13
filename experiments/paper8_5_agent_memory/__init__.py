@@ -48,6 +48,15 @@ from .negative_selection import (
     classify_bash_operation,
     reacquired_excluded_resources,
 )
+from .negative_receipts import (
+    ModelVisibleReceipt,
+    NegativeRealizationMode,
+    NegativeReceiptRealization,
+    ReceiptAbstention,
+    ReceiptAbstentionReason,
+    ReceiptKind,
+    realize_negative_receipts,
+)
 from .oracle import OracleAblationCase, leave_one_bundle_out_cases
 from .recordizer import extract_resource_ids, recordize_minisweagent_messages
 from .selectors import (
@@ -81,6 +90,12 @@ __all__ = [
     "BashOperation",
     "NEGATIVE_POLICY_RULES",
     "NegativeHeuristicSelector",
+    "NegativeRealizationMode",
+    "NegativeReceiptRealization",
+    "ModelVisibleReceipt",
+    "ReceiptAbstention",
+    "ReceiptAbstentionReason",
+    "ReceiptKind",
     "NegativeRule",
     "NegativeSelectionConfig",
     "FullHistorySelector",
@@ -108,6 +123,7 @@ __all__ = [
     "extract_resource_ids",
     "recordize_minisweagent_messages",
     "reacquired_excluded_resources",
+    "realize_negative_receipts",
     "serialize_materialized_messages",
     "validate_minisweagent_chat",
 ]

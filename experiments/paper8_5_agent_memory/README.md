@@ -54,10 +54,13 @@ heuristic families. They are deliberately not promoted to `DAG_CERTIFIED`:
 
 Every retired causal group carries an inactive controller tombstone with rule,
 resource, and witness IDs. Tombstones are persisted in the plan/artifact but
-are not inserted into the model prompt, because doing that would create a
-separate summarization treatment. A predeclared follow-up materialization arm
-will compare this binary retirement with a model-visible compact provenance
-stub; stub tokens will count against its realized budget. Frozen replay reports immediate reacquisition
+are not inserted into the model prompt. The separate
+`--negative-realization observation_receipt` treatment keeps the original H1/H2
+assistant action and replaces only its paired observation with a compact,
+model-visible resource-map or mutation receipt. It uses the active tokenizer
+and fails closed to the complete original group unless the receipt is strictly
+smaller than the source observation. Candidate, dropped, source-observation,
+receipt, and abstention tokens are reported independently. Frozen replay reports immediate reacquisition
 of excluded resources and the narrower policy-excess proxy (candidate
 reacquires but contemporaneous FULL does not). Autonomous reacquisition and
 official task success remain the primary endpoints.
@@ -76,7 +79,9 @@ The `tool_structured_evidence` materializer is the first non-positional result
 compactor. It ranks only current-request evidence: failure/traceback lines,
 paths, diff structure, source symbols, command resources, and task/query terms.
 If none is present, it keeps the whole observation instead of silently falling
-back to arbitrary head/tail sampling. Synthetic structural gates are not model
+back to arbitrary head/tail sampling. If its selected spans cover the complete
+observation, it returns the canonical bytes rather than rebuilding the string;
+this is required for a true no-op control. Synthetic structural gates are not model
 or task-quality evidence; each generated trajectory is also compatible with
 the ordinary frozen replay runner.
 

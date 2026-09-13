@@ -18,6 +18,7 @@ from experiments.paper8_5_agent_memory import (
     MatchedTokenTailConfig,
     MiddleSelectionStrategy,
     NegativeHeuristicSelector,
+    NegativeRealizationMode,
     NegativeRule,
     NegativeSelectionConfig,
     ToolObservationMaterializer,
@@ -30,6 +31,7 @@ from experiments.paper8_5_agent_memory import (
     materialize_plan,
     recordize_minisweagent_messages,
     reacquired_excluded_resources,
+    realize_negative_receipts,
     serialize_materialized_messages,
     validate_minisweagent_chat,
 )
@@ -808,6 +810,286 @@ def test_h2_bare_is_explicitly_aggressive_and_obeys_kw():
     assert "does not imply" in rows[0].reason
 
 
+def test_h1_observation_receipt_keeps_action_and_replaces_only_discovery_output():
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+        "cwd": "/workspace",
+    }
+    noise = " ".join(f"irrelevant_{index}" for index in range(200))
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("find . -name foo.py", f"./src/foo.py\n{noise}", complete),
+        (
+            "cat src/foo.py",
+            "source",
+            {**complete, "resource_version_fingerprints": {"src/foo.py": "v1"}},
+        ),
+        ("pwd", "/workspace", complete),
+    ))
+    plan = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H1_SEARCH_CONSUMED,
+    )).select(
+        history=history,
+        query="fix",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(
+        history,
+        plan,
+        ToolObservationMaterializer(),
+        query="fix",
+    )
+    realized = realize_negative_receipts(history, plan, base)
+    messages = serialize_materialized_messages(history, realized.materialized)
+
+    assert len(realized.receipts) == 1
+    assert realized.receipts[0].kind.value == "resource_map"
+    assert realized.receipts[0].observation_token_saving > 0
+    assert realized.materialized.logical_plan.selected_record_ids == tuple(
+        row.record_id for row in history.records
+    )
+    assert realized.materialized.logical_plan.selected_tokens == sum(
+        whitespace_tokens(row.content) for row in history.records
+    )
+    assert messages[2]["content"] == history.record_by_id["m2"].content
+    assert "[PRA memory] search consumed" in messages[3]["content"]
+    assert "mapped resources: src/foo.py" in messages[3]["content"]
+    assert "output complete" in messages[3]["content"]
+    assert "cwd: /workspace" in messages[3]["content"]
+    assert "irrelevant_199" not in messages[3]["content"]
+    validate_minisweagent_chat(messages)
+
+
+def test_h2_observation_receipt_exposes_version_evidence_without_mutation_output():
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    mutation_noise = " ".join(f"write_detail_{index}" for index in range(120))
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        (
+            "python -c \"from pathlib import Path; Path('foo.py').write_text('fixed')\"",
+            mutation_noise,
+            {
+                **complete,
+                "post_resource_version_fingerprints": {"foo.py": "v2"},
+            },
+        ),
+        (
+            "cat foo.py",
+            "fixed",
+            {
+                **complete,
+                "resource_version_fingerprints": {"foo.py": "v2"},
+            },
+        ),
+    ))
+    plan = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H2A_WRITE_CURRENT_READ,
+    )).select(
+        history=history,
+        query="fix foo.py",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(
+        history,
+        plan,
+        ToolObservationMaterializer(),
+        query="fix foo.py",
+    )
+    realized = realize_negative_receipts(history, plan, base)
+    messages = serialize_materialized_messages(history, realized.materialized)
+
+    receipt = realized.receipts[0]
+    assert receipt.kind.value == "mutation"
+    assert receipt.observation_token_saving > 0
+    assert "write_detail_119" not in receipt.content
+    assert "current read confirms: foo.py@v2" in receipt.content
+    assert "output complete" in receipt.content
+    assert messages[2]["content"] == history.record_by_id["m2"].content
+    validate_minisweagent_chat(messages)
+
+
+def test_h2b_observation_receipt_names_successful_verification_evidence():
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        (
+            "echo fixed > foo.py",
+            " ".join(f"write_detail_{index}" for index in range(100)),
+            {
+                **complete,
+                "post_resource_version_fingerprints": {"foo.py": "v2"},
+            },
+        ),
+        (
+            "pytest tests/test_foo.py",
+            "1 passed",
+            {**complete, "verification_resource_ids": ["foo.py"]},
+        ),
+    ))
+    plan = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H2B_VERIFIED_WRITE,
+    )).select(
+        history=history,
+        query="fix foo.py",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(
+        history,
+        plan,
+        ToolObservationMaterializer(),
+        query="fix foo.py",
+    )
+    realized = realize_negative_receipts(history, plan, base)
+
+    assert len(realized.receipts) == 1
+    assert "verification passed for: foo.py@v2" in realized.receipts[0].content
+    assert set(realized.receipts[0].witness_record_ids) >= {"m2", "m4"}
+
+
+def test_observation_receipt_fails_closed_on_nonstandard_multi_observation_group():
+    complete = {
+        "returncode": 0,
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    messages = [
+        {"role": "system", "content": "Use one bash command."},
+        {"role": "user", "content": "Fix the reported issue."},
+        {
+            "role": "assistant",
+            "content": (
+                "THOUGHT: locate\n```mswea_bash_command\n"
+                "find . -name foo.py\n```"
+            ),
+        },
+        {
+            "role": "user",
+            "content": "<returncode>0</returncode>\n<output>./src/foo.py</output>",
+            "extra": complete,
+        },
+        {
+            "role": "tool",
+            "content": "<returncode>0</returncode>\n<output>map complete</output>",
+            "extra": complete,
+        },
+        {
+            "role": "assistant",
+            "content": "THOUGHT: read\n```mswea_bash_command\ncat src/foo.py\n```",
+        },
+        {
+            "role": "user",
+            "content": "<returncode>0</returncode>\n<output>source</output>",
+            "extra": complete,
+        },
+        {
+            "role": "assistant",
+            "content": "THOUGHT: move on\n```mswea_bash_command\npwd\n```",
+        },
+        {
+            "role": "user",
+            "content": "<returncode>0</returncode>\n<output>/workspace</output>",
+            "extra": complete,
+        },
+    ]
+    history = recordize_minisweagent_messages(messages)
+    plan = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H1_SEARCH_CONSUMED,
+    )).select(
+        history=history,
+        query="fix",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(
+        history,
+        plan,
+        ToolObservationMaterializer(),
+        query="fix",
+    )
+    realized = realize_negative_receipts(history, plan, base)
+
+    assert realized.receipts == ()
+    assert realized.fail_closed_group_ids == ("turn:t0000",)
+    assert realized.abstentions[0].reason.value == "malformed_or_prefix_invalid"
+    assert realized.abstentions[0].source_observation_tokens is None
+    serialized = serialize_materialized_messages(history, realized.materialized)
+    assert serialized[2:5] == [
+        {"role": message["role"], "content": message["content"]}
+        for message in messages[2:5]
+    ]
+    validate_minisweagent_chat(serialized)
+
+
+@pytest.mark.parametrize(
+    ("rule", "turns"),
+    (
+        (
+            NegativeRule.H1_SEARCH_CONSUMED,
+            (
+                ("find . -name foo.py", "./src/foo.py", None),
+                ("cat src/foo.py", "source", None),
+                ("pwd", "/workspace", None),
+            ),
+        ),
+        (
+            NegativeRule.H2B_VERIFIED_WRITE,
+            (
+                (
+                    "echo fixed > foo.py",
+                    "saved",
+                    {"post_resource_version_fingerprints": {"foo.py": "v2"}},
+                ),
+                (
+                    "pytest tests/test_foo.py",
+                    "1 passed",
+                    {"verification_resource_ids": ["foo.py"]},
+                ),
+            ),
+        ),
+    ),
+)
+def test_observation_receipt_abstains_when_not_strictly_smaller(rule, turns):
+    history = recordize_minisweagent_messages(_heuristic_messages(*turns))
+    plan = NegativeHeuristicSelector(_negative_config(rule)).select(
+        history=history,
+        query="fix foo.py",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(
+        history,
+        plan,
+        ToolObservationMaterializer(),
+        query="fix foo.py",
+    )
+    realized = realize_negative_receipts(history, plan, base)
+
+    assert realized.receipts == ()
+    assert len(realized.abstentions) == 1
+    abstention = realized.abstentions[0]
+    assert abstention.reason.value == "not_smaller_than_source_observation"
+    assert abstention.candidate_receipt_tokens >= abstention.source_observation_tokens
+    assert realized.abstained_candidate_receipt_tokens == (
+        abstention.candidate_receipt_tokens
+    )
+    assert realized.abstained_source_observation_tokens == (
+        abstention.source_observation_tokens
+    )
+    assert realized.materialized.materialized_tokens == sum(
+        whitespace_tokens(row.content) for row in history.records
+    )
+    assert all(
+        row.mode == MaterializationMode.WHOLE_RECORD
+        for row in realized.materialized.records
+    )
+
+
 def test_h3_keeps_kr_newest_reads_for_the_same_resource_version_and_span():
     extra = {"resource_version_fingerprints": {"foo.py": "v1"}}
     history = recordize_minisweagent_messages(_heuristic_messages(
@@ -1146,6 +1428,128 @@ def test_frozen_replay_records_policy_excess_immediate_reacquisition(monkeypatch
     assert row["full_reference_reacquired_excluded_resource_ids"] == ()
     assert row["false_exclusion_immediate_reacquisition_proxy"] is True
     assert row["exclusions"][0]["tombstone_in_model_request"] is False
+
+
+def test_frozen_replay_observation_receipt_is_prefix_only_and_reports_separate_tokens(
+    monkeypatch,
+):
+    complete = {
+        "output_complete": True,
+        "timed_out": False,
+        "output_truncated": False,
+    }
+    messages = _heuristic_messages(
+        (
+            "find . -name foo.py",
+            "./src/foo.py\n" + " ".join(f"noise_{index}" for index in range(150)),
+            complete,
+        ),
+        ("cat src/foo.py", "source", complete),
+        ("pwd", "/workspace", complete),
+    )
+    future_reference = (
+        "THOUGHT: FUTURE_REFERENCE_SECRET\n"
+        "```mswea_bash_command\necho done\n```"
+    )
+    messages.append({"role": "assistant", "content": future_reference})
+    requests = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        requests.append(payload["messages"])
+        return {"choices": [{"message": {"content": future_reference}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        policy="h1_search_consumed",
+        head=0,
+        tail=0,
+        min_decision=4,
+        max_decisions=1,
+        negative_realization=NegativeRealizationMode.OBSERVATION_RECEIPT,
+    ))
+
+    row = result["rows"][0]
+    prompt = "\n".join(message["content"] for message in requests[0])
+    assert "FUTURE_REFERENCE_SECRET" not in prompt
+    assert "[PRA memory] search consumed" in prompt
+    assert "noise_149" not in prompt
+    assert row["negative_realization"] == "observation_receipt"
+    assert row["negative_candidate_group_count"] == 1
+    assert row["excluded_group_count"] == 0
+    assert row["receipt_count"] == 1
+    assert row["receipt_tokens"] > 0
+    assert row["receipt_source_observation_tokens"] > row["receipt_tokens"]
+    assert row["selected_logical_tokens"] == row["full_history_tokens"]
+    assert row["materialized_tokens"] < row["selected_logical_tokens"]
+    assert row["model_visible_receipts"][0]["kind"] == "resource_map"
+    assert row["exclusions"][0]["realization"] == "observation_receipt"
+    assert result["run_configuration"]["negative_selection"]["realization"] == (
+        "observation_receipt"
+    )
+
+
+def test_frozen_replay_observation_receipt_reports_size_gate_abstention(monkeypatch):
+    messages = _heuristic_messages(
+        ("find . -name foo.py", "./src/foo.py", None),
+        ("cat src/foo.py", "source", None),
+        ("pwd", "/workspace", None),
+    )
+    reference = "THOUGHT: done\n```mswea_bash_command\necho done\n```"
+    messages.append({"role": "assistant", "content": reference})
+    requests = []
+
+    def fake_post(url, payload, *, api_key, timeout):
+        requests.append(payload["messages"])
+        return {"choices": [{"message": {"content": reference}}]}
+
+    monkeypatch.setattr(frozen_replay, "_post", fake_post)
+    result = frozen_replay.replay(**_replay_arguments(
+        messages,
+        progress_path=None,
+        policy="h1_search_consumed",
+        head=0,
+        tail=0,
+        min_decision=4,
+        max_decisions=1,
+        negative_realization=NegativeRealizationMode.OBSERVATION_RECEIPT,
+    ))
+
+    row = result["rows"][0]
+    prompt = "\n".join(message["content"] for message in requests[0])
+    assert "[PRA memory]" not in prompt
+    assert "./src/foo.py" in prompt
+    assert row["receipt_count"] == 0
+    assert row["receipt_fail_closed_group_ids"] == ("turn:t0000",)
+    assert row["receipt_abstentions"] == [{
+        "causal_group_id": "turn:t0000",
+        "source_record_ids": ("m2", "m3"),
+        "rule_id": "H1_SEARCH_CONSUMED",
+        "reason": "not_smaller_than_source_observation",
+        "source_observation_tokens": row[
+            "receipt_abstained_source_observation_tokens"
+        ],
+        "candidate_receipt_tokens": row["receipt_abstained_candidate_tokens"],
+    }]
+    assert row["receipt_abstained_candidate_tokens"] >= (
+        row["receipt_abstained_source_observation_tokens"]
+    )
+    assert row["selected_logical_tokens"] == row["full_history_tokens"]
+    assert row["materialized_tokens"] == row["full_history_tokens"]
+    assert row["excluded_group_count"] == 0
+    assert row["exclusions"][0]["realization"] == (
+        "fail_closed:not_smaller_than_source_observation"
+    )
+
+
+def test_frozen_replay_rejects_receipt_mode_for_nonnegative_policy():
+    with pytest.raises(ValueError, match="requires a negative-selection policy"):
+        frozen_replay.replay(**_replay_arguments(
+            _messages(1),
+            progress_path=None,
+            negative_realization=NegativeRealizationMode.OBSERVATION_RECEIPT,
+        ))
 
 
 @pytest.mark.parametrize(

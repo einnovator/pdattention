@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_agent_memory_visible_receipt_prefix_audit",
+  "evidence_class": "structural_request_audit",
+  "host": {
+    "address": "192.168.1.8",
+    "hardware": "Apple M5 16 GB",
+    "endpoint": "Ollama 0.30.8",
+    "model": "qwen3:14b",
+    "model_digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+    "tokenizer": "Qwen/Qwen3-14B"
+  },
+  "audit_contract": {
+    "receipt_inputs": "evaluated history prefix and selector exclusion metadata only",
+    "future_reference_action_available_to_receipt_builder": false,
+    "checks": [
+      "no adjacent assistant roles in serialized model request",
+      "all receipt witness record IDs exist in evaluated prefix",
+      "no complete future message content occurs in rendered receipt"
+    ]
+  },
+  "cases": [
+    {
+      "case": "H1_ALL_BRANCHES_CONSUMED",
+      "decision": 7,
+      "prefix_message_count": 14,
+      "future_message_count": 2,
+      "serialized_roles": [
+        "system", "user", "assistant", "user", "assistant", "user",
+        "assistant", "user", "assistant", "user", "assistant", "user",
+        "assistant", "user"
+      ],
+      "no_adjacent_assistant_roles": true,
+      "all_witness_record_ids_in_prefix": true,
+      "complete_future_message_content_in_receipt": false,
+      "receipt_kind": "resource_map",
+      "source_observation_tokens": 26,
+      "receipt_tokens": 134
+    },
+    {
+      "case": "H2B_VERIFIED_WRITE",
+      "decision": 6,
+      "prefix_message_count": 12,
+      "future_message_count": 2,
+      "serialized_roles": [
+        "system", "user", "assistant", "user", "assistant", "user",
+        "assistant", "user", "assistant", "user", "assistant", "user"
+      ],
+      "no_adjacent_assistant_roles": true,
+      "all_witness_record_ids_in_prefix": true,
+      "complete_future_message_content_in_receipt": false,
+      "receipt_kind": "mutation",
+      "source_observation_tokens": 15,
+      "receipt_tokens": 133
+    }
+  ]
+}

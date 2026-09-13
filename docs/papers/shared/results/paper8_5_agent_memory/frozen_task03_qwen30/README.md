@@ -135,3 +135,41 @@ preserves 63.6% conservative action equivalence.  H2b and H4 abstain at this
 setting, making the realized arm H1+H2a+H3.  Its small action-agreement recovery
 relative to H1+H3 despite greater exclusion is non-monotone sensitivity, not a
 quality claim.
+
+## Oversized-observation materialization
+
+The real trajectory contains a 2,526-token, 292-line source dump plus later
+685- and 737-token observations. `structured_evidence_t512_seed0.json` applies
+structured evidence only to tool observations above 512 tokens while retaining
+every logical record. Across all 23 decisions it reduces 199,109 cumulative
+FULL tokens to 188,072 materialized tokens, a 5.54% saving. It preserves 10/22
+exact commands and 12/22 conservatively equivalent shell actions; 22/23
+actions are format-valid, exactly matching FULL's validity denominator. A
+current whole-record repeat (`full_seed0_c_current.json`) again reproduces all
+23 contents and all 22 defined commands, excluding endpoint drift as the cause
+of the structured arm's divergences.
+
+For a matched early slice, decisions 3--10, the three materializers show a
+clear compression--agreement gradient:
+
+| Materializer | Materialized saving | Exact command | Conservative action |
+|---|---:|---:|---:|
+| Structured evidence | 4,335 / 57,480 (7.54%) | 4/8 | 4/8 |
+| Lexical matched span | 16,248 / 57,480 (28.27%) | 2/8 | 2/8 |
+| Fixed head/tail | 17,406 / 57,480 (30.28%) | 1/8 | 1/8 |
+
+All three slice arms emit valid actions at every decision. Structured evidence
+is substantially more conservative than either positional control, but it is
+not behavior preserving. These remain frozen next-action measurements over an
+officially successful source trajectory; they do not establish autonomous task
+success under materialization. Machine-readable and Markdown reductions are in
+`structured_evidence_t512_comparison.*` and
+`materialization_t512_d3_10_comparison.*`.
+
+The audit also found that the two long Django traces are poor 512-token
+materialization targets: Task 01 has no oversized tool observation, and Task 02
+has one 565-token observation for which structured selection retains every
+line. The first no-op run exposed a replay bug: reconstructing all selected
+lines with `splitlines()`/join changed trailing bytes while leaving token counts
+unchanged. That artifact is quarantined, and the materializer now returns the
+canonical observation bytes whenever all lines are selected.

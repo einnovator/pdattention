@@ -210,12 +210,25 @@ def _arm_summary(
         if row.get("false_exclusion_immediate_reacquisition_proxy")
     ]
     excluded_by_rule: dict[str, dict[str, int]] = {}
+    receipt_by_rule: dict[str, dict[str, int]] = {}
+    receipt_abstentions_by_reason: dict[str, int] = {}
     for row in rows:
+        for abstention in row.get("receipt_abstentions", ()):
+            if not isinstance(abstention, Mapping):
+                continue
+            reason = str(abstention.get("reason", "unknown"))
+            receipt_abstentions_by_reason[reason] = (
+                receipt_abstentions_by_reason.get(reason, 0) + 1
+            )
         for exclusion in row.get("exclusions", ()):
             if not isinstance(exclusion, Mapping):
                 continue
             rule = str(exclusion.get("rule_id", "unknown"))
-            aggregate = excluded_by_rule.setdefault(rule, {"groups": 0, "tokens": 0})
+            realized_as_receipt = (
+                exclusion.get("realization") == "observation_receipt"
+            )
+            target = receipt_by_rule if realized_as_receipt else excluded_by_rule
+            aggregate = target.setdefault(rule, {"groups": 0, "tokens": 0})
             aggregate["groups"] += 1
             aggregate["tokens"] += int(exclusion.get("excluded_tokens", 0))
     return {
@@ -336,6 +349,38 @@ def _arm_summary(
         "cumulative_excluded_tokens": sum(
             int(row.get("excluded_tokens", 0)) for row in rows
         ),
+        "cumulative_negative_candidate_tokens": sum(
+            int(row.get("negative_candidate_tokens", row.get("excluded_tokens", 0)))
+            for row in rows
+        ),
+        "cumulative_receipt_source_observation_tokens": sum(
+            int(row.get("receipt_source_observation_tokens", 0)) for row in rows
+        ),
+        "cumulative_receipt_tokens": sum(
+            int(row.get("receipt_tokens", 0)) for row in rows
+        ),
+        "cumulative_receipt_token_saving": sum(
+            int(row.get("receipt_token_saving", 0)) for row in rows
+        ),
+        "receipt_count": sum(int(row.get("receipt_count", 0)) for row in rows),
+        "decisions_with_receipt": sum(
+            bool(row.get("receipt_count", 0)) for row in rows
+        ),
+        "receipt_abstention_count": sum(
+            len(row.get("receipt_abstentions", ())) for row in rows
+        ),
+        "decisions_with_receipt_abstention": sum(
+            bool(row.get("receipt_abstentions", ())) for row in rows
+        ),
+        "cumulative_receipt_abstained_source_observation_tokens": sum(
+            int(row.get("receipt_abstained_source_observation_tokens", 0))
+            for row in rows
+        ),
+        "cumulative_receipt_abstained_candidate_tokens": sum(
+            int(row.get("receipt_abstained_candidate_tokens", 0))
+            for row in rows
+        ),
+        "receipt_abstentions_by_reason": receipt_abstentions_by_reason,
         "decisions_with_exclusion": len(exclusion_rows),
         "decisions_with_immediate_reacquisition": len(reacquisition_rows),
         "immediate_reacquisition_decision_ids": [
@@ -346,15 +391,24 @@ def _arm_summary(
             int(row["decision"]) for row in excess_reacquisition_rows
         ],
         "excluded_by_rule": excluded_by_rule,
+        "receipt_by_rule": receipt_by_rule,
     }
 
 
 def _treatment_label(artifact: Mapping[str, Any]) -> str:
     """Name an arm by policy plus its budget contract, not policy alone."""
     policy = str(artifact.get("policy"))
-    if policy == "full":
-        return "FULL"
     configuration = artifact.get("run_configuration", {})
+    if policy == "full":
+        mode = str(artifact.get(
+            "materialization_mode",
+            configuration.get("materialization_mode", "whole_record"),
+        ))
+        if mode == "whole_record":
+            return "FULL"
+        threshold = configuration.get("materialization_threshold_tokens")
+        suffix = f";threshold={threshold}" if threshold is not None else ""
+        return f"FULL;materialization={mode}{suffix}"
     fraction = _require_number(
         artifact.get("budget_fraction", configuration.get("budget_fraction", 1.0)),
         "budget_fraction",
@@ -389,6 +443,9 @@ def _treatment_label(artifact: Mapping[str, Any]) -> str:
             qualifiers.append(f"fallback={fallback}")
         if "h2b" in policy and negative.get("h2b_allow_workspace_verification"):
             qualifiers.append("workspace_verify=1")
+        realization = negative.get("realization", "drop")
+        if realization != "drop":
+            qualifiers.append(f"realization={realization}")
     if seed is not None:
         qualifiers.append(f"seed={seed}")
     suffix = "" if not qualifiers else ";" + ";".join(qualifiers)
@@ -417,9 +474,20 @@ def reduce_replays(
     treatments = [_treatment_label(artifact) for artifact in artifacts]
     if len(set(treatments)) != len(treatments):
         raise ValueError("comparison treatments must be unique")
-    full_indexes = [index for index, policy in enumerate(policies) if policy == "full"]
+    full_indexes = [
+        index for index, artifact in enumerate(artifacts)
+        if artifact.get("policy") == "full"
+        and str(artifact.get(
+            "materialization_mode",
+            artifact.get("run_configuration", {}).get(
+                "materialization_mode", "whole_record"
+            ),
+        )) == "whole_record"
+    ]
     if len(full_indexes) != 1:
-        raise ValueError("comparison requires exactly one full policy artifact")
+        raise ValueError(
+            "comparison requires exactly one whole-record FULL reference artifact"
+        )
     full_index = full_indexes[0]
     full = artifacts[full_index]
     full_digest = _digest(full)
@@ -482,13 +550,14 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "FULL emitted a command. All comparisons are against contemporaneous FULL."
         ),
         "",
-        "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence | First content/command/action/validity divergence | Retention mean/min/max | Full/selected/materialized tokens | Logical saving | Mandatory overflow | Whole-turn over/under target | Unused matched budget | Transport failures | Format-invalid |",
+        "| Policy | Tried/done | Valid | Exact content | Exact command | Conservative action equivalence | First content/command/action/validity divergence | Logical/materialized retention mean | Full/selected/materialized tokens | Logical/materialized saving | Mandatory overflow | Whole-turn over/under target | Unused matched budget | Transport failures | Format-invalid |",
         "|---|---:|---:|---:|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for arm in summary["arms"]:
         retention = arm["realized_retention"]
-        retention_text = "/".join(
-            _rate(retention[key]) for key in ("mean", "min", "max")
+        materialized_retention = arm["realized_materialized_retention"]
+        retention_text = (
+            f"{_rate(retention['mean'])}/{_rate(materialized_retention['mean'])}"
         )
         divergence = "/".join(_decision(arm[key]) for key in (
             "first_content_divergence",
@@ -501,10 +570,12 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             "cumulative_selected_whole_record_tokens",
             "cumulative_materialized_tokens",
         ))
-        saving = (
+        saving = "/".join((
             f"{arm['logical_token_saving_tokens']} "
-            f"({_rate(arm['logical_token_saving_fraction'])})"
-        )
+            f"({_rate(arm['logical_token_saving_fraction'])})",
+            f"{arm['materialized_token_saving_tokens']} "
+            f"({_rate(arm['materialized_token_saving_fraction'])})",
+        ))
         policy = str(arm["treatment"]).replace("|", "\\|")
         lines.append(
             f"| {policy} | {arm['decisions_attempted']}/{arm['decisions_completed']} "
@@ -538,6 +609,38 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
                 f"| {arm['cumulative_excluded_tokens']} "
                 f"| {arm['decisions_with_immediate_reacquisition']} "
                 f"| {arm['false_exclusion_proxy_decisions']} |"
+            )
+        lines.append("")
+    if any(
+        arm["decisions_with_receipt"]
+        or arm["decisions_with_receipt_abstention"]
+        for arm in summary["arms"]
+    ):
+        lines.extend((
+            "## Model-visible receipt diagnostics",
+            "",
+            "Receipts preserve the original assistant action and replace only "
+            "the paired observation. Candidate source tokens, receipt tokens, "
+            "and actual dropped tokens are reported separately.",
+            "",
+            "| Policy | Decisions with receipts | Receipt count | Candidate tokens | Observation source/receipt/saving tokens | Abstentions | Abstained source/candidate tokens | Actually dropped tokens |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ))
+        for arm in summary["arms"]:
+            policy = str(arm["treatment"]).replace("|", "\\|")
+            receipt_tokens = "/".join(str(arm[key]) for key in (
+                "cumulative_receipt_source_observation_tokens",
+                "cumulative_receipt_tokens",
+                "cumulative_receipt_token_saving",
+            ))
+            lines.append(
+                f"| {policy} | {arm['decisions_with_receipt']} "
+                f"| {arm['receipt_count']} "
+                f"| {arm['cumulative_negative_candidate_tokens']} "
+                f"| {receipt_tokens} | {arm['receipt_abstention_count']} "
+                f"| {arm['cumulative_receipt_abstained_source_observation_tokens']}/"
+                f"{arm['cumulative_receipt_abstained_candidate_tokens']} "
+                f"| {arm['cumulative_excluded_tokens']} |"
             )
         lines.append("")
     return "\n".join(lines)

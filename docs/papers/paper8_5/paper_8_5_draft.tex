@@ -65,6 +65,14 @@ submissions shows that both terminal workspaces contain resolving patches: the
 failures are in submission protocol rather than solution state. Calls and
 actions nevertheless remain unstable, so we stop the second task before any
 heuristic arm. The H3 terminal workspace also fails its auxiliary grade.
+On a seeded, repeatable frozen trajectory, structured evidence inside oversized
+tool observations saves 5.54\% of cumulative input while preserving 12/22
+conservatively equivalent actions; more aggressive matched-span and head/tail
+controls save roughly four times more on a fixed slice but preserve fewer
+actions. Model-visible H1/H2 receipts require an explicit tokenizer-based size
+gate: short receipts fail closed to canonical bytes, while oversized synthetic
+controls compress observations by more than 95\% and retain valid terminal
+actions. These receipt rows qualify the mechanism, not autonomous task utility.
 \end{abstract}
 
 \section{Introduction}
@@ -997,6 +1005,120 @@ It nevertheless supports carrying structured evidence forward as a candidate
 materializer, while whole-group H1/H2 retirement should next be compared with
 model-visible resource-map and mutation receipts.
 
+\subsection{Real oversized-observation materialization}
+
+We next froze the successful \texttt{scikit-learn-13135} trajectory and applied
+the same 512-token materialization threshold without removing any logical
+record.  The trace contains a 2,526-token, 292-line source dump and later 685-
+and 737-token observations.  A third current \textsc{Full} repeat reproduces
+all 23 contents and all 22 defined commands byte-for-byte, so endpoint drift is
+not a plausible explanation for treatment differences.
+
+Across all 23 decisions, structured evidence reduces 199,109 cumulative
+materialized tokens to 188,072, a 5.54\% saving.  It preserves 10/22 exact
+commands and 12/22 conservatively equivalent shell actions; its 22/23
+format-valid decisions equal \textsc{Full}'s validity count.  Thus selective
+result evidence is more conservative than deleting causal groups, but it is
+not behavior preserving even though every logical record remains selected.
+
+Table~\ref{tab:real-materialization} holds decisions 3--10 fixed to compare the
+three result materializers on identical prefixes.  Structured evidence gives
+up most of the attainable compression but doubles exact/conservative action
+agreement relative to matched-span and quadruples it relative to fixed
+head/tail.  All candidate actions are format-valid.  Because these are frozen
+next actions over a successful source trajectory, not executed rollouts, the
+table establishes a compression--agreement gradient rather than autonomous
+task utility.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Materializer & Materialized saving & Exact command & Conservative action \\
+\midrule
+Structured evidence & 4,335/57,480 (7.54\%) & 4/8 & 4/8 \\
+Lexical matched span & 16,248/57,480 (28.27\%) & 2/8 & 2/8 \\
+Fixed head/tail & 17,406/57,480 (30.28\%) & 1/8 & 1/8 \\
+\bottomrule
+\end{tabular}
+\caption{Frozen real-trajectory comparison on decisions 3--10.  Logical
+record retention is 100\% in every arm; saving is solely within oversized tool
+observations.}
+\label{tab:real-materialization}
+\end{table}
+
+The trace audit also supplies an important negative control.  The two long
+Django cohorts contain, respectively, zero oversized observations and one
+565-token observation for which the structured selector keeps every line.  An
+initial nominal no-op nevertheless changed 2/11 commands because the harness
+reconstructed the complete observation with \texttt{splitlines()} and join,
+dropping trailing-byte detail while reporting identical token counts.  That
+artifact is quarantined.  Complete-line selection now returns the canonical
+record bytes, and a byte-identity regression test prevents recurrence.  This
+is the text-materialization analogue of the cache-identity rule: zero measured
+token change is not evidence of an identical model input.
+
+\subsection{Model-visible resource and mutation receipts}
+
+Binary H1/H2 deletion removes both payload and progress evidence.  We therefore
+implemented a separate \emph{observation-receipt} realization: retain the
+historical assistant action verbatim and replace only its paired tool
+observation with a compact resource-map or mutation receipt derived from the
+current prefix.  Receipt and source tokens are measured with the active model
+tokenizer.  The treatment emits only when the receipt is strictly smaller;
+otherwise it restores the complete canonical group.  Malformed pairs and
+prefix-invalid witnesses fail closed under a distinct reason code.
+
+This size gate was required empirically.  The first general JSON receipt
+expanded the short synthetic H1 observation from 26 to 134 tokens and H2b from
+15 to 133.  It increased total context and made the H1 response format-invalid.
+After compacting the syntax and adding the gate, the candidate receipts are 43
+and 46 tokens, respectively, so both short controls abstain.  Their serialized
+requests are byte-identical to \textsc{Full}, and both contents and commands
+reproduce exactly.  A receipt system must count its own disclosure cost; a
+semantically sensible summary is not a saving when it exceeds its source.
+
+To verify activation independently of this size boundary, we derived two
+synthetic mechanism controls by appending 96 deterministic, semantically
+irrelevant diagnostic lines only to the old H1 search observation or H2b
+mutation observation.  Table~\ref{tab:receipt-activation} shows that the
+receipt path then removes most payload while preserving the old action and a
+model-visible state fact.  Every candidate emits a valid terminal completion
+action, and role alternation, prefix-local witnesses, and absence of future
+message leakage pass audit.  H1's identical-input \textsc{Full} repeats differ
+in terminal wording, so its exact-command difference is not attributable.
+H2b's \textsc{Full} repeats are exact, but its single receipt and deletion
+outputs both differ only in terminal \texttt{echo} wording.  These rows qualify
+the mechanism, not autonomous utility.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+Synthetic treatment & Full/materialized & Saving & Action phase \\
+\midrule
+H1 whole-group drop & 1,449/337 & 76.7\% & terminal completion \\
+H1 observation receipt & 1,449/410 & 71.7\% & terminal completion \\
+H2b whole-group drop & 1,410/278 & 80.3\% & terminal completion \\
+H2b observation receipt & 1,410/385 & 72.7\% & terminal completion \\
+\bottomrule
+\end{tabular}
+\caption{Size-gated receipt activation controls.  H1 replaces a 1,082-token
+observation with 43 tokens; H2b replaces 1,071 with 46.  The receipt costs more
+than deletion because it retains the original assistant action.}
+\label{tab:receipt-activation}
+\end{table}
+
+The next receipt arm should remain separately labelled.  A
+\emph{witness-attached receipt} would remove the old pair and append a compact
+fact to the already selected downstream H1 read, H2a current-version read/diff,
+or H2b verifier.  It can save small 44--49-token groups without introducing an
+extra role pair, but it moves evidence later and discards the original
+action/progress text.  It therefore requires its own frozen replay and
+autonomous qualification rather than being folded into observation-receipt.
+
 \subsection{First autonomous qualification}
 
 We next ran an autonomous pilot on
@@ -1294,7 +1416,16 @@ the primary FULL submission resolves only one of two executions on each of two
 task identities, even though auxiliary grading shows both FULL-B workspaces
 contain resolving patches. The second task therefore fails the gate for
 heuristic evaluation. H3 remains negative under both primary and auxiliary
-outcomes on the first task.
+outcomes on the first task. Within-record evidence selection provides a clearer
+but still non-inert frontier: a conservative structured materializer saves
+5.54\% on the repeatable 23-decision trace and preserves 54.5\% of conservative
+actions, outperforming more aggressive positional materializers in agreement
+but not in compression. Observation receipts now fail closed when their own
+token cost is not smaller than the source and activate correctly on oversized
+mechanism controls. The next policy step is separately qualified
+witness-attached receipts and autonomous execution of the best materializer;
+neither result should be transferred to native K/V engines before those gates
+pass.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

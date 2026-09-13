@@ -239,6 +239,68 @@ def test_reducer_distinguishes_parameterized_negative_policy_variants():
     )
 
 
+def test_reducer_distinguishes_and_aggregates_observation_receipt_realization():
+    full, dropped, _ = _comparison_artifacts()
+    dropped["policy"] = "h1_search_consumed"
+    dropped["run_configuration"]["negative_selection"] = {
+        "search_delay_turns_kf": 0,
+        "positive_fallback": "none",
+        "realization": "drop",
+    }
+    dropped["run_configuration_digest"] = _digest(dropped["run_configuration"])
+    receipt = copy.deepcopy(dropped)
+    receipt["run_configuration"]["negative_selection"]["realization"] = (
+        "observation_receipt"
+    )
+    receipt["rows"][1].update({
+        "negative_candidate_tokens": 70,
+        "excluded_group_count": 0,
+        "excluded_tokens": 0,
+        "receipt_count": 1,
+        "receipt_source_observation_tokens": 50,
+        "receipt_tokens": 12,
+        "receipt_token_saving": 38,
+        "receipt_abstained_source_observation_tokens": 15,
+        "receipt_abstained_candidate_tokens": 21,
+        "receipt_abstentions": [{
+            "reason": "not_smaller_than_source_observation",
+        }],
+        "exclusions": [{
+            "rule_id": "H1_SEARCH_CONSUMED",
+            "excluded_tokens": 70,
+            "realization": "observation_receipt",
+        }],
+    })
+    receipt["run_configuration_digest"] = _digest(receipt["run_configuration"])
+
+    summary = reduce_replays([full, dropped, receipt])
+    arm = summary["arms"][2]
+
+    assert arm["treatment"].endswith(
+        ";Kf=0;realization=observation_receipt"
+    )
+    assert arm["decisions_with_receipt"] == 1
+    assert arm["receipt_count"] == 1
+    assert arm["cumulative_negative_candidate_tokens"] == 70
+    assert arm["cumulative_receipt_source_observation_tokens"] == 50
+    assert arm["cumulative_receipt_tokens"] == 12
+    assert arm["cumulative_receipt_token_saving"] == 38
+    assert arm["receipt_abstention_count"] == 1
+    assert arm["decisions_with_receipt_abstention"] == 1
+    assert arm["cumulative_receipt_abstained_source_observation_tokens"] == 15
+    assert arm["cumulative_receipt_abstained_candidate_tokens"] == 21
+    assert arm["receipt_abstentions_by_reason"] == {
+        "not_smaller_than_source_observation": 1,
+    }
+    assert arm["cumulative_excluded_tokens"] == 0
+    assert arm["excluded_by_rule"] == {}
+    assert arm["receipt_by_rule"]["H1_SEARCH_CONSUMED"] == {
+        "groups": 1,
+        "tokens": 70,
+    }
+    assert "## Model-visible receipt diagnostics" in render_markdown(summary)
+
+
 def test_reducer_uses_materialized_budget_for_matched_token_tail():
     full, candidate, _ = _comparison_artifacts()
     matched = copy.deepcopy(candidate)

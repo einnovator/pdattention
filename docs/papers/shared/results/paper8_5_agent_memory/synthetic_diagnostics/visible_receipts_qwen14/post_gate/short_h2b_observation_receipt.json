@@ -1,0 +1,371 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "synthetic_versioned_state_convergence",
+  "model": "qwen3:14b",
+  "tokenizer": "Qwen/Qwen3-14B",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "f54692b28fbd473efdbc7702ec44b1233d032fa6663e039a48fd95cfb82ecc8b",
+  "policy": "h2b_verified_write",
+  "head_turns": 0,
+  "tail_turns": 0,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "1094ecb31a067e6cbb1261cf4a4d092c95608afebbe7f7a5e6af442c18579a08",
+    "model": "qwen3:14b",
+    "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "policy": "h2b_verified_write",
+    "head_turns": 0,
+    "tail_turns": 0,
+    "budget_fraction": 1.0,
+    "tokenizer": "Qwen/Qwen3-14B",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 6,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 300,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "f54692b28fbd473efdbc7702ec44b1233d032fa6663e039a48fd95cfb82ecc8b",
+    "matched_budget_source_digest": null,
+    "negative_selection": {
+      "search_delay_turns_kf": 0,
+      "write_delay_turns_kw": 1,
+      "same_span_reads_to_keep_kr": 1,
+      "working_set_resources_kx": 4,
+      "positive_fallback": "none",
+      "h2b_allow_workspace_verification": false,
+      "realization": "observation_receipt"
+    }
+  },
+  "run_configuration_digest": "fb66e48fe5fe49838de7957293a52a8ec09dfe331bd0ffaf5d98574925fc4ff2",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 1,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 1.0,
+  "first_command_divergence": null,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 6,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 12,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "92e3397d4087effed3055490f4e5dd4c1cdeb3ffe2ce18993de9bea96b536b34",
+      "reference_content_sha256": "af84b80c8a2737eba4e741f873a3207da3cb73c20b0888002ad885b1a4f894b1",
+      "generated_content_sha256": "af84b80c8a2737eba4e741f873a3207da3cb73c20b0888002ad885b1a4f894b1",
+      "generated_content": "The change to set `DEFAULT_RETRIES = 4` in `src/config.py` was successfully applied, and the test `tests/test_config.py` passed verification.\n\n```mswea_bash_command\necho \"Change applied and verified successfully.\"\n```",
+      "exact_content": true,
+      "reference_command": "echo \"Change applied and verified successfully.\"",
+      "generated_command": "echo \"Change applied and verified successfully.\"",
+      "exact_command": true,
+      "full_history_tokens": 354,
+      "selected_logical_tokens": 354,
+      "selected_whole_record_tokens": 354,
+      "materialized_tokens": 354,
+      "requested_budget_tokens": 354,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 1.0,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 0,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ],
+        [
+          "m4",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m5",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "full_history"
+        ],
+        [
+          "m9",
+          "full_history"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ]
+      ],
+      "negative_realization": "observation_receipt",
+      "negative_candidate_group_count": 1,
+      "negative_candidate_record_count": 2,
+      "negative_candidate_tokens": 76,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [
+        "turn:t0001"
+      ],
+      "receipt_abstained_source_observation_tokens": 15,
+      "receipt_abstained_candidate_tokens": 46,
+      "receipt_abstentions": [
+        {
+          "causal_group_id": "turn:t0001",
+          "source_record_ids": [
+            "m4",
+            "m5"
+          ],
+          "rule_id": "H2B_VERIFIED_WRITE",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 15,
+          "candidate_receipt_tokens": 46
+        }
+      ],
+      "model_visible_receipts": [],
+      "exclusions": [
+        {
+          "causal_group_id": "turn:t0001",
+          "record_ids": [
+            "m4",
+            "m5"
+          ],
+          "rule_id": "H2B_VERIFIED_WRITE",
+          "classification": "verified_state_consolidation_heuristic",
+          "reason": "successful verification explicitly depends on the written resource",
+          "resource_ids": [
+            "src/config.py"
+          ],
+          "witness_record_ids": [
+            "m4",
+            "m5",
+            "m10",
+            "m11"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0001 rule=H2B_VERIFIED_WRITE resources=src/config.py witnesses=m4,m5,m10,m11",
+          "excluded_tokens": 76,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        }
+      ],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 39,
+          "materialized_tokens": 39,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 19,
+          "materialized_tokens": 19,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 61,
+          "materialized_tokens": 61,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 25,
+          "materialized_tokens": 25,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "17ac616b9ba72722075c22407f570ac1de7af6a45de93d2bf7b0f9c4f3791e4a",
+      "usage": {
+        "prompt_tokens": 419,
+        "completion_tokens": 227,
+        "total_tokens": 646
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-963",
+        "response_model": "qwen3:14b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "reasoning",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 217,
+        "message_content_sha256": "af84b80c8a2737eba4e741f873a3207da3cb73c20b0888002ad885b1a4f894b1",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 419,
+          "completion_tokens": 227,
+          "total_tokens": 646
+        }
+      }
+    }
+  ]
+}

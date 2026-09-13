@@ -16,6 +16,7 @@ class MaterializationMode(str, Enum):
     TOOL_HEAD_TAIL = "tool_head_tail"
     TOOL_MATCHED_SPAN = "tool_matched_span"
     TOOL_STRUCTURED_EVIDENCE = "tool_structured_evidence"
+    TOOL_NEGATIVE_RECEIPT = "tool_negative_receipt"
     MATCHED_TOKEN_TAIL = "matched_token_tail"
 
 
@@ -143,6 +144,21 @@ class ToolObservationMaterializer:
             raise AssertionError(f"unsupported materialization mode: {self.mode}")
 
         ordered = sorted(indices)
+        # A no-op materialization must be byte-identical to the canonical
+        # record.  Rebuilding every selected line with ``"\n".join`` drops a
+        # final newline (and normalizes a few other splitlines edge cases),
+        # which can change deterministic model behavior even though the token
+        # count is unchanged.  Preserve the original payload whenever the
+        # selector retained the complete observation.
+        if ordered == list(range(len(lines))):
+            return MaterializedRecord(
+                record.record_id,
+                record.content,
+                self.mode,
+                original_tokens,
+                original_tokens,
+                ((0, len(lines)),) if lines else (),
+            )
         spans = _contiguous_spans(ordered)
         selected_lines: list[str] = []
         previous_end = 0
