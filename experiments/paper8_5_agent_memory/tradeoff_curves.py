@@ -226,7 +226,53 @@ def _agent_behavior_digest(manifest: Mapping[str, Any]) -> str:
     ).encode()).hexdigest()
 
 
-def load_autonomous_run(path: Path) -> dict[str, Any]:
+def _external_auxiliary_grade(
+    path: Path,
+    *,
+    instance_id: str,
+    auxiliary_patch_sha256: str | None,
+) -> tuple[bool, dict[str, Any]]:
+    """Validate a separately executed grade of the terminal workspace patch.
+
+    Expensive SWE-bench grading may run on a different host from the agent.
+    The receipt binds that grade to the exact auxiliary patch instead of
+    mutating the primary run or treating the auxiliary outcome as submission
+    success.
+    """
+
+    receipt = _read_json(path)
+    if receipt.get("schema_version") != 1:
+        raise ValueError(f"{path}: unsupported auxiliary-grade receipt schema")
+    if receipt.get("evidence_role") != "auxiliary_workspace_grade":
+        raise ValueError(f"{path}: not an auxiliary workspace grade receipt")
+    if str(receipt.get("instance_id")) != instance_id:
+        raise ValueError(f"{path}: auxiliary grade instance does not match run")
+    declared_patch = receipt.get("auxiliary_patch_sha256")
+    if not auxiliary_patch_sha256 or declared_patch != auxiliary_patch_sha256:
+        raise ValueError(f"{path}: auxiliary grade patch digest does not match run")
+    if not isinstance(receipt.get("resolved"), bool):
+        raise ValueError(f"{path}: auxiliary grade lacks a Boolean resolved outcome")
+    report_path = _resolve(path, str(receipt.get("grader_report")))
+    if not report_path.is_file():
+        raise ValueError(f"{path}: auxiliary grader report is missing")
+    declared_report = receipt.get("grader_report_sha256")
+    if not declared_report or _sha256(report_path) != declared_report:
+        raise ValueError(f"{path}: auxiliary grader report digest does not match")
+    report = _read_json(report_path)
+    row = report.get(instance_id)
+    if not isinstance(row, Mapping) or row.get("resolved") is not receipt["resolved"]:
+        raise ValueError(f"{path}: auxiliary grader report outcome does not match receipt")
+    return bool(receipt["resolved"]), {
+        "receipt": _portable_path(path),
+        "receipt_sha256": _sha256(path),
+        "grader_report": _portable_path(report_path),
+        "grader_report_sha256": declared_report,
+    }
+
+
+def load_autonomous_run(
+    path: Path, *, auxiliary_grade_path: Path | None = None,
+) -> dict[str, Any]:
     manifest_path = path / "run_manifest.json"
     metrics_path = path / "autonomous_metrics.json"
     manifest = _read_json(manifest_path)
@@ -260,6 +306,21 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         bool(auxiliary_summary.get("resolved"))
         if isinstance(auxiliary_summary.get("resolved"), bool) else None
     )
+    auxiliary_grade_provenance: dict[str, Any] | None = None
+    if auxiliary_grade_path is not None:
+        external_score, auxiliary_grade_provenance = _external_auxiliary_grade(
+            auxiliary_grade_path,
+            instance_id=str(manifest.get("instance_id")),
+            auxiliary_patch_sha256=(
+                str(auxiliary.get("patch_sha256"))
+                if auxiliary.get("patch_sha256") else None
+            ),
+        )
+        if auxiliary_score is not None and auxiliary_score is not external_score:
+            raise ValueError(
+                f"{auxiliary_grade_path}: external auxiliary grade conflicts with run"
+            )
+        auxiliary_score = external_score
     official_score = (
         bool(official.get("resolved"))
         if isinstance(official.get("resolved"), bool) else None
@@ -353,6 +414,7 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         "auxiliary_status": auxiliary.get("status"),
         "auxiliary_grade_available": auxiliary_score is not None,
         "auxiliary_resolved": auxiliary_score,
+        "auxiliary_grade_provenance": auxiliary_grade_provenance,
         "solution_state_score": solution_state_score,
         "failure_taxonomy": failure_taxonomy,
         "calls": int(metrics.get("calls") or 0),
@@ -1090,7 +1152,13 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
     if len(autonomous_names) != len(set(autonomous_names)):
         raise ValueError("duplicate autonomous run names in curve specification")
     autonomous_by_name = {
-        str(item["name"]): load_autonomous_run(_resolve(spec_path, str(item["path"])))
+        str(item["name"]): load_autonomous_run(
+            _resolve(spec_path, str(item["path"])),
+            auxiliary_grade_path=(
+                _resolve(spec_path, str(item["auxiliary_grade"]))
+                if item.get("auxiliary_grade") else None
+            ),
+        )
         for item in autonomous_items
     }
     paired_candidates: set[str] = set()

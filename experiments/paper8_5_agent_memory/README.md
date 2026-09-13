@@ -263,6 +263,14 @@ case needed to separate workspace capability from submission-protocol
 reliability. The campaign runner accepts the same flag. `--skip-grading`
 suppresses both grader invocations while retaining extraction provenance.
 
+If auxiliary grading must run on another host, an `autonomous_runs` entry in
+the curve specification may declare `auxiliary_grade`. The referenced receipt
+must identify itself as `auxiliary_workspace_grade`, bind the task and exact
+`auxiliary_workspace_state.patch` SHA-256, and bind a grader report by path and
+SHA-256. The reducer rejects mismatched patches, tasks, reports, and outcomes.
+This imports the auxiliary capability result without editing the raw run and
+without changing the failed primary-submission endpoint.
+
 mini-swe-agent 2.4.6 strips observation `extra` fields before HTTP transport.
 The proxy therefore joins `execution_*.json` sidecars from the instrumented
 Docker environment into a selector-only copy using the complete ordered command

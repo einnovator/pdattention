@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,71 @@ def test_loader_keeps_resolving_workspace_separate_from_failed_submission(tmp_pa
     assert loaded["failure_taxonomy"] == (
         "submission_protocol_failure_with_resolving_workspace"
     )
+
+
+def test_loader_accepts_digest_bound_external_auxiliary_grade(tmp_path):
+    path = _run(
+        tmp_path, "submission-error", policy="full", calls=2, tokens=100,
+        resolved=False, pair_id="pair",
+    )
+    metrics_path = path / "autonomous_metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    patch = path / "auxiliary_workspace_state.patch"
+    patch.write_text("diff --git a/a b/a\n", encoding="utf-8")
+    patch_sha256 = hashlib.sha256(patch.read_bytes()).hexdigest()
+    metrics["auxiliary_workspace_state"] = {
+        "status": "available", "patch_sha256": patch_sha256,
+    }
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+    report = tmp_path / "auxiliary_report.json"
+    report.write_text(json.dumps({"task": {"resolved": True}}), encoding="utf-8")
+    receipt = tmp_path / "auxiliary_grade_receipt.json"
+    receipt.write_text(json.dumps({
+        "schema_version": 1,
+        "evidence_role": "auxiliary_workspace_grade",
+        "instance_id": "task",
+        "auxiliary_patch_sha256": patch_sha256,
+        "grader_report": report.name,
+        "grader_report_sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+        "resolved": True,
+    }), encoding="utf-8")
+
+    loaded = load_autonomous_run(path, auxiliary_grade_path=receipt)
+
+    assert loaded["official_score"] is False
+    assert loaded["auxiliary_resolved"] is True
+    assert loaded["solution_state_score"] is True
+    assert loaded["auxiliary_grade_provenance"]["grader_report_sha256"] == (
+        hashlib.sha256(report.read_bytes()).hexdigest()
+    )
+
+
+def test_external_auxiliary_grade_rejects_wrong_patch_digest(tmp_path):
+    path = _run(
+        tmp_path, "submission-error", policy="full", calls=2, tokens=100,
+        resolved=False, pair_id="pair",
+    )
+    metrics_path = path / "autonomous_metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["auxiliary_workspace_state"] = {
+        "status": "available", "patch_sha256": "expected",
+    }
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+    report = tmp_path / "auxiliary_report.json"
+    report.write_text(json.dumps({"task": {"resolved": True}}), encoding="utf-8")
+    receipt = tmp_path / "auxiliary_grade_receipt.json"
+    receipt.write_text(json.dumps({
+        "schema_version": 1,
+        "evidence_role": "auxiliary_workspace_grade",
+        "instance_id": "task",
+        "auxiliary_patch_sha256": "wrong",
+        "grader_report": report.name,
+        "grader_report_sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+        "resolved": True,
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="patch digest"):
+        load_autonomous_run(path, auxiliary_grade_path=receipt)
 
 
 def test_pair_marks_early_termination_as_divergence_and_failed_efficiency(tmp_path):
