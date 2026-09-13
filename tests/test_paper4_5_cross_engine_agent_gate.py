@@ -45,6 +45,7 @@ def test_missing_engine_blocks_expansion(tmp_path: Path) -> None:
     result = summarize({"llama.cpp": path})
     assert result["behavioral_complete_engines"] == 1
     assert result["measurement_complete_engines"] == 1
+    assert result["engines"]["llama.cpp"]["pra_90_task_success"] is None
     assert result["easy14_expansion_allowed"] is False
 
 
@@ -223,6 +224,40 @@ def test_hf_frozen_task_hardware_admission_schema_is_reduced(tmp_path: Path) -> 
     assert row["admission"]["pra_90_run"] is False
 
 
+def test_hf_valid_task_and_quarantined_task_schema_uses_valid_row(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "hf-autonomous-admission.json"
+    path.write_text(json.dumps({
+        "schema_version": "paper4.5-hf-autonomous-plain-admission-v2",
+        "model": {"model_id": "Qwen/Qwen2.5-Coder-7B-Instruct"},
+        "task05": {
+            "instance_id": "pytest-dev__pytest-7982",
+            "scientific_status": "valid_plain_model_task_failure",
+            "official_resolved": False,
+            "model_calls": 30,
+            "termination_reason": "LimitsExceeded",
+        },
+        "task01": {
+            "instance_id": "django__django-15277",
+            "scientific_status": "quarantined_context_cap_violation",
+            "observed_model_calls": 30,
+        },
+        "gate": {
+            "plain_success_pair_found": False,
+            "pra_100_run": False,
+            "pra_90_run": False,
+        },
+    }), encoding="utf-8")
+    result = summarize({}, {"huggingface": path})
+    row = result["engines"]["huggingface"]
+    assert row["status"] == "admission_failed_model_task_pair"
+    assert row["admission"]["task"] == "pytest-dev__pytest-7982"
+    assert row["admission"]["plain_official_solve"] is False
+    assert row["admission"]["model_calls"] == 30
+    assert row["admission"]["termination_reason"] == "LimitsExceeded"
+
+
 def test_all_behavior_and_measurements_authorize_expansion(tmp_path: Path) -> None:
     paths = {}
     for engine in REQUIRED_ENGINES:
@@ -243,10 +278,16 @@ def test_published_cross_engine_gate_stays_locked() -> None:
         / "engine_agent_gates/cross_engine_gate.json"
     )
     result = json.loads(path.read_text(encoding="utf-8"))
-    assert result["behavioral_complete_engines"] == 1
-    assert result["measurement_complete_engines"] == 0
+    assert result["behavioral_complete_engines"] == 4
+    assert result["measurement_complete_engines"] == 3
     assert result["engines"]["llama.cpp"]["behavioral_gate_complete"] is True
     assert result["engines"]["llama.cpp"]["outcome_family_checks"][
         "consumer_temporary_bytes_and_calls"
     ] is False
+    assert result["engines"]["mlx"]["measurement_gate_complete"] is True
+    assert result["engines"]["sglang-mlx"]["measurement_gate_complete"] is True
+    assert result["engines"]["vllm"]["measurement_gate_complete"] is True
+    assert result["engines"]["vllm"]["pra_90_task_success"] is False
+    assert result["engines"]["vllm"]["pra_90_first_action_divergence"] == 6
+    assert result["engines"]["huggingface"]["behavioral_gate_complete"] is False
     assert result["easy14_expansion_allowed"] is False

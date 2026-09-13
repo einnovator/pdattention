@@ -35,7 +35,8 @@ The implementation adds:
 - deduplicated interval planning and native `[B, Hkv, T, D]` K/V packing;
 - byte-bounded LRU accounting and request-stage profiling;
 - eager and `torch.compile` gather gates;
-- a scheduler-unaware vLLM handoff contract;
+- a scheduler-unaware vLLM fallback handoff plus a bounded stateful vLLM 0.28
+  V1 scheduler-owned page-alias path;
 - a standalone G00/G10/G01/G11 gateway and E0/E1/E2 capability adapters;
 - engine-type-aware cache/session profiles independent of PRA integration depth;
 - prepared gateway sessions, explicit FULL/DELTA/AUTO history, resource
@@ -55,7 +56,15 @@ The implementation adds:
   callback, and reports zero selected-history re-encoding, K/V copy, and H2D;
 - a frozen vLLM 0.28 CUDA Task-05 agent gate whose ordinary and PRA-100 arms
   both resolve 1/1 in 15 byte-exact assistant actions with the same patch,
-  while selected-history re-encoding, physical K/V copy, and H2D remain zero;
+  while selected-history re-encoding, physical K/V copy, and H2D remain zero.
+  Its corrected PRA-90 arm is a valid policy-quality negative: 0/1 in 15 calls,
+  first divergence at action 6, 94.24% aggregate retention, and an empty patch,
+  still with zero selected-history re-encoding, K/V copy, or H2D;
+- frozen direct MLX and SGLang-MLX Task-01 gates whose plain and PRA-100 arms
+  are exact six-call solves and whose PRA-90 arms also solve in six calls with
+  the same commands and patch. Their selected-history re-encoding, physical
+  K/V copy, and H2D are zero; suffix-graft, lifecycle-copy, and consumer-
+  temporary bytes remain separately reported;
 - a corrected HF CUDA same-resident-state gate whose seven-turn PRA-100 dense
   no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
   interval packing, and H2D remain zero; measurement-only cache forks are
@@ -201,17 +210,21 @@ Try the SDK notebook under `pra-hf-demo/pra_runtime_productization.ipynb`.
 The current runtime also integrates Paper 8's durable task/session layer. The
 `pra agent chat` command demonstrates the same SDK with task-scoped typed
 records, reusable toolsets, local persistence, and per-call write authorization.
+Paper 8.5 separately owns engine-independent agent-memory selection, exclusion,
+oracle, and logical task-efficiency experiments. Paper 4.5 imports a frozen
+policy only to test engine semantic parity, lifecycle, task outcomes, and
+resource accounting; current Paper 8.5 screens do not establish a policy winner.
 
 Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
 OpenAI-compatible streaming; request-owned references remain active until decode
 or cancellation cleanup completes. G10 is an
 explicit text-materialization fallback; it is not native-K/V PRA. FreeToken is
-an E0 protocol target in this artifact. Companion Papers 6.1 and 6.2 measure
-SGLang-MLX and MLX-LM E2 mechanisms separately; those runs do not change Paper
-4.5's HF-centered evidence tier. The gateway experiment measures
+an E0 protocol target in this artifact. Paper 4.5 now includes bounded E2
+mechanism and one-task autonomous evidence for MLX-LM, SGLang-MLX, and the
+experimental vLLM 0.28 scheduler-owned page-alias path. The gateway experiment measures
 exact logical-prefix stability and transport bytes with a simulated
 adapter. It does not report a physical engine cache hit, scheduler affinity,
 or remote-engine speedup. `pra runtime serve MODEL -e ENGINE` is now the common
-launch path. vLLM remains conservatively E0; companion SGLang and MLX providers
-advertise measured E2 mechanism support without importing those papers' metrics
-into Paper 4.5.
+launch path. The generic vLLM provider remains conservatively E0; only the
+bounded in-process V1 page-alias implementation is qualified as experimental E2
+within its declared complete-page, homogeneous-group scope.

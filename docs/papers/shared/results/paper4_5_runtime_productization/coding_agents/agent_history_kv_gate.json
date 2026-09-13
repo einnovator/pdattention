@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-12",
+  "updated_at": "2026-09-13",
   "status": "QUALIFIED",
   "campaigns_armed": false,
   "campaign_lock": "No Easy-14 expansion until every qualified engine completes one frozen plain -> PRA-100 -> PRA-90 agent task.",
@@ -44,7 +44,7 @@
       "consumption_gate": "passed across all seven eligible Task02 turns with the fused interval-addressed Metal consumer: maximum first-layer peak delta is 24,043 bytes and the maximum per-turn ratio is 0.163% of selected-layer K/V, selection pack and allocator deltas are zero, and every matched-consumer packed-value oracle is token/logit exact",
       "lifecycle": "all request-owned checks pass, including concurrent borrowers, exact-once finish/cancel/error release, stale-generation rejection, offload/restore, termination, tombstones, original-position interval selection, and zero-copy Metal consumption",
       "required_fix": null,
-      "agent_campaign": "The direct no-gateway MLX live-agent bridge is implemented and passes 19 focused contract tests with four hardware-dependent skips: persistent canonical live K/V, append-stable suffix extension, PRA-100 semantic-no-op eligibility, PRA-90 original-position intervals, a mandatory dense same-subset <=0.005 logit gate, request ownership/termination, and disaggregated copy/temporary telemetry. A real bridge smoke is pending because the 16 GB M5 had only about 4 GB free under extreme swap pressure from Paper3.3, Docker, and an existing model service. Qwen3-14B 4-bit with the frozen append-stable no-thinking template failed Task01 at the 50-call limit (0/1, empty patch), so no PRA arm ran; Qwen3.5-27B remains outside the token-addressable K/V scope."
+      "agent_campaign": "Qwen2.5-Coder-14B-Instruct-4bit completes the frozen direct no-gateway Task01 sequence. Plain and PRA-100 both resolve 1/1 in six calls with exact assistant-action and patch parity. PRA-90 also resolves 1/1 in six calls; commands and patch match plain, with only final non-operative reasoning text differing. Aggregate model-visible retention is 97.81%, the two sparse engine-history requests retain 91.54% and 92.57%, and selected-history re-encoding, physical K/V copy, and H2D are zero. Total lifecycle K/V copy (8,403,419,136 bytes), canonical suffix graft (92,012,544 bytes), and consumer temporary bytes (4,461,199,360 cumulative; 1,248,509,952 peak) remain separate measurements rather than being called zero-copy savings."
     },
     "vllm": {
       "status": "QUALIFIED_DECLARED_SCOPE",
@@ -59,9 +59,9 @@
       "metal_lifecycle": "QUALIFIED on real Task02 turn 4 at 2,944/3,104 page tokens (94.85%): 24/24 checks pass, two aliases preserve exact source block IDs, active memory delta and attachment-copy events are zero, and selected history is not re-encoded; 712,002,099-byte offload/restore remains a separately reported residency copy",
       "cuda_qualification": "bounded vLLM 0.28 in-process V1 scheduler-owned alias on Qwen2.5-1.5B: all seven eligible Task02 turns pass with two simultaneous same-subset borrowers per turn; seven source pins, 14 installs, and 14 releases are exact and copy/H2D/re-encoding counters are 0/0/0",
       "cuda_lifecycle": "48-token mechanism smoke passes concurrent completion, real cancellation, injected scheduler error, stale-generation rejection, borrower-safe and deferred eviction, and final refcounts; 5 aliases installed and released exactly once",
-      "cuda_zero_copy_status": "qualified across all seven eligible frozen Task02 turns only for one homogeneous KV group, complete pages, and an in-process vLLM 0.28 V1 scheduler hook before allocate_slots; partial pages, hybrid groups, multiprocess scheduler/worker execution, autonomous agent execution, and timing/economic measurements remain unqualified",
+      "cuda_zero_copy_status": "qualified across all seven eligible frozen Task02 turns and one autonomous Task05 sequence only for one homogeneous KV group, complete pages, and an in-process vLLM 0.28 V1 scheduler hook before allocate_slots; partial pages, hybrid groups, multiprocess scheduler/worker execution, and timing/economic claims remain unqualified",
       "lifecycle": "vLLM-Metal request-owned lifecycle passes 24/24; bounded CUDA scheduler-owned lifecycle passes in its declared scope",
-      "agent_campaign": "Qwen2.5-Coder-7B-Instruct-AWQ passes server admission on the RTX 5060 but the matched Task02 plain arm makes no source mutation in 19 valid calls and is stopped at the bounded no-progress cutoff. A stronger 14B AWQ same-task arm starts at 16K only with 6.39B CPU-offloaded parameters, then decodes at 0.4-0.5 token/s and is stopped after two mutation-free actions in 602.42 s as hardware-throughput inadmissible. No PRA request ran; all PRA telemetry remains null. The stateful OpenAI-to-scheduler-alias bridge is implemented. Real Qwen2.5-Coder-1.5B/vLLM 0.28 attempts exposed and fixed remote connector skew that triggered file-backed loads and an unbound scheduler-manager lifecycle bug. The post-fix seven-turn retry then lost the RTX host/WSL before artifact finalization, so the stateful bridge remains incomplete and publishes no post-fix telemetry or autonomous result."
+      "agent_campaign": "Qwen2.5-Coder-7B-Instruct-AWQ completes the frozen direct no-gateway Task05 sequence on vLLM 0.28 CUDA. Plain and PRA-100 resolve 1/1 in 15 calls with byte-exact assistant-action trajectories and the same patch. PRA-90 is a valid retention-quality negative: 0/1 in 15 calls, first divergence at action 6, and an empty patch. It realizes 94.24% aggregate model-visible retention (21,940/23,281 estimated tokens), with 90.28%-100% engine-history retention, zero selected-history re-encoding, physical or total K/V copy, and H2D, plus 524,545,536 cumulative and 148,922,880 peak consumer temporary bytes. The preceding page-floor bug was repaired by rounding upward over resident complete-page causal groups and failing closed on underfill."
     },
     "sglang": {
       "status": "QUALIFIED_DECLARED_SCOPE",
@@ -80,7 +80,7 @@
       "required_fix": null,
       "agent_bridge": "The Qwen3-Coder-30B direct bridge smoke passes its frozen OK/DONE turns with zero selected-history re-encoding, selected-history K/V copy, and H2D. Canonical suffix graft is 3,342,336 bytes per turn; consumer peaks are 805,306,376 and 402,653,192 bytes; each turn invokes 144 fused-attention layer calls. A Qwen2.5-Coder-14B bridge smoke also passes after correcting the fused projection path's Qwen3-only q_norm/k_norm assumption: turn two retains 61/61 history tokens with zero selected-history re-encoding/copy/H2D, while reporting 6,684,672 bytes of canonical suffix-graft D2D separately.",
       "ordinary_generation_fixes": "The Qwen3-Coder-30B screen exposed missing renderer/end-of-turn stop identities and a repetition_penalty request ignored by the pinned SGLang-MLX backend. The stop contract is now the tokenizer/renderer union [151643,151644,151645]. The penalty path applies the exact sign-aware transform before token choice; greedy decode examines top U+1 for U unique penalized ids and preserves lowest-id tie behavior, while sampling/edit/logprob requests use full scatter. Twenty focused tests pass, including 100 randomized property cases against full-vocabulary reference and Qwen2/Qwen3 projection-family coverage. A 256-token real-model benchmark measures 5.722 s versus 3.975 s (44.74 versus 64.40 token/s; 43.95% elapsed overhead).",
-      "agent_campaign": "After the stop-ID and repetition-penalty fixes, the matched Qwen3-Coder-30B Task02 plain arm grades 0/1: one accepted read-only source-location action, no mutation, then three format-error responses, with all four responses reaching the 4,096-token cap. A second frozen Qwen2.5-Coder-14B Task02 plain arm also grades 0/1: nine valid actions, one modified file, and a nonempty 443-byte but incorrect patch in 307.09 s. Both are plain model/task admission failures, not PRA failures; PRA-100 and PRA-90 are withheld."
+      "agent_campaign": "After earlier Task02 admission failures, Qwen2.5-Coder-14B-Instruct-4bit completes the frozen direct no-gateway Task01 sequence. Plain and PRA-100 resolve 1/1 in six calls with exact assistant-action and patch parity. PRA-90 resolves 1/1 in six calls with the same commands and patch, first diverges only in assistant text at action 6, and realizes 97.81% aggregate model-visible retention; its two sparse engine-history requests retain 91.54% and 92.57%. Selected-history re-encoding, physical K/V copy, and H2D are zero; 92,012,544 lifecycle/suffix-graft bytes and 4,156,531,664 cumulative consumer-temporary bytes are reported separately."
     }
   },
   "superseded_evidence": [
@@ -193,6 +193,9 @@
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task02/qwen25_coder_14b/bridge_smoke_v1.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task02/qwen25_coder_14b/admission_gate.json"
     ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task02/qwen25_coder_14b/plain_v1/official_result.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_task01_qwen25coder14b/gate.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/gate.json"
+    ,"docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/vllm_task05_qwen25coder7b/gate.json"
   ],
   "passed": [
     "same-state two-turn exactness smoke",
@@ -235,19 +238,23 @@
     ,"SGLang Qwen3-Coder-30B direct bridge smoke: frozen OK/DONE turns pass with zero selected-history re-encoding/copy and zero H2D; canonical suffix graft and consumer temporary bytes remain separately reported"
     ,"SGLang ordinary-generation parity repair: renderer stop IDs are unioned with tokenizer EOS and exact sign-aware repetition penalty is applied before greedy choice; 19 focused tests pass, including 100 randomized full-vocabulary property comparisons"
     ,"SGLang Qwen3-Coder-30B Task02 matched plain admission: official 0/1 after one accepted read-only action and three format errors with no mutation; classified model/scaffold-inadmissible and PRA-100/PRA-90 withheld"
+    ,"MLX autonomous Task01: exact six-call plain/PRA-100 parity and a successful six-call PRA-90 result with zero selected-history re-encoding, physical K/V copy, or H2D"
+    ,"SGLang-MLX autonomous Task01: exact six-call plain/PRA-100 parity and a successful six-call PRA-90 result with zero selected-history re-encoding, physical K/V copy, or H2D"
+    ,"vLLM CUDA autonomous Task05: exact 15-call plain/PRA-100 parity followed by a valid PRA-90 quality failure at action 6 with zero selected-history re-encoding, physical or total K/V copy, or H2D"
   ],
   "still_required": [
-    "rerun the post-fix vLLM CUDA stateful seven-turn PRA-100 then PRA-90 bridge gate on a stable RTX host; partial-page, hybrid-group, multiprocess, autonomous-agent, and timing/economic qualification remain beyond the bounded in-process V1 alias",
-    "complete one frozen end-to-end mini-swe-agent task on HF, MLX, SGLang, and vLLM: ordinary model/task admission, then PRA-100 exact behavioral parity, then PRA-90 only after the 100% gate passes",
+    "find one predeclared plain-success HF model/task pair, then run PRA-100 exact behavioral parity and PRA-90; the mechanism is qualified but Task05 failed plain and Task01 is quarantined for a pre-fix context overflow",
+    "import a frozen agent-memory policy from Paper 8.5 and retest the same vLLM Task05 at 90%; the current causal-record policy loses the progress/submission spine despite 94.24% aggregate retention",
+    "extend vLLM CUDA beyond the bounded in-process V1 homogeneous complete-page alias to partial pages, hybrid groups, multiprocess scheduler/worker execution, and timing/economic qualification",
     "instrument llama.cpp consumer temporary and total lifecycle-copy bytes; the completed task-01 endpoint reports these fields as missing rather than falsely reporting zero",
-    "execute the nine qualified no-adaptor cells of the locked three-task no-PRA/PRA-100/PRA-90 matrix after its llama.cpp endpoint and agent host are available",
+    "execute the locked three-task no-PRA/PRA-100/PRA-90 matrix only after every target engine clears the one-task gate and a frozen Paper 8.5 policy is selected",
     "train, certify, and integrate a leakage-free frozen Qwen3-Coder-30B routing/selection adaptor before executing the six adaptor cells",
     "75% only if all three locked tasks pass at 90% for the matched policy cell"
   ],
   "efficacy_progress": {
     "cross_engine_agent_gate_required_engines": 5,
-    "cross_engine_agent_gate_complete_engines": 1,
-    "cross_engine_agent_measurement_complete_engines": 0,
+    "cross_engine_agent_gate_complete_engines": 4,
+    "cross_engine_agent_measurement_complete_engines": 3,
     "cross_engine_agent_gate_complete": false,
     "easy14_expansion_allowed": false,
     "llamacpp_task01_plain_success": true,
@@ -257,6 +264,18 @@
     "llamacpp_task01_pra90_calls": 25,
     "llamacpp_task01_pra90_realized_context_retention": 0.9332197124270866,
     "llamacpp_task01_pra90_first_action_divergence": 7,
+    "mlx_task01_plain_pra100_pra90_complete": true,
+    "mlx_task01_pra90_success": true,
+    "mlx_task01_pra90_calls": 6,
+    "sglang_task01_plain_pra100_pra90_complete": true,
+    "sglang_task01_pra90_success": true,
+    "sglang_task01_pra90_calls": 6,
+    "vllm_task05_plain_pra100_pra90_complete": true,
+    "vllm_task05_pra100_exact_action_trajectory": true,
+    "vllm_task05_pra90_success": false,
+    "vllm_task05_pra90_calls": 15,
+    "vllm_task05_pra90_realized_context_retention": 0.9423993814698681,
+    "vllm_task05_pra90_first_action_divergence": 6,
     "sglang_qwen3coder30b_task02_plain_success": false,
     "sglang_qwen3coder30b_task02_plain_official_score": 0.0,
     "sglang_qwen3coder30b_task02_accepted_actions": 1,
@@ -276,7 +295,7 @@
     "locked_easy3_config_qualified_cells": 9,
     "locked_easy3_adaptor_blocked_cells": 6,
     "locked_easy3_executed_cells": 0,
-    "next_action": "finish one frozen end-to-end mini-swe-agent task per qualified engine, gating PRA-90 on exact PRA-100 behavior; record success/trajectory, realized retention, selected-history re-encoding/KV copy, consumer temporary bytes, and calls-to-solution; do not expand Easy-14"
+    "next_action": "find one plain-success HF pair and complete its PRA-100/PRA-90 sequence; in parallel, import a frozen Paper 8.5 policy and retest the vLLM Task05 90% quality failure; do not expand Easy-14"
   },
-  "reason": "The tested llama.cpp configuration clears the predeclared mechanism gates. Qualification does not transfer to other engines or cache-off/rematerializing paths."
+  "reason": "llama.cpp, MLX, SGLang-MLX, and bounded vLLM CUDA complete one frozen autonomous sequence; HF still lacks a plain-success pair. Engine qualification remains scoped to each declared resident-K/V implementation and never transfers to cache-off or rematerializing paths."
 }

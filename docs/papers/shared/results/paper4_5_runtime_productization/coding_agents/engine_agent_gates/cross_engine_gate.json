@@ -14,6 +14,9 @@
       "classification": "retention_quality_result_at_90_percent",
       "behavioral_gate_complete": true,
       "measurement_gate_complete": false,
+      "pra_90_task_success": true,
+      "pra_90_calls": 25,
+      "pra_90_first_action_divergence": 7,
       "outcome_family_checks": {
         "task_success_and_exact_100_trajectory": true,
         "realized_retention_at_90": true,
@@ -22,89 +25,84 @@
       }
     },
     "huggingface": {
-      "status": "admission_failed_hardware_capacity",
-      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_qwen25coder7b_bnb_agent_gate_admission_20260912.json",
-      "classification": "plain_hardware_capacity_admission_failure_not_pra_failure",
+      "status": "admission_failed_model_task_pair",
+      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_qwen25coder7b_task05_task01_plain_admission_20260912.json",
+      "classification": "plain_model_task_admission_failure_not_pra_failure",
       "behavioral_gate_complete": false,
       "measurement_gate_complete": false,
       "admission": {
         "model": {
           "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+          "served_model": "qwen2.5-coder-7b-nf4",
           "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
-          "snapshot_bytes_advertised": 15200000000,
-          "snapshot_complete": true,
           "quantization": "bitsandbytes-nf4",
           "compute_dtype": "float16",
           "double_quantization": true,
           "device_map": "auto",
           "attention_implementation": "eager",
-          "model_admitted": true,
-          "health_passed": true,
-          "real_cuda": true
+          "chat_template_profile": "native",
+          "chat_template_digest": "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f"
         },
-        "task": "django__django-15277",
+        "task": "pytest-dev__pytest-7982",
         "plain_official_solve": false,
-        "model_calls": 0,
-        "termination_reason": "CUDA_out_of_memory",
+        "model_calls": 30,
+        "termination_reason": "LimitsExceeded",
         "append_stable_template_qualified": null,
         "pra_100_run": false,
         "pra_90_run": false
       }
     },
     "mlx": {
-      "status": "admission_failed_model_task_pair",
-      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_task01_qwen3_14b_append_stable/admission_gate.json",
-      "classification": "plain_model_task_admission_failure_not_pra_failure",
-      "behavioral_gate_complete": false,
-      "measurement_gate_complete": false,
-      "admission": {
-        "model": "mlx-community/Qwen3-14B-4bit",
-        "task": "django__django-15277",
-        "plain_official_solve": false,
-        "model_calls": 50,
-        "termination_reason": "LimitsExceeded",
-        "append_stable_template_qualified": true,
-        "pra_100_run": false,
-        "pra_90_run": false
+      "status": "complete",
+      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/mlx_task01_qwen25coder14b/gate.json",
+      "classification": "retention_quality_result_at_90_percent",
+      "behavioral_gate_complete": true,
+      "measurement_gate_complete": true,
+      "pra_90_task_success": true,
+      "pra_90_calls": 6,
+      "pra_90_first_action_divergence": 6,
+      "outcome_family_checks": {
+        "task_success_and_exact_100_trajectory": true,
+        "realized_retention_at_90": true,
+        "reencoding_and_kv_copy_bytes": true,
+        "consumer_temporary_bytes_and_calls": true
       }
     },
     "sglang-mlx": {
-      "status": "admission_failed_model_task_pair",
-      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task02/qwen25_coder_14b/admission_gate.json",
-      "classification": "plain_model_task_admission_failure_not_pra_failure",
-      "behavioral_gate_complete": false,
-      "measurement_gate_complete": false,
-      "admission": {
-        "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
-        "task": "django__django-15368",
-        "plain_official_solve": false,
-        "model_calls": 9,
-        "termination_reason": "Submitted",
-        "append_stable_template_qualified": true,
-        "pra_100_run": false,
-        "pra_90_run": false
+      "status": "complete",
+      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/gate.json",
+      "classification": "retention_quality_result_at_90_percent",
+      "behavioral_gate_complete": true,
+      "measurement_gate_complete": true,
+      "pra_90_task_success": true,
+      "pra_90_calls": 6,
+      "pra_90_first_action_divergence": 6,
+      "outcome_family_checks": {
+        "task_success_and_exact_100_trajectory": true,
+        "realized_retention_at_90": true,
+        "reencoding_and_kv_copy_bytes": true,
+        "consumer_temporary_bytes_and_calls": true
       }
     },
     "vllm": {
-      "status": "admission_failed_hardware_throughput",
-      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/vllm_qwen25coder14b_agent_gate_admission_20260911.json",
-      "classification": "plain_hardware_throughput_admission_failure_not_pra_failure",
-      "behavioral_gate_complete": false,
-      "measurement_gate_complete": false,
-      "admission": {
-        "model": "Qwen/Qwen2.5-Coder-14B-Instruct-AWQ",
-        "task": "django__django-15368",
-        "plain_official_solve": false,
-        "model_calls": 2,
-        "termination_reason": "The third generation was cancelled after the bounded throughput/no-progress cutoff; its later orphaned server completion was not counted as an agent action.",
-        "append_stable_template_qualified": null,
-        "pra_100_run": false,
-        "pra_90_run": false
+      "status": "complete",
+      "artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/vllm_task05_qwen25coder7b/gate.json",
+      "classification": "retention_quality_result_at_90_percent",
+      "behavioral_gate_complete": true,
+      "measurement_gate_complete": true,
+      "pra_90_task_success": false,
+      "pra_90_calls": 15,
+      "pra_90_first_action_divergence": 6,
+      "outcome_family_checks": {
+        "task_success_and_exact_100_trajectory": true,
+        "realized_retention_at_90": true,
+        "reencoding_and_kv_copy_bytes": true,
+        "consumer_temporary_bytes_and_calls": true
       }
     }
   },
-  "behavioral_complete_engines": 1,
-  "measurement_complete_engines": 0,
+  "behavioral_complete_engines": 4,
+  "measurement_complete_engines": 3,
   "required_engine_count": 5,
   "cross_engine_agent_gate_complete": false,
   "easy14_expansion_allowed": false,

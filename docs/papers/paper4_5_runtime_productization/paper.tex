@@ -104,6 +104,13 @@ admit context savings.  The locked comparison is No PRA versus PRA at 100\%,
 success, calls, selected tokens, realized retention, K/V reuse, copy, and time.
 \end{itemize}
 
+The companion Paper~8.5 owns the engine-independent agent-memory question:
+record exclusion and selection policies, oracle add-back analysis, and logical
+task efficiency under ordinary text replay.  Paper~4.5 does not select a policy
+winner from those screens.  It imports a frozen policy and asks whether each
+engine preserves live-K/V semantics, lifecycle safety, task behavior, and
+measurable resource use.
+
 The unified runtime, gateway, authenticated resource lifecycle, typed tool and
 result surfaces, and engine-specific adapters are the implementation needed to
 test those claims.  They are not additional evidence categories.  In
@@ -1607,13 +1614,15 @@ action in 3/3; task-04 changes whole-file rereading to targeted localization in
 3/3.  Typed causal policies preserve source and progress records. & Superiority
 to fixed token windows on official end-task outcomes is not yet established. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
-exact plain/PRA-100 solve and an admitted 25-call PRA-90 solve at 93.32\%
-model-visible retention. Direct MLX and SGLang-MLX add action-exact six-call
-plain/PRA-100 Task-01 solves and both resolve PRA-90 in six calls with the plain
-command sequence and patch. vLLM CUDA adds a 15-action exact plain/PRA-100
-Task-05 solve. & HF still lacks an admitted plain-success model/task pair;
-vLLM CUDA has not run its now-admissible PRA-90 arm. Easy-14 and 75\% are
-locked, and learned-adaptor cells still fail closed. \\
+exact plain/PRA-100 solve and a 25-call PRA-90 solve at 93.32\% retention.
+Direct MLX and SGLang-MLX add action-exact six-call plain/PRA-100 Task-01 solves
+and both resolve PRA-90 in six calls.  vLLM CUDA adds a 15-action exact
+plain/PRA-100 Task-05 solve, but PRA-90 is unresolved after the first action
+divergence at call 6 despite 94.24\% aggregate retention and zero selected-
+history re-encoding or K/V copy. & HF still lacks an admitted plain-success
+model/task pair.  The vLLM result is a policy-quality negative after an exact
+100\% control, not an engine-parity failure.  Easy-14 and 75\% are locked, and
+learned-adaptor cells still fail closed. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
@@ -3374,14 +3383,21 @@ from launching treatment cells before that status is explicitly promoted.  The g
 \texttt{QUALIFIED} only for a llama.cpp wrapper with prefix caching enabled and
 a configured slot checkpoint directory.  HF, MLX, vLLM, and SGLang now clear
 bounded sparse-consumer mechanism gates.  vLLM additionally clears one
-autonomous plain/PRA-100 gate; HF remains blocked on plain task success, direct
-MLX remains blocked at its same-subset numerical gate, and SGLang-MLX and
-llama.cpp have completed their frozen autonomous sequences.  The campaign is
-therefore frozen at one task per engine: each engine must first pass the 100\%
-semantic-no-op control before its 90\% treatment can run, and no Easy-14
-expansion is permitted until every qualified engine completes that sequence.
+autonomous plain/PRA-100 gate and executes its PRA-90 treatment, which fails
+task quality after an exact 100\% control.  llama.cpp, MLX, and SGLang-MLX
+complete their frozen sequences with successful PRA-90 outcomes.  HF remains
+blocked on plain task success.  The campaign is therefore frozen at one task
+per engine, and no Easy-14 expansion is permitted until HF completes its
+sequence and the frozen 90\% policy clears the quality gate.
 
 \subsubsection{Claim 4: observed coding-agent utility frontier}
+
+Paper~8.5 studies agent-history policies without attributing logical task
+effects to an engine.  Its current screens have not established a semantic
+winner: matched token-tail is the strongest control, while the tested H1/H3
+full causal-group exclusions remove too much of the progress spine.  The
+results below therefore evaluate the frozen causal policy as an experimental
+treatment, not as a generally recommended selector.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
@@ -3429,10 +3445,11 @@ PRA-90 & 1/1 & 25 & 93.32\% & 0 & 0 B & n/e & 139.2 \\
 \end{table}
 
 Here ``n/e'' means that the endpoint does not expose the measurement; it is
-not a zero.  The cross-engine reducer consequently counts llama.cpp as one
-behaviorally complete engine but zero measurement-complete engines so far.
-The newer direct-engine rows below extend, but do not retroactively fill, that
-frozen reducer table.
+not a zero.  The regenerated cross-engine reducer counts four of five engines
+behaviorally complete and three measurement-complete.  MLX, SGLang-MLX, and
+vLLM report all four measurement families; llama.cpp remains behaviorally
+complete but measurement-incomplete because consumer-temporary and total
+lifecycle-copy fields are unavailable.  HF remains behaviorally incomplete.
 
 Earlier task-02--04 utility rows predate this cross-engine freeze and remain
 diagnostic evidence for retention-policy design; they do not authorize an
@@ -3535,16 +3552,37 @@ request), which are not selected-history re-encoding.  The sum of reported
 request-temporary allocations is 517,376,512 bytes and the largest request is
 148,832,768 bytes.
 
-This run also converts two previously hidden integration assumptions into
+The PRA-100 run also converts two previously hidden integration assumptions into
 regressions.  The native readiness probe now supplies the live-agent history
 projection and accepts engine-native consumption evidence rather than a
 llama.cpp-specific stage name.  During source rollover, a committed successor
 may release the superseded registry pin while deferred request aliases remain,
 but only when that successor owns the exact complete old prefix; without such
-a successor, eviction remains fail-closed.  The result qualifies this bounded
-vLLM task/model pair for PRA-90 execution, not the engine's full sequence:
-PRA-90 was deliberately withheld here, Easy-14 remains locked, and the same
-in-process V1, homogeneous-group, complete-page boundary still applies.
+a successor, eviction remains fail-closed.
+
+The first PRA-90 attempt then exposed a page-granularity retention defect rather
+than a model-quality result.  The proxy met its logical/token floor but selected
+3,040 resident page tokens where the engine required 3,111.  The corrected
+planner makes every logically selected record mandatory, rounds upward by the
+most recent omitted complete-page causal groups, and fails closed if the
+authoritative engine-token floor is still unmet.  It may therefore realize more
+than the requested 90\%; it may never silently realize less.
+
+The corrected frozen PRA-90 run is a valid negative.  It grades 0/1 after 15
+calls, first diverges from plain at action 6, and submits an empty patch after
+later diffing a generated test path rather than the modified source file.  It
+materializes 21,940 of 23,281 estimated model-visible tokens (94.24\% aggregate;
+90.27--100\% per request), while the engine reports 90.28--100\% retained
+history K/V.  Selected-history re-encoding, physical and total K/V copy, and
+H2D are all zero.  Consumer temporaries total 524,545,536 bytes with a
+148,922,880-byte peak.  Thus the failure is attributable to the frozen
+retention policy after an exact PRA-100 control, not to rematerialization or
+page-copy behavior.  Easy-14 remains locked, and the same in-process V1,
+homogeneous-group, complete-page boundary still applies.
+The plain/PRA-100 controls record PRA revision \texttt{1feca189}; the corrected
+PRA-90 arm records \texttt{3a37ed22}.  The receipt therefore supports the
+post-fix policy-quality result and byte counters, but not a cross-arm timing
+claim.
 
 The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
 smoke.  The model returns the frozen
@@ -3634,6 +3672,9 @@ movement is 92,012,544 bytes, cumulative consumer temporary allocation is
 21,888 attention calls.  The single warm 70.1-s wall time is provenance, not a
 speedup claim.  SGLang therefore clears plain, PRA-100, and PRA-90 on this
 frozen autonomous task without authorizing expansion to another task.
+The control manifests record engine revision \texttt{88a74f66}, whereas the
+floor-corrected PRA-90 manifest records \texttt{e21788af}; this revision
+discontinuity is another reason not to interpret the wall times economically.
 
 The direct MLX no-gateway bridge is implemented under the same contract.
 It owns a persistent canonical live cache per session, extends only an append-
@@ -4444,7 +4485,9 @@ identities and recency floors.  Restoring one omitted source-view bundle
 causally recovers task 03's efficient command and directionally improves task
 04, where current-hypothesis state is additionally required; the typed
 \texttt{recent\_progress\_turns} floor now preserves that state in the frozen
-90\% regression.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
+90\% regression.  Engine-independent exclusion, selection, and oracle work now
+belongs to Paper~8.5; Paper~4.5 consumes a frozen policy and measures the engine
+contract.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
 consumer and lifecycle scopes.  HF's fused Triton path consumes canonical K/V
 through interval descriptors and is matched-consumer logit exact.  A bounded
 vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
@@ -4453,8 +4496,11 @@ history re-encoding across all seven eligible task-02 turns and its lifecycle
 smoke.  The same bounded path now clears an autonomous Task~05 plain/PRA-100
 gate: both arms resolve 1/1 in 15 byte-exact assistant actions and submit the
 same patch, while selected-history re-encoding, physical K/V copy, and H2D
-remain zero.  It is not yet a general product path: PRA-90, multiprocess
-execution, hybrid K/V groups, partial pages, and runtime economics remain open.
+remain zero.  Its corrected PRA-90 run is a valid policy-quality negative:
+0/1 after 15 calls, first divergence at action 6, 94.24\% aggregate retention,
+and an empty patch, again with zero selected-history re-encoding, K/V copy, or
+H2D.  It is not yet a general product path: multiprocess execution, hybrid K/V
+groups, partial pages, and runtime economics remain open.
 MLX and SGLang
 now consume the canonical source plus interval descriptors through one fused
 Metal kernel: their measured first-layer transient falls from roughly one
@@ -4478,8 +4524,8 @@ autograd, prompt-logit, and prompt-activation OOMs, but the valid Task~05 retry
 fails plain with an empty patch; Task~01 is separately quarantined after its
 pre-fix endpoint exceeds the nominal context cap.  The corrected endpoint now
 enforces and advertises that cap, but no HF PRA arm is run.  vLLM's earlier 7B AWQ
-plain Task~13 also fails, but the independent 8K Task~05 pair now admits PRA-90;
-that treatment was intentionally not launched in this gate-only run.
+plain Task~13 also fails, while the independent 8K Task~05 sequence completes:
+its exact 100\% control passes and its 90\% treatment fails task quality.
 Easy-14 expansion remains locked until every target engine has a qualified
 plain/PRA-100/PRA-90 task sequence.  Under the
 historical pre-gate RAG workload, frozen contiguous MLX selections produced

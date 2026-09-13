@@ -53,16 +53,26 @@ def _measurement_checks(payload: Mapping[str, Any]) -> dict[str, bool]:
 
 def _admission_summary(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
     outcome = payload.get("outcome") or {}
-    plain = payload.get("plain_admission") or (
-        (payload.get("conditions") or {}).get("plain") or {}
-    ) or payload.get("frozen_task01_plain") or {}
+    if schema_version == "paper4.5-hf-autonomous-plain-admission-v2":
+        # This receipt contains one valid bounded failure (Task05) and one
+        # separately quarantined pre-fix overflow (Task01).  Only the valid
+        # Task05 row may drive admission status.
+        plain = payload.get("task05") or {}
+    else:
+        plain = payload.get("plain_admission") or (
+            (payload.get("conditions") or {}).get("plain") or {}
+        ) or payload.get("frozen_task01_plain") or {}
     if not plain and "plain-admission" in str(payload.get("schema_version") or ""):
         plain = payload
     template = payload.get("chat_template") or {}
     resolved = plain.get("resolved")
     if resolved is None:
-        resolved = plain.get("official_solve", plain.get("task_success"))
+        resolved = plain.get(
+            "official_solve",
+            plain.get("official_resolved", plain.get("task_success")),
+        )
     if resolved is None:
         resolved = outcome.get(
             "plain_model_task_pair_admitted", outcome.get("official_resolved")
@@ -91,6 +101,8 @@ def _admission_summary(path: Path) -> dict[str, Any]:
             else None
         )
     task = payload.get("task", payload.get("instance_id"))
+    if task is None and schema_version == "paper4.5-hf-autonomous-plain-admission-v2":
+        task = plain.get("instance_id")
     task_id = task.get("instance_id") if isinstance(task, Mapping) else task
     if task_id is None:
         task_id = plain.get("instance_id")
@@ -246,6 +258,15 @@ def summarize(
             "classification": payload.get("classification"),
             "behavioral_gate_complete": behavior,
             "measurement_gate_complete": measured,
+            "pra_90_task_success": (payload.get("pra_90") or {}).get(
+                "task_success"
+            ),
+            "pra_90_calls": (payload.get("pra_90") or {}).get(
+                "calls_to_solution"
+            ),
+            "pra_90_first_action_divergence": (
+                payload.get("gates") or {}
+            ).get("pra_90_first_action_divergence"),
             "outcome_family_checks": checks,
         }
 

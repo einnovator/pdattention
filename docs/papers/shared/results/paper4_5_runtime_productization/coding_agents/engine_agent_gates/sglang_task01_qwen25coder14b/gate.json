@@ -1,0 +1,293 @@
+{
+  "schema_version": "paper4.5.frozen-agent-engine-gate.v1",
+  "engine": "sglang-mlx",
+  "instance_id": "django__django-15277",
+  "temperature": 0,
+  "plain": {
+    "status": "complete",
+    "run_directory": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/plain",
+    "run_id": "sglang-qwen25coder14b-task01-plain-v5",
+    "chat_template_profile": "native",
+    "chat_template_digest": "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f",
+    "mode": "no-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 6,
+    "tool_calls": 6,
+    "action_trajectory_length": 6,
+    "action_trajectory_sha256": "7a5f4f376964c384df998f0b30d7e08c287428822072efd6b414e26a59851acb",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: To address the issue described in the PR description, I need to locate the relevant file where `CharField.__init__` is defined and make the necessary changes. The PR suggests modifying `CharField.__init__` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`. I will start by finding the file where `CharField` is defined.\n\n```mswea_bash_command\ngrep -r \"class CharField\" .\n```",
+        "actions": [
+          {
+            "command": "grep -r \"class CharField\" ."
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The `CharField` class is defined in `django/db/models/fields/__init__.py`. I will open this file to locate the `__init__` method and make the necessary changes as suggested in the PR description.\n\n```mswea_bash_command\nnano django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "nano django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: Since `nano` is not available, I will use `sed` to directly edit the file and make the necessary changes. The PR suggests modifying the `__init__` method of `CharField` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`.\n\n```mswea_bash_command\nsed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "sed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have made the necessary changes to the `CharField.__init__` method in `django/db/models/fields/__init__.py`. Now, I will create a patch file to verify the changes.\n\n```mswea_bash_command\ngit diff -- django/db/models/fields/__init__.py > patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- django/db/models/fields/__init__.py > patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file. Now, I will verify the patch to ensure it only contains the intended changes.\n\n```mswea_bash_command\ncat patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file looks correct and only contains the intended changes. I will now submit the patch.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb",
+    "patch_bytes": 1165,
+    "engine_version": "sglang-mlx-agent-88a74f66",
+    "engine_runtime_identity": null,
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 1.0,
+    "realized_retention_fraction": null,
+    "realized_retention_fraction_min": null,
+    "realized_retention_fraction_max": null,
+    "engine_reported_history_kv_retention_fraction_min": null,
+    "engine_reported_history_kv_retention_fraction_max": null,
+    "selected_history_reencoded_tokens": null,
+    "physical_kv_copy_bytes": null,
+    "total_kv_copy_bytes": null,
+    "canonical_suffix_graft_d2d_bytes": null,
+    "host_to_device_bytes": null,
+    "consumer_temporary_bytes": null,
+    "consumer_temporary_peak_bytes": null,
+    "fused_attention_calls": null,
+    "logical_input_tokens_estimate": null,
+    "physical_input_tokens_estimate": null,
+    "wall_time_s": 373.30223202705383,
+    "trajectory_path": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/plain/chunk_00/django__django-15277/django__django-15277.traj.json",
+    "trajectory_sha256": "d09647af81634e7a48e12764c787b35c27abd412dcbf1f098a28c2cd1c5363b7"
+  },
+  "pra_100": {
+    "status": "complete",
+    "run_directory": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/pra100",
+    "run_id": "sglang-qwen25coder14b-task01-pra100-v2",
+    "chat_template_profile": "native",
+    "chat_template_digest": "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f",
+    "mode": "direct-native-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 6,
+    "tool_calls": 6,
+    "action_trajectory_length": 6,
+    "action_trajectory_sha256": "7a5f4f376964c384df998f0b30d7e08c287428822072efd6b414e26a59851acb",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: To address the issue described in the PR description, I need to locate the relevant file where `CharField.__init__` is defined and make the necessary changes. The PR suggests modifying `CharField.__init__` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`. I will start by finding the file where `CharField` is defined.\n\n```mswea_bash_command\ngrep -r \"class CharField\" .\n```",
+        "actions": [
+          {
+            "command": "grep -r \"class CharField\" ."
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The `CharField` class is defined in `django/db/models/fields/__init__.py`. I will open this file to locate the `__init__` method and make the necessary changes as suggested in the PR description.\n\n```mswea_bash_command\nnano django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "nano django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: Since `nano` is not available, I will use `sed` to directly edit the file and make the necessary changes. The PR suggests modifying the `__init__` method of `CharField` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`.\n\n```mswea_bash_command\nsed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "sed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have made the necessary changes to the `CharField.__init__` method in `django/db/models/fields/__init__.py`. Now, I will create a patch file to verify the changes.\n\n```mswea_bash_command\ngit diff -- django/db/models/fields/__init__.py > patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- django/db/models/fields/__init__.py > patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file. Now, I will verify the patch to ensure it only contains the intended changes.\n\n```mswea_bash_command\ncat patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file looks correct and only contains the intended changes. I will now submit the patch.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb",
+    "patch_bytes": 1165,
+    "engine_version": "sglang-mlx-agent-88a74f66",
+    "engine_runtime_identity": null,
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 1.0,
+    "realized_retention_fraction": 1.0,
+    "realized_retention_fraction_min": 1.0,
+    "realized_retention_fraction_max": 1.0,
+    "engine_reported_history_kv_retention_fraction_min": 1.0,
+    "engine_reported_history_kv_retention_fraction_max": 1.0,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 92798976,
+    "canonical_suffix_graft_d2d_bytes": 92798976,
+    "host_to_device_bytes": 0,
+    "consumer_temporary_bytes": 4156645776,
+    "consumer_temporary_peak_bytes": 805306376,
+    "fused_attention_calls": 22080,
+    "logical_input_tokens_estimate": 8920,
+    "physical_input_tokens_estimate": 8920,
+    "wall_time_s": 231.15363883972168,
+    "trajectory_path": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/pra100/chunk_00/django__django-15277/django__django-15277.traj.json",
+    "trajectory_sha256": "08939eb3470e2628f3ae1cb8d843320214168c08975b851559419e2d4511adf0"
+  },
+  "pra_90": {
+    "status": "complete",
+    "run_directory": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/pra090",
+    "run_id": "sglang-qwen25coder14b-task01-pra090-e21788af",
+    "chat_template_profile": "native",
+    "chat_template_digest": "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f",
+    "mode": "direct-native-pra",
+    "task_success": true,
+    "grader_outcome": "resolved",
+    "termination_reason": "Submitted",
+    "calls_to_solution": 6,
+    "tool_calls": 6,
+    "action_trajectory_length": 6,
+    "action_trajectory_sha256": "49e5035f4308869016dcf9cc635b57d1dc04dd559e8698ceb90488c466ae4cec",
+    "action_trajectory": [
+      {
+        "content": "THOUGHT: To address the issue described in the PR description, I need to locate the relevant file where `CharField.__init__` is defined and make the necessary changes. The PR suggests modifying `CharField.__init__` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`. I will start by finding the file where `CharField` is defined.\n\n```mswea_bash_command\ngrep -r \"class CharField\" .\n```",
+        "actions": [
+          {
+            "command": "grep -r \"class CharField\" ."
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The `CharField` class is defined in `django/db/models/fields/__init__.py`. I will open this file to locate the `__init__` method and make the necessary changes as suggested in the PR description.\n\n```mswea_bash_command\nnano django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "nano django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: Since `nano` is not available, I will use `sed` to directly edit the file and make the necessary changes. The PR suggests modifying the `__init__` method of `CharField` to conditionally append the `MaxLengthValidator` only if `self.max_length` is not `None`.\n\n```mswea_bash_command\nsed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py\n```",
+        "actions": [
+          {
+            "command": "sed -i 's/self.validators.append(validators.MaxLengthValidator(self.max_length))/if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))/' django/db/models/fields/__init__.py"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have made the necessary changes to the `CharField.__init__` method in `django/db/models/fields/__init__.py`. Now, I will create a patch file to verify the changes.\n\n```mswea_bash_command\ngit diff -- django/db/models/fields/__init__.py > patch.txt\n```",
+        "actions": [
+          {
+            "command": "git diff -- django/db/models/fields/__init__.py > patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: I have created the patch file. Now, I will verify the patch to ensure it only contains the intended changes.\n\n```mswea_bash_command\ncat patch.txt\n```",
+        "actions": [
+          {
+            "command": "cat patch.txt"
+          }
+        ]
+      },
+      {
+        "content": "THOUGHT: The patch file looks correct. Now, I will submit the final output.\n\n```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt\n```",
+        "actions": [
+          {
+            "command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+          }
+        ]
+      }
+    ],
+    "patch_sha256": "13a95a668f18a043489d047b53bb7fa79e5397b801a1fab02e5b9b0cb7bad7bb",
+    "patch_bytes": 1165,
+    "engine_version": "sglang-mlx-agent-e21788af",
+    "engine_runtime_identity": null,
+    "exact_environment": true,
+    "configuration_differences": [],
+    "requested_retention_fraction": 0.9,
+    "realized_retention_fraction": 0.9781390134529148,
+    "realized_retention_fraction_min": 0.9278350515463918,
+    "realized_retention_fraction_max": 1.0,
+    "engine_reported_history_kv_retention_fraction_min": 0.9154342055365946,
+    "engine_reported_history_kv_retention_fraction_max": 1.0,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 92012544,
+    "canonical_suffix_graft_d2d_bytes": 92012544,
+    "host_to_device_bytes": 0,
+    "consumer_temporary_bytes": 4156531664,
+    "consumer_temporary_peak_bytes": 805306376,
+    "fused_attention_calls": 21888,
+    "logical_input_tokens_estimate": 8920,
+    "physical_input_tokens_estimate": 8725,
+    "wall_time_s": 70.13374900817871,
+    "trajectory_path": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b/pra090/chunk_00/django__django-15277/django__django-15277.traj.json",
+    "trajectory_sha256": "b1044bdcc833e8c4c68f5eb9260fb25e91a811ada80872076bd66c5b38c00b87"
+  },
+  "gates": {
+    "plain_task_success": true,
+    "pra_100_task_success": true,
+    "pra_100_exact_action_trajectory": true,
+    "pra_100_exact_patch": true,
+    "pra_100_engine_runtime_identity_match": null,
+    "pra_100_chat_template_digest_match": true,
+    "pra_100_behavioral_parity": true,
+    "pra_90_execution_allowed": true,
+    "pra_90_first_action_divergence": 6,
+    "pra_90_patch_matches_plain": true,
+    "engine_task_gate_complete": true,
+    "easy14_expansion_allowed": false,
+    "easy14_expansion_blocker": "requires completed 100%->90% gates for every qualified engine"
+  },
+  "classification": "retention_quality_result_at_90_percent",
+  "claim_boundary": "A 100% divergence is an implementation failure. A 90% divergence is a selection/retention-quality result only after the 100% gate passes."
+}
