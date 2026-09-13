@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-autonomous-long5-v1",
+  "benchmark_card": "../benchmarks/easy14_longest_success5.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": null
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "controls": {"full_repeats": 2},
+  "arms": [
+    {
+      "arm_id": "dag100",
+      "policy": "task_aware_progress_spine_v4",
+      "negative_realization": "protocol_stub",
+      "negative_fallback": "none",
+      "budget_fraction": 1.0
+    },
+    {
+      "arm_id": "tail90",
+      "policy": "head_tail_recency",
+      "negative_realization": "drop",
+      "negative_fallback": "none",
+      "budget_fraction": 0.90
+    },
+    {
+      "arm_id": "dag_tail90",
+      "policy": "task_aware_progress_spine_v4",
+      "negative_realization": "protocol_stub",
+      "negative_fallback": "recency",
+      "budget_fraction": 0.90
+    },
+    {
+      "arm_id": "tail80",
+      "policy": "head_tail_recency",
+      "negative_realization": "drop",
+      "negative_fallback": "none",
+      "budget_fraction": 0.80
+    },
+    {
+      "arm_id": "dag_tail80",
+      "policy": "task_aware_progress_spine_v4",
+      "negative_realization": "protocol_stub",
+      "negative_fallback": "recency",
+      "budget_fraction": 0.80
+    }
+  ],
+  "adaptive_stopping": {
+    "minimum_tasks_before_yield_gate": 2,
+    "minimum_gross_saving_fraction": 0.02,
+    "stop_after_failures": 2,
+    "minimum_tasks_before_accuracy_gate": 3,
+    "minimum_task_resolution": 0.80
+  },
+  "expansion_after_gate": {
+    "requested_saving_fractions": [0.05, 0.15, 0.30],
+    "rule": "Add only around nondominated arms after the locked five-task gate; do not run combinations containing a stopped arm."
+  }
+}

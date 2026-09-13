@@ -210,6 +210,8 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         metrics.get("cumulative_materialized_tokens",
         metrics.get("cumulative_selected_tokens", 0)) or 0
     )
+    usage_coverage = int(metrics.get("reported_usage_coverage_calls") or 0)
+    completion_tokens = int(metrics.get("cumulative_reported_completion_tokens") or 0)
     if not isinstance(official.get("resolved"), bool):
         raise ValueError(f"{metrics_path}: missing completed official result")
     if full_tokens <= 0 or materialized_tokens < 0:
@@ -246,6 +248,12 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         "saving_fraction": 1.0 - materialized_tokens / full_tokens if full_tokens else 0.0,
         "cumulative_full_tokens": full_tokens,
         "cumulative_materialized_tokens": materialized_tokens,
+        "reported_usage_coverage_calls": usage_coverage,
+        "cumulative_reported_completion_tokens": completion_tokens,
+        "cumulative_total_model_tokens": (
+            materialized_tokens + completion_tokens
+            if usage_coverage == int(metrics.get("calls") or 0) else None
+        ),
         "official_resolved": bool(official.get("resolved")) if official else None,
         "auxiliary_resolved": (
             bool(auxiliary_summary.get("resolved")) if auxiliary_summary else None
@@ -316,6 +324,23 @@ def pair_autonomous(
     candidate["paired_net_saving_fraction"] = (
         1.0 - candidate["cumulative_materialized_tokens"] / baseline_tokens
         if baseline_tokens else None
+    )
+    # A failed/errored candidate has no tokens-to-solution. Prevent early
+    # termination from being reported as an efficiency gain by charging at
+    # least the paired FULL workload in the failure-aware coordinate.
+    failure_aware_tokens = (
+        candidate["cumulative_materialized_tokens"]
+        if candidate["efficiency_qualified"]
+        else max(candidate["cumulative_materialized_tokens"], baseline_tokens)
+    )
+    candidate["failure_aware_paired_net_saving_fraction"] = (
+        1.0 - failure_aware_tokens / baseline_tokens if baseline_tokens else None
+    )
+    baseline_total = baseline.get("cumulative_total_model_tokens")
+    candidate_total = candidate.get("cumulative_total_model_tokens")
+    candidate["paired_total_model_token_saving_fraction"] = (
+        1.0 - float(candidate_total) / float(baseline_total)
+        if baseline_total and candidate_total is not None else None
     )
     candidate_by_index = {int(row["request_index"]): row for row in candidate["trace"]}
     baseline_by_index = {int(row["request_index"]): row for row in baseline["trace"]}
@@ -493,6 +518,9 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             if row.get("paired_net_saving_fraction") is not None
         ]
         qualified = [row for row in paired if row.get("efficiency_qualified")]
+        baseline_success = [
+            row for row in paired if row.get("baseline_official_resolved") is True
+        ]
         full = sum(int(row["cumulative_full_tokens"]) for row in strategy_rows)
         materialized = sum(
             int(row["cumulative_materialized_tokens"]) for row in strategy_rows
@@ -512,9 +540,29 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             ),
             "paired_runs": len(paired),
             "efficiency_qualified_pairs": len(qualified),
+            "paired_baseline_successes": len(baseline_success),
+            "paired_preserved_successes": sum(
+                bool(row.get("official_resolved")) for row in baseline_success
+            ),
+            "paired_success_preservation": (
+                mean(bool(row.get("official_resolved")) for row in baseline_success)
+                if baseline_success else None
+            ),
             "mean_paired_net_saving_all": (
                 mean(float(row["paired_net_saving_fraction"]) for row in paired)
                 if paired else None
+            ),
+            "mean_failure_aware_paired_net_saving": (
+                mean(float(row["failure_aware_paired_net_saving_fraction"])
+                     for row in paired)
+                if paired else None
+            ),
+            "mean_paired_total_model_token_saving": (
+                mean(float(row["paired_total_model_token_saving_fraction"])
+                     for row in paired
+                     if row.get("paired_total_model_token_saving_fraction") is not None)
+                if any(row.get("paired_total_model_token_saving_fraction") is not None
+                       for row in paired) else None
             ),
             "mean_tool_call_delta_all": (
                 mean(float(row["tool_call_delta"]) for row in paired)
@@ -703,6 +751,11 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         paired, "paired_net_saving_fraction", "autonomous_net_saving_vs_accuracy",
         "Paired end-to-end input-token saving (%)",
     )
+    accuracy_plot(
+        paired, "failure_aware_paired_net_saving_fraction",
+        "autonomous_failure_aware_saving_vs_accuracy",
+        "Failure-aware paired input-token saving (%)",
+    )
 
     def tool_delta_plot(metric: str, filename: str, xlabel: str) -> None:
         fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2), sharey=True)
@@ -854,6 +907,8 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "frozen_quality_proxy": "conservative next-action agreement versus repeat-qualified FULL",
             "gross_saving": "one minus materialized/full tokens along the candidate trajectory",
             "paired_net_saving": "one minus candidate materialized message-content input tokens / paired FULL materialized message-content input tokens; includes call-count divergence but excludes completion and chat-template tokens",
+            "failure_aware_paired_net_saving": "paired net saving when both runs resolve; otherwise the failed candidate is charged at least the paired FULL input workload so early termination cannot appear efficient",
+            "paired_total_model_token_saving": "one minus candidate / paired FULL for materialized input plus endpoint-reported completion tokens; emitted only with complete usage coverage",
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
             "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",

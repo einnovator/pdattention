@@ -68,6 +68,7 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["call_delta"] == -2
     assert candidate["tool_call_delta"] == -2
     assert candidate["efficiency_qualified"] is True
+    assert candidate["failure_aware_paired_net_saving_fraction"] == pytest.approx(.3)
     assert candidate["first_action_divergence"] == 1
     assert candidate["first_action_divergence_kind"] == "command_mismatch"
 
@@ -83,6 +84,7 @@ def test_pair_marks_early_termination_as_divergence_and_failed_efficiency(tmp_pa
     ))
     pair_autonomous(candidate, full)
     assert candidate["efficiency_qualified"] is False
+    assert candidate["failure_aware_paired_net_saving_fraction"] == 0
     assert candidate["first_action_divergence"] == 9
     assert candidate["first_action_divergence_kind"] == "candidate_terminated"
     assert candidate["saving_through_first_divergence_fraction"] == pytest.approx(.3)

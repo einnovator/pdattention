@@ -1250,6 +1250,36 @@ semantic phrase improves savings but does not restore exact trajectory
 identity.  This rules out receipt wording as the sole cause, while leaving task
 quality unresolved until autonomous execution.
 
+\subsection{Predeclared autonomous quality--saving campaign}
+
+The next campaign locks the five longest tasks in the Easy-14 baseline-success
+stratum before observing any treatment outcome: Django 15277, pytest 7982,
+Django 15741, Sphinx 8721, and scikit-learn 13135.  Their admitted no-PRA
+trajectories contain 16--33 calls and 123,003--287,951 cumulative prompt
+tokens.  This is a conditional preservation cohort, selected for policy
+development; it is not an unconditional SWE-bench accuracy sample.
+
+Each task receives two \textsc{Full} controls, followed arm-major by
+DAG-only exclusion at a 100\% ceiling, a head/tail recency control at 90\% and
+80\% requested retention, and DAG exclusion followed by progress-spine recency
+at the same targets.  The common configuration retains two initial and four
+recent complete turns, uses $K_f=8$, $K_w=1$, and $K_r=2$, and presents
+certified exclusions as metadata-only protocol stubs.  Nominal retention is
+not plotted: every point uses realized tokens.
+
+The primary ordinate is official task resolution.  The abscissae separately
+report within-run materialized-history saving, paired end-to-end input-token
+saving (therefore including additional calls), and a failure-aware coordinate.
+A failed candidate is charged at least its paired \textsc{Full} workload so
+early termination cannot masquerade as efficiency.  Calls-to-solution,
+reacquisition, and first action divergence remain secondary diagnostics.
+Endpoint-reported completion tokens form an additional total-model-token
+coordinate only when all calls provide usage.  The campaign stops an arm after
+two official failures, after less than 2\% mean gross saving on two tasks, or
+after resolution falls below 80\% on at least three tasks.  Only nondominated
+survivors are expanded to the predeclared 5\%, 15\%, and 30\% saving
+neighborhoods and then to the remaining Easy-14 tasks.
+
 \subsection{First autonomous qualification}
 
 We next ran an autonomous pilot on

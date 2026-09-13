@@ -44,11 +44,20 @@ from .recordizer import annotate_minisweagent_messages
 from pra_hf.agent_history import OpenAIRecordizer
 from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
 from pra_hf.mediation import RequestMediator, WireAgentMemoryPlan
-from .selectors import FullHistorySelector, TokenCounter, whitespace_tokens
+from .selectors import (
+    FullHistorySelector,
+    HeadMiddleTailConfig,
+    HeadMiddleTailSelector,
+    MiddleSelectionStrategy,
+    TokenCounter,
+    whitespace_tokens,
+)
 from .serialization import serialize_materialized_messages
 
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
+AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency",)
+AUTONOMOUS_POLICIES = ("full", *AUTONOMOUS_POSITIVE_POLICIES, *NEGATIVE_POLICY_RULES)
 
 
 def _digest(value: Any) -> str:
@@ -82,6 +91,24 @@ def _assistant_content(response_body: bytes) -> str | None:
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, IndexError):
         return None
     return content if isinstance(content, str) else None
+
+
+def _response_usage(response_body: bytes) -> dict[str, int | None]:
+    try:
+        payload = json.loads(response_body.decode("utf-8"))
+        usage = payload.get("usage") or {}
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        usage = {}
+
+    def value(name: str) -> int | None:
+        observed = usage.get(name)
+        return int(observed) if isinstance(observed, (int, float)) else None
+
+    return {
+        "reported_prompt_tokens": value("prompt_tokens"),
+        "reported_completion_tokens": value("completion_tokens"),
+        "reported_total_tokens": value("total_tokens"),
+    }
 
 
 def join_instrumentation_sidecars(
@@ -242,11 +269,12 @@ class AutonomousSelectionConfig:
     task_id: str = "unassigned"
     require_exact_sidecars: bool = True
     negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
+    negative_fallback: str = "none"
 
     def __post_init__(self) -> None:
-        if self.policy != "full" and self.policy not in NEGATIVE_POLICY_RULES:
+        if self.policy not in AUTONOMOUS_POLICIES:
             raise ValueError(
-                f"policy must be full or one of {tuple(NEGATIVE_POLICY_RULES)}"
+                f"policy must be one of {AUTONOMOUS_POLICIES}"
             )
         if not 0 < self.budget_fraction <= 1:
             raise ValueError("budget_fraction must be in (0, 1]")
@@ -262,17 +290,46 @@ class AutonomousSelectionConfig:
             raise ValueError("FULL is an exact ordinary-text control and cannot compact records")
         if self.policy == "full" and self.negative_realization != NegativeRealizationMode.DROP:
             raise ValueError("FULL cannot use a negative-selection realization")
+        if self.policy in AUTONOMOUS_POSITIVE_POLICIES and self.negative_realization != NegativeRealizationMode.DROP:
+            raise ValueError("positive-only policies cannot use a negative-selection realization")
+        if self.negative_fallback not in {"none", "recency"}:
+            raise ValueError("negative_fallback must be none or recency")
+        if self.policy not in NEGATIVE_POLICY_RULES and self.negative_fallback != "none":
+            raise ValueError("negative_fallback requires a negative-selection policy")
         if (
             self.policy == "task_aware_progress_spine_v4"
-            and self.negative_realization != NegativeRealizationMode.OBSERVATION_RECEIPT
+            and self.negative_realization not in {
+                NegativeRealizationMode.OBSERVATION_RECEIPT,
+                NegativeRealizationMode.PROTOCOL_STUB,
+            }
         ):
             raise ValueError(
-                "task_aware_progress_spine_v4 requires observation_receipt realization"
+                "task_aware_progress_spine_v4 requires observation_receipt or "
+                "protocol_stub realization"
             )
 
     def selector(self):
         if self.policy == "full":
             return FullHistorySelector()
+        if self.policy == "head_tail_recency":
+            return HeadMiddleTailSelector(HeadMiddleTailConfig(
+                head_turns=self.protected_head_turns,
+                tail_turns=self.protected_tail_turns,
+                middle_strategy=MiddleSelectionStrategy.RECENCY,
+                round_up_to_budget=True,
+            ))
+        fallback = None
+        if self.negative_fallback == "recency":
+            fallback = HeadMiddleTailSelector(HeadMiddleTailConfig(
+                head_turns=self.protected_head_turns,
+                tail_turns=self.protected_tail_turns,
+                middle_strategy=MiddleSelectionStrategy.RECENCY,
+                mutation_turns=1,
+                verification_turns=1,
+                progress_turns=1,
+                error_turns=1,
+                round_up_to_budget=True,
+            ))
         return NegativeHeuristicSelector(NegativeSelectionConfig(
             rules=NEGATIVE_POLICY_RULES[self.policy],
             search_delay_turns=self.search_delay_turns,
@@ -282,7 +339,7 @@ class AutonomousSelectionConfig:
             protected_head_turns=self.protected_head_turns,
             protected_tail_turns=self.protected_tail_turns,
             h2b_allow_workspace_verification=self.h2b_allow_workspace_verification,
-        ))
+        ), fallback)
 
 
 @dataclass(frozen=True)
@@ -351,6 +408,9 @@ def transform_autonomous_payload(
         materializer,
         query=_query(messages),
         count_tokens=count_tokens,
+    )
+    retention_floor = bool(
+        config.policy == "head_tail_recency" or config.negative_fallback == "recency"
     )
     receipt_realization = None
     if config.negative_realization in {
@@ -486,7 +546,19 @@ def transform_autonomous_payload(
         "materialized_tokens": materialized.materialized_tokens,
         "logical_retention_fraction": plan.realized_retention_fraction,
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
-        "budget_satisfied": plan.selected_tokens <= budget_tokens,
+        "budget_interpretation": (
+            "retention_floor_round_up" if retention_floor else "hard_ceiling"
+        ),
+        "budget_satisfied": (
+            plan.selected_tokens >= budget_tokens
+            if retention_floor else plan.selected_tokens <= budget_tokens
+        ),
+        "whole_turn_budget_overshoot_tokens": (
+            max(0, plan.selected_tokens - budget_tokens) if retention_floor else 0
+        ),
+        "whole_turn_budget_undershoot_tokens": (
+            max(0, budget_tokens - plan.selected_tokens) if retention_floor else 0
+        ),
         "full_message_count": len(messages),
         "selected_message_count": len(selected_messages),
         "selected_record_ids": list(plan.selected_record_ids),
@@ -698,6 +770,7 @@ class AutonomousSelectionProxy:
 
         if transformation is not None:
             assistant_content = _assistant_content(response_body)
+            response_usage = _response_usage(response_body)
             command = _assistant_command(response_body)
             operation = classify_bash_operation(command)
             resources = extract_resource_ids(command, "") if command else ()
@@ -723,6 +796,7 @@ class AutonomousSelectionProxy:
                     hashlib.sha256(assistant_content.encode("utf-8")).hexdigest()
                     if assistant_content is not None else None
                 ),
+                **response_usage,
                 "assistant_command_sha256": (
                     hashlib.sha256(command.encode("utf-8")).hexdigest() if command else None
                 ),

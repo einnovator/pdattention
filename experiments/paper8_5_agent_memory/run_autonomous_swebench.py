@@ -24,9 +24,12 @@ from .auxiliary_workspace_state import (
     AUXILIARY_WORKSPACE_STATE_LABEL,
     create_auxiliary_workspace_state_prediction,
 )
-from .autonomous_proxy import AutonomousSelectionConfig, AutonomousSelectionProxy
+from .autonomous_proxy import (
+    AUTONOMOUS_POLICIES,
+    AutonomousSelectionConfig,
+    AutonomousSelectionProxy,
+)
 from .materialization import MaterializationMode
-from .negative_selection import NEGATIVE_POLICY_RULES
 from .negative_receipts import NegativeRealizationMode
 from .selectors import whitespace_tokens
 
@@ -292,6 +295,12 @@ def summarize_trace(path: Path) -> dict[str, Any]:
     total_full = sum(int(row.get("full_tokens") or 0) for row in rows)
     total_selected = sum(int(row.get("selected_tokens") or 0) for row in rows)
     total_materialized = sum(int(row.get("materialized_tokens") or 0) for row in rows)
+    usage_rows = [
+        row for row in rows if row.get("reported_completion_tokens") is not None
+    ]
+    reported_completion = sum(
+        int(row["reported_completion_tokens"]) for row in usage_rows
+    )
     return {
         "schema_version": 1,
         "evidence_class": "autonomous_agent_logical_selection",
@@ -302,6 +311,11 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "cumulative_full_tokens": total_full,
         "cumulative_selected_tokens": total_selected,
         "cumulative_materialized_tokens": total_materialized,
+        "reported_usage_coverage_calls": len(usage_rows),
+        "cumulative_reported_completion_tokens": reported_completion,
+        "cumulative_materialized_plus_reported_completion_tokens": (
+            total_materialized + reported_completion
+        ),
         "cumulative_logical_retention_fraction": (
             total_selected / total_full if total_full else 1.0
         ),
@@ -319,7 +333,8 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "upstream_error_calls": sum(int(row.get("upstream_status") or 0) >= 400 for row in rows),
         "metric_note": (
             "token counts cover message content and exclude chat-template tokens; repeated "
-            "counts mean a repeated operation/resource signature, not redundant intent"
+            "counts mean a repeated operation/resource signature, not redundant intent; "
+            "completion tokens use endpoint-reported usage with explicit coverage"
         ),
     }
 
@@ -392,6 +407,7 @@ def run(args: argparse.Namespace) -> Path:
         task_id=instance_id,
         require_exact_sidecars=args.require_exact_sidecars,
         negative_realization=NegativeRealizationMode(args.negative_realization),
+        negative_fallback=args.negative_fallback,
     )
     trace_path = output / "request_selection.jsonl"
     agent_output = output / "agent"
@@ -636,11 +652,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-revision", required=True)
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--tokenizer-revision", required=True)
-    parser.add_argument("--policy", choices=("full", *NEGATIVE_POLICY_RULES), default="full")
+    parser.add_argument("--policy", choices=AUTONOMOUS_POLICIES, default="full")
     parser.add_argument(
         "--negative-realization",
         choices=tuple(mode.value for mode in NegativeRealizationMode),
         default=NegativeRealizationMode.DROP.value,
+    )
+    parser.add_argument(
+        "--negative-fallback",
+        choices=("none", "recency"),
+        default="none",
+        help="Apply a progress-spine recency budget after certified exclusions.",
     )
     parser.add_argument("--budget-fraction", type=float, default=1.0)
     parser.add_argument("--head", type=int, default=1)

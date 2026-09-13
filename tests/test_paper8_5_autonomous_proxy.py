@@ -586,6 +586,56 @@ def test_progress_spine_v4_keeps_action_and_receipts_superseded_observation(tmp_
     }
 
 
+def test_progress_spine_v4_supports_metadata_only_protocol_stub(tmp_path):
+    commands = ("cat foo.py", "cat foo.py", "true")
+    messages = [{"role": "system", "content": "Use bash."},
+                {"role": "user", "content": "Fix foo.py."}]
+    for command, output in zip(commands, ("old " * 300, "current", "done")):
+        messages.extend((
+            {"role": "assistant", "content": f"```mswea_bash_command\n{command}\n```"},
+            {"role": "user", "content": f"<returncode>0</returncode>\n<output>{output}</output>"},
+        ))
+    common = {"return_code": 0, "output_complete": True,
+              "timed_out": False, "output_truncated": False}
+    _write_receipt(tmp_path, 0, commands[0], {
+        **common, "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+    _write_receipt(tmp_path, 1, commands[1], {
+        **common, "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+    _write_receipt(tmp_path, 2, commands[2], common)
+
+    result = transform_autonomous_payload(
+        {"model": "locked-model", "messages": messages},
+        AutonomousSelectionConfig(
+            policy="task_aware_progress_spine_v4",
+            negative_realization=NegativeRealizationMode.PROTOCOL_STUB,
+            expected_model="locked-model", protected_head_turns=0,
+            protected_tail_turns=1,
+        ),
+        instrumentation_root=tmp_path,
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "[PRA memory]" not in visible
+    assert "<returncode>0</returncode>\n<output></output>" in visible
+    assert result.trace["receipt_count"] == 1
+
+
+def test_head_tail_recency_uses_retention_floor_without_dag_rules():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="head_tail_recency", budget_fraction=.6,
+            protected_head_turns=1, protected_tail_turns=1,
+            expected_model="locked-model", require_exact_sidecars=False,
+        ),
+    )
+    assert result.trace["budget_interpretation"] == "retention_floor_round_up"
+    assert result.trace["excluded_causal_group_count"] == 0
+    assert result.trace["selected_tokens"] >= result.trace["requested_budget_tokens"]
+
+
 def test_sidecar_sequence_mismatch_fails_closed(tmp_path):
     payload = _payload()
     for step, command in enumerate(("cat a.py", "cat WRONG.py", "cat c.py", "cat d.py")):
@@ -809,6 +859,7 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
             "excluded_tokens": 10,
             "budget_satisfied": True,
             "upstream_status": 200,
+            "reported_completion_tokens": 7,
         })
     trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     summary = summarize_trace(trace)
@@ -819,3 +870,6 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
     }
     assert summary["reacquisition_events"] == 1
     assert summary["cumulative_logical_retention_fraction"] == pytest.approx(0.9)
+    assert summary["reported_usage_coverage_calls"] == 5
+    assert summary["cumulative_reported_completion_tokens"] == 35
+    assert summary["cumulative_materialized_plus_reported_completion_tokens"] == 435

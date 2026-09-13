@@ -306,3 +306,34 @@ token saving. Its adaptive decision table prevents dominated or sharply
 degrading whole-group heuristics from entering combinations or wider task
 cohorts. Controls and mechanism-only arms remain visible without being
 mislabelled as profile candidates.
+
+### Locked five-task autonomous curve
+
+The first task-quality campaign is declared in
+`configs/autonomous_long5_curve.json`. Its benchmark card locks the five
+longest tasks from the Easy-14 baseline-success stratum before any treatment
+outcomes are observed. It runs two FULL controls per task, then DAG-only,
+head/tail recency, and DAG-plus-progress-spine recency at requested 90% and 80%
+retention. Metadata-only protocol stubs are used for certified exclusions.
+
+Run or resume one machine's task partition with:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.run_autonomous_curve_campaign \
+  --spec experiments/paper8_5_agent_memory/configs/autonomous_long5_curve.json \
+  --output /results/paper85-autonomous-long5 \
+  --upstream-base-url http://127.0.0.1:11434/v1 \
+  --tokenizer /exact/tokenizer/snapshot \
+  --docker-executable /usr/local/bin/docker \
+  --task-index 1 --task-index 2 --reduce
+```
+
+The campaign is resumable and arm-major after its controls. It stops an arm
+after two official failures, after sub-2% mean gross saving on two tasks, or
+after resolution falls below 80% on at least three tasks. Failed candidates
+are charged at least their paired FULL input workload in the failure-aware
+efficiency coordinate, so early termination cannot appear as a saving. The
+runner writes a reducer-ready `tradeoff_spec.json`; `--reduce` emits accuracy
+versus within-run, paired end-to-end, and failure-aware token-saving curves,
+plus tool-call and first-divergence diagnostics. Endpoint-reported completion
+tokens are included only when every call has usage coverage.
