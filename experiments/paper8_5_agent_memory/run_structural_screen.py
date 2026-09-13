@@ -32,9 +32,11 @@ STRUCTURAL_POLICIES = (
     "middle_none",
     "middle_recency",
     "progress_spine",
+    "progress_spine_recency",
     "middle_lexical",
     "spine_plus_lexical",
     "dag_certified_exclusion",
+    "dag_certified_progress_spine",
     "dag_certified_plus_lexical",
 )
 
@@ -92,6 +94,17 @@ def _policy_selectors(head: int, tail: int, *, round_up: bool = False):
         error_turns=1,
         round_up_to_budget=round_up,
     ))
+    progress_recency = HeadMiddleTailSelector(HeadMiddleTailConfig(
+        head_turns=head, tail_turns=tail,
+        middle_strategy=MiddleSelectionStrategy.RECENCY,
+        source_turns=1,
+        mutation_turns=1,
+        verification_turns=1,
+        progress_turns=1,
+        error_turns=1,
+        round_up_to_budget=round_up,
+    ))
+    yield "progress_spine_recency", progress_recency
     yield "middle_lexical", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
         middle_strategy=MiddleSelectionStrategy.LEXICAL,
@@ -110,6 +123,9 @@ def _policy_selectors(head: int, tail: int, *, round_up: bool = False):
     yield "spine_plus_lexical", hybrid
     yield "dag_certified_exclusion", DagCertifiedExclusionSelector(
         protected_head_turns=head, protected_tail_turns=tail,
+    )
+    yield "dag_certified_progress_spine", DagCertifiedExclusionSelector(
+        progress_recency, protected_head_turns=head, protected_tail_turns=tail,
     )
     yield "dag_certified_plus_lexical", DagCertifiedExclusionSelector(
         hybrid, protected_head_turns=head, protected_tail_turns=tail,

@@ -41,7 +41,10 @@ from experiments.paper8_5_agent_memory.observation_instrumentation import (
 from experiments.paper8_5_agent_memory.export_review_history import (
     export_trajectory,
 )
-from experiments.paper8_5_agent_memory.run_structural_screen import structural_screen
+from experiments.paper8_5_agent_memory.run_structural_screen import (
+    STRUCTURAL_POLICIES,
+    structural_screen,
+)
 from experiments.paper8_5_agent_memory.run_negative_heuristic_screen import (
     DEFAULT_POLICIES,
     negative_structural_screen,
@@ -1276,8 +1279,8 @@ def test_structural_screen_aggregates_without_claiming_task_quality(tmp_path):
         decision_suffixes=(1, 2),
     )
     assert result["evidence_class"] == "structural_only_not_task_quality"
-    assert result["decision_row_count"] == 14
-    assert len(result["summary_rows"]) == 7
+    assert result["decision_row_count"] == 2 * len(STRUCTURAL_POLICIES)
+    assert len(result["summary_rows"]) == len(STRUCTURAL_POLICIES)
     assert {row["decision_suffix_start"] for row in result["suffix_summary_rows"]} == {
         1, 2
     }
