@@ -814,7 +814,9 @@ def _execute_chunks(
                 except subprocess.TimeoutExpired:
                     _write_empty_predictions(predictions, chunk_ids, args.served_model)
                     timed_out = True
-            _raise_on_agent_infrastructure_error(chunk_dir, chunk_ids)
+            context_exhaustion_ids = _raise_on_agent_infrastructure_error(
+                chunk_dir, chunk_ids,
+            )
             if not predictions.is_file():
                 raise RuntimeError(f"mini-swe-agent did not produce {predictions}")
             if timed_out:
@@ -840,6 +842,7 @@ def _execute_chunks(
             chunk_result = _normalize_report(raw_report, chunk_ids)
             chunk_result["grader_wall_time_s"] = grader_wall_time_s
             chunk_result["agent_timeout_ids"] = chunk_ids if timed_out else []
+            chunk_result["agent_context_exhaustion_ids"] = context_exhaustion_ids
             if receipt.get("execution_fingerprint"):
                 chunk_result["execution_fingerprint"] = receipt["execution_fingerprint"]
             _write_json(report_receipt, chunk_result)
@@ -1119,25 +1122,47 @@ def _cleanup_owned_containers(process_output: str) -> list[str]:
 
 def _raise_on_agent_infrastructure_error(
     chunk_dir: Path, instance_ids: Sequence[str],
-) -> None:
+) -> list[str]:
     """Reject mini-swe-agent's zero-exit empty-patch normalization of run errors.
 
     The benchmark command can return success after logging an exception for an
     instance and emitting an empty patch.  Such rows are infrastructure/model
     execution failures, not legitimate unsuccessful solutions, and must not be
-    passed to the official grader as scientific observations.
+    passed to the official grader as scientific observations.  Exhausting a
+    frozen model context after an autonomous trajectory is instead a bounded
+    task outcome, analogous to the existing step/time limits: preserve the
+    empty submission, label it explicitly, and let the official grader score
+    it.
     """
 
     log = chunk_dir / "minisweagent.log"
     if not log.is_file():
-        return
+        return []
     text = log.read_text(encoding="utf-8", errors="replace")
     failed = [
         instance_id for instance_id in instance_ids
         if f"Error processing instance {instance_id}:" in text
     ]
     if not failed:
-        return
+        return []
+    context_exhausted = [
+        instance_id for instance_id in failed
+        if re.search(
+            rf"Error processing instance {re.escape(instance_id)}: .*"
+            r"ContextWindowExceededError",
+            text,
+        )
+    ]
+    if context_exhausted == failed:
+        _write_json(chunk_dir / "agent_context_exhaustion.json", {
+            "schema_version": 1,
+            "classification": "bounded_context_exhaustion",
+            "instance_ids": context_exhausted,
+            "source_log": str(log),
+            "admitted_as_benchmark_result": True,
+            "normalization": "empty patch submitted to official grader",
+        })
+        return context_exhausted
     receipt = {
         "schema_version": 1,
         "classification": "agent_execution_failure",

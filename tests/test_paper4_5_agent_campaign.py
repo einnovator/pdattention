@@ -2906,7 +2906,33 @@ def test_agent_execution_failure_gate_ignores_clean_log(tmp_path: Path) -> None:
         "INFO - Instance django__django-15277 completed\n", encoding="utf-8"
     )
 
-    _raise_on_agent_infrastructure_error(chunk, ["django__django-15277"])
+    assert _raise_on_agent_infrastructure_error(
+        chunk, ["django__django-15277"]
+    ) == []
+    assert not (chunk / "infrastructure_failure.json").exists()
+
+
+def test_agent_context_exhaustion_is_admitted_as_bounded_failure(
+    tmp_path: Path,
+) -> None:
+    chunk = tmp_path / "chunk_00"
+    chunk.mkdir()
+    (chunk / "minisweagent.log").write_text(
+        "ERROR - Error processing instance pytest-dev__pytest-7982: "
+        "litellm.ContextWindowExceededError: prompt contains 8234 input tokens\n",
+        encoding="utf-8",
+    )
+
+    exhausted = _raise_on_agent_infrastructure_error(
+        chunk, ["pytest-dev__pytest-7982"]
+    )
+
+    assert exhausted == ["pytest-dev__pytest-7982"]
+    receipt = json.loads(
+        (chunk / "agent_context_exhaustion.json").read_text(encoding="utf-8")
+    )
+    assert receipt["classification"] == "bounded_context_exhaustion"
+    assert receipt["admitted_as_benchmark_result"] is True
     assert not (chunk / "infrastructure_failure.json").exists()
 
 
