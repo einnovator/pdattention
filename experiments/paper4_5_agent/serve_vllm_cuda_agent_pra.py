@@ -146,6 +146,16 @@ def main() -> None:
         default=0.0,
         help="GiB of model weights to offload to CPU through vLLM.",
     )
+    parser.add_argument(
+        "--kv-transfer-buffer-bytes",
+        type=int,
+        default=1_000_000_000,
+        help=(
+            "CUDA bytes reserved by vLLM's KV-transfer connector. Reduce this "
+            "for a bounded single-session context when the default reservation "
+            "would crowd out the ordinary vLLM block cache."
+        ),
+    )
     parser.add_argument("--storage", default=".pra/vllm-cuda-agent")
     args = parser.parse_args()
     served_model = args.served_model or args.model
@@ -171,6 +181,7 @@ def main() -> None:
             "kv_connector": "PRASparseConnector",
             "kv_connector_module_path": "pra_vllm.cuda_sparse_connector",
             "kv_role": "kv_both",
+            "kv_buffer_size": args.kv_transfer_buffer_bytes,
             "kv_connector_extra_config": {
                 "storage_path": str(Path(args.storage).resolve()),
                 "scheduler_page_aliases": True,
