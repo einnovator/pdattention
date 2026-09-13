@@ -1270,6 +1270,11 @@ also fixes a 1,024-token completion ceiling.  The campaign runner now rejects
 an absent or non-positive ceiling before launching: an uncapped response can
 run away, altering both agent behavior and end-to-end token cost rather than
 constituting a comparable policy observation.
+This guard was added after an initial long-five launch omitted the ceiling:
+four completed controls from that launch and a third-task response that ran
+past 10,774 generated tokens are quarantined in full and contribute no paper
+outcome.  The replacement campaign has a new identity and reruns every
+control under the corrected ceiling.
 
 The primary ordinate is official task resolution.  The abscissae separately
 report within-run materialized-history saving, paired end-to-end input-token
