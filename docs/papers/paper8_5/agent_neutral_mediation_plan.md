@@ -44,6 +44,9 @@ ordinary-text harness, embedded mediation, and external fallback. Therefore:
 - changing an engine requires 100% parity and physical-reuse qualification;
 - changing a policy, model, agent, task, tokenizer, or model-visible receipt
   requires new quality evaluation;
+- changing only mediation placement while preserving the plan digest and
+  serialized model input requires conformance testing, not a new task-quality
+  campaign;
 - shadow mode may collect candidate decisions without altering model input;
 - active mode is enabled only after the corresponding frozen quality gate.
 
@@ -69,6 +72,20 @@ change.
 6. Promote result compaction and tool disclosure from shadow independently.
    Each feature has a separate plan component and digest so a feature change
    does not silently contaminate an earlier policy arm.
+
+Selection evidence (rule, resource, version, completeness, and witness IDs)
+stays in request/plan metadata and is not counted as prompt text. When a chat
+protocol requires an observation to remain paired with its action, active
+compaction emits a minimal role-valid protocol stub. A richer semantic receipt
+is a separate model-visible intervention and must not be substituted into a
+previously qualified arm.
+
+Automatic history planning is implemented over portable effect metadata.
+Automatic multi-tool disclosure is deliberately still shadow-only: the frozen
+plan can carry selected tool names, but graph-root selection and schema
+dependency closure require a separate qualification corpus. This omission is
+irrelevant to mini-swe-agent's one-Bash-tool study and will be exercised when
+transferring to a multi-tool agent.
 
 ## Acceptance gates
 

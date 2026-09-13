@@ -135,9 +135,23 @@ def _covers(newer: ResourceAccess, older: ResourceAccess) -> bool:
     )
 
 
-def _receipt(rule: str, state: _TurnState, resources: Iterable[str]) -> str:
+def _receipt(
+    rule: str,
+    state: _TurnState,
+    resources: Iterable[str],
+    *,
+    presentation: str,
+) -> str:
     named = ", ".join(sorted(set(resources))) or "none"
-    code = state.observations[-1].return_code if state.observations else "unknown"
+    code = state.observations[-1].return_code if state.observations else None
+    code = code if code is not None else "unknown"
+    if presentation == "metadata_only":
+        return f"<returncode>{code}</returncode>\n<output></output>"
+    if presentation != "semantic_receipt":
+        raise ValueError(
+            "history_selection.options.receipt_presentation must be "
+            "metadata_only or semantic_receipt"
+        )
     fact = {
         "H1": f"earlier discovery was consumed; resources: {named}",
         "H2A": f"mutation action retained; current read confirms: {named}",
@@ -178,12 +192,13 @@ class PortableStateAuthorityPlanner:
             )
         replacements: dict[str, str] = {}
         decisions: list[dict[str, Any]] = []
+        presentation = str(config.options.get("receipt_presentation", "metadata_only"))
 
         def install(state: _TurnState, rule: str, resources: Iterable[str]) -> None:
             if state.turn.causal_group_id in protected or len(state.observations) != 1:
                 return
             observation = state.observations[0]
-            candidate = _receipt(rule, state, resources)
+            candidate = _receipt(rule, state, resources, presentation=presentation)
             source_tokens = self.count_tokens(observation.content)
             receipt_tokens = self.count_tokens(candidate)
             if receipt_tokens >= source_tokens:
@@ -335,6 +350,7 @@ class PortableStateAuthorityPlanner:
                     materialized_tokens / full_tokens if full_tokens else 1.0
                 ),
                 "receipt_decisions": decisions,
+                "receipt_presentation": presentation,
                 "dropped_causal_group_ids": dropped_groups,
                 "unknown_effect_policy": config.unknown_effect,
             },

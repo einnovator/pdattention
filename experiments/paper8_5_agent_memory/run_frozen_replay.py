@@ -400,11 +400,15 @@ def replay(
             "--negative-realization observation_receipt with an H1/H2 policy"
         )
     if (
-        negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT
+        negative_realization in {
+            NegativeRealizationMode.OBSERVATION_RECEIPT,
+            NegativeRealizationMode.PROTOCOL_STUB,
+        }
         and policy not in NEGATIVE_POLICY_RULES
     ):
         raise ValueError(
-            "observation_receipt realization requires a negative-selection policy"
+            "observation_receipt/protocol_stub realization requires a "
+            "negative-selection policy"
         )
     messages: Sequence[Mapping[str, Any]] = trajectory["messages"]
     assistant_decisions = list(enumerate((
@@ -592,12 +596,19 @@ def replay(
                 count_tokens=count_tokens,
             )
         receipt_realization = None
-        if negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT:
+        if negative_realization in {
+            NegativeRealizationMode.OBSERVATION_RECEIPT,
+            NegativeRealizationMode.PROTOCOL_STUB,
+        }:
             receipt_realization = realize_negative_receipts(
                 history,
                 plan,
                 materialized,
                 count_tokens=count_tokens,
+                include_semantic_evidence=(
+                    negative_realization
+                    == NegativeRealizationMode.OBSERVATION_RECEIPT
+                ),
             )
             materialized = receipt_realization.materialized
             plan = materialized.logical_plan
@@ -869,8 +880,8 @@ def main() -> None:
         choices=tuple(NegativeRealizationMode),
         default=NegativeRealizationMode.DROP,
         help=(
-            "drop complete negative-selection groups, or keep the original "
-            "H1/H2 action and replace only its observation with a visible receipt"
+            "drop complete groups; retain actions with a semantic observation "
+            "receipt; or retain evidence only out of band with a role-valid stub"
         ),
     )
     parser.add_argument(

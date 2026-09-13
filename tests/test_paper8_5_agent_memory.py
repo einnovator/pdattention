@@ -872,6 +872,34 @@ def test_h1_observation_receipt_keeps_action_and_replaces_only_discovery_output(
     validate_minisweagent_chat(messages)
 
 
+def test_protocol_stub_keeps_semantic_evidence_out_of_model_visible_text():
+    complete = {"output_complete": True, "timed_out": False, "output_truncated": False}
+    history = recordize_minisweagent_messages(_heuristic_messages(
+        ("cat foo.py", "old " * 100, {
+            **complete, "resource_version_fingerprints": {"foo.py": "v1"},
+        }),
+        ("cat foo.py", "new", {
+            **complete, "resource_version_fingerprints": {"foo.py": "v1"},
+        }),
+    ))
+    plan = NegativeHeuristicSelector(_negative_config(
+        NegativeRule.H3_READ_SUPERSEDED, protected_head_turns=0,
+    )).select(
+        history=history, query="fix", budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    base = materialize_plan(history, plan, ToolObservationMaterializer(), query="fix")
+
+    realized = realize_negative_receipts(
+        history, plan, base, include_semantic_evidence=False,
+    )
+    messages = serialize_materialized_messages(history, realized.materialized)
+
+    assert messages[3]["content"] == "<returncode>0</returncode>\n<output></output>"
+    assert realized.receipts[0].kind.value == "superseded_read"
+    assert realized.receipts[0].witness_record_ids
+    validate_minisweagent_chat(messages)
+
+
 def test_h2_observation_receipt_exposes_version_evidence_without_mutation_output():
     complete = {
         "output_complete": True,

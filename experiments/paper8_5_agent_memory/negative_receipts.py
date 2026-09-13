@@ -39,6 +39,7 @@ class NegativeRealizationMode(str, Enum):
 
     DROP = "drop"
     OBSERVATION_RECEIPT = "observation_receipt"
+    PROTOCOL_STUB = "protocol_stub"
 
 
 class ReceiptKind(str, Enum):
@@ -208,7 +209,14 @@ def _compact_value(value: object) -> str:
     return " ".join(str(value).split())[:240]
 
 
-def _render_receipt(payload: dict[str, object]) -> str:
+def _render_receipt(
+    payload: dict[str, object], *, include_semantic_evidence: bool = True,
+) -> str:
+    if not include_semantic_evidence:
+        # Causal/selection evidence remains in the plan trace. The model sees
+        # only the smallest valid observation envelope required by agents that
+        # encode tool results as user messages.
+        return f"<returncode>{payload['return_code']}</returncode>\n<output></output>"
     resources = tuple(str(value) for value in payload["resources"])
     versions = payload.get("post_resource_versions")
     version_map = versions if isinstance(versions, Mapping) else {}
@@ -249,6 +257,7 @@ def realize_negative_receipts(
     materialized: MaterializedMemoryPlan,
     *,
     count_tokens: TokenCounter = whitespace_tokens,
+    include_semantic_evidence: bool = True,
 ) -> NegativeReceiptRealization:
     """Replace eligible H1/H2 observations with prefix-derived receipts.
 
@@ -322,7 +331,9 @@ def realize_negative_receipts(
             observation=observation,
             kind=kind,
         )
-        content = _render_receipt(payload)
+        content = _render_receipt(
+            payload, include_semantic_evidence=include_semantic_evidence
+        )
         receipt_tokens = count_tokens(content)
         if receipt_tokens >= observation_tokens:
             abstentions.append(ReceiptAbstention(

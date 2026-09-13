@@ -16,6 +16,9 @@ pra:
         retention_fraction: 0.90
         same_span_reads_to_keep: 1
         apply_middle_budget: true
+        # Keep selection evidence out of the model-visible token stream. When
+        # a paired observation cannot be removed, emit only a role-valid stub.
+        receipt_presentation: metadata_only
     result_compaction:
       mode: shadow
       size_gate: tokenizer_exact

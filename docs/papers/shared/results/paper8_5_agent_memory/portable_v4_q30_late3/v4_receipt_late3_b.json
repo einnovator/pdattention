@@ -1,0 +1,2960 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "django__django-15277",
+  "model": "qwen3-coder:30b",
+  "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 512,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "5cb385999a13de4b32c20852821073faee4e9f532ab004a55da16a8c0d71c9d7",
+  "policy": "task_aware_progress_spine_v4",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "541c919061ee0f819dd815d1dc84d50142fda574174ddafed6f93e3abc05c3ad",
+    "model": "qwen3-coder:30b",
+    "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+    "policy": "task_aware_progress_spine_v4",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 3,
+    "min_decision": 22,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 512,
+    "timeout": 1200,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "5cb385999a13de4b32c20852821073faee4e9f532ab004a55da16a8c0d71c9d7",
+    "matched_budget_source_digest": null,
+    "negative_selection": {
+      "search_delay_turns_kf": 0,
+      "write_delay_turns_kw": 1,
+      "same_span_reads_to_keep_kr": 1,
+      "working_set_resources_kx": 4,
+      "positive_fallback": "none",
+      "h2b_allow_workspace_verification": false,
+      "realization": "observation_receipt"
+    }
+  },
+  "run_configuration_digest": "1ee7faa83390d3a66bcf8ff7d6c2f87f549a36017147fb4ae026ff0eedf2e7fd",
+  "attempted_decisions": 3,
+  "completed_decisions": 3,
+  "exact_command_decisions": 1,
+  "reference_command_decisions": 3,
+  "exact_command_rate": 0.3333333333333333,
+  "first_command_divergence": 22,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 22,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 44,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "6d23544ec21f076a38bb43bd21936e96c94a33642aa98efeaba66526d33024d6",
+      "reference_content_sha256": "a6a6083639b4baefc19b275bf1ddb3b99f2dd78094ca7624d24075837dc9bde2",
+      "generated_content_sha256": "764e24b789e7e3257943b5174c82abe04aa5ac50fa1ccf01be3a0c4fa3179d05",
+      "request_messages_sha256": "38f1da9fd6a8792c4e144c274720ee70584bad2a1763de0cfcabeab239e8038d",
+      "generated_content": "THOUGHT: Perfect! I can see that my change has been applied correctly. The CharField.__init__ method now has the conditional check:\n```python\nif self.max_length is not None:\n    self.validators.append(validators.MaxLengthValidator(self.max_length))\n```\n\nThis matches exactly what was suggested in the PR description and follows the same pattern used in BinaryField. This fix prevents the creation of an invalid MaxLengthValidator when max_length is None, which was causing the TypeError mentioned in the issue.\n\nLet me create a simple patch file to summarize my changes:\n</format_example>\n\n```mswea_bash_command\ngit diff /testbed/django/db/models/fields/__init__.py > patch.txt\n```\n</format_example>",
+      "exact_content": false,
+      "reference_command": "sed -n '2320,2330p' /testbed/django/db/models/fields/__init__.py",
+      "generated_command": "git diff /testbed/django/db/models/fields/__init__.py > patch.txt",
+      "exact_command": false,
+      "full_history_tokens": 7062,
+      "selected_logical_tokens": 7062,
+      "selected_whole_record_tokens": 7062,
+      "materialized_tokens": 6724,
+      "requested_budget_tokens": 7062,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 0.952138204474653,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 338,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "m13",
+        "m14",
+        "m15",
+        "m16",
+        "m17",
+        "m18",
+        "m19",
+        "m20",
+        "m21",
+        "m22",
+        "m23",
+        "m24",
+        "m25",
+        "m26",
+        "m27",
+        "m28",
+        "m29",
+        "m30",
+        "m31",
+        "m32",
+        "m33",
+        "m34",
+        "m35",
+        "m36",
+        "m37",
+        "m38",
+        "m39",
+        "m40",
+        "m41",
+        "m42",
+        "m43"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ],
+        [
+          "m4",
+          "full_history"
+        ],
+        [
+          "m5",
+          "full_history"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m9",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ],
+        [
+          "m12",
+          "full_history"
+        ],
+        [
+          "m13",
+          "full_history"
+        ],
+        [
+          "m14",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m15",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m16",
+          "full_history"
+        ],
+        [
+          "m17",
+          "full_history"
+        ],
+        [
+          "m18",
+          "full_history"
+        ],
+        [
+          "m19",
+          "full_history"
+        ],
+        [
+          "m20",
+          "full_history"
+        ],
+        [
+          "m21",
+          "full_history"
+        ],
+        [
+          "m22",
+          "full_history"
+        ],
+        [
+          "m23",
+          "full_history"
+        ],
+        [
+          "m24",
+          "full_history"
+        ],
+        [
+          "m25",
+          "full_history"
+        ],
+        [
+          "m26",
+          "full_history"
+        ],
+        [
+          "m27",
+          "full_history"
+        ],
+        [
+          "m28",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m29",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m30",
+          "full_history"
+        ],
+        [
+          "m31",
+          "full_history"
+        ],
+        [
+          "m32",
+          "full_history"
+        ],
+        [
+          "m33",
+          "full_history"
+        ],
+        [
+          "m34",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m35",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m36",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m37",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m38",
+          "full_history"
+        ],
+        [
+          "m39",
+          "full_history"
+        ],
+        [
+          "m40",
+          "full_history"
+        ],
+        [
+          "m41",
+          "full_history"
+        ],
+        [
+          "m42",
+          "full_history"
+        ],
+        [
+          "m43",
+          "full_history"
+        ]
+      ],
+      "negative_realization": "observation_receipt",
+      "negative_candidate_group_count": 5,
+      "negative_candidate_record_count": 10,
+      "negative_candidate_tokens": 912,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 3,
+      "receipt_source_observation_tokens": 497,
+      "receipt_tokens": 159,
+      "receipt_token_saving": 338,
+      "receipt_retained_action_tokens": 205,
+      "receipt_fail_closed_group_ids": [
+        "turn:t0006",
+        "turn:t0016"
+      ],
+      "receipt_abstained_source_observation_tokens": 41,
+      "receipt_abstained_candidate_tokens": 152,
+      "receipt_abstentions": [
+        {
+          "causal_group_id": "turn:t0006",
+          "source_record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 26,
+          "candidate_receipt_tokens": 45
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "source_record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 15,
+          "candidate_receipt_tokens": 107
+        }
+      ],
+      "model_visible_receipts": [
+        {
+          "causal_group_id": "turn:t0003",
+          "observation_record_id": "m9",
+          "source_record_ids": [
+            "m8",
+            "m9"
+          ],
+          "retained_action_record_ids": [
+            "m8"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 247,
+          "receipt_tokens": 53,
+          "observation_token_saving": 194,
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "observation_record_id": "m29",
+          "source_record_ids": [
+            "m28",
+            "m29"
+          ],
+          "retained_action_record_ids": [
+            "m28"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 135,
+          "receipt_tokens": 53,
+          "observation_token_saving": 82,
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "observation_record_id": "m37",
+          "source_record_ids": [
+            "m36",
+            "m37"
+          ],
+          "retained_action_record_ids": [
+            "m36"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 115,
+          "receipt_tokens": 53,
+          "observation_token_saving": 62,
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "causal_group_id": "turn:t0003",
+          "record_ids": [
+            "m8",
+            "m9"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0003 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m8,m9,m10,m11",
+          "excluded_tokens": 312,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0006",
+          "record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "classification": "strict_all_branch_supersession_not_certificate",
+          "reason": "every concrete discovered resource has a complete successful read/diff, followed by a non-read transition; Kf=0 completed later turns elapsed",
+          "resource_ids": [
+            "search:38f8e53e3d81",
+            "/testbed/django/db/models/expressions.py"
+          ],
+          "witness_record_ids": [
+            "m14",
+            "m15",
+            "m16",
+            "m17",
+            "m26",
+            "m27"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0006 rule=H1_ALL_BRANCHES_CONSUMED resources=search:38f8e53e3d81,/testbed/django/db/models/expressions.py witnesses=m14,m15,m16,m17,m26,m27",
+          "excluded_tokens": 94,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "record_ids": [
+            "m28",
+            "m29"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0013 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m28,m29,m32,m33",
+          "excluded_tokens": 210,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "classification": "version_guarded_supersession_not_certificate",
+          "reason": "write payload is represented by a later current-version read/diff",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m34",
+            "m35",
+            "m36",
+            "m37"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0016 rule=H2A_WRITE_CURRENT_READ resources=/testbed/django/db/models/fields/__init__.py witnesses=m34,m35,m36,m37",
+          "excluded_tokens": 116,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "record_ids": [
+            "m36",
+            "m37"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0017 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m36,m37,m42,m43",
+          "excluded_tokens": 180,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        }
+      ],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 1943,
+          "materialized_tokens": 1943,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 164,
+          "materialized_tokens": 164,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 72,
+          "materialized_tokens": 72,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 128,
+          "materialized_tokens": 128,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 47,
+          "materialized_tokens": 47,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 50,
+          "materialized_tokens": 50,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 247,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 73,
+          "materialized_tokens": 73,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 373,
+          "materialized_tokens": 373,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m12",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m13",
+          "mode": "whole_record",
+          "original_tokens": 67,
+          "materialized_tokens": 67,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m14",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m15",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m16",
+          "mode": "whole_record",
+          "original_tokens": 61,
+          "materialized_tokens": 61,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m17",
+          "mode": "whole_record",
+          "original_tokens": 37,
+          "materialized_tokens": 37,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m18",
+          "mode": "whole_record",
+          "original_tokens": 66,
+          "materialized_tokens": 66,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m19",
+          "mode": "whole_record",
+          "original_tokens": 277,
+          "materialized_tokens": 277,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m20",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m21",
+          "mode": "whole_record",
+          "original_tokens": 391,
+          "materialized_tokens": 391,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m22",
+          "mode": "whole_record",
+          "original_tokens": 183,
+          "materialized_tokens": 183,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m23",
+          "mode": "whole_record",
+          "original_tokens": 28,
+          "materialized_tokens": 28,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m24",
+          "mode": "whole_record",
+          "original_tokens": 148,
+          "materialized_tokens": 148,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m25",
+          "mode": "whole_record",
+          "original_tokens": 474,
+          "materialized_tokens": 474,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m26",
+          "mode": "whole_record",
+          "original_tokens": 154,
+          "materialized_tokens": 154,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m27",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m28",
+          "mode": "whole_record",
+          "original_tokens": 75,
+          "materialized_tokens": 75,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m29",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 135,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m30",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m31",
+          "mode": "whole_record",
+          "original_tokens": 49,
+          "materialized_tokens": 49,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m32",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m33",
+          "mode": "whole_record",
+          "original_tokens": 135,
+          "materialized_tokens": 135,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m34",
+          "mode": "whole_record",
+          "original_tokens": 101,
+          "materialized_tokens": 101,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m35",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m36",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m37",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 115,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m38",
+          "mode": "whole_record",
+          "original_tokens": 141,
+          "materialized_tokens": 141,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m39",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m40",
+          "mode": "whole_record",
+          "original_tokens": 102,
+          "materialized_tokens": 102,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m41",
+          "mode": "whole_record",
+          "original_tokens": 105,
+          "materialized_tokens": 105,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m42",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m43",
+          "mode": "whole_record",
+          "original_tokens": 133,
+          "materialized_tokens": 133,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "43ce7a5a45b173daf5509a7e0baff8479c40d3e3ecfcf7da57ba62eba54a0793",
+      "usage": {
+        "prompt_tokens": 6947,
+        "prompt_tokens_details": {
+          "cached_tokens": 6946
+        },
+        "completion_tokens": 152,
+        "total_tokens": 7099
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-892",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 699,
+        "message_content_sha256": "764e24b789e7e3257943b5174c82abe04aa5ac50fa1ccf01be3a0c4fa3179d05",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 6947,
+          "prompt_tokens_details": {
+            "cached_tokens": 6946
+          },
+          "completion_tokens": 152,
+          "total_tokens": 7099
+        }
+      }
+    },
+    {
+      "decision": 23,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 46,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "b2a40022d40fceedb6a7c396955581ab877f24a638538bde18a57f9be8309775",
+      "reference_content_sha256": "467f60ae4e162057e2db1e3215b9a3b9196568123f5159adc4ee57ed2f176f5d",
+      "generated_content_sha256": "2fdb1eea4d50c5d9f3000381b081c00b0a3ad464dff3971ec6eb6267a106fb04",
+      "request_messages_sha256": "0e3137c88350e50a038b45f821d98608956fd8ed76d198b0c2e094e8e4ee1b50",
+      "generated_content": "THOUGHT: Perfect! I can see that both CharField and BinaryField now have the same correct pattern:\n1. CharField (after my fix): `if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))`\n2. BinaryField (already correct): `if self.max_length is not None: self.validators.append(validators.MaxLengthValidator(self.max_length))`\n\nThis confirms that my fix follows the exact pattern suggested in the PR description and matches the existing precedent in the codebase.\n\nLet me create a simple patch file to summarize what I've changed:\n</format_example>\n\n```mswea_bash_command\ngit diff /testbed/django/db/models/fields/__init__.py > patch.txt\n```\n</format_example>",
+      "exact_content": false,
+      "reference_command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat /testbed/django/db/models/fields/__init__.py | grep -A 3 -B 3 \"if self.max_length is not None.*validators.MaxLengthValidator\"",
+      "generated_command": "git diff /testbed/django/db/models/fields/__init__.py > patch.txt",
+      "exact_command": false,
+      "full_history_tokens": 7246,
+      "selected_logical_tokens": 7246,
+      "selected_whole_record_tokens": 7246,
+      "materialized_tokens": 6908,
+      "requested_budget_tokens": 7246,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 0.9533535743858681,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 338,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "m13",
+        "m14",
+        "m15",
+        "m16",
+        "m17",
+        "m18",
+        "m19",
+        "m20",
+        "m21",
+        "m22",
+        "m23",
+        "m24",
+        "m25",
+        "m26",
+        "m27",
+        "m28",
+        "m29",
+        "m30",
+        "m31",
+        "m32",
+        "m33",
+        "m34",
+        "m35",
+        "m36",
+        "m37",
+        "m38",
+        "m39",
+        "m40",
+        "m41",
+        "m42",
+        "m43",
+        "m44",
+        "m45"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ],
+        [
+          "m4",
+          "full_history"
+        ],
+        [
+          "m5",
+          "full_history"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m9",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ],
+        [
+          "m12",
+          "full_history"
+        ],
+        [
+          "m13",
+          "full_history"
+        ],
+        [
+          "m14",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m15",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m16",
+          "full_history"
+        ],
+        [
+          "m17",
+          "full_history"
+        ],
+        [
+          "m18",
+          "full_history"
+        ],
+        [
+          "m19",
+          "full_history"
+        ],
+        [
+          "m20",
+          "full_history"
+        ],
+        [
+          "m21",
+          "full_history"
+        ],
+        [
+          "m22",
+          "full_history"
+        ],
+        [
+          "m23",
+          "full_history"
+        ],
+        [
+          "m24",
+          "full_history"
+        ],
+        [
+          "m25",
+          "full_history"
+        ],
+        [
+          "m26",
+          "full_history"
+        ],
+        [
+          "m27",
+          "full_history"
+        ],
+        [
+          "m28",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m29",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m30",
+          "full_history"
+        ],
+        [
+          "m31",
+          "full_history"
+        ],
+        [
+          "m32",
+          "full_history"
+        ],
+        [
+          "m33",
+          "full_history"
+        ],
+        [
+          "m34",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m35",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m36",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m37",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m38",
+          "full_history"
+        ],
+        [
+          "m39",
+          "full_history"
+        ],
+        [
+          "m40",
+          "full_history"
+        ],
+        [
+          "m41",
+          "full_history"
+        ],
+        [
+          "m42",
+          "full_history"
+        ],
+        [
+          "m43",
+          "full_history"
+        ],
+        [
+          "m44",
+          "full_history"
+        ],
+        [
+          "m45",
+          "full_history"
+        ]
+      ],
+      "negative_realization": "observation_receipt",
+      "negative_candidate_group_count": 5,
+      "negative_candidate_record_count": 10,
+      "negative_candidate_tokens": 912,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 3,
+      "receipt_source_observation_tokens": 497,
+      "receipt_tokens": 159,
+      "receipt_token_saving": 338,
+      "receipt_retained_action_tokens": 205,
+      "receipt_fail_closed_group_ids": [
+        "turn:t0006",
+        "turn:t0016"
+      ],
+      "receipt_abstained_source_observation_tokens": 41,
+      "receipt_abstained_candidate_tokens": 152,
+      "receipt_abstentions": [
+        {
+          "causal_group_id": "turn:t0006",
+          "source_record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 26,
+          "candidate_receipt_tokens": 45
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "source_record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 15,
+          "candidate_receipt_tokens": 107
+        }
+      ],
+      "model_visible_receipts": [
+        {
+          "causal_group_id": "turn:t0003",
+          "observation_record_id": "m9",
+          "source_record_ids": [
+            "m8",
+            "m9"
+          ],
+          "retained_action_record_ids": [
+            "m8"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 247,
+          "receipt_tokens": 53,
+          "observation_token_saving": 194,
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "observation_record_id": "m29",
+          "source_record_ids": [
+            "m28",
+            "m29"
+          ],
+          "retained_action_record_ids": [
+            "m28"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 135,
+          "receipt_tokens": 53,
+          "observation_token_saving": 82,
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "observation_record_id": "m37",
+          "source_record_ids": [
+            "m36",
+            "m37"
+          ],
+          "retained_action_record_ids": [
+            "m36"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 115,
+          "receipt_tokens": 53,
+          "observation_token_saving": 62,
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "causal_group_id": "turn:t0003",
+          "record_ids": [
+            "m8",
+            "m9"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0003 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m8,m9,m10,m11",
+          "excluded_tokens": 312,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0006",
+          "record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "classification": "strict_all_branch_supersession_not_certificate",
+          "reason": "every concrete discovered resource has a complete successful read/diff, followed by a non-read transition; Kf=0 completed later turns elapsed",
+          "resource_ids": [
+            "search:38f8e53e3d81",
+            "/testbed/django/db/models/expressions.py"
+          ],
+          "witness_record_ids": [
+            "m14",
+            "m15",
+            "m16",
+            "m17",
+            "m26",
+            "m27"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0006 rule=H1_ALL_BRANCHES_CONSUMED resources=search:38f8e53e3d81,/testbed/django/db/models/expressions.py witnesses=m14,m15,m16,m17,m26,m27",
+          "excluded_tokens": 94,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "record_ids": [
+            "m28",
+            "m29"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0013 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m28,m29,m32,m33",
+          "excluded_tokens": 210,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "classification": "version_guarded_supersession_not_certificate",
+          "reason": "write payload is represented by a later current-version read/diff",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m34",
+            "m35",
+            "m36",
+            "m37"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0016 rule=H2A_WRITE_CURRENT_READ resources=/testbed/django/db/models/fields/__init__.py witnesses=m34,m35,m36,m37",
+          "excluded_tokens": 116,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "record_ids": [
+            "m36",
+            "m37"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0017 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m36,m37,m42,m43",
+          "excluded_tokens": 180,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        }
+      ],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 1943,
+          "materialized_tokens": 1943,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 164,
+          "materialized_tokens": 164,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 72,
+          "materialized_tokens": 72,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 128,
+          "materialized_tokens": 128,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 47,
+          "materialized_tokens": 47,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 50,
+          "materialized_tokens": 50,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 247,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 73,
+          "materialized_tokens": 73,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 373,
+          "materialized_tokens": 373,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m12",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m13",
+          "mode": "whole_record",
+          "original_tokens": 67,
+          "materialized_tokens": 67,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m14",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m15",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m16",
+          "mode": "whole_record",
+          "original_tokens": 61,
+          "materialized_tokens": 61,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m17",
+          "mode": "whole_record",
+          "original_tokens": 37,
+          "materialized_tokens": 37,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m18",
+          "mode": "whole_record",
+          "original_tokens": 66,
+          "materialized_tokens": 66,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m19",
+          "mode": "whole_record",
+          "original_tokens": 277,
+          "materialized_tokens": 277,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m20",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m21",
+          "mode": "whole_record",
+          "original_tokens": 391,
+          "materialized_tokens": 391,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m22",
+          "mode": "whole_record",
+          "original_tokens": 183,
+          "materialized_tokens": 183,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m23",
+          "mode": "whole_record",
+          "original_tokens": 28,
+          "materialized_tokens": 28,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m24",
+          "mode": "whole_record",
+          "original_tokens": 148,
+          "materialized_tokens": 148,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m25",
+          "mode": "whole_record",
+          "original_tokens": 474,
+          "materialized_tokens": 474,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m26",
+          "mode": "whole_record",
+          "original_tokens": 154,
+          "materialized_tokens": 154,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m27",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m28",
+          "mode": "whole_record",
+          "original_tokens": 75,
+          "materialized_tokens": 75,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m29",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 135,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m30",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m31",
+          "mode": "whole_record",
+          "original_tokens": 49,
+          "materialized_tokens": 49,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m32",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m33",
+          "mode": "whole_record",
+          "original_tokens": 135,
+          "materialized_tokens": 135,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m34",
+          "mode": "whole_record",
+          "original_tokens": 101,
+          "materialized_tokens": 101,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m35",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m36",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m37",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 115,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m38",
+          "mode": "whole_record",
+          "original_tokens": 141,
+          "materialized_tokens": 141,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m39",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m40",
+          "mode": "whole_record",
+          "original_tokens": 102,
+          "materialized_tokens": 102,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m41",
+          "mode": "whole_record",
+          "original_tokens": 105,
+          "materialized_tokens": 105,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m42",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m43",
+          "mode": "whole_record",
+          "original_tokens": 133,
+          "materialized_tokens": 133,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m44",
+          "mode": "whole_record",
+          "original_tokens": 82,
+          "materialized_tokens": 82,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m45",
+          "mode": "whole_record",
+          "original_tokens": 102,
+          "materialized_tokens": 102,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "bb16e22268612d9c27dca0f07a367361f3b8de4a17d377f1441d30a9bbe59ab8",
+      "usage": {
+        "prompt_tokens": 7141,
+        "prompt_tokens_details": {
+          "cached_tokens": 6951
+        },
+        "completion_tokens": 158,
+        "total_tokens": 7299
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-581",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 704,
+        "message_content_sha256": "2fdb1eea4d50c5d9f3000381b081c00b0a3ad464dff3971ec6eb6267a106fb04",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 7141,
+          "prompt_tokens_details": {
+            "cached_tokens": 6951
+          },
+          "completion_tokens": 158,
+          "total_tokens": 7299
+        }
+      }
+    },
+    {
+      "decision": 24,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 48,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "10a88c79996796ea5e21861586b410dfac92ce606a501130cbc4ad8de119fe87",
+      "reference_content_sha256": "10a88c79996796ea5e21861586b410dfac92ce606a501130cbc4ad8de119fe87",
+      "generated_content_sha256": "cd0f24f96bc71d8e217a906cb35a33debe0ff9cf7aa3d2a6958c81f93107e5b4",
+      "request_messages_sha256": "e9e9277958e6a4c8b96ecce909d7a0147a806e091bc0d588cf4c9d267f2a42df",
+      "generated_content": "THOUGHT: The environment is missing dependencies but that's expected. The important thing is that I've successfully applied the fix to the source code file. Let me create a patch file to summarize my changes.\n</format_example>\n\n```mswea_bash_command\ngit diff /testbed/django/db/models/fields/__init__.py > patch.txt\n```\n</format_example>",
+      "exact_content": false,
+      "reference_command": "git diff /testbed/django/db/models/fields/__init__.py > patch.txt",
+      "generated_command": "git diff /testbed/django/db/models/fields/__init__.py > patch.txt",
+      "exact_command": true,
+      "full_history_tokens": 7599,
+      "selected_logical_tokens": 7599,
+      "selected_whole_record_tokens": 7599,
+      "materialized_tokens": 7261,
+      "requested_budget_tokens": 7599,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 0.9555204632188445,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 338,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "m13",
+        "m14",
+        "m15",
+        "m16",
+        "m17",
+        "m18",
+        "m19",
+        "m20",
+        "m21",
+        "m22",
+        "m23",
+        "m24",
+        "m25",
+        "m26",
+        "m27",
+        "m28",
+        "m29",
+        "m30",
+        "m31",
+        "m32",
+        "m33",
+        "m34",
+        "m35",
+        "m36",
+        "m37",
+        "m38",
+        "m39",
+        "m40",
+        "m41",
+        "m42",
+        "m43",
+        "m44",
+        "m45",
+        "m46",
+        "m47"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ],
+        [
+          "m4",
+          "full_history"
+        ],
+        [
+          "m5",
+          "full_history"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m9",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ],
+        [
+          "m12",
+          "full_history"
+        ],
+        [
+          "m13",
+          "full_history"
+        ],
+        [
+          "m14",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m15",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m16",
+          "full_history"
+        ],
+        [
+          "m17",
+          "full_history"
+        ],
+        [
+          "m18",
+          "full_history"
+        ],
+        [
+          "m19",
+          "full_history"
+        ],
+        [
+          "m20",
+          "full_history"
+        ],
+        [
+          "m21",
+          "full_history"
+        ],
+        [
+          "m22",
+          "full_history"
+        ],
+        [
+          "m23",
+          "full_history"
+        ],
+        [
+          "m24",
+          "full_history"
+        ],
+        [
+          "m25",
+          "full_history"
+        ],
+        [
+          "m26",
+          "full_history"
+        ],
+        [
+          "m27",
+          "full_history"
+        ],
+        [
+          "m28",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m29",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m30",
+          "full_history"
+        ],
+        [
+          "m31",
+          "full_history"
+        ],
+        [
+          "m32",
+          "full_history"
+        ],
+        [
+          "m33",
+          "full_history"
+        ],
+        [
+          "m34",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m35",
+          "receipt_fail_closed:not_smaller_than_source_observation"
+        ],
+        [
+          "m36",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m37",
+          "model_visible_superseded_read_receipt:H3_READ_SUPERSEDED"
+        ],
+        [
+          "m38",
+          "full_history"
+        ],
+        [
+          "m39",
+          "full_history"
+        ],
+        [
+          "m40",
+          "full_history"
+        ],
+        [
+          "m41",
+          "full_history"
+        ],
+        [
+          "m42",
+          "full_history"
+        ],
+        [
+          "m43",
+          "full_history"
+        ],
+        [
+          "m44",
+          "full_history"
+        ],
+        [
+          "m45",
+          "full_history"
+        ],
+        [
+          "m46",
+          "full_history"
+        ],
+        [
+          "m47",
+          "full_history"
+        ]
+      ],
+      "negative_realization": "observation_receipt",
+      "negative_candidate_group_count": 5,
+      "negative_candidate_record_count": 10,
+      "negative_candidate_tokens": 912,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 3,
+      "receipt_source_observation_tokens": 497,
+      "receipt_tokens": 159,
+      "receipt_token_saving": 338,
+      "receipt_retained_action_tokens": 205,
+      "receipt_fail_closed_group_ids": [
+        "turn:t0006",
+        "turn:t0016"
+      ],
+      "receipt_abstained_source_observation_tokens": 41,
+      "receipt_abstained_candidate_tokens": 152,
+      "receipt_abstentions": [
+        {
+          "causal_group_id": "turn:t0006",
+          "source_record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 26,
+          "candidate_receipt_tokens": 45
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "source_record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "reason": "not_smaller_than_source_observation",
+          "source_observation_tokens": 15,
+          "candidate_receipt_tokens": 107
+        }
+      ],
+      "model_visible_receipts": [
+        {
+          "causal_group_id": "turn:t0003",
+          "observation_record_id": "m9",
+          "source_record_ids": [
+            "m8",
+            "m9"
+          ],
+          "retained_action_record_ids": [
+            "m8"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 247,
+          "receipt_tokens": 53,
+          "observation_token_saving": 194,
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "observation_record_id": "m29",
+          "source_record_ids": [
+            "m28",
+            "m29"
+          ],
+          "retained_action_record_ids": [
+            "m28"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 135,
+          "receipt_tokens": 53,
+          "observation_token_saving": 82,
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ]
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "observation_record_id": "m37",
+          "source_record_ids": [
+            "m36",
+            "m37"
+          ],
+          "retained_action_record_ids": [
+            "m36"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "kind": "superseded_read",
+          "content_sha256": "7c9ab3e1b10665d7c89a2595d2389f1c8ee96aabbba4b8d1337a8ac378cbebe6",
+          "source_observation_tokens": 115,
+          "receipt_tokens": 53,
+          "observation_token_saving": 62,
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "causal_group_id": "turn:t0003",
+          "record_ids": [
+            "m8",
+            "m9"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m8",
+            "m9",
+            "m10",
+            "m11"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0003 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m8,m9,m10,m11",
+          "excluded_tokens": 312,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0006",
+          "record_ids": [
+            "m14",
+            "m15"
+          ],
+          "rule_id": "H1_ALL_BRANCHES_CONSUMED",
+          "classification": "strict_all_branch_supersession_not_certificate",
+          "reason": "every concrete discovered resource has a complete successful read/diff, followed by a non-read transition; Kf=0 completed later turns elapsed",
+          "resource_ids": [
+            "search:38f8e53e3d81",
+            "/testbed/django/db/models/expressions.py"
+          ],
+          "witness_record_ids": [
+            "m14",
+            "m15",
+            "m16",
+            "m17",
+            "m26",
+            "m27"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0006 rule=H1_ALL_BRANCHES_CONSUMED resources=search:38f8e53e3d81,/testbed/django/db/models/expressions.py witnesses=m14,m15,m16,m17,m26,m27",
+          "excluded_tokens": 94,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0013",
+          "record_ids": [
+            "m28",
+            "m29"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m28",
+            "m29",
+            "m32",
+            "m33"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0013 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m28,m29,m32,m33",
+          "excluded_tokens": 210,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        },
+        {
+          "causal_group_id": "turn:t0016",
+          "record_ids": [
+            "m34",
+            "m35"
+          ],
+          "rule_id": "H2A_WRITE_CURRENT_READ",
+          "classification": "version_guarded_supersession_not_certificate",
+          "reason": "write payload is represented by a later current-version read/diff",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m34",
+            "m35",
+            "m36",
+            "m37"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0016 rule=H2A_WRITE_CURRENT_READ resources=/testbed/django/db/models/fields/__init__.py witnesses=m34,m35,m36,m37",
+          "excluded_tokens": 116,
+          "tombstone_in_model_request": false,
+          "realization": "fail_closed:not_smaller_than_source_observation"
+        },
+        {
+          "causal_group_id": "turn:t0017",
+          "record_ids": [
+            "m36",
+            "m37"
+          ],
+          "rule_id": "H3_READ_SUPERSEDED",
+          "classification": "version_span_supersession_heuristic",
+          "reason": "each observed resource/version/span is covered by at least Kr=1 newer reads",
+          "resource_ids": [
+            "/testbed/django/db/models/fields/__init__.py"
+          ],
+          "witness_record_ids": [
+            "m36",
+            "m37",
+            "m42",
+            "m43"
+          ],
+          "inactive_tombstone": "INACTIVE group=turn:t0017 rule=H3_READ_SUPERSEDED resources=/testbed/django/db/models/fields/__init__.py witnesses=m36,m37,m42,m43",
+          "excluded_tokens": 180,
+          "tombstone_in_model_request": false,
+          "realization": "observation_receipt"
+        }
+      ],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 1943,
+          "materialized_tokens": 1943,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 164,
+          "materialized_tokens": 164,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 72,
+          "materialized_tokens": 72,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 128,
+          "materialized_tokens": 128,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 47,
+          "materialized_tokens": 47,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 50,
+          "materialized_tokens": 50,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 247,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 73,
+          "materialized_tokens": 73,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 373,
+          "materialized_tokens": 373,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m12",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m13",
+          "mode": "whole_record",
+          "original_tokens": 67,
+          "materialized_tokens": 67,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m14",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m15",
+          "mode": "whole_record",
+          "original_tokens": 26,
+          "materialized_tokens": 26,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m16",
+          "mode": "whole_record",
+          "original_tokens": 61,
+          "materialized_tokens": 61,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m17",
+          "mode": "whole_record",
+          "original_tokens": 37,
+          "materialized_tokens": 37,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m18",
+          "mode": "whole_record",
+          "original_tokens": 66,
+          "materialized_tokens": 66,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m19",
+          "mode": "whole_record",
+          "original_tokens": 277,
+          "materialized_tokens": 277,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m20",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m21",
+          "mode": "whole_record",
+          "original_tokens": 391,
+          "materialized_tokens": 391,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m22",
+          "mode": "whole_record",
+          "original_tokens": 183,
+          "materialized_tokens": 183,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m23",
+          "mode": "whole_record",
+          "original_tokens": 28,
+          "materialized_tokens": 28,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m24",
+          "mode": "whole_record",
+          "original_tokens": 148,
+          "materialized_tokens": 148,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m25",
+          "mode": "whole_record",
+          "original_tokens": 474,
+          "materialized_tokens": 474,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m26",
+          "mode": "whole_record",
+          "original_tokens": 154,
+          "materialized_tokens": 154,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m27",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m28",
+          "mode": "whole_record",
+          "original_tokens": 75,
+          "materialized_tokens": 75,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m29",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 135,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m30",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m31",
+          "mode": "whole_record",
+          "original_tokens": 49,
+          "materialized_tokens": 49,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m32",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m33",
+          "mode": "whole_record",
+          "original_tokens": 135,
+          "materialized_tokens": 135,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m34",
+          "mode": "whole_record",
+          "original_tokens": 101,
+          "materialized_tokens": 101,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m35",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m36",
+          "mode": "whole_record",
+          "original_tokens": 65,
+          "materialized_tokens": 65,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m37",
+          "mode": "tool_negative_receipt",
+          "original_tokens": 115,
+          "materialized_tokens": 53,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m38",
+          "mode": "whole_record",
+          "original_tokens": 141,
+          "materialized_tokens": 141,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m39",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m40",
+          "mode": "whole_record",
+          "original_tokens": 102,
+          "materialized_tokens": 102,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m41",
+          "mode": "whole_record",
+          "original_tokens": 105,
+          "materialized_tokens": 105,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m42",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m43",
+          "mode": "whole_record",
+          "original_tokens": 133,
+          "materialized_tokens": 133,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m44",
+          "mode": "whole_record",
+          "original_tokens": 82,
+          "materialized_tokens": 82,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m45",
+          "mode": "whole_record",
+          "original_tokens": 102,
+          "materialized_tokens": 102,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m46",
+          "mode": "whole_record",
+          "original_tokens": 182,
+          "materialized_tokens": 182,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m47",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "6b76ddc12429d4e523f0ca1a8f1c3f97946d857143e18db5c9a921a447583716",
+      "usage": {
+        "prompt_tokens": 7504,
+        "prompt_tokens_details": {
+          "cached_tokens": 7252
+        },
+        "completion_tokens": 80,
+        "total_tokens": 7584
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-966",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 337,
+        "message_content_sha256": "cd0f24f96bc71d8e217a906cb35a33debe0ff9cf7aa3d2a6958c81f93107e5b4",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 7504,
+          "prompt_tokens_details": {
+            "cached_tokens": 7252
+          },
+          "completion_tokens": 80,
+          "total_tokens": 7584
+        }
+      }
+    }
+  ]
+}

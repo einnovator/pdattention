@@ -353,12 +353,19 @@ def transform_autonomous_payload(
         count_tokens=count_tokens,
     )
     receipt_realization = None
-    if config.negative_realization == NegativeRealizationMode.OBSERVATION_RECEIPT:
+    if config.negative_realization in {
+        NegativeRealizationMode.OBSERVATION_RECEIPT,
+        NegativeRealizationMode.PROTOCOL_STUB,
+    }:
         receipt_realization = realize_negative_receipts(
             history,
             plan,
             materialized,
             count_tokens=count_tokens,
+            include_semantic_evidence=(
+                config.negative_realization
+                == NegativeRealizationMode.OBSERVATION_RECEIPT
+            ),
         )
         materialized = receipt_realization.materialized
 

@@ -416,6 +416,11 @@ def test_portable_planner_uses_declared_metadata_without_tool_syntax():
 
     assert prepared.trace["agent_memory_plan_source"] == "generated"
     assert prepared.trace["record_replacement_count"] == 1
-    assert "older read superseded" in prepared.request.messages[3]["content"]
+    assert prepared.request.messages[3]["content"] == (
+        "<returncode>unknown</returncode>\n<output></output>"
+    )
+    assert prepared.request.metadata["agent_memory_plan"]["decision_metadata"][
+        "receipt_decisions"
+    ][0]["rule"] == "H3"
     assert prepared.request.metadata["agent_memory_plan"]["plan_digest"]
     assert mediator.prepare(prepared.request, _logical_capabilities()).skipped_existing

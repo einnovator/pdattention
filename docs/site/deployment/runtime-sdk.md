@@ -48,6 +48,7 @@ pra:
       tail_turns: 4
       options:
         retention_fraction: 0.90
+        receipt_presentation: metadata_only
     result_compaction: shadow
     tool_disclosure: shadow
     prevent_double_mediation: true
@@ -83,7 +84,14 @@ schema, so changing agents does not require a PRA code change:
 Per-result metadata supplies the realized resource IDs, versions, spans, and
 completeness. Unknown operations are retention barriers. Compatibility parsing
 is needed only for agents such as mini-swe-agent that encode a generic tool
-inside nonstandard assistant/user text rather than standard tool-call records.
+command and observation in a nonstandard role protocol.
+
+Selection evidence is request metadata, not prompt text, and therefore does
+not consume model tokens. With `receipt_presentation: metadata_only`, an
+eligible obsolete observation is replaced only by the smallest role-valid
+protocol stub; its rule, resource, version, and witness evidence remain in the
+frozen plan's `decision_metadata`. `semantic_receipt` is an explicitly
+model-visible experimental presentation and needs a separate quality gate.
 
 ## Request-scoped agent-history retention
 
