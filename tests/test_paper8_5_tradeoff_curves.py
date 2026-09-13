@@ -102,6 +102,30 @@ def test_loader_separates_grader_error_from_ordinary_unresolved(tmp_path):
     assert loaded["official_score"] is False
     assert loaded["official_failure_class"] == "patch_apply_failed"
     assert loaded["official_outcome"] == "patch_apply_failed"
+    assert loaded["failure_taxonomy"] == "primary_failure_workspace_unavailable"
+
+
+def test_loader_keeps_resolving_workspace_separate_from_failed_submission(tmp_path):
+    path = _run(
+        tmp_path, "submission-error", policy="full", calls=2, tokens=100,
+        resolved=False, pair_id="pair",
+    )
+    metrics_path = path / "autonomous_metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["auxiliary_workspace_state"] = {
+        "status": "available",
+        "official_result_summary": {"resolved": True, "error": False},
+    }
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+
+    loaded = load_autonomous_run(path)
+
+    assert loaded["official_score"] is False
+    assert loaded["auxiliary_resolved"] is True
+    assert loaded["solution_state_score"] is True
+    assert loaded["failure_taxonomy"] == (
+        "submission_protocol_failure_with_resolving_workspace"
+    )
 
 
 def test_pair_marks_early_termination_as_divergence_and_failed_efficiency(tmp_path):

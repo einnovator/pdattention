@@ -256,6 +256,29 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
             "patch_apply_failed" if "Patch Apply Failed" in grader_text
             else "grader_reported_error"
         )
+    auxiliary_score = (
+        bool(auxiliary_summary.get("resolved"))
+        if isinstance(auxiliary_summary.get("resolved"), bool) else None
+    )
+    official_score = (
+        bool(official.get("resolved"))
+        if isinstance(official.get("resolved"), bool) else None
+    )
+    solution_state_score = (
+        True if official_score is True
+        else auxiliary_score if auxiliary_score is not None
+        else None
+    )
+    failure_taxonomy = (
+        None if official_score is True
+        else "submission_protocol_failure_with_resolving_workspace"
+        if official_score is False and auxiliary_score is True
+        else "nonresolving_workspace"
+        if official_score is False and auxiliary_score is False
+        else "primary_failure_workspace_unavailable"
+        if official_score is False
+        else "no_definitive_primary_grade"
+    )
     if not isinstance(official.get("resolved"), bool):
         raise ValueError(f"{metrics_path}: missing completed official result")
     if full_tokens <= 0 or materialized_tokens < 0:
@@ -314,10 +337,7 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
         ),
         "official_resolved": bool(official.get("resolved")) if official else None,
         "official_error": official_error if official else None,
-        "official_score": (
-            bool(official.get("resolved"))
-            if isinstance(official.get("resolved"), bool) else None
-        ) if official else None,
+        "official_score": official_score,
         "official_failure_class": failure_class,
         "official_outcome": (
             "patch_apply_failed"
@@ -330,9 +350,11 @@ def load_autonomous_run(path: Path) -> dict[str, Any]:
             if official
             else None
         ),
-        "auxiliary_resolved": (
-            bool(auxiliary_summary.get("resolved")) if auxiliary_summary else None
-        ),
+        "auxiliary_status": auxiliary.get("status"),
+        "auxiliary_grade_available": auxiliary_score is not None,
+        "auxiliary_resolved": auxiliary_score,
+        "solution_state_score": solution_state_score,
+        "failure_taxonomy": failure_taxonomy,
         "calls": int(metrics.get("calls") or 0),
         "tool_calls": int(metrics.get("actions") or 0),
         "reacquisitions": int(metrics.get("reacquisition_events") or 0),
@@ -630,6 +652,7 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         for row in strategy_rows:
             by_task[str(row["task_id"])].append(row)
         task_rates = []
+        solution_state_rates = []
         task_savings = []
         for task_rows in by_task.values():
             valid = [
@@ -638,6 +661,13 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             ]
             if valid:
                 task_rates.append(mean(valid))
+            solution_valid = [
+                bool(row["solution_state_score"])
+                for row in task_rows
+                if row.get("solution_state_score") is not None
+            ]
+            if solution_valid:
+                solution_state_rates.append(mean(solution_valid))
             task_full = sum(int(row["cumulative_full_tokens"]) for row in task_rows)
             task_materialized = sum(
                 int(row["cumulative_materialized_tokens"]) for row in task_rows
@@ -659,6 +689,10 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
         resolution_ci = (
             _cluster_bootstrap_mean_ci(task_rates) if task_rates else (None, None)
         )
+        solution_state_ci = (
+            _cluster_bootstrap_mean_ci(solution_state_rates)
+            if solution_state_rates else (None, None)
+        )
         saving_ci = (
             _cluster_bootstrap_mean_ci(task_savings) if task_savings else (None, None)
         )
@@ -677,6 +711,20 @@ def summarize_autonomous(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, An
             "macro_task_resolution": mean(task_rates) if task_rates else None,
             "macro_task_resolution_ci95_lower": resolution_ci[0],
             "macro_task_resolution_ci95_upper": resolution_ci[1],
+            "auxiliary_grade_available_runs": sum(
+                row.get("auxiliary_resolved") is not None for row in strategy_rows
+            ),
+            "auxiliary_success_runs": sum(
+                row.get("auxiliary_resolved") is True for row in strategy_rows
+            ),
+            "solution_state_known_runs": sum(
+                row.get("solution_state_score") is not None for row in strategy_rows
+            ),
+            "macro_task_solution_state_resolution": (
+                mean(solution_state_rates) if solution_state_rates else None
+            ),
+            "macro_task_solution_state_ci95_lower": solution_state_ci[0],
+            "macro_task_solution_state_ci95_upper": solution_state_ci[1],
             "workload_gross_saving_ratio_of_sums": 1 - materialized / full,
             "macro_task_gross_saving": mean(task_savings),
             "macro_task_gross_saving_ci95_lower": saving_ci[0],
@@ -875,12 +923,18 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
     save(fig, "frozen_saving_vs_action_agreement")
 
     def accuracy_plot(
-        rows: Sequence[Mapping[str, Any]], metric: str, filename: str, xlabel: str
+        rows: Sequence[Mapping[str, Any]], metric: str, filename: str, xlabel: str,
+        *, quality_key: str = "official_score", ylabel: str = "Official task resolution (%)",
+        title: str = "Autonomous quality frontier",
     ) -> None:
         fig, ax = plt.subplots(figsize=(7.2, 4.5))
         grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
         for row in rows:
-            if row.get(metric) is not None and _official_quality(row) is not None:
+            quality = (
+                _official_quality(row) if quality_key == "official_score"
+                else row.get(quality_key)
+            )
+            if row.get(metric) is not None and quality is not None:
                 grouped[str(row["strategy"])].append(row)
         for strategy, strategy_rows in grouped.items():
             if metric == "saving_fraction":
@@ -893,9 +947,12 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
                 x = 100 * mean(float(row[metric]) for row in strategy_rows)
             task_rates: dict[str, list[bool]] = defaultdict(list)
             for row in strategy_rows:
-                quality = _official_quality(row)
+                quality = (
+                    _official_quality(row) if quality_key == "official_score"
+                    else row.get(quality_key)
+                )
                 if quality is not None:
-                    task_rates[str(row["task_id"])].append(quality)
+                    task_rates[str(row["task_id"])].append(bool(quality))
             task_means = [mean(values) for values in task_rates.values()]
             n = len(task_means)
             rate = mean(task_means)
@@ -913,14 +970,27 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
         if not grouped:
             ax.text(.5, .5, "No qualifying observations", ha="center", va="center",
                     transform=ax.transAxes, color="0.4")
-        ax.set(xlabel=xlabel, ylabel="Official task resolution (%)",
-               ylim=(-5, 105), title="Autonomous quality frontier")
+        ax.set(xlabel=xlabel, ylabel=ylabel, ylim=(-5, 105), title=title)
         ax.grid(alpha=.25)
         save(fig, filename)
 
     accuracy_plot(
         autonomous, "saving_fraction", "autonomous_saving_vs_accuracy",
         "Within-run history-token saving (%)",
+    )
+    accuracy_plot(
+        autonomous, "saving_fraction", "autonomous_saving_vs_workspace_capability",
+        "Within-run history-token saving (%)",
+        quality_key="solution_state_score",
+        ylabel="Resolving solution-state evidence (%)",
+        title="Autonomous workspace-capability frontier",
+    )
+    accuracy_plot(
+        autonomous, "saving_fraction", "autonomous_saving_vs_auxiliary_workspace",
+        "Within-run history-token saving (%)",
+        quality_key="auxiliary_resolved",
+        ylabel="Auxiliary workspace resolution (%)",
+        title="Auxiliary workspace outcome (available grades only)",
     )
 
     paired = [row for row in autonomous if row.get("tool_call_delta") is not None]
@@ -1090,6 +1160,8 @@ def build(spec_path: Path, output: Path) -> dict[str, Any]:
             "successful_tool_delta": "tool-call delta is included in the successful-only curve only when both candidate and paired FULL resolve officially",
             "accuracy_aggregation": "resolution is macro-averaged by task; repeated runs do not increase the task denominator",
             "grader_errors": "a definitive Boolean unresolved grade remains a task failure, including malformed-patch/apply errors; only runs lacking a definitive Boolean grade are excluded",
+            "auxiliary_quality": "separately labelled official grade of a provenance-checked terminal workspace patch; never replaces primary submission quality",
+            "solution_state_quality": "resolved primary submission, otherwise an available auxiliary workspace grade; unavailable failed-primary workspaces remain unknown",
             "uncertainty": "task-clustered percentile bootstrap over per-task resolution means",
             "frozen_independence": "unique task/model/trajectory identity, not analyst cohort label; overlapping suffixes are collapsed to broadest coverage",
             "pre_divergence_saving": "cumulative saving over requests strictly before the first divergent action; the divergent request itself is excluded",
