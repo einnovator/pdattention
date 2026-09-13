@@ -117,6 +117,7 @@ def structural_screen(
     budgets: Sequence[float] = DEFAULT_BUDGETS,
     decision_suffixes: Sequence[int] = (1,),
     include_decision_rows: bool = False,
+    round_up_to_budget: bool = False,
 ) -> dict[str, Any]:
     if not decision_suffixes or any(value < 1 for value in decision_suffixes):
         raise ValueError("decision suffixes must contain positive one-based ordinals")
@@ -164,7 +165,9 @@ def structural_screen(
                 max_tokens = max(1, math.ceil(full_tokens * fraction))
                 for head in heads:
                     for tail in tails:
-                        for label, selector in _policy_selectors(head, tail):
+                        for label, selector in _policy_selectors(
+                            head, tail, round_up=round_up_to_budget
+                        ):
                             plan = selector.select(
                                 history=history,
                                 query=query,
@@ -302,6 +305,9 @@ def structural_screen(
         "tail_values": list(tails),
         "budget_fractions": list(budgets),
         "decision_suffixes": list(decision_suffixes),
+        "whole_turn_budget_interpretation": (
+            "retention_floor_round_up" if round_up_to_budget else "hard_ceiling"
+        ),
         "decision_row_count": len(rows),
         "summary_rows": summary_rows,
         "suffix_summary_rows": suffix_summary_rows,
@@ -321,6 +327,13 @@ def main() -> None:
     parser.add_argument("--budgets", nargs="+", type=float, default=DEFAULT_BUDGETS)
     parser.add_argument("--decision-suffixes", nargs="+", type=int, default=(1,))
     parser.add_argument("--include-decision-rows", action="store_true")
+    parser.add_argument(
+        "--round-up-to-budget", action="store_true",
+        help=(
+            "Treat requested tokens as a retention floor and include the next "
+            "whole causal turn, matching autonomous nominal-retention arms."
+        ),
+    )
     args = parser.parse_args()
     counter, tokenizer_identity = _token_counter(args.tokenizer)
     result = structural_screen(
@@ -332,6 +345,7 @@ def main() -> None:
         budgets=args.budgets,
         decision_suffixes=args.decision_suffixes,
         include_decision_rows=args.include_decision_rows,
+        round_up_to_budget=args.round_up_to_budget,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

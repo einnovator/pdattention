@@ -1268,6 +1268,30 @@ def test_structural_screen_aggregates_without_claiming_task_quality(tmp_path):
     assert "decision_rows" not in result
 
 
+def test_structural_screen_can_match_autonomous_retention_floor(tmp_path):
+    trajectory = tmp_path / "task.traj.json"
+    trajectory.write_text(json.dumps({
+        "instance_id": "task-1",
+        "messages": _messages(2),
+        "info": {"exit_status": "Submitted", "submission": "diff --git a/foo.py"},
+    }), encoding="utf-8")
+    result = structural_screen(
+        [trajectory],
+        count_tokens=whitespace_tokens,
+        tokenizer_identity="test",
+        heads=(1,),
+        tails=(1,),
+        budgets=(0.9,),
+        round_up_to_budget=True,
+    )
+    assert result["whole_turn_budget_interpretation"] == "retention_floor_round_up"
+    recency = next(
+        row for row in result["summary_rows"]
+        if row["policy"] == "middle_recency"
+    )
+    assert recency["aggregate_realized_retention_fraction"] >= 0.9
+
+
 def test_negative_structural_screen_reports_opportunity_without_quality_claim(tmp_path):
     trajectory = tmp_path / "task.traj.json"
     trajectory.write_text(json.dumps({
