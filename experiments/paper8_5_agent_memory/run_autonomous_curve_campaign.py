@@ -38,6 +38,10 @@ def _digest(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _slug(instance_id: str) -> str:
     return instance_id.replace("__", "-").replace("/", "-")
 
@@ -63,8 +67,9 @@ def campaign_cells(spec: Mapping[str, Any], task_ids: Sequence[str]) -> list[dic
     if repeats < 2:
         raise ValueError("at least two FULL controls are required")
     cells: list[dict[str, Any]] = []
+    pair_campaign_id = str(spec.get("baseline_pair_campaign_id") or spec["campaign_id"])
     for task_index, task_id in enumerate(task_ids, 1):
-        pair_id = f"{spec['campaign_id']}:{task_id}:seed{spec['generation']['seed']}"
+        pair_id = f"{pair_campaign_id}:{task_id}:seed{spec['generation']['seed']}"
         for repeat in range(repeats):
             cells.append({
                 "cell_id": f"task{task_index:02d}-full-{chr(97 + repeat)}",
@@ -85,13 +90,73 @@ def campaign_cells(spec: Mapping[str, Any], task_ids: Sequence[str]) -> list[dic
                 "cell_id": f"task{task_index:02d}-{arm['arm_id']}",
                 "task_index": task_index,
                 "instance_id": task_id,
-                "pair_id": f"{spec['campaign_id']}:{task_id}:seed{spec['generation']['seed']}",
+                "pair_id": f"{pair_campaign_id}:{task_id}:seed{spec['generation']['seed']}",
                 "is_control": False,
                 **dict(arm),
             })
     if len({cell["cell_id"] for cell in cells}) != len(cells):
         raise ValueError("campaign cell IDs must be unique")
     return cells
+
+
+def import_completed_controls(
+    state: dict[str, Any],
+    cells: Sequence[Mapping[str, Any]],
+    source_state_path: Path,
+    *,
+    expected_campaign_id: str,
+) -> int:
+    """Import exact completed FULL cells without pretending revisions match.
+
+    The reducer permits only a repository-revision mismatch for these pairs;
+    every model, harness, dataset, environment, and agent-behavior identity is
+    still checked from the immutable run manifests.
+    """
+
+    source_path = source_state_path.resolve()
+    source = _read(source_path)
+    if source.get("campaign_id") != expected_campaign_id:
+        raise ValueError(
+            "imported control state belongs to a different baseline campaign"
+        )
+    expected = {
+        str(row["cell_id"]): dict(row) for row in cells if row.get("is_control")
+    }
+    imported = 0
+    for cell_id, source_row in (source.get("cells") or {}).items():
+        if cell_id not in expected or source_row.get("status") != "complete":
+            continue
+        target = expected[cell_id]
+        for key in (
+            "instance_id", "arm_id", "policy", "negative_realization",
+            "negative_fallback", "budget_fraction", "pair_id", "is_control",
+        ):
+            if source_row.get(key) != target.get(key):
+                raise ValueError(
+                    f"imported control {cell_id} differs in frozen field {key}"
+                )
+        output = Path(str(source_row.get("output", ""))).resolve()
+        result = _completed_result(output)
+        if result is None:
+            raise ValueError(f"imported control {cell_id} is not a completed run")
+        existing = state["cells"].get(cell_id)
+        if existing and existing.get("status") == "complete":
+            continue
+        state["cells"][cell_id] = {
+            **target,
+            **result,
+            "output": str(output),
+            "imported_control": True,
+            "source_campaign_state": str(source_path),
+            "source_campaign_state_sha256": _file_digest(source_path),
+        }
+        imported += 1
+    state["imported_control_states"] = [{
+        "path": str(source_path),
+        "sha256": _file_digest(source_path),
+        "campaign_id": source.get("campaign_id"),
+    }]
+    return imported
 
 
 def adaptive_gate(
@@ -192,7 +257,17 @@ def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
         })
         for cell_id, row in task_rows:
             if not row.get("is_control"):
-                pairs.append({"candidate": cell_id, "baseline": baseline})
+                pair = {"candidate": cell_id, "baseline": baseline}
+                if controls[0][1].get("imported_control"):
+                    pair.update({
+                        "allow_legacy_pair": True,
+                        "pairing_reason": (
+                            "selector-only implementation revision changed; FULL "
+                            "requests remain exact pass-through and every other frozen "
+                            "execution identity must match"
+                        ),
+                    })
+                pairs.append(pair)
     spec = {
         "schema_version": 1,
         "study": "paper8_5_agent_memory_tradeoff_curve_spec",
@@ -274,8 +349,9 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             raise AssertionError("locked task order changed")
     selected_tasks = set(args.task_index or range(1, len(task_ids) + 1))
     selected_arms = set(args.arm_id or ())
+    all_cells = campaign_cells(spec, task_ids)
     cells = [
-        row for row in campaign_cells(spec, task_ids)
+        row for row in all_cells
         if row["task_index"] in selected_tasks
         and (not selected_arms or row["arm_id"] in selected_arms)
     ]
@@ -292,6 +368,17 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
     }
     if state["campaign_spec_sha256"] != _digest(spec):
         raise ValueError("campaign state belongs to a different specification")
+    if args.import_control_state:
+        expected_campaign_id = str(
+            spec.get("baseline_pair_campaign_id") or spec["campaign_id"]
+        )
+        import_completed_controls(
+            state,
+            all_cells,
+            args.import_control_state,
+            expected_campaign_id=expected_campaign_id,
+        )
+        _write(state_path, state)
     executed = 0
     for cell in cells:
         cell_id = str(cell["cell_id"])
@@ -376,6 +463,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--skip-grading", action="store_true")
     parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
+    parser.add_argument(
+        "--import-control-state",
+        type=Path,
+        help=(
+            "Reuse completed FULL cells from a baseline campaign state. Only a "
+            "repository-revision mismatch is eligible in the reducer."
+        ),
+    )
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--reduce", action="store_true")

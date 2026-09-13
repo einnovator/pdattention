@@ -7,6 +7,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     _retry_path,
     adaptive_gate,
     campaign_cells,
+    import_completed_controls,
     validate_campaign_spec,
     write_curve_spec,
 )
@@ -40,6 +41,54 @@ def test_campaign_locks_two_controls_then_runs_arm_major():
         "task01-dag100", "task02-dag100",
     ]
     assert cells[0]["pair_id"] == cells[4]["pair_id"]
+
+
+def test_campaign_can_share_a_frozen_pair_id_with_corrected_policy_code():
+    spec = _spec()
+    spec["campaign_id"] = "corrected"
+    spec["baseline_pair_campaign_id"] = "baseline"
+    cells = campaign_cells(spec, ("task",))
+    assert {row["pair_id"] for row in cells} == {"baseline:task:seed0"}
+
+
+def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_path):
+    spec = _spec()
+    spec["campaign_id"] = "corrected"
+    spec["baseline_pair_campaign_id"] = "baseline"
+    cells = campaign_cells(spec, ("task",))
+    source_cells = {}
+    for cell in cells[:2]:
+        output = tmp_path / cell["cell_id"]
+        output.mkdir()
+        (output / "run_manifest.json").write_text("{}")
+        (output / "autonomous_metrics.json").write_text(json.dumps({
+            "official_result": {"resolved": True, "error": False},
+            "calls": 1,
+            "cumulative_full_tokens": 10,
+            "cumulative_materialized_tokens": 10,
+        }))
+        source_cells[cell["cell_id"]] = {
+            **cell, "status": "complete", "output": str(output),
+        }
+    source_state = tmp_path / "source_state.json"
+    source_state.write_text(json.dumps({
+        "campaign_id": "baseline", "cells": source_cells,
+    }))
+    state = {"cells": {}}
+
+    assert import_completed_controls(
+        state, cells, source_state, expected_campaign_id="baseline"
+    ) == 2
+    state["cells"]["task01-dag100"] = {
+        **cells[2], "status": "complete", "output": str(tmp_path / "candidate"),
+    }
+    value = json.loads(write_curve_spec(state, tmp_path / "curve").read_text())
+    policy_pair = next(
+        row for row in value["autonomous_pairs"]
+        if row["candidate"] == "task01-dag100"
+    )
+    assert policy_pair["allow_legacy_pair"] is True
+    assert "implementation revision changed" in policy_pair["pairing_reason"]
 
 
 def test_campaign_rejects_unbounded_autonomous_generation():

@@ -346,6 +346,14 @@ PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.run_autonomous_curv
   --task-index 1 --task-index 2 --reduce
 ```
 
+When a selector-only correction lands after the two FULL controls have already
+completed, `--import-control-state /path/to/campaign_state.json` reuses those
+controls instead of rerunning them. The corrected spec must declare
+`baseline_pair_campaign_id`; imported artifacts are bound by state-file hash.
+The reducer then permits only the disclosed repository-revision difference and
+still rejects any model, tokenizer, dataset, harness, environment, generation,
+or agent-command mismatch.
+
 The campaign is resumable and arm-major after its controls. It stops an arm
 after two official failures, after sub-2% mean gross saving on two tasks, or
 after resolution falls below 80% on at least three tasks. Failed candidates
