@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -474,3 +475,32 @@ def test_registry_extends_full_source_with_request_suffix_page_identities() -> N
     pool.free_blocks(reversed(request_blocks.blocks[0]))
     assert [block.ref_cnt for block in source] == [1, 1, 1]
     assert registry.snapshot()["sources"]["source-g2"]["block_ids"] == [10, 11, 12, 20]
+
+
+def test_scheduler_manifest_replay_is_idempotent_but_collision_fails(tmp_path) -> None:
+    driver = VLLMInProcessSchedulerDriver.__new__(VLLMInProcessSchedulerDriver)
+    driver.connector = SimpleNamespace(
+        _directory=lambda logical_key: tmp_path / logical_key
+    )
+    command = SparseCudaConnectorCommand(
+        mode="load",
+        logical_key="selected",
+        source_generation=1,
+        source_tokens=16,
+        source_position_base=32,
+    )
+
+    kwargs = {
+        "parent_source_key": "source-g1",
+        "selected_page_indices": (0,),
+        "commit_source": ("source-g2", 2),
+    }
+    driver._manifest(command, **kwargs)
+    driver._manifest(command, **kwargs)
+    manifest = json.loads(
+        (tmp_path / "selected" / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["commit_source_generation"] == 2
+
+    with pytest.raises(RuntimeError, match="collided with a different manifest"):
+        driver._manifest(command, **{**kwargs, "commit_source": ("source-g3", 3)})

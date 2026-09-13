@@ -92,6 +92,12 @@ def _handler(executor: object, model_id: str):
             except (ValueError, TypeError, PermissionError) as error:
                 self._json(400, {"error": type(error).__name__, "message": str(error)})
             except Exception as error:  # noqa: BLE001
+                if type(error).__name__ == "VLLMValidationError":
+                    self._json(400, {
+                        "error": type(error).__name__,
+                        "message": str(error),
+                    })
+                    return
                 traceback.print_exc()
                 self._json(500, {"error": "engine_internal_error", "message": str(error)})
 

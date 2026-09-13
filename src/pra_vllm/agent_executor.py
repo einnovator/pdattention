@@ -279,7 +279,6 @@ class VLLMInProcessSchedulerDriver:
         commit_source: tuple[str, int],
     ) -> None:
         directory = Path(self.connector._directory(command.logical_key))
-        directory.mkdir(parents=True, exist_ok=False)
         payload = {
             "schema_version": "pra-vllm-cuda-agent-alias-v1",
             "logical_key": command.logical_key,
@@ -292,7 +291,21 @@ class VLLMInProcessSchedulerDriver:
             "physical_kv_copy_bytes": 0,
             "host_to_device_bytes": 0,
         }
-        (directory / "manifest.json").write_text(
+        directory.mkdir(parents=True, exist_ok=True)
+        manifest = directory / "manifest.json"
+        if manifest.is_file():
+            existing = json.loads(manifest.read_text(encoding="utf-8"))
+            if existing != payload:
+                raise RuntimeError(
+                    "vLLM sparse request key collided with a different manifest: "
+                    f"{command.logical_key}"
+                )
+            # OpenAI clients may retry the same request after a transport or
+            # context-limit failure.  The physical plan is immutable, so an
+            # identical manifest is an idempotent replay rather than a stale
+            # fork or a filesystem error.
+            return
+        manifest.write_text(
             json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8"
         )
 
