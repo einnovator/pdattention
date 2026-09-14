@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "persistent-session:django__django-15277+pytest-dev__pytest-7982+scikit-learn__scikit-learn-13135",
+  "model": "qwen3-coder:30b",
+  "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "a40b1d2ed114903c10545699a554de3fa9b94b8a53aef82ee68a4156822e19c0",
+  "policy": "persistent_active_episode",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "a80224c17d361bcf29fa969dd31188251fb362edfe556408fa72ebcfe3634eec",
+    "model": "qwen3-coder:30b",
+    "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+    "policy": "persistent_active_episode",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 49,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 1200,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "a40b1d2ed114903c10545699a554de3fa9b94b8a53aef82ee68a4156822e19c0",
+    "matched_budget_source_digest": null,
+    "negative_selection": null,
+    "oracle_addback_causal_group_ids": [],
+    "oracle_omit_causal_group_ids": []
+  },
+  "run_configuration_digest": "31df326ba896adff9c82ad34fb7175b20d7bd8454b0055fb97862c0e58378e60",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 1,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 1.0,
+  "first_command_divergence": null,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 49,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 100,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "5c26363ed378b3341b742c970d54c76431385862d4137be48ed05b417217d774",
+      "reference_content_sha256": "c85723530560e10e519bbf6be790b04ae33b55fc5f1d2b58aeeedfa3ebaf0ef3",
+      "generated_content_sha256": "c52f1d0c39e25ddfe2eb6c460b058e93f5e18395ee9ebb1553cd8addbbfcd775",
+      "request_messages_sha256": "285adb7b1cd971c738348ce2d2f55c0ee10020bce7a385c754df2228bd509af9",
+      "generated_content": "THOUGHT: I need to understand the issue described in the PR. The problem is with `KBinsDiscretizer` when using `strategy='kmeans'`. The error occurs because bin_edges become unsorted, which causes `np.digitize` to fail with \"bins must be monotonically increasing or decreasing\". Let me first locate the relevant source file and understand how the kmeans strategy works.\n\n```mswea_bash_command\nfind /testbed -name \"*discretization*\" -type f | head -10\n```",
+      "exact_content": false,
+      "reference_command": "find /testbed -name \"*discretization*\" -type f | head -10",
+      "generated_command": "find /testbed -name \"*discretization*\" -type f | head -10",
+      "exact_command": true,
+      "full_history_tokens": 25226,
+      "selected_logical_tokens": 3001,
+      "selected_whole_record_tokens": 3001,
+      "materialized_tokens": 3001,
+      "requested_budget_tokens": 25226,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 0.11896456037421707,
+      "realized_logical_retention_fraction": 0.11896456037421707,
+      "realized_materialized_retention_fraction": 0.11896456037421707,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 22225,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 22225,
+      "selected_record_ids": [
+        "episode-01:m0",
+        "episode-03:m1"
+      ],
+      "selection_reasons": [
+        [
+          "episode-01:m0",
+          "immutable_prompt"
+        ],
+        [
+          "episode-03:m1",
+          "immutable_prompt"
+        ]
+      ],
+      "oracle_addback": {
+        "requested_causal_group_ids": [],
+        "restored_causal_group_ids": [],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [],
+        "restored_tokens": 0
+      },
+      "oracle_omission": {
+        "requested_causal_group_ids": [],
+        "omitted_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "already_unselected_causal_group_ids": [],
+        "omitted_record_ids": [],
+        "omitted_tokens": 0
+      },
+      "negative_realization": "drop",
+      "negative_candidate_group_count": 0,
+      "negative_candidate_record_count": 0,
+      "negative_candidate_tokens": 0,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [],
+      "receipt_abstained_source_observation_tokens": 0,
+      "receipt_abstained_candidate_tokens": 0,
+      "receipt_abstentions": [],
+      "model_visible_receipts": [],
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "episode-01:m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-03:m1",
+          "mode": "whole_record",
+          "original_tokens": 2890,
+          "materialized_tokens": 2890,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "471d2f6f01d253e1b00a0760dc73fc1cb777322c65f8a553f508a618689a8b50",
+      "usage": {
+        "prompt_tokens": 3014,
+        "prompt_tokens_details": {
+          "cached_tokens": 120
+        },
+        "completion_tokens": 115,
+        "total_tokens": 3129
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-496",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 454,
+        "message_content_sha256": "c52f1d0c39e25ddfe2eb6c460b058e93f5e18395ee9ebb1553cd8addbbfcd775",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 3014,
+          "prompt_tokens_details": {
+            "cached_tokens": 120
+          },
+          "completion_tokens": 115,
+          "total_tokens": 3129
+        }
+      }
+    }
+  ]
+}

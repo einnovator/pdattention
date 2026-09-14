@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "persistent-session:django__django-15277+pytest-dev__pytest-7982",
+  "model": "qwen3-coder:30b",
+  "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "563dc738e222985bb090db4e6661f26ad9067f3b73a8abbafab51f95a9fc46f0",
+  "policy": "persistent_active_episode",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "20f5c34f0395de9ad8b8fe2948fa345cd317829de152179a4f38eaf752e9db97",
+    "model": "qwen3-coder:30b",
+    "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+    "policy": "persistent_active_episode",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 28,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 1200,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "563dc738e222985bb090db4e6661f26ad9067f3b73a8abbafab51f95a9fc46f0",
+    "matched_budget_source_digest": null,
+    "negative_selection": null,
+    "oracle_addback_causal_group_ids": [],
+    "oracle_omit_causal_group_ids": []
+  },
+  "run_configuration_digest": "8e5c100943c4cead8af437ce9d2c2c9ca5f4e88c6e77703dc4bac0051a41cfde",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 0,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 0.0,
+  "first_command_divergence": 28,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 28,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 57,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "f753d8605d8f9a01ead709cd19fad94a0599187e54a424abfbd8f8af19d8c167",
+      "reference_content_sha256": "8c6af66934a21f97a797271b28c051a9162764fa7f1c22256a42ac16891e9b0a",
+      "generated_content_sha256": "7aa7fe481ce54bb1c8a75a70c0c738f7753bb53d6c458a828171811e987620d4",
+      "request_messages_sha256": "30ab8e6b492207cc7330e915a60bc4c58b66f202d11a8c4abe7a0ea542619eca",
+      "generated_content": "THOUGHT: First, I need to understand the issue. The problem is that since pytest 6.1.0, symlinked directories are not being collected properly - they're being skipped over instead of being followed and collected as usual. The regression was introduced in commit b473e515bc57ff1133fe650f1e7e6d7e22e5d841 where `follow_symlinks=False` was added, but this should be removed to restore the previous behavior.\n\nLet me first explore the repository structure to understand how pytest handles directory collection and find the relevant files.\n</format_example>\n\n```mswea_bash_command\nfind . -name \"*.py\" | grep -E \"(collect|directory|path)\" | head -20\n```\n</format_example>",
+      "exact_content": false,
+      "reference_command": "find /testbed -name \"*.py\" -type f | xargs grep -l \"follow_symlinks\" | head -10",
+      "generated_command": "find . -name \"*.py\" | grep -E \"(collect|directory|path)\" | head -20",
+      "exact_command": false,
+      "full_history_tokens": 11247,
+      "selected_logical_tokens": 1495,
+      "selected_whole_record_tokens": 1495,
+      "materialized_tokens": 1495,
+      "requested_budget_tokens": 11247,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 0.1329243353783231,
+      "realized_logical_retention_fraction": 0.1329243353783231,
+      "realized_materialized_retention_fraction": 0.1329243353783231,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 9752,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 9752,
+      "selected_record_ids": [
+        "episode-01:m0",
+        "episode-02:m1"
+      ],
+      "selection_reasons": [
+        [
+          "episode-01:m0",
+          "immutable_prompt"
+        ],
+        [
+          "episode-02:m1",
+          "immutable_prompt"
+        ]
+      ],
+      "oracle_addback": {
+        "requested_causal_group_ids": [],
+        "restored_causal_group_ids": [],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [],
+        "restored_tokens": 0
+      },
+      "oracle_omission": {
+        "requested_causal_group_ids": [],
+        "omitted_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "already_unselected_causal_group_ids": [],
+        "omitted_record_ids": [],
+        "omitted_tokens": 0
+      },
+      "negative_realization": "drop",
+      "negative_candidate_group_count": 0,
+      "negative_candidate_record_count": 0,
+      "negative_candidate_tokens": 0,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [],
+      "receipt_abstained_source_observation_tokens": 0,
+      "receipt_abstained_candidate_tokens": 0,
+      "receipt_abstentions": [],
+      "model_visible_receipts": [],
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "episode-01:m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m1",
+          "mode": "whole_record",
+          "original_tokens": 1384,
+          "materialized_tokens": 1384,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "cf2da7d2ec7786bdb8d0f7e9269940e94d262dc07e1a73c25bf26a55b0c42126",
+      "usage": {
+        "prompt_tokens": 1508,
+        "prompt_tokens_details": {
+          "cached_tokens": 120
+        },
+        "completion_tokens": 177,
+        "total_tokens": 1685
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-546",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 665,
+        "message_content_sha256": "7aa7fe481ce54bb1c8a75a70c0c738f7753bb53d6c458a828171811e987620d4",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 1508,
+          "prompt_tokens_details": {
+            "cached_tokens": 120
+          },
+          "completion_tokens": 177,
+          "total_tokens": 1685
+        }
+      }
+    }
+  ]
+}

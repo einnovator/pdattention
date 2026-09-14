@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_multi_issue_quality_saving_frontier",
+  "scope": "logical selection and materialization only; no native KV or latency claims",
+  "session_modes": {
+    "fresh_per_issue": "one logical session identity per issue",
+    "persistent": "one logical session identity across the ordered issue sequence"
+  },
+  "issue_counts": [1, 2, 3, 4, 5],
+  "sequence_strata": [
+    {
+      "id": "independent_cross_repository",
+      "purpose": "automatic session hygiene and cross-issue contamination control",
+      "expected_advantage_over_fresh": "none"
+    },
+    {
+      "id": "related_same_repository",
+      "purpose": "measure retained architectural/localization knowledge and rediscovery avoidance",
+      "expected_advantage_over_fresh": "possible; must be measured"
+    },
+    {
+      "id": "dependent_same_workspace",
+      "purpose": "measure reuse when later issues consume artifacts or decisions from earlier issues",
+      "expected_advantage_over_fresh": "possible; fresh sessions require an explicit handoff"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "S00_fresh_full",
+      "status": "implemented",
+      "family": "control",
+      "rationale": "strong manual-reset efficiency and quality baseline",
+      "configuration": {},
+      "primary_comparison": "all persistent strategies"
+    },
+    {
+      "id": "S01_persistent_full",
+      "status": "implemented",
+      "family": "control",
+      "rationale": "natural no-reset developer behavior and quality ceiling",
+      "configuration": {},
+      "primary_comparison": "S00_fresh_full"
+    },
+    {
+      "id": "S02_active_episode_only",
+      "status": "implemented_structural",
+      "family": "episode_retirement",
+      "rationale": "automatic fresh-session equivalent inside a persistent session",
+      "configuration": {
+        "completed_task_statements": 0,
+        "completed_recent_turns": 0,
+        "completed_mutation_turns": 0,
+        "completed_verification_turns": 0
+      },
+      "primary_comparison": "S00_fresh_full",
+      "failure_hypothesis": "loses useful cross-issue state on related/dependent sequences"
+    },
+    {
+      "id": "S03_completed_episode_spine",
+      "status": "implemented_structural",
+      "family": "episode_retirement",
+      "rationale": "retain verbatim task plus minimal mutation, verification and completion state",
+      "configuration_grid": {
+        "completed_recent_turns": [1, 2],
+        "completed_mutation_turns": [1, 2],
+        "completed_verification_turns": [1, 2],
+        "completed_task_statements": [1]
+      },
+      "primary_comparison": "S02_active_episode_only",
+      "failure_hypothesis": "retained spines cost more than any rediscovery they prevent"
+    },
+    {
+      "id": "S04_payload_only_retirement",
+      "status": "materializer_implemented_session_integration_pending",
+      "family": "materialization",
+      "rationale": "preserve actions, provenance and control while compacting obsolete bulk observations",
+      "configuration_grid": {
+        "threshold_tokens": [256, 512, 1024],
+        "materializer": ["structured_evidence", "provenance_control_stub"]
+      },
+      "primary_comparison": "S03_completed_episode_spine",
+      "failure_hypothesis": "stubs omit diagnostic facts or fail to pay for their visible tokens"
+    },
+    {
+      "id": "S05_dag_certified_completed",
+      "status": "dag_implemented_session_integration_pending",
+      "family": "negative_selection",
+      "rationale": "retire only operationally obsolete completed-episode state with explicit witnesses",
+      "configuration_grid": {
+        "certificate_tier": ["certified_only", "certified_plus_recoverable"]
+      },
+      "primary_comparison": "matched_token_tail_at_realized_tokens",
+      "failure_hypothesis": "certification coverage is too sparse for material saving"
+    },
+    {
+      "id": "S06_prior_episode_relevance",
+      "status": "planned",
+      "family": "positive_selection",
+      "rationale": "retain only completed episodes or records relevant to the active issue",
+      "configuration_grid": {
+        "selector": ["lexical", "dense", "hybrid"],
+        "prior_episode_budget_fraction": [0.1, 0.25, 0.5]
+      },
+      "primary_comparison": "S03_completed_episode_spine",
+      "failure_hypothesis": "task-text similarity misses procedural or architectural dependencies"
+    },
+    {
+      "id": "S07_dag_spine_relevance",
+      "status": "planned_after_parent_gates",
+      "family": "combination",
+      "parents": [
+        "S03_completed_episode_spine",
+        "S05_dag_certified_completed",
+        "S06_prior_episode_relevance"
+      ],
+      "rationale": "remove certified obsolete payload, pin control state, then retrieve uncertain prior evidence",
+      "configuration_rule": "combine only nondominated parent settings; change one parameter at a time",
+      "primary_comparison": "each parent and matched token tail",
+      "failure_hypothesis": "component costs and redundant pins eliminate net saving"
+    },
+    {
+      "id": "S08_matched_token_tail",
+      "status": "implemented",
+      "family": "control",
+      "rationale": "separate semantic-policy value from merely retaining the same number of recent tokens",
+      "configuration_rule": "exact per-request materialized-token ceiling copied from candidate arm",
+      "primary_comparison": "S04 through S07"
+    },
+    {
+      "id": "S09_oracle_prior_memory",
+      "status": "planned",
+      "family": "oracle",
+      "rationale": "upper bound on useful completed-episode memory",
+      "configuration_rule": "leave-one-episode/record-out, pair removals, then bounded subset search",
+      "primary_comparison": "best deployable strategy"
+    }
+  ],
+  "advancement": {
+    "stage_1": "run S00-S03 for N=1,2,3 on repeat-qualified sequences",
+    "stage_2": "run each S04-S06 family alone on N=2,3",
+    "stage_3": "stop dominated settings and combinations whose parents fail",
+    "stage_4": "run S07 combinations only from nondominated parents",
+    "stage_5": "expand nondominated profiles to N=4,5 and held-out sequences",
+    "quality_gate": "no material loss in task-sequence-clustered official resolution confidence interval",
+    "efficiency_gate": "positive failure-aware saving and no material calls-to-solution regression"
+  },
+  "required_curves": [
+    "official_resolution_vs_failure_aware_saving",
+    "all_issues_resolved_vs_issue_count",
+    "calls_delta_vs_failure_aware_saving",
+    "successful_calls_delta_vs_failure_aware_saving",
+    "first_action_divergence_vs_saving_before_divergence",
+    "rediscovery_calls_vs_issue_count",
+    "marginal_input_tokens_per_added_issue",
+    "fresh_and_persistent_baseline_normalized_cost_per_resolved_issue"
+  ],
+  "uncertainty_unit": "ordered issue sequence clustered; executions and requests are not independent"
+}

@@ -1,0 +1,330 @@
+"""Strict reduction for Paper 8.5 multi-issue quality--saving frontiers."""
+
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict
+import hashlib
+import json
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+
+PAIRING_FIELDS = (
+    "pair_id",
+    "sequence_family_id",
+    "sequence_digest",
+    "agent_id",
+    "agent_revision",
+    "model_revision",
+    "tokenizer_revision",
+    "harness_revision",
+    "decoding_digest",
+    "workspace_schedule_digest",
+)
+
+
+def _digest(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def load_strategy_registry(path: Path) -> dict[str, Any]:
+    registry = json.loads(path.read_text(encoding="utf-8"))
+    if registry.get("schema_version") != 1:
+        raise ValueError("multi-issue strategy registry requires schema_version=1")
+    strategies = registry.get("strategies")
+    if not isinstance(strategies, list) or not strategies:
+        raise ValueError("strategy registry has no strategies")
+    ids = [str(row.get("id") or "") for row in strategies]
+    if any(not value for value in ids) or len(ids) != len(set(ids)):
+        raise ValueError("strategy IDs must be unique and non-empty")
+    known = set(ids)
+    for row in strategies:
+        for parent in row.get("parents") or ():
+            if parent not in known:
+                raise ValueError(f"unknown parent strategy {parent!r}")
+        required = {"family", "rationale", "primary_comparison", "status"}
+        missing = sorted(required.difference(row))
+        if missing:
+            raise ValueError(f"{row['id']}: missing {', '.join(missing)}")
+    if registry.get("issue_counts") != [1, 2, 3, 4, 5]:
+        raise ValueError("registry must preserve the locked 1--5 issue axis")
+    return registry
+
+
+def _validate_run(run: Mapping[str, Any], known_strategies: set[str]) -> None:
+    if run.get("schema_version") != 1:
+        raise ValueError("multi-issue run requires schema_version=1")
+    missing = [field for field in PAIRING_FIELDS if not run.get(field)]
+    if missing:
+        raise ValueError("run lacks strict pairing identity: " + ", ".join(missing))
+    strategy = str(run.get("strategy_id") or "")
+    if strategy not in known_strategies:
+        raise ValueError(f"unregistered strategy {strategy!r}")
+    issue_count = int(run.get("issue_count") or 0)
+    if issue_count not in {1, 2, 3, 4, 5}:
+        raise ValueError("issue_count must be in 1..5")
+    ordered = run.get("ordered_instance_ids")
+    issues = run.get("issues")
+    if not isinstance(ordered, list) or len(ordered) != issue_count:
+        raise ValueError("ordered_instance_ids do not match issue_count")
+    if not isinstance(issues, list) or len(issues) != issue_count:
+        raise ValueError("issue rows do not match issue_count")
+    config = run.get("strategy_config")
+    if not isinstance(config, Mapping):
+        raise ValueError("strategy_config must be an explicit mapping")
+    config_id = str(run.get("strategy_config_id") or "")
+    if not config_id:
+        raise ValueError("strategy_config_id must be explicit")
+    expected_config_digest = _digest(config)
+    if run.get("strategy_config_digest") != expected_config_digest:
+        raise ValueError("strategy_config_digest does not match strategy_config")
+    if [row.get("issue_index") for row in issues] != list(range(1, issue_count + 1)):
+        raise ValueError("issue rows must be a complete ordered 1..N sequence")
+    for row in issues:
+        if not isinstance(row.get("resolved"), bool):
+            raise ValueError("every issue requires a boolean official resolved outcome")
+        for field in ("selected_input_tokens", "calls", "rediscovery_calls"):
+            value = row.get(field)
+            if not isinstance(value, int) or value < 0:
+                raise ValueError(f"every issue requires non-negative integer {field}")
+        if not isinstance(row.get("first_action_diverged"), bool):
+            raise ValueError("every issue requires a boolean first_action_diverged")
+        for field in (
+            "selected_tokens_before_divergence_or_terminal",
+            "full_tokens_before_divergence_or_terminal",
+        ):
+            value = row.get(field)
+            if not isinstance(value, int) or value < 0:
+                raise ValueError(f"every issue requires non-negative integer {field}")
+
+
+def _totals(run: Mapping[str, Any]) -> dict[str, Any]:
+    issues = run["issues"]
+    return {
+        "resolved": sum(int(row["resolved"]) for row in issues),
+        "all_resolved": all(row["resolved"] for row in issues),
+        "tokens": sum(int(row["selected_input_tokens"]) for row in issues),
+        "calls": sum(int(row["calls"]) for row in issues),
+        "resolved_calls": sum(int(row["calls"]) for row in issues if row["resolved"]),
+        "rediscovery_calls": sum(int(row["rediscovery_calls"]) for row in issues),
+    }
+
+
+def _same_pair(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    return all(left.get(field) == right.get(field) for field in PAIRING_FIELDS)
+
+
+def _saving(candidate_tokens: int, baseline_tokens: int) -> float:
+    if baseline_tokens <= 0:
+        raise ValueError("paired baseline must consume positive input tokens")
+    return 1.0 - candidate_tokens / baseline_tokens
+
+
+def _failure_aware_saving(
+    candidate_run: Mapping[str, Any], baseline_run: Mapping[str, Any]
+) -> float:
+    charged = sum(
+        int(row["selected_input_tokens"]) for row in candidate_run["issues"]
+    )
+    baseline_tokens = sum(
+        int(row["selected_input_tokens"]) for row in baseline_run["issues"]
+    )
+    lost_baseline_success = any(
+        baseline["resolved"] and not candidate["resolved"]
+        for candidate, baseline in zip(candidate_run["issues"], baseline_run["issues"])
+    )
+    if lost_baseline_success:
+        charged = max(charged, baseline_tokens)
+    return _saving(charged, baseline_tokens)
+
+
+def _pre_divergence_saving(run: Mapping[str, Any]) -> float | None:
+    selected = sum(
+        int(row["selected_tokens_before_divergence_or_terminal"])
+        for row in run["issues"]
+    )
+    full = sum(
+        int(row["full_tokens_before_divergence_or_terminal"])
+        for row in run["issues"]
+    )
+    return _saving(selected, full) if full else None
+
+
+def _successful_call_delta(
+    candidate: Mapping[str, Any], baseline: Mapping[str, Any]
+) -> tuple[int | None, int]:
+    deltas = [
+        int(candidate_row["calls"]) - int(baseline_row["calls"])
+        for candidate_row, baseline_row in zip(candidate["issues"], baseline["issues"])
+        if candidate_row["resolved"] and baseline_row["resolved"]
+    ]
+    return (sum(deltas), len(deltas)) if deltas else (None, 0)
+
+
+def reduce_multi_issue_runs(
+    runs: Sequence[Mapping[str, Any]], registry: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Pair every treatment with fresh and persistent FULL controls."""
+
+    known = {str(row["id"]) for row in registry["strategies"]}
+    materialized = [dict(run) for run in runs]
+    for run in materialized:
+        _validate_run(run, known)
+    cell_keys = [
+        (
+            run["pair_id"],
+            run["session_mode"],
+            run["strategy_id"],
+            run["strategy_config_id"],
+        )
+        for run in materialized
+    ]
+    if len(cell_keys) != len(set(cell_keys)):
+        raise ValueError("duplicate strategy/config cell within a paired sequence")
+
+    by_pair: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for run in materialized:
+        by_pair[str(run["pair_id"])].append(run)
+
+    rows: list[dict[str, Any]] = []
+    for pair_id, paired in by_pair.items():
+        fresh = next(
+            (
+                row for row in paired
+                if row["strategy_id"] == "S00_fresh_full"
+                and row["session_mode"] == "fresh_per_issue"
+            ),
+            None,
+        )
+        persistent = next(
+            (
+                row for row in paired
+                if row["strategy_id"] == "S01_persistent_full"
+                and row["session_mode"] == "persistent"
+            ),
+            None,
+        )
+        if fresh is None or persistent is None:
+            raise ValueError(f"{pair_id}: both fresh and persistent FULL controls are required")
+        for run in paired:
+            if not _same_pair(run, fresh) or not _same_pair(run, persistent):
+                raise ValueError(f"{pair_id}: strict pairing identity mismatch")
+        fresh_totals = _totals(fresh)
+        persistent_totals = _totals(persistent)
+        for run in paired:
+            totals = _totals(run)
+            fresh_success_calls, fresh_joint_successes = _successful_call_delta(
+                run, fresh
+            )
+            persistent_success_calls, persistent_joint_successes = (
+                _successful_call_delta(run, persistent)
+            )
+            rows.append({
+                "pair_id": pair_id,
+                "sequence_family_id": run["sequence_family_id"],
+                "sequence_id": run.get("sequence_id"),
+                "sequence_digest": run["sequence_digest"],
+                "sequence_stratum": run.get("sequence_stratum"),
+                "agent_id": run["agent_id"],
+                "agent_revision": run["agent_revision"],
+                "model_revision": run["model_revision"],
+                "tokenizer_revision": run["tokenizer_revision"],
+                "harness_revision": run["harness_revision"],
+                "issue_count": run["issue_count"],
+                "session_mode": run["session_mode"],
+                "strategy_id": run["strategy_id"],
+                "strategy_config_id": run["strategy_config_id"],
+                "strategy_config": dict(run["strategy_config"]),
+                "strategy_config_digest": run["strategy_config_digest"],
+                "official_resolution": totals["resolved"] / run["issue_count"],
+                "all_issues_resolved": totals["all_resolved"],
+                "resolved_issues": totals["resolved"],
+                "selected_input_tokens": totals["tokens"],
+                "calls": totals["calls"],
+                "resolved_calls": totals["resolved_calls"],
+                "rediscovery_calls": totals["rediscovery_calls"],
+                "saving_vs_persistent_full": _saving(
+                    totals["tokens"], persistent_totals["tokens"]
+                ),
+                "saving_vs_fresh_full": _saving(
+                    totals["tokens"], fresh_totals["tokens"]
+                ),
+                "failure_aware_saving_vs_persistent_full": _failure_aware_saving(
+                    run, persistent
+                ),
+                "failure_aware_saving_vs_fresh_full": _failure_aware_saving(
+                    run, fresh
+                ),
+                "resolution_delta_vs_persistent_full": (
+                    totals["resolved"] - persistent_totals["resolved"]
+                ) / run["issue_count"],
+                "resolution_delta_vs_fresh_full": (
+                    totals["resolved"] - fresh_totals["resolved"]
+                ) / run["issue_count"],
+                "calls_delta_vs_persistent_full": (
+                    totals["calls"] - persistent_totals["calls"]
+                ),
+                "calls_delta_vs_fresh_full": totals["calls"] - fresh_totals["calls"],
+                "successful_calls_delta_vs_persistent_full": (
+                    persistent_success_calls
+                ),
+                "successful_calls_delta_vs_fresh_full": fresh_success_calls,
+                "jointly_resolved_issues_vs_persistent_full": (
+                    persistent_joint_successes
+                ),
+                "jointly_resolved_issues_vs_fresh_full": fresh_joint_successes,
+                "rediscovery_delta_vs_fresh_full": (
+                    totals["rediscovery_calls"] - fresh_totals["rediscovery_calls"]
+                ),
+                "cost_per_resolved_issue": (
+                    totals["tokens"] / totals["resolved"]
+                    if totals["resolved"] else None
+                ),
+                "first_divergence_preceding_saving": _pre_divergence_saving(run),
+                "first_action_divergence_rate": sum(
+                    int(row["first_action_diverged"]) for row in run["issues"]
+                ) / run["issue_count"],
+                "run_digest": _digest(run),
+            })
+    return {
+        "schema_version": 1,
+        "study": "paper8_5_multi_issue_quality_saving_frontier",
+        "uncertainty_unit": "ordered_issue_sequence",
+        "pair_count": len(by_pair),
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def _read_runs(path: Path) -> list[dict[str, Any]]:
+    text = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = [json.loads(line) for line in text.splitlines() if line.strip()]
+    if isinstance(payload, Mapping):
+        payload = payload.get("runs", [payload])
+    if not isinstance(payload, list) or not all(isinstance(row, Mapping) for row in payload):
+        raise ValueError(f"{path}: expected a run, a run list, or JSONL runs")
+    return [dict(row) for row in payload]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Reduce strictly paired Paper 8.5 multi-issue runs."
+    )
+    parser.add_argument("--input", type=Path, action="append", required=True)
+    parser.add_argument("--registry", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+    runs = [run for path in args.input for run in _read_runs(path)]
+    result = reduce_multi_issue_runs(runs, load_strategy_registry(args.registry))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised through the CLI
+    raise SystemExit(main())

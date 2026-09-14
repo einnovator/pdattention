@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "source_study": "paper8_5_multi_issue_quality_saving_frontier",
+  "destination_study": "paper4_5_native_agent_runtime",
+  "principle": "Paper 8.5 qualifies logical memory plans; Paper 4.5 realizes the frozen plans without changing selection.",
+  "evidence_levels": {
+    "discovery": "repeat-qualified development sequences; no product profile claim",
+    "confirmation": "frozen policy on held-out ordered issue sequences with sequence-clustered intervals",
+    "transfer": "confirmation repeated across at least two model families and two agent implementations",
+    "runtime_qualified": "transfer policy realized by a Paper 4.5 engine that passes PRA-100 parity, sparse-KV identity, and lifecycle gates"
+  },
+  "profile_candidates": [
+    {
+      "id": "AGENT_FULL",
+      "purpose": "correctness and engine-parity control",
+      "logical_rule": "retain all model-visible history",
+      "quality_floor": 1.0,
+      "required_evidence_level": "runtime_qualified",
+      "saving_claim": "none"
+    },
+    {
+      "id": "AGENT_QUALITY",
+      "purpose": "maximize saving under a strict quality-preservation objective",
+      "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.02",
+      "required_conditions": [
+        "positive failure-aware saving versus persistent FULL",
+        "no material successful-run call inflation",
+        "no unresolved certificate violation",
+        "confirmation evidence before naming a default"
+      ]
+    },
+    {
+      "id": "AGENT_BALANCED",
+      "purpose": "reduce cost per resolved issue while preserving most baseline capability",
+      "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.05",
+      "required_conditions": [
+        "positive failure-aware saving versus both persistent FULL and the relevant fresh-session control",
+        "cost per resolved issue improves",
+        "successful-run calls increase by no more than 10%",
+        "confirmation evidence before naming a default"
+      ]
+    },
+    {
+      "id": "AGENT_ECONOMY",
+      "purpose": "maximize resource reduction under an explicit capability budget",
+      "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.10",
+      "required_conditions": [
+        "at least 20% failure-aware saving versus persistent FULL",
+        "cost per resolved issue improves",
+        "quality loss and fallback rate are disclosed as service-level tradeoffs",
+        "confirmation evidence before naming a default"
+      ]
+    }
+  ],
+  "stakeholder_evidence": {
+    "developer": [
+      "official issue resolution",
+      "calls to solution on joint successes",
+      "first action divergence",
+      "rediscovery and repeated mutation counts"
+    ],
+    "devops": [
+      "fallback rate",
+      "realized retention",
+      "per-session policy audit",
+      "engine qualification and lifecycle status"
+    ],
+    "it_management": [
+      "failure-aware input saving",
+      "cost per resolved issue",
+      "concurrent-session capacity",
+      "quality confidence interval and evidence level"
+    ]
+  },
+  "prohibitions": [
+    "do not promote from frozen action agreement alone",
+    "do not pool independent, related, and dependent sequence strata",
+    "do not count early failed termination as saving",
+    "do not rename an adaptively tuned policy as confirmatory evidence",
+    "do not attribute logical token saving to native KV or latency improvement"
+  ]
+}

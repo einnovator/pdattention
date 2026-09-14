@@ -26,8 +26,51 @@ The experiment ladder is:
    selected-history next actions with the full-history reference.
 3. Autonomous qualification: rerun only frontier policies from a fresh task
    sandbox and grade with the official SWE-bench harness.
-4. Freeze `FULL`, `AGENT_BALANCED`, and `AGENT_AGGRESSIVE` logical plans for
-   Paper 4.5 runtime realization.
+4. Freeze evidence-qualified `AGENT_FULL`, `AGENT_QUALITY`, `AGENT_BALANCED`,
+   and `AGENT_ECONOMY` logical plans for Paper 4.5 runtime realization.
+
+## Multi-issue frontier
+
+The publication frontier treats one through five ordered issues as the session
+axis. Each sequence is run in both `fresh_per_issue` and `persistent` modes.
+Independent cross-repository sequences are a hygiene/control stratum; related
+same-repository and dependent same-workspace sequences are the strata in which
+retained prior state can legitimately outperform deliberate fresh sessions.
+These strata are never pooled.
+
+Every arm and parameter grid is registered in
+`configs/multi_issue_strategy_registry_v1.json`. Simple strategies are tested
+alone at two and three issues. A mixture is allowed only after a parent is
+nondominated, and only winning frozen settings advance to four and five issues.
+This avoids a blind strategy Cartesian product while preserving the rationale
+and failure hypothesis for every reported point.
+
+Reduce one or more JSON/JSONL run ledgers with strict pairing, config-digest,
+failure-aware and pre-divergence accounting:
+
+```bash
+python -m experiments.paper8_5_agent_memory.multi_issue_frontier \
+  --registry experiments/paper8_5_agent_memory/configs/multi_issue_strategy_registry_v1.json \
+  --input /results/run-ledger.jsonl \
+  --output /results/multi-issue-reduction.json
+```
+
+Then aggregate repeated executions at the ordered-sequence-family level and
+render separate curves for each sequence stratum:
+
+```bash
+python -m experiments.paper8_5_agent_memory.multi_issue_curves \
+  --reduction /results/multi-issue-reduction.json \
+  --output-directory /results/multi-issue-curves
+```
+
+The generated plots include official resolution versus failure-aware saving
+against both persistent FULL and fresh FULL, all-run and joint-success call
+deltas, and first-action divergence against saving accumulated only before the
+divergence. Single-sequence intervals are explicitly labelled non-inferential.
+The logical-to-runtime handoff and stakeholder evidence requirements are frozen
+in `configs/paper4_5_profile_promotion_contract_v1.json`; no candidate receives
+a product profile name from frozen replay alone.
 
 Before positive selection, `dag.py` can construct a conservative resource/effect
 DAG. `DAG_CERTIFIED` excludes only bundles backed by complete runtime identity

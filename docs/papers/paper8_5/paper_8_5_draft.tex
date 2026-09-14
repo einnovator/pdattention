@@ -68,7 +68,10 @@ On a seeded, repeatable frozen trajectory, structured evidence inside oversized
 tool observations saves 5.54\% of cumulative input while preserving 12/22
 conservatively equivalent actions; more aggressive matched-span and head/tail
 controls save roughly four times more on a fixed slice but preserve fewer
-actions. Model-visible H1/H2 receipts require an explicit tokenizer-based size
+actions. A first autonomous structured-evidence run resolves officially in 22
+calls while saving 6.10\% of its own trajectory-counterfactual input; this is a
+promising single-task point, not an accuracy estimate. Model-visible H1/H2
+receipts require an explicit tokenizer-based size
 gate: short receipts fail closed to canonical bytes, while oversized synthetic
 controls compress observations by more than 95\% and retain valid terminal
 actions. These receipt rows qualify the mechanism, not autonomous task utility.
@@ -81,7 +84,11 @@ diff. Failure-aware accounting prevents those shorter failed runs from being
 reported as efficiency gains.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
-provenance and control.
+provenance and control.  The central evaluation therefore includes both fresh
+one-issue sessions and persistent sequences of one to five issues.  A
+persistent policy is credited only against the appropriate baseline: matching
+a fresh reset is automatic session hygiene, while an advantage over fresh
+sessions requires preserved cross-issue utility or reduced rediscovery.
 \end{abstract}
 
 \section{Introduction}
@@ -137,10 +144,14 @@ We ask:
     \item When bounded memory changes behavior, how much cost appears as direct
     reacquisition, trajectory inflation, submission failure, or loss of a
     resolving workspace state?
+    \item As one session grows from one to five issues, which episode-retirement,
+    selection, and materialization strategies preserve sequence-level quality,
+    and do any retain useful cross-issue state more efficiently than a fresh
+    session reset?
 \end{enumerate}
 
 \paragraph{Contributions planned.}
-We target four contributions:
+We target five contributions:
 \begin{enumerate}[leftmargin=*]
     \item An engine-independent typed record model that separates state,
     provenance, control, and semantic-evidence utility.
@@ -151,6 +162,10 @@ We target four contributions:
     \item Agent-specific efficiency endpoints that separate solution and
     submission reliability and charge direct reacquisition and trajectory
     inflation.
+    \item A multi-issue session frontier that reports every promoted strategy,
+    configuration, and composition against both persistent-full and
+    fresh-per-issue controls, with uncertainty clustered by ordered issue
+    sequence.
 \end{enumerate}
 
 \section{Background and Motivation}
@@ -309,7 +324,7 @@ therefore separate the issue from the session: an \emph{episode} is one issue
 and workspace lifetime, while a session is an ordered sequence of one or more
 episodes.  Two modes consume the identical locked issue order:
 \textsc{Fresh-Per-Issue} assigns a new session identity to every episode, and
-\textsc{Persistent} retains one identity across $n\in\{2,3,4,5\}$ episodes.
+\textsc{Persistent} retains one identity across $n\in\{1,2,3,4,5\}$ episodes.
 Every transition declares the new active task, workspace scope, prior episode
 completion, and globally unique record, turn, and causal-group identities.
 Incompatible SWE-bench base commits remain separate workspaces; persistent
@@ -796,6 +811,19 @@ coding-agent memory must remain accessible.
 
 \section{Adaptive Policy Campaign}
 
+Every reported strategy has a stable identifier, a predeclared rationale,
+configuration coordinates, primary matched comparison, predicted failure mode,
+and implementation status in
+\path{multi_issue_strategy_registry_v1.json}.  We do not execute a blind
+Cartesian product.  Simple families are first isolated at two and three issues;
+a configuration that is low-saving, quality-losing, or call-inflating is
+stopped.  A mixture is admissible only when each parent has an interpretable
+effect and at least one parent is nondominated.  The combination then changes
+one coordinate at a time and is compared with each parent plus a matched-token
+tail.  Only nondominated configurations advance to four and five issues and to
+held-out sequences.  This preserves an argument for every tested cell without
+turning exploratory search into confirmatory evidence.
+
 \begin{table}[H]
 \centering
 \small
@@ -821,6 +849,32 @@ gross/net saving, calls, recovery, and uncertainty. \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{From a frontier to deployable profiles}
+
+The curve is the product interface, not merely a paper visualization.  A
+developer needs official resolution, calls-to-solution, divergence, and
+rediscovery; an operator needs fallback frequency, realized retention, and an
+auditable per-session policy decision; an infrastructure buyer needs
+failure-aware saving, cost per resolved issue, concurrency capacity, and a
+quality confidence interval.  We therefore predeclare four logical destinations
+without assigning a winning policy in advance: \textsc{Agent-Full} is the
+no-selection correctness control; \textsc{Agent-Quality},
+\textsc{Agent-Balanced}, and \textsc{Agent-Economy} choose the highest-saving
+nondominated frozen point subject to lower sequence-clustered quality-delta
+bounds of $-2$, $-5$, and $-10$ percentage points, respectively.  The latter
+also requires at least 20\% failure-aware saving.  Balanced and Economy must
+improve cost per resolved issue; Quality and Balanced must not materially
+inflate calls among joint successes.
+
+These names remain candidates until held-out autonomous confirmation. Frozen
+next-action agreement alone cannot promote a profile, and insufficient data
+cannot be converted into confidence by pooling requests, repeated executions,
+or different sequence strata. The complete logical-to-runtime contract is
+versioned in \path{paper4_5_profile_promotion_contract_v1.json}. Paper~4.5 may
+claim a runtime-qualified profile only after realizing the identical frozen
+logical plan while independently passing 100\% parity, sparse-K/V identity, and
+lifecycle gates.
 
 The adaptive rule is versioned before each discovery stage. Current whole-group
 H1/H2a combinations are stopped because they lose the action proxy rapidly for
@@ -911,12 +965,35 @@ Active only / 3 & 11,206/33,431 & 66.48\% & 497,808/1,147,100 & 56.60\% \\
 Three deliberately fresh \textsc{Full} sessions consume 496,540 cumulative
 message-content tokens.  The active-only persistent arm consumes 497,808,
 only 1,268 tokens (0.26\%) more, while preserving a single logical session
-identity.  This supports the proposed workload axis but not yet the stronger
-claim that persistence improves an engine: native K/V reuse, original-position
+identity.  Thus it provides essentially no logical-token saving over deliberate
+fresh resets; its value is only automatic session hygiene for a developer who
+does not reset the conversation.  This supports the proposed workload axis but
+not yet the stronger claim that persistence improves either agent quality or an
+engine: native K/V reuse, original-position
 sparse correctness, prefix-cache comparison, and agent-level resolution are
 deferred to Paper~4.5 after Paper~8.5 quality gates pass.  Auditable schedules,
 composed traces, and decision rows are released under
 \texttt{multi\_issue\_session\_v1}.
+
+The decisive experiment therefore uses two additional strata.  Related issues
+share a repository and can benefit from prior localization or architectural
+knowledge; dependent issues share a workspace and may consume artifacts or
+decisions produced earlier.  On independent cross-repository issues,
+\textsc{Fresh-Per-Issue} is expected to dominate logically and serves as a
+negative control.  On related and dependent sequences, a selective persistent
+policy can be credited over fresh reset only if reduced rediscovery or improved
+quality pays for every retained prior-episode token.
+
+A one-decision frozen smoke further demonstrates why structural opportunity is
+not a policy frontier. At two issues, completed-spine and active-only retention
+materialize 35.02\% and 13.29\% of persistent history, but neither reproduces
+the contemporaneous \textsc{Full} command. At three issues, the same policies
+materialize 28.45\% and 11.90\% and both reproduce that command. In both cases
+the contemporaneous \textsc{Full} call itself differs from the command stored
+in the historical successful trajectory. The opposite outcomes and unstable
+historical control prohibit a policy ranking; the artifact is retained only as
+a mechanism and instability audit. Repeated autonomous official resolution is
+the next quality gate.
 
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
@@ -1313,6 +1390,21 @@ separated by matched frozen cohort. Agreement is diagnostic and is not task
 accuracy.}
 \label{fig:frozen-frontiers}
 \end{figure}
+
+\subsection{Autonomous structured-observation pilot}
+
+We then ran the structured materializer autonomously on
+\texttt{scikit-learn-13135}, still retaining every logical causal group.  The
+512-token treatment resolves officially in 22 calls and materializes 159,482
+of 169,850 trajectory-counterfactual message tokens, a 6.10\% gross saving. A
+successful \textsc{Full} control resolves in 23 calls and consumes 197,796
+tokens. A second \textsc{Full} execution stops after 19 calls with a nonempty
+778-byte terminal workspace patch but submits an empty patch, so its primary
+official outcome is failure. Thus the treatment is a promising one-task point,
+not an accuracy estimate or a paired trajectory-saving claim: the two
+\textsc{Full} trajectories have different lengths and outcomes. It advances
+only to repeated same-host evaluation on multiple task identities. The compact
+ledger is released under \path{autonomous_structured_task5_v1}.
 
 \subsection{Model-visible resource and mutation receipts}
 
@@ -1965,9 +2057,16 @@ task identities it saves 6.35\% of pooled treatment-history tokens, but primary
 resolution falls from 5/6 FULL runs to 4/6 treatment runs. Its 66.7\%
 task-macro resolution misses the 80\% gate. The repeated failure retains the
 intended source edit but submits a non-patch excerpt, motivating explicit
-progress/submission state rather than deeper blind recency. Selector
-proliferation, native-K/V transfer, additional models, and additional harnesses
-wait for that task-success gate.
+progress/submission state rather than deeper blind recency.  The structured
+observation arm supplies a more promising but still preliminary point: on one
+Task-5 execution it preserves official resolution in 22 calls while saving
+6.10\% of its trajectory-counterfactual materialized tokens; one of two FULL
+controls resolves, and the other creates a patch but submits an empty payload.
+It therefore advances to repeated multi-task confirmation, not to a profile.
+The new one-to-five-issue campaign additionally treats active-only retirement
+as session hygiene unless it beats deliberate fresh sessions on related or
+dependent issue sequences. Selector proliferation, native-K/V transfer,
+additional models, and additional harnesses wait for these task-success gates.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

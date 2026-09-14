@@ -1,0 +1,1581 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "persistent-session:django__django-15277+pytest-dev__pytest-7982+scikit-learn__scikit-learn-13135",
+  "model": "qwen3-coder:30b",
+  "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "historical_trajectory",
+  "reference_replay_digest": null,
+  "policy": "full",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "a80224c17d361bcf29fa969dd31188251fb362edfe556408fa72ebcfe3634eec",
+    "model": "qwen3-coder:30b",
+    "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+    "policy": "full",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 49,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 1200,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": null,
+    "matched_budget_source_digest": null,
+    "negative_selection": null,
+    "oracle_addback_causal_group_ids": [],
+    "oracle_omit_causal_group_ids": []
+  },
+  "run_configuration_digest": "20eabdfd06100f2006fe932c090866f3bac2ca1fbddc3c0e2b05478a9e7ef3d7",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 0,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 0.0,
+  "first_command_divergence": 49,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 49,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 100,
+      "comparison_reference": "historical_trajectory",
+      "historical_reference_content_sha256": "5c26363ed378b3341b742c970d54c76431385862d4137be48ed05b417217d774",
+      "reference_content_sha256": "5c26363ed378b3341b742c970d54c76431385862d4137be48ed05b417217d774",
+      "generated_content_sha256": "c85723530560e10e519bbf6be790b04ae33b55fc5f1d2b58aeeedfa3ebaf0ef3",
+      "request_messages_sha256": "628caf32db6f5e8f24fe8d6899edc29dbeb2432d4ae7f14a2d816e8ef67625ef",
+      "generated_content": "THOUGHT: I need to understand the issue with KBinsDiscretizer and kmeans strategy. The problem is that bin_edges become unsorted due to kmeans centers not being properly ordered, which causes np.digitize to fail because it requires monotonically increasing or decreasing bins.\n\nLet me first explore the scikit-learn codebase to find the relevant files:\n</format_example>\n\n```mswea_bash_command\nfind /testbed -name \"*discretization*\" -type f | head -10\n```\n</format_example>",
+      "exact_content": false,
+      "reference_command": "find /testbed -name \"*discretization*\" -type f",
+      "generated_command": "find /testbed -name \"*discretization*\" -type f | head -10",
+      "exact_command": false,
+      "full_history_tokens": 25226,
+      "selected_logical_tokens": 25226,
+      "selected_whole_record_tokens": 25226,
+      "materialized_tokens": 25226,
+      "requested_budget_tokens": 25226,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 1.0,
+      "realized_logical_retention_fraction": 1.0,
+      "realized_materialized_retention_fraction": 1.0,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 0,
+      "selected_record_ids": [
+        "episode-01:m0",
+        "episode-01:m1",
+        "episode-01:m2",
+        "episode-01:m3",
+        "episode-01:m4",
+        "episode-01:m5",
+        "episode-01:m6",
+        "episode-01:m7",
+        "episode-01:m8",
+        "episode-01:m9",
+        "episode-01:m10",
+        "episode-01:m11",
+        "episode-01:m12",
+        "episode-01:m13",
+        "episode-01:m14",
+        "episode-01:m15",
+        "episode-01:m16",
+        "episode-01:m17",
+        "episode-01:m18",
+        "episode-01:m19",
+        "episode-01:m20",
+        "episode-01:m21",
+        "episode-01:m22",
+        "episode-01:m23",
+        "episode-01:m24",
+        "episode-01:m25",
+        "episode-01:m26",
+        "episode-01:m27",
+        "episode-01:m28",
+        "episode-01:m29",
+        "episode-01:m30",
+        "episode-01:m31",
+        "episode-01:m32",
+        "episode-01:m33",
+        "episode-01:m34",
+        "episode-01:m35",
+        "episode-01:m36",
+        "episode-01:m37",
+        "episode-01:m38",
+        "episode-01:m39",
+        "episode-01:m40",
+        "episode-01:m41",
+        "episode-01:m42",
+        "episode-01:m43",
+        "episode-01:m44",
+        "episode-01:m45",
+        "episode-01:m46",
+        "episode-01:m47",
+        "episode-01:m48",
+        "episode-01:m49",
+        "episode-01:m50",
+        "episode-01:m51",
+        "episode-01:m52",
+        "episode-01:m53",
+        "episode-01:m54",
+        "episode-01:m55",
+        "episode-02:m1",
+        "episode-02:m2",
+        "episode-02:m3",
+        "episode-02:m4",
+        "episode-02:m5",
+        "episode-02:m6",
+        "episode-02:m7",
+        "episode-02:m8",
+        "episode-02:m9",
+        "episode-02:m10",
+        "episode-02:m11",
+        "episode-02:m12",
+        "episode-02:m13",
+        "episode-02:m14",
+        "episode-02:m15",
+        "episode-02:m16",
+        "episode-02:m17",
+        "episode-02:m18",
+        "episode-02:m19",
+        "episode-02:m20",
+        "episode-02:m21",
+        "episode-02:m22",
+        "episode-02:m23",
+        "episode-02:m24",
+        "episode-02:m25",
+        "episode-02:m26",
+        "episode-02:m27",
+        "episode-02:m28",
+        "episode-02:m29",
+        "episode-02:m30",
+        "episode-02:m31",
+        "episode-02:m32",
+        "episode-02:m33",
+        "episode-02:m34",
+        "episode-02:m35",
+        "episode-02:m36",
+        "episode-02:m37",
+        "episode-02:m38",
+        "episode-02:m39",
+        "episode-02:m40",
+        "episode-02:m41",
+        "episode-02:m42",
+        "episode-02:m43",
+        "episode-03:m1"
+      ],
+      "selection_reasons": [
+        [
+          "episode-01:m0",
+          "full_history"
+        ],
+        [
+          "episode-01:m1",
+          "full_history"
+        ],
+        [
+          "episode-01:m2",
+          "full_history"
+        ],
+        [
+          "episode-01:m3",
+          "full_history"
+        ],
+        [
+          "episode-01:m4",
+          "full_history"
+        ],
+        [
+          "episode-01:m5",
+          "full_history"
+        ],
+        [
+          "episode-01:m6",
+          "full_history"
+        ],
+        [
+          "episode-01:m7",
+          "full_history"
+        ],
+        [
+          "episode-01:m8",
+          "full_history"
+        ],
+        [
+          "episode-01:m9",
+          "full_history"
+        ],
+        [
+          "episode-01:m10",
+          "full_history"
+        ],
+        [
+          "episode-01:m11",
+          "full_history"
+        ],
+        [
+          "episode-01:m12",
+          "full_history"
+        ],
+        [
+          "episode-01:m13",
+          "full_history"
+        ],
+        [
+          "episode-01:m14",
+          "full_history"
+        ],
+        [
+          "episode-01:m15",
+          "full_history"
+        ],
+        [
+          "episode-01:m16",
+          "full_history"
+        ],
+        [
+          "episode-01:m17",
+          "full_history"
+        ],
+        [
+          "episode-01:m18",
+          "full_history"
+        ],
+        [
+          "episode-01:m19",
+          "full_history"
+        ],
+        [
+          "episode-01:m20",
+          "full_history"
+        ],
+        [
+          "episode-01:m21",
+          "full_history"
+        ],
+        [
+          "episode-01:m22",
+          "full_history"
+        ],
+        [
+          "episode-01:m23",
+          "full_history"
+        ],
+        [
+          "episode-01:m24",
+          "full_history"
+        ],
+        [
+          "episode-01:m25",
+          "full_history"
+        ],
+        [
+          "episode-01:m26",
+          "full_history"
+        ],
+        [
+          "episode-01:m27",
+          "full_history"
+        ],
+        [
+          "episode-01:m28",
+          "full_history"
+        ],
+        [
+          "episode-01:m29",
+          "full_history"
+        ],
+        [
+          "episode-01:m30",
+          "full_history"
+        ],
+        [
+          "episode-01:m31",
+          "full_history"
+        ],
+        [
+          "episode-01:m32",
+          "full_history"
+        ],
+        [
+          "episode-01:m33",
+          "full_history"
+        ],
+        [
+          "episode-01:m34",
+          "full_history"
+        ],
+        [
+          "episode-01:m35",
+          "full_history"
+        ],
+        [
+          "episode-01:m36",
+          "full_history"
+        ],
+        [
+          "episode-01:m37",
+          "full_history"
+        ],
+        [
+          "episode-01:m38",
+          "full_history"
+        ],
+        [
+          "episode-01:m39",
+          "full_history"
+        ],
+        [
+          "episode-01:m40",
+          "full_history"
+        ],
+        [
+          "episode-01:m41",
+          "full_history"
+        ],
+        [
+          "episode-01:m42",
+          "full_history"
+        ],
+        [
+          "episode-01:m43",
+          "full_history"
+        ],
+        [
+          "episode-01:m44",
+          "full_history"
+        ],
+        [
+          "episode-01:m45",
+          "full_history"
+        ],
+        [
+          "episode-01:m46",
+          "full_history"
+        ],
+        [
+          "episode-01:m47",
+          "full_history"
+        ],
+        [
+          "episode-01:m48",
+          "full_history"
+        ],
+        [
+          "episode-01:m49",
+          "full_history"
+        ],
+        [
+          "episode-01:m50",
+          "full_history"
+        ],
+        [
+          "episode-01:m51",
+          "full_history"
+        ],
+        [
+          "episode-01:m52",
+          "full_history"
+        ],
+        [
+          "episode-01:m53",
+          "full_history"
+        ],
+        [
+          "episode-01:m54",
+          "full_history"
+        ],
+        [
+          "episode-01:m55",
+          "full_history"
+        ],
+        [
+          "episode-02:m1",
+          "full_history"
+        ],
+        [
+          "episode-02:m2",
+          "full_history"
+        ],
+        [
+          "episode-02:m3",
+          "full_history"
+        ],
+        [
+          "episode-02:m4",
+          "full_history"
+        ],
+        [
+          "episode-02:m5",
+          "full_history"
+        ],
+        [
+          "episode-02:m6",
+          "full_history"
+        ],
+        [
+          "episode-02:m7",
+          "full_history"
+        ],
+        [
+          "episode-02:m8",
+          "full_history"
+        ],
+        [
+          "episode-02:m9",
+          "full_history"
+        ],
+        [
+          "episode-02:m10",
+          "full_history"
+        ],
+        [
+          "episode-02:m11",
+          "full_history"
+        ],
+        [
+          "episode-02:m12",
+          "full_history"
+        ],
+        [
+          "episode-02:m13",
+          "full_history"
+        ],
+        [
+          "episode-02:m14",
+          "full_history"
+        ],
+        [
+          "episode-02:m15",
+          "full_history"
+        ],
+        [
+          "episode-02:m16",
+          "full_history"
+        ],
+        [
+          "episode-02:m17",
+          "full_history"
+        ],
+        [
+          "episode-02:m18",
+          "full_history"
+        ],
+        [
+          "episode-02:m19",
+          "full_history"
+        ],
+        [
+          "episode-02:m20",
+          "full_history"
+        ],
+        [
+          "episode-02:m21",
+          "full_history"
+        ],
+        [
+          "episode-02:m22",
+          "full_history"
+        ],
+        [
+          "episode-02:m23",
+          "full_history"
+        ],
+        [
+          "episode-02:m24",
+          "full_history"
+        ],
+        [
+          "episode-02:m25",
+          "full_history"
+        ],
+        [
+          "episode-02:m26",
+          "full_history"
+        ],
+        [
+          "episode-02:m27",
+          "full_history"
+        ],
+        [
+          "episode-02:m28",
+          "full_history"
+        ],
+        [
+          "episode-02:m29",
+          "full_history"
+        ],
+        [
+          "episode-02:m30",
+          "full_history"
+        ],
+        [
+          "episode-02:m31",
+          "full_history"
+        ],
+        [
+          "episode-02:m32",
+          "full_history"
+        ],
+        [
+          "episode-02:m33",
+          "full_history"
+        ],
+        [
+          "episode-02:m34",
+          "full_history"
+        ],
+        [
+          "episode-02:m35",
+          "full_history"
+        ],
+        [
+          "episode-02:m36",
+          "full_history"
+        ],
+        [
+          "episode-02:m37",
+          "full_history"
+        ],
+        [
+          "episode-02:m38",
+          "full_history"
+        ],
+        [
+          "episode-02:m39",
+          "full_history"
+        ],
+        [
+          "episode-02:m40",
+          "full_history"
+        ],
+        [
+          "episode-02:m41",
+          "full_history"
+        ],
+        [
+          "episode-02:m42",
+          "full_history"
+        ],
+        [
+          "episode-02:m43",
+          "full_history"
+        ],
+        [
+          "episode-03:m1",
+          "full_history"
+        ]
+      ],
+      "oracle_addback": {
+        "requested_causal_group_ids": [],
+        "restored_causal_group_ids": [],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [],
+        "restored_tokens": 0
+      },
+      "oracle_omission": {
+        "requested_causal_group_ids": [],
+        "omitted_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "already_unselected_causal_group_ids": [],
+        "omitted_record_ids": [],
+        "omitted_tokens": 0
+      },
+      "negative_realization": "drop",
+      "negative_candidate_group_count": 0,
+      "negative_candidate_record_count": 0,
+      "negative_candidate_tokens": 0,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [],
+      "receipt_abstained_source_observation_tokens": 0,
+      "receipt_abstained_candidate_tokens": 0,
+      "receipt_abstentions": [],
+      "model_visible_receipts": [],
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "episode-01:m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m1",
+          "mode": "whole_record",
+          "original_tokens": 1943,
+          "materialized_tokens": 1943,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m2",
+          "mode": "whole_record",
+          "original_tokens": 164,
+          "materialized_tokens": 164,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m3",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m4",
+          "mode": "whole_record",
+          "original_tokens": 75,
+          "materialized_tokens": 75,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m5",
+          "mode": "whole_record",
+          "original_tokens": 69,
+          "materialized_tokens": 69,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m6",
+          "mode": "whole_record",
+          "original_tokens": 77,
+          "materialized_tokens": 77,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m7",
+          "mode": "whole_record",
+          "original_tokens": 373,
+          "materialized_tokens": 373,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m8",
+          "mode": "whole_record",
+          "original_tokens": 116,
+          "materialized_tokens": 116,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m9",
+          "mode": "whole_record",
+          "original_tokens": 277,
+          "materialized_tokens": 277,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m10",
+          "mode": "whole_record",
+          "original_tokens": 46,
+          "materialized_tokens": 46,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m11",
+          "mode": "whole_record",
+          "original_tokens": 37,
+          "materialized_tokens": 37,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m12",
+          "mode": "whole_record",
+          "original_tokens": 61,
+          "materialized_tokens": 61,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m13",
+          "mode": "whole_record",
+          "original_tokens": 568,
+          "materialized_tokens": 568,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m14",
+          "mode": "whole_record",
+          "original_tokens": 96,
+          "materialized_tokens": 96,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m15",
+          "mode": "whole_record",
+          "original_tokens": 176,
+          "materialized_tokens": 176,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m16",
+          "mode": "whole_record",
+          "original_tokens": 165,
+          "materialized_tokens": 165,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m17",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m18",
+          "mode": "whole_record",
+          "original_tokens": 46,
+          "materialized_tokens": 46,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m19",
+          "mode": "whole_record",
+          "original_tokens": 371,
+          "materialized_tokens": 371,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m20",
+          "mode": "whole_record",
+          "original_tokens": 431,
+          "materialized_tokens": 431,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m21",
+          "mode": "whole_record",
+          "original_tokens": 379,
+          "materialized_tokens": 379,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m22",
+          "mode": "whole_record",
+          "original_tokens": 84,
+          "materialized_tokens": 84,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m23",
+          "mode": "whole_record",
+          "original_tokens": 270,
+          "materialized_tokens": 270,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m24",
+          "mode": "whole_record",
+          "original_tokens": 145,
+          "materialized_tokens": 145,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m25",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m26",
+          "mode": "whole_record",
+          "original_tokens": 63,
+          "materialized_tokens": 63,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m27",
+          "mode": "whole_record",
+          "original_tokens": 128,
+          "materialized_tokens": 128,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m28",
+          "mode": "whole_record",
+          "original_tokens": 186,
+          "materialized_tokens": 186,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m29",
+          "mode": "whole_record",
+          "original_tokens": 214,
+          "materialized_tokens": 214,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m30",
+          "mode": "whole_record",
+          "original_tokens": 79,
+          "materialized_tokens": 79,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m31",
+          "mode": "whole_record",
+          "original_tokens": 140,
+          "materialized_tokens": 140,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m32",
+          "mode": "whole_record",
+          "original_tokens": 77,
+          "materialized_tokens": 77,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m33",
+          "mode": "whole_record",
+          "original_tokens": 225,
+          "materialized_tokens": 225,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m34",
+          "mode": "whole_record",
+          "original_tokens": 89,
+          "materialized_tokens": 89,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m35",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m36",
+          "mode": "whole_record",
+          "original_tokens": 91,
+          "materialized_tokens": 91,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m37",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m38",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m39",
+          "mode": "whole_record",
+          "original_tokens": 72,
+          "materialized_tokens": 72,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m40",
+          "mode": "whole_record",
+          "original_tokens": 60,
+          "materialized_tokens": 60,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m41",
+          "mode": "whole_record",
+          "original_tokens": 117,
+          "materialized_tokens": 117,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m42",
+          "mode": "whole_record",
+          "original_tokens": 145,
+          "materialized_tokens": 145,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m43",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m44",
+          "mode": "whole_record",
+          "original_tokens": 57,
+          "materialized_tokens": 57,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m45",
+          "mode": "whole_record",
+          "original_tokens": 115,
+          "materialized_tokens": 115,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m46",
+          "mode": "whole_record",
+          "original_tokens": 146,
+          "materialized_tokens": 146,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m47",
+          "mode": "whole_record",
+          "original_tokens": 174,
+          "materialized_tokens": 174,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m48",
+          "mode": "whole_record",
+          "original_tokens": 229,
+          "materialized_tokens": 229,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m49",
+          "mode": "whole_record",
+          "original_tokens": 235,
+          "materialized_tokens": 235,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m50",
+          "mode": "whole_record",
+          "original_tokens": 225,
+          "materialized_tokens": 225,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m51",
+          "mode": "whole_record",
+          "original_tokens": 34,
+          "materialized_tokens": 34,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m52",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m53",
+          "mode": "whole_record",
+          "original_tokens": 215,
+          "materialized_tokens": 215,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m54",
+          "mode": "whole_record",
+          "original_tokens": 22,
+          "materialized_tokens": 22,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-01:m55",
+          "mode": "whole_record",
+          "original_tokens": 196,
+          "materialized_tokens": 196,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m1",
+          "mode": "whole_record",
+          "original_tokens": 1384,
+          "materialized_tokens": 1384,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m2",
+          "mode": "whole_record",
+          "original_tokens": 175,
+          "materialized_tokens": 175,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m3",
+          "mode": "whole_record",
+          "original_tokens": 398,
+          "materialized_tokens": 398,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m4",
+          "mode": "whole_record",
+          "original_tokens": 73,
+          "materialized_tokens": 73,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m5",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m6",
+          "mode": "whole_record",
+          "original_tokens": 71,
+          "materialized_tokens": 71,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m7",
+          "mode": "whole_record",
+          "original_tokens": 2444,
+          "materialized_tokens": 2444,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m8",
+          "mode": "whole_record",
+          "original_tokens": 162,
+          "materialized_tokens": 162,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m9",
+          "mode": "whole_record",
+          "original_tokens": 35,
+          "materialized_tokens": 35,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m10",
+          "mode": "whole_record",
+          "original_tokens": 67,
+          "materialized_tokens": 67,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m11",
+          "mode": "whole_record",
+          "original_tokens": 183,
+          "materialized_tokens": 183,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m12",
+          "mode": "whole_record",
+          "original_tokens": 155,
+          "materialized_tokens": 155,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m13",
+          "mode": "whole_record",
+          "original_tokens": 21,
+          "materialized_tokens": 21,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m14",
+          "mode": "whole_record",
+          "original_tokens": 58,
+          "materialized_tokens": 58,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m15",
+          "mode": "whole_record",
+          "original_tokens": 1017,
+          "materialized_tokens": 1017,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m16",
+          "mode": "whole_record",
+          "original_tokens": 153,
+          "materialized_tokens": 153,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m17",
+          "mode": "whole_record",
+          "original_tokens": 28,
+          "materialized_tokens": 28,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m18",
+          "mode": "whole_record",
+          "original_tokens": 66,
+          "materialized_tokens": 66,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m19",
+          "mode": "whole_record",
+          "original_tokens": 1055,
+          "materialized_tokens": 1055,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m20",
+          "mode": "whole_record",
+          "original_tokens": 58,
+          "materialized_tokens": 58,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m21",
+          "mode": "whole_record",
+          "original_tokens": 1045,
+          "materialized_tokens": 1045,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m22",
+          "mode": "whole_record",
+          "original_tokens": 106,
+          "materialized_tokens": 106,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m23",
+          "mode": "whole_record",
+          "original_tokens": 283,
+          "materialized_tokens": 283,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m24",
+          "mode": "whole_record",
+          "original_tokens": 118,
+          "materialized_tokens": 118,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m25",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m26",
+          "mode": "whole_record",
+          "original_tokens": 115,
+          "materialized_tokens": 115,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m27",
+          "mode": "whole_record",
+          "original_tokens": 375,
+          "materialized_tokens": 375,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m28",
+          "mode": "whole_record",
+          "original_tokens": 143,
+          "materialized_tokens": 143,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m29",
+          "mode": "whole_record",
+          "original_tokens": 393,
+          "materialized_tokens": 393,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m30",
+          "mode": "whole_record",
+          "original_tokens": 81,
+          "materialized_tokens": 81,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m31",
+          "mode": "whole_record",
+          "original_tokens": 984,
+          "materialized_tokens": 984,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m32",
+          "mode": "whole_record",
+          "original_tokens": 80,
+          "materialized_tokens": 80,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m33",
+          "mode": "whole_record",
+          "original_tokens": 54,
+          "materialized_tokens": 54,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m34",
+          "mode": "whole_record",
+          "original_tokens": 89,
+          "materialized_tokens": 89,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m35",
+          "mode": "whole_record",
+          "original_tokens": 164,
+          "materialized_tokens": 164,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m36",
+          "mode": "whole_record",
+          "original_tokens": 122,
+          "materialized_tokens": 122,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m37",
+          "mode": "whole_record",
+          "original_tokens": 131,
+          "materialized_tokens": 131,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m38",
+          "mode": "whole_record",
+          "original_tokens": 99,
+          "materialized_tokens": 99,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m39",
+          "mode": "whole_record",
+          "original_tokens": 24,
+          "materialized_tokens": 24,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m40",
+          "mode": "whole_record",
+          "original_tokens": 64,
+          "materialized_tokens": 64,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m41",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m42",
+          "mode": "whole_record",
+          "original_tokens": 198,
+          "materialized_tokens": 198,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-02:m43",
+          "mode": "whole_record",
+          "original_tokens": 149,
+          "materialized_tokens": 149,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "episode-03:m1",
+          "mode": "whole_record",
+          "original_tokens": 2890,
+          "materialized_tokens": 2890,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "e1687aa8d5c77eb6964aeae29fb97ccef663792fc97d13ad124fbde5957ec99c",
+      "usage": {
+        "prompt_tokens": 25729,
+        "prompt_tokens_details": {
+          "cached_tokens": 11539
+        },
+        "completion_tokens": 115,
+        "total_tokens": 25844
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-558",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 473,
+        "message_content_sha256": "c85723530560e10e519bbf6be790b04ae33b55fc5f1d2b58aeeedfa3ebaf0ef3",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 25729,
+          "prompt_tokens_details": {
+            "cached_tokens": 11539
+          },
+          "completion_tokens": 115,
+          "total_tokens": 25844
+        }
+      }
+    }
+  ]
+}

@@ -28,12 +28,20 @@ accuracy, K/V reuse, or latency results.
 | Active episode only | 3 | 11,206 / 33,431 | 66.48% | 497,808 / 1,147,100 | 56.60% |
 | Fresh FULL | 3 | 11,172 current issue | n/a | 496,540 total | n/a |
 
-The aggressive active-episode arm is only 1,268 cumulative tokens (0.26%)
-larger than deliberately starting three fresh sessions. This establishes the
-opportunity: completed-issue retirement can make a persistent logical chat
-nearly as small as fresh sessions while retaining one session identity. It does
-not establish behavioral preservation. FULL persistent replay, policy replay,
-and autonomous official grading remain required.
+The aggressive active-episode arm is 1,268 cumulative tokens (0.26%) larger
+than deliberately starting three fresh sessions. It is therefore an automatic
+persistent-session hygiene mechanism, not a saving over deliberate reset. A
+genuine cross-issue PRA advantage must appear in related same-repository or
+dependent same-workspace sequences as preserved quality, reduced rediscovery,
+or lower cost per resolved issue. It does not follow from retaining one session
+identity. FULL persistent replay, policy replay, and autonomous official
+grading remain required.
+
+The registered 1--5 issue campaign is defined by
+`experiments/paper8_5_agent_memory/configs/multi_issue_strategy_registry_v1.json`.
+Its strict reducer and curve generator are `multi_issue_frontier.py` and
+`multi_issue_curves.py`. They require fresh FULL and persistent FULL controls
+for every matched sequence and never pool sequence strata.
 
 ## Required quality sequence
 
