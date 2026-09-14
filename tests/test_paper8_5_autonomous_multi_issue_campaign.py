@@ -24,6 +24,10 @@ BENCHMARK = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "benchmarks" /
     "easy14_longest_success5.json"
 )
+CONFIRMATION_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_persistent_spine_confirmation_v1.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -61,6 +65,29 @@ def test_frozen_registry_has_unique_cells_and_explicit_primary_target():
     assert spec["primary_target"]["maximum_saving_fraction"] == TARGET_SAVING_MAX
     assert spec["primary_target"]["official_resolution_delta_minimum"] == 0
     assert spec["primary_target"]["lost_persistent_full_successes"] == 0
+
+
+def test_confirmation_registry_freezes_repeats_and_held_out_sequence():
+    spec = json.loads(CONFIRMATION_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    validate_spec(spec, benchmark)
+    cells = campaign_cells(spec)
+
+    assert len(cells) == 36
+    assert len({row["cell_id"] for row in cells}) == 36
+    r4 = [
+        row for row in cells
+        if row["strategy_config_id"] == "r4m2v2_tasks1"
+        and row["sequence_id"] == "independent-n2-a"
+    ]
+    assert [row["repeat"] for row in r4] == [1, 2]
+    held_out = next(
+        row for row in spec["sequences"]
+        if row["sequence_id"] == "independent-n2-b"
+    )
+    assert held_out["instance_ids"] == [
+        "sphinx-doc__sphinx-8721", "scikit-learn__scikit-learn-13135"
+    ]
 
 
 def test_dry_run_distinguishes_fresh_from_persistent_prefixes(tmp_path):
