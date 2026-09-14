@@ -447,6 +447,9 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     "episodes": prefix_episodes,
                 })
             completed = _completed_result(episode_output)
+            completed_ok = bool(
+                completed is not None and completed.get("status") == "complete"
+            )
             export_path = episode_output / "persistent_episode_export.json"
             command = _episode_command(
                 spec=spec,
@@ -463,7 +466,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             )
             row["episodes"][episode_id] = {
                 "instance_id": instance_id,
-                "status": "complete" if completed else "planned",
+                "status": "complete" if completed_ok else "planned",
                 "output": str(episode_output),
                 "prefix": str(prefix_path) if use_prefix else None,
                 "command": command,
@@ -471,10 +474,15 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             _write(state_path, state)
             if args.dry_run:
                 continue
-            if completed is None:
+            if not completed_ok:
                 if episode_output.exists() and any(episode_output.iterdir()):
                     row["episodes"][episode_id]["status"] = "infrastructure_error"
-                    row["episodes"][episode_id]["reason"] = "nonempty incomplete output; preserve and inspect"
+                    row["episodes"][episode_id]["reason"] = (
+                        "nonempty incomplete or infrastructure-contaminated output; "
+                        "preserve and inspect"
+                    )
+                    if completed is not None:
+                        row["episodes"][episode_id]["quarantine"] = completed
                     infrastructure_error = True
                     break
                 row["status"] = "running"
@@ -483,9 +491,12 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 _write(state_path, state)
                 process = subprocess.run(command, check=False)
                 completed = _completed_result(episode_output)
+                completed_ok = bool(
+                    completed is not None and completed.get("status") == "complete"
+                )
                 row["episodes"][episode_id]["returncode"] = process.returncode
                 row["episodes"][episode_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
-            if completed is None or not export_path.is_file():
+            if not completed_ok or not export_path.is_file():
                 row["episodes"][episode_id]["status"] = "infrastructure_error"
                 row["episodes"][episode_id]["reason"] = "missing complete result or persistent episode export"
                 infrastructure_error = True

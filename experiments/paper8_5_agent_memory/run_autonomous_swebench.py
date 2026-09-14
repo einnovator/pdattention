@@ -572,7 +572,14 @@ def summarize_trace(path: Path) -> dict[str, Any]:
             for row in rows
         ),
         "requests_over_budget": sum(not bool(row.get("budget_satisfied")) for row in rows),
-        "upstream_error_calls": sum(int(row.get("upstream_status") or 0) >= 400 for row in rows),
+        "upstream_error_calls": sum(
+            int(row.get("upstream_status") or 0) < 100
+            or int(row.get("upstream_status") or 0) >= 400
+            for row in rows
+        ),
+        "upstream_transport_error_calls": sum(
+            bool(row.get("upstream_transport_error")) for row in rows
+        ),
         "metric_note": (
             "token counts cover message content and exclude chat-template tokens; repeated "
             "counts mean a repeated operation/resource signature, not redundant intent; "

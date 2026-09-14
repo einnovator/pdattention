@@ -224,6 +224,35 @@ def _completed_result(path: Path) -> dict[str, Any] | None:
     materialized = int(metrics.get("cumulative_materialized_tokens") or 0)
     if full <= 0:
         return None
+    trace_path = path / "request_selection.jsonl"
+    if not trace_path.is_file():
+        return None
+    trace = [
+        json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    indexes = [int(row["request_index"]) for row in trace]
+    sparse = bool(indexes) and sorted(indexes) != list(
+        range(min(indexes), max(indexes) + 1)
+    )
+    upstream_errors = int(metrics.get("upstream_error_calls") or 0)
+    if sparse or upstream_errors:
+        return {
+            "status": "infrastructure_contaminated",
+            "official_resolved": official["resolved"],
+            "official_error": bool(official.get("error", False)),
+            "calls": int(metrics.get("calls") or 0),
+            "cumulative_full_tokens": full,
+            "cumulative_materialized_tokens": materialized,
+            "gross_saving_fraction": 1 - materialized / full,
+            "trace_sparse_request_indexes": sparse,
+            "upstream_error_calls": upstream_errors,
+            "evidence_admitted": False,
+            "quarantine_reason": (
+                "unlogged request attempts in legacy trace" if sparse
+                else "upstream request failure occurred during trajectory"
+            ),
+        }
     return {
         "status": "complete",
         "official_resolved": official["resolved"],
@@ -449,7 +478,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             state["cells"].get(cell_id, {}).get("output", base_output)
         ))
         prior = _completed_result(recorded_output) or _completed_result(base_output)
-        if prior is not None:
+        if prior is not None and prior.get("status") == "complete":
             completed_output = (
                 recorded_output if _completed_result(recorded_output) is not None
                 else base_output

@@ -979,6 +979,44 @@ class AutonomousSelectionProxy:
             response_body = error.read()
             status = error.code
             response_headers = error.headers
+        except (urllib.error.URLError, TimeoutError) as error:
+            if transformation is not None:
+                self._append_trace({
+                    **transformation.trace,
+                    "request_index": request_index,
+                    "generation": {
+                        "model": transformation.payload.get("model"),
+                        "temperature": transformation.payload.get("temperature"),
+                        "top_p": transformation.payload.get("top_p"),
+                        "seed": transformation.payload.get("seed"),
+                        "max_completion_tokens": transformation.payload.get(
+                            "max_completion_tokens",
+                            transformation.payload.get("max_tokens"),
+                        ),
+                    },
+                    "upstream_status": 0,
+                    "upstream_transport_error": type(error).__name__,
+                    "upstream_transport_error_detail": str(error),
+                    "response_sha256": None,
+                    "response_sha256_scope": None,
+                    "assistant_content_sha256": None,
+                    "reported_prompt_tokens": None,
+                    "reported_completion_tokens": None,
+                    "reported_total_tokens": None,
+                    "assistant_command_sha256": None,
+                    "assistant_operation": None,
+                    "assistant_resource_ids": [],
+                    "assistant_is_search": False,
+                    "assistant_is_read": False,
+                    "assistant_is_test": False,
+                    "reacquired_excluded_resources": [],
+                    "reacquisition_count": 0,
+                    "reacquisition_proxy_for_false_exclusion": False,
+                    "previous_reacquisition_count": 0,
+                    "previous_reacquisition_resources": [],
+                    "reacquired_observation_tokens_from_previous_action": 0,
+                })
+            raise
 
         if transformation is not None:
             raw_messages = payload.get("messages") or ()

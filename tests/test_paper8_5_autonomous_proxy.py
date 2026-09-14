@@ -1177,6 +1177,33 @@ def test_proxy_charges_the_next_observation_to_a_reacquisition(tmp_path):
         upstream.close()
 
 
+def test_proxy_logs_transport_failure_at_the_reserved_request_index(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    proxy = AutonomousSelectionProxy(
+        "http://127.0.0.1:1/v1",
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=1,
+        ),
+        trace_path=trace,
+        timeout_seconds=1,
+    )
+    url = proxy.start()
+    try:
+        status, error = _post(f"{url}/chat/completions", _payload())
+        assert status == 502
+        assert error["error"] == "selection_upstream_unavailable"
+        row = json.loads(trace.read_text(encoding="utf-8").strip())
+        assert row["request_index"] == 1
+        assert row["upstream_status"] == 0
+        assert row["upstream_transport_error"] == "URLError"
+        assert row["assistant_command_sha256"] is None
+        summary = summarize_trace(trace)
+        assert summary["upstream_error_calls"] == 1
+        assert summary["upstream_transport_error_calls"] == 1
+    finally:
+        proxy.close()
+
+
 def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     ids = ["org__repo-1", "org__repo-2"]
     digest = hashlib.sha256(("\n".join(ids) + "\n").encode()).hexdigest()

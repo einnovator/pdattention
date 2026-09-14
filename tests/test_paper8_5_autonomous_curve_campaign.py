@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
+    _completed_result,
     _command,
     _retry_path,
     adaptive_gate,
@@ -120,6 +121,9 @@ def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_pa
             "cumulative_full_tokens": 10,
             "cumulative_materialized_tokens": 10,
         }))
+        (output / "request_selection.jsonl").write_text(
+            json.dumps({"request_index": 1, "upstream_status": 200}) + "\n"
+        )
         source_cells[cell["cell_id"]] = {
             **cell, "status": "complete", "output": str(output),
         }
@@ -437,3 +441,44 @@ def test_certified_long5_campaign_uses_distinct_dag_and_combined_policies():
         "observation_receipt"
     )
     assert not any("80" in arm_id for arm_id in arms)
+
+
+def test_completed_result_quarantines_sparse_or_failed_upstream_trace(tmp_path):
+    (tmp_path / "run_manifest.json").write_text("{}", encoding="utf-8")
+    metrics = {
+        "official_result": {"resolved": True, "error": False},
+        "calls": 2,
+        "cumulative_full_tokens": 200,
+        "cumulative_materialized_tokens": 150,
+        "upstream_error_calls": 0,
+    }
+    (tmp_path / "autonomous_metrics.json").write_text(
+        json.dumps(metrics), encoding="utf-8"
+    )
+    trace = tmp_path / "request_selection.jsonl"
+    trace.write_text(
+        "\n".join(json.dumps({"request_index": index}) for index in (1, 3)) + "\n",
+        encoding="utf-8",
+    )
+    sparse = _completed_result(tmp_path)
+    assert sparse["status"] == "infrastructure_contaminated"
+    assert sparse["trace_sparse_request_indexes"] is True
+    assert sparse["evidence_admitted"] is False
+
+    trace.write_text(
+        "\n".join(json.dumps({"request_index": index}) for index in (1, 2)) + "\n",
+        encoding="utf-8",
+    )
+    metrics["upstream_error_calls"] = 1
+    (tmp_path / "autonomous_metrics.json").write_text(
+        json.dumps(metrics), encoding="utf-8"
+    )
+    failed = _completed_result(tmp_path)
+    assert failed["status"] == "infrastructure_contaminated"
+    assert failed["upstream_error_calls"] == 1
+
+    metrics["upstream_error_calls"] = 0
+    (tmp_path / "autonomous_metrics.json").write_text(
+        json.dumps(metrics), encoding="utf-8"
+    )
+    assert _completed_result(tmp_path)["status"] == "complete"
