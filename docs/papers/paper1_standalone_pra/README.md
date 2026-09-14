@@ -7,7 +7,8 @@ and controlled synthetic and natural-text experiments.
 
 ## Main files
 
-- `paper.tex`
+- `paper.tex` and `paper.pdf`: canonical audited manuscript for publication review
+- `paper_report.tex` and `paper_report.pdf`: long technical-report backup
 - `AGENTS.md`
 - `notes.md`
 
@@ -20,6 +21,10 @@ pretrained MLX calibration. The built `paper.pdf` is tracked with the paper sour
 The compact experiment map is in `paper.tex`. Run
 `python scripts/audit_paper1_headlines.py` from the repository root to verify the headline
 numbers against frozen artifacts; the generated receipt is `NUMERICAL_AUDIT.json`.
+
+The report backup preserves the earlier comprehensive implementation narrative and
+line-numbered reimplementation guide. It is retained for reference, but it is not the
+canonical manuscript for publication review.
 
 The pretrained calibration receipt is under
 docs/papers/shared/results/paper1_standalone_pra/mac_context_dilution/. It

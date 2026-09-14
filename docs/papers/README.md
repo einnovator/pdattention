@@ -11,6 +11,7 @@ worktrees, audited commits, known conflicts, and the publication checklist.
 |---|---|---|
 | Position paper | [TeX](paper0_position/paper.tex) | [PDF](paper0_position/paper.pdf) |
 | Paper 1 — Standalone PRA | [TeX](paper1_standalone_pra/paper.tex) | [PDF](paper1_standalone_pra/paper.pdf) |
+| Paper 1 — Long technical-report backup | [TeX](paper1_standalone_pra/paper_report.tex) | [PDF](paper1_standalone_pra/paper_report.pdf) |
 | Paper 1.5 — Position and attention geometry | [TeX](paper1_5_rope/paper.tex) | [PDF](paper1_5_rope/paper.pdf) |
 | Paper 2 — Pretrained transformers | [TeX](paper2_hf/paper.tex) | [PDF](paper2_hf/paper.pdf) |
 | Paper 2.5 — Iterative PRA | [TeX](paper2_5_iterative_pra/paper.tex) | [PDF](paper2_5_iterative_pra/paper.pdf) |

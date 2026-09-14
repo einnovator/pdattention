@@ -33,14 +33,16 @@ branch changes or a paper is republished to `main`.
 
 ## Publication map
 
-At this snapshot, every TeX source in this table has the same Git blob in the
-listed canonical remote branch and in `origin/main`. PDF paths identify the
+At this snapshot, every canonical TeX source marked MATCH has the same Git blob
+in the listed remote branch and in `origin/main`. The Paper 1 report row is an
+explicit archived copy with recorded source provenance. PDF paths identify the
 published build; PDF binary hashes are deliberately not used for equality.
 
 | Paper | Canonical branch | Audited head | Primary worktree | TeX | PDF | Main source |
 |---|---|---:|---|---|---|---|
 | 0 | `main` | `2fe9a230` | `D:/git/rd/pdattention-main` | `paper0_position/paper.tex` | `paper0_position/paper.pdf` | MATCH |
-| 1 | `main` | `2fe9a230` | `D:/git/rd/pdattention-main` | `paper1_standalone_pra/paper.tex` | `paper1_standalone_pra/paper.pdf` | MATCH; see conflict below |
+| 1 | `main` | `2fe9a230` | `D:/git/rd/pdattention-main` | `paper1_standalone_pra/paper.tex` | `paper1_standalone_pra/paper.pdf` | MATCH; canonical publication-review manuscript |
+| 1 report | `main` (source provenance: `distributed-experiments`) | `80cd9f75` | `D:/git/rd/pdattention-main` | `paper1_standalone_pra/paper_report.tex` | `paper1_standalone_pra/paper_report.pdf` | ARCHIVED BACKUP |
 | 1.5 | `research/paper1-5-rope` | `7acfd884` | `D:/git/rd/pdattention-paper1-5-rope` | `paper1_5_rope/paper.tex` | `paper1_5_rope/paper.pdf` | MATCH |
 | 2 | `research/paper2-hf` | `98c4c5f1` | `D:/git/rd/pdattention-paper2` | `paper2_hf/paper.tex` | `paper2_hf/paper.pdf` | MATCH |
 | 2.5 | `research/paper2-5-iter-gist` | `cf83aabc` | `D:/git/rd/pdattention-iter-gist` | `paper2_5_iterative_pra/paper.tex` | `paper2_5_iterative_pra/paper.pdf` | MATCH |
@@ -74,38 +76,37 @@ published build; PDF binary hashes are deliberately not used for equality.
 
 All paths in the TeX and PDF columns are relative to `docs/papers/`.
 
-## Unresolved Paper 1 fork
+## Resolved Paper 1 fork
 
-Two materially different Paper 1 manuscripts currently use the same relative
-filename in different worktrees.
+The two materially different Paper 1 manuscripts now have distinct publication
+filenames on `main`.
 
-| Property | Audited rewrite | Long technical report |
+| Property | Audited rewrite | Long technical-report backup |
 |---|---|---|
-| Location | `D:/git/rd/pdattention-main/docs/papers/paper1_standalone_pra/paper.tex` | `D:/git/rd/pdattention/docs/papers/paper1_standalone_pra/paper.tex` |
-| Branch | `main` | `distributed-experiments` |
+| Location | `D:/git/rd/pdattention-main/docs/papers/paper1_standalone_pra/paper.tex` | `D:/git/rd/pdattention-main/docs/papers/paper1_standalone_pra/paper_report.tex` |
+| Publication role | Canonical manuscript for review | Archived backup/reference report |
+| Source branch | `main` | `distributed-experiments` at `80cd9f75` |
 | Last commit touching that branch's Paper 1 | `c4b9a627` on 2026-09-13 | `80cd9f75` on 2026-08-11 |
 | TeX Git blob | `a912dcd0e6bb13affd6c4abd2dc644d578683c3b` | `4377d438b1a333ffba4aeb3df3008554c8d80d69` |
 | TeX SHA-256 | `a95e33aeaa34f72bab50e47dbd86f5dba8ea45baeb3d56054c2cc441335bef02` | `8e9f1cc025cbea321328a467679bdb6e4ad3aa160161ddc7af37279541f66caf` |
-| PDF length | 22 pages | 61 pages |
+| PDF length after clean 2026-09-14 rebuild | 21 pages | 61 pages |
 | Title | *Bounded Sparse Native-KV for Addressable Logical Memory* | *Model-Bounded Sparse Native-KV for Long Context and URI-Addressed Memory* |
-| Introduction begins | “Long-context systems face...” | “Progressive Retrieval Attention...” |
+| Introduction begins | "Long-context systems face..." | "Progressive Retrieval Attention..." |
 | Character | Condensed, later evidence/claim audit | Earlier comprehensive technical report and reimplementation guide |
 
 Important details:
 
-- The 61-page source is also present as the untracked
+- The original 61-page source remains present as the untracked
   `paper1_standalone_pra/paper_rev0.tex` in the `distributed-experiments`
-  worktree, and it is byte-identical to that worktree's `paper.tex`.
-- The 61-page PDF was rebuilt on 2026-09-14, but rebuilding an older source does
-  not make that source the later manuscript revision.
+  worktree, and it is byte-identical to that worktree's stale `paper.tex`.
+- `paper_report.tex/.pdf` on `main` is the explicitly named, cleanly rebuilt
+  backup of that source.
 - The audited rewrite has six Paper 1 commits after the common August 11 line.
-- The two manuscripts should not continue sharing the same identity. A human
-  editorial decision is required: either make the long report canonical, or
-  publish it as `paper_technical_report.tex/.pdf` while retaining the audited
-  rewrite as `paper.tex/.pdf`.
+- `paper.tex/.pdf` remains the later audited manuscript and is the only Paper 1
+  pair to use for current publication review.
 
-**Status: unresolved. Do not overwrite either version until this naming and
-canonicalization decision is made.**
+**Status: resolved on 2026-09-14. The long report is a suffixed backup; the
+audited rewrite is canonical.**
 
 ## Worktree audit and hazards
 
@@ -180,10 +181,8 @@ Before calling a paper “latest” or copying it to `main`:
 
 ## Reconciliation queue
 
-1. Resolve Paper 1's audited-rewrite versus long-report naming and canonical
-   publication decision.
-2. Retire or clearly archive the stale `research/paper4-5-runtime` worktree.
-3. Review uncommitted Paper 3.2, 5, 6.6, and 9 evidence before manuscript use.
-4. Give Paper 2.9 a dedicated worktree if active development resumes.
-5. Add an automated manifest that verifies branch heads, source blobs, builds,
+1. Retire or clearly archive the stale `research/paper4-5-runtime` worktree.
+2. Review uncommitted Paper 3.2, 5, 6.6, and 9 evidence before manuscript use.
+3. Give Paper 2.9 a dedicated worktree if active development resumes.
+4. Add an automated manifest that verifies branch heads, source blobs, builds,
    and publication paths so this Markdown audit cannot silently become stale.
