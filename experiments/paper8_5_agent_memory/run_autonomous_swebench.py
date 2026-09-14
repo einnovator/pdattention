@@ -378,14 +378,39 @@ def _official_report(
     output: Path, run_id: str, instance_id: str, *, grader_log: Path | None = None,
 ) -> dict[str, Any]:
     matches = sorted(output.glob(f"*.{run_id}.json"))
-    if len(matches) != 1:
+    report_kind = "aggregate"
+    if len(matches) == 1:
+        raw = json.loads(matches[0].read_text(encoding="utf-8"))
+        submitted = set(raw.get("submitted_ids") or ())
+        if submitted != {instance_id}:
+            raise RuntimeError("official grader report does not match the locked single task")
+        resolved = instance_id in set(raw.get("resolved_ids") or ())
+        error = instance_id in set(raw.get("error_ids") or ())
+    elif not matches:
+        # SWE-bench can finish the locked instance and persist its signed
+        # per-instance report, then fail while enumerating already-removed
+        # Docker containers during aggregate-report cleanup.  The task result
+        # is still auditable; prefer it to parsing progress-bar text.
+        instance_matches = sorted(
+            output.glob(
+                f"logs/run_evaluation/{run_id}/**/{instance_id}/report.json"
+            )
+        )
+        if len(instance_matches) != 1:
+            raise RuntimeError(
+                f"expected one official report for {run_id}, found 0 aggregate "
+                f"and {len(instance_matches)} per-instance reports"
+            )
+        matches = instance_matches
+        raw = json.loads(matches[0].read_text(encoding="utf-8"))
+        instance = raw.get(instance_id)
+        if not isinstance(instance, Mapping):
+            raise RuntimeError("per-instance grader report does not match the locked task")
+        resolved = bool(instance.get("resolved"))
+        error = not bool(instance.get("patch_successfully_applied", True))
+        report_kind = "per_instance"
+    else:
         raise RuntimeError(f"expected one official report for {run_id}, found {len(matches)}")
-    raw = json.loads(matches[0].read_text(encoding="utf-8"))
-    submitted = set(raw.get("submitted_ids") or ())
-    if submitted != {instance_id}:
-        raise RuntimeError("official grader report does not match the locked single task")
-    resolved = instance_id in set(raw.get("resolved_ids") or ())
-    error = instance_id in set(raw.get("error_ids") or ())
     failure_class = None
     if error:
         grader_text = (
@@ -404,6 +429,7 @@ def _official_report(
         "error": error,
         "failure_class": failure_class,
         "raw_report": str(matches[0]),
+        "raw_report_kind": report_kind,
     }
 
 
@@ -620,20 +646,27 @@ def run(args: argparse.Namespace) -> Path:
         )
         result["grader_wall_time_seconds"] = grader_wall_time
     except Exception as error:
-        prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
-        prediction = prediction_payload.get(instance_id) or {}
-        result = {
-            "official_grader": True,
-            "instance_id": instance_id,
-            "resolved": None,
-            "score": None,
-            "error": True,
-            "error_detail": str(error),
-            "submitted_patch_empty": not bool(
-                str(prediction.get("model_patch") or "").strip()
-            ),
-            "grader_log": str(output / "grader.log"),
-        }
+        try:
+            result = _official_report(
+                output, args.run_id, instance_id, grader_log=output / "grader.log",
+            )
+            result["grader_process_error"] = True
+            result["grader_process_error_detail"] = str(error)
+        except Exception:
+            prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
+            prediction = prediction_payload.get(instance_id) or {}
+            result = {
+                "official_grader": True,
+                "instance_id": instance_id,
+                "resolved": None,
+                "score": None,
+                "error": True,
+                "error_detail": str(error),
+                "submitted_patch_empty": not bool(
+                    str(prediction.get("model_patch") or "").strip()
+                ),
+                "grader_log": str(output / "grader.log"),
+            }
     result["autonomous_metrics"] = str(output / "autonomous_metrics.json")
     _write_json(official_result_path, result)
     auxiliary["primary_official_result"] = str(official_result_path)

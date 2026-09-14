@@ -18,6 +18,7 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
     transform_autonomous_payload,
 )
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
+    _official_report,
     build_agent_command,
     build_grader_command,
     load_locked_task,
@@ -79,6 +80,27 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["full_tokens"] == result.trace["selected_tokens"]
     assert result.trace["selected_tokens"] == result.trace["materialized_tokens"]
     assert result.trace["excluded_causal_group_count"] == 0
+
+
+def test_official_report_falls_back_to_exact_per_instance_artifact(tmp_path):
+    run_id = "locked-run"
+    instance_id = "django__django-15277"
+    report = (
+        tmp_path / "logs" / "run_evaluation" / run_id / "model" /
+        instance_id / "report.json"
+    )
+    report.parent.mkdir(parents=True)
+    report.write_text(json.dumps({instance_id: {
+        "patch_successfully_applied": True,
+        "resolved": True,
+    }}), encoding="utf-8")
+
+    result = _official_report(tmp_path, run_id, instance_id)
+
+    assert result["resolved"] is True
+    assert result["score"] == 1.0
+    assert result["error"] is False
+    assert result["raw_report_kind"] == "per_instance"
 
 
 def test_matched_token_tail_is_a_strict_autonomous_text_ceiling_without_sidecars():
