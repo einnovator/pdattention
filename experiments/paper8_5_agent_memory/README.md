@@ -33,10 +33,12 @@ The experiment ladder is:
 
 The primary operating target is **30--50% failure-aware cumulative input-token
 saving with no observed loss in official issue resolution**. During discovery,
-"no loss" means a zero point-estimate delta against paired FULL. Confirmation
-also requires the lower 95% ordered-sequence-clustered resolution-delta bound
-to be at least -0.02. A setting below 30% can remain a useful mechanism or
-combination parent, but it is not a candidate default profile.
+"no loss" means that every issue resolved by its paired persistent-FULL control
+also resolves under the candidate; an extra candidate success cannot compensate
+for a lost FULL success. Confirmation admits no noninferiority margin: the lower
+95% ordered-sequence-clustered paired resolution-delta bound must be at least
+zero. A setting below 30% can remain a useful mechanism or combination parent,
+but it is not a candidate default profile.
 
 The publication frontier treats one through five ordered issues as the session
 axis. Each sequence is run in both `fresh_per_issue` and `persistent` modes.

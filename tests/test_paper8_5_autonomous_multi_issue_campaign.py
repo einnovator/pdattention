@@ -54,7 +54,8 @@ def test_frozen_registry_has_unique_cells_and_explicit_primary_target():
     assert len({row["cell_id"] for row in cells}) == len(cells)
     assert spec["primary_target"]["minimum_saving_fraction"] == TARGET_SAVING_MIN
     assert spec["primary_target"]["maximum_saving_fraction"] == TARGET_SAVING_MAX
-    assert spec["primary_target"]["official_resolution_delta"] == 0
+    assert spec["primary_target"]["official_resolution_delta_minimum"] == 0
+    assert spec["primary_target"]["lost_persistent_full_successes"] == 0
 
 
 def test_dry_run_distinguishes_fresh_from_persistent_prefixes(tmp_path):

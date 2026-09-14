@@ -226,6 +226,14 @@ def reduce_multi_issue_runs(
                 _successful_call_delta(run, persistent)
             )
             failure_aware_vs_persistent = _failure_aware_saving(run, persistent)
+            lost_persistent_successes = sum(
+                int(baseline["resolved"] and not candidate["resolved"])
+                for candidate, baseline in zip(run["issues"], persistent["issues"])
+            )
+            gained_over_persistent = sum(
+                int(candidate["resolved"] and not baseline["resolved"])
+                for candidate, baseline in zip(run["issues"], persistent["issues"])
+            )
             resolution_delta_vs_persistent = (
                 totals["resolved"] - persistent_totals["resolved"]
             ) / run["issue_count"]
@@ -265,6 +273,8 @@ def reduce_multi_issue_runs(
                     run, fresh
                 ),
                 "resolution_delta_vs_persistent_full": resolution_delta_vs_persistent,
+                "lost_persistent_full_successes": lost_persistent_successes,
+                "gained_over_persistent_full": gained_over_persistent,
                 "resolution_delta_vs_fresh_full": (
                     totals["resolved"] - fresh_totals["resolved"]
                 ) / run["issue_count"],
@@ -295,7 +305,8 @@ def reduce_multi_issue_runs(
                 "discovery_primary_target_met": bool(
                     run["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
                     and target_region
-                    and resolution_delta_vs_persistent == 0
+                    and lost_persistent_successes == 0
+                    and resolution_delta_vs_persistent >= 0
                 ),
                 "confirmation_primary_target_met": None,
                 "confirmation_note": (

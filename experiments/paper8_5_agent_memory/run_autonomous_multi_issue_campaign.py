@@ -62,8 +62,10 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
         raise ValueError("primary target minimum must be frozen at 0.30")
     if float(target.get("maximum_saving_fraction", -1)) != TARGET_SAVING_MAX:
         raise ValueError("primary target maximum must be frozen at 0.50")
-    if target.get("official_resolution_delta") != 0:
-        raise ValueError("discovery target requires zero official-resolution loss")
+    if target.get("official_resolution_delta_minimum") != 0:
+        raise ValueError("discovery target requires a nonnegative resolution delta")
+    if target.get("lost_persistent_full_successes") != 0:
+        raise ValueError("discovery target permits no lost persistent-FULL success")
     generation = spec.get("generation") or {}
     max_completion = generation.get("max_completion_tokens")
     if isinstance(max_completion, bool) or not isinstance(max_completion, int) or max_completion < 1:
@@ -401,7 +403,8 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         "primary_target": {
             "minimum_saving_fraction": TARGET_SAVING_MIN,
             "maximum_saving_fraction": TARGET_SAVING_MAX,
-            "official_resolution_delta": 0,
+            "official_resolution_delta_minimum": 0,
+            "lost_persistent_full_successes": 0,
             "pairing_required": True,
         },
         "cells": {},

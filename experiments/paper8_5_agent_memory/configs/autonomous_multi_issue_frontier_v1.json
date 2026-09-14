@@ -9,7 +9,8 @@
   "primary_target": {
     "minimum_saving_fraction": 0.30,
     "maximum_saving_fraction": 0.50,
-    "official_resolution_delta": 0,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
     "claim": "30-50% failure-aware cumulative input-token saving with no observed official-resolution loss"
   },
   "generation": {
@@ -125,8 +126,8 @@
     }
   ],
   "qualification": {
-    "discovery_gate": "zero official-resolution loss and 30-50% failure-aware saving versus paired persistent FULL",
-    "confirmation_gate": "zero point-estimate loss and lower 95% ordered-sequence-clustered quality-delta bound >= -0.02",
+    "discovery_gate": "zero lost persistent-FULL successes, nonnegative official-resolution delta, and 30-50% failure-aware saving",
+    "confirmation_gate": "zero lost persistent-FULL successes and lower 95% ordered-sequence-clustered paired quality-delta bound >= 0.00",
     "stop_after_genuine_failures": 2,
     "sub_30_percent_rule": "retain as a diagnostic or combination parent only",
     "over_50_percent_rule": "retain as an exploratory economy point only unless the same quality gate passes"

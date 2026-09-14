@@ -91,6 +91,7 @@ def test_reducer_compares_every_candidate_to_both_full_controls():
     assert row["failure_aware_saving_vs_persistent_full"] == pytest.approx(0.4)
     assert row["in_primary_saving_target"] is True
     assert row["discovery_primary_target_met"] is True
+    assert row["lost_persistent_full_successes"] == 0
     assert row["confirmation_primary_target_met"] is None
     assert row["successful_calls_delta_vs_persistent_full"] == 0
     assert row["first_action_divergence_rate"] == 0.0
@@ -108,8 +109,30 @@ def test_failure_aware_saving_cannot_reward_a_quality_loss():
     assert row["saving_vs_persistent_full"] == pytest.approx(0.7)
     assert row["failure_aware_saving_vs_persistent_full"] == 0.0
     assert row["discovery_primary_target_met"] is False
+    assert row["lost_persistent_full_successes"] == 1
     assert row["failure_aware_saving_vs_fresh_full"] == 0.0
     assert row["cost_per_resolved_issue"] == 60
+
+
+def test_candidate_win_cannot_compensate_for_a_lost_full_success():
+    registry = load_strategy_registry(REGISTRY)
+    fresh = _run(
+        "S00_fresh_full", "fresh_per_issue", (50, 50), resolved=(True, False)
+    )
+    persistent = _run(
+        "S01_persistent_full", "persistent", (100, 100), resolved=(True, False)
+    )
+    swapped = _run(
+        "S03_completed_episode_spine", "persistent", (60, 60),
+        resolved=(False, True),
+    )
+    result = reduce_multi_issue_runs((fresh, persistent, swapped), registry)
+    row = next(row for row in result["rows"] if row["strategy_id"].startswith("S03"))
+    assert row["resolution_delta_vs_persistent_full"] == 0
+    assert row["lost_persistent_full_successes"] == 1
+    assert row["gained_over_persistent_full"] == 1
+    assert row["failure_aware_saving_vs_persistent_full"] == 0
+    assert row["discovery_primary_target_met"] is False
 
 
 def test_pairing_identity_mismatch_and_duplicate_config_fail_closed():
