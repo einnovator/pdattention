@@ -21,6 +21,19 @@ from statistics import mean
 from typing import Any, Iterable, Mapping, Sequence
 
 
+STRICT_PAIRING_KEYS = (
+    "repository_revision", "benchmark_card_sha256", "benchmark_ids_sha256",
+    "dataset", "dataset_revision", "split", "served_model", "model_revision",
+    "tokenizer", "tokenizer_revision", "temperature", "top_p", "seed",
+    "max_calls", "max_completion_tokens", "harness_version_requested",
+    "harness_version_observed", "grader_version_requested",
+    "grader_version_observed", "docker_platform", "environment_image",
+    "environment_image_id", "workspace_source_identity_sha256",
+    "instrument_observations", "agent_behavior_sha256",
+    "scaffold_identity_sha256",
+)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -384,18 +397,13 @@ def load_autonomous_run(
         raise ValueError(
             f"{trace_path}: materialized-token total does not match metrics"
         )
-    pairing_keys = (
-        "repository_revision", "benchmark_card_sha256", "benchmark_ids_sha256",
-        "dataset", "dataset_revision", "split",
-        "served_model", "model_revision", "tokenizer_revision", "temperature",
-        "top_p", "seed", "max_calls", "max_completion_tokens",
-        "harness_version_requested", "harness_version_observed",
-        "grader_version_requested", "grader_version_observed", "docker_platform",
-        "environment_image", "instrument_observations",
-    )
-    pairing_identity = {key: manifest.get(key) for key in pairing_keys}
+    pairing_identity = {key: manifest.get(key) for key in STRICT_PAIRING_KEYS}
     pairing_identity["agent_behavior_sha256"] = (
         manifest.get("agent_behavior_sha256") or _agent_behavior_digest(manifest)
+    )
+    missing_pairing_identity = sorted(
+        key for key, value in pairing_identity.items()
+        if value is None or value == ""
     )
     return {
         "evidence_class": "autonomous_task_quality",
@@ -403,6 +411,8 @@ def load_autonomous_run(
         "model": str(manifest.get("model")),
         "seed": int(manifest.get("seed", 0)),
         "pair_id": manifest.get("pair_id"),
+        "manifest_schema_version": int(manifest.get("schema_version") or 1),
+        "missing_pairing_identity": missing_pairing_identity,
         "strategy": _strategy_id(selection),
         "strategy_family": str(selection.get("policy", "unknown")),
         "saving_fraction": 1.0 - materialized_tokens / full_tokens if full_tokens else 0.0,
@@ -468,6 +478,19 @@ def pair_autonomous(
 ) -> None:
     if candidate["task_id"] != baseline["task_id"] or candidate["model"] != baseline["model"]:
         raise ValueError("paired autonomous runs must share task and model")
+    legacy_contract = (
+        candidate.get("manifest_schema_version", 1) < 2
+        or baseline.get("manifest_schema_version", 1) < 2
+    )
+    missing_identity = {
+        "candidate": candidate.get("missing_pairing_identity") or [],
+        "baseline": baseline.get("missing_pairing_identity") or [],
+    }
+    if (legacy_contract or any(missing_identity.values())) and not allow_legacy_pair:
+        raise ValueError(
+            "paired autonomous runs require complete schema-2 execution identities; "
+            "legacy evidence needs an explicit exception and reason"
+        )
     pair_id_mismatch = (
         candidate.get("pair_id") is not None
         and baseline.get("pair_id") is not None
@@ -504,6 +527,9 @@ def pair_autonomous(
     )
     candidate["pairing_reason"] = pairing_reason
     candidate["legacy_pairing_identity_mismatches"] = identity_mismatches
+    candidate["legacy_pairing_missing_fields"] = (
+        missing_identity if legacy_contract or any(missing_identity.values()) else None
+    )
     candidate["legacy_pair_id_mismatch"] = (
         {
             "candidate": candidate.get("pair_id"),

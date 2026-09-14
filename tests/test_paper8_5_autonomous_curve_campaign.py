@@ -94,7 +94,7 @@ def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_pa
         if row["candidate"] == "task01-dag100"
     )
     assert policy_pair["allow_legacy_pair"] is True
-    assert "implementation revision changed" in policy_pair["pairing_reason"]
+    assert "historical schema-1 run" in policy_pair["pairing_reason"]
 
 
 def test_campaign_rejects_unbounded_autonomous_generation():
@@ -109,8 +109,8 @@ def test_campaign_rejects_unbounded_autonomous_generation():
 def test_adaptive_gate_stops_two_failures():
     result = adaptive_gate(
         [
-            {"status": "complete", "official_resolved": False, "gross_saving_fraction": .2},
-            {"status": "complete", "official_resolved": False, "gross_saving_fraction": .2},
+            {"status": "complete", "instance_id": "a", "official_resolved": False, "gross_saving_fraction": .2},
+            {"status": "complete", "instance_id": "b", "official_resolved": False, "gross_saving_fraction": .2},
         ],
         {"stop_after_failures": 2},
     )
@@ -120,9 +120,9 @@ def test_adaptive_gate_stops_two_failures():
 def test_adaptive_gate_counts_definitive_grader_errors_as_task_failures():
     result = adaptive_gate(
         [
-            {"status": "complete", "official_resolved": False,
+            {"status": "complete", "instance_id": "a", "official_resolved": False,
              "official_error": True, "gross_saving_fraction": .2},
-            {"status": "complete", "official_resolved": False,
+            {"status": "complete", "instance_id": "b", "official_resolved": False,
              "official_error": True, "gross_saving_fraction": .2},
         ],
         {"stop_after_failures": 2, "minimum_tasks_before_accuracy_gate": 1},
@@ -276,14 +276,41 @@ def test_adaptive_gate_stops_low_yield_and_low_accuracy():
         "minimum_task_resolution": .8,
     }
     assert adaptive_gate([
-        {"status": "complete", "official_resolved": True, "gross_saving_fraction": .01},
-        {"status": "complete", "official_resolved": True, "gross_saving_fraction": .01},
+        {"status": "complete", "instance_id": "a", "official_resolved": True, "gross_saving_fraction": .01},
+        {"status": "complete", "instance_id": "b", "official_resolved": True, "gross_saving_fraction": .01},
     ], thresholds)[0] == "stop"
     assert adaptive_gate([
-        {"status": "complete", "official_resolved": True, "gross_saving_fraction": .2},
-        {"status": "complete", "official_resolved": True, "gross_saving_fraction": .2},
-        {"status": "complete", "official_resolved": False, "gross_saving_fraction": .2},
+        {"status": "complete", "instance_id": "a", "official_resolved": True, "gross_saving_fraction": .2},
+        {"status": "complete", "instance_id": "b", "official_resolved": True, "gross_saving_fraction": .2},
+        {"status": "complete", "instance_id": "c", "official_resolved": False, "gross_saving_fraction": .2},
     ], thresholds)[0] == "stop"
+
+
+def test_adaptive_gate_clusters_repeats_by_task_identity():
+    thresholds = {
+        "stop_after_failures": 2,
+        "minimum_tasks_before_yield_gate": 2,
+        "minimum_gross_saving_fraction": .02,
+        "minimum_tasks_before_accuracy_gate": 3,
+        "minimum_task_resolution": .8,
+    }
+    # Two failed executions of one task are one independent failure and one
+    # task for advancement; they must not trigger either three-task gate.
+    rows = [
+        {"status": "complete", "instance_id": "same",
+         "official_resolved": False, "gross_saving_fraction": .01},
+        {"status": "complete", "instance_id": "same",
+         "official_resolved": False, "gross_saving_fraction": .01},
+    ]
+    assert adaptive_gate(rows, thresholds)[0] == "continue"
+
+
+def test_adaptive_gate_rejects_missing_independence_identity():
+    with pytest.raises(ValueError, match="independent task identity"):
+        adaptive_gate([
+            {"status": "complete", "official_resolved": True,
+             "gross_saving_fraction": .2},
+        ], {})
 
 
 def test_curve_spec_pairs_candidates_only_after_two_controls(tmp_path):

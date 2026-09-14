@@ -669,15 +669,17 @@ G_c=1-\frac{\sum_t M_{c,t}}{\sum_t F_{c,t}},
 where $M_{c,t}$ is materialized input and $F_{c,t}$ is the full-history
 counterfactual at the same candidate call.  Gross saving isolates the memory
 policy but does not charge for a longer trajectory.  Against a declared paired
-\textsc{Full} execution $f$, end-to-end saving is
+\textsc{Full} execution $f$, paired trajectory message-input saving is
 \[
 N_{c,f}=1-\frac{\sum_t M_{c,t}}{\sum_t M_{f,t}}.
 \]
-$N$ includes extra or avoided calls and is therefore the end-to-end
-\emph{message-content input-token} endpoint. It excludes chat-template and
-completion tokens and is not a complete billing or runtime measure. A failed
-run that stops early can have a favorable $N$; we never interpret that as
-efficiency.
+$N$ includes extra or avoided calls, but covers only model-visible message
+content. It excludes chat-template tokens, completions, tool execution, and
+runtime; we therefore do not call it end-to-end saving. A failed run that
+stops early can have a favorable $N$. For quality--efficiency frontiers we use
+a failure-aware coordinate that charges an unsuccessful candidate at least
+the paired \textsc{Full} message-input workload, so early failure cannot be
+reported as an efficiency gain.
 
 Direct recovery is also charged separately. Let $R_c$ be the token size of
 tool observations produced by actions that reacquire previously excluded
@@ -686,7 +688,7 @@ resources. We report the diagnostic lower bound
 G^{\mathrm{reacq}}_c=
 \frac{\sum_t(F_{c,t}-M_{c,t})-R_c}{\sum_tF_{c,t}}.
 \]
-This is not added to $N_{c,f}$: the paired end-to-end quantity already includes
+This is not added to $N_{c,f}$: the paired trajectory quantity already includes
 tokens replayed by a longer candidate trajectory. Instead, we expose recovery
 as two complementary components,
 \[
@@ -705,26 +707,31 @@ may still produce a resolving patch.  We therefore report separate curves for
 (i) official resolution versus saving, (ii) tool-call delta versus saving over
 all paired runs, (iii) tool-call delta restricted to pairs where both the
 candidate and its declared \textsc{Full} control resolve, and (iv) first
-tool-action divergence versus saving for every task.
+tool-action divergence versus saving for every task. The divergence abscissa
+uses only saving accumulated on requests strictly before the first different
+action; tokens saved after divergence cannot explain that divergence and are
+excluded from this plot.
 Auxiliary terminal-workspace grading diagnoses submission failures but never
 replaces official resolution.
 
 Because the tested endpoint is not autonomously deterministic even at
 temperature zero and a fixed seed, final quality curves use repeated paired
-\textsc{Full} controls and task-level uncertainty.  A conditional preservation
+\textsc{Full} controls. Resolution is first averaged within task identity and
+then across tasks; confidence intervals bootstrap task identities, never
+individual executions. We report endpoint and exact-action agreement between
+the \textsc{Full} repeats as an instability control. A conditional preservation
 analysis additionally evaluates candidates only on declared pairs for which
 \textsc{Full} resolves.  This avoids treating a baseline failure as a memory
 policy failure while retaining the unconditional resolution curve as the
 primary population result.
 
 The current autonomous curve is deliberately underpowered and is reported as
-a pilot, not a profile result. Across two tasks, repeated \textsc{Full}
-executions resolve 2/4; the second controls first diverge in tool command at
-calls 9 and 6 and both fail. On Task~1, H3 first changes selected history at
-call~6 and diverges in tool command at call~7, but both H3 and its paired
-\textsc{Full} control fail. Its apparent 44.5\% paired message-input reduction
-and ten fewer tool calls therefore describe early failure termination, not an
-efficiency gain. There is not yet any successful-pair compressed point.
+a pilot, not a profile result. In the latest same-host three-task cohort,
+repeated \textsc{Full} controls resolve 5/6 and matched recency resolves 4/6;
+the latter misses the predeclared 80\% task-resolution gate. Earlier H3 runs
+that failed early remain diagnostic points, but failure-aware saving assigns
+them no efficiency gain. The manuscript therefore keeps raw gross saving,
+paired trajectory saving, and qualification status as separate fields.
 
 \subsection{Recovery behavior}
 
@@ -1353,21 +1360,30 @@ four completed controls from that launch and a third-task response that ran
 past 10,774 generated tokens are quarantined in full and contribute no paper
 outcome.  The replacement campaign has a new identity and reruns every
 control under the corrected ceiling. Selector-only corrections may reuse those
-completed controls through a hash-bound import; the reducer permits only the
-disclosed repository-revision difference and rejects every other execution-
-identity mismatch.
+completed controls through a hash-bound import. New runs use a schema-2 pairing
+contract that requires a shared non-null pair identifier, immutable container
+image identity, dataset/task identity, tokenizer and model revisions, decoding
+fields, harness and grader versions, scaffold identity, instrumentation mode,
+and a normalized agent-behavior digest. Null equality is not evidence.
+Historical schema-1 pairs require an explicit, reasoned legacy exception and
+emit their missing identity fields in the reduced artifact. Recorded identity
+mismatches other than the narrowly declared repository revision remain fatal.
 
 The primary ordinate is official task resolution.  The abscissae separately
-report within-run materialized-history saving, paired end-to-end input-token
-saving (therefore including additional calls), and a failure-aware coordinate.
+report within-run materialized-history saving, paired trajectory
+message-input saving (therefore including additional calls), and a
+failure-aware coordinate.
 A failed candidate is charged at least its paired \textsc{Full} workload so
 early termination cannot masquerade as efficiency.  Calls-to-solution,
 direct reacquisition tokens, calls-to-solution, and first action divergence
 remain secondary diagnostics.
 Endpoint-reported completion tokens form an additional total-model-token
-coordinate only when all calls provide usage.  The campaign stops an arm after
-two official failures, after less than 2\% mean gross saving on two tasks, or
-after resolution falls below 80\% on at least three tasks. Only the better of
+coordinate only when all calls provide usage. Adaptive gates operate on
+distinct task identities: repeats collapse within task before mean saving and
+resolution are computed, so repeated failures of one task cannot satisfy a
+multi-task boundary. The campaign stops an arm after two distinct task
+failures, after less than 2\% task-macro gross saving on two tasks, or after
+task-macro resolution falls below 80\% on at least three tasks. Only the better of
 whole-record retirement and payload-only retirement competes with matched
 recency beyond the first three tasks. No lexical, dense, learned, second-model,
 or second-harness search begins before this policy freeze.

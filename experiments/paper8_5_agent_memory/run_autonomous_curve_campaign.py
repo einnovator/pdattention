@@ -163,21 +163,49 @@ def adaptive_gate(
     arm_results: Sequence[Mapping[str, Any]], thresholds: Mapping[str, Any]
 ) -> tuple[str, str]:
     completed = [row for row in arm_results if row.get("status") == "complete"]
-    grade_valid = [
-        row for row in completed
-        if isinstance(row.get("official_resolved"), bool)
-    ]
-    failures = sum(row.get("official_resolved") is False for row in grade_valid)
+    by_task: dict[str, list[Mapping[str, Any]]] = {}
+    for index, row in enumerate(completed):
+        task_id = row.get("instance_id") or row.get("task_id")
+        if not task_id:
+            raise ValueError(
+                f"completed adaptive-gate row {index} lacks an independent task identity"
+            )
+        by_task.setdefault(str(task_id), []).append(row)
+    task_rows: list[dict[str, Any]] = []
+    for task_id, rows in sorted(by_task.items()):
+        graded = [row for row in rows if isinstance(row.get("official_resolved"), bool)]
+        full = sum(int(row.get("cumulative_full_tokens") or 0) for row in rows)
+        materialized = sum(
+            int(row.get("cumulative_materialized_tokens") or 0) for row in rows
+        )
+        saving = (
+            1 - materialized / full if full > 0
+            else sum(float(row.get("gross_saving_fraction") or 0) for row in rows)
+            / len(rows)
+        )
+        task_rows.append({
+            "task_id": task_id,
+            "saving": saving,
+            "resolution": (
+                sum(bool(row["official_resolved"]) for row in graded) / len(graded)
+                if graded else None
+            ),
+            "genuine_failure": bool(graded) and not any(
+                bool(row["official_resolved"]) for row in graded
+            ),
+        })
+    grade_valid = [row for row in task_rows if row["resolution"] is not None]
+    failures = sum(bool(row["genuine_failure"]) for row in grade_valid)
     if failures >= int(thresholds.get("stop_after_failures", 2)):
         return "stop", f"{failures} official failures reached the stop boundary"
     yield_n = int(thresholds.get("minimum_tasks_before_yield_gate", 2))
-    if len(completed) >= yield_n:
-        mean_saving = sum(float(row.get("gross_saving_fraction") or 0) for row in completed) / len(completed)
+    if len(task_rows) >= yield_n:
+        mean_saving = sum(float(row["saving"]) for row in task_rows) / len(task_rows)
         if mean_saving < float(thresholds.get("minimum_gross_saving_fraction", .02)):
             return "stop", f"mean gross saving {mean_saving:.4f} is below the yield gate"
     accuracy_n = int(thresholds.get("minimum_tasks_before_accuracy_gate", 3))
     if len(grade_valid) >= accuracy_n:
-        accuracy = sum(bool(row.get("official_resolved")) for row in grade_valid) / len(grade_valid)
+        accuracy = sum(float(row["resolution"]) for row in grade_valid) / len(grade_valid)
         if accuracy < float(thresholds.get("minimum_task_resolution", .8)):
             return "stop", f"official resolution {accuracy:.4f} is below the accuracy gate"
     return "continue", "arm remains within predeclared gates"
@@ -209,6 +237,8 @@ def _completed_result(path: Path) -> dict[str, Any] | None:
         "cumulative_full_tokens": full,
         "cumulative_materialized_tokens": materialized,
         "gross_saving_fraction": 1 - materialized / full,
+        "cumulative_full_tokens": full,
+        "cumulative_materialized_tokens": materialized,
     }
 
 
@@ -232,6 +262,24 @@ def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
     by_task: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
     for cell_id, row in complete.items():
         by_task.setdefault(str(row["instance_id"]), []).append((cell_id, row))
+    def bind_legacy_contract(
+        pair: dict[str, Any], candidate_row: Mapping[str, Any],
+        baseline_row: Mapping[str, Any],
+    ) -> None:
+        manifests = []
+        for row in (candidate_row, baseline_row):
+            manifest = Path(str(row["output"])) / "run_manifest.json"
+            manifests.append(_read(manifest) if manifest.is_file() else {})
+        if any(int(value.get("schema_version") or 1) < 2 for value in manifests):
+            pair.update({
+                "allow_legacy_pair": True,
+                "pairing_reason": (
+                    "historical schema-1 run; immutable fields available in both "
+                    "manifests are reducer-checked, while missing identity fields "
+                    "are disclosed rather than treated as matching evidence"
+                ),
+            })
+
     for task_rows in by_task.values():
         controls = sorted(
             (item for item in task_rows if item[1].get("is_control")),
@@ -251,10 +299,12 @@ def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
         if len(controls) < 2:
             continue
         baseline = controls[0][0]
-        pairs.append({
+        repeat_pair: dict[str, Any] = {
             "candidate": controls[1][0], "baseline": baseline,
             "pairing_reason": "repeat-control stochastic trajectory envelope",
-        })
+        }
+        bind_legacy_contract(repeat_pair, controls[1][1], controls[0][1])
+        pairs.append(repeat_pair)
         for cell_id, row in task_rows:
             if not row.get("is_control"):
                 pair = {"candidate": cell_id, "baseline": baseline}
@@ -267,6 +317,7 @@ def write_curve_spec(state: Mapping[str, Any], output: Path) -> Path:
                             "execution identity must match"
                         ),
                     })
+                bind_legacy_contract(pair, row, controls[0][1])
                 pairs.append(pair)
     spec = {
         "schema_version": 1,

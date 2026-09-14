@@ -11,6 +11,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -212,6 +213,83 @@ def _package_version(name: str) -> str | None:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return None
+
+
+def _scaffold_identity(scaffold: str, harness_version: str | None) -> dict[str, Any]:
+    """Bind the agent prompt scaffold to bytes when possible.
+
+    mini-swe-agent accepts either a filesystem path or the basename of a
+    packaged scaffold.  A symbolic name alone is not a sufficient pairing
+    identity: the same name can denote different prompts across installs.
+    The package-version-bound fallback remains explicit for unusual package
+    layouts, rather than silently presenting a null content hash as equality.
+    """
+
+    requested = str(scaffold)
+    direct = Path(requested).expanduser()
+    candidates: list[Path] = []
+    if direct.is_file():
+        candidates.append(direct.resolve())
+    else:
+        spec = importlib.util.find_spec("minisweagent")
+        for root in (spec.submodule_search_locations or ()) if spec else ():
+            candidates.extend(Path(root).rglob(Path(requested).name))
+    unique = sorted({path.resolve() for path in candidates if path.is_file()})
+    if len(unique) == 1:
+        path = unique[0]
+        return {
+            "requested": requested,
+            "resolution": "content",
+            "resolved_path": str(path),
+            "content_sha256": _sha256_bytes(path.read_bytes()),
+            "identity_sha256": _sha256_bytes(path.read_bytes()),
+        }
+    symbolic = {
+        "requested": requested,
+        "harness_version": harness_version,
+        "resolution": "package_version_bound_symbolic",
+    }
+    return {
+        **symbolic,
+        "resolved_path": None,
+        "content_sha256": None,
+        "identity_sha256": _sha256_bytes(json.dumps(
+            symbolic, sort_keys=True, separators=(",", ":")
+        ).encode()),
+    }
+
+
+def _docker_image_identity(
+    args: argparse.Namespace, *, image: str, environment: Mapping[str, str]
+) -> dict[str, Any]:
+    """Return immutable image identity after the agent has materialized it."""
+
+    executable = str(args.docker_executable or "docker")
+    completed = subprocess.run(
+        [executable, "image", "inspect", image],
+        capture_output=True,
+        text=True,
+        env=dict(environment),
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError(
+            "cannot establish immutable workspace image identity after the agent run: "
+            + completed.stderr.strip()
+        )
+    payload = json.loads(completed.stdout)
+    if not isinstance(payload, list) or len(payload) != 1:
+        raise RuntimeError("Docker image inspect returned an ambiguous identity")
+    row = payload[0]
+    image_id = row.get("Id")
+    if not isinstance(image_id, str) or not image_id:
+        raise RuntimeError("Docker image inspect omitted the immutable image ID")
+    return {
+        "environment_image_id": image_id,
+        "environment_image_repo_digests": sorted(row.get("RepoDigests") or ()),
+        "environment_image_os": row.get("Os"),
+        "environment_image_architecture": row.get("Architecture"),
+    }
 
 
 def _exact_token_counter(
@@ -614,8 +692,10 @@ def run(args: argparse.Namespace) -> Path:
         output=output,
         run_id=auxiliary_run_id,
     )
+    observed_harness_version = _package_version("mini-swe-agent")
+    scaffold_identity = _scaffold_identity(args.scaffold, observed_harness_version)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "study": "paper8_5_autonomous_agent_memory",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "repository_revision": _git_revision(),
@@ -645,7 +725,7 @@ def run(args: argparse.Namespace) -> Path:
         "max_completion_tokens": args.max_completion_tokens,
         "harness": "mini-swe-agent",
         "harness_version_requested": args.harness_version,
-        "harness_version_observed": _package_version("mini-swe-agent"),
+        "harness_version_observed": observed_harness_version,
         "grader": "official SWE-bench Docker harness",
         "grader_version_requested": args.grader_version,
         "grader_version_observed": _package_version("swebench"),
@@ -654,11 +734,15 @@ def run(args: argparse.Namespace) -> Path:
         "docker_executable": str(args.docker_executable) if args.docker_executable else None,
         "docker_platform": args.docker_platform,
         "environment_image": swebench_image(instance_id),
+        "environment_image_id": None,
+        "workspace_source_identity_sha256": None,
         "pythonpath": args.pythonpath,
         "instrument_observations": args.instrument_observations,
         "instrumentation_output_root": str(args.instrumentation_output_root),
         "agent_command_template": agent_command,
         "agent_behavior_sha256": agent_behavior_digest(agent_command),
+        "scaffold_identity": scaffold_identity,
+        "scaffold_identity_sha256": scaffold_identity["identity_sha256"],
         "grader_command": grader_command,
         "official_grading_enabled": not args.skip_grading,
         "auxiliary_workspace_state": {
@@ -709,6 +793,25 @@ def run(args: argparse.Namespace) -> Path:
         )
     finally:
         proxy.close()
+
+    image_identity = _docker_image_identity(
+        args,
+        image=swebench_image(instance_id),
+        environment=environment,
+    )
+    manifest.update(image_identity)
+    workspace_source = {
+        "dataset": manifest["dataset"],
+        "dataset_revision": manifest["dataset_revision"],
+        "split": manifest["split"],
+        "instance_id": manifest["instance_id"],
+        "environment_image_id": manifest["environment_image_id"],
+        "docker_platform": manifest["docker_platform"],
+    }
+    manifest["workspace_source_identity_sha256"] = _sha256_bytes(json.dumps(
+        workspace_source, sort_keys=True, separators=(",", ":")
+    ).encode())
+    _write_json(output / "run_manifest.json", manifest)
 
     predictions = agent_output / "preds.json"
     if not predictions.is_file():

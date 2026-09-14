@@ -26,10 +26,35 @@ def _run(
     path = root / name
     path.mkdir()
     manifest = {
+        "schema_version": 2,
         "study": "paper8_5_autonomous_agent_memory",
+        "repository_revision": "revision",
+        "benchmark_card_sha256": "benchmark-card",
+        "benchmark_ids_sha256": "benchmark-ids",
+        "dataset": "dataset",
+        "dataset_revision": "dataset-revision",
+        "split": "test",
         "instance_id": "task",
         "model": "model",
+        "served_model": "served-model",
+        "model_revision": "model-revision",
+        "tokenizer": "tokenizer@revision",
+        "tokenizer_revision": "tokenizer-revision",
+        "temperature": 0.0,
+        "top_p": 1.0,
         "seed": 0,
+        "max_calls": 40,
+        "max_completion_tokens": 1024,
+        "harness_version_requested": "harness-version",
+        "harness_version_observed": "harness-version",
+        "grader_version_requested": "grader-version",
+        "grader_version_observed": "grader-version",
+        "docker_platform": "linux/amd64",
+        "environment_image": "image:tag",
+        "environment_image_id": "sha256:image",
+        "workspace_source_identity_sha256": "workspace-source",
+        "instrument_observations": True,
+        "scaffold_identity_sha256": "scaffold",
         "pair_id": pair_id,
         "selection": {"policy": policy, "materialization_mode": "whole_record"},
         "agent_command_template": [
@@ -110,6 +135,32 @@ def test_explicit_legacy_pair_can_bind_backfilled_control_pair_ids(tmp_path):
         "candidate": "original-treatment",
         "baseline": "backfilled-control",
     }
+
+
+def test_schema1_pair_requires_explicit_legacy_exception(tmp_path):
+    full_path = _run(
+        tmp_path, "full", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair",
+    )
+    candidate_path = _run(
+        tmp_path, "candidate", policy="matched_token_tail", calls=2,
+        tokens=90, resolved=True, pair_id="pair",
+    )
+    for path in (full_path, candidate_path):
+        manifest_path = path / "run_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["schema_version"] = 1
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    full = load_autonomous_run(full_path)
+    candidate = load_autonomous_run(candidate_path)
+
+    with pytest.raises(ValueError, match="schema-2 execution identities"):
+        pair_autonomous(candidate, full)
+    pair_autonomous(
+        candidate, full, allow_legacy_pair=True,
+        pairing_reason="historical schema-1 run with frozen external audit",
+    )
+    assert candidate["legacy_pairing_missing_fields"] is not None
 
 
 def test_build_accepts_autonomous_only_curve_spec(tmp_path):
