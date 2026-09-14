@@ -170,7 +170,7 @@ def _successful_call_delta(
 def reduce_multi_issue_runs(
     runs: Sequence[Mapping[str, Any]], registry: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Pair every treatment with fresh and persistent FULL controls."""
+    """Pair every treatment with persistent FULL and optional fresh FULL."""
 
     known = {str(row["id"]) for row in registry["strategies"]}
     materialized = [dict(run) for run in runs]
@@ -210,18 +210,24 @@ def reduce_multi_issue_runs(
             ),
             None,
         )
-        if fresh is None or persistent is None:
-            raise ValueError(f"{pair_id}: both fresh and persistent FULL controls are required")
+        if persistent is None:
+            raise ValueError(f"{pair_id}: persistent FULL control is required")
         for run in paired:
-            if not _same_pair(run, fresh) or not _same_pair(run, persistent):
+            if (
+                not _same_pair(run, persistent)
+                or (fresh is not None and not _same_pair(run, fresh))
+            ):
                 raise ValueError(f"{pair_id}: strict pairing identity mismatch")
-        fresh_totals = _totals(fresh)
+        fresh_totals = _totals(fresh) if fresh is not None else None
         persistent_totals = _totals(persistent)
         for run in paired:
             totals = _totals(run)
-            fresh_success_calls, fresh_joint_successes = _successful_call_delta(
-                run, fresh
-            )
+            if fresh is not None:
+                fresh_success_calls, fresh_joint_successes = _successful_call_delta(
+                    run, fresh
+                )
+            else:
+                fresh_success_calls, fresh_joint_successes = None, 0
             persistent_success_calls, persistent_joint_successes = (
                 _successful_call_delta(run, persistent)
             )
@@ -265,23 +271,28 @@ def reduce_multi_issue_runs(
                 "saving_vs_persistent_full": _saving(
                     totals["tokens"], persistent_totals["tokens"]
                 ),
-                "saving_vs_fresh_full": _saving(
-                    totals["tokens"], fresh_totals["tokens"]
+                "saving_vs_fresh_full": (
+                    _saving(totals["tokens"], fresh_totals["tokens"])
+                    if fresh_totals is not None else None
                 ),
                 "failure_aware_saving_vs_persistent_full": failure_aware_vs_persistent,
-                "failure_aware_saving_vs_fresh_full": _failure_aware_saving(
-                    run, fresh
+                "failure_aware_saving_vs_fresh_full": (
+                    _failure_aware_saving(run, fresh) if fresh is not None else None
                 ),
                 "resolution_delta_vs_persistent_full": resolution_delta_vs_persistent,
                 "lost_persistent_full_successes": lost_persistent_successes,
                 "gained_over_persistent_full": gained_over_persistent,
                 "resolution_delta_vs_fresh_full": (
-                    totals["resolved"] - fresh_totals["resolved"]
-                ) / run["issue_count"],
+                    (totals["resolved"] - fresh_totals["resolved"])
+                    / run["issue_count"] if fresh_totals is not None else None
+                ),
                 "calls_delta_vs_persistent_full": (
                     totals["calls"] - persistent_totals["calls"]
                 ),
-                "calls_delta_vs_fresh_full": totals["calls"] - fresh_totals["calls"],
+                "calls_delta_vs_fresh_full": (
+                    totals["calls"] - fresh_totals["calls"]
+                    if fresh_totals is not None else None
+                ),
                 "successful_calls_delta_vs_persistent_full": (
                     persistent_success_calls
                 ),
@@ -292,6 +303,7 @@ def reduce_multi_issue_runs(
                 "jointly_resolved_issues_vs_fresh_full": fresh_joint_successes,
                 "rediscovery_delta_vs_fresh_full": (
                     totals["rediscovery_calls"] - fresh_totals["rediscovery_calls"]
+                    if fresh_totals is not None else None
                 ),
                 "cost_per_resolved_issue": (
                     totals["tokens"] / totals["resolved"]

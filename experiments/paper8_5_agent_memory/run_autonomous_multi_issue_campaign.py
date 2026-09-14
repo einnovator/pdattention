@@ -301,7 +301,7 @@ def write_frontier_ledger(
     for (sequence_id, repeat), rows in sorted(grouped.items()):
         fresh = next((row for row in rows if row["strategy_id"] == "S00_fresh_full"), None)
         persistent = next((row for row in rows if row["strategy_id"] == "S01_persistent_full"), None)
-        if fresh is None or persistent is None:
+        if persistent is None:
             continue
         persistent_episodes = list(persistent["episodes"].values())
         manifests = [

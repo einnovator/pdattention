@@ -97,6 +97,21 @@ def test_reducer_compares_every_candidate_to_both_full_controls():
     assert row["first_action_divergence_rate"] == 0.0
 
 
+def test_primary_persistent_frontier_does_not_require_fresh_control():
+    registry = load_strategy_registry(REGISTRY)
+    persistent = _run("S01_persistent_full", "persistent", (100, 100))
+    candidate = _run("S03_completed_episode_spine", "persistent", (60, 60))
+
+    result = reduce_multi_issue_runs((persistent, candidate), registry)
+    row = next(row for row in result["rows"] if row["strategy_id"].startswith("S03"))
+
+    assert row["failure_aware_saving_vs_persistent_full"] == pytest.approx(0.4)
+    assert row["saving_vs_fresh_full"] is None
+    assert row["failure_aware_saving_vs_fresh_full"] is None
+    assert row["calls_delta_vs_fresh_full"] is None
+    assert row["resolution_delta_vs_fresh_full"] is None
+
+
 def test_failure_aware_saving_cannot_reward_a_quality_loss():
     registry = load_strategy_registry(REGISTRY)
     fresh = _run("S00_fresh_full", "fresh_per_issue", (50, 50))
