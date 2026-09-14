@@ -1579,6 +1579,105 @@ counterfactual), removal recall relative to the oracle-removable set, and token
 coverage. ``Never used again'' in the observed path is not an oracle label;
 utility must be established by counterfactual generation or rollout.
 
+\subsection{Three-trajectory omission oracle}
+
+We executed the next-action oracle at one late decision in three previously
+repeat-qualified successful trajectories using the same 4-bit
+Qwen3-Coder-30B model and tokenizer, temperature zero, seed zero, and a direct
+MLX endpoint.  The decisions contain 7,599, 6,597, and 11,111 model-visible
+history tokens.  System state, the task record, the protected head, and the
+recent tail remain fixed; each singleton trial removes exactly one complete
+middle causal bundle.  Pair and bounded beam trials are generated only from
+surviving parents and are capped at eight trials at depth two and four trials
+at later depths.
+
+Exact command identity and semantic transition equivalence are reported
+separately.  The latter requires a valid action with the same typed operation
+and target-resource set; for example, \texttt{grep} and \texttt{sed} reads of
+the same modified source file are equivalent at this level.  It is deliberately
+weaker than exact replay and is not a task-success label.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Offline omission-oracle headroom at one late decision per trajectory.
+Singleton columns are survivor counts. Best columns report the largest tested
+omitted-token fraction preserving the indicated criterion at any bounded-search
+depth. Oracle outcomes are not deployable-policy accuracy.}
+\label{tab:oracle-headroom-three}
+\begin{tabular}{lrrrrrr}
+\toprule
+Task & Tokens & Singletons & Exact & Semantic & Best exact & Best semantic \\
+\midrule
+django-15277 & 7,599 & 20 & 2 & 14 & 24.28\% (d4) & 27.04\% (d5) \\
+django-15368 & 6,597 & 21 & 3 & 14 & 4.00\% (d1) & 24.53\% (d4) \\
+sklearn-13135 & 11,111 & 16 & 0 & 16 & 0.00\% & 38.16\% (d3) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result is strongly non-additive and sometimes non-monotone.  On
+django-15277, the pair formed from the only two exact-safe singleton omissions
+does not remain exact.  Conversely, four of eight pairs proposed by the
+semantic beam recover exact command identity, and one four-bundle subset
+removes 24.28\% while remaining exact.  At depth five exact identity disappears
+again although one 27.04\%-saving subset retains the semantic transition.
+On django-15368 none of the three exact-safe singleton pairs stays exact, while
+semantic equivalence survives all four tested depth-three and depth-four
+subsets.  Greedily summing singleton savings is therefore invalid; even this
+small oracle needs explicit subset evaluation.
+
+Fresh FULL probes also reveal why exact strings cannot be the utility axis.
+The original-position plan and materialized-token count are unchanged, but
+only django-15277 reproduces its pinned command exactly after the server
+restart.  The other two FULL probes choose different commands that perform the
+same typed operation on the same resource.  Exact trajectory remains a useful
+implementation and repeatability diagnostic; semantic transition and eventual
+autonomous success remain distinct quality outcomes.
+
+\subsection{Matched retirement factorial}
+
+At the same three decisions we compare H1+H3 whole-bundle retirement, the
+identical negative decisions realized as payload receipts, and token-tail
+recency constrained not to exceed each structured arm's realized token count.
+Table~\ref{tab:retirement-factorial-three} scores semantic transition against
+the pinned FULL action and exact command against a contemporaneous FULL probe.
+Hard-ceiling recency can round below the structured arm when the next retained
+unit does not fit; this is recorded as unused budget rather than hidden.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen retirement factorial. Savings are materialized-token reduction
+for Tasks 1/2/3. Sem. and Exact are survivor counts out of three decisions.}
+\label{tab:retirement-factorial-three}
+\begin{tabular}{lrrrrr}
+\toprule
+Arm & T1 save & T2 save & T3 save & Sem. & Exact \\
+\midrule
+Whole H1+H3 & 1.24\% & 3.14\% & 0.00\% & 3/3 & 1/3 \\
+Payload receipt H1+H3 & 0.00\% & 1.44\% & 0.00\% & 2/3 & 2/3 \\
+Matched tail $\leq$ whole & 3.05\% & 5.96\% & 0.00\% & 3/3 & 1/3 \\
+Matched tail $\leq$ receipt & 0.00\% & 2.90\% & 0.00\% & 3/3 & 2/3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The payload-receipt arm does not earn a default-policy promotion.  Its
+tokenizer gate correctly abstains whenever a receipt would not be smaller than
+the source, leaving Tasks 1 and 3 at zero saving; on Task 2 it changes the
+semantic transition at only 1.44\% saving.  Whole-record H1+H3 averages 1.46\%
+saving, below the predeclared 2\% yield gate.  The recency control constrained
+by the whole-record arm averages 3.00\%, preserves all three semantic
+transitions, and is the only frozen candidate advanced to repeated autonomous
+qualification.  These are three decision probes, not an accuracy estimate;
+official task success and calls-to-solution are required before profile
+promotion.
+
+The digest-bound trial ledgers, queues, reductions, and per-arm requests are
+under \path{docs/papers/shared/results/paper8_5_agent_memory/}, in
+\path{oracle_headroom_v1} and \path{retirement_factorial_v1}.
+
 \section{Transfer}
 
 \subsection{Second open-source harness}
@@ -1678,11 +1777,15 @@ but not in compression. Observation receipts now fail closed when their own
 token cost is not smaller than the source and activate correctly on oversized
 mechanism controls. The evidence supports a sharper hypothesis than
 ``semantic selection beats recency'': agent memory is not reducible to current
-world state. The next phase therefore measures oracle-removable headroom and
-directly compares matched recency, whole-record retirement, and
-witness-attached payload-only retirement. Only a repeat-qualified nondominated
-policy is transferred to native K/V engines; selector proliferation,
-additional models, and additional harnesses wait until that gate passes.
+world state. The new three-trajectory omission oracle nevertheless finds
+semantic-transition headroom of 24.5--38.2\% under bounded subset search, while
+also showing that safe removals are non-additive and non-monotone. In the
+deployable frozen factorial, H1+H3 whole-record retirement misses its 2\% mean
+yield gate and payload receipts are low-yield or harmful. A matched recency arm
+preserves all three semantic transitions at 3.0\% mean saving and is the only
+candidate advanced to repeated autonomous qualification. Selector
+proliferation, native-K/V transfer, additional models, and additional harnesses
+wait for that task-success gate.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

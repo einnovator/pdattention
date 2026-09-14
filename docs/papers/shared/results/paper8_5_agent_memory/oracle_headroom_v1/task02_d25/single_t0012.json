@@ -1,0 +1,858 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "django__django-15368",
+  "model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "2b95baf79c6244cb1bf4edf9c0f3351abbf4e5b00827a1549576d9ff6e1fb3cc",
+  "policy": "full",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": null,
+  "materialization_mode": "whole_record",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "c8c968f954d857c6e13934a76e0edfb0a72086103bb7da3e99b0fe704ae68dfb",
+    "model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+    "endpoint": "http://127.0.0.1:8092/v1/chat/completions",
+    "policy": "full",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+    "materialization_mode": "whole_record",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 25,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 1200,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "hard_ceiling_round_down",
+    "matched_budget_field": null,
+    "reference_replay_digest": "2b95baf79c6244cb1bf4edf9c0f3351abbf4e5b00827a1549576d9ff6e1fb3cc",
+    "matched_budget_source_digest": null,
+    "negative_selection": null,
+    "oracle_addback_causal_group_ids": [],
+    "oracle_omit_causal_group_ids": [
+      "turn:t0012"
+    ]
+  },
+  "run_configuration_digest": "9c95ecf8737411b5b70e480dce8332231a55ba7211f7b49453a31f0650d967a8",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 0,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 0.0,
+  "first_command_divergence": 25,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 25,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 50,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "86d4be9c0a77a796fe5168870420592a62a5de81ea7279e8543028beb78a8eec",
+      "reference_content_sha256": "f00f21570cf2d0e80c9426aed9f67f1686c870e95e48a37f0b92cebebdf3797d",
+      "generated_content_sha256": "b33882b4b1ae81dd61631dc95b1ee455a981a9d949835662a6319780cb66cc3c",
+      "request_messages_sha256": "a66d3d9a18c16bd4c2957ef23f5a5c21e3219596c10e93e8417afdf2239c35bf",
+      "generated_content": "THOUGHT: Perfect! Now let me create a simple test to verify the fix works:\n```mswea_bash_command\ncd /testbed && python -c \"\nimport sys\nsys.path.insert(0, '.')\nfrom django.db.models.expressions import Expression, F\nprint('Testing fix...')\nprint('F is instance of Expression:', isinstance(F('test'), Expression))\nprint('F has resolve_expression:', hasattr(F('test'), 'resolve_expression'))\nprint('Regular value has resolve_expression:', hasattr('test', 'resolve_expression'))\n\"\n```",
+      "exact_content": false,
+      "reference_command": "cd /testbed && python -c \"\nimport sys\nsys.path.insert(0, '.')\nfrom django.db.models.expressions import F, Expression\nprint('Testing that F is an Expression:', isinstance(F('test'), Expression))\nprint('Testing that F has resolve_expression:', hasattr(F('test'), 'resolve_expression'))\nprint('Testing regular value:', hasattr('test', 'resolve_expression'))\n\"",
+      "generated_command": "cd /testbed && python -c \"\nimport sys\nsys.path.insert(0, '.')\nfrom django.db.models.expressions import Expression, F\nprint('Testing fix...')\nprint('F is instance of Expression:', isinstance(F('test'), Expression))\nprint('F has resolve_expression:', hasattr(F('test'), 'resolve_expression'))\nprint('Regular value has resolve_expression:', hasattr('test', 'resolve_expression'))\n\"",
+      "exact_command": false,
+      "full_history_tokens": 6597,
+      "selected_logical_tokens": 6341,
+      "selected_whole_record_tokens": 6341,
+      "materialized_tokens": 6341,
+      "requested_budget_tokens": 6597,
+      "materialized_token_ceiling": null,
+      "realized_record_retention_fraction": 0.9611944823404578,
+      "realized_logical_retention_fraction": 0.9611944823404578,
+      "realized_materialized_retention_fraction": 0.9611944823404578,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 0,
+      "whole_turn_budget_undershoot_tokens": 256,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 256,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7",
+        "m8",
+        "m9",
+        "m10",
+        "m11",
+        "m12",
+        "m13",
+        "m14",
+        "m15",
+        "m16",
+        "m17",
+        "m18",
+        "m19",
+        "m20",
+        "m21",
+        "m22",
+        "m23",
+        "m24",
+        "m25",
+        "m28",
+        "m29",
+        "m30",
+        "m31",
+        "m32",
+        "m33",
+        "m34",
+        "m35",
+        "m36",
+        "m37",
+        "m38",
+        "m39",
+        "m40",
+        "m41",
+        "m42",
+        "m43",
+        "m44",
+        "m45",
+        "m46",
+        "m47",
+        "m48",
+        "m49"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "full_history"
+        ],
+        [
+          "m1",
+          "full_history"
+        ],
+        [
+          "m2",
+          "full_history"
+        ],
+        [
+          "m3",
+          "full_history"
+        ],
+        [
+          "m4",
+          "full_history"
+        ],
+        [
+          "m5",
+          "full_history"
+        ],
+        [
+          "m6",
+          "full_history"
+        ],
+        [
+          "m7",
+          "full_history"
+        ],
+        [
+          "m8",
+          "full_history"
+        ],
+        [
+          "m9",
+          "full_history"
+        ],
+        [
+          "m10",
+          "full_history"
+        ],
+        [
+          "m11",
+          "full_history"
+        ],
+        [
+          "m12",
+          "full_history"
+        ],
+        [
+          "m13",
+          "full_history"
+        ],
+        [
+          "m14",
+          "full_history"
+        ],
+        [
+          "m15",
+          "full_history"
+        ],
+        [
+          "m16",
+          "full_history"
+        ],
+        [
+          "m17",
+          "full_history"
+        ],
+        [
+          "m18",
+          "full_history"
+        ],
+        [
+          "m19",
+          "full_history"
+        ],
+        [
+          "m20",
+          "full_history"
+        ],
+        [
+          "m21",
+          "full_history"
+        ],
+        [
+          "m22",
+          "full_history"
+        ],
+        [
+          "m23",
+          "full_history"
+        ],
+        [
+          "m24",
+          "full_history"
+        ],
+        [
+          "m25",
+          "full_history"
+        ],
+        [
+          "m28",
+          "full_history"
+        ],
+        [
+          "m29",
+          "full_history"
+        ],
+        [
+          "m30",
+          "full_history"
+        ],
+        [
+          "m31",
+          "full_history"
+        ],
+        [
+          "m32",
+          "full_history"
+        ],
+        [
+          "m33",
+          "full_history"
+        ],
+        [
+          "m34",
+          "full_history"
+        ],
+        [
+          "m35",
+          "full_history"
+        ],
+        [
+          "m36",
+          "full_history"
+        ],
+        [
+          "m37",
+          "full_history"
+        ],
+        [
+          "m38",
+          "full_history"
+        ],
+        [
+          "m39",
+          "full_history"
+        ],
+        [
+          "m40",
+          "full_history"
+        ],
+        [
+          "m41",
+          "full_history"
+        ],
+        [
+          "m42",
+          "full_history"
+        ],
+        [
+          "m43",
+          "full_history"
+        ],
+        [
+          "m44",
+          "full_history"
+        ],
+        [
+          "m45",
+          "full_history"
+        ],
+        [
+          "m46",
+          "full_history"
+        ],
+        [
+          "m47",
+          "full_history"
+        ],
+        [
+          "m48",
+          "full_history"
+        ],
+        [
+          "m49",
+          "full_history"
+        ]
+      ],
+      "oracle_addback": {
+        "requested_causal_group_ids": [],
+        "restored_causal_group_ids": [],
+        "already_selected_causal_group_ids": [],
+        "not_yet_present_causal_group_ids": [],
+        "restored_record_ids": [],
+        "restored_tokens": 0
+      },
+      "oracle_omission": {
+        "requested_causal_group_ids": [
+          "turn:t0012"
+        ],
+        "omitted_causal_group_ids": [
+          "turn:t0012"
+        ],
+        "not_yet_present_causal_group_ids": [],
+        "already_unselected_causal_group_ids": [],
+        "omitted_record_ids": [
+          "m26",
+          "m27"
+        ],
+        "omitted_tokens": 256
+      },
+      "negative_realization": "drop",
+      "negative_candidate_group_count": 0,
+      "negative_candidate_record_count": 0,
+      "negative_candidate_tokens": 0,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [],
+      "receipt_abstained_source_observation_tokens": 0,
+      "receipt_abstained_candidate_tokens": 0,
+      "receipt_abstentions": [],
+      "model_visible_receipts": [],
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 1559,
+          "materialized_tokens": 1559,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m2",
+          "mode": "whole_record",
+          "original_tokens": 157,
+          "materialized_tokens": 157,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m3",
+          "mode": "whole_record",
+          "original_tokens": 34,
+          "materialized_tokens": 34,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 70,
+          "materialized_tokens": 70,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "whole_record",
+          "original_tokens": 132,
+          "materialized_tokens": 132,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m6",
+          "mode": "whole_record",
+          "original_tokens": 109,
+          "materialized_tokens": 109,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m7",
+          "mode": "whole_record",
+          "original_tokens": 27,
+          "materialized_tokens": 27,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m8",
+          "mode": "whole_record",
+          "original_tokens": 68,
+          "materialized_tokens": 68,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m9",
+          "mode": "whole_record",
+          "original_tokens": 95,
+          "materialized_tokens": 95,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m10",
+          "mode": "whole_record",
+          "original_tokens": 77,
+          "materialized_tokens": 77,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m11",
+          "mode": "whole_record",
+          "original_tokens": 565,
+          "materialized_tokens": 565,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m12",
+          "mode": "whole_record",
+          "original_tokens": 424,
+          "materialized_tokens": 424,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m13",
+          "mode": "whole_record",
+          "original_tokens": 117,
+          "materialized_tokens": 117,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m14",
+          "mode": "whole_record",
+          "original_tokens": 100,
+          "materialized_tokens": 100,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m15",
+          "mode": "whole_record",
+          "original_tokens": 171,
+          "materialized_tokens": 171,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m16",
+          "mode": "whole_record",
+          "original_tokens": 141,
+          "materialized_tokens": 141,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m17",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m18",
+          "mode": "whole_record",
+          "original_tokens": 315,
+          "materialized_tokens": 315,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m19",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m20",
+          "mode": "whole_record",
+          "original_tokens": 350,
+          "materialized_tokens": 350,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m21",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m22",
+          "mode": "whole_record",
+          "original_tokens": 180,
+          "materialized_tokens": 180,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m23",
+          "mode": "whole_record",
+          "original_tokens": 101,
+          "materialized_tokens": 101,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m24",
+          "mode": "whole_record",
+          "original_tokens": 71,
+          "materialized_tokens": 71,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m25",
+          "mode": "whole_record",
+          "original_tokens": 35,
+          "materialized_tokens": 35,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m28",
+          "mode": "whole_record",
+          "original_tokens": 46,
+          "materialized_tokens": 46,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m29",
+          "mode": "whole_record",
+          "original_tokens": 35,
+          "materialized_tokens": 35,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m30",
+          "mode": "whole_record",
+          "original_tokens": 57,
+          "materialized_tokens": 57,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m31",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m32",
+          "mode": "whole_record",
+          "original_tokens": 63,
+          "materialized_tokens": 63,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m33",
+          "mode": "whole_record",
+          "original_tokens": 144,
+          "materialized_tokens": 144,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m34",
+          "mode": "whole_record",
+          "original_tokens": 80,
+          "materialized_tokens": 80,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m35",
+          "mode": "whole_record",
+          "original_tokens": 30,
+          "materialized_tokens": 30,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m36",
+          "mode": "whole_record",
+          "original_tokens": 51,
+          "materialized_tokens": 51,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m37",
+          "mode": "whole_record",
+          "original_tokens": 39,
+          "materialized_tokens": 39,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m38",
+          "mode": "whole_record",
+          "original_tokens": 95,
+          "materialized_tokens": 95,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m39",
+          "mode": "whole_record",
+          "original_tokens": 37,
+          "materialized_tokens": 37,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m40",
+          "mode": "whole_record",
+          "original_tokens": 73,
+          "materialized_tokens": 73,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m41",
+          "mode": "whole_record",
+          "original_tokens": 191,
+          "materialized_tokens": 191,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m42",
+          "mode": "whole_record",
+          "original_tokens": 78,
+          "materialized_tokens": 78,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m43",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m44",
+          "mode": "whole_record",
+          "original_tokens": 47,
+          "materialized_tokens": 47,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m45",
+          "mode": "whole_record",
+          "original_tokens": 23,
+          "materialized_tokens": 23,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m46",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m47",
+          "mode": "whole_record",
+          "original_tokens": 15,
+          "materialized_tokens": 15,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m48",
+          "mode": "whole_record",
+          "original_tokens": 46,
+          "materialized_tokens": 46,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m49",
+          "mode": "whole_record",
+          "original_tokens": 25,
+          "materialized_tokens": 25,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        }
+      ],
+      "plan_digest": "bab09ef1565ffc4210d1fad8452f9f0ca9a2005a434eddff0c85ef0b924afc0a",
+      "usage": {
+        "prompt_tokens": 6584,
+        "completion_tokens": 113,
+        "total_tokens": 6697
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-855b0914-ed30-4050-b30c-59814c45505b",
+        "response_model": "/Users/admin.jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit/snapshots/6e302ea604ad9ab206367e2c501d1571023e7b6d",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "logprobs",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role",
+          "tool_calls"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 479,
+        "message_content_sha256": "b33882b4b1ae81dd61631dc95b1ee455a981a9d949835662a6319780cb66cc3c",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 6584,
+          "completion_tokens": 113,
+          "total_tokens": 6697
+        }
+      }
+    }
+  ]
+}
