@@ -1,0 +1,239 @@
+# PRA runtime productization
+
+Paper 4.5 asks whether PRA's logical K/V sparsity becomes a measurable,
+portable inference primitive before a serving engine is redesigned around it.
+
+## Evidence freshness correction (2026-09-12)
+
+Agent-history qualification exposed engine defects not covered by the earlier
+bundle benchmark. All pre-gate native-runtime exactness and economic values
+listed below are retained as historical development evidence, not current
+qualification. Ten canonical records and ten bundle headline rows derived from
+24 raw artifacts are quarantined pending rerun under
+`live-kv-original-position-lifecycle-v1`. Structural bundle metadata and
+selection/router-only diagnostics remain valid. See
+`../shared/results/paper4_5_runtime_productization/ENGINE_EVIDENCE_RERUN_AUDIT.md`.
+
+The implementation adds:
+
+- one `PRARuntime` facade over the existing HF model API;
+- four independent execution-policy axes with global/model/request precedence;
+- request/per-layer, token/shared, and cache-correct phase/shared HF execution
+  modes with logical plans; phase/shared uses a cache-free routing probe and
+  requires routing at the first active PRA layer;
+- Paper 4 authenticated cold/warm/hot memory sessions;
+- Paper 6.5 callable tool records, OpenAI/Anthropic skill folders, lazy
+  selection/full-view encoding, typed discovery, and safe execution;
+- Paper 7 type-aware result compaction with scoped exact backing, address
+  search, selected replay, cursors, finite token/byte native-index gates,
+  per-record-type overrides, auditable lifecycle states, and lazy selected-region
+  native encoding above the full-index budget;
+- versioned runtime configuration and inspection;
+- a product-profile registry that exposes three-case quality optima only as
+  `QUALITY_MAX_CANDIDATE` with `SMOKE / CALIBRATION_PENDING`, reserving
+  `QUALITY_MAX` for workload-scale validation;
+- deduplicated interval planning and native `[B, Hkv, T, D]` K/V packing;
+- byte-bounded LRU accounting and request-stage profiling;
+- eager and `torch.compile` gather gates;
+- a scheduler-unaware vLLM fallback handoff plus a bounded stateful vLLM 0.28
+  V1 scheduler-owned page-alias path;
+- a standalone G00/G10/G01/G11 gateway and E0/E1/E2 capability adapters;
+- engine-type-aware cache/session profiles independent of PRA integration depth;
+- prepared gateway sessions, explicit FULL/DELTA/AUTO history, resource
+  ADD/UPDATE/REMOVE/UNCHANGED operations, stable cache-affinity hints, and
+  non-sensitive session inspection/close endpoints;
+- prefix-preserving G10 placement that keeps the prior serialized conversation
+  byte-identical instead of changing a message-zero evidence block;
+- DeepSeek Harness and Pi event/RPC bridges with tested ordinary-engine fallback;
+- validated model-managed task operations, adaptive metadata widening, and frozen
+  record-bounded native-consumption plans inherited from Paper 8;
+- source-relative native positions with direct queries placed after the longest
+  active record, named Paper 3/7/8 materialization profiles, and raw-versus-unique
+  interval diagnostics;
+- permanent visible-prefix/native-logit and prefill/decode lifetime regressions;
+- a bounded vLLM 0.28 CUDA stateful page-alias gate whose seven-turn PRA-100
+  replay is 7/7 token-exact to dense full history, observes every lifecycle
+  callback, and reports zero selected-history re-encoding, K/V copy, and H2D;
+- a frozen vLLM 0.28 CUDA Task-05 agent gate whose ordinary and PRA-100 arms
+  both resolve 1/1 in 15 byte-exact assistant actions with the same patch,
+  while selected-history re-encoding, physical K/V copy, and H2D remain zero.
+  Its corrected PRA-90 arm is a valid policy-quality negative: 0/1 in 15 calls,
+  first divergence at action 6, 94.24% aggregate retention, and an empty patch,
+  still with zero selected-history re-encoding, K/V copy, or H2D;
+- frozen direct MLX and SGLang-MLX Task-01 gates whose plain and PRA-100 arms
+  are exact six-call solves and whose PRA-90 arms also solve in six calls with
+  the same commands and patch. Their selected-history re-encoding, physical
+  K/V copy, and H2D are zero; suffix-graft, lifecycle-copy, and consumer-
+  temporary bytes remain separately reported;
+- a frozen Paper 8.5 causal-tail transfer on the already-qualified MLX Task-01
+  and vLLM Task-05 pairs. Both native engines preserve zero selected-history
+  re-encoding/copy, but both tasks fail: MLX diverges at action 3 and submits a
+  94 KB patch after nine calls at 89.57% logical retention; vLLM diverges at
+  action 3, loops to 28 calls, and reaches its fixed 8,192-token context bound
+  at 88.05% retention. These are policy-quality negatives, not engine-gate
+  regressions, and the unmatched retention budgets do not rank selectors;
+- a corrected HF CUDA same-resident-state gate whose seven-turn PRA-100 dense
+  no-op is token- and logit-exact while selected-history re-encoding, K/V copy,
+  interval packing, and H2D remain zero; measurement-only cache forks are
+  reported outside the production attachment boundary;
+- an HF direct-agent context-window guard that rejects the full rendered
+  logical prompt plus declared completion allowance before plain cache
+  allocation or native canonical-K/V extension, advertises `max_model_len`,
+  and requires exact runner-preflight agreement. A Windows-hosted 7B NF4
+  Task-05 plain retry is valid but unresolved after 30 calls with no patch;
+  Task-01 is quarantined because the pre-fix endpoint let 17 calls exceed the
+  nominal 8,192-token window. No HF PRA-100 arm was launched;
+- portable HF-backed OpenAI-compatible SSE streaming with cooperative cancellation;
+- tenant/user/session-scoped native-cache keys and per-tenant eviction limits;
+- request attachment guards that bind native selections to tenant/session scope
+  and reject cross-scope reuse or duplicate attachment under concurrency;
+- atomic tenant/scope revalidation during both storage promotion and request pinning;
+- source-revision, position, materialization, and scope-safe physical payload reuse;
+- pinned Qwen3-0.6B, Llama-3.2-1B mirror, and Gemma-3-1B cross-model gates;
+- attention-only MoE contracts for Qwen3-MoE and GPT-OSS, nested Mistral 3
+  decoder discovery, and a fail-closed Qwen hybrid GDN/QSA structural plan;
+- an ordered pre-publication queue that keeps contract, model-load, adapter,
+  three-condition evidence, qualification, and publication gates distinct;
+- the canonical `pra` model-onboarding, profile, bundle, runtime-provider,
+  agent, gateway, and Hub command tree, with `pra-hf` retained as a deprecated
+  alias;
+- versioned named agent profiles and an optional FastAPI/WebSocket multi-session UI;
+- CLI and executed notebook workflows;
+- an archived pre-gate selector-frozen E0 selected-text versus E2 native-K/V
+  benchmark spanning
+  cold, warm, multi-query, and concurrency-eight schedules on MLX-LM,
+  SGLang-MLX, and vLLM-Metal, with disjoint quality, input, PRA, ingestion,
+  serving, and reuse metrics. Its numbers are historical diagnostics, not
+  current qualification.
+- an archived 149-unique-question confirmation per engine that historically
+  recorded 6,258/6,258 exact E0/E2 pairs overall; current-contract parity and
+  cost require rerun;
+- an engine-neutral `HOT/WARM/COLD/SOURCE` storage manager with named profiles,
+  strict fingerprints, lossless WARM/COLD stores, independent compression and
+  int8 policy, deterministic weighted eviction, typed-record priors, task and
+  dependency retention, delayed closure compaction, and session cleanup.
+- historical live-manager probes for vLLM pages, SGLang HiCache-backed arrays,
+  and MLX arrays,
+  segmented mmap WARM storage, durable restart recovery, and persistent
+  lifecycle metrics. The historical expanded lossless WARM study recorded
+  265/265 pairs and int8 COLD 61/265; neither value is current qualification.
+- archived event-loop WARM-promotion, online SGLang/MLX streaming, cancellation,
+  cleanup, queueing, concurrency, selective-int8, and 1,125-request pressure
+  diagnostics; their engine economics require corrected-contract reruns.
+- an archived M4 Pro Qwen3 8B/14B/32B and 30B-A3B profile campaign with
+  historical concatenated E0/E2 sequence parity, a segmented-attention candidate,
+  and model-normalized consumer-layer calibration over 60 natural-QA
+  model--example pairs.
+- pre-gate M4/M5 MLX model-scaling evidence retained in the historical product matrix:
+  `BALANCED` consumes native memory at all eligible layers, while segmented and
+  reduced-layer candidates remain `CALIBRATION_PENDING`; native execution must
+  be rerun before qualification.
+- an archived 60-example Llama 3.1 8B cross-family row with historical E0/E2 transport parity,
+  a 1.032 warm ratio, and a 0.935 cold time-to-usable-context ratio; this retains
+  no current economic qualification.
+- archived warmed M5 4B/8B/14B replication, an explicit 32B capacity-gate row, a
+  held-out noncontiguous gate that retains every eligible layer, and corrected
+  2K/8K/32K occupied-context receipts.
+- public PRA Runtime Bundles under `EInnovator`, with pre-gate Native-Memory
+  headlines quarantined and Selected Context recommended until exact-identity
+  reruns complete. Their historical cards retain paired natural-QA values only
+  for audit. Qwen,
+  Llama, and Gemma routing diagnostics remain a separate research section;
+  Qwen3-0.6B is explicitly the mechanism reference bundle.
+- a presentation-independent Control Manager used by REST, MCP, the built-in
+  Control Plane agent, and the embedded CLI, with configurable discovery,
+  read-only MCP defaults, durable plan/apply idempotency, and central
+  manager-owned authorization and audit.
+
+Reproduce the measured portable profile:
+
+```powershell
+$env:PYTHONPATH = "src;."
+python -m experiments.paper4_5_runtime.run_runtime_profile
+python -m experiments.paper4_5_runtime.run_execution_policy_profile
+python -m experiments.paper4_5_runtime.run_agent_plugin_contracts
+python -m experiments.paper4_5_runtime.run_gateway_session_profile
+python -m experiments.paper4_5_runtime.run_session_aware_selected_context
+python -m experiments.paper4_5_runtime.run_storage_lifecycle
+python -m experiments.paper6_vllm.run_live_storage_lifecycle
+python -m experiments.paper6_1_sglang.run_live_storage_lifecycle
+python -m experiments.paper6_2_mlx.run_live_storage_lifecycle
+python -m experiments.engine_serving.summarize_live_storage_lifecycle
+python -m experiments.engine_serving.summarize_mac_engine_extension
+python -m experiments.paper4_5_runtime.run_cross_model_validation --model all --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model qwen --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model llama --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --model gemma --device cuda
+python experiments/paper4_5_runtime/run_layer_profile_calibration.py --finalize-only
+python experiments/paper4_5_runtime/summarize_hf_catalog_adapters.py
+python experiments/paper4_5_runtime/build_hf_catalog_bundles.py --force
+python -m experiments.paper4_5_runtime.build_product_matrix_v2
+python -m experiments.paper4_5_runtime.build_engine_qualification
+python -m experiments.paper4_5_runtime.summarize_runtime
+```
+
+Qualify the first MoE queue target on an MLX host with one exact model identity:
+
+```bash
+MODEL=mlx-community/Qwen3-30B-A3B-4bit
+REVISION=d388dead1515f5e085ef7a0431dd8fadf0886c57
+ROOT=docs/papers/shared/results/paper4_5_runtime/hf_catalog_adapters/qwen3-30b-a3b
+
+python -m experiments.paper4_5_runtime.extract_mlx_catalog_features \
+  --model-id "$MODEL" --model-revision "$REVISION" \
+  --output-dir "$ROOT/features"
+python -m experiments.paper4_5_runtime.compare_catalog_router \
+  --feature-dir "$ROOT/features" --output-router "$ROOT/router" \
+  --output-json "$ROOT/router_comparison.json" --base-model "$MODEL" \
+  --base-model-revision "$REVISION" --model-family qwen
+python -m experiments.paper4_5_runtime.run_mlx_router_native_qualification \
+  --feature-dir "$ROOT/features" --router "$ROOT/router" \
+  --model "$MODEL" --revision "$REVISION" --selected-fraction 0.20 \
+  --output "$ROOT/native_qualification.json" --resume
+```
+
+The final runner freezes each generic or learned selection and replays it as
+both visible selected text and native K/V. Its five conditions distinguish
+full No-PRA, selected/native generic routing, and selected/native learned
+routing. Publication remains blocked until the exact receipt passes the
+catalog gates; merely loading the checkpoint or training router weights is not
+qualification.
+
+The cross-model command is restartable with `--model qwen`, `--model llama`,
+`--model gemma`, and `--model finalize`. The official Meta Llama checkpoint was
+access-blocked during this run, so the checked-in Llama row names the exact
+public weight mirror. Gemma is reported as partial topology: native global-layer
+mechanics pass, while unchanged local sliding layers prevent full-prefix
+equivalence.
+
+Build the paper:
+
+```powershell
+latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
+```
+
+Try the SDK notebook under `pra-hf-demo/pra_runtime_productization.ipynb`.
+
+The current runtime also integrates Paper 8's durable task/session layer. The
+`pra agent chat` command demonstrates the same SDK with task-scoped typed
+records, reusable toolsets, local persistence, and per-call write authorization.
+Paper 8.5 separately owns engine-independent agent-memory selection, exclusion,
+oracle, and logical task-efficiency experiments. Paper 4.5 imports a frozen
+policy only to test engine semantic parity, lifecycle, task outcomes, and
+resource accounting. The first native causal-tail transfer is negative on MLX
+and vLLM, so Paper 4.5 keeps its task-aware progress-spine policy while Paper
+8.5 continues matched-budget oracle and exclusion-policy work.
+
+Launch the reference gateway with `pra gateway serve`. HF-backed adapters expose
+OpenAI-compatible streaming; request-owned references remain active until decode
+or cancellation cleanup completes. G10 is an
+explicit text-materialization fallback; it is not native-K/V PRA. FreeToken is
+an E0 protocol target in this artifact. Paper 4.5 now includes bounded E2
+mechanism and one-task autonomous evidence for MLX-LM, SGLang-MLX, and the
+experimental vLLM 0.28 scheduler-owned page-alias path. The gateway experiment measures
+exact logical-prefix stability and transport bytes with a simulated
+adapter. It does not report a physical engine cache hit, scheduler affinity,
+or remote-engine speedup. `pra runtime serve MODEL -e ENGINE` is now the common
+launch path. The generic vLLM provider remains conservatively E0; only the
+bounded in-process V1 page-alias implementation is qualified as experimental E2
+within its declared complete-page, homogeneous-group scope.

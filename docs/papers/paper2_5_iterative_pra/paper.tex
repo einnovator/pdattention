@@ -1,0 +1,2693 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\setlength{\emergencystretch}{3em}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible}
+
+\input{main_associative_memory.tex}
+
+\appendix
+\section{Mechanistic Cohort Identity Sensitivity}
+\label{app:mechanistic-identities}
+
+The mechanistic analysis reuses these 16 fixed synthetic identities under all
+25 window--seed models.  Table~\ref{tab:mechanistic-identities} shows the paired
+means for every identity; it is a sensitivity display, not 16 draws from a broad
+task population.  The source table is
+\path{final_reviewer_patch/traversal_effects_by_identity.csv}.
+
+\begin{table}[H]
+\centering
+\caption{Per-identity iterative-minus-one-shot effects.  Each row averages 25
+window--seed model conditions.  ``Improved/worse'' count complete-path outcomes.}
+\label{tab:mechanistic-identities}
+\scriptsize
+\begin{tabular}{lrrrrr}
+\toprule
+Identity & Improved & Worse & $\Delta$ path & $\Delta$ accuracy & $\Delta$ margin \\
+\midrule
+chain-100004-d1 & 9 & 5 & .160 & $-.040$ & $-.093$ \\
+chain-1042565-d1 & 4 & 2 & .080 & $-.200$ & .270 \\
+chain-1147294-d2 & 5 & 4 & .040 & $-.040$ & .795 \\
+chain-1252023-d4 & 0 & 0 & .000 & .000 & 1.099 \\
+chain-1356752-d1 & 7 & 5 & .080 & $-.320$ & $-.385$ \\
+chain-1461481-d2 & 1 & 3 & $-.080$ & .040 & .182 \\
+chain-1566210-d2 & 1 & 3 & $-.080$ & .000 & .899 \\
+chain-1670939-d1 & 4 & 4 & .000 & $-.160$ & $-.811$ \\
+chain-204733-d3 & 0 & 2 & $-.080$ & .000 & 1.342 \\
+chain-309462-d4 & 0 & 0 & .000 & .120 & 1.670 \\
+chain-414191-d2 & 0 & 2 & $-.080$ & .040 & $-.316$ \\
+chain-518920-d1 & 6 & 2 & .160 & .000 & $-.351$ \\
+chain-623649-d1 & 4 & 3 & .040 & .000 & $-.081$ \\
+chain-728378-d2 & 3 & 6 & $-.120$ & .080 & 1.160 \\
+chain-833107-d1 & 7 & 4 & .120 & $-.080$ & .107 \\
+chain-937836-d1 & 8 & 3 & .200 & $-.080$ & $-.025$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Normalized Efficiency Detail}
+\label{app:normalized-efficiency}
+
+The row-level release preserves example identity, dataset, seed, policy, $N$,
+$E$, deduplicated $K$, recovered evidence, $R_E$, $P_E$, $C_E$, $K/N$, and
+$K/E$.  Iterative rows additionally retain per-hop incremental and cumulative
+unique sets.  The plots below expose the two diagnostics omitted from the compact
+main-text view: complete recovery and working-set overhead.  They do not convert
+conceptual chunks into a physical K/V claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.48\linewidth]{../shared/results/paper2_5_iterative_pra/normalized_efficiency/complete_recovery_vs_active_fraction.pdf}
+\includegraphics[width=.48\linewidth]{../shared/results/paper2_5_iterative_pra/normalized_efficiency/working_set_overhead_vs_recall.pdf}
+\caption{Per-budget complete recovery (left) and evidence-normalized working-set
+overhead (right).  Dataset-specific rows and evidence-count strata are exported
+in the accompanying CSV artifacts.}
+\end{figure}
+
+\section{Chronological Gate Audit: Projection and Locality}
+\label{app:projection-locality}
+
+The preceding results freeze the original chunk-level closure as Level 1.  We next change one
+assumption at a time.  All comparisons reuse the same five checkpoints, held-out examples,
+depth, root anchor, path score, and final unique-parent/K/V budget.  Neither gate trains a new
+parameter.
+
+\subsection{Gate 1: projection-correct frontiers}
+
+Table~\ref{tab:projection} compares the historical $W_mh_A$ frontier with the contract-correct
+$W_qh_A$ frontier at the primary 10\% chunk budget.  Correction materially reduces the QASPER
+failure: any/chain recall rises by 0.075 and coverage by 0.013 relative to historical closure.
+It nevertheless remains 0.013 below one-shot any/chain recall.  On HotpotQA, correction raises
+any recall by 0.025 and restores exact identity by 0.013 relative to historical closure, but
+chain completion falls by 0.013 and exactly matches one-shot.  Comparison counts are unchanged
+because this gate changes only the projection used by each activated frontier.
+
+\begin{table}[H]
+\centering
+\caption{Gate 1 at a matched 10\% final chunk budget.  Q-frontier is the corrected
+$W_qh_A\rightarrow W_mh_B$ traversal; M-frontier is the historical direct reuse of $W_mh_A$.}
+\label{tab:projection}
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Method & Any & Chain & Exact & Coverage & Comparisons \\
+\midrule
+HotpotQA & One-shot & .700 & .138 & .013 & .207 & 50.1 \\
+HotpotQA & M-frontier & .663 & .150 & .000 & .202 & 219.6 \\
+HotpotQA & Q-frontier & .688 & .138 & .013 & .201 & 219.6 \\
+QASPER & One-shot & .963 & .963 & .213 & .477 & 142.6 \\
+QASPER & M-frontier & .875 & .875 & .200 & .466 & 1395.9 \\
+QASPER & Q-frontier & .950 & .950 & .225 & .479 & 1395.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/local_associative_closure/qasper_projection_gate.pdf}
+\caption{Gate-1 QASPER curves.  Respecting the asymmetric projection contract recovers most of
+the historical closure loss, but one-shot remains the sparse-retrieval reference.}
+\label{fig:projection}
+\end{figure}
+
+Projection asymmetry therefore explains a meaningful part of the original degradation.  It does
+not explain why the corrected traversal fails to improve chain completion.  That result passes
+the predeclared checkpoint for testing a finer propagation scale.
+
+\subsection{Gate 2: contextual local gists}
+
+Gate 2 changes the index to 256-token contextual parents with eight 32-token local gists.  The
+one-shot and parent-closure baselines use the same parent features; local closure alone traverses
+subchunk states.  Parent deduplication holds final materialization to the same parent count.
+
+The designed local-bridge control separates the methods cleanly.  At two selected parents,
+one-shot and projection-correct parent closure retrieve only the entry parent: exact identity,
+chain completion, and coverage are 0, 0, and 0.5 over 320 examples.  Local closure retrieves both
+evidence groups in every case, with exact identity, chain completion, and coverage all 1.0.  Its
+mean $\Delta_{bridge}$ is 1.0.  The implementation can therefore expose a bridge erased by a
+parent mean without re-encoding the local window.
+
+Natural data is more restrained (Table~\ref{tab:local}).  At 20\%, local closure improves Hotpot
+any recall, exact identity, and coverage by 0.013 each over one-shot, but chain completion falls
+by 0.013 and parent closure is stronger.  On QASPER, local closure improves exact identity by
+0.025 and coverage by 0.016 over one-shot while any/chain recall falls by 0.013.  Local accepted
+edges are stronger than corresponding parent edges: mean $\Delta_{bridge}$ is 0.203 on Hotpot and
+0.205 on QASPER.  That measurable locality does not yet identify the correct cross-parent chain.
+
+\begin{table}[H]
+\centering
+\caption{Gate 2 at a matched 20\% final parent/KV budget.  Comparisons count semantic gist
+dot products; no native QK comparisons occur in this gate.}
+\label{tab:local}
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Method & Any & Chain & Exact & Coverage & Gist cmp. & K/V tokens \\
+\midrule
+HotpotQA & One-shot parent & .475 & .138 & .000 & .217 & 6.5 & 405.8 \\
+HotpotQA & Parent closure & .513 & .175 & .000 & .235 & 11.9 & 405.0 \\
+HotpotQA & Local closure & .488 & .125 & .013 & .229 & 49.5 & 403.4 \\
+QASPER & One-shot parent & .938 & .938 & .738 & .813 & 18.2 & 1036.0 \\
+QASPER & Parent closure & .950 & .950 & .738 & .819 & 66.6 & 1037.3 \\
+QASPER & Local closure & .925 & .925 & .763 & .829 & 405.2 & 1031.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/local_associative_closure/hotpotqa_local_gate.pdf}
+\caption{Gate-2 HotpotQA curves under matched final parent budgets.  Local routing exposes
+stronger subchunk edges but does not improve evidence-group chain completion.}
+\label{fig:local}
+\end{figure}
+
+The cost is substantial.  At 20\%, local closure uses 49.5 versus 6.5 comparisons on Hotpot
+(7.6$\times$) and 405.2 versus 18.2 on QASPER (22.3$\times$).  Materialized K/V differs by less
+than 1.3\% within either dataset, confirming that the quality comparison is not purchased with a
+larger payload.  The graph audit validates all 960 saved Gate-1/2 traces against schema v2 and
+finds no parent-budget violation.
+
+\subsection{Gate 3: native local QK propagation}
+
+The native-bridge control first verifies the mechanism without relying on natural annotations.
+The root-semantic rank retrieves entry parent $A$ and a stronger semantic distractor, while a
+token in $A$ has a model-compatible native QK match only to evidence parent $B$.  Across five
+seeds and 64 cases per seed, one-shot, parent closure, and local semantic closure retrieve half
+the evidence and complete no chains.  Native QK retrieves both groups in all 320 cases: exact
+identity, chain completion, and coverage are all 1.0.  A distractor with an incompatible native
+key remains unselected.  The vectorized scorer can therefore express the proposed transition.
+
+Natural data does not reproduce that separation (Table~\ref{tab:native-qk}).  At the primary
+20\% final budget and 10\% semantic candidate pool, max native QK matches local semantic chain
+completion on HotpotQA (0.125) and remains below one-shot (0.138) and parent closure (0.175).
+Its any-evidence recall and coverage are slightly higher than local semantic, but exact identity
+falls from 0.013 to zero.  Expanding the pool to 20\% lowers chain completion to 0.113.  On
+QASPER, max native QK reaches 0.900 with the 10\% pool and 0.863 with the 20\% pool, below local
+semantic (0.925) and one-shot (0.938).  More candidates amplify rather than repair propagation
+error.
+
+\begin{table}[H]
+\centering
+\caption{Gate 3 at a matched 20\% final parent/KV budget.  ``QK-10'' and ``QK-20'' are the
+primary max score with 10\% and 20\% semantic candidate-parent pools; ``QK-Top4'' is the sole
+Top-4 control at 20\%.  Native dots count token-pair/query-head products.}
+\label{tab:native-qk}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Method & Chain & Coverage & Sem. cmp. & Native dots & K/V tok. & Time (s) \\
+\midrule
+HotpotQA & One-shot & .138 & .217 & 6.5 & 0 & 405.8 & .0046 \\
+HotpotQA & Local semantic & .125 & .217 & 98.3 & 0 & 407.0 & .0105 \\
+HotpotQA & QK-10 & .125 & .223 & 114.6 & 95,712 & 406.3 & .0121 \\
+HotpotQA & QK-20 & .113 & .208 & 114.6 & 183,667 & 407.2 & .0132 \\
+HotpotQA & QK-Top4 & .175 & .265 & 114.6 & 183,667 & 406.0 & .0143 \\
+QASPER & One-shot & .938 & .813 & 18.2 & 0 & 1036.0 & .0059 \\
+QASPER & Local semantic & .925 & .829 & 540.0 & 0 & 1042.9 & .0463 \\
+QASPER & QK-10 & .900 & .810 & 540.0 & 1,198,554 & 1043.7 & .0467 \\
+QASPER & QK-20 & .863 & .794 & 540.0 & 1,949,958 & 1039.8 & .0542 \\
+QASPER & QK-Top4 & .838 & .770 & 540.0 & 1,949,958 & 1041.3 & .0624 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/native_qk_closure/gate3_native_qk_quality.pdf}
+\caption{Gate-3 chain completion and evidence coverage across final budgets.  Primary native-QK
+propagation does not dominate local semantic or one-shot routing; the larger candidate pool is
+usually worse, especially on the direct-retrieval QASPER control.}
+\label{fig:native-qk-quality}
+\end{figure}
+
+The Top-4 control is the one localized positive: HotpotQA chain completion at 20\% rises to 0.175,
+matching parent closure and exceeding both one-shot and local semantic.  It does not persist as a
+dominant curve: at 10\% all methods tie at 0.038, at 30\% Top-4 reaches 0.238 versus one-shot
+0.300, and QASPER degrades to 0.838 at 20\%.  The $\mu+\sigma$ threshold is effectively identical
+to fixed Top-$k$ in this hard-cap regime and offers no rescue.  These predeclared controls are
+therefore a mixed point observation, not a positive Gate-3 result.  This is specifically a
+failure of max-reduced Top-1 native closure under the tested competition rule; it does not yet
+show that useful native associative edges are absent.  We test that distinction below.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/native_qk_closure/gate3_native_qk_cost.pdf}
+\caption{Gate-3 cost at the 20\% final parent budget.  Semantic and native work are reported
+separately.  Candidate expansion from 10\% to 20\% nearly doubles native dot products without a
+quality gain.  Wall time measures this batched reference implementation, not an optimized kernel.}
+\label{fig:native-qk-cost}
+\end{figure}
+
+At 20\%, native refinement compares means of 1.1/1.7 candidate parents and 161/315 candidate
+tokens on HotpotQA for the 10/20\% pools; QASPER compares 3.4/5.6 parents and 874/1,422 tokens.
+This produces 95,712--183,667 native dots on HotpotQA and 1.20--1.95 million on QASPER per
+example/seed, while materialized K/V stays within 0.8\% of one-shot.  Every saved graph reports
+zero K/V materializations during closure.  Gate 3 changes search work and selected identities,
+not payload quantity or transformer attention semantics.
+
+\subsection{Oracle convergence, displacement, and competition}
+
+The previous gates score whether a selected set touches each evidence group.  Here we ask the
+stricter question of whether it approaches the exact feasible parent set used by the annotated
+Paper-2 oracle.  We import that oracle constructor unchanged, pass it the cached evidence spans
+and 256-token parent boundaries, and assert equality with the feature mask for every example.
+For selected set $S(B)$ and oracle $S_O$, we report recall, precision, Jaccard overlap, and
+$\mathbf{1}[S_O\subseteq S(B)]$ at 5, 10, 20, 30, and 40\% parent/KV budgets.  Figure
+\ref{fig:oracle-convergence} shows that Hotpot convergence remains slow for every frozen method.
+At 20\%, parent closure has the best non-control recall (0.235); the native Top-4 reduction reaches
+0.265, but complete recovery is only 0.013.  At 40\%, one-shot is strongest at 0.529 recall, while
+all iterative variants remain between 0.438 and 0.477.  Among the few Hotpot seed/example
+trajectories that ever recover the complete oracle, the mean minimum budget is 31.7--34.0\%; only
+10--12 of 80 trajectories do so by 40\%.
+
+QASPER provides the expected direct-retrieval control.  At 20\%, one-shot reaches 0.813 oracle
+recall and 0.738 complete recovery.  Parent and local closure reach 0.819/0.738 and 0.829/0.763,
+respectively, but native max falls to 0.794/0.725 and the Top-4 reduction to 0.770/0.713.  At 40\%,
+one-shot and local differ by only 0.002 recall.  Iteration therefore does not buy a useful
+convergence advantage on this mostly one-group task.
+
+That aggregate comparison hides a specific failure.  At 20\%, one-shot touches at least one
+oracle parent in 0.475 of Hotpot and 0.938 of QASPER seed/example runs.  Of those successful
+roots, local, native-max, and native-Top-4 closure fail to preserve every touched oracle parent
+in 0.132/0.052, 0.184/0.117, and 0.158/0.156 of Hotpot/QASPER runs.  Parent closure displaces
+none on Hotpot and 0.013 on QASPER.  This is not literal eviction after admission: the frozen
+implementation reserves approximately half of $B$ for root retrieval, keeps admitted roots,
+and fills the remaining slots through propagation.  A ``displaced'' one-shot hit therefore
+falls outside the smaller iterative root allocation and is not recovered.  Every replacement
+observed in this diagnostic is a hop-2 proposal.
+
+Displacement is associated with root uncertainty rather than a larger final payload.  For QASPER
+local closure, displaced cases have mean root Top-1--Top-2 margin 0.037 and entropy 1.842, versus
+0.123 and 1.310 for preserved cases.  Native-max cases show the same direction
+(0.089/1.728 versus 0.122/1.286), and native Top-4 cases remain weaker but consistent
+(0.104/1.618 versus 0.121/1.286).  These are descriptive associations over only 4, 9, and 12
+displaced runs, not a fitted confidence rule.
+
+We isolate that mechanism with a matched-$B$ protected-root counterfactual.  It first preserves
+one-shot oracle hits, then fills the remaining slots in the frozen iterative order.  This uses
+oracle labels and is an upper bound, not a deployable routing policy.  On QASPER it raises oracle
+recall by 0.006 for parent closure, 0.015 for local closure, 0.044 for native max, and 0.068 for
+native Top-4; the two native methods both reach 0.838 recall and 0.763 complete recovery.  Hotpot
+gains are smaller (0.000--0.031 recall) because its dominant error remains initial root discovery.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper2_5_iterative_pra/oracle_competition_diagnostics/oracle_recall_cost.pdf}
+\caption{Exact Paper-2 oracle recall against active K/V fraction (left) and measured routing
+time (right), with HotpotQA above QASPER.  The Top-4 label averages four token/head matches; it
+is not a four-parent beam.  Iterative search adds routing work but supplies no cost-adjusted
+Hotpot advantage.  Times describe the batched reference runner, not an optimized kernel.}
+\label{fig:oracle-convergence}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Oracle convergence and root preservation at the primary 20\% parent/KV budget.
+``Displaced'' is conditioned on a one-shot oracle hit.  Protected recall is an oracle-informed
+counterfactual at the same $B$.  Semantic comparisons and native dots are different units.}
+\label{tab:oracle-convergence}
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Dataset & Method & Recall & Complete & Displaced & Protected R & Sem. cmp. & Native dots \\
+\midrule
+HotpotQA & One-shot & .217 & .000 & -- & .217 & 6.5 & 0 \\
+HotpotQA & Parent iterative & .235 & .000 & .000 & .235 & 11.9 & 0 \\
+HotpotQA & Local iterative & .217 & .013 & .132 & .242 & 98.3 & 0 \\
+HotpotQA & Native max & .208 & .000 & .184 & .240 & 114.6 & 183,667 \\
+HotpotQA & Native Top-4 reduction & .265 & .013 & .158 & .290 & 114.6 & 183,667 \\
+QASPER & One-shot & .813 & .738 & -- & .813 & 18.2 & 0 \\
+QASPER & Parent iterative & .819 & .738 & .013 & .825 & 66.6 & 0 \\
+QASPER & Local iterative & .829 & .763 & .052 & .844 & 540.0 & 0 \\
+QASPER & Native max & .794 & .725 & .117 & .838 & 540.0 & 1,949,958 \\
+QASPER & Native Top-4 reduction & .770 & .713 & .156 & .838 & 540.0 & 1,949,958 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Low end-to-end recovery can arise before or after the first evidence group.  At 20\%, one-shot
+reaches the first source-ordered Hotpot group in 0.200 of seed/example runs; parent closure reaches
+0.213, local closure 0.200, native max 0.188, and native Top-4 0.263.  To isolate propagation, we
+then force only that annotated source group active and rank the next evidence group among all
+other parents.  Any local node in either evidence parent may realize an edge.  Parent semantic
+uses the projection-correct query-to-memory score, local semantic uses the strongest local pair,
+and native QK uses the exact frozen pre-RoPE max token/head reduction.
+
+The conditioned result is much stronger than end-to-end closure (Figure~\ref{fig:oracle-rank}).
+Median true-edge rank is 3 in all three spaces.  Parent semantic, local semantic, and native QK
+respectively obtain R@1 of 0.141, 0.259, and 0.235; R@4 of 0.765, 0.741, and 0.765; and MRR of
+0.424, 0.480, and 0.469.  Every semantic transition is within Top-8, as are 16 of 17 native
+transitions.  Mean oracle-minus-best-distractor margins remain negative
+($-0.118,-0.143,-0.039$), so the correct edge is usually present but loses hard competition.
+Across 85 seed-transition comparisons, the best semantic and native ranks are both within Top-4
+in 56 cases; semantic alone is near-top in 14, native alone in 9, and both are poor in only 6.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\linewidth]{../shared/results/paper2_5_iterative_pra/oracle_convergence/oracle_edge_rank.pdf}
+\caption{Rank recall for the true next Hotpot evidence group after conditioning on the first
+group.  Most annotated transitions exist within the first four candidates even though they
+rarely win Top-1.  Semantic statistics contain 17 transitions under five projection seeds;
+native QK has 17 seed-invariant transitions.}
+\label{fig:oracle-rank}
+\end{figure}
+
+The Gate-3 Top-4 signal should not be read as parent-beam R@4.  It averages four strong token/head
+matches before ranking parent transitions.  Its four 20\% chain wins over max reduction comprise
+two questions.  In one seed-case a near-tied oracle edge moves from rank 2 to rank 1: its margin
+changes from $-0.0038$ to $+0.0157$.  The other question accounts for three seed-cases, but its
+source-ordered edge remains rank 6 under both reductions; completion comes from root/reverse-order
+selection rather than better forward propagation.  The cached features contain no entity/topic
+labels, so we do not assign a semantic relation to those distractors from parent IDs alone.
+
+We also audit whether incomparable score families create the competition error.  They never
+enter a common raw TopK in the frozen router: root and semantic propagation use normalized
+cosines followed by a 0.25 root anchor and $[0,1]$ affinity/path products, while native QK uses a
+sigmoid score followed by its own 0.25 anchor and path product.  The audit nevertheless reveals
+severe native compression.  At 20\%, maximum and Top-4 native logits average 13.95/12.16 on
+Hotpot and 14.29/12.47 on QASPER; every sigmoid exceeds 0.999, and 94.8--100\% exceed 0.99999.
+Top-4 does improve the Hotpot oracle-edge score quantile from 0.561 to 0.731, consistent with
+less sensitivity to one extreme token/head match, but it does not generalize to QASPER.
+
+As an offline control, we fix the candidate identity union already exposed by one-shot and
+iterative routing, fit per-family z-score or empirical-quantile transforms on a hash-stable
+validation partition, and evaluate unchanged on held-out examples.  The transforms cannot
+discover a missing parent.  They leave QASPER local recall at 0.900 and raise native-max recall
+from 0.867 to 0.883; quantiles raise native Top-4 from 0.833 to 0.883.  They do not improve
+Hotpot recall: the best normalized native result remains 0.205, and local z-scoring remains
+0.190.  Calibration can preserve a strong root once it enters the candidate pool, but does not
+solve Hotpot's missing-root problem.
+
+Finally, we simulate, without changing SDK routing, $k=1$ when the Top-1/Top-2 gap exceeds a
+validation-selected threshold and $k=4$ otherwise.  On held-out edges, parent semantic selects
+$k=4$ always and reaches 0.686; local semantic averages $k=3.83$ and reaches 0.657 versus its
+0.686 fixed-R@4 ceiling; native averages $k=3.57$ and reaches 0.714, exactly its fixed R@4.
+The split is only 10/7 distinct native transitions and 50/35 seed-sensitive semantic transitions,
+so this is a mechanism diagnostic, not a tuned policy result.  The simple margin rule saves little
+competition and does not explain the Top-4 reduction signal.
+
+These diagnostics motivate the deployable, label-free competition gate evaluated next.  A
+production policy cannot know oracle roots, but it can lock identities using root confidence or
+cross-seed agreement, then let propagation compete only for remaining slots.  This directly tests
+whether the protected-root upper bound and near-Top-4 Hotpot edges survive without oracle access.
+
+\subsection{Monotonic root persistence and adaptive competition}
+
+The previous router divides $B$ before seeing the score distribution.  We instead compute the
+ordinary full root ranking $R=(r_1,\ldots,r_B)$, choose a label-free lock set $L\subseteq R$, and
+enforce
+\begin{equation}
+  L\subseteq S_{\mathrm{final}},\qquad
+  B_{\mathrm{prop}}=B-|L|,\qquad
+  |S_{\mathrm{final}}|=B.
+\end{equation}
+Propagation can compete only for the $B_{\mathrm{prop}}$ unlocked slots.  Duplicate parent
+proposals collapse to their strongest path; if propagation supplies too few unique identities,
+the original root order fills the remainder.  The equality above therefore changes identities,
+not active parent/KV capacity.  No evidence label appears in the policy API.
+
+We test fixed prefixes of 1, 2, and 4, first-large-score-drop thresholds, full-vector root
+$z$-score thresholds, and the fraction of five router seeds placing a parent within root Top-$B$.
+For transitions we retain projection-correct local semantics and the frozen Top-4-mean pre-RoPE
+native-QK scorer.  Native magnitudes are saturated after a sigmoid, so cross-source native
+proposals use deterministic per-source raw-logit rank.  Adaptive breadth chooses $k=1$ for
+concentrated semantic/native Top-1 agreement, $k=2$ for moderate concentration with Top-4
+overlap, and $k=4$ otherwise.  Thresholds and policy identities are selected on the hash-stable
+validation examples only.  We freeze two roles per geometry: the unconstrained preservation
+winner and the best exploratory root policy required to activate propagation on at least 25\% of
+validation runs.  This second role prevents a one-shot-equivalent winner from making transition
+competition vacuous.
+
+Validation selects root $z>-0.5$ for preservation in both geometries.  On this sample that rule
+locks all available Top-$B$ identities, performs no propagation, and becomes an independently
+implemented one-shot parity check.  For exploration, validation selects root $z>1$ with native
+rank and seed agreement at 0.6 with semantic propagation.  Fixed $k=1$ wins for native rank;
+fixed $k=4$ wins for semantic propagation.  None of the nine adaptive threshold pairs wins.
+Across held-out adaptive-policy traces, native decisions are mostly $k=1/2$ (1,674/1,014 source
+decisions, with 30 at $k=4$); the richer rule does not expose a natural-data gain hidden by fixed
+breadth.
+
+\begin{table}[H]
+\centering
+\caption{Held-out results at the primary 20\% final parent/KV budget.  Seven HotpotQA and six
+QASPER examples are each evaluated under five frozen router seeds.  ``Prop.'' is the fraction of
+seed/example runs that add a propagated identity.  The preservation rows lock full root Top-$B$
+and therefore exactly match one-shot.}
+\label{tab:adaptive-competition}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Policy & Oracle R & Chain & Root present & Root locked & Prop. & Native dots \\
+\midrule
+HotpotQA & One-shot & .205 & .143 & .343 & .343 & .000 & 0 \\
+HotpotQA & Monotonic preserve & .205 & .143 & .343 & .343 & .000 & 0 \\
+HotpotQA & Native-rank explore & .233 & .143 & .343 & .314 & .314 & 82,388 \\
+HotpotQA & Semantic explore & .176 & .086 & .343 & .257 & .314 & 82,388 \\
+QASPER & One-shot & .883 & .800 & .967 & .967 & .000 & 0 \\
+QASPER & Monotonic preserve & .883 & .800 & .967 & .967 & .000 & 0 \\
+QASPER & Native-rank explore & .883 & .800 & .967 & .967 & .767 & 907,281 \\
+QASPER & Semantic explore & .883 & .800 & .967 & .967 & .400 & 621,193 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result separates preservation from discovery.  Monotonicity removes the measured QASPER
+regression exactly, but the selected exploratory policies spend search work without improving
+20\% chain completion.  Native rank gains 0.028 Hotpot oracle recall (0.205 to 0.233) while chain
+completion remains 0.143.  At 30/40\%, native chain completion falls from one-shot 0.343/0.371
+to 0.257/0.286.  Semantic exploration matches one-shot chain completion at 30/40\%
+(0.343/0.371), and reaches QASPER 0.950 recall and 0.900 chain completion at 40\%, but it does
+not produce the required Hotpot advantage.  The dual-geometry diagnostic scorer takes about
+0.006 seconds per Hotpot and 0.044--0.068 seconds per QASPER run at 20\%; these reference timings
+include the alternate geometry used for confidence measurement and are not an optimized kernel
+claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/adaptive_quality.pdf}
+\caption{Held-out quality under matched final budgets.  Dotted preservation curves reproduce
+one-shot.  Exploratory propagation does not improve Hotpot chain completion; the isolated 20\%
+native oracle-recall gain does not persist as budgets grow.}
+\label{fig:adaptive-quality}
+\end{figure}
+
+The failure decomposition is more decisive than the aggregate delta.  Across exploratory
+held-out runs and budgets, the first source-ordered Hotpot evidence group is absent from full
+root Top-$B$ in 52.9\% of cases.  It is present but rejected by the lock in 11.1\%; the remainder
+is locked.  At 20\%, the native policy locks the first group in 31.4\% of runs and recovers all
+later groups in 45.5\% of those conditioned runs, yet end-to-end chain completion still cannot
+exceed one-shot.  Competition policy cannot propagate from an entry that was never admitted.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_5_iterative_pra/monotonic_adaptive_competition/adaptive_regulation.pdf}
+\caption{Held-out exploratory budget allocation and propagation activation at 20\%.  The final
+parent budget remains matched even when the locally selected lock count differs.}
+\label{fig:adaptive-regulation}
+\end{figure}
+
+Controlled cases verify the mechanism independently of that natural limitation.  Obvious direct
+retrieval locks the root and stops.  With the target outside root Top-$B$, fixed $k=1$ obtains
+0.5 oracle recall on both an ambiguous rank-2 transition and a distractor-heavy rank-4
+transition.  Fixed $k=4$ and adaptive $1/2/4$ both recover 1.0 at the same final $B$; the adaptive
+rule chooses 2 and 4, respectively.  Thus persistence and adaptive breadth are implemented and
+can regulate designed cases, but validation does not promote them on natural data.
+
+This gate therefore advances a narrower recommendation: refine entry discovery before changing
+transition geometry.  The next experiment below tests whether the pretrained contextual question
+already contains a useful entry relation that the single final-token query collapses.
+
+\subsection{Contextual query facets and native-head entry search}
+
+The inherited root is one attention-input hidden state, $h_q=H_q[T-1]$, projected by the frozen
+query map and cosine-scored against each fixed parent memory gist.  We reproduce this operation
+exactly as condition A.  For condition B, the model still sees the complete prompt exactly once.
+Within the recorded question span, overlapping windows produce
+\begin{equation}
+ g_{q,i}=\frac{1}{b_i-a_i}\sum_{t=a_i}^{b_i-1}H_q[t],\qquad
+ s_j=\max_{i\in\{\mathrm{global},\mathrm{local}\}}
+ \cos(W_qg_{q,i},W_mh_j).
+\end{equation}
+The global final-token row remains in the set.  All facets nominate through one score per parent
+and one final Top-$B$; no facet receives a private payload budget.  We test 4/8/16-token windows
+at half-window stride and max versus Top-2-mean facet reduction.  Validation selects width 4,
+stride 2, and max.  The query-feature manifest verifies one full prompt forward per example, zero
+independent window forwards, and bit-exact equality between condition A and the frozen root cache.
+
+The learned 128-D semantic router has no legitimate head axis.  We do not invent pseudoheads.
+Conditions C and D instead audit the model's 16 real layer-27 pre-RoPE query heads against their
+8 grouped-query-compatible K heads.  Valid local K tokens are vectorized into a parent mean;
+each query head $h$ compares only with K/V head $\lfloor h/2\rfloor$.  Validation selects
+independent per-head Top-1 nominations followed by deduplication and one global Top-$B$ rerank.
+Because this changes semantic projections to native QK, C/D are an operational head audit, not a
+strict factorial contrast with A/B.  Native mean-head controls E/F isolate span effects within
+that representation.
+
+\begin{table}[H]
+\centering
+\caption{Held-out root-entry quality at the primary 20\% parent budget.  A/B average seven
+HotpotQA or six QASPER identities over five frozen router seeds.  C/D are deterministic native-QK
+conditions and are not replicated as fictitious seeds.  ``Entry'' means that the first ordered
+evidence group occurs in root Top-$B$.}
+\label{tab:query-facet-root}
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Dataset & Variant & Entry & Rank & MRR & R@1 & R@2 & R@4 & R@8 \\
+\midrule
+HotpotQA & A: global semantic & .343 & 2.60 & .503 & .229 & .486 & .971 & 1.00 \\
+HotpotQA & B: multi-span semantic & \textbf{.457} & \textbf{2.23} & \textbf{.626} & \textbf{.429} & \textbf{.571} & .943 & 1.00 \\
+HotpotQA & C: global split-head & .429 & 3.00 & .585 & .429 & .571 & .714 & 1.00 \\
+HotpotQA & D: multi-span split-head & .143 & 3.57 & .379 & .143 & .286 & .714 & 1.00 \\
+QASPER & A: global semantic & .967 & 1.60 & .811 & .700 & .800 & .967 & 1.00 \\
+QASPER & B: multi-span semantic & \textbf{.967} & \textbf{1.50} & \textbf{.828} & .700 & \textbf{.900} & .967 & 1.00 \\
+QASPER & C: global split-head & .667 & 4.67 & .292 & .000 & .333 & .500 & .833 \\
+QASPER & D: multi-span split-head & .667 & 5.50 & .232 & .000 & .167 & .333 & .833 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 20\%, multi-span semantic search improves Hotpot entry presence by 0.114, oracle recall from
+0.205 to 0.295, mean rank from 2.60 to 2.23, and oracle precision from 0.343 to 0.457.  Its mean
+oracle margin remains negative but narrows from $-0.029$ to $-0.009$; Jaccard rises from 0.167 to
+0.248 and false-positive parents fall from 1.114 to 0.943.  The paired entry changes are six
+gains, two losses, and 27 ties.  At 10/30/40\%, entry presence changes from
+0.229/0.629/0.686 to 0.429/0.714/0.800.  QASPER entry presence, oracle recall, precision, and
+Jaccard remain exactly 0.967, 0.883, 0.296, and 0.288; MRR rises slightly.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_5_iterative_pra/query_entry_facets/hotpotqa_root_entry.pdf}
+\caption{Held-out HotpotQA first-evidence entry across matched parent budgets.  Contextual
+multi-span semantic facets (B) improve the exact global semantic control (A) at every budget.
+Native head splitting (C/D) does not combine with that gain.}
+\label{fig:query-facet-root}
+\end{figure}
+
+The gain is not free search.  Mean Hotpot query-parent comparisons rise from 5.9 in A to 67.6 in
+B, while C and D require 93.7 and 1,081.1 raw span/head comparisons.  QASPER requires
+16.3, 82.0, 261.3, and 1,312.0, respectively.  Thus B gains about 0.00185 entry probability per
+extra Hotpot comparison.  Batched GPU wall time is approximately 0.0048 seconds for both A and B
+at this small scale; C/D take 0.017/0.016 seconds on Hotpot and 0.040/0.042 on QASPER.  These are
+diagnostic timings, not optimized-kernel throughput.  Native mean-head E/F controls move Hotpot
+entry from 0.286 to 0.429 but remain far below the semantic QASPER control (0.333 to 0.500 versus
+0.967).  The native representation change, not merely head aggregation, is therefore consequential.
+
+The provenance audit finds six Hotpot seed/example cases in which A misses and B succeeds.
+Winning windows include relation-bearing fragments such as ``Most Outstanding Defensive Player''
+and entity fragments containing ``Scott''.  Two paired losses and the still-negative mean margin
+warn against treating every local maximum as reliable.  Four global-head specialization cases
+exist, but gains are concentrated and do not survive the native split-head aggregate.  The
+span--head interaction audit finds no unique span-only or synergistic win in the deterministic
+native conditions.  Separate span-dilution, head-specialization, and combined synthetic controls
+all recover their designed parent while conserving the final budget.
+
+The predeclared 0.10 Hotpot gain gate is met without QASPER loss, so we run the small confirmation
+in Table~\ref{tab:query-facet-propagation}.  It freezes B and reconnects only the previously
+selected $z>1$ root lock, native-rank transition geometry, and fixed Top-1 transition.  No policy
+is reselected on held-out labels.
+
+\begin{table}[H]
+\centering
+\caption{Held-out confirmation at the same 20\% final parent/KV budget.  ``Exact'' requires every
+canonical oracle parent; ``Chain'' requires one parent from every ordered evidence group.}
+\label{tab:query-facet-propagation}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Method & \multicolumn{4}{c}{HotpotQA} & \multicolumn{3}{c}{QASPER} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}
+ & Entry & Oracle R & Exact & Chain & Entry & Oracle R & Chain \\
+\midrule
+Current one-shot & .343 & .205 & .000 & .143 & .967 & .883 & .800 \\
+Current monotonic iterative & .343 & .233 & .000 & .143 & .967 & .883 & .800 \\
+New faceted root only & .457 & .295 & .029 & .171 & .967 & .883 & .800 \\
+Faceted root + propagation & .457 & .295 & .057 & .171 & .967 & .883 & .800 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/query_entry_facets/propagation_confirmation.pdf}
+\caption{Entry discovery and downstream chain completion for the four confirmation methods.
+Facets improve Hotpot entry and chain metrics while preserving QASPER; propagation does not add
+chain completion beyond the new root at this budget.}
+\label{fig:query-facet-propagation}
+\end{figure}
+
+The root-only facet search averages 68 comparisons on Hotpot and 82 on QASPER.  Reconnecting the
+dual-geometry transition diagnostic raises these to about 112,232 and 1,154,036, respectively,
+while leaving chain completion unchanged from B.  Exact-oracle completion does rise by 0.029 on
+Hotpot, but the incremental search is not justified as a default.  The evidence supports
+recommendation \emph{A: use multi-span query facets} as an opt-in research selector.  Query-span
+dilution is the dominant tested entry failure; head dilution and span--head synergy are not
+supported.  One-shot remains the SDK default, and learned slots, textual decomposition, new
+associative training, and partial materialization remain outside this gate.
+
+\subsection{Facet types, prompt support, and query-grounded propagation}
+
+The preceding experiment established that one fixed window family can improve entry discovery.
+It did not establish that width four is uniquely useful, that every active prompt token should
+issue a retrieval query, or that the same facets can choose a successor proposed by associative
+propagation.  We address those questions additively: source memories and five learned routing
+projections remain frozen, every facet comes from one full contextual prompt pass, and all facets
+still compete for one final parent budget.  Besides the exact global and width-4 controls, we test
+widths 2/4/8/16 at half-window stride, individual token states, their multiscale union,
+deterministic punctuation/relation spans, local-only width-4 facets, and one Top-2-mean reduction.
+
+\begin{table}[H]
+\centering
+\caption{Facet-family root entry at the 20\% parent budget.  Selection uses validation identities;
+held-out columns are descriptive and never feed selection.  ``Cmp.'' is mean held-out Hotpot
+facet--parent comparisons.  All fixed-window rows include the global facet unless marked local.}
+\label{tab:facet-family-gate}
+\small
+\setlength{\tabcolsep}{3.7pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Facet family & Val. Hotpot & Val. QASPER & Test Hotpot & Test QASPER & Cmp. \\
+\midrule
+Global & .089 & .820 & .343 & .967 & 5.9 \\
+$w=2,s=1$ & \textbf{.222} & .780 & .429 & .967 & 134.3 \\
+$w=4,s=2$ & .200 & .820 & .457 & .967 & 67.6 \\
+$w=8,s=4$ & .178 & .820 & .429 & .967 & 34.7 \\
+$w=16,s=8$ & .156 & .800 & .400 & .967 & 19.1 \\
+$w=4$, Top-2 mean & .200 & .820 & .457 & 1.000 & 67.6 \\
+$w=4$, local only & .200 & .780 & .486 & 1.000 & 61.7 \\
+Token & .200 & .820 & .400 & .967 & 140.1 \\
+Multiscale 2/4/8/16 & \textbf{.222} & .780 & .429 & .967 & 238.1 \\
+Phrase/relation spans & \textbf{.222} & .800 & .429 & .967 & \textbf{23.3} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation rule first preserves QASPER within 0.05, then maximizes Hotpot entry and MRR and
+breaks ties by false positives and cost.  It freezes width 2, stride 1, max reduction, with the
+global facet retained.  This is not the held-out maximum: local-only width 4 happens to reach
+0.486 on the seven Hotpot test identities, but selecting it after inspection would invalidate the
+gate.  The exact global and width-4 held-out controls reproduce 0.343 and 0.457, respectively.
+The result therefore supports fine contextual facets as a family, while the small identity count
+does not resolve a universal optimal width.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.90\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/facet_type_gate.pdf}
+\caption{Held-out root entry for every predeclared facet family.  Several contextual families
+preserve QASPER and improve on the global Hotpot control; more facets do not improve monotonically.}
+\label{fig:facet-family-gate}
+\end{figure}
+
+For long prompts, active context and query-support context are distinct.  Earlier tokens may
+causally shape a late hidden state without independently nominating memory.  We compare the
+question span, explicit latest-user-message boundary, recent tails of 16/32/64 tokens, and the
+full prompt.  A controlled chat prompt contains an archived user request, a phrase copied from a
+non-oracle memory parent, tool/history text, and the current question; the stale phrase is varied
+over 0/16/32/64 target tokens.  The validation criterion freezes the latest message.  On clean
+held-out prompts it gives Hotpot/QASPER entry 0.429/0.967 with 134/151 comparisons, versus
+0.257/0.933 and 246/462 for full-prompt support.  The contamination result is more cautious:
+over nonzero stale lengths, latest-message stale-parent selection is 0.229 on held-out Hotpot and
+0.278 on QASPER, compared with 0.219 and 0.289 for full-prompt support.  The boundary reduces
+search and preserves current-question retrieval; it does not uniformly eliminate stale matches.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/stale_support_gate.pdf}
+\caption{Held-out Hotpot response to injected stale-memory text.  Left: current root entry.
+Right: selection of the explicitly non-oracle stale parent.  The validation-frozen latest-message
+boundary is bounded and cheaper, but stale-context resistance remains mixed on this sample.}
+\label{fig:stale-support-gate}
+\end{figure}
+
+We next condition on a correct first evidence group $A$ to isolate successor selection.  Existing
+layer-27 pre-RoPE native QK with Top-4 token/head reduction generates
+\begin{equation}
+ C_A=\operatorname{Top4}_{B\notin A} R_A(A,B).
+\end{equation}
+Only those four identities are validated in one batched product by the frozen facets,
+\begin{equation}
+ G_Q(B)=\max_i R_Q(q_i,B),\qquad B\in C_A.
+\end{equation}
+We compare query reranking, rank conjunction
+$r_A(B)+\lambda r_Q(B)$ for $\lambda\in\{.25,.5,1,2\}$, and a validation-fitted query threshold.
+All versus residual facets (excluding the facet that best matches $A$) are separate controls.
+Native and semantic raw scores are never added.  Oracle successor labels enter only validation
+selection and metrics, never candidate generation, facet scoring, or ranking.
+
+\begin{table}[H]
+\centering
+\caption{Conditional successor retrieval from a known-correct $A$.  Validation selects all-facet
+query reranking.  There are ten validation and seven held-out transitions, each evaluated with
+five frozen semantic projections; seed repetitions do not create additional transition identities.}
+\label{tab:grounded-propagation}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Split & Ordering & R@1 & MRR & R@2 & R@4 & Mean rank \\
+\midrule
+Validation & Association only & .100 & .355 & .200 & .600 & 3.60 \\
+Validation & Query rerank & \textbf{.300} & \textbf{.508} & \textbf{.480} & .600 & \textbf{3.04} \\
+Held out & Association only & \textbf{.286} & \textbf{.583} & \textbf{.714} & 1.000 & \textbf{2.14} \\
+Held out & Query rerank & .257 & .500 & .400 & 1.000 & 2.69 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation gain does not transfer.  Held-out R@1 changes by $-0.029$, MRR by $-0.083$, and
+R@2 by $-0.314$, while all true successors remain available within the associative Top-4.  Mean
+held-out query margin between the best oracle candidate and best distractor is $-0.113$.
+Residual-facet grounding and rank/threshold conjunctions do not win validation under the R@4
+preservation constraint.  Exact synthetic controls still behave as designed: query grounding
+promotes a weaker but relevant proposal, stops an irrelevant continuation, and retains a
+second-facet bridge.  The failure is therefore empirical discrimination on these natural edges,
+not a missing implementation path.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.60\linewidth]{../shared/results/paper2_5_iterative_pra/grounded_query_facets/grounded_propagation_gate.pdf}
+\caption{Held-out conditional successor retrieval.  Static current-query facets preserve Top-4
+availability but worsen the order inside that bounded candidate set.}
+\label{fig:grounded-propagation}
+\end{figure}
+
+The exact native proposal averages 6.52 million token/head dot products and about 0.0350 seconds per
+held-out edge on the reference GPU.  Root-facet identification adds 24 comparisons; packed
+four-candidate validation adds 86 comparisons and about 0.00146 seconds.  No K/V is materialized by
+this diagnostic.  Our predeclared success rule required at least $+0.10$ held-out R@1 with no
+more than $0.05$ R@4 loss.  It fails, so we do not run or report a same-budget end-to-end grounded
+closure.  Association proposes useful candidates, but static current state does not yet ground
+their order reliably; learned or dynamically updated state remains future work rather than a
+paper result.
+
+\subsection{Frozen dynamic query reconstruction}
+
+We next test the smallest dynamic-state mechanism without training.  Given oracle-conditioned
+correct $A$, we decode only its source-group text, combine it with the original question, and run
+one ordinary frozen transformer pass,
+\begin{equation}
+ H_1=\operatorname{Transformer}(Q_0\Vert A),\qquad
+ Q_1=\operatorname{Facets}(H_1).
+\end{equation}
+No answer is generated.  We compare $Q_0\Vert A$, $Q_0\Vert\texttt{[Retrieved memory]}\Vert A$,
+and the order control $A\Vert Q_0$.  Width-2, stride-1 facets use either question positions only
+or question plus A positions; excluded positions can contextualize allowed states but cannot
+independently nominate a parent.  The source and target evidence groups are used to construct the
+condition and metric, respectively.  Target identities or text never enter reconstruction,
+native candidate generation, facet scoring, or ranking.
+
+Candidate generation remains exactly the preceding layer-27 pre-RoPE native-QK Top-4 token/head
+mean.  We scan $K\in\{1,2,3,4,5,6,8,11\}$ without changing those scores, then evaluate each
+candidate in one packed semantic facet product.  Exact assertions reproduce the previous static
+Q0 R@1/MRR and native K=4 candidate recall on both partitions.  The predeclared validation rule
+maximizes K=4 R@1, then MRR, and breaks ties by re-encoding latency and facet count.  It selects
+$A\Vert Q_0$ with question-only support.  This row ties static Q0 on validation but does not
+transfer: held-out R@1 changes from 0.257 to 0.229 and MRR from 0.500 to 0.479.
+
+\begin{table}[H]
+\centering
+\caption{Frozen dynamic-state variants at native candidate breadth K=4.  Selection uses only the
+validation columns.  ``Q+A'' support permits both regions to issue facets.  The final column is
+the held-out fraction of target-winning facets whose explicit span lies in A; it is descriptive.}
+\label{tab:dynamic-query-gate}
+\small
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Reconstruction & Support & Val. R@1 & Val. MRR & Test R@1 & Test MRR & A facet \\
+\midrule
+Static $Q_0$ & question & .300 & .508 & .257 & .500 & --- \\
+$Q_0\Vert A$ & question & .280 & .490 & .257 & .502 & .000 \\
+$Q_0\Vert A$ & Q+A & .300 & .508 & \textbf{.314} & \textbf{.538} & .971 \\
+$Q_0\Vert\texttt{[memory]}\Vert A$ & question & .260 & .477 & .257 & .502 & .000 \\
+$Q_0\Vert\texttt{[memory]}\Vert A$ & Q+A & .280 & .498 & .286 & .533 & .971 \\
+$A\Vert Q_0$ & question & \textbf{.300} & \textbf{.508} & .229 & .479 & .000 \\
+$A\Vert Q_0$ & Q+A & .220 & .467 & .286 & .517 & .971 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The primary $Q_0\Vert A$ Q+A control is a useful but non-decisive hint.  Its held-out R@1 is
+$+0.057$ over static query reranking and $+0.029$ over association-only ordering; validation ties
+static, and the held-out gain is below the predeclared $+0.10$ materiality threshold.  In 102 of
+105 held-out seed--edge rows across the three Q+A-support orderings, the target's winning facet is
+an A span.  Thus the null gate is not explained by failing to expose A: max-over-facets usually
+chooses A-derived states, but those states do not discriminate the successor reliably enough.
+
+\begin{table}[H]
+\centering
+\caption{Held-out K ladder for the validation-selected dynamic state.  Candidate recall is
+seed-invariant; R@1 and MRR average five frozen projections over seven transitions.  Native search
+is exhaustive in this diagnostic, so changing K alters only the bounded semantic product.}
+\label{tab:dynamic-query-k}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{rrrrr}
+\toprule
+K & Candidate recall & Static R@1 & Dynamic R@1 & Dynamic MRR \\
+\midrule
+1  & .286 & .286 & .286 & .643 \\
+2  & .714 & .229 & .229 & .567 \\
+3  & .857 & .257 & .229 & .507 \\
+4  & 1.000 & .257 & .229 & .479 \\
+5  & 1.000 & .200 & .171 & .436 \\
+6  & 1.000 & .200 & .171 & .431 \\
+8  & 1.000 & .200 & .171 & .431 \\
+11 & 1.000 & .200 & .171 & .431 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\linewidth]{../shared/results/paper2_5_iterative_pra/dynamic_query_discovery/dynamic_query_k_gate.pdf}
+\caption{Held-out conditional successor order across native candidate breadth.  Reconstructing
+the validation-selected Q1 does not improve static Q0; once K admits more distractors, both
+semantic rerankers expose the unresolved discrimination problem.}
+\label{fig:dynamic-query-k}
+\end{figure}
+
+The selected held-out reconstruction takes 0.723 seconds per edge; native search, projection, and
+packed scoring bring prefill-to-routing-ready time to 0.765 seconds (p95 1.288 seconds) on the
+GTX~950M.  The frozen model occupies 1.192~GB allocated before capture, and reconstruction peaks
+at 1.307~GB allocated, an incremental 115.0~MB.  Mean per-edge routing structures comprise an
+8.82~MB native-search cache, 24.0~KB parent-gist cache, 3.0~KB projected-parent cache,
+90.7~KB query facets, and 345 bytes of
+K=4 candidate scores; measured host-to-device payload is 8.94~MB.  The 621~MB source-feature file
+remains CPU-resident.  This routing-only diagnostic conceptually conditions on 2.14 active
+parents on average but materializes zero native K/V tokens, so its active-KV fraction is zero by
+construction, not an estimate of later serving cost.  It performs no generation; TTFT, TPOT,
+throughput, concurrency, and dollar cost are therefore not claimed.
+
+The gate required at least $+0.10$ held-out R@1 and positive MRR.  It fails.  Following the
+predeclared stop rule, we do not run the larger facet-resolution, candidate-width, active-ceiling,
+or relevance-threshold surface, nor B+threshold dynamic closure.  Those deliverables were
+conditional on evidence that explicit frozen reconstruction repaired successor choice.  The next
+mechanistic alternatives are a learned current-state update, learned query decomposition, or an
+explicit relational-composition objective; each must retain this candidate, leakage, partition,
+and memory-accounting protocol.
+
+QASPER does not supply a comparable conditional edge set here: the selected yes/no subset is
+predominantly one evidence group, so root retrieval is terminal under the available annotation.
+Its held-out root entry remains 0.967, but this is not evidence for a learned stopping decision.
+The failed Hotpot conditional gate also means grounded chain completion at a fixed final memory
+budget is unmeasured rather than zero; we deliberately do not infer it from oracle-conditioned
+edge rank.
+
+\subsection{Semantic graph search with terminal query closure}
+\label{app:terminal-search}
+
+The preceding rerankers asked the current query to judge every successor.  That is too strong for
+an associative chain: a useful bridge may match its predecessor while remaining weakly related to
+the original question.  We therefore use the query only at the boundaries,
+\begin{equation}
+ q_i\rightarrow A\rightarrow B\rightarrow\cdots\rightarrow Z\rightarrow q_j.
+\end{equation}
+Paper-2 routing supplies one or more entry roots.  For a frontier parent $X$, native layer-27
+pre-RoPE local QK scores propose $N_K(X)$.  A candidate $Y$ is admitted solely when
+\begin{equation}
+ R_{\rm edge}(X,Y)\geq\theta_{\rm edge},
+\end{equation}
+with no query reranking or query threshold on intermediate nodes.  Immediately after admission,
+and only then, the terminal predicate tests
+\begin{equation}
+ G_Q(Y)=\max_{j\leq F}R_{\rm query}(q_j,Y)\geq\theta_{\rm goal}.
+\end{equation}
+The two thresholds have different jobs: $\theta_{\rm edge}$ limits graph branching, whereas
+$\theta_{\rm goal}$ decides that the path has returned to the task.  At least one memory edge is
+required, and the primary search stops on its first terminal.  An ablation excludes the root's
+entry facet from the terminal maximum; it is not the primary condition.
+
+\begin{table}[H]
+\centering
+\caption{The classical-search interpretation.  The learned topology is implicit and graded;
+oracle evidence labels are used only after search for evaluation.}
+\label{tab:semantic-search-map}
+\small
+\begin{tabular}{ll}
+\toprule
+Classical state-space search & PRA semantic graph search \\
+\midrule
+Initial state & Paper-2 routed root $A$ \\
+Successor function & native Top-$K$ local-QK association \\
+Edge predicate & $\theta_{\rm edge}$ \\
+Goal predicate & $\theta_{\rm goal}$ against any query facet \\
+Frontier / visited set & active candidates / deduplicated parent IDs \\
+Resource bound & parent ceiling $B$, beam, hop and expansion caps \\
+Path depth & number of memory-to-memory edges \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We first grant the first annotated evidence group as the root, keeping entry error out of the
+traversal test.  Five frozen semantic projections provide goal scores; native edges are
+seed-invariant.  The scan covers
+$K\in\{1,2,3,4,5,6,8,11\}$,
+$B\in\{2,4,6,8,16,\text{None}\}$, depths 1--4, breadth-first, best-first, and beam search, and
+independent validation quantiles for both thresholds.  This diagnostic constructs a dense parent
+adjacency once from packed local-QK products to make the search surface reproducible.  The serving
+implementation may score successors lazily; no native K/V is materialized here.
+
+The exact conditional candidate curve is reproduced: true successors occur within Top-$K$ in
+3/17, 7/17, 11/17, 13/17, 15/17, 16/17, 16/17, and 17/17 transitions, respectively.  At $K=11$,
+validation $\theta_{\rm edge}=12.308$ retains all ten measured successor transitions while
+changing mean admitted branching only from 5.7 to 5.6.  The next quantile, 12.480, lowers
+branching to 3.9 but successor recall to 0.7.  End-to-end validation therefore selects an open
+edge threshold: the absolute score is not sufficiently calibrated to prune safely.
+
+Terminal calibration is the limiting result.  Table~\ref{tab:terminal-threshold} reports
+best-first validation; breadth-first and beam have the same poor closure/false-goal frontier and
+require more expansions at the closed endpoint.  No finite threshold satisfies the predeclared
+false-goal ceiling of 0.25.  The selected policy is consequently ``closed,'' which means no
+terminal can fire.  This is not a successful stopping rule; it is the conservative endpoint of a
+failed calibration gate.
+
+\begin{table}[H]
+\centering
+\caption{Validation terminal-goal frontier.  Correct closure is measured on HotpotQA; false goals
+pool non-oracle terminals from both datasets.  Precision is correct closures divided by all
+triggered closures.}
+\label{tab:terminal-threshold}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+$\theta_{\rm goal}$ & Correct closure & False-goal rate & Precision & Nodes expanded \\
+\midrule
+q50 & .244 & .853 & .120 & 1.20 \\
+q65 & .222 & .779 & .119 & 1.82 \\
+q75 & .156 & .705 & .095 & 2.49 \\
+q85 & .111 & .589 & .082 & 3.65 \\
+q90 & .111 & .484 & .098 & 4.51 \\
+q95 & .022 & .389 & .026 & 5.37 \\
+closed & .000 & .000 & .000 & 9.37 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With the goal predicate held closed, graph recovery itself is strong.  Validation selects
+best-first $K=4$, $B=6$, and depth 4.  On seven held-out Hotpot identities, repeated over five
+projections, it reaches 1.000 oracle recall, 1.000 later-evidence recall, and 1.000 complete-chain
+coverage.  The corresponding six QASPER identities also reach 1.000 oracle recall.  Hotpot later
+recall rises from .143 at $B=2$, to .857 at $B=4$, and 1.000 at $B=6$; at $B=6$ it rises from
+.714 at $K=1$, through .857 at $K=2$, to 1.000 at $K=3$.  At the current parent granularity,
+oracle-root HotpotQA collapses to a one-edge evidence-neighborhood problem: depth 1 recovers all
+held-out annotated evidence.  Because HotpotQA is shallow and coarse parent chunks can contract
+several factual relations into one memory node, this does not test genuinely deeper traversal.
+Figure~\ref{fig:semantic-graph-surfaces} preserves the complete held-out
+$K\times B$ and $B\times\theta_{\rm edge}$ response surfaces rather than reporting only the
+winner.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_5_iterative_pra/semantic_graph_search/semantic_graph_surfaces.pdf}
+\caption{Held-out oracle-root evidence recovery.  Candidate breadth and conceptual parent budget
+are distinct: search may inspect $K$ successors while $B$ caps the shared visited workspace.}
+\label{fig:semantic-graph-surfaces}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper2_5_iterative_pra/semantic_graph_search/semantic_graph_quality_cost.pdf}
+\caption{Quality/cost diagnostics.  The top-center and top-right panels expose the central
+tradeoff: finite terminal thresholds stop earlier but overwhelmingly stop on non-oracle parents.
+The bottom timing panel is CPU calibration search only; selected CUDA accounting is reported in
+text.}
+\label{fig:semantic-graph-cost}
+\end{figure}
+
+We manually inspect the 37 q95 validation false-trigger rows, covering 23 unique
+example--terminal pairs.  Sixteen unique terminals (28 seed-weighted rows) are non-oracle but
+plausibly relevant to the question; seven (nine rows) are clear semantic or lexical distractors.
+Examples of the latter include passages about other songs containing ``'Em'' and unrelated
+Nashville entities.  Plausibly related passages still do not supply the labeled answer, so this
+distinction explains some high similarity without converting a false goal into success.  The
+review file retains question, answer, decoded parent text, identity, and classification.
+
+Selected-condition CUDA search averages 13.44~ms on HotpotQA and 12.70~ms on QASPER, including
+3.66 and 4.02~ms of terminal facet tests.  Mean conceptual work is 5.43/6.00 visited parents,
+3.14/2.83 expanded parents, and 12.57/11.33 raw proposals, respectively.  The parent adjacency
+build dominates cold routing at 152~ms for Hotpot and 1.183~s for longer QASPER sources; this
+dense diagnostic index is not a serving-speed claim.  Compact adjacency plus goal caches average
+677 and 1,789 bytes, candidate tensors 103 and 145 bytes, and preparation peaks at 86.6 and
+218.8~MB CUDA allocated.  H2D payloads average 8.94 and 25.31~MB.  Materialized parents, native
+K/V tokens, active-KV fraction, generation, TTFT, and TPOT remain zero or unmeasured by design.
+
+The graph-expansion component therefore passes its oracle-root recovery check at a reasonable
+$K/B$, but the terminal-goal component fails: useful closure cannot be separated from false
+closure under the frozen max-over-facets score.  The held-out q95 false-goal rate is still .292;
+the safe closed policy has zero correct and zero false closures despite 1.000 later-evidence
+recall.  Under the predeclared stop rule we do not restore routed roots or report an $R\times K$
+end-to-end result.  The next controlled intervention should learn or calibrate evidence
+completeness at the terminal, while retaining native-only intermediate traversal; more breadth
+does not address this failure.
+
+\subsection{Chunk granularity changes both topology and discovery}
+
+The preceding result leaves two explanations confounded.  Native association may have found a
+multi-step chain efficiently, or 256-token parents may have contracted the annotated evidence
+into a shallow neighborhood.  We therefore keep the frozen Qwen revision, layer 27, 256-token
+contextual encoding blocks, local pre-RoPE QK score, best-first traversal, and open edge threshold
+unchanged, while repartitioning each Hotpot source into zero-overlap parents of 16, 32, 64, 128,
+or 256 tokens.  The 16 examples contain 25,416 source tokens.  Layer-27 token states are captured
+once and exactly mean-pooled within each new parent.  Native edges retain the canonical 32-token
+atomic QK windows at parent sizes 32--256; the 16-token condition splits those stored tokenwise
+Q/K tensors exactly rather than re-encoding text.
+
+Each ordered supporting span is remapped to every overlapping parent.  The oracle root is the
+single parent with the largest token overlap with the first supporting span, with lower parent ID
+breaking ties.  Search receives that root but no later oracle IDs.  Evidence recall, collisions,
+and completion are attached only after execution.  Terminal query stopping is disabled.  The
+surface contains $5\times4\times5\times3\times16=4{,}800$ searches over
+$K\in\{1,2,4,6\}$, $H\in\{0,1,2,3,4\}$, and
+$B\in\{6,16,\mathrm{None}\}$.  The five frozen projection seeds are used only for the parallel
+facet--parent diagnostic because native graph edges are seed invariant.
+
+Table~\ref{tab:chunk-topology} shows direct graph coarse-graining.  Mean oracle-parent count falls
+from 7.25 at 16 tokens to 2.19 at 256.  No root contains all annotated evidence, but the mean
+evidence-token fraction in the root nearly triples, and distinct evidence groups increasingly
+share a parent: the fraction of roots touching multiple groups rises from zero to .25.  The
+256-token oracle distribution is 13 examples with two parents and three with three; at 16 tokens
+the median is 6.5, the 90th percentile 10.5, and the maximum 12.
+
+\begin{table}[H]
+\centering
+\caption{Hotpot evidence topology under deterministic zero-overlap rechunking.  Root evidence is
+the fraction of annotated evidence tokens inside the oracle root; ``multi'' means that the root
+touches more than one distinct supporting span.}
+\label{tab:chunk-topology}
+\small
+\begin{tabular}{rrrrrr}
+\toprule
+Tokens & Parents & Oracle parents & Root evidence & Root multi & Later parents \\
+\midrule
+16  & 99.75 & 7.25 & .201 & .000 & 4.00 \\
+32  & 50.13 & 4.69 & .347 & .000 & 2.56 \\
+64  & 25.31 & 3.44 & .441 & .125 & 1.81 \\
+128 & 12.81 & 2.44 & .508 & .188 & 1.31 \\
+256 &  6.50 & 2.19 & .575 & .250 & 1.13 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Discovery does not remain invariant to that refinement.  Table~\ref{tab:chunk-discovery} holds
+$K=4$ and $B=6$ fixed.  At 256 tokens, all-example oracle recall is .969 and 15/16 examples are
+complete; the seven-example held-out partition exactly reproduces the prior 1.000 oracle and
+later-evidence recall.  At 128 tokens recall is .688 and five examples are complete.  At 16 and
+32 tokens no example is complete, and recall is only .194/.333.  Most gains stop after two hops
+because the six-parent workspace fills; increasing the hop cap alone cannot add parents.
+
+\begin{table}[H]
+\centering
+\caption{Oracle-root native discovery at the frozen $K=4,B=6$ operating point.  $H=0$ contains
+only the granted root.  Complete is measured at $H=4$.}
+\label{tab:chunk-discovery}
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+Tokens & Oracle parents & Root evidence & $H=0$ & $H=1$ & $H=2$ & Complete \\
+\midrule
+16  & 7.25 & .201 & .148 & .173 & .194 & .000 \\
+32  & 4.69 & .347 & .224 & .291 & .333 & .000 \\
+64  & 3.44 & .441 & .309 & .429 & .494 & .063 \\
+128 & 2.44 & .508 & .432 & .625 & .688 & .313 \\
+256 & 2.19 & .575 & .469 & .885 & .969 & .938 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The stronger $K=6,B=\mathrm{None}$ diagnostic estimates minimum native-graph evidence-recovery
+depth without treating it as causal reasoning depth.  Fifteen of sixteen 256-token examples are
+complete at $H=1$ and one remains unrecovered by $H=4$.  At 128 tokens, five require $H=1$, two
+require $H=2$, and nine remain unrecovered.  At 64 tokens the counts are one, three, and twelve;
+all 16/32-token examples remain unrecovered.  Fine chunking therefore creates a harder observed
+graph, but the current frozen native geometry does not recover enough of it to establish deep
+natural traversal.  The sample has 15 bridge questions and one comparison question; the bridge
+trend matches the aggregate, while the single comparison item cannot support a subgroup claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.99\linewidth]{../shared/results/paper2_5_iterative_pra/chunk_granularity/chunk_granularity_discovery.pdf}
+\caption{Chunk topology, recovery depth, and the discovery/materialization frontier.  The stacked
+depth panel reports the minimum $H$ under $K=6,B=\mathrm{None}$ and labels failures explicitly as
+unrecovered.  The other quality panels use the frozen $K=4,B=6$ operating point.  Native K/V is
+not actually materialized; bottom-right token counts are counterfactual payloads for the visited
+parents.}
+\label{fig:chunk-granularity}
+\end{figure}
+
+Candidate width helps only while the shared workspace can admit useful identities.  At 256
+tokens, $H=4,B=6$ recall rises from .719 at $K=1$ to .865 at $K=2$ and .969 at $K=4$; $K=6$
+falls slightly to .938 because best-first competition under the same six-parent cap is not
+monotone in proposal width.  At 16 tokens, the same ladder moves only from .173 to .194.  More
+successors are thus not a substitute for either a larger active surface or better edge geometry.
+
+The opposite trend appears in payload precision.  The selected conceptual set contains 94 tokens
+at 16-token parents and 1,331 at 256, or .065 and .903 of the logical source.  Mean evidence
+density falls from .211 to .065, while non-evidence selected tokens rise from 74 to 1,245.  This
+is a counterfactual materialization frontier, not a serving measurement: the experiment transfers
+and materializes zero native K/V tokens.  It nevertheless identifies the materialization tradeoff clearly:
+coarse memory makes discovery easier but activates a polluted payload; fine memory localizes
+evidence but demands stronger discovery.
+
+Dense adjacency construction averages .326 seconds at 16 tokens and approximately .206 seconds
+at 32--256 on the GTX 950M.  The token/head dot-product count remains 47.8 million because source
+content and atomic token comparisons are fixed; splitting 32-token windows into twice as many
+16-token windows changes scheduling, not the pairwise token total.  Parent adjacency storage,
+however, follows the expected quadratic surface, averaging 47,040 bytes at 16 tokens versus 198
+bytes at 256.  These are reproducible diagnostic costs, not an indexed-routing speed claim.
+
+Finally, the query-facet matrix does not repair terminal discrimination.  For each seed we measure
+maximum and Top-2 facet score, normalized entropy, winning facet, and incremental min--max path
+coverage for oracle roots, other oracle parents, discovered non-oracle parents, and manually
+reviewed 256-token false terminals.  Oracle-vs-discovered AUC is .47--.54 across 16--128 tokens.
+At 256 tokens, incremental coverage gives AUC .253 against plausible false terminals and .342
+against clear distractors when oracle evidence is the positive class.  Facet entropy is near one
+for every class.  Plausible false terminals often add different query vocabulary precisely because
+they are related; complementarity is not evidence completeness.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper2_5_iterative_pra/chunk_granularity/chunk_granularity_facets.pdf}
+\caption{Five-seed facet diagnostics.  Oracle evidence is not consistently more query-complementary
+than other discovered parents, and the direction changes with parent size.  These statistics are
+reported for diagnosis and are not promoted to runtime filtering or stopping.}
+\label{fig:chunk-facets}
+\end{figure}
+
+\subsection{MuSiQue and 2Wiki separate task depth from path fidelity}
+
+Hotpot supporting spans do not provide a complete ordered reasoning graph.  We therefore add two
+public natural controls without changing the search policy.  MuSiQue-Ans v1.0 supplies composed
+2/3/4-step questions, a supporting paragraph for each decomposition step, and explicit
+\texttt{\#n} dependencies \cite{trivedi2022musique}.  2WikiMultiHopQA's April 2021
+segmentation-fixed release supplies sentence-indexed supporting facts, relation triples, and
+entity-ID triples where available \cite{ho2020twowiki}.  The official test labels are absent in
+both releases, so we partition official development identities by a fixed SHA-256 rule before
+model execution.  The frozen cohort has 42 validation and 42 held-out examples: 36 MuSiQue
+examples balanced over $D=2,3,4$ and chain/convergent topology where available, plus 48 2Wiki
+examples balanced over comparison, compositional, inference, and bridge-comparison types.
+
+The adapter keeps raw annotations apart from PRA mappings.  Across the full 2Wiki development
+split, a deterministic title/sentence rule maps 30,911 of 31,120 evidence triples (.9933); 165
+are ambiguous and 44 unmatched.  None of those 209 enters the cohort.  MuSiQue graph edges come
+only from explicit \texttt{\#n} references.  For 2Wiki, exact object-to-subject entity-ID joins
+define edges when IDs exist; normalized lexical joins are retained as \emph{derived}, not promoted
+to dataset truth.  Comparison evidence remains an unordered set.  After tokenization, each exact
+character span maps to every overlapping parent.  One maximum-overlap parent represents each
+oracle root, while all overlaps remain oracle evaluation targets.  A transition is preserved only
+when its target owns at least one parent not already covered by its source.
+
+Hotpot showed strong granularity sensitivity, so 128 tokens is the primary compromise and
+64/256 are controls, all with zero overlap.  The frozen Qwen revision, independent 256-token
+encoding blocks, layer-27 local pre-RoPE QK Top-4 token/head reduction, open edge threshold, and
+best-first policy are unchanged.  We scan $K\in\{1,2,4,6\}$,
+$B\in\{6,16,\mathrm{None}\}$, and $H\in\{1,2,3,4\}$.  Terminal stopping is disabled, query
+facets are diagnostic/root-only, and labels are attached after search.  Of 12 validation
+operating points at $H=4$, lexicographic complete recovery/recall/cost selects $K=6,B=16$.
+
+The mapping sanity check passes.  At 128 tokens, mean MuSiQue oracle parents increase from 4.08
+for $D=2$ to 6.00 for $D=3$ and 7.67 for $D=4$, while total parent count stays near 22.  Task
+depth is therefore not erased by chunking.  The 48 selected 2Wiki examples contain 52 annotated
+transitions at this scale: 48 are preserved and four fully contracted; eight preserved
+transitions also have partial source/target overlap, which is recorded but never counted as a
+new target.  No selected transition is unmappable.
+
+\begin{table}[H]
+\centering
+\caption{Held-out oracle-root recovery at 128-token parents.  The first two rows expose the
+budget tradeoff; the selected broad condition is validation-frozen.  Active is the
+counterfactual selected native-K/V token fraction; no K/V is materialized.}
+\label{tab:natural-budget}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+Dataset & $K$ & $B$ & Node recall & Complete & Visited/parents & Active \\
+\midrule
+MuSiQue & 4 & 6  & .856 & .556 & 6.00/20.67 & .302 \\
+MuSiQue & 6 & 6  & .815 & .444 & 6.00/20.67 & .302 \\
+MuSiQue & 6 & 16 & .981 & .944 & 10.39/20.67 & .513 \\
+2Wiki   & 4 & 6  & .958 & .917 & 5.75/10.92 & .567 \\
+2Wiki   & 6 & 6  & .958 & .917 & 6.00/10.92 & .597 \\
+2Wiki   & 6 & 16 & .979 & .958 & 7.83/10.92 & .770 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Identity-bootstrap 95\% intervals (2,000 fixed replicates) are [.944,1.000] for MuSiQue node
+recall and [.833,1.000] for completion over 18 held-out questions; 2Wiki intervals are
+[.938,1.000] and [.875,1.000] over 24.  These strong values need the resource context in
+Table~\ref{tab:natural-budget}.  $B=16$ is half of MuSiQue's source and more than three quarters
+of 2Wiki's.  Under $B=6$, increasing $K$ from four to six makes MuSiQue worse because extra
+high-scoring proposals compete for the same six identities.  Breadth is not monotone under a
+hard global workspace.
+
+\begin{table}[H]
+\centering
+\caption{Held-out recovery versus search-hop cap at the selected $K=6,B=16$.  MuSiQue improves
+from $H=1$ to 2 and then saturates; 2Wiki is already saturated at one expansion.}
+\label{tab:natural-hop}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$H=1$} & \multicolumn{2}{c}{$H=2$} & \multicolumn{2}{c}{$H=3$} & \multicolumn{2}{c}{$H=4$} \\
+Dataset & Recall & Complete & Recall & Complete & Recall & Complete & Recall & Complete \\
+\midrule
+MuSiQue & .935 & .833 & .981 & .944 & .981 & .944 & .981 & .944 \\
+2Wiki   & .979 & .958 & .979 & .958 & .979 & .958 & .979 & .958 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+MuSiQue depth strata do not show monotone degradation: held-out completion is 1.000, .833, and
+1.000 for $D=2,3,4$, with only six identities per depth.  More importantly, the native search
+does not replay the annotated decomposition.  Exact-hop frontier survival for later $D=3/4$
+steps falls to zero even when cumulative evidence recall is one, because many later annotations
+are reached one or two search rounds early.  This is a dense evidence-neighborhood result, not a
+faithful causal traversal or evidence that four search rounds are useful.
+
+2Wiki gives the sharper path test.  Table~\ref{tab:twowiki-rank} uses 25 preserved held-out
+transitions from 17 paths and excludes the one fully contracted transition.  Direct transition
+recall rises smoothly; every transition is present by Top-8.  Complete-path survival compounds
+local misses, reaching only .588 at $K=4$ and .824 at $K=6$.  MRR is .410.  Native paths of at
+most four steps recover .400/.840/.920/1.000 of transitions at $K=1/4/6/8$; when reachable,
+mean path length is 1.80/1.14/1.04/1.00.  Detours repair some missing direct edges, but path
+fidelity still requires broad local successor sets.
+
+\begin{table}[H]
+\centering
+\caption{2Wiki held-out annotated-transition and complete-path survival at 128-token parents.
+MRR is computed from the full native rank and is therefore constant across cutoff rows.}
+\label{tab:twowiki-rank}
+\small
+\begin{tabular}{rrrrrr}
+\toprule
+$K$ & Transition R@$K$ & MRR & Complete path & Reachable $\leq H4$ & Paths \\
+\midrule
+1  & .160 & .410 & .059 & .400 & 17 \\
+2  & .320 & .410 & .235 & .560 & 17 \\
+3  & .600 & .410 & .412 & .720 & 17 \\
+4  & .720 & .410 & .588 & .840 & 17 \\
+5  & .840 & .410 & .765 & .840 & 17 \\
+6  & .880 & .410 & .824 & .920 & 17 \\
+8  & 1.000 & .410 & 1.000 & 1.000 & 17 \\
+11 & 1.000 & .410 & 1.000 & 1.000 & 17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.99\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_graph_depth.pdf}
+\caption{Natural graph diagnostics.  Left: 2Wiki direct transition recall.  Center: MuSiQue
+exact annotated-step frontier survival; late steps often arrive earlier than their annotation
+depth.  Right: held-out MuSiQue completion and node recall by task depth.}
+\label{fig:natural-graph-depth}
+\end{figure}
+
+Because both oracle gates pass, we restore only the previously frozen width-2 latest-message
+facets for root routing, with $R\in\{1,2,4\}$ and one shared $B=16$.  Five projections measure
+router sensitivity.  MuSiQue root recall is .122/.311/.422 and 2Wiki is .250/.383/.608.  At
+$R=4$, conditional completion is .947/.890, while end-to-end completion is .800/.892.  Completion
+can occur after a root miss because broad native search enters the evidence neighborhood through
+a non-annotated parent.  That is useful robustness, but it cannot be presented as correct root
+routing.  The root bottleneck remains visible even under broad traversal.
+
+\begin{table}[H]
+\centering
+\caption{Cross-dataset oracle-root context.  Hotpot uses its fixed $K=4,B=6$ 128-token control;
+MuSiQue/2Wiki use the validation-selected $K=6,B=16$.  QASPER is the earlier 256-token
+direct-retrieval control.  Protocol differences are shown rather than normalized away.}
+\label{tab:cross-natural}
+\small
+\begin{tabular}{llllrrrr}
+\toprule
+Dataset & Natural role & Annotation & Parents & Recall & Complete & Visited & Search ms \\
+\midrule
+QASPER & Direct control & mostly one group & 256 tok. & 1.000 & 1.000 & 6.00 & 12.70 \\
+Hotpot & Granularity & ordered spans & 128 tok. & .688 & .313 & 5.69 & 1.70 \\
+2Wiki & Path fidelity & relation graph & 128 tok. & .979 & .958 & 7.83 & 2.63 \\
+MuSiQue & Task depth & 2/3/4-step DAG & 128 tok. & .981 & .944 & 10.39 & 4.61 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The systems result is consistent with the earlier dense-adjacency warning.  At 128 tokens,
+adjacency construction averages .517 seconds and 123.5 million native dots on MuSiQue, versus
+.126 seconds and 28.0 million on 2Wiki.  Graph search itself averages only 4.61 and 2.63 ms.
+One frozen feature capture averages 5.69/2.48 seconds.  Compact adjacency occupies only
+1,954/469 bytes on average, but exact construction dominates routing latency; this remains a
+scientific reference implementation, not an indexed serving claim.  Facet--evidence matrices
+are retained as diagnostics (mean held-out path coverage .657/.654 and incremental coverage
+.250/.282), but never filter intermediate nodes or terminate search.
+
+\subsection{Cross-dataset granularity separates missing edges from shallow search}
+
+The 128-token result is not the end of the granularity question.  We therefore remap every
+MuSiQue and 2Wiki annotation at 16, 32, 64, 128, and 256 tokens, with zero overlap, and rerun
+$K\in\{1,2,4,6,8\}$, $H\in\{0,1,2,3,4\}$, and
+$B\in\{6,16,\mathrm{None}\}$.  The source is still encoded in independent 256-token contextual
+blocks.  Thus $G_{\mathrm{encode}}=256$ while $G_{\mathrm{search}}$ varies; the 16-token condition
+splits stored 32-token Q/K blocks exactly and never independently encodes a context-poor fragment.
+The earlier $K=6,B=16$ operating point remains frozen.  $K=8$ is a ceiling, not a retuned primary
+condition.  Recomputed 128-token 2Wiki R@4/R@6/R@8 reproduces
+.720/.880/1.000 exactly; conditional preserved-path survival reproduces .588/.824/1.000.
+The one contracted held-out path is reported separately and counts as failure in the strict
+all-annotation rates .556/.778/.944.
+
+\begin{table}[H]
+\centering
+\caption{Held-out cross-dataset granularity at the frozen $K=6,B=16,H=4$ condition.  Edge is
+direct recall over preserved annotated transitions.  Minimum $H$ averages recovered examples.
+Source is the counterfactual selected native-K/V token fraction; no K/V is materialized.}
+\label{tab:natural-granularity}
+\scriptsize
+\begin{tabular}{llrrrrrrr}
+\toprule
+Dataset & Tokens & Oracle parents & Root evidence & Edge R@6 & Complete & Minimum $H$ & Source & Density \\
+\midrule
+MuSiQue & 16  & 27.72 & .066 & .667 & .500 & 1.11 & .063 & .258 \\
+        & 32  & 15.00 & .129 & .611 & .500 & 1.11 & .131 & .255 \\
+        & 64  &  8.67 & .230 & .667 & .667 & 1.17 & .262 & .225 \\
+        & 128 &  5.72 & .314 & .833 & .944 & 1.12 & .513 & .184 \\
+        & 256 &  4.00 & .397 & .879 & 1.000 & 1.17 & .946 & .156 \\
+\midrule
+2Wiki   & 16  &  7.75 & .293 & .400 & .583 &  .93 & .172 & .155 \\
+        & 32  &  5.13 & .438 & .400 & .708 & 1.06 & .302 & .148 \\
+        & 64  &  3.79 & .531 & .560 & .792 &  .79 & .514 & .106 \\
+        & 128 &  2.96 & .614 & .880 & .958 &  .65 & .770 & .086 \\
+        & 256 &  2.33 & .679 & 1.000 & 1.000 &  .63 & .995 & .076 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Finer parents sharply improve localization: relative to 128 tokens, the 16-token condition cuts
+selected source by 8.2$\times$ on MuSiQue and 4.5$\times$ on 2Wiki, while increasing evidence
+density by 1.4$\times$ and 1.8$\times$.  It also changes the graph.  MuSiQue oracle-parent count
+rises almost fivefold and 2Wiki preserved edge R@6 falls from .880 to .400.  More search rounds
+do not repair this loss.  Table~\ref{tab:musique-depth-granularity} shows that $D=4$ recall is
+unchanged from $H=2$ through $H=4$ even at 16/32 tokens.  The earlier shallow saturation is
+therefore not only parent contraction: a native shortcut neighborhood remains.  Yet that
+neighborhood omits enough fine nodes that complete recovery is only .333.  The gate is jointly
+classified B/C/E: fine-edge representation collapses; $H=2$ saturation survives; and fine nodes
+offer a useful payload frontier despite lower recovery.  Required depth does not rise toward
+annotated depth.
+
+\begin{table}[H]
+\centering
+\caption{MuSiQue annotated depth by search granularity at $K=6,B=16$.  Recall at $H=2$ and $H=4$
+is identical in every fine 16/32-token stratum.}
+\label{tab:musique-depth-granularity}
+\scriptsize
+\begin{tabular}{rrrrrrrr}
+\toprule
+$D$ & Tokens & Oracle parents & H1 recall & H2 recall & H4 recall & Complete & Source \\
+\midrule
+2 & 16  & 17.67 & 1.000 & 1.000 & 1.000 & 1.000 & .060 \\
+2 & 32  &  9.50 & 1.000 & 1.000 & 1.000 & 1.000 & .133 \\
+2 & 64  &  5.67 & 1.000 & 1.000 & 1.000 & 1.000 & .277 \\
+2 & 128 &  4.00 &  .917 & 1.000 & 1.000 & 1.000 & .523 \\
+2 & 256 &  3.17 & 1.000 & 1.000 & 1.000 & 1.000 & .984 \\
+\midrule
+3 & 16  & 24.67 & .667 & .667 & .667 & .167 & .067 \\
+3 & 32  & 13.83 & .667 & .667 & .667 & .167 & .132 \\
+3 & 64  &  8.00 & .667 & .722 & .722 & .333 & .263 \\
+3 & 128 &  5.50 & .889 & .944 & .944 & .833 & .505 \\
+3 & 256 &  3.83 & .944 & 1.000 & 1.000 & 1.000 & .941 \\
+\midrule
+4 & 16  & 40.83 & .708 & .792 & .792 & .333 & .061 \\
+4 & 32  & 21.67 & .708 & .792 & .792 & .333 & .128 \\
+4 & 64  & 12.33 & .875 & .917 & .917 & .667 & .245 \\
+4 & 128 &  7.67 & 1.000 & 1.000 & 1.000 & 1.000 & .512 \\
+4 & 256 &  5.00 & .958 & .958 & 1.000 & 1.000 & .913 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The edge/product decomposition reaches the same conclusion.  At $K=6$, independent preserved-edge
+products predict MuSiQue path survival .458/.391/.461/.700/.791 from fine to coarse and 2Wiki
+.304/.304/.457/.832/1.000.  Observed complete graph recovery is never lower: it is
+.500/.500/.667/.944/1.000 and .583/.708/.792/.958/1.000.  Search control therefore introduces no
+additional aggregate loss on this surface; contractions, alternate native paths, and multiple
+oracle roots can make observed recovery exceed the direct-edge product.  The failing component is
+local fine-edge availability, not frontier competition after the edge exists.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/musique_granularity.pdf}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/2wiki_granularity.pdf}
+\caption{Frozen native graph granularity.  Finer nodes reduce selected payload and increase
+evidence density, but direct edge and complete recovery deteriorate.  Dense exact adjacency
+remains the cold-cost bottleneck; search itself is milliseconds.}
+\label{fig:natural-granularity}
+\end{figure}
+
+Exact dense construction averages .746/.190 seconds per MuSiQue/2Wiki example at 16 tokens and
+.515/.126 seconds at 128.  The underlying tokenwise work remains 123.5/28.0 million native dot
+products because search-parent grouping changes after contextual capture; splitting 32-token
+blocks at 16 raises local-pair bookkeeping and temporary memory.  Search averages 5.5/4.0 ms at
+16 and 4.9/3.2 ms at 128.  These are reference-kernel measurements on the same GTX~950M, not
+serving claims.
+
+\subsection{Transformer depth reorganizes the native graph}
+\label{sec:layerwise-graph}
+
+The preceding experiments inherited layer 27.  We now ask whether that choice is neutral.  We
+freeze the same Qwen checkpoint and the complete 84-example split, fix
+$G_{\mathrm{encode}}=256$, $G_{\mathrm{search}}=128$, zero overlap, oracle roots,
+$K=6$, $B=16$, $H=4$, and the exact pre-RoPE Top-4 token/head reduction, and vary only the
+zero-based decoder block $\ell\in\{0,4,8,12,16,20,24,27\}$.  Q/K is projected from each block's
+actual normalized attention input in one shared model pass; no earlier state is reconstructed from
+layer 27.  The final layer reproduces 2Wiki R@4/R@6/R@8 of .720/.880/1.000 and conditional
+K=6 path survival .824 exactly.
+
+\begin{table}[H]
+\centering
+\caption{Held-out layerwise graph at fixed 128-token search granularity.  $C_{32}$ is normalized
+displacement between the native graph-input state under full and 32-token causal context.
+$\|\alpha\|/\|h\|$ is the local attention-branch ratio, not contextual information itself.
+Path is conditional on preserved 2Wiki transitions; D4 depth averages completed MuSiQue cases.}
+\label{tab:layerwise-graph}
+\scriptsize
+\begin{tabular}{rrrrrrrrrr}
+\toprule
+Layer & $C_{32}$ & $\|\alpha\|/\|h\|$ & R@4 & R@6 & R@8 & MRR & Path K6 & D4 complete & D4 depth \\
+\midrule
+0  & .000 & 6.644 & .720 & .880 & .960 & .520 & .824 & .833 & 1.80 \\
+4  & .410 &  .274 & .720 & .880 & .960 & .390 & .824 & .667 & 1.50 \\
+8  & .686 &  .269 & .680 & .880 & .960 & .432 & .824 & 1.000 & 1.83 \\
+12 & .816 &  .213 & .760 & .920 & .960 & .438 & .882 & 1.000 & 1.50 \\
+16 & .842 &  .274 & .800 & .880 & .960 & .397 & .824 & 1.000 & 1.67 \\
+20 & .782 &  .262 & .760 & .920 & 1.000 & .471 & .882 & .833 & 2.00 \\
+24 & .996 &  .178 & .800 & .880 & 1.000 & .608 & .824 & 1.000 & 1.67 \\
+27 & .987 &  .127 & .720 & .880 & 1.000 & .410 & .824 & 1.000 & 1.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result rejects both simple hypotheses.  Context dependence does grow: the 32-token
+intervention displacement reaches .410 by layer 4 and approximately one by layers 24--27.
+Mean native distance between annotated evidence states contracts from 1.23 at layer 0 to 1.06 at
+layer 27, and two-hop effective branching falls from 3.43 to 2.79.  Yet edge quality is not
+monotonic.  R@6 peaks in the middle at .920, MRR peaks later at layer 24, and layer 27 returns to
+.880/.410.  The final matched-example synthesis in Section~\ref{sec:final-metrics} replaces the
+exploratory all-cohort correlation: intervention dependence has uncertain Pearson correlations
+.470 with R@6 and $-.013$ with depth contraction, while its stable association is with lower
+effective branching ($-.785$).  These are descriptive mechanistic relationships over eight
+layers, not significance claims.
+
+The local branch proxy tells a different story.  $\|\alpha_\ell\|/\|h_\ell^{pre}\|$ drops from
+6.64 at layer 0 to .127 at layer 27, while intervention dependence rises.  Layer 0's ratio is large
+because the embedding residual has a different scale; its graph input cannot yet depend on prior
+tokens, so its intervention score is exactly zero.  Post-attention displacement numerically equals
+the branch ratio at every layer, as the residual identity requires.  Attention rotation falls from
+.903 to .007.  Thus local update magnitude is a poor proxy for accumulated context.  The
+position-preserving intervention, which changes accessible K/V while retaining token IDs and
+absolute logical positions, is the stronger measurement.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_edge_recall.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_path_survival.png}
+\caption{Layerwise local fidelity at fixed 128-token parents.  Rank structure changes materially,
+but neither direct edges nor complete paths improve monotonically with representation depth.}
+\label{fig:layerwise-fidelity}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_contextualization.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_contraction_topology.png}
+\caption{Measured contextualization and topology.  Accumulated dependence on context grows while
+local attention contribution generally shrinks.  Depth contraction and neighbor reuse vary, but
+the graph does not become uniformly more faithful.}
+\label{fig:layerwise-context}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_musique_native_depth.png}
+\includegraphics[width=0.49\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layerwise_context_radius.png}
+\caption{Left: completed MuSiQue cases remain much shallower in the native graph than their
+annotated task depth at every layer.  Right: full-versus-restricted displacement for structural
+early/middle/late representatives; a wider causal radius approaches the full state, except that
+the late curve remains strongly dependent on context beyond 32 tokens.}
+\label{fig:layerwise-depth-radius}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/layer_context_matched_correlations.png}
+\caption{Matched-example layer correlations with identity-bootstrap 95\% intervals.  Context
+dependence does not stably predict edge fidelity, MRR, depth contraction, or shortcut rate; its
+negative relation to effective branching is the only narrow interval.}
+\label{fig:layerwise-correlations}
+\end{figure}
+
+Because the one-dimensional effect is material, we run the predeclared small cross using a-priori
+structural representatives 0/12/27 and 32/128/256-token parents.  This is not a best-layer search.
+
+\begin{table}[H]
+\centering
+\caption{Held-out layer--granularity interaction at fixed $K=6,B=16,H=4$.  Each cell is
+2Wiki preserved-edge R@6 / MuSiQue D=4 complete recovery.}
+\label{tab:layer-granularity}
+\small
+\begin{tabular}{rrrr}
+\toprule
+Tokens & Layer 0 & Layer 12 & Layer 27 \\
+\midrule
+32  & .680 / .167 & .480 / .333 & .400 / .333 \\
+128 & .880 / .833 & .920 / 1.000 & .880 / 1.000 \\
+256 & .958 / 1.000 & 1.000 / .833 & 1.000 / 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.84\linewidth]{../shared/results/paper2_5_iterative_pra/layerwise_graph/layer_granularity_cross.png}
+\caption{Depth and spatial granularity jointly determine the exposed graph.  Early native geometry
+is strongest at fine 32-token 2Wiki edges; a middle layer leads at 128; coarse 256-token parents
+largely erase the layer difference through external contraction.}
+\label{fig:layer-granularity}
+\end{figure}
+
+The interaction changes the recommendation.  Late-layer topology remains a compatible and often
+adequate default, but it is not harmless at fine granularity and is not the universal optimum.
+Future PRA should expose an adaptive multiscale topology---for example early/local and
+middle/global graphs selected under one budget---rather than merely replacing layer 27 with one
+new fixed layer.  We do not implement layer fusion or learned weighting here.  At 256 tokens the
+near-perfect curve is also not a free win: it inherits the earlier result that coarse parents
+approach full-source activation.  Representation-induced and chunk-induced contraction must be
+reported separately.
+
+\subsection{All-offset query facets reveal a selection ceiling}
+
+With graph granularity fixed again at 128 tokens, we ask whether weak routed roots mean that the
+question lacks a useful view or that the router chooses among views poorly.  From one contextual
+query encoding, we mean-pool every valid stride-one span of width 1, 2, 4, 8, and 16, plus the
+existing global final state.  For every target parent we compute the best rank over all facets
+\emph{after} scoring.  This is an oracle diagnostic: target identity chooses the reported facet
+but never enters a score, proposal, or graph-search function.  We retain token offsets, decoded
+span, scale, target score, best distractor, and margin.  A token-set Jaccard rank is an independent
+lexical control.
+
+\begin{table}[H]
+\centering
+\caption{Held-out query-visibility ceiling at 128-token parents.  Oracle facet means the best
+existing span is selected with the target label after scoring.  Practical R4 unions each facet's
+Top-1 proposals, deduplicates, normalizes within facet, and applies one shared four-root budget.}
+\label{tab:multiscale-ceiling}
+\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Dataset & Current R4 & Oracle R1 & R2 & R4 & R8 & Terminal R4 & Lexical R4 & Practical R4 \\
+\midrule
+MuSiQue & .422 & .711 & .833 & .878 & .967 & .711 & .889 & .411 \\
+2Wiki   & .608 & .592 & .800 & .950 & 1.000 & .856 & .875 & .475 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ceiling is high.  Existing query geometry contains a Top-4 view of an annotated root in
+.878/.950 of MuSiQue/2Wiki runs and of ordered terminal evidence in .711/.856.  Width one wins
+73\%/66\% of raw root-target rows; global states account for most remaining wins.  Lexical overlap
+is competitive for roots but much weaker for terminals, especially on MuSiQue (.444 terminal
+R@4 versus .711 semantic), so the semantic result is not merely word matching.
+
+The ceiling is not a router.  Searching over many facets also raises a non-oracle parent into
+Top-4 in .546 MuSiQue and .672 2Wiki rows; even the best target facet has a negative mean margin
+over its strongest distractor.  Validation therefore authorizes one bounded practical control,
+not unrestricted max aggregation.  Each facet nominates Top-1, nominations are deduplicated, and
+one shared root budget is applied.  At $R=4$ it averages only 4.88/3.52 candidates and costs
+about .52/.43 ms, yet root recall is .411/.475, below the frozen .422/.608 router, while selected
+source rises to .587/.798.  More facets reveal useful views but do not identify which view to
+trust.  This is a facet-selection and calibration problem rather than evidence that $W_q/W_m$
+geometry contains no useful root or terminal signal.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper2_5_iterative_pra/natural_graph_depth/natural_multiscale_query_audit.pdf}
+\caption{All-offset query audit.  Left: current, oracle-facet, and lexical root R@4.  Center:
+semantic visibility by evidence role.  Right: the bounded executable union spends more source
+without realizing the oracle ceiling.}
+\label{fig:multiscale-query-audit}
+\end{figure}
+
+Taken together, the two gates define the remaining interface narrowly.  For propagation, a future
+system should preserve contextual coarse discovery state while exposing fine payload identities;
+training search control around absent fine edges would address the wrong component.  For entry,
+the oracle ceiling motivates bounded facet selection, but the final measurement gate below first
+tests whether inexpensive statistics already predict the winner.  Learned selection is deferred
+to a separate study.  At this chronological stage, physical native-K/V materialization and serving were
+still deferred; the later Gate-3 output study in the main text adds bounded materialization and
+generation but not a production serving benchmark.
+
+Controlled chains separate the mechanism from Hotpot annotation structure.  For task-edge depths
+$D\in\{1,2,3,4,8\}$, grouping one, two, or four adjacent chain nodes yields observed depth
+$\lceil(D+1)/g\rceil-1$; all 15 search controls recover exactly at that depth.  Chunking is
+therefore graph contraction, not evidence that the underlying reasoning became shorter.
+
+\section{Final Measurement Gate and Experiment Freeze}
+\label{sec:final-metrics}
+
+The last gate adds no retrieval mechanism.  It reads the frozen facet score matrices, graph rows,
+systems rows, and layer caches already reported above.  Validation identities fit only two tiny
+diagnostics: the most-common winning scale and a ridge linear classifier of winning scale from
+question length, contextual hidden-state norms, and four lexical question-prefix flags.  Target
+parent identity is absent from every selector signature.  Parent-score margin and entropy inspect
+the unlabeled score distribution and are inexpensive runtime diagnostics, not query-only features.
+All target ranks are computed after facet selection on the example-disjoint held-out partition.
+
+\subsection{Oracle views are visible but not cheaply predictable}
+
+Width one supplies 73.3\%/65.6\% of held-out target-level root winners on MuSiQue/2Wiki; the
+global state supplies another 24.2\%/30.6\%.  Winning spans are not confined to one position:
+44.2\%/55.6\% are in the final third, but 37.5\%/23.3\% are in the first third.  Table
+\ref{tab:final-facet-selectors} evaluates each selected facet at the same example--seed level as
+the oracle ceiling.  No inexpensive statistic approaches post-hoc target-aware selection.  The
+best result is the unmodified global facet, .622 on MuSiQue and .692 on 2Wiki; the validation-fitted
+linear scale selector ties it only on 2Wiki and falls to .500 on MuSiQue.  The result argues for a
+properly supervised bounded selector in later work, not activation of this tiny diagnostic.
+
+\begin{table}[H]
+\centering
+\caption{Held-out example-level root R@4.  Oracle all-offset uses the target only after scoring.
+Every other single-facet row selects without target identity.  The bounded union is the previously
+reported executable four-root competition, not a single-facet rank.}
+\label{tab:final-facet-selectors}
+\small
+\begin{tabular}{lrr}
+\toprule
+Entry diagnostic & MuSiQue & 2Wiki \\
+\midrule
+Deployed fixed facets & .422 & .608 \\
+Bounded all-facet union & .411 & .475 \\
+Global facet only & \textbf{.622} & \textbf{.692} \\
+Earliest facet & .511 & .667 \\
+Highest unlabeled parent margin & .556 & .650 \\
+Lowest parent-score entropy & .500 & .625 \\
+Validation-fitted linear scale & .500 & \textbf{.692} \\
+Oracle all-offset ceiling & .878 & .950 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The visibility boundary is role-dependent even though width one is the most frequent winner for
+every role.  MuSiQue target-level oracle R@4 falls from .833 at roots to .667 at intermediate
+evidence and .711 at terminals; the lexical baseline falls from .792 to .417/.444.  On 2Wiki,
+semantic root/terminal visibility is .933/.823 while lexical visibility is .806/.423.  Query
+views therefore remain useful at the terminal boundary, especially semantically, but the decline
+through the path supports a typed interface
+$q_{entry}\rightarrow$ root $\rightarrow$ memory association $\rightarrow$ terminal
+$\rightarrow q_{terminal}$.  It does not revive the failed terminal stopping rule.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/facet_predictability_frontier.png}
+\caption{Left: held-out root R@4 for inexpensive selected-facet diagnostics.  Right: the
+quality--selected-source Pareto points; high completion is available only at broad activation.}
+\label{fig:final-facet-frontier}
+\end{figure}
+
+\subsection{Context, layer, and chunk do not collapse to one control variable}
+
+The final correlation table repairs a subtle aggregation mismatch in the exploratory layer plot.
+For each graph metric, we now restrict contextualization to the same examples, aggregate by layer,
+and bootstrap example identities 1,000 times.  Restricted-context displacement has Pearson
+correlation .470 with 2Wiki R@6 (95\% bootstrap interval $[-.407,.828]$), .079 with MRR
+($[-.432,.510]$), $-.013$ with MuSiQue depth contraction ($[-.460,.326]$), and $-.430$ with
+shortcut rate ($[-.725,.173]$).  Only effective branching is stable: $r=-.785$
+($[-.807,-.754]$), although its Spearman estimate is a more modest $-.405$.  With eight layer
+points these remain descriptive.  They reject ``more contextual means better graph'' while
+supporting a narrower observation: accumulated context accompanies greater neighbor reuse.
+
+The selected layer--chunk cross remains unchanged.  At 32 tokens, early layer 0 gives 2Wiki R@6
+.680 versus .480/.400 at layers 12/27.  At 128, layer 12 leads .920 versus .880/.880.  At 256,
+all reach .958--1.000 as coarse parents contract the graph.  MuSiQue D=4 shows the same interaction
+without a monotonic layer law.  At 128 tokens, completed-case $\Delta D=D-D^*_{native}$ is
+2.2/2.5/3.0 at layers 0/12/27 with .833/1.000/1.000 completion.  At 32 tokens, apparent
+contraction among survivors is not evidence of a better graph because completion is only
+.167/.333/.333.  Layer-induced geometry and chunk coarse-graining are therefore separately
+reported and cannot be cleanly added.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper2_5_iterative_pra/final_metrics/layer_chunk_edge_decomposition.png}
+\caption{Left: the selected layer--granularity interaction.  Right: 2Wiki K=6 edge recall,
+independent-edge product survival, and observed preserved-path survival by chunk size.}
+\label{fig:final-layer-edge}
+\end{figure}
+
+\subsection{Missing local edges dominate the fine-graph failure}
+
+Table~\ref{tab:final-edge-search} replaces the earlier comparison between an edge product and
+whole-evidence recovery with a like-for-like preserved-path comparison.  At K=6, missing local
+edges are the largest loss at 32, 64, and 128 tokens.  Additional frontier/search competition is
+only .060/.029 at 32/64.  At 128 and 256, observed survival exceeds the independent product by
+.033/.108, recorded as correlation or redundant-path gain rather than ``negative search loss.''
+The decomposition strengthens the conclusion that deeper search cannot repair an absent fine edge.
+
+\begin{table}[H]
+\centering
+\caption{Held-out 2Wiki edge--path decomposition at K=6.  Extra is
+$\max(0,P_{product}-P_{observed})$; gain is the reverse positive part.}
+\label{tab:final-edge-search}
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+Tokens & Edge R@6 & Product & Observed & Missing edge & Extra & Gain \\
+\midrule
+32  & .400 & .296 & .235 & .600 & .060 & .000 \\
+64  & .560 & .441 & .412 & .440 & .029 & .000 \\
+128 & .880 & .791 & .824 & .120 & .000 & .033 \\
+256 & 1.000 & .892 & 1.000 & .000 & .000 & .108 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Canonical quality--payload and cross-dataset view}
+
+The final Pareto artifact joins quality, selected source, evidence density, root breadth, K/B/H,
+expanded nodes, search time, adjacency time, and measured CUDA memory.  Table
+\ref{tab:final-frontier} shows the frozen representatives.  Search latency excludes adjacency
+construction.  All rows in this chronological graph-only gate remain conceptual-routing
+measurements: materialized native-K/V tokens and bytes are exactly zero; ``selected source'' is
+the previously defined counterfactual whole-parent payload.  The later Gate-3 output study
+materializes those identities and measures synchronized TTFT, TPOT, and total generation latency;
+neither stage measures concurrency or serving throughput.
+
+\begin{table}[H]
+\centering
+\caption{Held-out quality--payload representatives.  C/B/H denote conservative, balanced, and
+high-recall labels.  A combined label means the same non-dominated row serves both roles.}
+\label{tab:final-frontier}
+\scriptsize
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Point & Tokens & K/B & Selected & Recall & Complete & Search ms \\
+\midrule
+Hotpot & C   & 256 & 1/6  & .552 & .857 & .714 & 1.05 \\
+Hotpot & B/H & 256 & 4/6  & .948 & 1.000 & 1.000 & 1.24 \\
+MuSiQue & C   & 16  & 6/16 & .063 & .819 & .500 & 4.24 \\
+MuSiQue & B/H & 128 & 8/16 & .573 & 1.000 & 1.000 & 4.73 \\
+2Wiki & C   & 16  & 6/16 & .172 & .796 & .583 & 4.51 \\
+2Wiki & B   & 128 & 4/6  & .567 & .958 & .917 & 1.44 \\
+2Wiki & H   & 128 & 8/16 & .918 & 1.000 & 1.000 & 3.06 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Canonical cross-dataset held-out summary.  Dashes mean the all-offset oracle or an
+annotated transition graph was not measured; older fixed-window diagnostics are not relabeled.}
+\label{tab:final-cross-dataset}
+\scriptsize
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Role & Routed root R@4 & Oracle facet R@4 & Edge R@6 & Complete & Selected \\
+\midrule
+QASPER & direct control & .967 & -- & -- & .800 & .227 \\
+Hotpot & shallow/granularity & .971 & -- & -- & .312 & .501 \\
+2Wiki & annotated edge/path & .608 & .950 & .880 & .958 & .770 \\
+MuSiQue & depth/topology & .422 & .878 & .833 & .944 & .513 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The cross-dataset table is intentionally not a leaderboard.  QASPER is a small direct-retrieval
+control with no transition graph.  Hotpot exposes granularity but its coarse completion spends
+half the source.  2Wiki provides the cleanest local-edge/path measurement, while MuSiQue provides
+the strongest depth and shortcut audit.  The accompanying negative-results registry points to
+every closed gate: unreliable parent closure, harmful static reranking, failed dynamic Q/A
+reconstruction, uncalibrated terminal thresholds, false-terminal facet complementarity, inconsistent
+native head splitting, fine-edge collapse, weak contextualization--quality prediction, and the
+executable facet gap.
+
+\paragraph{Freeze decision.}
+The graph-only program stopped here.  Its code and artifacts characterize the remaining gaps without fitting a
+large router, fusing layers, adapting K/B/thresholds, changing materialization, or adding another
+search architecture.  The subsequent Gate-3 output study tests frozen bounded materialization;
+future work may test a supervised facet selector and adaptive early-local/middle-global topology,
+while optimized serving kernels, batched concurrency, and production-calibrated timing remain
+outside this paper.
+
+\section{Extended Chronological Synthesis}
+
+\subsection{What the experiments establish}
+
+The synthetic result and the integration tests establish three mechanical facts.  First, a gist
+can serve as a new query and recover a node that the root cannot afford at matched $B$.  Second,
+deduplication, beam pruning, and hard budgets prevent exponential materialization.  Third, the
+closure can remain entirely in compact routing state until final identities map to full native
+K/V.
+
+The natural-data results establish a different boundary.  Projection-correct closure confirms
+that shared dimensionality did not imply shared query and memory semantics: respecting the
+asymmetric interface repairs much of QASPER's loss.  The local experiment then finds positive
+bridge deltas and better exact identity/coverage, so parent aggregation does hide some useful
+semantic relations.  Yet those stronger local edges do not improve chain completion.  Direct
+iterative reuse of the inherited one-shot routing representation does not yet provide a
+dependable associative traversal graph on natural data.
+
+Gate 3 then tests the transformer's own position-neutral local matching geometry after semantic
+narrowing.  Its exact synthetic recovery proves that the routing path, grouped heads, and
+tokenwise reduction can represent a native bridge.  The natural result is nevertheless negative
+under the predeclared success criterion: primary native QK does not beat local semantic closure
+or one-shot across matched budgets.  The isolated HotpotQA Top-4 gain is offset by
+other budgets and by QASPER degradation.  Initial relevance geometry and propagation geometry
+may differ, but pretrained layer-27 QK does not establish that specialization here.
+
+This completes the staged diagnostic sequence: Stage 0 is one-shot retrieval; Stage 1 is chunk
+iterative closure; Stage 2 corrects the asymmetric projection interface; Stage 3 moves propagation
+to contextual local semantic gists; Stage 4 tests tokenwise native QK after semantic narrowing;
+Stage 5 makes root identity persistence monotonic and allocates the remaining budget through
+validation-selected bounded competition.  Stage 6 preserves several contextual views of the
+question through root competition instead of forcing one relational summary before search.
+Stage 7 separates facet type and query-support scope, then asks whether static current-query
+facets can ground a bounded native successor set without mixing score families.
+Stage 8 gives the frozen transformer the known-correct first group and reconstructs the current
+state before repeating the same bounded ranking test.
+Stage 9 removes query filtering from intermediate traversal entirely, follows only native local
+association, and reserves current-query facets for a terminal goal predicate.
+Projection role, propagation scale, and native attention geometry have therefore been tested
+before introducing learned associative supervision.  Oracle-conditioned rank now shows that
+most true transitions survive within Top-4, so a learned head is not yet the next controlled
+intervention.  The displacement audit separates two failures that the aggregate metric had mixed:
+QASPER often starts from the right parent and can lose it to the fixed root/propagation slot split,
+whereas Hotpot usually fails to discover the first group.  Stage 5 confirms the distinction:
+monotonic persistence reproduces QASPER one-shot quality, but bounded competition cannot propagate
+from a missing Hotpot entry.  Stage 6 then recovers part of that missing-root gap with fixed,
+parameter-free contextual facets.  Its success and the failure of native split-head composition
+localize the tested problem to semantic query-span dilution.  Propagation still does not add
+chain completion beyond the improved root, so any later learned query decomposition or
+associative component remains new machinery rather than an automatic extension.  Stage 7 sharpens
+that boundary: the native transition geometry places every held-out successor in Top-4, but static
+semantic facets worsen its position on average.  Candidate availability and candidate ordering
+are therefore separate failures.  Stage 8 shows that explicit contextual integration is not by
+itself enough: A-derived facets dominate the max score when permitted, but the
+validation-selected dynamic state still worsens held-out ordering.  The unselected primary
+$Q\Vert A$ condition is mildly positive and motivates replication, not activation-policy tuning.
+A learned state update, explicit relational supervision, or another learned discriminator would
+be a new intervention and must beat the reported association-only and static-query Top-4 controls.
+Stage 9 changes that diagnosis in one important respect.  Once intermediate memories no longer
+have to resemble the query, native traversal recovers every held-out oracle parent at $K=4,B=6$.
+The remaining frozen failure is terminal discrimination: max-over-facets identifies many related
+passages but cannot decide whether they complete the evidence chain.  Thus propagation geometry
+and stopping geometry must be treated as separate model interfaces.  The result supports native
+association as a candidate generator under oracle entry, but not executable iterative retrieval.
+Stage 10 resolves why that successful held-out traversal was only one edge deep.  Parent
+granularity is a graph-construction parameter, not neutral preprocessing.  Finer parents distribute
+the same annotations across more nodes and expose failures hidden by coarse contraction; coarser
+parents recover evidence more easily but include far more non-evidence tokens.  Exact controlled
+chain contraction confirms the causal direction of this topology effect.  The current native
+geometry is therefore adequate for a coarse evidence neighborhood, not yet for fine-grained deep
+discovery.  Query-facet complementarity also fails as a completion discriminator, so neither
+larger breadth nor another frozen semantic threshold is the next justified intervention.
+Stage 11 is deliberately measurement-only.  It shows that the winning query view is usually a
+single token or the global state, but position, norm, score margin, entropy, the validation-most-
+common scale, and a tiny validation-fitted linear scale model do not predict that view well enough
+to approach the oracle ceiling.  It also aligns contextualization and graph correlations by
+example, corrects the edge/product comparison, and freezes conservative/balanced/high-recall
+payload points.  This closes Paper 2.5 without converting a diagnostic into a production policy.
+
+\subsection{Relation to retrieval, agents, and recursive models}
+
+Memory Networks repeatedly read differentiable memory to support multi-hop tasks, while RAG,
+RETRO, and interleaved retrieval systems bring external evidence into generation
+\cite{lewis2020rag,borgeaud2022retro,trivedi2023ircot}.  Agentic systems can reformulate a text
+query after each model pass.  Iterative PRA is narrower: it traverses already computed latent
+addresses inside one memory subsystem.  It avoids repeated text serialization and full-model
+round trips, but it cannot replace an agent that must plan tools, verify evidence, or change the
+retrieval language.
+
+Tiny Recursive Models repeatedly transform internal latent and answer state
+\cite{jolicoeurmartineau2025trm}.  Controlled autoregressive work finds no reliable gain from the
+full autoregressive TRM architecture over simpler refinement baselines
+\cite{rauba2026autoregressivetrm}.  Iterative PRA does not apply a tiny neural network repeatedly.
+Its recurrence is $\textit{query}\rightarrow\textit{memory node}\rightarrow\textit{memory node}$.
+This distinction motivates the parameter-free Level-1 test: retrieval recursion should earn its
+complexity before neural state recursion is introduced.
+
+\subsection{Materialization boundary}
+
+Papers 1--2 conservatively compress search but materialize every selected chunk in full.  Iterative
+closure produces more structure before transfer: hop, parent edges, direct relevance, path score,
+confidence, branch entropy, and duplicate/overlap statistics.  The versioned graph keeps these
+signals even when the final payload remains unchanged.  This leaves a separate question: given a
+discovered closure, how much detail should each node receive?  The natural-data chronology does
+not test partial materialization.  Its granularity sweep makes that boundary quantitative.  At a
+fixed six-parent conceptual budget, moving from 16 to 256-token parents raises evidence recall but
+increases the counterfactual selected payload fourteenfold and lowers evidence density more than
+threefold.  A follow-up should therefore compare whole-parent, evidence-local, and progressively
+expanded materialization on the same discovered set rather than treating chunk size as a settled
+constant.  The controlled study in this revision is self-contained and uses indivisible fact
+parents, making whole-parent and selected-chunk transport an exact identity control.
+
+\subsection{Controlled implementation map}
+\label{app:controlled-code-map}
+
+Table~\ref{tab:controlled-code-map} identifies the minimal implementation surface needed to
+reproduce the controlled experiment.  Line numbers refer to the archived source revision shipped
+with this paper; function and field names are the stable anchors.
+
+\begin{table}[H]
+\centering
+\caption{Code-level map for the controlled LocalSA and evolved-state PRA experiment.}
+\label{tab:controlled-code-map}
+\scriptsize
+\begin{tabular}{p{0.39\linewidth}p{0.53\linewidth}}
+\toprule
+Source anchor & Contract \\
+\midrule
+\path{src/pra_torch/masks.py}, line 8, \texttt{causal\_attention\_mask}
+& Returns a Boolean $[T,T]$ hidden-position mask.  Finite $W$ exposes exactly the current token
+and previous $W-1$ positions; \texttt{None} is ordinary global causal attention. \\
+\path{src/pra_torch/config.py}, lines 30 and 226
+& Declares and validates \texttt{self\_attention\_window}; line 512 normalizes exact
+\texttt{td\_layered\_pra} consumer IDs. \\
+\path{src/pra_torch/model.py}, lines 353--366
+& Builds ordinary position-aware blocks except at explicitly requested PRA layers.  Conversion
+copies layer normalization, Q/K/V/O, FFN, embeddings, and output head. \\
+\path{src/pra_torch/model.py}, line 603, \texttt{forward\_progressive\_pra}
+& Runs blocks in decoder order, routes from each evolved final-token state, removes visited URI
+identities before the next PRA block, and returns logits plus a per-layer route/cost trace.  Lines
+610 and 666--685 restrict candidates to declared identities only for explicit oracle controls;
+ordinary routing leaves this argument unset. \\
+\path{src/pra_torch/memory\_batching.py}, lines 229--351, \texttt{native\_kv\_attention}
+& Applies the one shared softmax over memory and causal native K/V.  Lines 323--328 retain only the
+final query's $[H,M]$ memory weights when per-head metrics are enabled; the default path performs
+no per-position host copy. \\
+\path{src/pra_torch/controlled\_local\_sa.py}, line 93
+& Generates fresh chains.  Lines 152--174 force balanced terminal-relation decoys; lines 191--197
+randomly interleave distractors while preserving reverse causal evidence order. \\
+\path{experiments/paper2\_5\_iterative\_pra/run\_controlled\_local\_sa.py}, line 178
+& Trains all matched windows, selects checkpoints on validation only, evaluates a disjoint test
+split, and records tokens, approximate FLOPs, time, parameters, and convergence history. \\
+Same file, line 378, \texttt{topology\_rows}
+& Captures per-layer native Q/K edge ranks and contextualization metrics without PRA. \\
+\path{experiments/paper2\_5\_iterative\_pra/run\_controlled\_pra.py}, lines 73 and 133
+& Encodes layer-native reference K/V once, reruns routing/materialization for every placement, and
+scores gold paths only after inference.  Line 169 activates the no-replay progressive forward. \\
+\path{experiments/paper2\_5\_iterative\_pra/run\_toy\_mechanistic.py}, lines 44--197
+& Defines the eight-label margin, exact evidence/distractor/native mass partition, payload-shuffle
+control, and unique matched oracle/wrong identity plans. \\
+Same file, lines 199--381, \texttt{MechanisticCollector}
+& Hooks pre-residual, post-PRA, and post-block states; applies the frozen readout; records per-head
+attention, value norms, residual displacement, and local answer-direction alignment without
+feeding diagnostics back into inference. \\
+\path{experiments/paper2\_5\_iterative\_pra/summarize\_outcome\_b.py}, lines 198--676
+& Joins one-shot and iterative rows by stable model/example identity, computes seed-level effects
+and example-level bootstrap diagnostics, constructs path strata and consumer profiles, and renders
+the Outcome-B figures.  Lines 677--812 write the hypothesis and freeze audits only after metrics
+exist. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Extended Limitations and Threats to Validity}
+
+The natural-data pool has 16 examples per dataset, repeated over five router seeds and then split
+by stable example identity for the final policy-selection gate.
+Seeds quantify projection sensitivity but do not create 80 independent questions.  Hotpot
+evidence groups are source-contiguous spans, not annotated causal hop labels.  QASPER's selected
+subset is yes/no and often one-group, so it tests direct retrieval more than multi-hop closure.
+
+The protected-root result is an oracle-labeled upper bound, not an implementable policy.  The
+calibration controls rerank only the fixed union of identities already exposed by frozen routing;
+they cannot recover an unseen candidate and should not be read as a trained-router comparison.
+Their validation/test partitions are example-disjoint, but both remain small.
+
+The adaptive-competition policy family is selected on nine HotpotQA and ten QASPER validation
+examples and reported on seven and six held-out examples, respectively; five router seeds measure
+projection sensitivity but do not enlarge those example counts.  The validation objective weights
+Hotpot chain/recall, QASPER recall, and QASPER propagation cost explicitly.  Different task weights
+could select another transparent rule, although the full selection audit is retained.  The
+preservation winner degenerates to full Top-$B$ locking on this sample and should be interpreted as
+a parity result, not evidence that $z>-0.5$ generalizes as a universal threshold.
+
+The natural-data sample remains small.  Projection correction, local hierarchy, native QK, and
+contextual query facets remove four specific confounds, but the experiment does not include
+adaptive zoom rules, evidence-edge training, a layer sweep, or a full agentic baseline.  The local
+and native bridge controls are deliberately geometric and do not approximate natural language.
+Hotpot evidence groups are approximate source-order targets rather than annotated transition
+edges, so they can understate or misidentify the useful successor relation.  At this stage,
+downstream F1/EM was measured only in a two-example execution smoke and was not used as evidence
+of quality; the later Gate-3 study supersedes that scope with a frozen 84-example generation
+cohort while preserving the smoke as a compatibility control.  Finally,
+the scorer batches token pairs and heads but still launches small per-example routing operations;
+the reported wall time is not a production-kernel claim.
+
+The facet selector is chosen on nine HotpotQA and ten QASPER validation identities and evaluated
+on only seven and six held-out identities.  Five frozen projections expose sensitivity but are
+not independent questions.  Max over more facets creates a multiple-comparisons effect even under
+one final budget; margins, false positives, precision, and Jaccard are reported, but a larger
+corpus is needed to estimate calibration.  The native-head conditions necessarily change from
+the learned semantic representation to pre-RoPE QK because the semantic router has no head axis;
+they cannot identify a pure head effect relative to A/B.  Finally, the 4-token winning windows
+can be grammatical fragments rather than explicit subquestions.  The result demonstrates useful
+contextual localization, not interpretable decomposition or causal hop annotation.
+
+The additive facet-type gate reuses the same small identity split, so its validation-selected
+2-token width should not be interpreted as universal; the held-out width-4 local-only control is
+higher, illustrating the uncertainty directly.  The stale-history prompt copies text from one
+non-oracle parent but is controlled rather than naturally distributed conversation.  Latest-message
+support reduces comparisons and clean-prompt errors relative to full-prompt support, yet does not
+uniformly reduce stale-parent retrieval.  The conditional grounding gate also grants oracle $A$
+and treats source-ordered evidence groups as approximate transitions.  Its five projections expose
+router sensitivity but its seven held-out edges remain seven identities.  Finally, exact native QK
+is exhaustive in this diagnostic; the millions of recorded dot products are not a production
+latency claim.
+
+The dynamic gate inherits those seven held-out transitions and grants oracle $A$; it therefore
+tests successor discrimination, not an executable first-hop policy or end-to-end QA.  Its
+validation tie-break selects $A\Vert Q$ question-only support, while the unselected $Q\Vert A$
+Q+A row is better on held-out data.  This disagreement is precisely why we enforce the frozen
+selection and why neither row establishes a general ordering.  Re-encoding also decodes complete
+source-group chunks, not a minimal evidence sentence, and source-order evidence groups remain
+approximate causal hops.  The measured cost is routing-only on one older GPU; no generated first
+token, concurrent request, or production native-KV transfer is present.
+
+The semantic graph search also grants oracle roots and uses the same small identity split.  Its
+perfect held-out evidence recovery is therefore conditional, not end-to-end.  A dense parent
+adjacency is precomputed for experimental control; production search would need a lazy or indexed
+successor implementation before the measured cold cost could be interpreted as serving latency.
+The manual false-terminal categories are qualitative judgments over 23 unique pairs, not new
+ground-truth labels.  At the canonical 256-token parent granularity, the held-out annotations
+collapse to one-edge neighborhoods; the new fine-grained conditions require more oracle parents
+but are mostly unrecovered by $H=4$.  Thus this sample does not yet establish successful deeper
+natural traversal.  Finally, the closed selected goal policy
+has perfect safety only by never stopping; routed roots are absent because the gate failed, not
+because routed search was evaluated and scored zero.
+
+The chunk ladder retains only 16 Hotpot examples, of which 15 are bridge questions and one is a
+comparison question.  Its bridge analysis is therefore primary and its comparison row descriptive.
+Supporting spans identify evidence locations, not a complete ordered causal graph; ``minimum
+native-graph evidence-recovery depth'' must not be read as reasoning depth.  Zero overlap isolates
+granularity but does not test boundary-robust chunking.  The 16-token condition also uses exact
+subdivision of the cached 32-token Q/K windows, while larger parents max-reduce those same atomic
+windows; this preserves native token scores but is not a learned multiscale index.  Finally,
+selected K/V tokens are counterfactual because no payload is materialized.  A subsequent natural
+benchmark should have more than two evidence hops, distributed document-level evidence, and an
+explicit or defensibly derived support graph.
+
+The MuSiQue/2Wiki extension addresses annotation depth and path semantics but remains a diagnostic
+cohort: 18 and 24 held-out identities yield wide bootstrap intervals, and 2Wiki contributes only
+25 preserved held-out transitions from 17 paths.  The internal split is a hash partition of each
+official development set because public test labels are absent.  Some 2Wiki edges without entity
+IDs use explicitly labelled normalized lexical joins.  At 128 tokens, four selected transitions
+contract completely and eight partially overlap; none enters direct edge recall through an
+already-active source parent.  The broad selected budget visits half of MuSiQue and three quarters
+of 2Wiki source tokens, so high completion is not a sparse-routing result.  Finally, annotated
+task depth and native graph distance differ: $D=4$ evidence is more distributed, but recovery
+saturates by $H=2$.  A larger held-out cohort, iterative-answer state, and stricter active-token
+budgets are required before claiming deep natural traversal.
+
+The cross-dataset ladder reuses those 18/24 held-out identities across five deterministic
+granularities; rows are paired controls, not 210 new independent examples.  Zero overlap isolates
+topology but does not test boundary averaging.  The 256-token contextual encoding with 16/32-token
+search nodes is the requested context control, yet it is only one encoding scale and one layer.
+The independent-edge product assumes stepwise exchangeability and can be exceeded by contractions,
+alternate native paths, or several oracle roots; it is a diagnostic decomposition, not a causal
+probability model.  Minimum $H$ averages only recovered examples and must be read beside complete
+recovery.  Counterfactual source fractions still assume whole-parent K/V materialization.
+
+The all-offset audit performs many post-hoc comparisons.  Its oracle ceiling explicitly uses the
+target to select a facet and is not executable.  Five projections expose score sensitivity but do
+not multiply the number of questions.  Width-one dominance may reflect entity tokens rather than
+compositional subquestions, and token Jaccard is only a lexical control rather than BM25 or a
+trained sparse retriever.  The bounded union has no oracle channel, but its within-facet
+normalization and Top-1 nomination are one simple policy, not a learned-selector benchmark.  Its
+failure closes unbounded facet aggregation, not the broader possibility of calibrated selection.
+
+The final selector diagnostics fit only 42 validation identities and evaluate 42 held-out
+identities; five projections again measure sensitivity rather than independent sample size.  The
+linear model predicts only scale and resolves offsets by hidden norm, so its failure is not a
+general impossibility result for learned selectors.  Parent-margin and entropy diagnostics inspect
+all parent scores and are inexpensive but not query-only.  Role visibility is target-level, while
+the headline oracle and selected-facet root ceilings are example-level; the paper labels both
+denominators.  Layer correlations have only eight depth points.  Their identity bootstrap measures
+cohort uncertainty but cannot make transformer depth an independent random sample.  Finally, the
+Pareto frontier is conditional on oracle roots and counterfactual whole-parent payload.  It records
+zero actual K/V materialization within that graph-only gate.  Gate 3 later materializes frozen
+sets and measures synchronized per-example TTFT, TPOT, and total generation latency, but still
+supports no throughput, concurrency, or production-serving claim.
+
+\section{Extended Experimental Synthesis}
+
+Bounded associative closure is exact when latent memory contains the right edges.  Correcting the
+asymmetric frontier is necessary and materially reduces inherited degradation.  Routing at a
+finer local scale can recover bridges erased by parent means.  Tokenwise pre-RoPE native QK then
+recovers every designed native bridge, showing that semantic narrowing and a different propagation
+primitive can compose without changing materialization.  None of these parameter-free
+\emph{propagation} variants produces a dependable natural-data chain advantage at matched payload
+budget, and each finer search adds work.  One-shot PRA therefore remains the default
+efficiency/quality reference even after the separate query-facet gain reported below.
+
+The scientific lesson is narrower than ``pretrained geometry has no associative edges.''  Direct
+iterative reuse is sensitive to projection interface, propagation scale, candidate width, and
+score reduction.  Local semantic and native attention spaces contain designed bridges and
+occasional natural positives, but neither supplies reliable cross-parent transitions on this
+sample.  The oracle-rank diagnosis narrows the next step further: useful transitions are commonly
+present below Top-1, while root evidence discovery remains weak.  The final frozen-policy gate
+confirms both sides.  Monotonic identity locks preserve direct QASPER evidence exactly, and
+adaptive breadth recovers controlled rank-2/rank-4 edges, but neither yields a held-out Hotpot
+chain advantage.  In 52.9\% of exploratory Hotpot runs the first evidence group is absent before
+locking begins.  The next controlled question is therefore entry discovery through local query
+facets, not another transition geometry or a larger breadth sweep.  Fixed contextual facets do
+admit more missing Hotpot roots: at 20\%, entry presence reaches 0.457 from 0.343 and oracle
+recall reaches 0.295 from 0.205, while QASPER recall remains 0.883.  The resulting Hotpot chain
+rate is 0.171 versus 0.143, but reconnecting bounded propagation adds no further chain gain and
+costs orders of magnitude more comparisons.  Multi-span entry search is therefore the supported
+opt-in extension; one-shot remains the default.  The broader facet ladder preserves that conclusion:
+validation freezes fine 2-token facets and latest-message support, but the held-out sample does not
+identify one universal width or uniformly reject stale memory matches.  More importantly, static
+query reranking of native Top-4 successors changes conditional held-out R@1 from 0.286 to 0.257,
+despite perfect R@4 availability.  A frozen dynamic pass over known-correct $A$ then makes the
+intermediate memory visible but does not supply validation-stable composition: the selected
+$A\Vert Q$ row changes static-reranker held-out R@1/MRR from 0.257/0.500 to 0.229/0.479.  The
+predeclared $Q\Vert A$ Q+A control reaches 0.314/0.538, yet its $+0.057$ R@1 gain is below the
+$+0.10$ gate and was not the validation-selected policy.  We therefore stop before the F/K/B/
+threshold surface and end-to-end dynamic closure.  The evidence now points to learned current-
+state update, query decomposition, or relational composition rather than a broader sweep around
+an unvalidated frozen updater.  Any such extension must retain the same payload, split, leakage,
+candidate-generation, and execution controls and improve beyond both association-only and static
+query-reranking baselines.
+
+The terminal-query experiment adds a sharper final boundary.  When query similarity is removed
+from intermediate admission, oracle-root native search reaches every held-out Hotpot and QASPER
+oracle parent at $K=4,B=6$.  Yet the max-facet terminal score offers no acceptable operating
+point: q95 still produces .389 validation false goals for .022 correct Hotpot closure, while the
+safe endpoint never closes.  We therefore stop before routed roots.  The next iteration should
+improve the terminal evidence-completeness predicate, not force the original query back onto every
+bridge and not merely increase $K$ or $B$.
+
+The granularity control changes the interpretation of that success.  At 256-token parents the
+held-out task is an exactly recovered one-edge evidence neighborhood, but refinement to 16--32
+tokens distributes evidence over roughly five to seven oracle parents and defeats the same frozen
+search.  The coarse result is real, yet it is partly purchased by graph contraction and a
+counterfactual active payload approaching the full source.  Fine parents reverse that systems
+tradeoff: they triple evidence density and reduce selected tokens fourteenfold, but native
+association no longer finds the evidence.  Iterative PRA therefore has two distinct open problems:
+fine-grained associative discovery and selective native-K/V materialization.  Hotpot remains useful
+for exposing this boundary, but a deeper evidence-graph benchmark is required before claiming
+natural multi-step closure.
+
+MuSiQue and 2Wiki make that final boundary empirical.  MuSiQue's four-step examples occupy more
+oracle parents than its two-step examples, so the depth label survives memory construction.
+Nevertheless, the frozen native graph recovers nearly all evidence by $H=2$ under $K=6,B=16$;
+later annotated steps do not survive at their nominal frontier depth.  2Wiki is more encouraging
+about local path fidelity: direct transition recall reaches .720 at $K=4$, .880 at $K=6$, and
+1.000 at $K=8$, with corresponding complete-path survival .588/.824/1.000.  The cost is broad
+activation, and routed-root recall remains weak.  The central thesis is therefore refined rather
+than declared solved: pretrained attention contains traversable local evidence geometry, but
+faithful deep closure still needs better entry routing, tighter successor geometry, or a dynamic
+reasoning state that preserves task order.
+
+Layerwise extraction narrows ``tighter successor geometry'' further.  The native graph is not one
+fixed object waiting to be read from a transformer: the same source and parent partition induce
+different rank, branching, and distance structure at different blocks.  Measured accumulated
+contextualization explains some contraction but not local edge fidelity.  More importantly, layer
+choice interacts with parent size: early Q/K is strongest in the fine 32-token 2Wiki control,
+middle Q/K is strongest at 128, and external contraction makes all three representatives nearly
+perfect at 256.  The next graph representation should therefore be adaptive and multiscale, while
+charging every exposed scale and layer to one routing budget.  This paper deliberately stops
+before multi-layer fusion, so the current late-layer implementation remains unchanged.
+
+The final measurement gate turns those broad options into two concrete interfaces and closes this
+iteration.  At fine 16-token search nodes, selected source falls to .063/.172 on MuSiQue/2Wiki,
+but preserved edge R@6 falls to .667/.400 and deeper search adds no recovery after $H=2$.
+Missing local links, rather than frontier depth, are therefore the dominant fine-scale failure.
+A multiscale contextual index should retain coarse discovery state while pointing to fine payload
+identities.  At entry, an existing query span supplies an oracle Top-4 root in .878/.950 of runs,
+whereas the best cheap held-out selectors reach only .622/.692.  Confidence, position, norm, and a
+validation-fitted linear scale selector do not close that gap.  The measured sparse frontier spans
+.063 selected source at .819 evidence recall for MuSiQue and .172 at .796 for 2Wiki, while their
+complete-recovery points require .573 and .918 respectively.  We therefore freeze Paper~2.5 at
+this measured boundary.  Supervised or adaptive facet selection belongs to a separate follow-up; production
+native-K/V serving latency and concurrency belong to a separate systems study.  The Gate-3 output
+experiment in this paper is a bounded efficacy measurement, not that serving study.
+
+\section{External Behavioral-Judge Audit}
+\label{app:behavioral-judge}
+
+The frozen judge package contains 294 underlying comparisons, each presented in exact A/B and B/A
+orders.  Seven comparison groups cover balanced/broad discovery against one-shot, balanced against
+no memory and oracle evidence, selected versus all-layer consumption, and identical/corrupted
+calibration anchors.  The scorer validates opaque IDs, numeric ranges, reason lengths, and complete
+order-reversed pairs; restores the private condition orientation; and averages reversals before
+aggregation.  Positive $\Delta Q$ always favors the named target after unblinding.
+
+GPT-5.6 Sol covers all 294 pairs.  Claude Sonnet~5 covers 152 complete pairs and no half-pair, so
+the partial-response mode reports 51.7\% coverage and computes cross-judge metrics only on that
+intersection.  Partial acceptance is explicit and opt-in; strict complete-ID validation remains
+the scorer default.  Claude's failure on literal identity and deterministic corruption anchors
+precludes efficacy interpretation despite structurally valid rows.  This is an instrument failure,
+not evidence for or against PRA.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Frozen behavioral-judge artifacts.  The truth file is retained privately; its hash is
+published so later unblinding remains auditable.}
+\label{tab:judge-hashes}
+\begin{tabular}{p{0.29\linewidth}p{0.65\linewidth}}
+\toprule
+Artifact & SHA-256 \\
+\midrule
+Prompt & \texttt{65f810c43576ce9ac8eab640c0f8e0ec0acde3d6cfd73c98ccb065eeaf67b9e1} \\
+Blind package & \texttt{3fa13a3473bc2aca8baa8980a2364069dadbf67d86384e44711c6cca1df933c9} \\
+Private truth & \texttt{45c7c1cd57855ced306234c215085599d8020d6e5fd8a53db6dadced344df6a6} \\
+GPT-5.6 Sol response & \texttt{8318ecb5ae0e65008d8a294eb1ff483e3249d601c90e15388a648a2904d7a9fd} \\
+Claude Sonnet~5 partial & \texttt{8b7cb41a872889f39e0dd8d84940dc44028f386f389df0c6a2f943d0d422448b} \\
+Aggregate metrics & \texttt{4c96f8f67dc74def9ec6650c81405f41bb667e3a0653a02f3b5fe7dbfa9eda82} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The exact judge-specific aggregates, calibration rows, order diagnostics, and shared-pair
+correlations are stored in
+\path{output_validation/behavioral_judge/behavioral_judge_external_metrics.json}.  Blinded raw
+responses remain alongside that aggregate.  No unblinded pair table or truth metadata is tracked.
+
+\section{Implementation Map}
+
+The implementation is designed so another system can reproduce the mechanism without adopting
+the entire PRA-HF package.  File and line references below refer to the accompanying source
+revision.
+
+\paragraph{Layer-local packed index.}
+\texttt{src/pra\_hf/iterative.py:69--134} packs variable gist sets as
+\texttt{[chunks,max\_gists,routing\_width]} plus a validity mask.  Records retain chunk identities
+and payload handles, but packing copies no native K/V.
+
+\paragraph{Asymmetric companions and contextual parents.}
+Lines 387--438 of \texttt{injection.py} project each contextual local gist with both
+$W_m$ and $W_q$ and projects the occupancy-weighted parent hidden-state mean separately.  The
+full path is \path{src/pra_torch/hf/injection.py}.  The cache stores compact companion vectors,
+not another native K/V payload.
+
+\paragraph{Hierarchical index and parent deduplication.}
+Lines 137--254 of \texttt{iterative.py} define aligned parent/local tensors and construct them
+from contextual segment gists.  Lines 641--787 perform root-to-parent/local
+and local-to-local expansion, aggregates candidates by parent, enforces the unique-parent budget,
+and maps only final parents to payload handles.
+
+\paragraph{Graph contract.}
+Lines 269--342 of \texttt{iterative.py} define node, edge, graph, and result records.  The current
+JSON Schema is \path{docs/papers/shared/schemas/retrieval_graph_v2.schema.json}.  Nodes retain
+parent identity, local span, resolution, representation and projection types, hop, path score,
+and materialization state.  Native-edge extensions additionally retain source/target spans,
+query and K/V head identities, native score, threshold, and semantic candidate rank.
+
+\paragraph{Exact scoring and deterministic top-k.}
+\texttt{iterative.py:376--397} normalizes frontier rows and computes
+\texttt{einsum("fd,cgd->fcg")} before max reduction across gists.  A stable index tie-break is
+applied before \texttt{torch.topk}, producing deterministic identities on CPU and CUDA.
+
+\paragraph{Traversal.}
+\texttt{iterative.py:399--614} performs root scoring, frontier expansion, anchoring, deduplication,
+path pruning, Level-2 updates, stopping, and cost accounting.  The code never accesses
+\texttt{chunk.token\_kv}.  Conversion at lines 617--638 returns selected payload handles only
+after the graph is final.
+
+\paragraph{Host-model integration.}
+\texttt{src/pra\_hf/model.py:374--439} captures one root query with memory disabled, dispatches
+one-shot, chunk iterative, or opt-in \texttt{local\_iterative} routing, maps final parent identities
+to consumption layers, enables fixed memory, and only then marks graph nodes materialized.
+Generation thereafter uses the unchanged Paper 2 native-K/V path.
+
+\paragraph{Native QK feature capture.}
+\texttt{precompute\_native\_qk\_features.py:50--107} encodes each bounded 256-token parent once,
+reads Qwen's exact layer-27 capture, transposes canonical Q/K to token-major form, and slices
+aligned 32-token regions.  It stores FP16 pre-RoPE Q/K with a validity mask for a short final
+window; it never independently re-encodes a local region.  The capture itself is generated by
+Qwen's ordinary \texttt{q\_proj}/\texttt{k\_proj} and native Q/K norms before rotary position
+encoding.  A test recomputes those projections from the captured hidden states and requires exact
+tensor equality.
+
+\paragraph{GQA-compatible tokenwise scoring.}
+Lines 122--211 of \path{src/pra_hf/native_closure.py} map query head $h$ to K/V head
+$\lfloor h/2\rfloor$, packs candidate keys accordingly, and computes all frontier-by-candidate
+token/head products with one \texttt{einsum}.  Invalid padded pairs become $-\infty$ before max
+or Top-4 reduction.  The scorer returns strongest token and compatible-head identities as well
+as the physical dot-product count; no Python loop traverses token pairs or heads.
+
+\paragraph{Semantic narrowing and native propagation.}
+\texttt{native\_closure.py:215--480} uses root semantic scores for initial parents, applies
+$W_qh_A\rightarrow W_mh_B$ to rank a hard 10/20\% candidate-parent pool, gathers all contextual
+local windows in that pool, and invokes native QK once.  Proposals are merged by parent before
+the hard final parent budget.  Threshold mode retains the same cap and fills rejected slots from
+root semantic ranking, preserving materialization parity.  The graph cost record separates
+semantic comparisons, native dots, candidate parents/regions/tokens, accepted transitions,
+selected parents, final K/V tokens, and routing wall time.
+
+\paragraph{Oracle and edge-rank diagnostic.}
+Lines 66--116 of \texttt{run\_oracle\_convergence.py} map each annotation to overlapping
+parents and call the Paper-2 oracle constructor unchanged; disagreement with the cached evidence
+mask is fatal.  Lines 133--185 define target rank using only frozen score vectors, with equal
+scores sharing a rank and the forced source group excluded.  Parent/local/native score vectors
+are constructed at lines 188--245; target identity enters only the subsequent metric.  Lines
+252--292 fit the offline margin threshold on a hash-stable validation partition and evaluate it
+unchanged on test.  The main loop beginning at line 588 wraps the existing Gate-2/3 evaluators,
+so convergence does not duplicate or subtly alter their selection policy.
+
+\paragraph{Displacement and calibration diagnostic.}
+Lines 81--159 of the additive displacement runner listed in the reproduction README compare one-shot oracle hits with
+the final identities returned by each frozen evaluator and retain replacement hop, score family,
+rank, and budget reason.  Lines 162--174 implement the oracle-labeled protected-root
+counterfactual with the same final $B$; this function is used only by the offline runner.  Lines
+184--277 construct a fixed candidate-identity union, fit score-family statistics on validation
+examples only, and rerank held-out examples by raw, z-scored, or empirical-quantile score.  The
+root/semantic and native score capture at lines 337--478 follows the exact transformations used
+by Gate 2 and Gate 3.  The main loop at lines 696--1095 calls those frozen evaluators, verifies
+all 4,000 selections row-for-row against the prior convergence artifact, and writes additive
+rows without changing SDK routing.
+
+\paragraph{Fixed-identity payload parity.}
+\texttt{tests/test\_hf\_integration.py} sends the same selected chunk through router, oracle, and
+native-closure labels.  All three paths produce byte-identical post-RoPE K, native V, and
+attention output.  Gate 3 therefore ends at identities: it neither changes nor reconstructs the
+payload consumed by Qwen.
+
+\paragraph{Monotonic adaptive competition.}
+\path{src/pra_hf/adaptive_competition.py:44--154} defines immutable root/transition policies and
+score/result records without any oracle field.  Lines 157--234 compute cross-seed agreement and
+choose a lock only after constructing full root Top-$B$.  Lines 237--291 standardize raw pre-RoPE
+native scores per source, measure Top-1/Top-4 spread, normalized entropy and semantic/native rank
+agreement, then select bounded breadth 1, 2, or 4.  Lines 294--323 merge parent proposals while
+asserting that every locked identity survives; root order fills any unused slots.  The opt-in
+router at lines 326--404 invokes frozen transition providers only when $B-|L|>0$, uses raw native
+rank rather than sigmoid magnitude, and returns separate root, semantic, native-dot, and scorer
+time costs.  It owns no K/V tensor.
+
+The additive runner constructs projection-correct semantic and native traces at lines 162--247
+of \texttt{run\_monotonic\_adaptive\_competition.py}.  Lines 285--383 call the label-free router,
+then attach exact-oracle and evidence-group metrics to its returned identities.  Validation-only
+selection is at lines 475--509; synthetic direct/rank-2/rank-4 controls and cost-normalized
+held-out effects are at lines 551--692.  The main loop beginning at line 775 preserves the full
+policy matrices, freezes preservation and exploratory roles separately, and writes held-out rows
+without altering the model dispatch path or default routing mode.
+
+\paragraph{Contextual query facets and real-head audit.}
+\path{src/pra_hf/query_facets.py:101--183} forms overlapping windows only from states captured
+in one complete contextual prompt pass and retains the exact final-token global row.  Lines
+193--247 normalize and batch all facet--parent semantic products; lines 251--337 pool valid native
+K tokens by parent with \texttt{index\_add\_}, enforce the 16:8 GQA map, and compute the full
+facet--query-head--parent tensor.  Lines 340--388 deduplicate per-head nominations before one
+deterministic final Top-$B$.  The runner at
+\path{experiments/paper2_5_iterative_pra/run_query_entry_facets.py:673--958} reproduces the old
+root, selects window/head policies only on validation identities, records winning span/head
+provenance and cost, and runs the three exact synthetic controls.  The capture at
+\texttt{precompute\_query\_entry\_features.py:42--191} asserts bit-exact final-token parity and
+records zero independent window forwards.  The confirmation at
+\texttt{run\_query\_entry\_propagation.py:74--443} changes only root scores before invoking the
+previously frozen monotonic native-rank policy; its final parent budget remains unchanged.
+
+\paragraph{Facet types and query-grounded propagation.}
+\path{src/pra_hf/query_facets.py:128--307} clips query-support spans and constructs deterministic
+phrase, arbitrary-span, multiscale, token, and overlapping-window facets from one contextual state
+sequence.  Provenance records global/local family, scale, and source-token boundaries.
+\path{src/pra_hf/grounded_propagation.py:26--213} contains no oracle field: lines 80--102 form a
+bounded association-ordered candidate set, lines 105--141 validate its identities in one
+$[\textit{facets},\textit{candidates}]$ product, and lines 144--213 apply association order, query
+reranking, rank conjunction, or a query-threshold AND gate.  Rank conjunction combines ranks only;
+native and semantic raw scores are never added.
+
+The Gate-A runner at
+\path{experiments/paper2_5_iterative_pra/run_grounded_facet_gate.py:106--478} constructs every
+predeclared family, verifies exact global/width-4 baselines, and freezes facet/support choices on
+the hash-stable validation partition.  The controlled capture at
+\texttt{precompute\_grounded\_query\_features.py:46--228} renders old user/tool history plus one
+explicit latest user message, records all character-to-token boundaries, and asserts that the
+copied stale parent is non-oracle.  Gate B at
+\texttt{run\_grounded\_propagation\_gate.py:91--523} first scores native proposals, then computes
+semantic products only for the source group and bounded Top-8 union.  Selection at lines 209--239
+uses validation rows; lines 242--281 implement exact relevance, drift-stop, and unresolved-bridge
+controls.  Candidate JSON retains $A\!\to\!B$ rank, query rank/score, validating facet span/text,
+root-facet equality, and admission.  The runner records zero K/V materialization and stops before
+end-to-end evaluation when its predeclared conditional gate fails.
+
+\paragraph{Dynamic current-state reconstruction.}
+\path{src/pra_hf/dynamic_query.py:47--75} constructs the three deterministic Q/A orderings and
+retains disjoint character provenance.  Lines 78--129 apply the model's ordinary chat template,
+truncate to the model-safe 768-token bound, and map those character regions back to exact token
+spans.  Lines 132--190 form contextual width-2 facets only inside the configured question or
+question-plus-A support; A can condition question states even when its positions cannot issue
+independent queries.  No target identity is accepted by this API.
+
+\path{experiments/paper2_5_iterative_pra/precompute_dynamic_query_features.py:49--108} decodes the
+oracle-conditioned source group A, runs one memory-disabled frozen layer-27 capture per ordering,
+and records contextual hidden/pre-query tensors, transfer bytes, elapsed time, and CUDA peaks.
+Lines 110--268 bind those captures to the unchanged 17 evidence-group transitions and write a
+hash-pinned, regenerable 96.4~MB feature cache.  The feature cache is ignored; its manifest is
+tracked.
+
+\path{experiments/paper2_5_iterative_pra/run_dynamic_query_gate.py:96--296} applies each frozen
+semantic projection, scores only native-QK proposals in a packed facet--candidate product, and
+records candidate/native/query ranks, exact facet span/text, rank movement, comparisons, routing
+memory, H2D bytes, and zero K/V materialization.  Lines 420--692 generate the unchanged native
+candidate ladder, freeze the dynamic variant on validation, assert exact prior static and K=4
+candidate baselines, and enforce the held-out stop rule before writing rows, summaries,
+diagnostics, and Figure~\ref{fig:dynamic-query-k}.
+
+\paragraph{Terminal-query semantic graph search.}
+\path{src/pra_hf/semantic_graph_search.py:25--118} defines the independent edge/goal thresholds,
+resource bounds, per-proposal provenance, and routing-only result record.  Lines 122--183 batch
+every local source against packed native keys and scatter-reduce local scores into parent
+adjacency; neither query facets nor labels enter that operation.  Lines 223--271 perform stable
+native successor ordering and the separate any-facet terminal reduction.  The traversal at lines
+274--524 admits a proposal from its native edge score, deduplicates parent identities, applies the
+shared $B$/beam/hop limits, and only then reads the query-goal tensor.  The public function accepts
+roots and score tensors but no oracle, target, evidence, or correctness channel.
+
+The runner at
+\path{experiments/paper2_5_iterative_pra/run_semantic_graph_search.py:152--383} builds the frozen
+CUDA adjacency/goal caches, reproduces the exact 17-transition K ladder, and partitions identities
+before calibration.  Lines 600--754 execute all strategies and select $\theta_{\rm goal}$ on
+validation only; lines 757--825 select the bounded operating point; lines 827--908 define the five
+synthetic controls.  The orchestration at lines 1068--1342 evaluates oracle roots first and calls
+routed roots only if both closure and false-goal gates pass.  Calibration surfaces run from the
+identical CPU-resident score cache to avoid thousands of tiny CUDA synchronizations; the selected
+condition is rerun on CUDA for timing and memory.  Finally,
+\path{experiments/paper2_5_iterative_pra/review_semantic_graph_false_goals.py:44--112} reconstructs
+the q95 validation terminals from source token spans and writes the review rows and counts.
+
+\paragraph{Granularity and post-hoc evidence topology.}
+\path{src/pra_hf/chunk_granularity.py:61--168} constructs deterministic half-open parent spans,
+maps each supporting span to overlapping parent IDs, selects the first-group root by exact token
+overlap, and records collisions and evidence-token containment.  Lines 175--260 attach oracle
+recovery only after traversal and compute facet concentration, normalized path coverage, and
+incremental coverage.  The search function receives none of those annotations.  Line 263 defines
+the controlled chain-contraction depth used by the synthetic companion.
+
+\path{experiments/paper2_5_iterative_pra/precompute_chunk_granularity_features.py:38--149}
+captures per-token layer-27 hidden states under the same frozen 256-token block encoder and checks
+every ID and source-token count against the canonical native-QK cache.  The ignored
+52,058,925-byte artifact has SHA-256
+\begin{center}
+\small\texttt{a3c1ffb7a2e7a9213f44c33cb678cd084a5f7fb992677539bec31098e31906cf}.
+\end{center}
+The runner's lines 117--146 split cached tokenwise Q/K into exact 16-token atomic windows or retain
+the canonical 32-token windows; lines 207--427 pool semantic parents, construct native adjacency,
+and produce the five-seed facet matrix.  Lines 430--511 execute the full K/H/B surface with an
+infinite goal threshold and apply evidence metrics afterward.  Lines 514--738 validate controlled
+contraction and produce topology, efficiency, density, system-scaling, and separability tables;
+lines 740--854 generate the two paper figures.  The orchestration at lines 857--966 asserts exact
+canonical held-out reproduction before writing the result manifest.
+
+\paragraph{Natural annotated graphs.}
+\path{src/pra_hf/natural_reasoning_graph.py:21--160} defines immutable annotation nodes,
+serializes MuSiQue paragraphs, and converts only explicit decomposition references into edges.
+Lines 194--280 serialize 2Wiki at sentence resolution, map relation triples to supporting facts,
+and keep entity-ID and derived lexical joins distinguishable.  Lines 283--363 convert exact
+character offsets to tokenizer spans, map nodes to all overlapping parents, choose one
+maximum-overlap root representative, and classify preserved, contracted, and unmappable edges.
+No search score is accepted by this module.
+
+\path{experiments/paper2_5_iterative_pra/precompute_natural_graph_features.py:48--107} captures
+token hidden states and padded 32-token pre-RoPE Q/K windows from independent frozen 256-token
+encoding blocks.  Lines 110--226 bind exact annotation spans and one contextual query pass to 84
+identity-frozen examples.  The ignored 1,324,029,241-byte cache has SHA-256
+\begin{center}
+\small\texttt{a03d5a978c7b5eeef21402d88d8c293827744a93cd4b0c1b5a605b0bf4ff19dc}.
+\end{center}
+
+\path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:125--218} computes direct
+annotated-transition rank and bounded native shortest path from score matrices, excluding shared
+source parents from target recovery.  Lines 243--416 construct exact adjacency and five-seed
+facet diagnostics; lines 419--523 run the oracle-free K/H/B search and attach node, edge, path,
+depth, payload, and systems metrics afterward.  Lines 526--553 select one operating point from
+validation identities; lines 555--593 restore routed roots only after each dataset's oracle gate.
+The remaining aggregation writes 252 mappings, 372 transition rows, 12,096 oracle searches,
+33,408 hop-survival rows, 1,160 facet rows, and 1,260 routed-root rows.
+
+\paragraph{Layerwise native graph and contextualization.}
+\path{src/pra_hf/layerwise_context.py:18--178} defines the per-layer state record and installs
+observation-only hooks at the decoder input, normalized attention input, projected attention
+output, post-attention residual, MLP output, and block output.  Lines 138--166 assert both exact
+residual identities.  Lines 182--207 construct a causal radius mask in the original
+$[1,1,T,T]$ coordinates: tokens remain present, absolute position IDs remain unchanged, and only
+accessible K/V positions change.  Lines 209--287 compute normalized displacement, directional
+rotation, branch magnitude, native query-head entropy/effective support, and local/distant/evidence
+attention fractions.  The FFN branch is retained as a local-transformation control and is never
+called contextualization.
+
+\path{experiments/paper2_5_iterative_pra/precompute_layerwise_graph_features.py:135--305}
+begins capture on all eight actual adapters before one shared full forward, streams exact pre-RoPE
+Q/K to CPU, checks the full-mask parity control, and reruns self/16/32-token visibility with the
+same logical positions.  Lines 336--488 write one regenerable file per example rather than holding
+all layers in memory.  The ignored cache is 7,832,055,097 bytes over 84 SHA-256-pinned entries;
+it covers 158,170 tokens, took 1,863.9 seconds on the GTX~950M, peaked at 1.394~GB allocated CUDA
+memory, and has zero maximum full-context reproduction error.
+
+\path{src/pra_hf/layerwise_graph.py:11--109} implements deterministic Top-$K$ neighbors, bounded
+native distance, weak components, reciprocity, destination reuse, and two-hop effective branching.
+Lines 111--161 provide Pearson/Spearman and example-level bootstrap summaries.  The runner at
+\path{experiments/paper2_5_iterative_pra/run_layerwise_graph_exploration.py:190--735} rebuilds each
+layer's exact adjacency, attaches annotations only after search, computes transition/path/depth/
+shortcut/lexical/system rows, joins them to measured contextualization, and refuses output unless
+layer 27 reproduces the historical curve.  The gated cross at
+\path{experiments/paper2_5_iterative_pra/run_layerwise_granularity_cross.py:109--242} changes only
+the a-priori 0/12/27 layer and 32/128/256-token parent assignment; it neither tunes a best layer nor
+fuses layer scores.
+
+\paragraph{Final measurement gate.}
+The module \path{src/pra_hf/}\texttt{final\_metrics.py:15--196} contains the measurement-only
+primitives: disjoint
+identity enforcement, deterministic facet-group ranking, label-free confidence features, a
+validation-fitted ridge selector, path-survival decomposition, Pareto marking, and exact keyed
+joins.  None accepts an evidence target or changes candidate retrieval.  The runner at
+\path{experiments/paper2_5_iterative_pra/run_final_metrics.py:152--448} reconstructs all-offset
+facets from the frozen natural-graph cache, fits scale selection on the 42 validation identities,
+and evaluates only disjoint held-out identities.  Lines 449--720 aggregate root/intermediate/
+terminal visibility and compute matched-example layer correlations with 1,000 identity
+bootstraps.  Lines 721--988 separate missing-edge loss from post-edge search loss, assemble the
+MuSiQue shortcut and sparse quality--payload frontiers, and join the four canonical datasets.
+Lines 1013--1129 write the plots and refuse completion until every required row family exists.
+The runner performs no training, generation, graph search, or native-K/V materialization; it is a
+strict synthesis over already frozen rows and regenerable feature caches.
+
+\paragraph{Reproduction.}
+The experiment directory is \path{experiments/paper2_5_iterative_pra/}.  Its Gate-1 runner
+isolates projection correction.  Gate 2 captures one 256-token contextual parent pass and derives
+32-token local means.  Gate 3 uses \texttt{precompute\_native\_qk\_features.py} followed by
+\texttt{run\_gate3\_native\_qk\_closure.py}.  The 620,984,671-byte feature cache is regenerable
+and excluded from Git; its public manifest pins Qwen revision
+\texttt{c1899de289a04d12100db37\allowbreak 0d81485cdf75e47ca}.  Its SHA-256 is
+\begin{center}
+\small\texttt{edc589cc7886ba843ee598e89e6dab97e500084df8b7ee8dc8ab44ea75993ae8}.
+\end{center}
+The dynamic gate derives 51 Q1 captures from 17 transitions and three orderings.  Its ignored
+96,400,286-byte cache has SHA-256
+\begin{center}
+\small\texttt{130a2bd5f1d43e4bf3bfbe48145d368144dae0a98f666559ccb1d131ea7dac5e}.
+\end{center}
+Exact commands are listed in the experiment \texttt{README.md}; raw rows, aggregate tables,
+plots, and graph JSONL are under the corresponding shared result tree.
+
+\section{Validation Gates}
+
+The test suite checks $D=1$ equivalence to Top-$B$, deterministic batches, exact synthetic
+two-hop recovery, deduplication and cycles, depth/beam/unique budgets, all path and frontier modes,
+zero limits, layer locality, projection-contract enforcement, exact local-bridge recovery, parent
+deduplication, GQA head mapping, max and Top-4 native reductions, semantic narrowing, threshold
+caps, exact pre-RoPE Q/K capture, CPU/CUDA identity parity, fixed-identity payload parity, and the
+no-materialization-before-closure boundary.  Gate-3 generation validates every saved graph against
+the backward-compatible schema-v2 extension and records zero K/V materializations during closure.
+The feature manifest verifies the frozen model revision, layer 27, 16/8 grouped heads, native head
+width 128, and no memory-use adapter.  The focused iterative/oracle/native/adaptive suite passes
+69 tests; the query-facet/head module adds nine focused unit tests for contextual windows,
+one-pass derivation, exact baseline scoring, GQA mapping, provenance, deduplication, budget
+conservation, and oracle metrics.
+All 160 saved Gate-3 graphs and 5,600 result rows satisfy
+schema, parent-budget, and no-closure-materialization checks.  The additive diagnostic preserves
+4,000 convergence rows and 340 raw edge-score rows, then adds 2,488 root-hit classifications,
+17,710 score-family observations, 2,619 fixed-union calibration candidates, and 780 held-out
+control rows.  Tests cover canonical-oracle identity, annotation groups, displacement,
+protected-root budgeting, score summaries, ranking ties, validation leakage, deterministic policy
+fitting, and cost accounting.  The monotonic gate adds 19,200 root-policy rows, 14,080 transition
+rows, and 1,040 held-out frozen-policy rows; every row conserves its parent budget and retains all
+locked identities.  The entry gate adds 1,792 root rows and 450 four-method confirmation rows.
+Its manifest records 32 one-pass contextual query captures, zero independent window passes, and
+zero maximum final-token baseline error; all three synthetic controls pass.  The additive facet
+gate adds 6,400 family rows, 960 clean-support rows, and 3,840 stale-history rows from 128
+one-pass controlled captures.  The conditional propagation gate adds 2,210 rows with complete
+candidate/facet provenance, zero diagnostic K/V materializations, and three passing synthetic
+controls; its end-to-end stop is recorded explicitly.  Thirteen query-facet and six grounded
+propagation unit tests cover support clipping, phrase/multiscale/token facets, local-only sets,
+rank-scale invariance, residual facets, thresholds, provenance, and budgets.  The dynamic gate
+adds 4,760 rows and 112 aggregate cells across 17 transitions, five projections,
+seven query states, and eight candidate widths.  Its checks reproduce the prior static
+R@1/MRR and native K=4 candidate recall exactly, enforce zero diagnostic K/V materialization,
+and verify the predeclared Gate-1/Gate-2 stop.  Six dynamic-query unit tests cover deterministic
+Q/A layouts, exact region provenance, restricted support, tokenizer-state restoration, and the
+absence of an oracle-target API channel.
+
+The terminal-query iteration adds 53,760 oracle-surface rows, 3,360 goal-calibration rows, 640
+hop rows, 320 selected-condition rows, and 1,705 selected-node provenance rows.  Seventeen focused
+tests cover native adjacency reduction, all three deterministic search strategies, any- and
+different-facet goals, a low-query-similarity bridge, minimum depth, first-path stopping,
+deduplication, cycles, finite/shared and unbounded budgets, cost accounting, and the absence of a
+task-label API.  All five synthetic graph controls pass.  The complete repository suite now
+passes 487 tests with the same one upstream deprecation warning.
+
+The granularity gate adds 80 evidence-topology rows, 4,800 oracle-free discovery rows, 3,230
+five-seed facet--parent rows, 80 system profiles, and 15 passing chain-contraction controls.
+Focused tests cover deterministic exact boundaries, invalid overlap geometry, evidence remapping,
+group collisions, exact root containment, $H=0/1/2$ behavior, post-hoc oracle recovery, minimum
+recovery depth, facet statistics and path complementarity, and contraction.  The runner audits all
+canonical 256-token boundaries and asserts exact held-out $K=4,B=6,H=4$ oracle and later-evidence
+recall of 1.000 before emitting artifacts.  The ignored token-hidden cache manifest pins all 16
+identities, 25,416 tokens, the Qwen revision, layer 27, absolute positions, and its content hash.
+
+The natural-graph gate adds nine focused adapter/metric tests for explicit MuSiQue dependencies,
+2Wiki entity-ID paths, unordered comparisons, exact character offsets, root representation,
+preserved/contracted/unmappable transitions, deterministic identity splitting, and native rank/
+shortest-path behavior.  The full-dev audit records both licenses, archive hashes, split schemas,
+and unresolved 2Wiki mappings before model execution.  The feature manifest pins 84 identities,
+158,170 source tokens, the frozen Qwen revision, layer 27, and zero training or generation.
+
+The layerwise extension adds seven focused tests for exact layer indexing, residual capture,
+normalized branch metrics, position-preserving context restriction, deterministic intervention,
+full-context reproduction, GQA attention statistics, deterministic Top-$K$ graph construction,
+shortest distance, topology, tied-rank correlations, and example-level bootstrap behavior.  Its
+tracked outputs contain 10,752 context rows, 992 transition rows, 672 graph rows, 3,360 hop rows,
+and 672 systems rows.  The gated cross adds 756 example conditions and 1,116 transition rows.
+Both runners assert exact layer-27/128-token R@6 reproduction before writing their result JSON.
+
+The final measurement gate adds 1,160 target-level facet rows, 188 selector summaries, five role
+rows, six hop rows, eight layer summaries, 25 matched-correlation rows, nine layer--chunk cells,
+30 edge-decomposition rows, 140 quality--payload frontier rows, 15 memory-audit rows, and four
+cross-dataset rows.  Eight focused tests cover deterministic facet ranking, label-free confidence
+features, validation/held-out identity separation, selector API leakage, fitted selection, path
+decomposition, Pareto membership, and exact joins.  The runner asserts disjoint selector splits,
+uses 1,000 identity bootstraps, preserves blank values for unmeasured cross-dataset cells, and
+records zero materialized native K/V tokens rather than relabeling counterfactual source payload
+as serving memory.
+
+The cross-dataset extension is implemented in
+\path{experiments/paper2_5_iterative_pra/run_natural_graph_depth.py:93--1568}.
+Lines 93--126 preserve 256-token contextual capture while assigning exact 16-token native Q/K
+halves to their own search parents.  Lines 336--609 build the depth--granularity, transition,
+strict/conditional path, independent-edge product, system-cost, topology, and sparse-frontier
+tables.  Lines 677--857 remap every annotation and construct exact dense adjacency without query
+or oracle labels.  Lines 1450--1539 assert the canonical 2Wiki curve before writing artifacts.
+The final run contains 420 mapping rows, 620 transition rows, 31,500 oracle-root searches, 87,000
+node/hop rows, and 420 system profiles across five granularities.
+
+Reusable post-hoc calculations live in
+\path{src/pra_hf/cross_dataset_diagnostics.py:1--253}.  Lines 49--92 count evidence/source tokens
+without overlap; 95--163 enumerate annotation paths and stride-one multiscale facets; 170--232
+compute target-group semantic and lexical ranks; and 236--256 enforce one deduplicated shared
+root budget.  None accepts an oracle label in its runtime candidate-selection signature.
+The all-offset runner is
+\path{experiments/paper2_5_iterative_pra/run_natural_multiscale_query_audit.py:1--670}.
+Lines 98--124 assign ordered root/intermediate/terminal roles, 142--318 aggregate held-out ceilings
+and validation-only gate decisions, and 342--644 construct scores, post-hoc ranks, distractor
+controls, and the bounded executable union.  It emits 1,160 target-rank, 4,615 false-parent,
+2,395 scale-score, and 1,680 practical-router rows.  The 1.86-MB score cache is ignored but pinned
+by SHA-256 in the tracked result JSON.
+Seven additional diagnostics tests cover union-aware evidence density, deterministic annotation
+paths, independent-edge products, all valid stride-one offsets, decoded facet provenance,
+semantic/lexical group ranks, terminal roles, deduplicated shared budgets, and the absence of an
+oracle argument from executable multiscale selection.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+
+\end{document}

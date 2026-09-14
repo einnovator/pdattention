@@ -1,0 +1,1470 @@
+\documentclass[11pt]{article}
+\usepackage[margin=.9in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx,graphicx,float,microtype,enumitem,xcolor,listings,longtable,array}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{3em}
+\graphicspath{{../shared/results/paper7_records/full_pra_calibrated/figures/}{../shared/results/paper7_records/native_index_size_gate/}{../shared/results/paper7_records/progressive_context/figures/}{../shared/results/paper7_records/latent_triggers/figures/}{../shared/results/paper7_records/inception/figures/}{../shared/results/paper7_records/headroom_cross_eval/figures/}{../shared/results/paper7_records/large_record_hybrid/figures/}}
+\input{../shared/results/paper7_records/full_pra_calibrated/generated_full_pra_calibrated_results.tex}
+\input{../shared/results/paper7_records/native_index_size_gate/generated_native_index_size_gate_results.tex}
+\input{../shared/results/paper7_records/progressive_context/generated_progressive_results.tex}
+\input{../shared/results/paper7_records/latent_triggers/generated_next_iteration_results.tex}
+\input{../shared/results/paper7_records/inception/generated_inception_results.tex}
+\input{../shared/results/paper7_records/headroom_cross_eval/generated_headroom_cross_eval_results.tex}
+\input{../shared/results/paper7_records/large_record_hybrid/generated_large_record_hybrid_results.tex}
+
+\definecolor{codegray}{RGB}{246,247,249}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  framerule=.3pt,
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false
+}
+
+\title{Progressive Context Control over Typed PRA Records}
+\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Large agent observations are expensive to keep active, while aggressive
+compression can hide evidence needed later. We separate four operations:
+compress the initial typed view, discover retained backing through cheap or
+native addresses, materialize exact selected evidence, and acquire externally
+only when backing is insufficient. On 18 held-out typed-result identities,
+production \texttt{PRA\_NATIVE} matches \texttt{FULL\_BACKING} at
+\PaperSevenCalNativeSuccessPct\% task success while reducing active K/V by
+\PaperSevenCalActiveKVReductionPct\%. Released Headroom 0.37.0 independently
+reaches the same \PaperSevenHeadroomTunedSuccess{} endpoint through reversible
+visible compression; its visible tokens and PRA active K/V are distinct cost
+categories.
+
+Type-aware compaction reduces the external diagnostic's mean initial view from
+\PaperSevenCurrentVisible{} to \PaperSevenAwareVisible{} tokens
+(\PaperSevenCompressionReduction{}). Compact-only exact evidence is
+\PaperSevenAwareCompactOnly{}, while automatic typed/BM25/embedding recovery
+raises it to \PaperSevenAwareRecovered{}. Over 24 extractive-eligible rows,
+the cheap hybrid reaches \PaperSevenHybridRFour{} Recall@4; this is a small
+retrieval-only result, not a generated-answer or general semantic-retrieval
+claim. Native indexing remains a separate ingestion cost. In a five-seed CUDA
+mechanism profile, gated compact-first handling reaches usable context at
+\PaperSevenGatedLargestTTUC{} ms for a 256K payload versus
+\PaperSevenEagerLargestTTUC{} ms with eager model-like indexing; these are
+instrumented-Torch lifecycle measurements, not Qwen latency. Finally, C5
+evidence is absent from retained backing and requires external acquisition;
+the tested Headroom controller invokes none. The resulting product policy uses
+full native backing for bounded records, cheap hybrid plus lazy selected native
+encoding for large records, and search/cursors for huge or stateful records.
+\end{abstract}
+
+\section{Introduction}
+
+A large result creates a causal chain of systems choices. Exposing all retained
+backing state preserves evidence but makes active context proportional to source size. A
+compact visible view lowers that cost but can omit both future evidence and the
+clue that retrieval would help. Exact backing storage restores reversibility.
+Backing PRA addresses add automatic model-native addressability. Building
+those addresses over every large payload, however, introduces size-dependent
+ingestion and resident-state costs. Size gating therefore chooses the
+addressability regime rather than treating all observations as one token
+budget.
+
+We study two frontiers. The \emph{active-context frontier} asks how much of
+retained backing state must participate in the current model step. The
+\emph{ingestion frontier} asks how much work should be spent constructing
+model-derived backing addresses before inference can continue. The first is
+measured by quality and active K/V; the second by index construction, resident
+state, and time to usable context (TTUC). A reduction on one frontier does not
+imply a reduction on the other.
+
+The product thesis is a four-stage context lifecycle:
+\[
+\begin{aligned}
+\text{compress initial view} &\rightarrow \text{discover retained backing}\\
+&\rightarrow \text{materialize exact evidence}\\
+&\rightarrow \text{acquire externally if absent}.
+\end{aligned}
+\]
+Discovery can be automatic: cheap hybrid addresses may recover a hidden region
+without first requiring the model to decide that it should call a retrieval
+tool. Explicit search, cursor, and tool decisions remain necessary for
+stateful interfaces, ambiguous insufficiency, and information absent from
+retained backing.
+
+This paper makes six contributions:
+\begin{enumerate}[leftmargin=*]
+  \item a typed record abstraction separating exact backing state, compact
+  visible views, retrieval-only addresses, and materialized views;
+  \item replaceable type-aware compactors with one authoritative visible-token
+  budget and explicit metadata/payload accounting;
+  \item independent typed, BM25, compact-embedding, native-Q/K, and detail-K/V
+  lifecycles with bounded RRF discovery and exact selectors;
+  \item configurable token and byte gates, per-type overrides, explicit
+  lifecycle states, and a no-silent-truncation contract for native indexing;
+  \item a production full-backing PRA path plus authorized lazy native encoding
+  of a bounded selected region;
+  \item matched active-context, ingestion, released-Headroom, compression, and
+  cheap-hybrid diagnostics with unlike cost categories reported separately.
+\end{enumerate}
+
+\section{Typed Record and Backing-State Model}
+
+A result record is
+\begin{equation}
+R=(id,\tau,P,B,V,A,C),
+\end{equation}
+where $id$ is a stable scoped identity, $\tau$ is a record type, $P$ records
+provenance and policy, $B$ is exact backing state, $V$ is the current visible
+view, $A$ is a set of retrieval-only addresses, and $C$ describes bounded
+capabilities. The content hash covers $B$; tenant and session scope govern every
+read. Materialized results preserve $id$, provenance, and source fingerprint.
+
+The runtime supports database, log, terminal, graph, RAG, file, API,
+tool-response, and generic text records. Type-specific compactors retain
+representative rows, anomalies, schema, heads/tails, or structural summaries.
+The full payload is stored independently. A compact view can therefore be
+lossy without making the record irreversible.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Family & Compact view & Cheap interface & Preferred large-result path\\
+\midrule
+DB/tabular & schema, counts, ranges, rare-category counts, rows & typed/BM25/embedding, cursor & filter/search, selected rows\\
+Log/terminal & source/command, status, errors, head/tail, change points & typed/BM25/embedding, line index & cursor/range, selected lines\\
+Graph/RAG/search & IDs, relations, score range, top/diverse items & typed/BM25/embedding & selected nodes, edges, or chunks\\
+Tool/API/JSON & status, schema, stable IDs, errors, representatives & typed/BM25/embedding & selected fields/items or bounded full\\
+Prose/file & structure, relevant/diverse excerpts, optional summary & BM25/embedding & selected excerpts\\
+\bottomrule
+\end{tabularx}
+\caption{Typed policy is a dispatch point, not a universal threshold claim.}
+\label{tab:record-families}
+\end{table}
+
+\subsection{Visible views}
+
+Each record has named metadata, compact, selected, and full views. Metadata
+contains identity, type, source size, content hash, provenance, and lifecycle
+capabilities. The compact view is the only payload admitted initially. A
+selected view is produced by a validated field, row, line, or item selector.
+The full view resolves to exact stored state and rejects selectors so that a
+partial read cannot be mislabeled as full.
+
+The compactors are deterministic in this study. Database records retain
+columns, counts, and representative rows. Logs and terminal output preserve
+bounded head/tail or anomaly-bearing lines. Graph results preserve schema and a
+bounded node/edge sample. Text-like records retain bounded excerpts. These
+choices are replaceable: the architecture requires a stable view contract, not
+a particular summarizer.
+
+Visible compression and address construction consume the same source but
+produce different objects:
+\begin{align}
+V &= f_{\mathrm{compact}}(B;\tau,p_V),\\
+A_{\mathrm{cheap}} &= f_{\mathrm{index}}(B;\tau,p_A).
+\end{align}
+The compact payload is serialized into model context. Cheap addresses remain
+in the runtime control plane. Their token volume is therefore not active
+prompt volume, although their memory and construction time are still counted.
+
+\subsection{Backing identity and transport}
+
+The semantic record is not itself a network packet. A long-running agent keeps
+the current conversational trajectory as ordinary system, user, assistant,
+and provider-required tool messages, while large observations, documents,
+skills, tool catalogs, and older results remain detached
+\texttt{ContextRecord} objects. A provider-neutral turn therefore has two
+parts:
+\[
+\text{model input intent}=\text{conversational spine}+\text{selected typed records}.
+\]
+Transport projects each selected record to a tensor-free logical descriptor
+containing its stable ID, type, URI, version, source fingerprint, named views,
+provenance, authorization scope, and tenant/session binding. Physical pages,
+native K/V, and storage handles remain engine-side. This distinction prevents
+an agent from erasing record identity merely because generation is remote.
+
+An OpenAI-compatible endpoint can negotiate one of three realizations. TEXT
+inserts the canonical delimited record rendering into ordinary messages.
+PRA-FULL sends the message spine plus complete logical resource descriptors.
+PRA-DELTA sends append-only messages and ADD, UPDATE, REMOVE, or body-free
+UNCHANGED resource operations. In particular, a gateway in text-fallback mode
+still accepts typed records from the agent and owns the downgrade to its
+ordinary downstream engine. This preserves record identity, view choice, and
+authorization until compatibility actually requires text.
+
+The local backing store writes a content-addressed descriptor and verifies the
+payload hash on read. A record scope combines tenant and session identity.
+TTL, persistence, and total store bytes are policy-controlled. The transport
+policy separately chooses up-front or on-demand placement according to
+topology, payload size, and expected reuse. A remote on-demand record incurs a
+round trip on its first materialization; repeated identical reads are accounted
+as cache hits.
+
+Storage placement does not change authorization. Search, full retrieval,
+selected materialization, cursor opening, and lazy native encoding all resolve
+the same record identity and caller scope. This property is important above the
+native-index gate: a cheap fallback is not a less trusted path.
+
+\subsection{Lifecycle accounting}
+
+We report four costs:
+\begin{align}
+T_{\mathrm{agent}} &: B \rightarrow V,\\
+T_{\mathrm{index}} &: B \rightarrow A_{\mathrm{native}}\ \text{or}\ A_{\mathrm{cheap}},\\
+K_{\mathrm{active}} &: \text{visible prompt and materialized native K/V},\\
+T_{\mathrm{recover}} &: \text{search, cursor, tool, transfer, and controller work}.
+\end{align}
+Resident backing/index bytes are distinct from active K/V. Full-backing PRA can
+lower active K/V while increasing ingestion and resident state.
+
+\section{Visible Compression and Retrieval-Only Addresses}
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{.94\linewidth}\small
+\textbf{Tool result / typed observation}\\
+$\downarrow$ exact scoped backing + aggressive type-aware compact view\\[2pt]
+\textbf{Bounded:} typed/BM25/embedding/native-QK + affordable full detail K/V\\
+\textbf{Large:} typed/BM25/embedding + skipped full native + lazy selected native\\
+\textbf{Huge/stateful:} tiny metadata + local/remote search or cursor + bounded range\\[2pt]
+$\downarrow$ automatic fused discovery or explicit bounded operation\\
+\textbf{exact selected region} $\rightarrow$
+\textbf{typed-visible or native materialization} $\rightarrow$ continuation\\
+\textbf{backing insufficient} $\rightarrow$ external tool acquisition
+\end{minipage}}
+\caption{Three product regimes share one four-stage lifecycle. The native size
+gate controls full model-derived indexing, not whether useful search exists.}
+\label{fig:architecture}
+\end{figure}
+
+A compact summary is evidence the model can read. A PRA gist is an address used
+to choose hidden backing content. If the summary omits a future trigger,
+summary-only routing may not recover it. The full-backing path instead tokenizes
+the original, creates model hidden states and gists, retains native K/V where
+supported, and exposes only selected original spans at inference time.
+
+Cheap addresses remain available when native indexing is disabled. The runtime
+builds typed postings, indexed BM25, and a compact deterministic embedding
+view over recoverable record units. Reciprocal-rank fusion combines bounded
+candidate lists without treating channel scores as calibrated probabilities.
+Every hit maps to an exact field, row, collection range, or line selector;
+authorization and provenance remain attached to the original backing identity.
+The public policy exposes \texttt{AUTO}, \texttt{HYBRID}, lexical-only,
+embedding-only, native-only, and explicit-channel modes, and traces resolved
+channels, fusion, candidates scored, latency, and index bytes.
+
+These representations have independent lifecycle states. An oversized healthy
+record can simultaneously have built typed, BM25, embedding, and summary views,
+a \texttt{SKIPPED\_SIZE\_LIMIT} full-body native-Q/K index, and lazy detail
+K/V. The gate therefore means ``full model-derived index not admitted,'' not
+``unindexed.'' After cheap discovery, the runtime materializes the selected
+exact region and may encode native Q/K and detail K/V only for that region.
+This implementation reuses the bounded RRF design studied more broadly in
+Papers 2.6 and 3.1; Paper 7 evaluates its role in record lifecycle control.
+
+\subsection{Type-aware visible budgets}
+
+The compressor resolves one authoritative bound from
+\texttt{compact\_target\_tokens}, \texttt{compact\_max\_tokens}, and
+\texttt{compact\_ratio\_target}. Tool/API projections prioritize status,
+operation, schema, counts, and bounded representatives. Tabular views add row
+counts, null counts, numeric ranges, rare categories, and representative rows.
+Logs preserve errors and boundary lines; terminal records retain command,
+status, standard-error, and bounded standard-output head/tail; graph and text
+records preserve IDs, relations, structural counts, top-scored/diverse items,
+and relevant/diverse excerpts. A summary is an optional view, not the sole
+address. Original, compact,
+metadata, and selected-region tokens are accounted separately. The compact
+view is intentionally allowed to omit recoverable detail: cheap indexes, exact
+backing, and lazy selected-region encoding provide the recovery path. These
+deterministic compactors are one implementation; the typed policy and budget
+contract, rather than any particular selection heuristic, is the stable
+product interface.
+
+\section{Production Full-Backing PRA}
+
+For an admitted record, \texttt{PRA\_NATIVE} means that full-backing model
+encoding actually completed. The registry passes the exact serialized backing
+payload to the normal PRA reference path. That path runs the host tokenizer,
+model-safe encoding blocks, native K/V construction, chunking, and gist
+indexing. The backing reference is retrieval-only and does not enter the
+prompt-visible document set.
+
+At query time, PRA ranks backing chunks. Selected logical token intervals map
+to the same record identity, are decoded or retained as native K/V, and re-enter
+the recursive context loop as a detail view. Frozen selections can be replayed
+across controller seeds without rerunning routing, separating evidence
+reachability from controller variability.
+
+\subsection{Registration pipeline}
+
+Let the host tokenizer map backing text to $x_{1:n}$. Model-safe encoding blocks
+produce hidden states without exceeding the model context limit. At the chosen
+routing layer, the implementation retains native keys and values and partitions
+them into overlapping routing chunks. A gist function $g$ maps each chunk to a
+small routing address. For query state $q$, the router ranks gists and returns
+logical intervals:
+\begin{equation}
+\mathcal{S}(q)=\operatorname{TopK}_{j}
+\left\langle q,g(K_{a_j:b_j})\right\rangle .
+\end{equation}
+Materialization uses $(a_j,b_j)$ to select the corresponding native K/V. The
+logical interval and reference URI remain attached to each selection, allowing
+the runtime to recover the typed source record. The registry records input
+tokens, chunks, ingestion time, routing-index bytes, resident detail-K/V bytes,
+and exact backing bytes.
+
+We use \emph{native indexing} only for the transformation from backing state to
+model-derived retrieval addresses and retained native state,
+$B\rightarrow A_{\mathrm{native}}$. We use \emph{materialization} for the later
+activation of a selected backing interval as model-visible or native evidence.
+Indexing can therefore be expensive even when the selected active K/V is small;
+materialization can be bounded even when the backing index is resident.
+
+The compact record is registered separately as an implicit visible PRA
+document. This permits normal routing over current context while the backing
+reference remains retrieval-only. A detail, search result, or cursor page is
+registered as a child document after recovery, so the next model step can route
+over newly visible evidence without losing source identity.
+
+\subsection{What native economy means}
+
+PRA does not make backing storage free. In the current full-backing
+implementation, native K/V for the indexed source may remain resident even
+though only selected intervals become active during generation. We therefore
+distinguish:
+\begin{itemize}[leftmargin=*]
+  \item \emph{routing index bytes}, which hold gists and lookup metadata;
+  \item \emph{resident detail-K/V bytes}, which support later native
+  materialization;
+  \item \emph{requested/materialized K/V tokens}, which participate in the
+  current model step;
+  \item \emph{typed visible tokens}, which include serialized headers and
+  recovered views.
+\end{itemize}
+The \PaperSevenCalActiveKVReductionPct\% primary reduction concerns active K/V tokens, not
+resident backing memory or ingestion latency. Size gating addresses the latter
+costs rather than revising the quality result.
+
+\subsection{Frozen experimental configuration}
+
+The quality study uses Qwen3-0.6B at revision
+\texttt{c1899de289a04d12100db370d81485cdf75e47ca}. It uses routing layer 27,
+32-token chunks with 8-token overlap, a 96-token direct context, and a
+256-token materialization ceiling. Twelve validation identities select routing
+and controller policy. Eighteen disjoint identities, balanced over six
+context-control classes, form the held-out set. Controller conditions use five
+decoding seeds $(11,23,37,53,71)$.
+
+\section{Size-Gated Native Indexing}
+
+The policy adds \texttt{max\_native\_index\_tokens} and
+\texttt{max\_native\_index\_bytes}. A missing bound disables that dimension;
+exceeding either configured bound disables full-body native indexing. A
+per-record \texttt{TypeContextPolicy} may replace inherited limits. Byte bounds
+are evaluated from the backing descriptor before loading or tokenizing the
+full payload. Token bounds more directly approximate model work but require
+exact host-tokenizer counting unless a trusted descriptor already supplies it.
+Thus a byte gate can often reject an oversized object before full loading,
+whereas a token gate may itself incur tokenization work.
+
+\begin{lstlisting}[language=Python]
+if deferred:
+    state = DEFERRED
+elif backing_bytes > byte_limit:
+    state = SKIPPED_SIZE_LIMIT
+elif host_token_count(backing) > token_limit:
+    state = SKIPPED_SIZE_LIMIT
+else:
+    build_full_backing_native_index()
+    state = BUILT
+\end{lstlisting}
+
+A skipped record is never truncated and labeled \texttt{PRA\_NATIVE}. The
+convenience API raises \texttt{NativeIndexSizeLimitExceeded}; the policy API
+returns an auditable decision. Diagnostics include requested/built flags, skip
+reason, measured tokens and bytes when available, latency, cheap index modes,
+lazy region count, and lazy native tokens.
+
+The compact descriptor tells the controller whether the visible view is
+partial and whether more data, search, cursors, full retrieval, or lazy native
+encoding remain available. The operating regimes are:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Bounded:} type-aware compact view plus typed, BM25, embedding,
+  and native-Q/K addresses; full detail K/V is built where affordable.
+  \item \textbf{Large:} type-aware compact view plus typed, BM25, and embedding
+  addresses; full-body native state is skipped, but an exact selected region
+  may be encoded lazily.
+  \item \textbf{Huge, streaming, or stateful:} tiny compact metadata plus a
+  local/remote search or cursor interface; only a bounded returned region may
+  become visible or native.
+\end{enumerate}
+Thresholds are policy values, not scientific constants.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Record state & Typed & BM25 & Embedding & Native Q/K & Detail K/V\\
+\midrule
+Bounded/admitted & built & built & built & built & built/configured\\
+Large/size-gated & built & built & built & skipped & deferred\\
+Large/deferred & built & built & built & deferred & deferred\\
+Selected region & built & built & built & region only & region only/optional\\
+\bottomrule
+\end{tabular}
+\caption{Independent address and detail lifecycles. A healthy oversized record
+is searchable even when full-body native Q/K is
+\texttt{SKIPPED\_SIZE\_LIMIT}.}
+\label{tab:independent-lifecycle}
+\end{table}
+
+\subsection{Lazy selected-region encoding}
+
+The lazy API authorizes the exact record scope, applies a deterministic
+field/row/line/item selector, and sends only the selected payload through the
+ordinary native reference encoder:
+\[
+B \xrightarrow{\mathrm{cheap\ search}} B_{[a:b]}
+\xrightarrow{\mathrm{native\ encode}} (K_{[a:b]},V_{[a:b]},G_{[a:b]}).
+\]
+The audit event retains record identity, selector, source fingerprint, native
+token count, and latency. The current local backing store verifies and loads
+the record before selecting; server-side range reads and asynchronous indexing
+remain productization work.
+
+\subsection{Oversized-record request path}
+
+When a gate closes, the compact record is refreshed with
+\texttt{partial\_context=true}, the exact skip reason, and the available
+recovery interfaces. Cheap address views continue to participate in automatic
+record discovery. Once the record identity is known, scoped within-record
+search returns bounded units and their stable source positions. Those positions
+can be converted to an explicit selector for native region encoding or ordinary
+typed materialization.
+
+This is \emph{retained-backing recovery}: the runtime can rank hidden backing
+units and expose an exact selected region without first waiting for the model
+to emit a retrieval-tool call. It complements, rather than replaces,
+model-driven search/cursor actions when a stateful source must be queried and
+ordinary tool calls when required information is absent from backing.
+
+The separation avoids two undesirable fallbacks. First, the runtime does not
+silently slice the first $N$ source tokens and claim a complete native index.
+Second, it does not reduce the oversized result to a summary and wait for the
+model to guess that omitted evidence exists. Cheap automatic retrieval remains
+active even when full model-dependent indexing is unavailable.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+State & Native backing & Controller-visible meaning & Next bounded path\\
+\midrule
+\texttt{NOT\_REQUESTED} & absent & index not attempted & cheap selection or explicit request\\
+\texttt{BUILT} & complete & full backing is natively addressable & native route/materialize\\
+\texttt{SKIPPED\_SIZE\_LIMIT} & absent & compact view is partial & cheap search, cursor, or lazy region\\
+\texttt{DEFERRED} & absent & construction postponed & continue now or force later\\
+\bottomrule
+\end{tabularx}
+\caption{Native-index lifecycle states. Only \texttt{BUILT} may be called
+\texttt{PRA\_NATIVE}.}
+\label{tab:index-states}
+\end{table}
+
+\subsection{Policy precedence}
+
+Global limits establish a deployment default. Per-record-type policy inherits
+them unless it supplies a token or byte value, or explicitly requests a full
+override. This supports, for example, a generous bound for immutable text and a
+lower one for database or graph results that already expose strong cursors.
+The exact threshold boundary is inclusive: a record equal to both limits is
+eligible; only a strict excess closes the gate.
+
+\section{Progressive Materialization and Control}
+
+The bounded action set is:
+\[
+\{\textsc{Continue},\textsc{Full},\textsc{More},\textsc{Search},
+\textsc{CursorNext},\textsc{CursorQuery},\textsc{CallTool}\}.
+\]
+Full and selected reads require an exact known record ID. Search operates
+inside one authorized backing identity. Cursors expose pages, ranges, filters,
+aggregates, samples, and fields while retaining scope and TTL. A new tool call
+is reserved for information absent from retained backing state. Every returned
+detail is a typed child view of the same source and re-enters PRA.
+
+The controller first judges whether current context is sufficient, then chooses
+an operation. The host validates record IDs, selectors, cursor IDs, and tool
+names. The model cannot invent an unregistered identity. Optional proactive
+materialization uses the same authorized path and is disabled unless policy
+allows it.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Action & Preconditions & Effect\\
+\midrule
+\textsc{Continue} & current evidence sufficient & no backing expansion\\
+\textsc{Full} & known bounded record, full allowed & expose exact complete payload\\
+\textsc{More} & known record and valid selector & expose fields/rows/lines/items\\
+\textsc{Search} & known searchable record and query & expose bounded ranked units\\
+\textsc{CursorNext/Query} & authorized live cursor & expose page, filter, range, or aggregate\\
+\textsc{CallTool} & allowed tool identity & acquire information absent from backing\\
+\bottomrule
+\end{tabularx}
+\caption{The action palette changes context state; it does not ask the model to
+manufacture payloads or identities.}
+\label{tab:actions}
+\end{table}
+
+\subsection{Recursive re-entry}
+
+At step $t$, PRA first selects from active typed views:
+\begin{equation}
+S_t=\operatorname{Route}(q_t,\{V_i^{(t)}\}).
+\end{equation}
+The controller then emits one bounded decision
+$d_t=\pi(q_t,S_t,C_t)$. The runtime validates and executes $d_t$, producing
+either no new view, a typed child $V_{i,k}^{(t+1)}$, or a newly acquired tool
+record. The loop terminates on \textsc{Continue}, \textsc{CallTool}, a failed
+validation, or a configured step limit.
+
+This ordering separates discovery from escalation. PRA asks which current or
+backing region is relevant; the controller asks whether the resulting evidence
+is sufficient and which interface should be used next. The oracle study varies
+the second decision without changing the frozen native selection.
+
+\subsection{Cursor semantics}
+
+Cursors are persistent scoped handles, not prompt text pretending to be a
+database. The runtime supports next/previous pages, bounded ranges, equality
+filters, ordering, search, numerical aggregates, samples, field projection,
+refinement, and close. Page size and TTL are bounded by policy. Cursor payloads
+are accounted as recovery materialization and re-enter PRA as child views. A
+cursor cannot be reused under another tenant/session scope.
+
+\section{Evaluation}
+
+\subsection{Questions, cases, and metrics}
+
+The evaluation asks four questions. Does a compact view preserve the evidence?
+Can full-backing PRA address omitted evidence before controller action? Can a
+frozen controller choose the right escalation without erasing the K/V economy?
+Does a size gate avoid inappropriate full-body encoding while preserving a
+bounded recovery path?
+
+The 30 quality cases cross five domains with six required actions. Two domains
+(12 identities) are reserved for validation; three domains (18 identities) are
+held out. Natural semantic-omission cases describe the relevant phenomenon
+without placing the exact answer in the compact view. Opaque cases use a lookup
+key that must match backing content. Absent cases deliberately omit the answer
+from backing state.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXl@{}}
+\toprule
+Class & Required state transition & Evidence relation & Expected action\\
+\midrule
+C0 & none & compact-explicit & \textsc{Continue}\\
+C1 & whole bounded result & hidden in backing & \textsc{Full}\\
+C2 & selected rows/fields & hidden in a subset & \textsc{More}\\
+C3 & stateful page/query & hidden in collection & \textsc{CursorQuery}\\
+C4 & in-record match & hidden but searchable & \textsc{Search}\\
+C5 & new observation & absent from backing & \textsc{CallTool}\\
+\bottomrule
+\end{tabularx}
+\caption{Balanced quality benchmark classes. Each class has two validation and
+three held-out identities.}
+\label{tab:classes}
+\end{table}
+
+We report compact and backing evidence recall at $K\in\{1,2,4,8\}$,
+insufficiency recognition, operation accuracy, evidence visibility, final task
+success, active native K/V, typed visible tokens, controller tokens, routing
+latency, index bytes, and resident detail-K/V. Validation selects semantic
+versus hybrid routing and the controller model, description level, and flat or
+hierarchical protocol. No held-out result changes those choices.
+
+\subsection{Routing control before answer generation}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Backing address path & Held-out Recall@4 & Role\\
+\midrule
+Native semantic & \PaperSevenCalSemanticRFour{} & model-native semantic control\\
+Native hybrid & \PaperSevenCalHybridRFour{} & frozen production path\\
+Lexical fallback & \PaperSevenCalFallbackRFour{} & cheap deterministic control\\
+Compact-only & \PaperSevenCalCompactRFour{} & visible-summary lower bound\\
+\bottomrule
+\end{tabular}
+\caption{Evidence reachability is measured before controller choice. The
+hybrid policy is selected on validation and then frozen.}
+\label{tab:routing-control}
+\end{table}
+
+\subsection{Primary quality and active-K/V result}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{visible_backing_addressability.pdf}
+\caption{Compact visibility and retrieval-only backing addressability are
+different. The held-out native result is frozen after validation.}
+\label{fig:addressability}
+\end{figure}
+
+Compact-only routing reaches \PaperSevenCalCompactRFour{} Recall@4, while the
+frozen full-backing hybrid policy reaches \PaperSevenCalNativeRFour{}.
+Table~\ref{tab:frontier} evaluates complete context policies. Success is
+deterministic once the exact answer marker is visible, isolating context
+control rather than free-form generation quality.
+
+\texttt{FULL\_BACKING} means that all currently retained backing state is
+exposed to the model; it does not acquire information absent from that state.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Policy & Task success & Active K/V & Typed visible & Controller\\
+\midrule
+\texttt{COMPACT\_ONLY} & \PaperSevenCalCompactSuccess{} & \PaperSevenCalCompactTokens{} & \PaperSevenCalCompactTypedTokens{} & \PaperSevenCalCompactControllerTokens{}\\
+\texttt{PRA\_NATIVE} & \PaperSevenCalNativeSuccess{} & \PaperSevenCalNativeTokens{} & \PaperSevenCalNativeTypedTokens{} & \PaperSevenCalNativeControllerTokens{}\\
+\texttt{PRA\_ADAPTIVE} & \PaperSevenCalAdaptiveSuccess{} & \PaperSevenCalAdaptiveTokens{} & \PaperSevenCalAdaptiveTypedTokens{} & \PaperSevenCalAdaptiveControllerTokens{}\\
+\texttt{PRA\_ADAPTIVE\_ORACLE} & \PaperSevenCalOracleSuccess{} & \PaperSevenCalOracleTokens{} & \PaperSevenCalOracleTypedTokens{} & \PaperSevenCalOracleControllerTokens{}\\
+\texttt{FULL\_BACKING} & \PaperSevenCalFullBackingSuccess{} & \PaperSevenCalFullBackingTokens{} & \PaperSevenCalFullBackingTypedTokens{} & \PaperSevenCalFullBackingControllerTokens{}\\
+\bottomrule
+\end{tabular}
+\caption{Held-out quality/cost means in tokens. \texttt{PRA\_NATIVE} matches
+\texttt{FULL\_BACKING} while lowering active K/V by
+\PaperSevenCalActiveKVReductionPct\%. Index construction and resident memory
+are reported separately.}
+\label{tab:frontier}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.69\linewidth]{paper7_active_context_frontier.pdf}
+\caption{Task success versus active K/V. Controller and routing costs are not
+folded into the horizontal axis.}
+\label{fig:frontier}
+\end{figure}
+
+\texttt{FULL\_BACKING} is an evidence-exposure condition, not an
+external-information oracle: it exposes all currently retained backing state
+but acquires nothing absent from that state. The calibrated controller does not
+improve over the simpler native policy and uses more visible/controller tokens.
+\texttt{PRA\_ADAPTIVE\_ORACLE} reaches 1.0 because it may correctly choose
+\textsc{CallTool} for absent-information cases. Its advantage over
+\texttt{FULL\_BACKING} is therefore external acquisition, not more complete
+exposure of the same backing object.
+
+\subsection{Released Headroom cross-evaluation}
+
+The original \texttt{CCR\_STYLE} row is an in-house mechanism reproduction; it
+is not Headroom. We therefore ran the released
+\path{headroom-ai==0.37.0} package at the pinned repository revision
+\begin{center}
+\small\texttt{32d7ca4577d599b8a5f811ada74cf31504302c9d}
+\end{center}
+in an isolated Python 3.10.11 environment. The official component path exercised
+\texttt{ContentRouter}, \texttt{SmartCrusher}, the process-local CCR store,
+released marker syntax, and retrieval-tool schema. The store was reset before
+every case. An OpenAI-compatible proxy smoke test with local
+\texttt{qwen3:0.6b} also completed automatic CCR continuation. The primary
+table uses the direct component path and a separately measured matched Qwen
+controller, not the smoke test.
+
+The default condition keeps the released \texttt{ContentRouterConfig}. The
+tuned condition selects between four- and eight-item candidates on the 12-case
+validation partition; both preserve the same validation evidence, so the
+four-item profile is selected for its lower visible-token count. It sets
+\texttt{smart\_crusher\_max\_items\_after\_crush=4} and disables lossless-first
+compaction. Held-out evaluation uses 18 identities and five controller seeds.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{}llrrrrll@{}}
+\toprule
+Condition & Endpoint & Success/evidence & Initial visible & Recovery visible & Native K/V & Calls & Index/backing state\\
+\midrule
+\texttt{HEADROOM\_OFFICIAL\_TUNED} & task, $n=18$ & 83.3\% & 123.8 & 0.0 & not used & 1 model; 0 retrieve & 0.5 KiB index + CCR backing\\
+\texttt{PRA\_TYPE\_AWARE\_COMPACT} & exact, $n=32$ & \PaperSevenAwareCompactOnly{} & \PaperSevenAwareVisible{} & 0.0 & not used & 0 & 25.2 KiB cheap + exact backing\\
+\texttt{PRA\_TYPE\_AWARE\_AUTO} & exact, $n=32$ & \PaperSevenAwareRecovered{} & \PaperSevenAwareVisible{} & \PaperSevenAwareSelected{} & not used & 1 local; 0 model & 25.2 KiB cheap + exact backing\\
+\texttt{PRA\_NATIVE} & task, $n=18$ & 83.3\% & 94.2 & 359.6 & 182.9 & 1 model + route & full native; bytes not measured\\
+\texttt{FULL\_BACKING} & task, $n=18$ & 83.3\% & 94.2 & 304.6 & 304.6 & 2 passes + full & exact backing; bytes not measured\\
+\bottomrule
+\end{tabular}}
+\caption{Lifecycle cost table. ``Task'' rows use 18 Paper 7 identities and
+five controller seeds; ``exact'' rows use the 32-row external diagnostic.
+Initial visible, recovered visible, active native K/V, and resident index state
+are separate quantities. ``Not measured'' is not zero.}
+\label{tab:headroom-paper7}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{paper7_official_endpoint_axes.pdf}
+\caption{Released Headroom, PRA-native, and full backing share the 83.3\%
+Paper 7 endpoint. Headroom-visible tokens and PRA active native K/V are shown
+on different axes because they are not interchangeable quantities.}
+\label{fig:official-endpoint-axes}
+\end{figure}
+
+Released tuned Headroom is the primary competitive baseline. It,
+\texttt{PRA\_NATIVE}, and \texttt{FULL\_BACKING} each reach 83.3\% task success
+on the retained-information endpoint through different mechanisms. Headroom
+provides reversible visible compression and model-triggered retrieval; PRA
+combines a type-aware compact view, automatic hidden addressability, and
+optional native selected materialization. Neither result dominates all
+workloads. In particular, 123.8 Headroom-visible tokens are not equated with
+182.9 PRA active-native tokens, and \PaperSevenAwareVisible{} initial PRA
+tokens are reported together with their \PaperSevenAwareSelected{} recovery
+tokens and cheap-index state.
+
+The historical \texttt{CCR\_STYLE} condition is excluded from the primary
+table. It is an in-house mechanism-level reproduction and materially
+underestimated the released implementation (61.1\% versus 83.3\% here).
+Kompress ML was unavailable in the released configuration tested, so the
+official result above does not include that component.
+
+The aggregate conceals a causal boundary. C0--C4 are
+\emph{retained-backing recovery}: the required state exists in the stored
+record and can remain visible or be selected again. In C5 the required
+information does not exist in retained backing. Compression, CCR retrieval,
+typed postings, BM25, embeddings, and native Q/K therefore cannot recover it;
+external acquisition is required. The matched Qwen controller chooses
+\textsc{Continue} rather than \textsc{CallTool}, giving
+\PaperSevenHeadroomCfiveTrigger{} C5 action accuracy and zero C5 success. This
+is a sufficiency/action-control limitation in the tested controller, not a CCR
+storage failure and not evidence that Headroom cannot acquire externally in
+other configurations.
+
+We also reverse the direction and run frozen native PRA over focused cases
+from Headroom's released evaluation package: eight tool outputs, eight CCR
+needles, eight HotpotQA cases, and eight MS MARCO cases. Exact routing recall is
+defined only where a target span occurs in backing text. This leaves three
+HotpotQA cases. Five MS MARCO cases contain a selected relevant passage; that
+passage, rather than an abstractive answer string, is the evidence target. The
+released eager MS MARCO loader failed with \texttt{DatasetGenerationError}; a
+recorded fallback reproduces the released adapter over the same Hugging Face
+validation split in streaming mode.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Dataset & Eligible $n$ & PRA R@4 & PRA R@8 & Headroom visible\\
+\midrule
+Tool outputs & \PaperSevenCrossTooloutputsPRAN{} & \PaperSevenCrossTooloutputsPRA{} & \PaperSevenCrossTooloutputsPRAREight{} & \PaperSevenCrossTooloutputsHeadroom{}\\
+CCR needles & \PaperSevenCrossCcrneedlePRAN{} & \PaperSevenCrossCcrneedlePRA{} & \PaperSevenCrossCcrneedlePRAREight{} & \PaperSevenCrossCcrneedleHeadroom{}\\
+HotpotQA & \PaperSevenCrossHotpotqaPRAN{} & \PaperSevenCrossHotpotqaPRA{} & \PaperSevenCrossHotpotqaPRAREight{} & \PaperSevenCrossHotpotqaHeadroom{}\\
+MS MARCO & \PaperSevenCrossMsmarcoPRAN{} & \PaperSevenCrossMsmarcoPRA{} & \PaperSevenCrossMsmarcoPRAREight{} & \PaperSevenCrossMsmarcoHeadroom{}\\
+\bottomrule
+\end{tabular}
+\caption{Focused exact-evidence diagnostic. Headroom's column is initial
+visible-span preservation, not top-$K$ routing. PRA uses 32-token chunks,
+8-token overlap, and a 256-token materialization ceiling.}
+\label{tab:pra-on-headroom}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.84\linewidth]{pra_on_headroom_cross_dataset.pdf}
+\caption{Frozen PRA routing recall and released Headroom visible-evidence
+preservation on extractive-eligible cases. Small, filtered cohorts make this a
+mechanism diagnostic rather than a population estimate.}
+\label{fig:pra-on-headroom}
+\end{figure}
+
+The directional result is informative. Frozen hybrid PRA is strong on opaque
+needles and recovers all tool-output targets by $K=8$, but its mean-gist route
+does not recover the eligible Hotpot spans and recovers one of five MS MARCO
+passages at $K=8$. Conversely, the official structural path preserves visible
+evidence but, without its optional learned Kompress model, does not demonstrate
+plain-text compression on these rows. Kompress was unavailable in the isolated
+environment; an external provider and TOIN cold/warm behavior were not run.
+Thus the study establishes complementarity and specific gaps, not a universal
+ranking between the systems.
+
+\subsection{Cheap hybrid recovery and compression frontier}
+
+We rerun the same 32 external cases after adding independent typed, BM25, and
+compact-embedding indexes. Exact evidence occurs in 24 backing records: all
+eight tool outputs and CCR needles, three HotpotQA rows, and five MS MARCO
+rows. Each channel returns at most eight exact-selector units. The hybrid uses
+RRF, and all metrics are computed before answer generation.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Channel & R@4 & R@8 & Role & Eligible $n$\\
+\midrule
+Typed postings & \PaperSevenTypedRFour{} & \PaperSevenTypedREight{} & exact keys/tokens & \PaperSevenHybridEligibleN{}\\
+BM25 & \PaperSevenBmTwentyFiveRFour{} & \PaperSevenBmTwentyFiveREight{} & indexed lexical rank & \PaperSevenHybridEligibleN{}\\
+Compact embedding & \PaperSevenEmbeddingRFour{} & \PaperSevenEmbeddingREight{} & hashed dense sidecar & \PaperSevenHybridEligibleN{}\\
+RRF hybrid & \PaperSevenHybridRFour{} & \PaperSevenHybridREight{} & bounded rank fusion & \PaperSevenHybridEligibleN{}\\
+\bottomrule
+\end{tabular}
+\caption{Exact-selector retrieval over extractive-eligible rows. The hybrid's
+Recall@4 gain over the best single cheap channel is
+\PaperSevenHybridFusionGain{}. The compact embedding is deterministic and
+parameter-free; this is not a learned semantic-retrieval claim.}
+\label{tab:large-record-hybrid}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.86\linewidth]{large_record_hybrid_recall.pdf}
+\caption{Cheap-channel exact Recall@4 by external subset. RRF retains the
+strong CCR result and improves the earlier frozen-native HotpotQA/MS MARCO
+diagnostic, but the tiny eligible cohorts remain unsuitable for broad text
+retrieval claims.}
+\label{fig:large-record-hybrid}
+\end{figure}
+
+The aggregate masks channel geometry. Hybrid Recall@4 is
+\PaperSevenCheapToolRFour{} on \PaperSevenCheapToolN{} tool outputs,
+\PaperSevenCheapCcrRFour{} on \PaperSevenCheapCcrN{} CCR needles,
+\PaperSevenCheapHotpotRFour{} on \PaperSevenCheapHotpotN{} HotpotQA rows, and
+\PaperSevenCheapMsmarcoRFour{} on \PaperSevenCheapMsmarcoN{} MS MARCO rows.
+Embedding contributes the strongest single-channel result; typed and BM25
+remain valuable for exact needles and auditable IDs. Papers 2.6 and 3.1 are the
+appropriate settings for larger hybrid and multi-index retrieval studies.
+
+We also impose a fixed 96-token PRA compact ceiling. The type-aware projection
+averages \PaperSevenAwareVisible{} initial visible tokens, down from
+\PaperSevenCurrentVisible{} for the previous compactor, a
+\PaperSevenCompressionReduction{} reduction. Compact-only exact
+evidence availability is \PaperSevenAwareCompactOnly{}; automatic
+BM25+embedding recovery raises the
+final diagnostic to \PaperSevenAwareRecovered{}, with
+\PaperSevenAwareSelected{} selected-region tokens and
+\PaperSevenCheapIndexKiB{} KiB of cheap index state on average. The full-backing
+ceiling is 75.0\% because eight external rows have no literal target span.
+This result supports aggressive compact views only when automatic recovery is
+retained; it does not show compact-only dominance or generated-answer quality.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Condition & Initial visible & Recovery visible & Compact exact & Final exact\\
+\midrule
+Previous compactor & \PaperSevenCurrentVisible{} & 0.0 & 62.5\% & 62.5\%\\
+Type-aware compact only & \PaperSevenAwareVisible{} & 0.0 & \PaperSevenAwareCompactOnly{} & \PaperSevenAwareCompactOnly{}\\
+Type-aware + automatic hybrid & \PaperSevenAwareVisible{} & \PaperSevenAwareSelected{} & \PaperSevenAwareCompactOnly{} & \PaperSevenAwareRecovered{}\\
+\bottomrule
+\end{tabular}
+\caption{Compression and retained-backing recovery over the same 32 external
+rows. Recovery-visible tokens are reported rather than hidden inside the
+initial-view number.}
+\label{tab:compression-auto-recovery}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{pra_compression_recovery_cost.pdf}
+\caption{PRA compression/recovery frontier with separate axes. Initial visible
+tokens, selected-region tokens, and cheap-index bytes are not interchangeable
+costs. All rows in this figure use the same external cohort and local token
+accounting; the official Headroom comparison is separate.}
+\label{fig:headroom-pra-multiaxis}
+\end{figure}
+
+The recorded \texttt{PRA\_FULL\_HYBRID\_ENVELOPE} is the union of availability
+from the frozen native run and the new cheap run, not a measured shared fused
+ranking. We report it only as headroom for an integrated implementation and do
+not use it as the primary result. Likewise, the historical
+\texttt{CCR\_STYLE} condition remains an architectural ablation: it materially
+underestimates released Headroom on this benchmark.
+
+\subsection{Ingestion and TTUC scaling}
+
+The size-gate profile uses payloads of 1K, 4K, 16K, 64K, and 256K tokens and
+\PaperSevenSizeGateSeeds{} seeds on CUDA. An instrumented 32-dimensional Torch
+embedding/projection path performs blockwise model-like encoding and exposes
+the production PRA reference API. It is not a pretrained LM. The four
+conditions are eager full native, size-gated cheap indexing, size-gated cheap
+plus lazy selected-region native encoding, and search/cursor-only. All use the
+same deterministic compactors and backing store. The illustrative gate is
+\PaperSevenSizeGateLimit{} tokens or \PaperSevenSizeGateByteLimit{} bytes.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.96\linewidth]{native_index_ingestion_ttuc.pdf}
+\caption{Median native-index latency and time-to-usable-context. At the exact
+gate boundary, the gated policy builds the native index. Above it, the byte
+descriptor rejects eager native work before full-payload loading or
+tokenization. These are lifecycle mechanism timings, not Qwen latency.}
+\label{fig:size-gate}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+256K condition & Native built & Index ms & TTUC ms & Lazy tokens\\
+\midrule
+Eager full native & yes & \PaperSevenEagerLargestIndexMs{} & \PaperSevenEagerLargestTTUC{} & 0\\
+Size-gated cheap & no & 0 & \PaperSevenGatedLargestTTUC{} & 0\\
+Size-gated lazy native & no & 0 & 960.3 & \PaperSevenLazyRegionTokens{}\\
+Search/cursor only & no & 0 & 962.2 & 0\\
+\bottomrule
+\end{tabular}
+\caption{Largest-payload medians. The lazy region adds
+\PaperSevenLazyRegionMs{} ms after cheap selection and preserves
+\PaperSevenGatedRecall{} controlled evidence recall. TTUC remains dominated by
+agent-side compact-view/address construction, which still scans the input.}
+\label{tab:size-gate}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Payload & Eager index & Eager TTUC & Gated TTUC & Lazy encode & Lazy tokens\\
+\midrule
+1,024 & 3.9 & 50.2 & 46.8 & -- & --\\
+4,096 & 13.5 & 71.7 & 69.8 & -- & --\\
+16,384 & 45.4 & 206.4 & 74.1 & 1.58 & 32\\
+65,536 & 174.3 & 592.0 & 248.8 & 2.10 & 32\\
+262,144 & 693.6 & 2,223.4 & 961.5 & 2.78 & 32\\
+\bottomrule
+\end{tabular}
+\caption{Five-seed medians in milliseconds except the final token column. At
+1K and the exact 4K boundary, the gated condition builds the full native index;
+larger rows use cheap fallback.}
+\label{tab:size-scaling}
+\end{table}
+
+The profile supports a safeguard claim, not a universal speed claim. Eager
+index work grows with payload size. The gate prevents applying it blindly and
+reduces 256K TTUC by \PaperSevenTTUCReduction{}$\times$ here. That historical
+profile scanned the local payload; the new path builds typed postings, BM25,
+and compact embeddings and records their build/query cost. Remote server-side
+indexes and cursors remain outside the physical evaluation.
+
+The profile supports three narrower conclusions: size gating prevents
+unnecessary eager full-body model-like index work; compact-first handling
+reaches a valid continuation state earlier in this setup; and lazy native
+encoding preserves the identity of one exact selected region. It does not show
+that Qwen-native indexing is \PaperSevenTTUCReduction{}$\times$ faster, that
+cheap search has native hybrid's semantic recall, that the chosen thresholds
+are optimal, or that the result extrapolates to multi-GB remote streams.
+
+TTUC is measured from result arrival to the first valid continuation with a
+usable compact descriptor and a completed native-index decision. For eager
+native, it includes compaction, compact registration, full-payload token
+accounting, and native reference construction. For a byte-gated oversized
+record, it includes compaction, compact registration, descriptor-based gate
+resolution, and refreshed capability metadata. It excludes the later search or
+cursor requested by a particular query; those are recovery costs.
+
+The 4K-token and 64KiB values are deliberately illustrative. Both limits are
+active, so exceeding either closes the gate. The generated text is below 64KiB
+at 4K tokens and above it at 16K. This lets the oversized path decide from the
+descriptor without a second full-payload tokenizer pass. A deployment that
+uses only token limits should expect exact counting cost; one that already
+knows trusted provider token counts can supply them through a future descriptor
+extension.
+
+The controlled evidence marker occurs on one 32-token line. Cheap search finds
+that line in every oversized case, after which lazy native encoding processes
+only those 32 tokens. This establishes identity, selector, and lifecycle
+correctness and bounded recovery. It does not establish semantic equivalence
+between cheap lexical search and native hybrid PRA. Indeed, native hybrid
+outperforms both compact-only and cheap routing in the held-out quality study.
+
+\section{Audit and Security Contract}
+
+\begin{longtable}{@{}p{.30\linewidth}p{.62\linewidth}@{}}
+\toprule
+Field & Meaning\\
+\midrule
+\endhead
+\path{native_index_requested} & A caller or policy attempted full-backing native registration.\\
+\path{native_index_built} & Full-body model-dependent native indexing completed.\\
+\path{native_index_state} & \texttt{NOT\_REQUESTED}, \texttt{BUILT}, \texttt{SKIPPED\_SIZE\_LIMIT}, or \texttt{DEFERRED}.\\
+\path{native_index_skipped_reason} & Exact configured token, byte, or defer reason; never a hidden truncation.\\
+\path{native_index_tokens/bytes} & Measured source size when that accounting pass ran. A byte-gated skip need not tokenize.\\
+\path{native_index_latency_ms} & Full native reference-construction wall time.\\
+\path{cheap_index_modes_built} & Available lexical, entity, rare-term, schema, or summary addresses.\\
+\path{lazy_native_regions/tokens} & Number and token volume of selected regions encoded later.\\
+\path{partial_context} & The visible projection does not contain every backing unit.\\
+\path{search/cursor/full_available} & Bounded recovery interfaces exposed to the controller.\\
+\bottomrule
+\end{longtable}
+
+Per-type policies can tighten or replace inherited limits. Setting
+\path{override_native_index_limits=True} with two null bounds explicitly
+disables inherited limits for that type. Deferred indexing registers the
+compact view immediately and builds native state only after a later forced
+request; this implementation does not claim asynchronous construction.
+
+Every backing operation resolves a \texttt{RecordScope(tenant, session)}.
+Materialization, cheap search, cursor reads, and lazy native encoding pass
+through the same scoped store. Records carry a content hash, provenance, TTL,
+and source fingerprint. Selected-region audit events record the selector and
+fingerprint, not just a new native URI. Tests cover cross-session denial for
+search and selected materialization.
+
+The local store persists plaintext when persistence is enabled. Encryption,
+key rotation, distributed authorization, concurrent updates, and revocation
+propagation remain deployment gates. A size limit is not an authorization
+bypass: skipped records preserve the same identity and scope. Search and cursor
+fallbacks alter cost and access granularity, not the authorization boundary.
+
+\section{Related Work}
+
+\paragraph{Reversible and prompt compression.}
+LLMLingua and LongLLMLingua reduce prompt tokens under learned or query-aware
+budgets \cite{jiang2023llmlingua,jiang2023longllmlingua}. Headroom's official
+CCR documentation describes type-aware tool-output compression, local
+hash-indexed originals, a model retrieval tool, and proactive expansion
+\cite{headroom2026ccr}. Paper 7 treats this as a strong reversible design.
+Its narrower distinction is that reversible storage does not itself provide
+model-native backing addresses, while native addressability has ingestion and
+resident-state costs. Our pinned 0.37.0 cross-evaluation supports that
+mechanism distinction while correcting an earlier labeling ambiguity:
+\texttt{CCR\_STYLE} is the in-house reproduction, whereas
+\texttt{HEADROOM\_OFFICIAL} denotes released components.
+
+\paragraph{Agent memory and context systems.}
+MemGPT moves information between memory tiers under explicit control
+\cite{packer2023memgpt}. Paper 7 shares the tiered-state view but focuses on
+typed observations, stable source identity, selective views, and the lifecycle
+between a tool result and active model state. Persistence and active-context
+projection are related but not interchangeable.
+
+\paragraph{RAG and hybrid retrieval.}
+RAG combines parametric generation with a retrieved non-parametric corpus
+\cite{lewis2020rag}. Lexical, dense, BM25, entity, and hybrid indexes can all
+serve as Paper 7 backing-address mechanisms. The contribution here is the typed
+integration of a returned result with exact backing state, native-K/V
+materialization, bounded control, and accounting. Within this research series,
+Paper 2.6 studies lexical and hybrid retrieval, while Paper 3.1 studies
+multi-index fusion and summary sidecars. Paper 7 integrates those mechanisms
+into typed-record lifecycle control rather than reproducing their broader
+retrieval experiments.
+
+\paragraph{KV retrieval and compression.}
+H$_2$O retains recent and heavy-hitter KV entries, while SnapKV selects
+head-specific prompt positions from an observation window
+\cite{zhang2023h2o,li2024snapkv}. These methods reduce or select active
+historical KV. Paper 7 begins with a typed backing record that may not yet be
+active, separates compact visibility from retrieval addresses, and selects
+content before admitting bounded native K/V.
+
+\paragraph{Tool output and stateful data access.}
+The Model Context Protocol defines URI-identified resources and opaque
+cursor-based pagination for list operations \cite{mcp2025resources}. Paper 7's
+cursors operate inside authorized result records and add filters, ranges,
+aggregates, and field projection. A large observation can remain stateful
+behind a bounded interface rather than becoming one model message.
+
+\begin{table}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+Style & Compact & Original & Index & Retrieve & Proactive & Cursor/search & Native K/V\\
+\midrule
+Prompt compression & yes & not required & no & no & no & no & no\\
+CCR reversible compression & yes & yes & hash/markers & yes & documented & full retrieve & no\\
+RAG & passages & corpus & lexical/dense & pipeline & pipeline-defined & query & no\\
+KV selection/compression & no & cache-dependent & attention/KV & implicit & no & no & yes\\
+Paper 7 & yes & yes & cheap or native & bounded & policy-gated & yes & optional\\
+\bottomrule
+\end{tabular}}
+\caption{Mechanism-level comparison at the granularity supported by primary
+papers or official documentation.}
+\label{tab:related}
+\end{table}
+
+\begin{samepage}
+\section{Production Decision Procedure}
+
+The recommended default always constructs budgeted cheap addresses, then
+adapts model-derived state and recovery to the record regime:
+\begin{lstlisting}[language=Python]
+build_typed_bm25_embedding_indexes(record)
+show(type_aware_compact(record))
+
+if under_native_index_budget(record):       # bounded
+    build_full_backing_native_index(record)
+elif record.cursor_available:               # huge/stateful
+    register_local_or_remote_cursor(record)
+else:                                        # large
+    defer_full_native_state(record)
+
+region = automatic_hybrid_or_explicit_select(record, query)
+materialize_exact(region, native_if_useful=True)
+if backing_is_insufficient(record, query):
+    acquire_externally()
+\end{lstlisting}
+\end{samepage}
+This procedure is intentionally ordered. Every retained record receives cheap
+addressability within configured budgets. A bounded record additionally gets
+full native Q/K and configured detail K/V. A large record promotes only a
+selected exact region. A stateful result uses its bounded server interface.
+Only a demonstrated backing insufficiency crosses from retained-backing
+recovery to external acquisition.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXXX@{}}
+\toprule
+Deployment case & Immediate state & Later recovery & Primary risk\\
+\midrule
+Bounded local API & type-aware compact + cheap + full native & automatic exact native spans & unnecessary native-index overhead\\
+Large terminal/log & type-aware compact + cheap indexes & fused select, then typed/lazy-native lines & heterogeneous query vocabulary\\
+Large DB/graph & schema/sample + cheap indexes/cursor & filter/range/aggregate & stale cursor or remote round trips\\
+Huge stream & tiny metadata + cursor/search handle & bounded server region & mutation and snapshot consistency\\
+Backing insufficient & visible retained state + acquisition capability & external tool call & controller fails to recognize absence\\
+\bottomrule
+\end{tabularx}
+\caption{Operational interpretation of the three regimes. Actual limits depend
+on model, hardware, source interface, latency objective, and reuse.}
+\label{tab:production-cases}
+\end{table}
+
+Applications should configure token and byte bounds from their own service
+objectives. A byte bound is cheap and protects transfer/allocation paths. A
+token bound more directly predicts model work but may require tokenization.
+Per-type overrides should account for source capabilities: a database with a
+strong indexed cursor needs less eager model-native state than an opaque text
+blob of the same byte size.
+
+Monitoring should retain all four lifecycle categories. A lower active-K/V
+number is not sufficient if native ingestion dominates first-token latency.
+Conversely, a low TTUC from compact-first handling is not sufficient if later
+search has poor evidence recall. The production gate should therefore track
+TTUC, native build rate, skip reasons, cheap-search recall on sampled tasks,
+lazy-region volume, recovery latency, active K/V, resident detail-K/V, and
+authorization failures separately.
+
+\section{Limitations}
+
+The main benchmark contains 30 controlled identities and one Qwen routing
+backend. Five decoding seeds measure controller variability, not population
+diversity. Machine-readable answer markers isolate recovery but understate
+natural answer interpretation. The routing layer, chunk geometry, and
+mean-gist family may not transfer unchanged to another model.
+
+Full-backing native construction grows with payload size and may incur
+substantial host encoding, accelerator, and transfer cost. Thresholds are
+configurable policy, not learned universal constants. Cheap hybrid retrieval
+improves this focused transfer diagnostic but is not a mature semantic-search
+replacement. The scaling profile uses an instrumented
+Torch encoder rather than Qwen and does not establish end-to-end model speed.
+Selected-region reads still verify backing identity; indexed remote search and
+physical range reads remain open.
+
+Controller and tool-use competence remain model-dependent. Distributed storage
+latency, multi-GB streams, concurrent mutation, index updates, remote
+authorization propagation, encrypted stores, and durable audit delivery are
+not measured. Resident index/detail-KV bytes remain distinct from active
+context and need deployment-specific capacity planning.
+
+The negotiated wire contract is an implementation boundary rather than a new
+record-recovery result. Logical projection and delta transfer preserve identity
+and avoid unchanged-body retransmission, but they do not by themselves improve
+routing, answer quality, or native materialization speed. Remote gateways and
+engines must separately enforce their advertised capability and authorization
+contracts; TEXT remains a compatibility baseline, not native PRA.
+
+The Headroom cross-evaluation is also bounded. Its Paper 7 direction has 18
+held-out identities; its reverse direction has eight cases per source and only
+three extractive-eligible HotpotQA and five MS MARCO cases. Exact span
+visibility is not answer EM/F1. Official Kompress ML, an external API provider,
+TOIN cold/warm adaptation, and a full matched proxy benchmark were not run.
+The plain-text Headroom rows therefore measure evidence preservation, not
+learned compression quality or latency. Headroom visible tokens and PRA active
+native K/V are request-time budgets with different resident-state accounting.
+The new type-aware result is also an exact-evidence/recovery diagnostic. Its
+deterministic compact embedding is not a pretrained semantic encoder, and its
+full-hybrid row is explicitly an availability envelope rather than shared RRF.
+
+\section{Conclusion}
+
+\textbf{Compression} reduces initial model-visible state. Type-aware projection
+cuts the external diagnostic from \PaperSevenCurrentVisible{} to
+\PaperSevenAwareVisible{} tokens, but its \PaperSevenAwareCompactOnly{}
+compact-only evidence result shows why compression alone is insufficient.
+
+\textbf{Discovery} recovers addresses into retained backing. Typed, BM25, and
+compact-embedding RRF reaches \PaperSevenHybridRFour{} Recall@4 over 24
+extractive-eligible rows and raises the compact-plus-recovery endpoint to
+\PaperSevenAwareRecovered{}. The earlier frozen-native Hotpot/MS MARCO failure
+remains visible: the improvement is a focused retrieval diagnostic, not a
+general semantic-retrieval or generated-answer claim.
+
+\textbf{Materialization} activates only selected exact evidence. Within its
+ingestion budget, \texttt{PRA\_NATIVE} matches \texttt{FULL\_BACKING} at
+\PaperSevenCalNativeSuccessPct\% held-out task success with
+\PaperSevenCalActiveKVReductionPct\% less active K/V. Above that budget, cheap
+indexes remain built while full native Q/K and detail K/V are deferred; a
+selected region can be encoded lazily.
+
+\textbf{Acquisition} handles a different failure mode. C5 information is absent
+from retained backing, so no compressor or index can recover it. External
+acquisition is required, and controller calibration remains open.
+
+Released Headroom and PRA reach the same retained-information endpoint on the
+current benchmark through different mechanisms. Headroom provides strong
+reversible visible compression and model-triggered retrieval; PRA combines
+aggressive type-aware visible compression with automatic hybrid hidden
+addressability and optional native selected materialization. Neither dominates
+all workloads. The final product contribution is:
+\[
+\begin{aligned}
+&\text{type-aware compact visible state}\;+
+\text{typed/BM25/embedding addresses}\\
+&+\;\text{native Q/K when affordable}\;+
+\text{lazy selected native materialization}\\
+&+\;\text{cursor recovery for retained state}\;+
+\text{external acquisition when backing is insufficient}.
+\end{aligned}
+\]
+
+\begin{center}
+\fbox{\textbf{EXPERIMENTALLY FROZEN --- READY FOR EXTERNAL REVIEW}}
+\end{center}
+
+\clearpage
+\appendix
+
+\section{Headroom Cross-Evaluation Protocol}
+
+The reproducible installer creates an isolated Python 3.10 environment and
+pins \path{headroom-ai[proxy,evals]==0.37.0}. The experiment records the
+package version, upstream commit, selected profile, provider path, unsupported
+features, and loader fallback in machine-readable artifacts. From the
+repository root, the complete sequence is:
+
+\begin{lstlisting}[language=bash]
+./experiments/paper7_headroom/install_headroom.ps1
+$env:PYTHONPATH = "src;."
+python experiments/paper7_headroom/run_headroom_cross_eval.py
+python experiments/paper7_headroom/run_pra_on_headroom.py --device cuda --refresh
+python experiments/paper7_headroom/summarize_cross_eval.py
+\end{lstlisting}
+
+The result directory contains the official manifest, Paper 7 condition rows,
+reverse-direction rows, trigger analysis, oracle actions, reproduction
+faithfulness pairs, cost accounting, summary table, and statistics JSON. Raw
+official component outputs retain transform names, marker resolution, hashes,
+bytes, token estimates, and compression/retrieval latency. No credential or
+tenant data is stored. The official CCR store is process-local in this run;
+the per-case reset prevents state leakage but is not a multi-tenant security
+evaluation.
+
+\section{Earlier Progressive-Context Checkpoints}
+
+Earlier studies established the API and exposed confounds later corrected by
+the primary experiment. A lexical automatic path reached
+\PaperSevenPRAAutoTask{} task success, combined lexical/model control reached
+\PaperSevenCombinedTask{}, and a CCR-style full retrieval baseline reached
+\PaperSevenCCRTask{}. They used different mechanism and exposure budgets and
+should not be compared numerically with the production native frontier.
+
+The paired latent-trigger diagnostic found that action-conditioned probes
+raised latent required-action accuracy from \PaperSevenLatentCompactAction{} to
+\PaperSevenLatentActionConditioned{}, below a
+\PaperSevenLatentFullCeiling{} full-materialization ceiling. The gain required
+\PaperSevenActionProbeTokens{} mean materialized tokens and only
+\PaperSevenActionProbePrecision{} expansion precision. It motivates explicit
+controller headroom but does not override the final native policy result.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.66\linewidth]{adaptive_failure_decomposition.pdf}
+\caption{Appendix controller diagnostic. The adaptive gap decomposes into
+insufficiency detection, operation choice, and final evidence use.}
+\label{fig:controller-errors}
+\end{figure}
+
+The frozen controller is \PaperSevenCalController{}. Validation need-more
+recall is \PaperSevenCalControllerNeedRecall{}, false escalation is
+\PaperSevenCalControllerFalseEsc{}, and operation accuracy is
+\PaperSevenCalControllerOperation{}. Its held-out equality with the native
+baseline motivates automatic retained-backing recovery as the conservative
+default and model-controlled escalation only where the interface or missing
+information requires it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.78\linewidth]{paper7_headroom_trigger_accuracy.pdf}
+\caption{Appendix action-control diagnostic. C5 requires external acquisition;
+the released Headroom path and historical \texttt{CCR\_STYLE} reproduction are
+reported separately.}
+\label{fig:headroom-trigger}
+\end{figure}
+
+\section{Cursor and Materialization API}
+
+\begin{lstlisting}[language=Python]
+record = runtime.ingest(payload, record_type=RecordType.DB_RESULT)
+audit = progressive.prepare_native_index(record.record_id)
+
+if audit.native_index_state == NativeIndexState.SKIPPED_SIZE_LIMIT:
+    hits = progressive.search_large_record(
+        record.record_id, query, policy="AUTO", top_k=4
+    )
+    region = progressive.encode_selected_region_native(
+        record.record_id, hits.hits[0].selector
+    )
+
+cursor = runtime.open_cursor(record.record_id, collection="rows")
+page = runtime.fetch_cursor(cursor.cursor_id)
+\end{lstlisting}
+
+Supported selectors are fields, rows, lines, items, nested collection ranges,
+and line ranges within named fields. Cursor operations
+include next/previous, range, filter, aggregate, search, sample, field
+materialization, refinement, and close. The controller receives only registered
+record/cursor IDs and a bounded operation palette.
+
+\section{Implementation Map}
+
+\begin{longtable}{@{}p{.44\linewidth}p{.48\linewidth}@{}}
+\toprule
+Artifact & Role\\
+\midrule
+\endhead
+\path{src/pra_hf/adaptive_context_runtime.py} & Global/type policy resolution, scoped storage, materialization, cursors, transport, and accounting.\\
+\path{src/pra_hf/large_record_index.py} & Recoverable-unit extraction, independent typed/BM25/embedding indexes, policy resolution, bounded RRF, exact selectors, and trace accounting.\\
+\path{src/pra_hf/progressive_context.py} & Native lifecycle states/audits, full-body gate, cheap-index registry, lazy selected-region encoding, and progressive public wrappers.\\
+\path{src/pra_hf/typed_context.py} & Type-aware compactors, authoritative visible-token budgets, retrieval views, and exact selected materialization.\\
+\path{src/pra_hf/context_store.py} & Content-addressed scoped backing storage, integrity, TTL, and persistence.\\
+\path{experiments/paper7_records/run_full_pra_reachability.py} & Production Qwen backing-address validation.\\
+\path{experiments/paper7_records/run_calibrated_adaptive.py} & Frozen held-out policy/controller evaluation.\\
+\path{experiments/paper7_records/run_native_index_size_gate.py} & Five-seed ingestion, TTUC, and lazy-region mechanism profile.\\
+\path{experiments/paper7_records/run_large_record_hybrid.py} & External reverse-eval, compression/recovery decomposition, index costs, policy matrix, figures, and generated TeX.\\
+\path{tests/test_native_index_size_gate.py} & Boundary, override, authorization, fallback, lazy encoding, and no-masquerade tests.\\
+\path{tests/test_large_record_hybrid.py} & Channel policy, RRF, token budget, lifecycle, exact selector, and lazy-recovery tests.\\
+\bottomrule
+\end{longtable}
+
+\section{Reproducibility}
+
+Primary quality artifacts are under
+\path{docs/papers/shared/results/paper7_records/full_pra_calibrated/}.
+Size-gate artifacts are under
+\path{docs/papers/shared/results/paper7_records/native_index_size_gate/}:
+\begin{itemize}[leftmargin=*,nosep]
+  \item \path{native_index_size_gate_results.csv};
+  \item \path{native_index_size_gate_manifest.json};
+  \item \path{ingestion_latency_by_size.csv};
+  \item \path{time_to_usable_context.csv};
+  \item \path{lazy_native_region_results.csv};
+  \item \path{oversized_record_policy_results.csv}.
+\end{itemize}
+The manifest records CUDA, Torch version, seeds, sizes, policy bounds, encoder
+width, and the claim boundary. Raw rows distinguish agent-side compact
+readiness, native-index latency, completed TTUC, cheap search, lazy encoding,
+active K/V, routing-index bytes, and resident detail-K/V.
+
+Hybrid/compression artifacts are under
+\path{docs/papers/shared/results/paper7_records/large_record_hybrid/}. They
+include the lifecycle policy matrix, row-level channel rankings, overlap and
+unique-contribution diagnostics, index costs, type-aware retention, recovery
+decomposition, the five-condition \path{product_lifecycle_cost_table.csv},
+targeted reverse-eval aggregates, figures, and the generated TeX macros. The
+reader-facing figures deliberately separate Headroom-visible tokens, PRA
+active native K/V, and selected-region recovery tokens; these quantities have
+different operational meanings and are not interchangeable. Reproduce them
+with:
+
+\begin{lstlisting}[language=bash]
+$env:PYTHONPATH = "src;."
+python experiments/paper7_records/run_large_record_hybrid.py
+\end{lstlisting}
+
+{\small
+\begin{thebibliography}{9}
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+
+\bibitem{jiang2023llmlingua}
+Huiqiang Jiang, Qianhui Wu, Chin-Yew Lin, Yuqing Yang, and Lili Qiu.
+\newblock LLMLingua: Compressing Prompts for Accelerated Inference of Large
+Language Models.
+\newblock In \emph{Proceedings of EMNLP}, 2023.
+
+\bibitem{jiang2023longllmlingua}
+Huiqiang Jiang, Qianhui Wu, Xufang Luo, Dongsheng Li, Chin-Yew Lin, Yuqing
+Yang, and Lili Qiu.
+\newblock LongLLMLingua: Accelerating and Enhancing LLMs in Long Context
+Scenarios via Prompt Compression.
+\newblock In \emph{Proceedings of ACL}, 2024.
+
+\bibitem{packer2023memgpt}
+Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang, Shishir G. Patil,
+Ion Stoica, and Joseph E. Gonzalez.
+\newblock MemGPT: Towards LLMs as Operating Systems.
+\newblock arXiv:2310.08560, 2023.
+
+\bibitem{lewis2020rag}
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
+Karpukhin, Naman Goyal, Heinrich K\"uttler, Mike Lewis, Wen-tau Yih, Tim
+Rockt\"aschel, Sebastian Riedel, and Douwe Kiela.
+\newblock Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
+
+\bibitem{headroom2026ccr}
+Headroom Labs.
+\newblock Reversible Compression (CCR): Compress--Cache--Retrieve Architecture.
+\newblock \url{https://docs.headroomlabs.ai/docs/ccr}, accessed August 2026.
+
+\bibitem{zhang2023h2o}
+Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi Cai,
+Zhao Song, Yuandong Tian, Christopher R\'e, Clark Barrett, Zhangyang Wang, and
+Beidi Chen.
+\newblock H$_2$O: Heavy-Hitter Oracle for Efficient Generative Inference of
+Large Language Models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem{li2024snapkv}
+Yuhong Li, Yingbing Huang, Bowen Yang, Bharat Venkitesh, Acyr Locatelli,
+Hanchen Ye, Tianle Cai, Patrick Lewis, and Deming Chen.
+\newblock SnapKV: LLM Knows What You Are Looking for Before Generation.
+\newblock arXiv:2404.14469, 2024.
+
+\bibitem{mcp2025resources}
+Model Context Protocol.
+\newblock Resources and Pagination Specification.
+\newblock \url{https://modelcontextprotocol.io/specification/2025-03-26/server/resources},
+accessed August 2026.
+
+\end{thebibliography}
+}
+
+\end{document}

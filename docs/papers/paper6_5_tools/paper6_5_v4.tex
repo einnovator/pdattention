@@ -1,0 +1,914 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,amsmath,amssymb,enumitem,graphicx,tabularx,float}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{3em}
+
+\title{Typed Capability Context for LLM Agents:\\
+Discovery, Progressive Disclosure, and Reactive Execution}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{August 2026}
+\input{../shared/results/paper6_5_tools/m1/generated_m1_results.tex}
+\input{../shared/results/paper6_5_tools/m2_m6_summary/generated_m2_m6_results.tex}
+\input{../shared/results/paper6_5_tools/semantic_summary/generated_semantic_results.tex}
+\input{../shared/results/paper6_5_tools/auto_union_records/generated_auto_union_results.tex}
+\input{../shared/results/paper6_5_tools/auto_discovery_ablation/generated_auto_discovery_results.tex}
+\input{../shared/results/paper6_5_tools/auto_discovery_scaling/generated_scaled_auto_results.tex}
+\input{../shared/results/paper6_5_tools/progressive_disclosure/generated_progressive_results.tex}
+\input{../shared/results/paper6_5_tools/missing_experiments/generated_missing_results.tex}
+
+\begin{document}
+\maketitle
+\begin{center}
+\small\textsc{Experimentally Frozen}\quad
+\textsc{Editorially Consolidated}\quad
+\textsc{Ready for External Review}
+\end{center}
+
+\begin{abstract}
+We ask whether PRA can represent and progressively disclose thousands of tools
+and skills without flooding active model context. Large agents may register
+hundreds or thousands of capabilities even though
+one decision typically needs only a few. Exposing every schema and instruction
+wastes active context; forcing an external router to choose exactly one removes
+the language model's ability to discriminate among plausible capabilities. We
+introduce a typed capability-context architecture that searches a large
+registry outside model context, presents a bounded palette of compact selection
+views, lets the model choose a stable capability identity, and then activates
+only that capability's complete record. Tool execution remains subject to a
+separate host authorization boundary.
+
+Ordinary callable metadata supports useful registration: validation-frozen
+automatic fusion reaches \PaperSixFiveAblationAutoTopOne{} Top-1 on the
+zero-manual-metadata cohort, statistically unresolved from
+\PaperSixFiveAblationManualTopOne{} for rich manual metadata. On five seeded
+8,192-tool catalogs, diversity-preserving retrieval raises required-tool recall
+from 0.653 at $K=8$ to 0.701 at $K=32$ and 0.746 at $K=48$. Candidate breadth
+has a model-side cost. At $K=10$, a frozen Qwen3-0.6B chooser reaches 0.667
+conditional accuracy when the target is present and 0.250 end-to-end accuracy;
+at $K=32$, conditional and end-to-end accuracy fall to 0.400 and 0.150 on the
+same executable cohort. Replacing only the chooser with a 4-bit Qwen3-14B on
+the identical palettes does not remove the interference: its corresponding
+$K=10$ scores are also 0.667 and 0.250, and its $K=32$ scores are 0.333 and
+0.125. Deterministic selection-to-full disclosure saves 51.3\%
+of tool capability tokens and active native K/V at $K=32$; for 50 declarative
+skills, the saving is 84.3\%. Large-catalog two-step workflows still fail when
+per-step target recall is only 0.250. The supported deployment pattern is thus
+broad external search, a small high-recall typed palette, exact full-record
+activation after choice, and independent authorization. Progressive disclosure
+makes broader palettes economical; it does not repair missing candidates,
+model confusion, or unsafe execution.
+\end{abstract}
+
+\section{Introduction}
+
+The companion runtime paper owns the shared Selected Context and typed-record
+contracts~\cite{praruntime}. This paper studies one bounded capability problem:
+discovering, disclosing, choosing, and authorizing tools and skills at scale.
+Its retrieval, palette, and disclosure results concern PRA Selected Context and
+typed capability records. They are not ordinary No-PRA baselines, Native
+Memory measurements, Native Serving measurements, or learned-bundle effects.
+Those execution and adaptor dimensions remain separate unless an experiment
+states the exact condition explicitly.
+
+An agent's logical capability environment can be much larger than the context
+needed for one decision. A software assistant may have thousands of APIs, data
+operations, command wrappers, and reusable procedures. Copying every complete
+definition into every request couples prompt and native key/value cost to the
+registry size rather than to the work at hand.
+
+The opposite extreme is also brittle. An external router that exposes exactly
+one tool must solve the entire intent decision before the model sees any
+alternatives. A ranking mistake becomes unrecoverable, and ambiguity cannot be
+resolved by comparing plausible schemas. The practical systems problem is
+therefore not ``all tools or one tool.'' It is how to produce a bounded,
+high-recall candidate palette that the model can still discriminate.
+
+We add a second separation. The information needed to \emph{choose} a
+capability is smaller than the information needed to \emph{use} it. A tool can
+be selected from its name, typed signature, short description, and side-effect
+class, but valid invocation requires its complete schema and parameter
+constraints. A skill can be selected from its name, description, and
+applicability, while use requires full instructions and constraints. These are
+deterministic named views of one typed record, not summaries generated from one
+another.
+
+The resulting architecture has six stages:
+\begin{enumerate}[leftmargin=*]
+  \item normalize callables and declarative skills into typed, versioned
+  records;
+  \item search the large registry with model-independent sparse, semantic, and
+  hybrid channels;
+  \item expose a bounded palette of compact selection views;
+  \item let the model choose a stable record identity;
+  \item activate only the selected full record without semantic rediscovery;
+  \item authorize and execute tools at the host boundary, or use full skill
+  instructions to guide generation.
+\end{enumerate}
+
+This paper makes four claims. First, useful registration does not require
+extensive manual semantic annotation. Second, large registries should be
+searched outside active model context and reduced to bounded palettes. Third,
+typed progressive disclosure reduces active token and K/V cost while
+preserving one complete selected record. Fourth, reactive execution remains
+bounded by both candidate recall and model discrimination as catalog size and
+$K$ increase. Detailed controls and the complete experimental chronology are
+retained in the appendices.
+
+\section{Typed Capability Context}
+
+A capability record has a stable URI, type, namespace, version, source
+fingerprint, aliases, provenance, access scope, and named views. Identity is
+distinct from the text used for discovery, the encoded representation cached
+by a model runtime, and current attention visibility. Updating source or model
+state therefore invalidates the relevant fingerprint without changing the
+conceptual resource namespace.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Capability & Compact selection view & Full use view \\
+\midrule
+Tool & name, typed signature, short description, side-effect marker & complete provider schema, parameter descriptions, required/optional constraints, return schema, side effects \\
+Skill & name, description, \texttt{when\_to\_use} & full instructions, constraints, ordered steps, examples, dependencies, references \\
+\bottomrule
+\end{tabularx}
+\caption{Selection and use are deterministic views of one typed identity.
+Neither view is produced by lossy summarization of the other.}
+\label{tab:record-views}
+\end{table}
+
+Figure~\ref{fig:capability-architecture} shows the system boundary. Discovery
+may scan a large registry, but only the chosen palette enters model-visible
+context. A model selection identifies a record; it does not grant permission
+to call it. Tools cross a separate host authorization and validation boundary.
+Skills remain declarative text and do not acquire execution authority.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/final_curves/typed_capability_architecture.pdf}
+\caption{One capability-context architecture. Registration establishes stable
+typed identity; external discovery produces a bounded compact palette; the
+model chooses an identity; the runtime activates exactly one full record; tool
+execution remains host-authorized.}
+\label{fig:capability-architecture}
+\end{figure}
+
+The design distinguishes six costs that are often conflated:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{backing-store bytes}: source and normalized record payloads;
+  \item \textbf{index bytes}: sparse, dense, and provenance-bearing retrieval
+  structures;
+  \item \textbf{resident encoded bytes}: cached representations that may be
+  reused but are not currently visible;
+  \item \textbf{transferred K/V}: encoded state moved across a process or
+  device boundary;
+  \item \textbf{active K/V}: state admitted to the current attention workspace;
+  \item \textbf{prompt tokens}: serialized text when native activation is not
+  available.
+\end{itemize}
+Savings in one category do not imply savings in every other category. The main
+tables report active token and K/V accounting; local cache and index costs are
+reported separately in the appendices.
+
+\subsection{Identity, state, and authorization invariants}
+
+The stable URI is the join key across registration, retrieval, cache lookup,
+model choice, and execution. A representative identity is
+\texttt{!!ref:tool:calendar:create\_event:v3!!}; a skill uses the same scheme
+with a different type component. The text shown during selection is never used
+as the execution identifier. This prevents a shortened display description,
+an alias collision, or a later metadata revision from silently changing which
+binding is invoked.
+
+Three invariants follow. First, every visible view retains type, URI, version,
+and source provenance. Second, a transition from selection to full use can
+only expand the same identity; it cannot substitute the nearest semantic
+neighbor. Third, access filtering precedes ranking. Tenant scope, revocation,
+and an optional URI allowlist therefore constrain the search domain before a
+candidate receives a score. The resolver returns a trace containing channel
+provenance, confidence, fallback count, and the final
+\texttt{select}/\texttt{ask}/\texttt{abstain} decision, but it never executes a
+tool.
+
+Cache identity is correspondingly stricter than record identity. A reusable
+encoding fingerprint includes source version, model, tokenizer, routing
+configuration, and position-sensitive encoding state. A stale cached view can
+be invalidated without inventing a new logical capability; a revoked record
+can remain in backing storage without remaining eligible for discovery.
+
+\subsection{Discovery policy versus disclosure policy}
+
+The SDK represents retrieval and model visibility as separate policies. A
+discovery policy determines how the registry is searched and how confidence is
+calibrated. A disclosure policy determines how many records are visible, which
+view each record exposes, and whether destructive or restricted candidates
+may appear. This separation matters operationally: broad search can increase
+recall without forcing every scored record into the model context, while an
+explicit URI can still be presented with a comparison palette when the caller
+requests one.
+
+Resolve mode seeks one identity, $q\mapsto r^*$. Explore mode seeks a bounded
+set, $(q,state)\mapsto C_K$, and must be evaluated with recall, useful
+precision, unsafe exposure, and downstream choice. Neither mode changes the
+authorization boundary shown in Figure~\ref{fig:capability-architecture}.
+
+\subsection{End-to-end runtime contract}
+
+The architecture can be implemented without coupling the retrieval index to a
+particular model provider. Registration emits immutable record versions and
+selection/full serializers. Discovery consumes only indexable record metadata
+and returns ordered URIs with scores and provenance. The model adapter consumes
+selection views and returns one URI. The record store resolves that URI to the
+full view. Finally, the host validates a proposed tool call against the full
+schema and current policy. A skill ends at guided generation rather than tool
+dispatch.
+
+For one request, the contract is:
+\begin{enumerate}[leftmargin=*]
+  \item filter the registry by tenant, revocation, type, and caller allowlist;
+  \item retrieve and calibrate a candidate set outside model context;
+  \item serialize at most $K$ compact views, retaining every stable URI;
+  \item parse one model-selected URI and reject identities outside the palette;
+  \item activate that identity's complete current full view by exact lookup;
+  \item validate arguments and host policy before any side effect.
+\end{enumerate}
+The discovery trace and the activation trace therefore meet at the URI but
+remain separate audit objects. A resolver can be replaced, an index can be
+rebuilt, or a model adapter can change without weakening record atomicity or
+authorization. Conversely, a high retrieval score cannot bypass palette
+membership, exact activation, schema validation, or host permission.
+
+The implementation also supports optional tenant, session, and expiry binding
+on each execution grant. These checks precede disclosure, risk, schema, and
+handler checks. A grant issued for one session therefore cannot be replayed in
+another session or tenant merely because the discovered URI is identical.
+Appendix~\ref{sec:authorization-adversarial} reports the corresponding
+deterministic mechanism matrix.
+
+The local implementation uses lazy view objects and a cache keyed by the
+encoding fingerprint described above. This makes registration inexpensive and
+permits warm full-record reactivation. It does not imply that an opaque remote
+API can alter an already-running attention state; such an adapter may serialize
+the same two phases as separate requests. The portable claim is the typed
+contract and absence of semantic rediscovery after choice, not a universal
+provider-specific cache operation.
+
+\section{Automatic Capability Registration}
+
+The public SDK accepts a complete \texttt{ToolRecord}, an ordinary Python
+callable, a declarative \texttt{Skill}, or a parent directory containing skill
+folders. Callable normalization extracts name, signature, annotations,
+docstrings, parameter descriptions, required/optional structure, return type,
+and side-effect metadata. Deterministic enrichers derive operation/object
+terms, generic synonyms, inferred concepts, and compact embedding text. The
+full schema remains authoritative even when a compact view is used for
+selection.
+
+Skills use the same identity and discovery substrate but a different full
+payload. Common OpenAI- and Anthropic-style \texttt{SKILL.md} folders are
+normalized into provider-neutral declarative records. Ambiguous layouts are
+rejected. Script and asset paths are recorded for provenance but are not
+executed by this paper's runtime.
+
+\subsection{Deterministic registration pipeline}
+
+Callable registration begins from information already required to invoke the
+function: its qualified name, Python signature, type annotations, defaults,
+and docstring. The normalizer converts this material into a provider-neutral
+parameter schema and stores the original callable as a host binding. Metadata
+enrichment then derives compact retrieval fields in four deterministic steps:
+identifier splitting and normalization; operation/object extraction; generic
+synonym expansion; and typed concept/tag inference. Compact embedding text is
+constructed from those fields, while the complete generated schema remains
+the only full tool view.
+
+This order avoids a circular evaluation. Retrieval metadata is generated from
+the callable and fixed rules, not from test-request labels or target IDs. The
+automatic and manual conditions share catalog identities, train/validation/
+test partitions, queries, and frozen discovery policy. Only the registration
+surface changes. Validation chooses policy settings; test identities are used
+once for the reported comparison. The automatic condition is therefore a
+zero-manual-semantic-metadata condition, not a zero-documentation condition.
+
+Skill normalization follows the same discipline. Front matter supplies name,
+description, and applicability; the body supplies full instructions. Folder
+layout and optional references contribute provenance but not hidden execution
+authority. The loader accepts a list of explicit \texttt{Skill} objects or a
+parent directory, discovers supported child folders, assigns stable URIs, and
+rejects duplicate or ambiguous identities. Provider-specific syntax is
+confined to loading; retrieval and progressive disclosure operate on the
+normalized record.
+
+The automatic-registration comparison fixes train/validation/test identities
+and retrieval policy before evaluation. Table~\ref{tab:automatic-registration}
+separates raw callable text, the largest isolated automatic enrichment, the
+complete automatic policy, and the manually authored ceiling.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Registration surface & Top-1 & Recall@3 & Interpretation \\
+\midrule
+Raw callable text & \PaperSixFiveAblationRawTopOne{} & --- & name/signature/docstring only \\
+Automatic generic synonyms & \PaperSixFiveAblationSynonymTopOne{} & --- & largest isolated gain \\
+Automatic fused metadata & \PaperSixFiveAblationAutoTopOne{} & \PaperSixFiveAblationAutoRecallThree{} & validation-frozen zero-manual policy \\
+Rich manual metadata & \PaperSixFiveAblationManualTopOne{} & \PaperSixFiveAblationManualRecallThree{} & authored comparison ceiling \\
+\bottomrule
+\end{tabular}
+\caption{Automatic registration on the frozen zero-manual-metadata cohort.
+The automatic/manual Top-1 difference is statistically unresolved on this
+cohort; detailed ablations are in the appendices.}
+\label{tab:automatic-registration}
+\end{table}
+
+Automatic fusion reaches \PaperSixFiveAblationAutoTopOne{} Top-1 versus
+\PaperSixFiveAblationManualTopOne{} for manual metadata. This does not show
+that documentation quality is irrelevant: removing docstrings reduces
+Recall@3 to \PaperSixFiveDocstringRemovalRecallThree{}. It shows that useful
+typed registration can begin from ordinary callable metadata rather than a
+separate hand-authored semantic catalog.
+
+Record atomicity is part of registration correctness. When one complete tool
+record is selected, execution acceptance is
+\PaperSixFiveAtomicCallValidity{}. Generic internal chunk routing accepts only
+\PaperSixFiveGenericChunkValidity{} and omits required arguments in 0.850 of
+cases. The runtime therefore treats an externally selected tool schema as an
+authoritative atomic unit rather than as arbitrary text fragments.
+
+The ablation identifies where registration quality comes from. Raw callable
+text is usable but incomplete. Generic synonyms provide the largest isolated
+gain, and the full automatic fusion combines complementary evidence without
+requiring a second catalog written by hand. The docstring-removal result shows
+the boundary: automatic extraction can remove duplicated annotation work, but
+it cannot recover semantics that the software interface never states.
+
+\section{Large-Catalog Discovery}
+
+Discovery and disclosure are independent controls. Discovery searches
+explicit URIs, lexical tokens and aliases, indexed BM25 evidence, typed
+operation/object concepts, compact embeddings, or fused combinations.
+Disclosure decides which retrieved records become model-visible. A policy can
+therefore use broad external search while enforcing a small compact palette.
+
+\subsection{Channels and decision policy}
+
+The resolver exposes six channel families. Exact URI lookup is deterministic
+after access checks. Lexical search uses normalized names, aliases, descriptions,
+and token evidence. Persistent postings and BM25 narrow a large catalog before
+scoring. Typed dictionaries preserve provenance for operation, object, and
+family concepts. Compact local embeddings provide paraphrase evidence without
+calling the generation model. Fusion combines ranked evidence; adaptive mode
+starts with cheaper high-precision channels and escalates only when calibrated
+confidence is insufficient.
+
+For candidate $r_i$, confidence approximates
+\[
+c_i=P(r_i\text{ is intended}\mid q,\mathbf{s}_i,p_i),
+\]
+where $\mathbf{s}_i$ contains channel scores and $p_i$ records their provenance.
+High confidence permits selection, intermediate confidence can trigger another
+channel or clarification, and low confidence abstains. A positive request is
+operationally correct only if the right resource is ranked first and the
+decision is \texttt{select}; an ambiguous or missing request is correct only if
+the policy asks or abstains. This prevents a latent ranker from receiving
+deployment credit for a candidate it should not safely expose.
+
+Fusion and diversity union serve different roles. Frozen fusion produces one
+calibrated ranking and remains the SDK default. Diversity union takes bounded
+contributions from complementary channels, deduplicates identities, and
+preserves disagreement that a single fused score can suppress. It is an
+experimental high-recall palette generator. Raw union is retained only as a
+diagnostic because candidate coverage alone does not control irrelevant or
+unsafe exposure.
+
+\subsection{Evaluation cohorts}
+
+The semantic-hard cohort fixes 144 held-out requests across canonical,
+paraphrastic, colloquial, implicit, contextual, and multilingual forms. It
+tests whether a resolver can find the same capability when surface overlap is
+weak. Validation freezes channel thresholds and fusion settings before test
+evaluation. The staged resolver reports both coverage and selective accuracy,
+because abstaining on every hard request would otherwise appear safe.
+
+The scaling cohort preserves those target identities while adding
+callable-derived, semantically confusable distractors at catalog sizes 32, 128,
+512, 2,048, and 8,192. Five catalog seeds vary distractor identity and ordering.
+Candidate budgets span $K=1$ through $48$. The study records Recall@$K$, useful
+precision, unsafe exposure, latency, index memory, and active-context cost.
+Model-choice experiments are more expensive and use a separately identified
+eight-request by five-seed cohort; their denominator is never substituted for
+the 720-row retrieval denominator.
+
+The semantic-hard benchmark contains 144 frozen test requests spanning
+canonical, paraphrastic, colloquial, implicit, contextual, and multilingual
+forms. BM25 obtains \PaperSixFiveSemanticBMTopOne{} Top-1; typed tags obtain
+\PaperSixFiveSemanticTagsTopOne{}; and the dictionary/embedding hybrid obtains
+\PaperSixFiveSemanticHybridTopOne{}. A validation-calibrated staged resolver
+selects on \PaperSixFiveSemanticCoverage{} of requests at
+\PaperSixFiveSemanticSelectiveAccuracy{} selective accuracy. Confidence
+therefore controls action coverage rather than merely decorating a ranking.
+
+The scaling study adds callable-derived, semantically confusable distractors
+through 8,192 tools under five catalog seeds. Frozen hybrid Top-1 falls from
+\PaperSixFiveScaleThirtyTwoHybridTopOne{} at 32 tools to
+\PaperSixFiveScaleEightKHybridTopOne{} at 8,192; lexical Top-1 at 8,192 is
+\PaperSixFiveScaleEightKLexicalTopOne{}. At $K=10$, raw union raises required-
+tool recall to \PaperSixFiveScaleEightKUnionRecallTen{}, but useful precision is
+only \PaperSixFiveScaleEightKUnionPrecisionTen{} and unsafe exposure is
+\PaperSixFiveScaleEightKUnionUnsafeTen{}. Broad union is therefore a candidate
+generator, not a default disclosure policy.
+
+The supported resolver uses model-independent indexed lexical evidence,
+provenance-bearing dictionaries/tags, compact embedding fallback, and
+validation-calibrated escalation. Frozen native Q/K and transferred low-rank
+projections obtain only .049--.063 Top-1 on the same semantic-hard test set.
+That negative control defines the current deployment boundary; layer, reducer,
+and projection diagnostics remain in the appendix.
+
+The scaling result is not a claim that lexical evidence universally dominates
+semantic evidence. It shows a changing channel geometry: exact lexical cues
+remain valuable as confusable descriptions accumulate, while paraphrastic
+queries still require semantic or typed evidence. A production resolver should
+therefore index complementary channels and calibrate their union, rather than
+replace one exhaustive Python scorer with another. Cold/warm timing, posting
+memory, and refresh costs are reported in the appendix because they depend on
+the local implementation and catalog representation.
+
+\section{Candidate Palettes and Model Choice}
+
+The candidate budget $K$ trades retrieval recall against model discrimination.
+These are different random variables:
+\begin{align}
+R_K &= P(r^*\in C_K),\\
+A_K &= P(\widehat r=r^*\mid r^*\in C_K),\\
+E_K &= P(\widehat r=r^*)=R_K A_K.
+\end{align}
+A retrieval-only Recall@$K$ curve must not be presented as target presence in a
+different executable cohort. We therefore report the five-seed 8,192-tool
+retrieval frontier and the smaller frozen-model choice cohort separately.
+
+\subsection{Matched palette protocol}
+
+Each model-facing row serializes the same compact fields in a stable order and
+asks a frozen chooser to return one bound capability identity. The main curve
+uses Qwen3-0.6B Q4. A controlled replication substitutes Qwen3-14B 4-bit while
+holding every query, candidate identity, order, compact payload, seed, and
+label protocol fixed. The 14B run used MLX 0.32.2 and MLX-LM 0.31.3 on a 48-GB
+Apple M4 Pro. The target may
+be absent; such a row is a retrieval failure for end-to-end choice, not a model
+error in conditional choice. When the target is present, distractor count and
+composition define the discrimination problem. Seeds are paired across policy
+conditions so an end-to-end difference is not attributed to a different
+catalog draw.
+
+The three metrics answer different deployment questions. $R_K$ asks whether
+external discovery preserved an actionable option. $A_K$ asks whether the
+model can distinguish that option from the visible alternatives. $E_K$ asks
+whether the combined pipeline selects it. Accepted-call rate adds one more
+gate: after selection, the model must construct arguments accepted by the
+authoritative schema and host validator. Reporting only Recall@$K$ would hide
+the latter three failure surfaces.
+
+Figure~\ref{fig:final-frontier} is the central operating result. Diversity-
+preserving recall rises from 0.653 at $K=8$ to 0.678 at $K=16$, 0.701 at
+$K=32$, and 0.746 at $K=48$. The gain from quadrupling $K=8$ to $K=32$ is 4.9
+percentage points, while useful precision falls. Candidate breadth is useful,
+but its return diminishes.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/final_curves/final_quality_cost_frontier.pdf}
+\caption{The $K$ frontier. Panels separate required-tool recall, conditional
+model choice, end-to-end choice, and progressive-disclosure savings. Retrieval
+and executable cohorts are labeled separately; unmeasured policy points are not
+interpolated.}
+\label{fig:final-frontier}
+\end{figure}
+
+At $K=10$, diversity union places the target in 15 of 40 executable palettes,
+chooses it in 10 of those 15, and reaches 0.667 conditional and 0.250 end-to-end
+choice. Frozen fusion reaches 0.300 target recall, 0.083 conditional choice,
+and 0.025 end-to-end choice. The paired end-to-end effect favoring diversity
+union is exact $p=0.0117$ on this fixed cohort.
+
+More slots do not continue that improvement. Table~\ref{tab:tool-choice-high-k}
+holds the eight requests and five catalog seeds fixed. Target presence remains
+15/40 from $K=10$ through $K=32$, while conditional choice falls from 0.667 to
+0.400 and end-to-end choice from 0.250 to 0.150. Larger compact palettes are
+affordable, but they are not free of decision interference.
+
+\begin{table}[t]
+\centering
+\small
+\input{../shared/results/paper6_5_tools/final_curves/generated_tool_choice_high_k_table.tex}
+\caption{Measured diversity-union model choice on the fixed 40-row executable
+cohort. Conditional accuracy excludes target-absent palettes; end-to-end
+accuracy counts them as failures.}
+\label{tab:tool-choice-high-k}
+\end{table}
+
+\subsection{Does a larger chooser repair palette interference?}
+
+Table~\ref{tab:chooser-decomposition} separates the three gates requested by
+the deployment pipeline. ``Present'' is discovery recall on the executable
+cohort. $A_K$ is discrimination conditional on target presence. $E_K$ includes
+target-absent retrieval failures. The execution ceiling removes both retrieval
+and choice by exposing the target's complete schema, then scores tool identity
+and argument semantics on the eight unique requests. ``Full pipeline'' joins
+each fixed-palette choice to that same model's deterministic oracle-schema
+execution result for the corresponding request. It is a composed diagnostic,
+not a separately sampled workflow run.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\input{../shared/results/paper6_5_tools/chooser_decomposition/generated_chooser_decomposition_table.tex}
+\caption{Frozen-palette chooser decomposition over five seeds. Increasing
+model size alone neither shifts the best measured $K$ nor eliminates
+candidate interference. Execution ceiling is measured once per unique request.}
+\label{tab:chooser-decomposition}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper6_5_tools/chooser_decomposition/chooser_decomposition.pdf}
+\caption{The same 8,192-tool diversity-union palettes evaluated by two frozen
+Qwen choosers. Discovery recall is fixed at 15/40 for all displayed points.
+The 14B model modestly improves oracle argument construction but does not
+produce a monotone discrimination advantage as the palette grows.}
+\label{fig:chooser-decomposition}
+\end{figure}
+
+At $K=10$, both models choose 10 of 15 present targets, although they disagree
+on ten individual rows: each model uniquely wins five. At $K=16$, the 14B
+model moves from 6/15 to 7/15 correct choices; at $K=32$, it moves in the
+opposite direction, from 6/15 to 5/15. Oracle full-schema execution improves
+from 3/8 to 4/8. The composed full pipeline improves from 0/40 to 5/40 at
+$K=10$, then falls to 0/40 at $K=32$. These small counts do not establish a
+scaling law, but they reject the simple explanation that the observed
+large-palette failure is merely insufficient parameter count. Candidate
+ordering, near-duplicate surface forms, compact-view content, and the choice
+protocol remain active design variables.
+
+The practical operating point is consequently policy- and model-dependent.
+At the retrieval scale, increasing $K$ through 48 continues to recover targets,
+but gradually. On the executable cohort, $K=10$ is the best measured diversity
+point because additional slots add no targets and reduce conditional choice.
+The paper does not claim that ten candidates is universal: a larger model, a
+different tokenizer, or a less confusable catalog may move the optimum. It
+claims that $K$ must be calibrated jointly against retrieval and downstream
+choice, not selected from retrieval recall alone.
+
+Static capability neighborhoods provide a useful negative control. A typed
+graph built from categories, objects, operations, curated tags, description
+keywords, and producer--consumer schema edges attains high required-tool
+coverage. Yet the frozen workflow model completes none of 15 tasks under broad
+static disclosure. Coverage without a query-conditioned decision point can
+increase visible confusion, so capability-graph expansion is not part of the
+recommended default path.
+
+\section{Typed Progressive Disclosure}
+
+After candidate retrieval, the runtime activates compact selection views lazily.
+The model chooses one stable URI from that palette. The local transition
+\[
+(C_K,r^*)\longmapsto\operatorname{activate\_full}(r^*)
+\]
+performs no BM25, embedding, fusion, or union query. The already-known identity
+resolves directly to its complete tool schema or skill instructions. Cached
+full encodings can be reactivated without recomputation. An opaque remote
+provider may still require another model request; the narrower guarantee is
+that the runtime does not rerun semantic discovery.
+
+\subsection{Deterministic views and lifecycle}
+
+Progressive disclosure is not free-form summarization. The selection serializer
+projects a fixed field allowlist from the normalized record. For tools, it
+includes identity, name, typed signature, short description, and the available
+side-effect marker. For skills, it includes identity, name, description, and
+\texttt{when\_to\_use}. The full serializer projects the complete validated
+tool schema or declarative instruction body. Unknown fields cannot leak into a
+selection view, and required full fields cannot be dropped by a generative
+compressor.
+
+The lifecycle separates source residency from model visibility. Registration
+can remain metadata-only. A first query encodes or serializes the selected
+compact views. Model choice fixes the URI. Exact activation then looks up that
+URI and admits its cached full encoding, or encodes it once on a cold path.
+Losing candidates are removed. This gives the model comparison breadth at
+choice time without paying the full-use cost for every candidate.
+
+The state machine is
+\[
+\textsc{Unencoded}\rightarrow\textsc{SelectionEncoded}
+\rightarrow\textsc{ActiveSelection}\rightarrow\textsc{FullEncoded}
+\rightarrow\textsc{ActiveFull}.
+\]
+Resident cached bytes and attention-visible active bytes are accounted
+separately. Table~\ref{tab:progressive-accounting} gives representative means
+using the frozen Qwen accounting value of 114,688 native-K/V bytes per active
+token.
+
+For palette $C_K$ and selected record $r^*$, the serialized capability-token
+costs are
+\begin{align}
+T_{\mathrm{full}}(C_K)&=\sum_{r\in C_K}T(F(r)),\\
+T_{\mathrm{prog}}(C_K,r^*)&=\sum_{r\in C_K}T(S(r))+T(F(r^*)),
+\end{align}
+where $S$ and $F$ are deterministic selection and full views. The reported
+saving is $1-T_{\mathrm{prog}}/T_{\mathrm{full}}$. Native-K/V accounting
+applies the model-specific per-token value only to attention-visible views.
+Backing records and cached inactive encodings are reported separately rather
+than counted as memory eliminated by the method.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}llrrrrr@{}}
+\toprule
+Type & $K$ & Full-all tok. & Progressive tok. & Saving & Full KV MiB & Prog. KV MiB \\
+\midrule
+Tool & 8  & 2,564 & 1,453 & 43.4\% & 280.5 & 158.9 \\
+Tool & 32 & 10,455 & 5,095 & 51.3\% & 1,143.5 & 557.3 \\
+Skill & 8  & 6,866 & 1,674 & 75.5\% & 751.0 & 183.1 \\
+Skill & 32 & 26,617 & 4,170 & 84.3\% & 2,911.3 & 456.1 \\
+\bottomrule
+\end{tabular}
+\caption{Selection views plus one selected full record versus exposing every
+candidate in full. K/V values are active/attention-visible accounting, not
+backing-store, index, or resident-cache bytes.}
+\label{tab:progressive-accounting}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.9\linewidth]{../shared/results/paper6_5_tools/progressive_disclosure/progressive_disclosure_pareto.pdf}
+\caption{Typed selection-to-full quality-cost frontier. Compact views lower
+capability exposure; one complete authoritative record is activated only after
+choice. Full per-condition tables remain in the appendix.}
+\label{fig:progressive-pareto}
+\end{figure}
+
+The 50-skill benchmark tests whether the abstraction generalizes beyond
+executable APIs. Validation-frozen fusion reaches 0.94 Recall@$4$, 0.96 at
+$K=8$, and 1.00 at $K=16$ on 50 name-blind held-out requests. The median skill
+selection/full token ratio is 0.150. At $K=8$, selection plus one complete skill
+uses 0.245 of full-all tokens; at $K=32$, it uses 0.157.
+
+The benchmark contains 50 confusable declarative skills and 100 name-blind
+requests split evenly between validation and test. Requests include canonical,
+paraphrastic, colloquial, goal-oriented, contextual, and multilingual forms;
+instruction bodies span short, medium, and long buckets. Tool and skill
+retrieval use the same resolver interface and stable identity rules, while
+their full-view serializers and use-time checks remain type-specific.
+
+The model-use result is more modest. At $K=8$, no full-all skill prompt fits the
+measured 4 GB runtime, while all selection-to-full prompts fit. The frozen model
+chooses and applies the target skill in 1/4 cases; oracle-full succeeds in 4/4.
+The compact representation makes the condition executable and preserves a
+full-instruction ceiling, but it does not solve model choice.
+
+An eight-request mixed 8,192-tool/50-skill check reaches 0.75 retrieval recall
+for both target types at $K=8$. Exact choice is 0.50 for tools and 0.25 for
+skills. At $K=32$, every tool target is present but exact tool choice falls to
+0.25. Skills therefore support the shared typed representation; they do not
+justify a second discovery architecture or a claim of broad procedural
+competence.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Metric & Tools & Skills \\
+\midrule
+Logical catalog size & 8,192 & 50 \\
+Held-out discovery queries & $5\times144$ & 50 \\
+Recall at $K=8$ & 0.653 & 0.960 \\
+Recall at $K=32$ & 0.701 & 1.000 \\
+Conditional choice at reported gate & 0.667 ($K=10$) & 0.500 ($K=8$) \\
+Progressive strict success & 0.250 ($K=8$) & 0.250 ($K=8$) \\
+Progressive token saving & 0.513 ($K=32$) & 0.843 ($K=32$) \\
+Active-K/V saving & 0.513 ($K=32$) & 0.843 ($K=32$) \\
+\bottomrule
+\end{tabular}
+\caption{Tools and skills under one typed-capability architecture. Discovery
+rows are larger than model-use rows. Tool recall uses diversity union; skill
+recall uses validation-frozen fusion. Conditional choice is evaluated only
+when the target is present.}
+\label{tab:capability-comparison}
+\end{table}
+
+The shared table should not be read as a head-to-head benchmark. Tool catalogs
+are much larger and use five distractor seeds; skill discovery has fewer
+identities and a different use-time objective. Its purpose is architectural:
+the same registration, bounded palette, stable URI, lazy activation, and cost
+accounting apply to both record types without flattening either into an
+untyped text chunk.
+
+\subsection{What progressive disclosure does and does not preserve}
+
+Four conditions isolate the mechanism. \emph{Full-all} exposes every candidate
+in full. \emph{Selection-only} tests whether compact views can support choice
+but intentionally withholds use details. \emph{Selection-to-full} expands the
+chosen identity before use. \emph{Oracle-full} supplies the correct complete
+record and estimates the ceiling once retrieval and choice are removed. The
+gap between selection-only and selection-to-full tests the value of exact
+expansion; the gap from selection-to-full to oracle-full localizes remaining
+retrieval or model-choice error.
+
+The atomicity control explains why exact full activation matters. The selected
+record preserves parameter names, required/optional constraints, return
+schema, and side-effect metadata as one unit. Routing generic internal chunks
+may retrieve locally relevant text while omitting the field that makes the
+call valid. Progressive disclosure reduces the number of full records; it does
+not fragment the one record that survives.
+
+\section{Reactive Execution and Scaling Limits}
+
+Reactive execution refreshes discovery after each observation instead of
+placing an entire anticipated plan in context. On the small 18-tool cohort, the
+frozen model completes 10/15 three-to-five-step workflows with reactive
+just-in-time disclosure, compared with 3/15 when all required tools are shown
+statically and 0/15 without refresh. The mechanism can therefore help when each
+step's discovery and choice are reliable.
+
+\subsection{Reactive protocol}
+
+At each step, the host serializes the current request and prior observation,
+runs the frozen resolver, exposes a bounded selection palette, activates the
+chosen full tool record, validates the proposed arguments, executes the local
+binding, and appends a typed observation. The next discovery query is formed
+from this updated state. No workflow receives the target sequence as a plan,
+and a failed or unauthorized call cannot be repaired by silently dispatching an
+oracle tool.
+
+The comparison isolates timing of disclosure. Static-required exposes the
+known required set before generation; reactive JIT discovers from the current
+state; no-refresh fixes the initial palette. The small-catalog result shows
+that a fresh observation can make the next capability easier to identify. It
+does not establish that repeated retrieval scales automatically to thousands
+of confusable tools.
+
+The large-catalog result is the limiting case. All ten tested two-step
+workflows fail because per-step target recall is only 0.250. For a workflow of
+length $H$, the expression
+\[
+P(\text{all required targets retrieved})\approx R^H
+\]
+is a retrieval-only diagnostic under an independence approximation, not a
+measured law. It illustrates why even moderate per-step miss rates compound;
+actual steps may be correlated and model choice adds another failure term.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.86\linewidth]{../shared/results/paper6_5_tools/auto_union_records/union_jit_frontier.pdf}
+\caption{Reactive execution frontier on the frozen workflow controls.
+Candidate breadth can reduce disclosure cost only after each required identity
+is retrieved. Large-catalog JIT remains recall-limited; detailed traces and
+policy variants are in the appendix.}
+\label{fig:jit-frontier}
+\end{figure}
+
+A useful failure decomposition for step $h$ is
+\[
+P(\text{accepted}_h)=P(r_h^*\in C_K)\,
+P(\widehat r_h=r_h^*\mid r_h^*\in C_K)\,
+P(\text{valid call}_h\mid \widehat r_h=r_h^*).
+\]
+Each factor is conditional on the accumulated state. Multiplying a single
+average recall as $R^H$ deliberately ignores that dependence; it is included
+only to show why a per-step recall of 0.250 leaves little room for a two-step
+workflow. The measured outcome, rather than the approximation, is that all ten
+large-catalog workflows fail.
+
+Two negative controls narrow the recommended path. Static capability-graph
+disclosure reaches high required-tool coverage but 0/15 task success, so broad
+speculative neighborhoods are not a substitute for reactive choice. Frozen
+native Q/K does not provide useful semantic-hard discovery signal in the tested
+setting. Fusion remains the conservative SDK default; diversity union remains
+an experimental high-recall candidate generator.
+
+The security boundary is unchanged by any discovery policy. Candidate
+visibility and model selection do not authorize execution. The host validates
+the selected full schema, arguments, tenant scope, revocation state, and
+side-effect permission before dispatch.
+
+The result yields a conservative deployment rule. Reactive refresh is useful
+where per-step resolver recall and conditional choice have been measured on the
+relevant catalog. It should degrade to clarification, abstention, or an
+operator-approved broader search when confidence is low. Progressive
+disclosure can make that broader palette cheaper, but cannot turn an absent
+target into a present one or make a confusing palette discriminable.
+
+\section{Related Work}
+
+\subsection{Tool retrieval and large catalogs}
+
+Gorilla combines API-call generation with retrieved documentation and studies
+adaptation to changing APIs~\cite{patil2024gorilla}. ToolLLM introduces
+ToolBench, instruction tuning over more than 16,000 APIs, a neural API
+retriever, and multi-step search~\cite{qin2024toolllm}. ToolRet later isolates
+retrieval over heterogeneous large tool collections and shows that general
+retrievers need not transfer cleanly to capability search~\cite{shi2025toolret}.
+Paper 6.5 separates candidate retrieval, conditional model choice, accepted
+call construction, and host execution so a high Recall@$K$ result cannot stand
+in for downstream success.
+
+\subsection{Tool and function calling}
+
+Toolformer learns when and how to insert calls during language-model training
+\cite{schick2023toolformer}. Common function-calling paths expose either all
+schemas or a router-selected subset before the model constructs arguments. Our
+runtime adds a distinct compact palette: the model first chooses among typed
+selection views, then receives one exact complete schema. Record atomicity and
+host authorization remain explicit.
+
+\subsection{Progressive disclosure and context management}
+
+Prompt-compression systems such as LLMLingua shorten model-visible text under a
+budget~\cite{jiang2023llmlingua}. Headroom's public Compress--Cache--Retrieve
+architecture retains compressed originals and permits tool-triggered or
+proactive recovery~\cite{headroom2026ccr}. Paper 6.5 addresses capability
+definitions rather than large result payloads. Its selection and full views are
+deterministic typed projections, not adaptive summaries. Reversible result
+compression, multiple address views, and stateful cursors belong to Paper 7 and
+are outside this paper's scope.
+
+\subsection{Skills and procedural capabilities}
+
+Public agent-skill formats package trigger metadata, instructions, and optional
+resources in addressable folders~\cite{anthropic2026skills}. We normalize
+common declarative layouts into the same typed identity/discovery substrate as
+tools, while preserving different full payloads and excluding scripts. The
+skill benchmark is evidence for representation generality, not a claim that
+tool execution and procedural guidance are behaviorally identical.
+
+\subsection{Hybrid and model-native retrieval}
+
+BM25 supplies sparse lexical evidence, dense passage retrieval supplies
+complementary learned evidence, and reciprocal rank fusion combines ranked
+lists without equating their scores~\cite{robertson2009bm25,karpukhin2020dpr,
+cormack2009rrf}. Query-aware KV systems such as Quest select cache pages for an
+already formed attention query~\cite{tang2024quest}. Paper 6.5 operates before
+full capability materialization. Its frozen native-Q/K result is a bounded
+negative control, not a general argument against trained model-native routing.
+
+\section{Negative Results and Limitations}
+
+Most generation experiments use frozen Qwen3-0.6B. The matched chooser
+decomposition adds one 4-bit Qwen3-14B replication, but it remains within one
+model family, one tokenizer family, one prompt protocol, eight query identities,
+and five catalog seeds. It is evidence against a simple scale-only remedy, not
+a broad model scaling claim. Retrieval cohorts are substantially larger than
+model-choice, mixed-palette, and workflow cohorts. Exact paired tests are
+retained where justified, but small raw counts remain small raw counts.
+
+Semantic-hard queries and confusable catalogs are authored or generated rather
+than sampled from production traffic. Capability domains are limited. The
+mixed tool/skill study has eight held-out requests, workflows are short, and
+large-catalog discovery remains imperfect. Larger $K$ can improve recall while
+increasing model confusion.
+
+The reference resolver still contains exhaustive Python components. Indexed
+latency is measured locally, not under a production remote-serving topology.
+The paper does not provide a comprehensive penetration test, distributed cache
+policy, cross-tenant residency study, or remote-provider request/TTFT analysis.
+The in-memory execution harness does test disclosure bypass, privilege
+escalation, schema confusion, revocation, expiry, and cross-tenant/session
+grant replay, but this bounded matrix is not a substitute for hostile network
+and provider testing.
+
+Skills are declarative only. Scripted skills, executable assets, mutation,
+session inheritance, and long-horizon procedural evaluation are excluded.
+Large typed result records, reversible compression, adaptive materialization,
+and analytics cursors are Paper 7 mechanisms and are intentionally out of
+scope. Progressive disclosure here concerns capability definitions only.
+
+\section{Conclusion}
+
+A practical large-capability agent should:
+\begin{enumerate}[leftmargin=*,nosep]
+  \item normalize tools and skills into stable typed records;
+  \item search the large registry outside active model context;
+  \item disclose a bounded, compact, high-recall palette;
+  \item let the model choose one stable capability identity;
+  \item activate only that identity's complete full record;
+  \item authorize and execute tools separately from model choice;
+  \item refresh reactively only where per-step discovery quality supports it.
+\end{enumerate}
+
+Automatic registration makes the architecture usable without a second manual
+catalog. Large-catalog retrieval makes broad search possible. Typed progressive
+disclosure makes bounded candidate breadth economical. The measured boundary
+is equally important: progressive disclosure reduces context cost; it does not
+solve missing candidates, model confusion, or authorization.
+
+\appendix
+\clearpage
+\input{paper6_5_appendices.tex}

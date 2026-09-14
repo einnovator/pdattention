@@ -1,0 +1,1153 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{graphicx}
+
+\title{Selectively Permeable Subagent Contexts with Progressive Retrieval Attention}
+\author{PRA Research Program}
+\date{September 2026}
+
+\newcommand{\pra}{PRA}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Subagents isolate execution, but their context boundary is usually coarse. A
+child either receives a copied parent transcript or reacquires information, and
+a parent commonly receives a lossy child summary. We extend Progressive
+Retrieval Attention (PRA) from one typed-record stream to a lineage graph with
+\emph{selectively permeable context boundaries}. The implementation assigns
+records to agents, persists lifecycle and topology events, supports explicit
+DAG joins and peer links, exposes selected or routable ancestor and
+completed-descendant records, and validates exact reuse through four generic
+effects and normalized resource identities. Concrete tool semantics remain in
+the harness; the runtime remains tool agnostic.
+
+We separate three gains that are often conflated: avoided tool execution,
+payload reuse, and native K/V reuse. The initial Subagent Context Reuse
+Benchmark (SCRB) is a five-seed, injected-cost systems simulation with direct
+runtime contract checks, not a live-engine timing result. At 8K shared tokens
+and eight children, memoization removes eight repeated tool calls but retains
+73,728 prefill tokens. Compatible native reuse reduces prefill to 8,192 tokens
+and the declared session cost from 1,924.6 to 313.1 ms, a simulated $6.15\times$
+speedup. Under a relevant write, resource-level invalidation preserves all
+unmodified-resource hits with zero stale reads; domain-wide invalidation loses
+them, while an unsafe control produces 16 stale reads at fan-out 16. In a
+completed-child evidence task, selective descendant routing attains the
+full-transcript upper bound with 384 rather than 16,384 parent-context tokens.
+A five-seed tracked-repository workload then exercises sequential and parallel
+fan-out, DAG joins, peers, and bounded descendant routing. It records 220 valid
+ancestor hits without duplicate physical reads; lexical and learned top-1
+routing recover 60.0\% and 65.0\% of held-out evidence. A post-hoc, zero-model
+fielded BM25 diagnostic reaches the 100\% oracle result on this small cohort,
+but is not a transfer result. A three-seed, 96-agent autonomous repository
+campaign then crosses sequential/parallel scheduling with isolated or routed
+completed-peer context. Parallelism gives a highly variable $1.16\times$
+paired speedup in isolation and a steadier $1.28\times$ with completed-peer
+context. Sequential peer context avoids 12.3 physical tool executions per seed
+but reduces exact source-path accuracy by 12.5 percentage points, exposing a
+selection--consumption failure rather than a reuse failure. A frozen transfer
+to 16 questions in two unrelated repositories lowers fielded-BM25 top-1 recall
+to 87.5\%, versus 81.25\% for lexical and learned selectors and 100\% for the
+oracle. Holding those selected records fixed across three model families and
+three presentation modes shows that consumption is model--presentation
+specific: attribution raises Gemma path accuracy from 68.75\% to 87.5\%, has
+no effect on Qwen3-Coder at 87.5\%, and lowers Qwen3-14B from 81.25\% to
+75.0\%. Mandatory verification is reliable only for Qwen3-Coder in this
+adapter; the Gemma tool arm is invalid because the serving API rejects every
+request. Finally, live MLX measurements with
+Qwen3-0.6B-4bit preserve host split-prefill logits exactly, including five of
+five 16-token greedy generations. Native reuse is strongly amortized when K/V
+fits comfortably, but reverses under a 32K-token memory-pressure condition on
+a 16 GB host. A direct-MLX lifecycle campaign further obtains a $1.47\times$
+two-session model-forward speedup with exact logits and validates isolation,
+cooperative pre-forward cancellation, task termination, capacity eviction,
+and exact host-tier round trips. Selectively permeable contexts are therefore
+operational, while their economic value depends on routing quality,
+presentation, fan-out, and residency.
+\end{abstract}
+
+\section{Introduction}
+
+Subagents have become a common agent-harness primitive. A parent model issues a tool-like delegation command, the harness creates a child model loop, and the child operates in a separate context until it returns a result, summary, artifact, or status. This design provides useful context isolation and enables parallel or specialist work, but the boundary is usually coarse. The child either begins with little parent state or receives a copied/summarized subset, and the parent generally sees only a compact return value rather than an addressable representation of the child's detailed execution history.
+
+This paper studies a complementary question: \emph{what if subagent context boundaries remain execution-isolated but become selectively permeable at the record and native-attention-state levels?}
+
+The work builds on earlier PRA papers on retrieval within attention, progressive materialization, persistent and typed records, tool/skill integration, structured context, and task-aware compaction. In particular, Paper 8 establishes a single-session agent harness where tool calls, tool results, tasks, artifacts, and compacted representations are explicit PRA records. Paper 9 extends this model across multiple agents by adding agent identity and lineage, a context-stream tree or DAG, cross-stream visibility, and validity-aware reuse.
+
+The design deliberately separates three layers:
+
+\begin{enumerate}[leftmargin=*]
+    \item the \textbf{agent harness}, which understands concrete tool semantics and ordinary subagent execution;
+    \item the \textbf{PRA runtime}, which may be remote and therefore operates only on generic records, resource/effect metadata, visibility, validity, lineage, and policy;
+    \item the \textbf{PRA-enabled model engine}, which stores and materializes native K/V and performs model-specific routing and context integration.
+\end{enumerate}
+
+The resulting abstraction is a graph of context streams rather than a collection of isolated transcript blobs.
+
+\paragraph{Contributions.}
+This paper contributes:
+
+\begin{enumerate}[leftmargin=*]
+    \item a generic representation of agent lineage and subagent lifecycle in PRA records;
+    \item a tool-agnostic declarative effect/resource model for determining when prior records remain valid;
+    \item ancestor and descendant record visibility policies that do not require copying entire contexts;
+    \item cross-agent tool-result and payload reuse;
+    \item native K/V reuse across agent streams when model and engine constraints permit;
+    \item controlled consistency semantics for sequential, parallel, shared-workspace, and externally mutable resources;
+    \item a benchmark suite designed specifically to quantify when cross-agent reuse produces a performance benefit;
+    \item natural-source, autonomous sequential/parallel, frozen routing-transfer,
+    cross-model consumption, and live MLX lifecycle experiments that separate
+    correctness, selection quality, consumption quality, and
+    residency-dependent economics.
+\end{enumerate}
+
+\section{Background and Position in the PRA Series}
+
+\subsection{Progressive Retrieval Attention}
+
+PRA treats logical context as larger than the physically materialized model
+context. External records can remain addressable and be selectively routed and
+materialized into attention as needed~\cite{simao2026pra,simao2026hf}. Earlier
+papers developed semantic, lexical, hierarchical, iterative, adaptive, and
+graph-aware selection mechanisms, as well as model/engine integrations capable
+of retaining native per-layer K/V state for external records.
+
+\subsection{From persistent records to agent context}
+
+The Papers 5--7 line develops persistent and typed resources, runtime integration, adaptive context control, and structured records. Paper 8 moves these ideas into an agent harness with task records and explicit tool-call/tool-result records. Tool results can be compacted in active context while preserving richer native/detail representations externally.
+
+Paper 9 starts from this property:
+
+\begin{quote}
+Compaction need not mean deletion. A compact active representation may coexist with a richer addressable representation and, where supported, persisted native K/V.
+\end{quote}
+
+This makes subagent reuse possible even after the parent has compacted its own tool history.
+
+\subsection{Relationship to Paper 4.5 and the agent SDK}
+
+Paper 4.5 establishes practical deployment modes and SDK boundaries among agent-side behavior, PRA gateways/runtimes, and engine integration. Paper 9 should preserve these boundaries. A PRA runtime may execute out-of-process or remotely and must not depend on Python objects, local filesystem assumptions, or a particular harness implementation.
+
+\section{Conventional Subagent Mechanics}
+
+At the harness level, the initial Paper 9 implementation should intentionally remain conventional:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+Parent LLM
+  -> spawn_subagent(task, options)
+Harness
+  -> allocate child agent/session
+  -> select model/tools/workspace/context policy
+Child agent loop
+  -> LLM -> tools -> observations -> ...
+Harness
+  -> return result/summary/artifacts
+Parent LLM
+\end{lstlisting}
+
+The paper does not claim novelty in this mechanism. Novelty begins after child creation: how the parent and child context streams are represented, what records are mutually visible, and whether already acquired/encoded information can be safely reused.
+
+\section{System Architecture}
+
+\subsection{Agent harness responsibilities}
+
+The harness is responsible for:
+
+\begin{itemize}[leftmargin=*]
+    \item spawning, resuming, stopping, and inspecting subagents;
+    \item assigning agent and task identities;
+    \item selecting child models, tools, permissions, and workspace semantics;
+    \item understanding concrete tool behavior;
+    \item mapping concrete tools to generic effect/resource descriptors;
+    \item emitting typed lifecycle and tool records;
+    \item enforcing safety and execution permissions;
+    \item applying user-configured subagent semantics.
+\end{itemize}
+
+The harness should be able to expose a capability matrix rather than requiring all semantics in the first implementation.
+
+\subsection{PRA runtime responsibilities}
+
+The PRA runtime should understand only generic concepts:
+
+\begin{itemize}[leftmargin=*]
+    \item session, agent, task, and record identities;
+    \item parent/child lineage and context-stream topology;
+    \item typed records and compact/detail representations;
+    \item record visibility and routing eligibility;
+    \item resource domains and resource identities;
+    \item generic effects and dependency sets;
+    \item validity and reuse policies;
+    \item causal/logical ordering;
+    \item materialization state and engine capability descriptors.
+\end{itemize}
+
+It should not contain special cases for tools such as \texttt{file\_read}, \texttt{git\_diff}, SQL, or HTTP.
+
+\subsection{PRA engine responsibilities}
+
+The engine integration handles model-near state and execution:
+
+\begin{itemize}[leftmargin=*]
+    \item persisted native K/V;
+    \item model-specific tokenization and positional handling;
+    \item routing and per-layer materialization;
+    \item cross-agent K/V reuse when compatible;
+    \item cache residency and eviction;
+    \item bounded physical context.
+\end{itemize}
+
+\section{Agent and Record Topology}
+
+Each PRA record gains an \texttt{agent\_uuid} in addition to existing session and record metadata.
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+RecordMetadata
+  record_uuid
+  session_uuid
+  agent_uuid
+  task_uuid?
+  created_at
+  logical_clock?
+  type
+  representation
+\end{lstlisting}
+
+Subagent creation is recorded as a lifecycle event, usually caused by an ordinary tool call in the parent stream:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+AgentStartRecord
+  agent_uuid
+  session_uuid
+  parent_agent_uuid
+  additional_parent_agent_uuids[]
+  peer_agent_uuids[]
+  parent_task_uuid?
+  spawn_call_record_uuid?
+  model_descriptor
+  workspace_id?
+  tool_profile_id?
+  context_policy
+\end{lstlisting}
+
+A corresponding \texttt{AgentStopRecord} captures status and typed result,
+summary, and artifact references. Completed child branches can remain
+externally addressable even if no longer active. \texttt{AgentLinkRecord}
+events add an extra parent or a symmetric peer edge and make those topology
+changes replayable.
+
+The implementation preserves one primary spawn parent for compatibility and
+supports additional parents for explicit DAG joins. Ancestor traversal follows
+all parents, while the historical \texttt{lineage()} call preserves the primary
+chain. Peer links are separate: sharing a parent does not make siblings visible,
+and adding a peer edge does not bypass either stream's visibility policy. Cycle
+checks reject invalid parent links.
+
+\section{Configurable Subagent Semantics}
+
+Table~\ref{tab:semantics} lists the main dimensions exposed by the harness SDK.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{0.28\linewidth}p{0.64\linewidth}}
+\toprule
+Dimension & Candidate semantics \\
+\midrule
+Child context & empty; selected; parent snapshot; logical fork \\
+Child model & same; cheaper; specialist; explicit \\
+Tools & inherited; restricted; specialist; explicit \\
+State & ephemeral; persistent; resumable \\
+Execution & synchronous; asynchronous \\
+Scheduling & sequential; parallel; DAG \\
+Return & final answer; summary; artifacts; typed records \\
+Communication & child-to-parent; bidirectional; peer-to-peer \\
+Workspace & shared; isolated; worktree/branch; explicit \\
+Lifetime & one-shot; resumable \\
+Recursion & prohibited; bounded; unrestricted \\
+Ancestor visibility & none; selected; routable; inherited \\
+    Descendant visibility & none; completed-only; routable \\
+    Peer visibility & none; selected; completed-only; routable \\
+\bottomrule
+\end{tabular}
+\caption{Subagent semantics exposed by the harness SDK. Paper 9 need not implement all modes initially.}
+\label{tab:semantics}
+\end{table}
+
+\section{Generic Effect and Resource Descriptors}
+
+Cross-agent reuse is unsafe unless the system can determine whether a prior result remains valid. PRA should not learn tool-specific semantics. Instead, harness adapters map tools into a deliberately small generic effect system:
+
+\[
+\texttt{EffectType} \in \{\texttt{PURE},\texttt{READ},\texttt{WRITE},\texttt{UNKNOWN}\}.
+\]
+
+A read tool may declare a resource domain and a key derived from its arguments:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+name: file_read
+
+effect: READ
+resource_domain: os.FILE
+resource_key: normalize(args.path)
+reuse:
+  enabled: true
+  max_age: 300s
+  validation: stat
+\end{lstlisting}
+
+A corresponding write declares mutation and invalidation:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+name: file_write
+
+effect: WRITE
+resource_domain: os.FILE
+resource_key: normalize(args.path)
+invalidates: same_resource
+\end{lstlisting}
+
+The runtime sees only normalized fields. For example, the domain is
+\texttt{os.FILE}, and the key is \path{/repo/src/parser.py}.
+
+\subsection{Dependency sets}
+
+Some results depend on multiple or coarse-grained resources. A directory grep can declare dependencies on a file tree or a resolved set of matching files. This turns validity tracking into a generic dependency/invalidation problem rather than a filesystem-specific optimization.
+
+\section{Selective Context Permeability}
+
+A child does not need a physical copy of parent context. Instead, its logical context can be represented as
+
+\[
+C_{child} = C_{local} \cup C_{inherited} \cup C_{ancestor-visible},
+\]
+
+where the third set remains external until routed/materialized.
+
+The most important mode is \texttt{ROUTABLE}: ancestor records remain candidates for PRA selection but are not physically inserted into the child's prompt or K/V until needed.
+
+The reverse direction is also useful. A parent may route into completed descendant records when a later synthesis question requires detailed evidence unavailable in the child's returned summary.
+
+Validity and selection are intentionally ordered rather than fused. The graph
+first removes records that are not visible under lineage, completion, and peer
+policy. Resource consistency then rejects stale records. Only this authorized,
+valid candidate set reaches the descendant router. Paper 9 implements
+all-valid, lexical, learned pairwise-linear, and oracle selectors. The learned
+ranker uses bounded lexical, record-type, completion, and size features; it
+does not add a second language model to the request path. A second-version
+diagnostic also includes fielded BM25 over resource identity, leading
+documentation, and bounded source windows while preserving the original
+whole-record baselines.
+
+Parallelism remains a harness concern. The public scheduler accepts any child
+callback and executes it sequentially or through a bounded worker pool. This is
+the integration seam for an existing agent loop rather than a new planner:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+harness.run_subagents(
+    parent_uuid, child_specs,
+    lambda child, pra: existing_agent_loop(child, pra),
+    parallel=True, max_workers=8)
+\end{lstlisting}
+
+\section{Three Levels of Cross-Agent Reuse}
+
+\subsection{Tool execution reuse}
+
+If a child requests an operation whose valid result already exists in an ancestor-visible stream, the system can avoid executing the external tool again.
+
+\subsection{Record payload reuse}
+
+The prior result record can be referenced directly instead of copied and re-serialized into the child stream.
+
+\subsection{Native K/V reuse}
+
+If the PRA engine retains compatible native K/V for that record, it can materialize the existing state into the child context without repeated model prefill. This is the most PRA-specific benefit and distinguishes the proposal from ordinary harness-level memoization.
+
+\section{Consistency and Validity}
+
+Parallel agents and external processes make cache validity nontrivial. We therefore define explicit consistency modes.
+
+\paragraph{ANCESTRY.}
+Only mutations in the child-visible ancestor causal chain invalidate a prior result. This is appropriate for immutable snapshots or isolated worktrees.
+
+\paragraph{SESSION\_TREE.}
+Any causally prior mutation to the relevant resource in the shared session tree invalidates. This assumes the harness controls the shared workspace.
+
+\paragraph{EXTERNAL.}
+Resources may change outside PRA. Reuse requires TTL, file metadata, content hashes, ETags, version tokens, or another application-provided validator; otherwise reuse is disabled.
+
+Conservative invalidation is the default. Unknown effects do not qualify for reuse.
+
+\section{Why Compaction Matters}
+
+Paper 8 may compact a large tool result into a smaller active representation while retaining a richer addressable representation and possibly persisted native K/V. Therefore, compaction does not remove the opportunity for a later child to reuse the original information.
+
+A conventional compacting agent may need to execute the tool again because the detailed output is no longer present in active context. PRA can instead route to the original record and rematerialize its payload or native K/V into the child context, provided validity checks succeed.
+
+\section{Benchmark: Subagent Context Reuse Benchmark (SCRB)}
+
+A generic coding benchmark may contain too few repeated parent-child reads to measure this mechanism reliably. We therefore propose SCRB, a controlled suite in which reuse opportunities are intentional and parameterized, followed by naturalistic validation on existing coding-agent tasks.
+
+\subsection{Family A: Shared repository orientation}
+
+The parent reads common repository instructions, architecture documents, build metadata, core interfaces, and test conventions before spawning multiple independent children. Children solve separate subtasks that naturally require the same shared material.
+
+Primary variables:
+
+\begin{itemize}[leftmargin=*]
+    \item number of children: 2, 4, 8, 16;
+    \item shared context size;
+    \item probability that a child needs each shared record;
+    \item whether the common material is still active, compacted, or external-only.
+\end{itemize}
+
+\subsection{Family B: Shared definition fan-out}
+
+Repositories contain a large protocol schema, AST definition, API interface, generated type file, or configuration model needed by many independent children. The parent reads it once. Children perform separate fixes or analyses that all depend on it.
+
+Sweep shared definition sizes such as 2K, 8K, 32K, and 64K tokens to expose the transition where native K/V reuse becomes valuable.
+
+\subsection{Family C: Repeated grep/search}
+
+The parent performs repository-wide searches for symbol usages, route registrations, interface implementations, error codes, or table references. Children later issue equivalent searches. Variants include exact repeated queries, semantically equivalent but syntactically different queries, and writes that should or should not invalidate the cached search result.
+
+\subsection{Family D: Unrelated mutation}
+
+The parent reads resources $A$ and $B$. One child writes $A$ while another later reads $B$. Correct selective invalidation should preserve reuse of $B$, unlike coarse domain-wide invalidation.
+
+\subsection{Family E: Relevant mutation}
+
+The parent reads $A$, a child writes $A$, and a later child reads $A$. Reuse must be rejected under shared-workspace semantics. The primary safety metric is stale-read rate, which should be zero for supported consistency modes.
+
+\subsection{Family F: Isolated worktrees}
+
+Each child operates in a separate Git worktree or immutable snapshot. Sibling mutations should not invalidate ancestor reads in another worktree when resource identities and workspace IDs establish isolation. This family studies how workspace semantics alter the safe reuse envelope.
+
+\subsection{Family G: Completed-child evidence recovery}
+
+Several children investigate different hypotheses and return compact summaries. The parent then receives a synthesis question requiring exact evidence from one completed child, such as a test log, code span, or interface definition. Compare summary-only, full-transcript copying, transcript replay, and PRA descendant routing.
+
+\subsection{Family H: Hierarchical delegation}
+
+Root agents spawn children that spawn grandchildren. Common instructions or interfaces originate in the root. This family measures whether deeper descendants can reuse valid root records without full context copying as delegation depth increases.
+
+\subsection{Family I: Expensive remote tools}
+
+Controlled HTTP, database, static-analysis, or package-metadata services expose deterministic resources with tunable latency. This demonstrates that the mechanism is not filesystem-specific and allows direct study of the wall-clock value of avoiding repeated external calls.
+
+\subsection{Family J: Naturalistic coding-agent tasks}
+
+After controlled evaluation, instrument selected Paper 4.5 tasks, SWE-bench Verified subsets, Mini-SWE-agent subsets, and custom multi-issue repository tasks. First measure how frequently independent subagents naturally repeat reads/searches already performed by ancestors. Then evaluate end-to-end benefit without forcing reuse through scripted behavior.
+
+\section{Baselines}
+
+The minimum comparison set is:
+
+\begin{enumerate}[leftmargin=*]
+    \item conventional isolated subagents;
+    \item conventional subagents with harness-level result memoization;
+    \item PRA records without cross-agent visibility;
+    \item PRA ancestor visibility with payload reuse;
+    \item PRA ancestor visibility with native K/V reuse;
+    \item PRA with resource-level selective invalidation.
+\end{enumerate}
+
+Where practical, also compare parent-context copying/snapshotting and full transcript sharing.
+
+Separating harness memoization from K/V reuse is essential to avoid attributing ordinary tool caching gains to PRA.
+
+\section{Hypotheses}
+
+\paragraph{H1: Result reuse.}
+Repeated ancestor reads/searches reduce tool executions and wall-clock latency when children can reuse valid records.
+
+\paragraph{H2: Native K/V reuse.}
+For sufficiently large shared records, native K/V reuse reduces child prefill cost beyond harness-level memoization.
+
+\paragraph{H3: Bounded context.}
+PRA preserves bounded active physical context while avoiding repeated copying/prefill of shared material into every child.
+
+\paragraph{H4: Selective invalidation.}
+Resource-level invalidation preserves more reusable state than domain-wide invalidation while maintaining zero stale-read errors under stated consistency assumptions.
+
+\paragraph{H5: Descendant permeability.}
+Parents answer post-hoc evidence questions more accurately and with lower context growth by routing into completed descendants than by relying on summaries alone.
+
+\paragraph{H6: Fan-out scaling.}
+Benefits increase with shared context size, child fan-out, and repeated-access probability, subject to routing and cache-residency overhead.
+
+\section{Analytical Cost Model}
+
+Let $S$ be the token size of a reusable shared record set, $N$ the number of child agents, and $p$ the probability that a child needs the shared set. Let $C_{tool}$ be the external tool cost, $C_{prefill}(S)$ the model prefill cost, $C_{route}$ the PRA lookup/routing cost, and $C_{mat}$ the cost of materializing already stored K/V.
+
+Ignoring one-time parent acquisition, duplicated work without reuse is approximately
+
+\[
+C_{base} = Np\left(C_{tool} + C_{prefill}(S)\right).
+\]
+
+With cross-agent PRA reuse,
+
+\[
+C_{pra} = Np\left(C_{route} + C_{mat}\right).
+\]
+
+The experiments should report empirical break-even regions rather than assuming universal benefit.
+
+\section{Metrics}
+
+\subsection{Correctness}
+
+Task success, patch/test success, stale-read count, invalid reuse count, and post-hoc evidence accuracy.
+
+\subsection{Tool and agent behavior}
+
+Tool calls per agent, duplicate calls, avoided calls, reused reads/searches, invalidations, false invalidations, and explicit cache hit/miss reasons.
+
+\subsection{Model cost}
+
+Logical tokens, physically materialized tokens, prefill tokens, decode tokens, reused K/V token-equivalents, and K/V bytes where measurable.
+
+\subsection{Runtime}
+
+Wall-clock time, external-tool latency, routing overhead, materialization overhead, time-to-first-child-result, and total run time.
+
+\subsection{Storage}
+
+Duplicate payload bytes avoided, K/V storage overhead, cache residency, and evictions.
+
+\section{Tracing and Scientific Instrumentation}
+
+Every reuse attempt should emit a structured trace record containing request/source agent identities, source record, resource identity, decision, reason, validation method, age, causal position, and whether payload, K/V, or tool execution was reused.
+
+Suggested miss reasons include:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+NO_MATCH
+NOT_VISIBLE
+EXPIRED
+WRITE_INVALIDATION
+EXTERNAL_VALIDATION_FAILED
+MODEL_INCOMPATIBLE
+KV_EVICTED
+UNKNOWN_EFFECT
+POLICY_DISABLED
+\end{lstlisting}
+
+This instrumentation is required both for systems debugging and for credible experimental analysis.
+
+\section{Implementation Path}
+
+The implementation is split into four small surfaces. The context graph stores
+descriptors and typed streams, traverses all explicit parents for DAG-aware
+visibility, and serializes topology changes as lifecycle records. The harness
+maps concrete callbacks to generic effects, coalesces concurrent identical
+calls, and owns bounded worker scheduling. The descendant router receives only
+records already admitted by the graph. Finally, an optional engine port turns a
+record into a compatibility receipt and attaches it at most once to each target.
+
+The request path can be summarized as follows:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+effect = harness.describe_effect(tool, arguments)
+entry = exact_index.lookup(tool, arguments)
+if entry:
+    require graph.is_visible(requester, entry.source)
+    require validity(entry.resources, effect.consistency)
+    if compatible(entry.native_kv, request.model):
+        engine.attach_once(entry.native_kv, requester)
+    return entry.payload
+output = harness.execute(tool, arguments)
+graph.append(typed_result(output, effect.resources))
+index.register(output) only if effect in {PURE, READ}
+\end{lstlisting}
+
+This ordering is important. Semantic ranking cannot make a stale or hidden
+record valid, and native compatibility cannot authorize a record. Conversely,
+a valid record need not be materialized until selection requests it. Existing
+harnesses integrate at the callback boundary: their planner and child loop stay
+unchanged, while lifecycle and tool events pass through these four surfaces.
+
+\section{Implementation Status}
+
+Table~\ref{tab:implementation-status} separates implemented runtime contracts
+from mechanisms that still need broader agent or production-serving validation.
+The
+native interface is a narrow callback: an engine returns a receipt containing
+model, revision, encoding, position contract, token count, and byte count. A
+reuse request must match all compatibility fields, and the harness attaches a
+given receipt at most once per target agent.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Paper 9 implementation boundary. ``Experimental'' denotes implemented
+code without a production or natural-agent qualification claim.}
+\label{tab:implementation-status}
+\begin{tabular}{>{\raggedright\arraybackslash}p{.42\linewidth}>{\raggedright\arraybackslash}p{.20\linewidth}>{\raggedright\arraybackslash}p{.28\linewidth}}
+\toprule
+Mechanism & Status & Current evidence \\
+\midrule
+Agent identity and start/stop/resume records & Supported & Persistence and graph-replay tests \\
+Ancestor selected/routable visibility & Experimental & Runtime contract tests \\
+Completed-descendant visibility & Experimental & Runtime contract tests \\
+Exact tool/payload reuse & Experimental & Runtime tests and SCRB \\
+Resource-level and external validation & Experimental & Mutation and validator tests \\
+Native K/V compatibility callback & Experimental & Receipt and exactly-once tests \\
+Sequential/parallel callback scheduler & Experimental & Five-seed tracked-source cohort \\
+Explicit DAG joins and peer visibility & Experimental & Cycle, isolation, and replay tests \\
+Validity-first descendant selectors & Experimental & Lexical, learned, fielded BM25, and oracle cohort \\
+Live MLX native K/V reuse & Experimental & Cross-host prefill and greedy-generation parity \\
+Autonomous multi-harness campaign & Experimental & Three-seed, 96-agent read-only cohort \\
+Frozen consumption presentation & Experimental & Three-model, 144-run factorial \\
+Direct-MLX lifecycle and tier manager & Experimental & Two-session M4 model-forward campaign \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Non-Goals}
+
+The first Paper 9 implementation does not attempt cross-session long-term
+memory, arbitrary distributed cache coherence, automatic semantic equivalence
+between different tool calls, database transaction semantics, unrestricted
+peer-to-peer messaging, or a new delegation/planning algorithm. Explicit peer
+record visibility is narrower than general agent communication. These are
+separable research directions.
+
+\section{Controlled Results}
+
+\subsection{Protocol and interpretation boundary}
+
+SCRB v1 contains 1,600 scaling rows: five workload seeds crossed with four
+shared-record sizes (2K, 8K, 32K, and 64K tokens), four child fan-outs (2, 4,
+8, and 16), four reuse probabilities, and five execution conditions. It is an
+event-driven simulation whose declared constants are 50 ms per tool execution,
+0.020 ms per prefill token, 0.120 ms per PRA lookup, and 0.0015 ms per native
+token materialized. These values expose the analytical break-even surface; they
+are not observations from a model server. Separate tests execute the actual
+lineage, visibility, invalidation, external-validation, graph-replay, and
+native-receipt code paths.
+
+\subsection{Tool reuse is not native reuse}
+
+Table~\ref{tab:scrb-target} reports the fully shared 8K/eight-child point.
+Ordinary memoization and PRA payload reuse each remove eight external tool
+executions, reducing the modeled session cost by about 21\%, but both still
+prefill the shared result for every child. Native reuse removes the same tool
+executions and reuses 65,536 token-equivalents of K/V, reducing repeated
+prefill by 88.9\%. At the declared 4,096 native bytes per token, this also
+avoids 256 MiB of duplicate physical K/V allocation across the eight child
+streams. This byte value is a cost-model parameter, not measured residency.
+
+\begin{table}[H]
+\centering
+\small
+\caption{SCRB controlled point: 8K shared tokens, eight children, reuse
+probability one. Cost is simulated from the declared constants.}
+\label{tab:scrb-target}
+\begin{tabular}{lrrrr}
+\toprule
+Condition & Tool calls & Prefill tokens & Cost (ms) & Speedup \\
+\midrule
+Isolated contexts & 9 & 73,728 & 1,924.6 & $1.00\times$ \\
+Harness memoization & 1 & 73,728 & 1,524.8 & $1.26\times$ \\
+PRA, no visibility & 9 & 73,728 & 1,925.5 & $1.00\times$ \\
+PRA payload reuse & 1 & 73,728 & 1,525.5 & $1.26\times$ \\
+PRA native K/V reuse & 1 & 8,192 & 313.1 & $6.15\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:scrb-scaling} shows the full-fan-out slices. The native
+condition becomes more favorable as fan-out grows because the parent's initial
+acquisition and encoding are amortized. The exact magnitude depends on engine
+bandwidth, layer count, cache placement, and record size; only the qualitative
+scaling relation is supported here.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper9_subagents/scrb_v1/scrb_scaling.pdf}
+\caption{Controlled SCRB scaling. Left: native-reuse speedup under the injected
+cost model. Right: decomposition at the 8K/eight-child point. ``PRA hidden'' is
+the no-cross-stream-visibility control.}
+\label{fig:scrb-scaling}
+\end{figure}
+
+\subsection{Selective invalidation and descendant evidence}
+
+The mutation fixture gives every child one read of modified resource $A$ and
+one read of unchanged resource $B$. At fan-out 16, domain-wide invalidation
+executes all 32 reads and causes 16 false invalidations per run. Resource-level
+invalidation reuses all 16 reads of $B$, re-executes all reads of $A$, and
+produces no stale read. The deliberately unsafe control reuses all 32 and
+produces 16 stale reads. The production runtime check independently confirms
+the same decision sequence: two executions for $A$, one for $B$, and explicit
+\texttt{WRITE\_INVALIDATION} for the rejected reuse.
+
+The executable contract suite also covers the adversarial cases omitted by the
+aggregate fixture. Exact repeated reads hit; a relevant shared-workspace write
+misses; an unrelated write preserves the hit; an external resource misses
+without a successful version validator; a sibling write in another explicitly
+identified worktree does not invalidate an ancestry-scoped snapshot; and
+\texttt{UNKNOWN} effects fail closed. A compatible native receipt is attached
+once per target even when the payload is requested repeatedly. DAG joins,
+completed-only peers, cycle rejection, and graph replay are tested separately.
+These are runtime contracts rather than probabilistic safety estimates.
+
+The completed-child fixture asks a parent for exact detail omitted from roughly
+half of compact summaries. Summary-only return reaches 55.2\% over 500 seeded
+cases. Full transcript copy and replay reach 100\% while adding 16,384 tokens
+to parent context. Exact descendant routing also reaches 100\% while
+materializing 384 tokens, a $42.7\times$ reduction in context growth relative
+to the full-transcript controls. This is an oracle-addressed controlled fixture;
+learned descendant selection remains unmeasured.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{../shared/results/paper9_subagents/scrb_v1/scrb_safety_evidence.pdf}
+\caption{Left: selective invalidation preserves valid reuse without the stale
+reads of the unsafe control. Right: controlled completed-child evidence
+accuracy versus parent-context growth.}
+\label{fig:scrb-safety}
+\end{figure}
+
+\subsection{Tracked-source sequential and parallel cohort}
+
+The next cohort replaces generated payloads with 11 tracked PRA modules. A
+parent reads the repository README and build configuration, then delegates one
+module-level investigation to each child. Every child requests the two common
+orientation records through the ordinary tool interface before reading its own
+module. We run the same workload sequentially and with an eight-worker harness
+pool for five seeds. This is a natural-source systems cohort with deterministic
+callbacks, not an autonomous coding-task success benchmark.
+
+Each run issues 35 logical reads but only 13 physical file reads: the parent
+acquires two shared records once, all 22 child orientation requests reuse them,
+and each child reads one distinct source file. Across the ten runs this produces
+220 valid ancestor hits. Mean observed harness time is 19.6 ms sequential and
+26.9 ms parallel. The files are local and small enough that thread scheduling
+dominates; Paper 9 therefore claims correctness and integration coverage here,
+not a parallel speedup.
+
+Every run also creates a synthesis stream with two completed children as DAG
+parents and a separate completed-only peer link. Both joined parents are visible
+in all ten runs, and the explicit peer is visible in all ten; unlinked siblings
+remain hidden. These observations exercise the persisted topology on natural
+records but do not establish that unconstrained multi-agent communication is
+safe or useful.
+
+After children stop, the parent asks held-out questions about their detailed
+findings. Table~\ref{tab:natural-routing} separates validity from selection.
+In the immutable v1 artifact, all-valid preserves every answer record but
+exposes 24,262 source tokens per query. Bounded lexical and learned routing
+each recover 60.0\% at one record, while the oracle reaches 100\% recall with
+2,160 tokens on average. Inspection showed that whole-file overlap overweights
+generic vocabulary and misses concentrated definitions. The v2 diagnostic
+therefore adds fielded BM25 over the resource path, leading documentation, and
+12-line source windows. On the updated tracked sources, lexical remains at
+60.0\%, the learned linear selector reaches 65.0\%, and fielded BM25 matches
+the oracle at 100\% with the same 2,160 selected tokens on average; all-valid
+now exposes 24,857 tokens. This is a post-hoc in-cohort diagnostic, not evidence
+of cross-repository or cross-model routing transfer. Selective permeability is
+implemented, while automatic descendant discovery still requires a larger
+frozen evaluation.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Completed-child selection on tracked repository sources. Results pool
+40 query runs across five workload seeds and two schedulers; ``held-out''
+applies to the learned v2 split, not to post-hoc policy development.}
+\label{tab:natural-routing}
+\begin{tabular}{lrrr}
+\toprule
+Selector & Evidence recall & Useful precision & Selected tokens \\
+\midrule
+All valid records & 1.000 & 0.091 & 24,857 \\
+Lexical top-1 & 0.600 & 0.600 & 2,501 \\
+Learned top-1 & 0.650 & 0.650 & 2,545 \\
+Fielded BM25 top-1 & 1.000 & 1.000 & 2,160 \\
+Oracle top-1 & 1.000 & 1.000 & 2,160 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.92\linewidth]{../shared/results/paper9_subagents/natural_repository_v2/natural_repository_routing.pdf}
+\caption{Tracked-source completed-child routing. The all-valid arm preserves
+recall by materializing the full valid surface. Field-aware local evidence
+closes the in-cohort oracle gap, but transfer remains unmeasured.}
+\label{fig:natural-routing}
+\end{figure}
+
+\subsection{Autonomous sequential-versus-parallel campaign}
+
+We next replace deterministic callbacks with real model-driven child loops.
+Eight repository questions ask where specific Paper 9 mechanisms are
+implemented. Each child independently chooses among read, literal-search, and
+file-listing tools, then must name the exact relative source path. The four
+matched conditions cross sequential or four-worker parallel scheduling with a
+hard peer boundary or completed-peer visibility. In the latter conditions,
+fielded BM25 routes at most one valid record available when a child starts.
+Task order is shuffled by seed; the model, questions, tool surface, seven-step
+limit, and temperature-zero decoding remain fixed. This produces 96 autonomous
+agent runs over three seeds with no execution failures. It is a read-only
+repository investigation and exact-path benchmark, not a patch-generation or
+semantic answer-quality benchmark.
+
+The campaign ran through Ollama 0.33.3 with
+\texttt{qwen3-coder:30b} Q4\_K\_M on the 48 GB M4 Pro host used for the primary
+MLX study. The artifact fixes the model digest, base repository revision,
+campaign source hashes, complete tool traces, and per-call token counts.
+Table~\ref{tab:autonomous-campaign} reports means over seeds. Isolated
+parallelism is nearly neutral by ratio of means, but the paired speedup is
+$1.16\times$ with standard deviation 0.45: individual seeds range from
+$0.66\times$ to $1.55\times$. Shared-engine contention and different generation
+paths dominate a simple fan-out estimate. With completed-peer context, the
+paired parallel speedup is a steadier $1.28\times$ (standard deviation 0.07).
+
+\begin{table}[H]
+\centering
+\small
+\caption{Autonomous repository campaign, mean over seeds 11, 23, and 37.
+Accuracy requires the exact expected source path. ``Physical'' counts actual
+tool executions after reuse; routed values count peer records and their
+estimated tokens.}
+\label{tab:autonomous-campaign}
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Accuracy & Wall (s) & Physical & Prompt tok. & Routed rec./tok. \\
+\midrule
+Sequential, isolated & 0.917 & 143.5 & 31.3 & 109,164 & 0.0 / 0 \\
+Parallel, isolated & 0.875 & 139.7 & 32.7 & 120,572 & 0.0 / 0 \\
+Sequential, completed & 0.792 & 170.2 & 19.0 & 139,441 & 7.0 / 10,442 \\
+Parallel, completed & 0.917 & 133.9 & 23.3 & 122,755 & 4.0 / 6,979 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sequential completed-peer visibility reduces physical tool executions by 12.3
+per seed relative to sequential isolation, yet its paired accuracy change is
+$-0.125$ with standard deviation 0.331. In one seed, an incorrect early answer
+was selected into later contexts and several descendants answered without
+consulting a tool, producing 50\% accuracy. Another seed improved by 12.5
+points and the third was unchanged. Thus a valid, compact, reusable record can
+be well selected while still being poorly consumed. The result motivates
+explicit selection and consumption evaluations rather than treating fewer
+tool calls as task improvement.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper9_subagents/autonomous_repository_v1/autonomous_campaign.pdf}
+\caption{Autonomous accuracy and campaign wall time. Error bars are standard
+deviations across three seeds; the large isolated-parallel timing variance is
+part of the result.}
+\label{fig:autonomous-campaign}
+\end{figure}
+
+\subsection{Frozen cross-repository routing transfer}
+
+The perfect fielded-BM25 result above was developed after inspecting the small
+Paper 9 cohort, so it cannot establish generalization. We therefore freeze 16
+questions over eight candidate files in each of two unrelated repositories:
+DynaSpike at revision \texttt{2e046d38} and Cognitive Coprocessors at revision
+\texttt{ce177061}. The manifest fixes repository revisions, paths, questions,
+and relevance labels before evaluation; the result additionally records every
+candidate file hash. The linear selector is fit on all 11 Paper 9 development
+examples and then applied unchanged. Fielded BM25 has no fitted parameters and
+is also applied unchanged.
+
+Table~\ref{tab:router-transfer} shows that the in-cohort perfect result does not
+fully transfer. Fielded BM25 improves pooled top-1 recall from 81.25\% to
+87.5\% and reduces mean selected tokens from 1,803 to 1,655, but remains two
+queries below the oracle. Both misses are short DynaSpike modules with little
+leading documentation: the spike-probability implementation and the one-hot
+encoder. Concentrated semantic evidence helps, but resource metadata and local
+documentation quality remain part of the routing boundary.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen descendant-router transfer. Each repository contributes eight
+queries over eight candidate files; all selectors are top-1.}
+\label{tab:router-transfer}
+\begin{tabular}{lrrrr}
+\toprule
+Cohort & Lexical & Learned & Fielded BM25 & Oracle \\
+\midrule
+DynaSpike & 0.625 & 0.625 & 0.750 & 1.000 \\
+Cognitive Coprocessors & 1.000 & 1.000 & 1.000 & 1.000 \\
+Pooled & 0.812 & 0.812 & 0.875 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Frozen cross-model consumption factorial}
+
+Routing recall alone does not reveal whether a model will use the selected
+record correctly. We therefore reuse the frozen 16-question transfer manifest
+and hold each fielded-BM25 top-1 record byte-identical while crossing three
+digest-pinned Ollama models with three consumption modes: direct injection,
+attribution-aware presentation, and mandatory tool verification. The resulting
+144 runs use the same selected-record hashes in every arm. This is a read-only
+answer/path task, not an autonomous patch-utility result.
+
+Table~\ref{tab:consumption-factorial} shows a strong model--presentation
+interaction. Attribution-aware presentation repairs all correctly selected
+Gemma cases, increasing overall exact-path accuracy by 18.75 points, but it
+reduces Qwen3-14B accuracy by 6.25 points and leaves Qwen3-Coder unchanged.
+Mandatory verification is fully compliant for Qwen3-Coder but neither improves
+nor recovers either of the two routing misses. Qwen3-14B makes 14 of 16 required
+tool calls, with two failed runs, and falls to 68.75\% accuracy. The Gemma tool
+arm is not a quality measurement: Ollama rejects all 16 tool-enabled requests
+with HTTP 400 before generation, so it is reported as invalid rather than as
+zero task accuracy. No model recovers a wrongly selected record.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Frozen selected-record consumption factorial. Accuracy requires the
+exact expected source path. Conditional accuracy is restricted to the 14
+queries for which fielded BM25 selected the relevant record. \emph{Invalid} marks
+an adapter/API failure before generation.}
+\label{tab:consumption-factorial}
+\begin{tabular}{llrrr}
+\toprule
+Model & Presentation & Path acc. & Conditional acc. & Verification \\
+\midrule
+Qwen3-Coder 30B & Direct & 0.875 & 1.000 & --- \\
+Qwen3-Coder 30B & Attribution & 0.875 & 1.000 & --- \\
+Qwen3-Coder 30B & Mandatory tool & 0.875 & 1.000 & 1.000 \\
+Qwen3 14B & Direct & 0.812 & 0.929 & --- \\
+Qwen3 14B & Attribution & 0.750 & 0.857 & --- \\
+Qwen3 14B & Mandatory tool & 0.688 & 0.786 & 0.875 \\
+Gemma3 4B & Direct & 0.688 & 0.786 & --- \\
+Gemma3 4B & Attribution & 0.875 & 1.000 & --- \\
+Gemma3 4B & Mandatory tool & Invalid & Invalid & Invalid \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Live native reuse and the residency boundary}
+
+The live experiment freezes the selected source and query token IDs, then
+compares four execution paths on \texttt{mlx-lm} 0.31.3 with the immutable
+revision \texttt{73e3e38d} of Qwen3-0.6B-4bit. The ordinary baseline prefills
+the source and query through a host prompt cache. Harness memoization and typed
+record reuse avoid repeated acquisition but deliberately re-prefill those same
+tokens. Native reuse encodes the source once as post-RoPE K/V, gives each child
+a fresh local cache, and presents only the query tokens to the child forward.
+Thus selector output, tokenization, positions, and model weights are fixed.
+The 512--8K sweep contains 465 child requests per condition on the primary M4
+host across five seeds and 186 per condition on the two-seed M5 replication.
+The 32K pressure sweep contains 35 and 14 requests per condition, respectively;
+its maximum measured fan-out is four.
+
+These are direct model-forward and prefill measurements, not HTTP time to first
+token. They exclude queueing, network transfer, scheduler contention, and K/V
+tier promotion. Session cost charges native source encoding once and then sums
+all child requests. The public MLX cache interface also forms a transient
+concatenated shared-plus-local attention view at every layer. Persistent K/V is
+shared, but this path is not segmented zero-copy attention.
+
+At fan-out 16 on the 48 GB M4 Pro, amortized speedup rises from
+$5.03\times$ at 512 shared tokens to $8.74\times$ at 2K and $11.69\times$
+at 8K; physical input-token processing falls by 90.8--93.6\%. On the 16 GB
+M5 replication, the corresponding speedups are $2.76\times$,
+$5.31\times$, and $2.50\times$. The decline already visible at 8K foreshadows
+the 32K capacity boundary. Harness-memo and typed-record re-prefill remain
+within 1.1\% of ordinary split-prefill on the M4; on the M5 they are 6.7\%
+and 4.5\% slower, respectively. Avoiding tool execution or payload transfer
+does not by itself avoid model ingestion.
+
+Table~\ref{tab:mlx-pressure} isolates the 32K, four-child point on two Apple
+Silicon hosts. The 48 GB M4 Pro has enough residency headroom: one native encode
+plus four child requests is $3.89\times$ faster than four text prefills. On the
+16 GB M5, however, each native child request is slower than text and the
+amortized ratio reverses to $0.48\times$. Both hosts reduce physical input-token
+processing by 75.0\% and preserve the baseline logits exactly. The opposing
+timing result therefore cannot be attributed to retrieval or model quality; it
+is consistent with memory pressure and transient concatenation in the current
+adapter.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Live 32K shared-record result at measured fan-out four. Latency is the
+within-host mean per child; speedup includes one native source encode.}
+\label{tab:mlx-pressure}
+\begin{tabular}{lrrrrr}
+\toprule
+Host & Text (ms) & Native (ms) & Speedup & Token red. & Logit parity \\
+\midrule
+M4 Pro, 48 GB & 26,522 & 207 & $3.89\times$ & 75.0\% & 1.000 \\
+M5, 16 GB & 12,474 & 23,526 & $0.48\times$ & 75.0\% & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:mlx-cross-host} reports the full measured source-size sweep.
+Fan-out is 16 through 8K and four at 32K. It should be read as a capacity
+curve, not as a hardware comparison: model, tokens, and adapter are matched,
+but the two hosts have different memory capacity and compute. At 32K, sharing
+one retained record also avoids 10.5 GiB of persistent duplicate K/V for the
+three additional children on each host; transient attention views are not
+included in that avoided-allocation count.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper9_subagents/mlx_cross_host_v1/mlx_cross_host.pdf}
+\caption{Live MLX reuse across source size and memory-capacity regimes. Left:
+amortized session speedup at maximum measured fan-out. Right: native/text
+per-child latency ratio. The dashed line marks parity.}
+\label{fig:mlx-cross-host}
+\end{figure}
+
+Next-token argmax parity is 1.000 with maximum absolute logit delta zero in
+every retained native point. A separate five-seed 8K-source check generates 16
+tokens greedily from both host split-prefill and native K/V. All five sequences
+match token for token and the maximum observed logit delta remains zero. This
+validates short output trajectories, but it is not an answer-quality or
+autonomous-agent evaluation.
+
+\subsection{Direct-MLX concurrent lifecycle and tier transitions}
+
+The initial direct-MLX lifecycle campaign pins Qwen3-0.6B-4bit revision
+\texttt{73e3e38d} (the fully resolved revision is recorded in the artifact)
+under MLX 0.32.2 on the 48 GB M4 Pro. Two isolated sessions each retain a
+2,048-token native record.
+Across five repetitions, concurrent model forwards take 25.3--27.6 ms versus
+39.2--40.3 ms sequentially, a $1.47\times$ mean wall-time speedup, with exact
+next-token logits in every comparison. This is direct model-forward
+concurrency, not an HTTP serving or end-to-end agent throughput result.
+
+The same run exercises lifecycle safety and residency mechanics. Cross-session
+lookup is blocked; cooperative cancellation releases the lease and prevents a
+cancelled forward from being submitted; session termination removes only that
+session's record; an active lease prevents eviction; and a two-record capacity
+limit produces one recorded eviction. Demoting a 224 MiB native state to host
+takes 27.9 ms and promotion takes 14.6 ms. The restored forward is exactly
+logit-identical to the baseline, with maximum absolute delta zero. Cancellation
+is tested only before model submission, not as mid-kernel preemption, and the
+cross-capacity M5 replication remains pending.
+
+\subsection{Natural trace opportunity audit}
+
+We scanned 12 existing Paper 4.5 coding-agent trajectories containing 90 tool
+calls. Forty were classified as read/search operations; eight of those were
+exact repeats, a 20\% operation-level rate, concentrated in two traces. This is
+not a subagent experiment: the source trajectories contain one agent each. It
+only establishes that repeated acquisition occurs in a small natural coding
+sample and justifies instrumenting a real delegated cohort. It cannot estimate
+ancestor hit rate, native reuse, or end-task benefit.
+
+\section{Related Work}
+
+ReAct interleaves reasoning and external actions, while SWE-agent emphasizes
+the agent-computer interface for repository work~\cite{yao2023react,yang2024sweagent}.
+OpenHands provides a general software-agent platform with sandboxed execution
+and multi-agent coordination~\cite{wang2024openhands}. AutoGen makes multi-agent
+conversation and configurable agent interaction first-class application
+primitives~\cite{wu2023autogen}. These systems motivate the conventional
+spawn/run/return harness used here; Paper 9 does not propose a new delegation
+planner.
+
+Prompt and prefix-cache systems reuse computation attached to shared token
+prefixes~\cite{gim2023promptcache,yao2024cacheblend,kwon2023vllm}. Harness
+memoization reuses an operation result, while semantic caches may match similar
+requests. Paper 9 separates both from two additional mechanisms: a typed result
+can remain addressable without being copied into every stream, and compatible
+native K/V can be referenced across non-prefix agent branches. Resource
+identities and invalidation epochs resemble dependency tracking in storage and
+build systems, but the first implementation intentionally stops short of a
+general transaction or distributed-coherence protocol.
+
+\section{Limitations and Open Gates}
+
+The mechanism may provide large gains only when agents repeatedly need shared
+records or expensive tools. Controlled orchestration can overstate natural
+reuse, and the 12-trace audit is small and single-agent. The autonomous cohort
+closes the callback-only gap but remains a read-only, eight-question exact-path
+task on the Paper 9 repository, with one quantized model, one serving engine,
+one host, and three seeds. It does not measure autonomous patch quality. Its
+context arm also combines selection and consumption. The follow-up factorial
+separates them, but it remains a small, deterministic 16-question path task
+rather than a multi-step coding campaign. Its Gemma verification arm is invalid
+because of a serving-adapter incompatibility, and presentation effects have not
+yet been replicated across seeds or additional model families.
+Fielded BM25 closes the oracle gap only on a post-hoc 11-module diagnostic and
+reaches 87.5\%, not 100\%, on frozen cross-repository transfer. The two external
+repositories and 16 questions are still too small to establish broad transfer.
+
+The live reuse and lifecycle experiments cover one quantized model family and
+direct MLX forwards. The lifecycle campaign now covers two concurrent sessions,
+cooperative pre-forward cancellation, task termination, eviction, and host-tier
+round trips, but still omits HTTP queueing, network transfer, mid-kernel
+preemption, sustained multi-tenant load, and end-task answer quality. Its M5
+cross-capacity replication is pending. The Ollama campaign exercises concurrent
+model requests but not the direct MLX native-K/V path. The reuse sweep's two MLX
+hosts deliberately reveal rather than resolve a
+memory-capacity interaction. Segmented attention or another zero-copy host seam
+is needed to test whether the 16 GB reversal is fundamental or merely an
+implementation cost.
+
+Correctness depends on declared consistency assumptions. External mutation can
+invalidate local state even when no write appears in the session tree. The
+runtime therefore rejects \texttt{UNKNOWN} effects and requires a validator for
+\texttt{EXTERNAL} resources. The next gates are broader cross-repository
+autonomous patch transfer, cross-capacity lifecycle replication, a compatible
+Gemma tool adapter, sustained direct-MLX serving concurrency, and a segmented
+zero-copy implementation. Cross-session memory remains explicitly outside
+Paper 9.
+
+The present result is architectural, controlled, and live at the model-forward
+level, with an initial real-model autonomous cohort: subagent isolation and
+context sharing need not be binary, and the implementation can make boundaries
+selectively permeable without weakening its default safety policy. Autonomous
+patch utility, cross-model robustness, and production serving economics remain
+unestablished.
+
+\section{Conclusion}
+
+Paper 9 extends PRA from task-aware context within one agent stream to multiple
+subagent streams with explicit lineage and selectively permeable boundaries.
+The harness remains conventional and configurable; concrete tool semantics stay
+in harness adapters; the PRA runtime remains generic and potentially remote;
+and the model engine handles native attention state. The implementation shows
+that exact ancestor reuse, selective invalidation, durable graph replay, and
+completed-descendant routing can share one coherent typed-record contract.
+Controlled SCRB results expose the distinct value of tool, payload, and native
+reuse. Tracked-source runs demonstrate sequential and parallel callback
+integration, 220 valid ancestor hits, DAG/peer visibility, and show that
+field-aware retrieval can close the small in-cohort routing gap. Frozen
+cross-repository evaluation retains a measurable oracle gap. The autonomous
+campaign shows both sides of permeable context: parallel scheduling can reduce
+wall time, and completed-peer reuse can avoid physical tool executions, but a
+selected record can also propagate a bad answer and reduce task accuracy. Live
+consumption results confirm that identical selected records can help, hurt, or
+fail depending on model and presentation. Live MLX results establish exact
+short-trajectory parity and show both sides of the
+systems tradeoff: fan-out amortizes native K/V when the record fits comfortably,
+while memory pressure can erase the gain even though physical input tokens fall
+sharply. Direct-MLX lifecycle tests add exact concurrent-session, cancellation,
+termination, eviction, and tier-transition evidence on the M4. The remaining
+empirical question is therefore not whether cross-stream native reuse can work,
+but when routing, consumption, residency, engine implementation, and real agent
+behavior make it worthwhile.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+
+\end{document}

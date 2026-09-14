@@ -1,0 +1,280 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.82in]{geometry}
+\usepackage{booktabs,amsmath,graphicx,hyperref,xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\title{Progressive Retrieval Attention with FreeToken:\\
+Semantic Memory under Bandwidth-Adaptive MoE Serving}
+\author{Jorge Sim\~ao}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+FreeToken adapts mixture-of-experts (MoE) inference to constrained machines by
+managing model/expert residency and movement. Progressive Retrieval Attention
+(PRA) manages a different sparse resource: semantic context selected for a
+query. We pin FreeToken commit
+\texttt{3a20a79038338c33bd051c52152e6d1faa4d9791}, audit its scheduler and cache
+architecture, implement a capability-honest adapter, and introduce a
+dependency-light transfer coordinator that keeps expert and semantic identities
+separate. A five-seed controlled sweep crosses four prefetch policies with
+0.5--16 GiB/s host-device bandwidth. At 4 GiB/s, earliest-deadline coordination
+reduced mean exposed transfer latency to 22.3 ms, versus 27.1 ms for expert-only
+and 53.8 ms for independent fair sharing. At 16 GiB/s it hid both transfers in
+all seeds. At 1 GiB/s, however, PRA-only scheduling was better (162.8 versus
+258.4 ms), falsifying any claim that simple coordination is universally best.
+The available RTX 5060 host now has a working PyTorch CUDA 13 runtime, but lacks
+CUDA 13 \texttt{nvcc} and practical host-memory headroom for the documented
+20B/30B-class model set, so live E0/E2/E3 model qualification remains precisely
+blocked. The reported result is a scheduler design and controlled
+frontier, not native FreeToken PRA execution. A separate M4 Pro MLX reference
+compares dense Qwen3-32B with Qwen3-30B-A3B: the MoE uses 26.4 rather than
+70.3 MiB of all-layer selected K/V and completes substantially faster, but is
+more sensitive to removing early PRA consumer layers. Parameter sparsity does
+not therefore imply semantic-context sparsity.
+\end{abstract}
+
+\section{Introduction}
+FreeToken and PRA are both selective, but they answer different questions.
+FreeToken asks which expert or model-state bytes must be resident to execute the
+model. PRA asks which evidence records and intervals should be visible to the
+query. Expert identity is a property of computation; semantic resource identity
+is a property of application state and authorization. Merging them because both
+use top-$k$ decisions would make failures difficult to diagnose and could cross
+security boundaries.
+
+The systems opportunity is physical coordination. Expert weights and selected
+PRA K/V may compete for the same PCIe link, host memory, device capacity, and
+prefetch window. A scheduler may improve utilization by considering both demand
+streams while preserving their separate policies.
+
+This paper contributes a pinned architecture audit, separate SDK namespaces for
+semantic blocks and expert state, an optional native executor/E3 boundary, and
+a controlled bandwidth sweep that exposes both the promise and failure modes of
+simple coordination.
+
+\section{PRA and Integration Levels}
+The product evidence conditions are No PRA, Selected Context, Native Memory,
+and Native Serving; bundle or adaptor use is an orthogonal axis. No PRA means
+ordinary inference without PRA selection. Selected Context (E0) supplies
+PRA-selected evidence as visible text. E1 carries resource identity and
+lifecycle metadata. Native Memory (E2) consumes detached selected K/V. Native
+Serving (E3) additionally requires the real FreeToken scheduler to own PRA
+placement, prefetch, sharing, and eviction. Only E3 permits claims about joint
+runtime scheduling. The controlled coordination sweep is not a true No-PRA
+comparison, and live E2/E3 model evidence remains absent.
+
+Native PRA attention joins direct and memory keys before one softmax,
+\begin{equation}
+ \operatorname{softmax}\!\left(
+ [qK_D^\top;qK_M^\top]/\sqrt d + M
+ \right)[V_D;V_M].
+\end{equation}
+An expert cache hit cannot substitute for this contract: it makes model weights
+available, not evidence available.
+
+\section{Pinned FreeToken Audit}
+At the pinned revision, FreeToken is an independent Python/CUDA serving stack
+with OpenAI and Anthropic APIs. Its CPU expert pool is a source of truth and a
+shared LRU cache holds selected expert state on the GPU. Prefill uses full-layer
+double buffering. During decode, bandwidth-adaptive logic divides expert misses
+between device transfer and CPU execution. The stack also contains paged/native
+KV pools, radix prefix reuse, recurrent-state checkpoints for applicable model
+families, and CUDA-graph-aware cache controls.
+
+These mechanisms supply plausible extension seams but not native PRA by
+themselves. A semantic block needs a stable tenant/resource/version/model
+fingerprint, selected intervals, per-layer geometry, and request-scoped
+authorization. The expert cache uses different keys and retention semantics.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.92\linewidth}\small
+Query $\rightarrow$ PRA router $\rightarrow$ semantic resource IDs and selected
+intervals $\rightarrow$ PRA text (E0) or native K/V (future E2).\\[2pt]
+Model token states $\rightarrow$ MoE router $\rightarrow$ expert IDs
+$\rightarrow$ CPU execution or expert transfer/cache.\\[2pt]
+The identities and selection losses remain independent. A physical coordinator
+receives only transfer size, deadline, residency, and predicted-use metadata,
+then arbitrates shared bandwidth. E3 begins only when FreeToken's real scheduler
+owns that arbitration and lifecycle.
+\end{minipage}}
+\caption{Two selectors, one possible physical coordinator.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Implementation}
+The engine adapter uses the server's OpenAI-compatible endpoint at E0. Only an
+explicit native executor may advertise E2 or E3; without one, the provider
+remains E0. Native semantic blocks stay in the PRA logical block store, never
+in an expert-ID namespace. Tests enforce this capability boundary.
+
+The dependency-light coordinator represents each miss as
+\begin{equation}
+ d_i=(c_i,b_i,t_i,h_i,u_i),
+\end{equation}
+where $c_i\in\{\text{expert},\text{PRA}\}$, $b_i$ is bytes, $t_i$ is first-use
+time, $h_i$ is cache residency, and $u_i$ records eventual use. We compare:
+expert-only prefetch, PRA-only prefetch, independent simultaneous prefetch with
+fair link sharing, and coordinated earliest-deadline transfer. Non-prefetched
+objects start at demand time and all policies share one physical link.
+
+For completion time $f_i$, exposed transfer latency is
+\begin{equation}
+ L=\sum_i\max(0,f_i-t_i),
+\end{equation}
+and accelerator idle proxy is $\max_i\max(0,f_i-t_i)$. The model also reports
+expert/PRA bytes separately, ready-before-demand fraction, and wasted prefetch.
+It is deliberately algebraic: it can validate scheduling logic on a host where
+the full CUDA stack is unavailable, but cannot establish E3 throughput.
+
+\section{Experimental Method}
+Five deterministic seeds vary expert traffic from 96--192 MiB, PRA traffic from
+12--48 MiB, expert first-use from 12--25 ms, and PRA first-use from 25--60 ms.
+Bandwidth is swept over 0.5, 1, 2, 4, 8, and 16 GiB/s. Each seed uses identical
+demands under every policy. The run was executed on Windows with an RTX 5060
+Laptop GPU (8,151 MiB) and driver 592.19; the calculation itself is CPU-side.
+
+A 2026-09-08 re-audit measures 25,124,052,992 bytes (23.4 GiB) system memory,
+PyTorch 2.13.0 with a working CUDA 13.0 runtime, and no CUDA 13 \texttt{nvcc}.
+The documented practical configurations begin with 20B/30B-class MoE systems;
+23.4 GiB does not leave safe headroom for their CPU expert pool, shards, OS, and
+runtime. We therefore keep live E0, E2, and E3 blocked rather than use a mock
+model under the FreeToken name.
+
+\section{Controlled Results}
+\begin{table}[t]
+\centering\small
+\caption{Mean exposed transfer latency (ms), five seeds. Bold is best at each
+bandwidth among the four fixed policies.}
+\begin{tabular}{lrrrr}
+\toprule Bandwidth & Expert only & PRA only & Independent & Coordinated\\
+\midrule
+1 GiB/s & 258.4 & \textbf{162.8} & 296.1 & 258.4\\
+4 GiB/s & 27.1 & 37.3 & 53.8 & \textbf{22.3}\\
+16 GiB/s & 1.79 & 9.33 & 0.68 & \textbf{0.00}\\
+\bottomrule
+\end{tabular}
+\label{tab:bandwidth}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/bandwidth_coordination.png}
+\caption{Controlled transfer frontier. Coordination becomes effective once the
+link can satisfy the early expert deadline and still stage PRA before use.}
+\label{fig:bandwidth}
+\end{figure}
+
+The mean workload moves 152.9 MiB of expert state and 29.4 MiB of PRA state.
+At 4 GiB/s, coordinated scheduling improves over the best single-class policy
+by 17.7\% and over independent fair sharing by 58.6\%. At 16 GiB/s all demands
+are ready before use under coordination. At 1 GiB/s the large early expert
+transfer monopolizes the link; prefetching the smaller later PRA object and
+executing the expert on demand minimizes the sum of lateness. An
+earliest-deadline policy is therefore not enough for low-bandwidth operation.
+The future scheduler needs a cost objective that considers bytes, slack, CPU
+fallback, and critical-path impact.
+
+\section{Dense-versus-MoE Architecture Reference}
+Before attributing any future result to FreeToken scheduling, we need to know
+how the underlying MoE changes the semantic-memory workload. We therefore reuse
+the selector-frozen MLX calibration owned by Papers 4.5 and 6.2. It runs five
+unique annotated-evidence examples from each of QASPER, HotpotQA, and 2Wiki for
+both Qwen3-32B and Qwen3-30B-A3B, with at most 384 selected source tokens. The
+comparison is model-backed and natural-QA-based, but it is \emph{not} a
+FreeToken execution result.
+
+\begin{table}[t]
+\centering\small
+\caption{Dense and MoE reference on the 48 GB M4 Pro. PRA MiB is all-layer
+selected K/V. $|\Delta|$LP compares segmented native K/V with selected-text
+execution, averaged over dataset-level means.}
+\begin{tabular}{lrrrrrr}
+\toprule Model & E0 F1 & Model GiB & PRA MiB & E0 ms & Seg./E0 & $|\Delta|$LP\\
+\midrule
+Qwen3-32B & .231 & 17.16 & 70.3 & 1177.0 & 1.03 & .039\\
+Qwen3-30B-A3B & .256 & 16.00 & 26.4 & 222.5 & 1.12 & .146\\
+\bottomrule
+\end{tabular}
+\label{tab:moe-reference}
+\end{table}
+
+All-layer concatenated transport reproduces the selected-text sequence for all
+30 model--example pairs. The segmented one-softmax path agrees on 13/15 dense
+and 14/15 MoE examples; those mismatches are numerical execution sensitivity,
+because retrieval is frozen. More importantly for profile design, retaining
+only the last three quarters of consumer layers changes mean gold likelihood by
+.356 nats for dense 32B but 2.662 nats for the MoE. The MoE reduces weight-side
+computation and its native K/V topology is cheaper, yet the tested model needs
+early semantic-memory consumers more strongly. A FreeToken policy must keep
+expert residency and PRA consumer-layer selection as separate decisions.
+
+\section{Capability Matrix and Falsification}
+\begin{table}[h]
+\centering\small
+\caption{Evidence available in this iteration.}
+\begin{tabular}{lll}
+\toprule Item & Status & Evidence\\
+\midrule
+Architecture and extension seam & complete & pinned source audit\\
+E0 adapter & implemented/tested & SDK unit tests\\
+Bandwidth coordination & measured & controlled five-seed model\\
+MLX dense/MoE reference & measured & 30 natural-QA model--example pairs\\
+Live FreeToken E0 & blocked & host/toolchain/model gate\\
+Native E2 & not implemented & no claim\\
+Scheduler E3 & not implemented & no claim\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The central hypothesis remains falsifiable. Native PRA is not justified if an
+optimized selected-text path reaches the same quality-memory-bandwidth frontier,
+if semantic K/V traffic erases FreeToken's expert-offload benefit, or if a joint
+scheduler cannot outperform independent policies under realistic deadlines.
+The 1 GiB/s result already rejects the naive stronger claim that coordination is
+always beneficial.
+
+\section{Limitations and Next Work}
+No \emph{FreeToken} model generation, physical PCIe trace, expert hit trace, or
+native FreeToken attention path is measured here. The MLX reference isolates
+model architecture and cannot validate the scheduler. The synthetic demand
+distribution is a controlled instrument, not a workload proxy. The next iteration requires a
+CUDA-13 \texttt{nvcc}-capable build environment and more than 23.4 GiB of usable
+RAM for one documented model. It should
+first run FULL and frozen-selection E0, then add E2 with geometry and isolation
+controls, and finally inject the coordinator into the real scheduler. Fixed and
+oracle policies should precede any learned joint controller.
+
+The live sweep must report task F1/EM, exact E0/E2 parity, selected tokens,
+expert and PRA bytes, link utilization, queue delay, ready-before-demand,
+wasted transfer, accelerator idle time, TTFT/ITL tails, throughput, and peak
+host/device memory. E3 is earned only when scheduler traces show ownership of
+PRA placement and cleanup.
+
+\section{Conclusion}
+FreeToken and PRA virtualize different resources. Their control policies should
+remain separate, but their transfers can sometimes be coordinated profitably.
+The controlled results locate a threshold: coordination helps at moderate and
+high bandwidth, while a simple deadline rule can lose under severe scarcity.
+The adapter and experiment make that hypothesis executable; the unavailable
+live engine configuration keeps E2/E3 claims open.
+
+\section*{Artifact Availability}
+Branch \texttt{research/paper6-9-freetokens} contains the adapter, dependency-light
+coordinator, unit tests, pinned audit, raw five-seed JSON, plotting script,
+README, manuscript, and the vendored dense/MoE reference artifacts. The
+executable MLX runner is owned by \texttt{research/paper4-5-runtime} at commit
+\texttt{0f0ed60}; this branch does not duplicate that engine implementation.
+
+\begin{thebibliography}{9}
+\scriptsize
+\bibitem{freetoken} FlashML. \emph{FreeToken: Affordable LLM Inference on
+Constrained Machines}. 2026. \url{https://github.com/FlashML-org/FreeToken}
+\bibitem{freetokenpaper} FreeToken authors. \emph{FreeToken}. arXiv:2608.16157,
+2026. \url{https://arxiv.org/abs/2608.16157}
+\bibitem{moe} W. Fedus, B. Zoph, and N. Shazeer. \emph{Switch Transformers}.
+JMLR, 2022.
+\end{thebibliography}
+\end{document}

@@ -1,0 +1,266 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.92in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,enumitem,flafter,graphicx,hyperref,microtype,tabularx,url,xcolor}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black}
+\newcommand{\pra}{\textsc{PRA}}
+\newcommand{\resultroot}{../shared/results/paper2_7_query_graph}
+
+\title{Latent Query Decomposition from Frozen Transformer State Graphs}
+\author{Jorge Sim\~ao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A multi-hop question can ask for several pieces of evidence, yet dense retrieval commonly represents it with one vector. We study a training-free alternative: construct a sparse graph over word-aligned states from a frozen causal decoder, identify connected components, and use those components as query facets. A controlled study first verifies the mechanism. With one to six known latent facets, connected components achieve adjusted Rand index (ARI) $0.832$, against $0.563$ for non-oracle $k$-means and $0.271$ for validation-selected windows; recovery is unchanged by synthetic interleaving. We then introduce a fresh, identity-disjoint benchmark of 240 natural 2WikiMultiHopQA and MuSiQue questions. Its labels are reproducibly derived from dataset-authored evidence chains and question decompositions, rather than generated subquestions. On 200 held-out questions, Qwen3-0.6B graph facets beat deterministic syntax by $0.079$ ARI and non-oracle $k$-means by $0.118$ (paired 95\% intervals exclude zero), but lose to five-word windows by $0.063$. SmolLM2-135M replicates the graph--syntax advantage but is statistically tied with $k$-means. The graph over-segments both models. A matched four-document retrieval study then gives the important negative result: graph facets reduce evidence recall relative to a global query on both datasets and both models. Adding lexical evidence narrows, but does not reverse, the loss. Consequently, a pre-specified native-K/V generation gate remains closed. Frozen hidden states do expose some natural query structure, but recovering a plausible partition is not sufficient for useful retrieval; the interface from communities to calibrated retrieval queries is the unresolved problem.
+\end{abstract}
+
+\section{Introduction}
+Question decomposition appears in multi-hop reading, prompting, and retrieval because one query vector may blur distinct entities, relations, and constraints~\cite{min2019decomposition,zhou2023least,khot2023decomposed,press2023compositionality,ammann2025question}. Most decomposition systems generate explicit subquestions or train a task-specific decomposer. That brings linguistic clarity, but also another model call, generated-token cost, and a new failure surface. This paper asks whether decomposition can instead be read from states that a frozen decoder has already computed.
+
+The proposal is deliberately small. Each word-aligned query state becomes a node. Contextual cosine similarity defines candidate edges; per-node top-$k$ and a threshold make the graph sparse. Connected components become facets, and each facet preserves the exact words from which it was formed. The method does not know the true number of facets, generate text, train a router, or inspect evidence labels at serving time.
+
+Three links must be tested separately:
+\begin{equation}
+\text{known latent structure}\rightarrow\text{natural query structure}\rightarrow\text{retrieval utility}.
+\end{equation}
+A synthetic partition can be easy even when natural questions are not. A natural partition can be meaningful while its pooled representation is a poor retrieval query. Finally, a semantic gain can disappear when lexical evidence is already available. We therefore use explicit gates and report the break, not only the first successful link.
+
+The contributions are:
+\begin{enumerate}[leftmargin=*]
+  \item a deterministic, tensor-native graph and provenance-preserving facet interface with no oracle cluster count;
+  \item a controlled five-seed result showing high facet recovery and robustness to interleaving;
+  \item a 240-question natural benchmark built from author-provided MuSiQue decompositions and 2Wiki evidence relations, with 40 validation and 200 untouched test questions;
+  \item direct natural-facet comparisons across Qwen3-0.6B and SmolLM2-135M against global, fixed-window, syntactic, $k$-means, label-propagation, and generated-subquestion baselines;
+  \item a fresh matched-budget retrieval study showing that direct partition quality does not translate into evidence recall, and a documented decision not to run downstream native-K/V generation after the retrieval gate fails.
+\end{enumerate}
+
+The result is narrower than the motivating hope. Under Qwen, graph communities beat several non-oracle decomposition baselines and especially help relative to windows on naturally non-contiguous questions. Across the full cohort, however, simple windows have higher ARI and graph facets over-segment. In retrieval, a global question or syntax split is usually better. The useful conclusion is causal: the remaining bottleneck is not community detection alone, but how discovered communities are consolidated, weighted, and expressed to a retrieval scorer.
+
+\section{Method}
+\subsection{System boundary}
+Figure~\ref{fig:boundary} separates the intervention from memory retrieval. The graph sees one already encoded query. It does not search a document graph, inspect gold evidence, modify the language model, or materialize K/V. In the retrieval experiment, every decomposition is rendered as facet text and scored by the same frozen sentence encoder against the same candidate documents.
+
+\begin{figure}[t]
+\centering
+\setlength{\fboxsep}{5pt}
+\begin{tabular}{c}
+\fbox{natural question $x$}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{frozen causal decoder states $H\in\mathbb{R}^{N\times d}$ + word provenance}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{contextual similarity $\rightarrow$ per-node top-$k$ $\rightarrow$ sparse query graph}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{connected components $\rightarrow$ exact member words $\rightarrow$ facet queries}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{fixed sentence encoder + fixed candidate documents + four-document budget}\\[2pt]
+$\downarrow$\\[-1pt]
+\fbox{evidence-document recall; native-K/V and generation only if the retrieval gate passes}
+\end{tabular}
+\caption{Tested pipeline. Hidden-state graphs discover query facets; memory-side scoring and budget remain fixed.}
+\label{fig:boundary}
+\end{figure}
+
+\subsection{Nodes, edges, and sparsification}
+Let $H=[h_1,\ldots,h_N]^\top$ be word-aligned hidden states. Subword states whose character offsets overlap a word are mean pooled. Every node retains its word, character span, stable unit ID, and source layer. For the general implementation, an edge can combine contextual, lexical, attention, positional, and residual-update evidence:
+\begin{equation}
+w_{ij}=\frac{\alpha s^{ctx}_{ij}+\beta s^{lex}_{ij}+\gamma s^{attn}_{ij}+\delta s^{pos}_{ij}+\eta s^{\Delta h}_{ij}}{\alpha+\beta+\gamma+\delta+\eta}.
+\end{equation}
+This study uses contextual cosine only. It removes self-edges, retains at most $k$ outgoing neighbors, applies $w_{ij}>\tau$, and uses union symmetrization:
+\begin{equation}
+(i,j)\in E \Longleftrightarrow j\in\operatorname{TopK}(W_i,k)\land w_{ij}>\tau.
+\end{equation}
+Stable index preference resolves exact top-$k$ ties. Graph arrays have shape $[N]$ for nodes and $[E]$ for source, destination, weight, and edge components; all tensors stay on one device.
+
+\subsection{Communities and facets}
+Connected components initialize one label per node and propagate minimum incoming labels:
+\begin{align}
+r_j^{(t)}&=\min_{i:(i,j)\in E}c_i^{(t)},&
+c_j^{(t+1)}&=\min(c_j^{(t)},r_j^{(t)}).
+\end{align}
+The code uses \texttt{scatter\_reduce\_(reduce="amin")} rather than Python edge loops. Weighted label propagation is a secondary baseline. It accumulates incoming edge mass in a bounded $[N,C]$ table and adopts the highest-mass label with deterministic tie handling.
+
+For labels $c$, one-hot membership $Q\in\{0,1\}^{N\times K}$ gives hidden facets
+\begin{equation}
+Z=\operatorname{diag}(Q^\top\mathbf{1})^{-1}Q^\top H.
+\end{equation}
+The retrieval study does not compare $Z$ directly with document embeddings. Instead it reconstructs each facet from its member words and encodes all methods with one fixed sentence encoder. This design isolates the decomposition boundary from model-specific vector spaces. Generated subquestions are encoded directly; word alignment is used only for their separately reported partition metric.
+
+\section{Experimental protocol}
+\subsection{Gates}
+G0 reproduces the earlier controlled and 74-query historical results. G1 requires graph primitive, determinism, and CPU/CUDA parity tests. G2 asks whether graph CC beats at least one meaningful non-oracle baseline on natural facet labels. G3 asks whether the pattern survives a second frozen model. G4 requires graph semantic evidence-recall improvement over a global query with a paired 95\% interval strictly above zero on at least one dataset. Only G4 opens a small downstream native-K/V generation check. This ordering prevents answer generation from obscuring a routing failure.
+
+\subsection{Controlled study}
+The controlled generator creates one to six latent facets, contiguous or interleaved order, shared entities, lexical overlap, and distractors. Validation and test each contain 120 examples over disjoint groups of five seeds. Validation selects edge family, $k$, threshold, graph policy, and the fixed-window width. The test comparison includes a global cluster, fixed windows, a clause proxy, deterministic farthest-first $k$-means with $\min(6,\operatorname{round}\sqrt{N/2})$ clusters, connected components, and weighted label propagation. No method receives the target facet count.
+
+\subsection{Natural benchmark}
+The natural benchmark contains 120 2WikiMultiHopQA and 120 MuSiQue development questions, sampled deterministically after excluding all identities in the historical 74-query cohort. Each dataset contributes 20 validation and 100 test questions. MuSiQue supplies author-provided \texttt{question\_decomposition} steps. For 2Wiki, compositional questions use evidence-relation steps; comparison questions group connected evidence triples into their parallel entity branches. Exact source phrases and unique lexical evidence anchor surface words. Ambiguous relation words, function words, punctuation, and comparison answer-type words remain shared/global. Remaining content words map to the nearest unambiguous source anchor. Every decision and confidence value is persisted.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Dataset-derived natural query-facet benchmark. Shared/global words are excluded from primary partition metrics.}
+\label{tab:benchmark}
+\begin{tabular}{lrrrr}
+\toprule
+Dataset & Total & Val./test & Mean facets & Non-contiguous questions\\
+\midrule
+2WikiMultiHopQA & 120 & 20/100 & 2.00 & 16.7\%\\
+MuSiQue & 120 & 20/100 & 2.56 & 52.5\%\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These are natural questions with dataset-derived supervision, not a new human annotation campaign. We do not claim inter-annotator agreement. The mapping is useful because it is source-preserving and rerunnable, but its lexical adjudication is imperfect. Primary metrics exclude shared/global words and include ARI, NMI, pairwise F1, absolute facet-count error, over/under-segmentation, and singleton rate.
+
+\subsection{Models and validation}
+We freeze Qwen3-0.6B revision \texttt{c1899de2} and SmolLM2-135M. Candidate layers are middle, three-quarter, and final decoder layers. On the 40-question validation set only, we select layer, $k\in\{1,2,3\}$, and $\tau\in\{0.35,0.45,0.55,0.65\}$ by ARI, then pairwise F1. Both models select $k=1$, $\tau=0.55$, and their middle layer (Qwen layer 14; SmolLM layer 15). Fixed windows choose width five on the same validation set.
+
+The generated baseline uses local Gemma~3 1B, temperature zero, a fixed structured prompt, and a 96-token cap. It produces at least one recoverable subquestion for all 240 questions, but only 121 responses are strict JSON; 119 require recovery of complete strings from truncated JSON. Mean generation latency is 8.74 seconds, with 26,078 prompt and 23,806 generated tokens. It is a serious reproducible small-model baseline, not a proxy for frontier LLM decomposition.
+
+\subsection{Fresh retrieval}
+The 200 test questions retain their native candidate-document sets and supporting-document labels. All methods use \texttt{sentence-transformers/all-MiniLM-L6-v2}, revision \texttt{1110a243}, for facet and document encoding. A document's score is its maximum cosine over query facets. Lexical--semantic conditions average min--max normalized query-term IDF overlap and semantic score. Every condition selects four documents. We report evidence-document recall, precision, MRR, and paired 5,000-draw bootstrap intervals. This is a document-level decomposition test, not the earlier 32-token PRA chunk benchmark.
+
+\section{Results}
+\subsection{Controlled recovery}
+Connected components reach ARI $0.832$, NMI $0.832$, pairwise F1 $0.999$, and facet-count error $0.033$. Deterministic $k$-means reaches ARI $0.563$ and validation-selected windows $0.271$. Graph ARI is $0.833$ on contiguous and $0.830$ on interleaved examples, while windows fall from $0.528$ to $0.015$. G1 and the controlled portion of G2 pass.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\linewidth]{\resultroot/controlled/controlled_facet_recovery.pdf}
+\caption{Held-out controlled ARI over 120 examples and five test seeds.}
+\label{fig:controlled}
+\end{figure}
+
+\subsection{Natural facet recovery}
+Table~\ref{tab:natural-facets} and Figure~\ref{fig:natural-facets} give test ARI averaged equally over the two datasets. For Qwen, graph CC beats syntax by $0.0786$ ARI (95\% CI $[0.0269,0.1286]$), $k$-means by $0.1183$ ($[0.0754,0.1591]$), and aligned Gemma subquestions by $0.0654$ ($[0.0160,0.1116]$). It loses to five-word windows by $0.0632$ ($[-0.1094,-0.0163]$). This is a partial G2 pass, not a universal win.
+
+SmolLM replicates the graph--syntax advantage: $+0.0813$ ARI with interval $[0.0251,0.1366]$. Its graph--$k$-means delta is only $+0.0234$ and crosses zero. Its graph--window delta is $-0.0605$. Thus natural graph recoverability is qualitatively cross-model, but the advantage over centroid clustering is Qwen-specific in this cohort.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Natural test ARI, averaged over 100 2Wiki and 100 MuSiQue questions.}
+\label{tab:natural-facets}
+\begin{tabular}{lrr}
+\toprule
+Method & Qwen3-0.6B & SmolLM2-135M\\
+\midrule
+Five-word windows & \textbf{0.255} & \textbf{0.255}\\
+Syntactic clauses & 0.113 & 0.113\\
+Embedding $k$-means & 0.073 & 0.171\\
+Graph connected components & 0.192 & 0.194\\
+Graph label propagation & 0.184 & 0.190\\
+Gemma generated subquestions (aligned) & 0.126 & 0.126\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{\resultroot/next_iteration/natural_facet_cross_model.pdf}
+\caption{Natural facet ARI. Generated-subquestion ARI includes a lexical alignment step and should be read together with its direct retrieval result.}
+\label{fig:natural-facets}
+\end{figure}
+
+The graph's main failure is fragmentation. Mean facet-count error is 1.81 for Qwen and 1.37 for SmolLM, versus 0.50 and 0.42 for $k$-means. Qwen graph CC over-segments 75\% of 2Wiki and 92\% of MuSiQue questions. The geometry nevertheless contains signal: Qwen mean within-facet cosine is $0.587$ versus $0.548$ between facets; nearest-neighbor target purity is $0.683$, and graph-component purity is $0.889$. SmolLM gives $0.653$ within, $0.603$ between, $0.695$ neighbor purity, and $0.862$ component purity. Local neighbors are often correct, but sparse thresholding does not merge enough locally correct pieces into the target number of facets.
+
+Complexity sharpens the diagnosis. Qwen graph CC beats windows by $0.059$ ARI on 68 non-contiguous questions but loses by $0.126$ on 132 contiguous questions. SmolLM does not obtain that interleaving crossover. Against $k$-means, Qwen gains on both groups ($+0.143$ non-contiguous; $+0.105$ contiguous). The controlled interleaving result therefore transfers only as a Qwen-relative advantage, not as an aggregate win.
+
+\subsection{Retrieval utility}
+The fresh retrieval endpoint reverses the direct-metric optimism. Table~\ref{tab:retrieval} reports recall@4. Qwen graph facets reduce recall relative to the global query by $0.075$ on 2Wiki (95\% CI $[-0.120,-0.030]$) and $0.0917$ on MuSiQue ($[-0.1358,-0.0483]$). SmolLM deltas are $-0.045$ ($[-0.095,0.005]$) and $-0.085$ ($[-0.1358,-0.0333]$). Graph also underperforms $k$-means on MuSiQue for both models. G4 fails.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Evidence-document recall@4 on 100 questions per dataset. The sentence retriever and document candidates are fixed.}
+\label{tab:retrieval}
+\begin{tabular}{lrrrr}
+\toprule
+& \multicolumn{2}{c}{Qwen graph states} & \multicolumn{2}{c}{SmolLM graph states}\\
+Condition & 2Wiki & MuSiQue & 2Wiki & MuSiQue\\
+\midrule
+Global semantic & 0.760 & \textbf{0.593} & 0.760 & \textbf{0.593}\\
+Syntax semantic & 0.795 & 0.584 & 0.795 & 0.584\\
+$k$-means semantic & 0.730 & 0.566 & 0.765 & 0.563\\
+Graph semantic & 0.685 & 0.502 & 0.715 & 0.508\\
+Gemma subquestions semantic & 0.520 & 0.482 & 0.520 & 0.482\\
+Global lexical--semantic & 0.825 & 0.573 & 0.825 & 0.573\\
+Graph lexical--semantic & 0.785 & 0.545 & 0.810 & 0.540\\
+Gemma lexical--semantic & 0.710 & 0.505 & 0.710 & 0.505\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{\resultroot/next_iteration/fresh_retrieval_cross_model.pdf}
+\caption{Paired graph recall delta against the global semantic query and global lexical--semantic baseline. No comparison opens the native-K/V gate.}
+\label{fig:retrieval}
+\end{figure}
+
+Lexical overlap narrows the damage. Graph-minus-global hybrid deltas are $-0.040$ and $-0.0283$ for Qwen, and $-0.015$ and $-0.0333$ for SmolLM; all intervals touch or cross zero. Most selections are unchanged. This is the same redundancy pattern suggested by the smaller historical Paper~2.6 cohort, now on 200 fresh identities.
+
+The generated baseline is not strong here. Directly encoded Gemma subquestions trail graph semantic retrieval by $0.165$--$0.195$ on 2Wiki and are roughly tied on MuSiQue. Manual artifact inspection and the 49.6\% partial-JSON rate show that the 1B model often repeats generic requests or loses constraints. This comparison establishes reproducible cost and behavior for one small local generator; it does not establish that latent graphs beat larger instruction models.
+
+Because no graph-versus-global semantic interval is positive, the protocol does not run native-K/V materialization, answer log-probability, EM/F1, or generation. Those are absent results, not silently failed runs.
+
+\section{Why partition recovery did not become retrieval gain}
+ARI rewards correct pairs of word labels. Retrieval rewards a facet text whose embedding ranks all required evidence ahead of distractors. These objectives diverge in three concrete ways.
+
+First, graph CC over-segments. Max-over-facet scoring then gives short fragments disproportionate influence. A fragment containing a common relation can match an irrelevant document more strongly than the complete question does. Second, causal states are asymmetric: $h_i=f(x_{\le i})$. Early words cannot represent later constraints, and symmetric cosine edges cannot restore information never present in those states. Third, the rendering step gives all components equal status. It has no confidence-weighted consolidation, global anchor, or learned fusion to distinguish an entity-bearing facet from a functionally incomplete fragment.
+
+The natural geometry supports this account. Component purity is high while facet-count error is also high: many pieces are locally homogeneous but too small. The next justified intervention is therefore not another community algorithm. It is calibrated consolidation: preserve a global query, merge low-confidence singleton or near-duplicate components, and learn or validate facet weights against retrieval while keeping the graph itself frozen. That hypothesis should be tested before reopening downstream PRA generation.
+
+\section{Efficiency}
+Once hidden states exist, graph build plus CC takes 2.69 ms per Qwen question and 3.14 ms per SmolLM question in the present eager CUDA implementation. This excludes decoder encoding. Dense $N\times N$ similarity is formed before sparse storage, so construction is $O(N^2d)$ even though the retained graph is sparse. For short questions this is modest, but no claim is made about document-scale graphs.
+
+Gemma decomposition averages 8.74 seconds on the measured local Ollama setup and adds 49,884 tokens over 240 questions. The comparison is not hardware-normalized: graph timing excludes the frozen decoder pass because its states may already exist during prefill, while Gemma latency includes its full extra call. The defensible statement is operational rather than universal: latent graphs are deterministic and non-generative once prefill states exist; generated subquestions impose an additional generation pass whose quality and cost depend strongly on the model.
+
+\section{Related work}
+\paragraph{Question decomposition.}
+Learned subquestion generation has long supported multi-hop reading and rescoring~\cite{min2019decomposition}; relation-oriented decomposition can make comparison and chain reasoning explicit~\cite{fu2021decomposing}. Least-to-most and decomposed prompting ask LLMs to create and solve simpler tasks~\cite{zhou2023least,khot2023decomposed}, while self-ask exposes follow-up questions that can call search~\cite{press2023compositionality}. Recent RAG work generates subquestions, retrieves per subquestion, merges candidates, and reranks them~\cite{ammann2025question}; adaptive work treats subquery selection as an exploration--exploitation problem~\cite{petcu2026query}. Our contrast is not linguistic superiority. We ask whether an existing frozen prefill contains a useful partition without generating language, and find that direct recovery can coexist with worse retrieval.
+
+\paragraph{Multi-vector retrieval.}
+Late-interaction retrieval retains multiple contextual query and document vectors rather than forcing one-vector compression~\cite{khattab2020colbert}. Our facets are coarser and discovered without retrieval training. The negative retrieval result is consistent with the broader lesson that multiple vectors need a calibrated interaction rule; simply increasing the number of query vectors is not sufficient.
+
+\paragraph{Multi-hop and hybrid retrieval.}
+Dense RAG and DPR retrieve external evidence~\cite{lewis2020rag,karpukhin2020dpr}; MDR and IRCoT retrieve iteratively for multi-hop questions~\cite{xiong2021mdr,trivedi2023ircot}. BM25 and reciprocal-rank fusion contribute lexical complementarity~\cite{robertson2009bm25,cormack2009rrf}. PRA addresses a later boundary: selecting a bounded native-K/V working set from addressable memory~\cite{simao2026pra,simao2026hf}. The present study stops before that boundary because query decomposition does not first improve document retrieval.
+
+\paragraph{Graph clustering.}
+Classical label propagation forms communities through local consensus without a prescribed count~\cite{raghavan2007label}. Graclus and Leiden optimize richer graph objectives~\cite{dhillon2007graclus,traag2019leiden}. We retain connected components and deterministic weighted propagation because the scientific bottleneck is no longer algorithm variety. Natural results show that the current failure is over-segmentation and retrieval calibration, not lack of a more elaborate graph package.
+
+\section{Limitations}
+The natural labels are deterministic projections of dataset-authored reasoning metadata, not independent human facet judgments. Lexical anchoring can misassign implicit relations, and excluding shared words changes class balance. The benchmark covers 2Wiki and MuSiQue, not HotpotQA or QASPER, because those local records did not provide equally direct decomposition metadata for this protocol. Only two small causal decoders and three candidate layers are tested. The Gemma~3 1B baseline is small and frequently reaches its output cap; larger LLM decomposition remains an open comparison. Retrieval uses one fixed sentence encoder, one four-document budget, and document-level evidence, so results need not transfer to another retriever or token-level PRA chunks. Graph hyperparameters are selected on 40 questions, and the annotation mapper itself has no human agreement estimate. Finally, the native-K/V endpoint is intentionally absent after its routing gate fails.
+
+\section{Conclusion}
+Sparse communities in frozen decoder states are not an illusion: they recover controlled latent facets, beat syntax on natural questions in two model families, and beat non-oracle $k$-means decisively under Qwen. But the stronger claim fails. Fixed windows remain better on average, graph CC fragments natural questions, and those fragments reduce matched-budget evidence recall on fresh 2Wiki and MuSiQue cohorts. A lexical channel makes the loss smaller, not positive. The experiment therefore separates representational structure from usable retrieval structure. Future work should calibrate consolidation and facet interaction, then reopen native-K/V evaluation only after retrieval improves.
+
+\appendix
+\section{Reimplementation map}
+An independent implementation needs five contracts. \path{src/pra_hf/natural_query_facets.py} tokenizes natural questions, maps dataset-authored structures, marks shared/global words, and evaluates predicted partitions. \path{src/pra_hf/query_graph.py} defines aligned node/edge tensors and deterministic top-$k$ graph construction. \path{src/pra_hf/query_graph_cluster.py} implements connected components, weighted propagation, deterministic $k$-means, and partition metrics. \path{src/pra_hf/query_graph_facets.py} pools hard memberships while retaining exact provenance. The experiment runners under \path{experiments/paper2_7_query_graph/} build the benchmark, generate the LLM baseline, select natural graph settings on validation only, run fresh retrieval, and produce the synthesis tables and plots.
+
+The serving pseudocode is:
+\begin{verbatim}
+hidden = frozen_decoder(question, output_hidden_states=True)[selected_layer]
+units  = mean_pool_subwords_by_character_span(hidden, question_words)
+graph  = build_query_graph(units, top_k=1, threshold=0.55, policy="union")
+labels = connected_components(graph)
+facets = [join(words[labels == c]) for c in unique(labels)]
+scores = max_cosine(sentence_encoder(facets), sentence_encoder(documents))
+selected_documents = stable_topk(scores, budget=4)
+\end{verbatim}
+The validation split must choose layer, threshold, and window width before test evaluation. Gold decomposition and evidence labels are evaluator-only.
+
+\section{Artifacts and reproducibility}
+The benchmark and annotation guide are under \path{data/paper2_7_query_facets/}. Official results live at \path{docs/papers/shared/results/paper2_7_query_graph/}: historical controlled and 74-query results remain under \path{controlled/} and \path{natural/}; new per-model facet rows are under \path{natural_facets/}; fresh retrieval rows are under \path{fresh_retrieval/}; and cross-model synthesis is under \path{next_iteration/}. Feature caches named \texttt{natural\_query\_features.pt} are regenerable and intentionally ignored. Each CSV preserves per-example identities, labels or selections, complexity strata, and metrics. JSON findings preserve model IDs, revisions, validation choices, uncertainty, and gate decisions.
+
+The natural benchmark contains no generated gold labels. Gemma prompts, raw responses, parse notes, token counts, and latency are persisted. Direct LLM facet metrics use lexical alignment back to source words; retrieval uses the generated subquestion strings directly. This distinction prevents alignment error from contaminating the retrieval comparison.
+
+\section{Historical cohort}
+Before the fresh study, the graph-disabled path exactly reproduced a 74-query QASPER, HotpotQA, 2Wiki, and MuSiQue routing cohort. On that small cohort, graph CC improved HotpotQA semantic recall over $k$-means by $0.0662$ (95\% CI $[0.0063,0.1272]$), but graph-plus-hybrid effects ranged from $-0.0078$ to $+0.0156$ and all intervals included zero. We retain this as historical replication rather than primary evidence. The fresh 200-question study is identity-disjoint and gives the more decisive result: graph decomposition does not improve global semantic retrieval.
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+\end{document}

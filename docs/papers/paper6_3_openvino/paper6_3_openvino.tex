@@ -1,0 +1,668 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,graphicx,amsmath,hyperref,float}
+\title{Progressive Retrieval Attention on OpenVINO GenAI:\\
+Semantic Resource Identity, Continuous-Batching Evidence, and the Native K/V Boundary}
+\author{Jorge Sim\~ao}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We ask whether Progressive Retrieval Attention (PRA) selected and native
+context can translate to OpenVINO, and which engine-ownership defect blocks
+production qualification. OpenVINO GenAI exposes prefix caching, continuous
+batching, and physical scheduling controls, but no public operation for
+attaching arbitrary non-prefix K/V. We therefore implement a capability-honest
+Selected Context path (E0), preserve Native Memory (E2) as an explicit blocked
+gate, and test transport, quality, physical telemetry, and cache lifecycle.
+
+Three model configurations contribute 1,080 natural QASPER, HotpotQA, and
+2Wiki requests. Selected context is faster in all nine model--dataset
+comparisons. For Qwen2.5-1.5B INT4, selected/full F1 is 0.260/0.282 on QASPER
+and 0.332/0.346 on HotpotQA, with full/selected median TTFT ratios of 3.29 and
+1.91; 2Wiki retains a larger 0.157/0.259 coverage gap. A separate
+1,341-request distractor study shows that QASPER gains depend on answer-aware
+lexical additions rather than generic context breadth. Counterbalanced Iris Xe
+telemetry reduces median TTFT from 219.5 to 118.3 ms and plugin-reported
+allocation from 1,643 to 1,563 MiB under selected E0.
+
+The blocking result is a reproducible cache-lifecycle failure. After one
+successful cached 1,573-token request, the next repeated-long request violates
+\texttt{m\_ref\_count > 0}; teardown reports a leaked sequence block table and
+58 unreleased blocks. The failure persists in both OpenVINO GenAI 2026.2.1.0
+and 2026.3.1.0 and with a larger block pool, while one-shot long,
+long-to-short, and cache-disabled controls remain healthy. Logical selection
+and E0 serving are therefore useful and measured. Safe native lifecycle
+ownership is not established, so OpenVINO remains an E0 deployment until a
+legitimate detached-K/V attachment and cleanup contract exists.
+\end{abstract}
+
+\section{Qualification Snapshot}
+\textbf{Engine question.} Does PRA selection improve quality-adjusted Intel
+serving beyond OpenVINO's prefix cache, and is detached native K/V available?
+The first answer is positive for the measured E0 workloads; the second remains
+blocked by the public attachment surface.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Standard PRA engine result block. \textsc{Not measured} denotes a
+missing measurement, not zero cost or zero benefit.}
+\label{tab:openvino-qualification}
+\begin{tabular}{p{0.28\linewidth}p{0.63\linewidth}}
+\toprule
+Field & Result \\
+\midrule
+Validated / observed level & E0 validated on CPU and GPU; E2 and E3 not observed \\
+Model / hardware & Qwen2-0.5B, Qwen2.5-1.5B, and TinyLlama-1.1B INT4; i7-1355U and Iris Xe \\
+Quality & Controlled success 1.00; paired natural selected F1 0.080--0.332; full F1 0.049--0.412 \\
+Visible context & 63 selected tokens versus 417--1,573 full-context tokens \\
+Loaded serving & 11.1--14.2 selected requests/s and 233--330 ms TTFT p99 at concurrency 16 \\
+Native K/V tokens and bytes & \textsc{Not measured}: no public non-prefix attachment operation \\
+Transfer / E2 reuse / E3 scheduling & \textsc{Not measured} \\
+Evidence tier & Controlled CPU/GPU transport, three 360-request paired cohorts, a 1,341-request distractor cohort, 60 physical-telemetry requests, and a 16-cell lifecycle matrix \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recommendation.}
+Use E0 selected text when frozen retrieval materially removes distractors,
+and evaluate successful tasks or output-token throughput beside raw
+requests/s. On this small natural cohort, selected evidence improves HotpotQA
+F1 and latency, but full context remains stronger on some datasets. Do not
+claim E2 until OpenVINO exposes selected non-prefix K/V to attention and a
+selector-frozen E0/E2 comparison establishes parity and reuse economics.
+
+\paragraph{Primer.}
+The product evidence conditions are No PRA, Selected Context, Native Memory,
+and Native Serving; bundle or adaptor use is a separate axis. No PRA means
+ordinary inference without PRA selection. Selected Context (E0) renders
+PRA-selected evidence as ordinary prompt text. E1 preserves PRA resource
+identities, typed records, routing, and fallback policy while attention remains
+ordinary. Native Memory (E2) exposes detached selected native K/V directly to
+attention. Native Serving (E3) additionally makes physical placement, sharing,
+promotion, and eviction scheduler-owned. This paper validates Selected Context
+and specifies, but does not measure, the native conditions. Its no-context
+control is not a true No-PRA workload baseline.
+
+\section{Introduction}
+This paper asks a narrow engine question: can PRA-selected context retain its
+semantic and economic value in OpenVINO, and what prevents safe native
+attachment? The companion runtime paper defines the common E0/E2/E3 and
+evidence contracts~\cite{praruntime}; here we test only the OpenVINO mapping.
+
+An inference engine's prefix cache identifies previously computed sequential
+token histories. PRA identifies immutable logical resources selected by a
+query. These identities have different lifetimes and authorization rules:
+\[
+I_{\mathrm{prefix}} \ne I_{\mathrm{PRA}} \ne I_{\mathrm{physical}}.
+\]
+Identical visible prompts may select different protected resources, while the
+same resource may be shared safely by many sessions. A correct OpenVINO
+integration must preserve that distinction while allowing OpenVINO to keep
+control of compiled execution, K/V blocks, eviction, and batching.
+
+This study makes three contributions. It implements the PRA-side OpenVINO
+contracts, audits the installed GenAI scheduler and pipeline interfaces, and
+measures a common E0 workload across CPU, GPU, prefix reuse, and continuous
+batching. The audit also identifies the smallest missing native mechanism:
+request attention metadata cannot currently receive an arbitrary selected
+non-prefix K/V set through the public Python API.
+
+\section{Claim Boundary}
+E0 renders selected source text into the visible prompt. E1 carries PRA
+logical identities, typed records, routing decisions, and explicit fallback
+policy while model attention remains ordinary. E2 consumes selected detached
+K/V natively, preserving source geometry and combining local and memory scores
+in one softmax. E3 gives the engine scheduler physical ownership of native PRA
+placement, sharing, promotion, eviction, and accounting. All model
+measurements in this paper are E0. The native classes described below are
+executable lifecycle contracts, not evidence that OpenVINO already performs
+E2 or E3.
+
+\section{OpenVINO Mapping}
+\subsection{Responsibility split}
+PRA owns typed records, selection, authorization, task/session policy, semantic
+retention, and a four-tier storage lifecycle. OpenVINO owns compilation,
+device execution, sequential K/V blocks, prefix reuse, batching, and physical
+eviction. Physical tensor handles are derived state bound to a specific model,
+revision, device, precision, layer count, K/V-head count, and head dimension.
+
+\subsection{Implemented code}
+\texttt{src/pra\_openvino/adapter.py} provides
+\texttt{OpenVINOEngineAdapter}. Its HTTP/OVMS form is explicitly E0. It reports
+E2 only when an application supplies an \texttt{OpenVINONativeExecutor};
+package installation or prefix-cache availability is never enough.
+
+\texttt{src/pra\_openvino/native.py} provides a topology fingerprint,
+immutable K/V handles, a physical-store protocol, an in-memory deterministic
+store, and \texttt{OpenVINONativeAttachmentManager}. The manager validates
+topology before registration, authorizes a complete routed set before
+scheduler admission, pins it for the request lifetime, returns it exactly
+once, and unpins it during cleanup. A shared isolation guard rejects any PRA
+logical key offered to the ordinary sequential/prefix pool. Focused tests cover
+topology mismatch, cross-tenant access, duplicate attachment, cleanup, and
+capability honesty.
+
+\subsection{Live API boundary}
+\texttt{SchedulerConfig} exposes cache size or K/V-block count, sequence and
+batched-token limits, prefix caching, dynamic split/fuse, and cache eviction.
+Supplying this configuration activates continuous batching. The public
+\texttt{LLMPipeline} surface exposes generation, tokenizer/config access, and
+chat state. It does not expose selected external K/V, non-prefix tensor
+attachment, or an attention-metadata callback. Prefix caching therefore
+accelerates repeated visible histories but does not implement PRA E2.
+
+\section{Experimental Method}
+\subsection{Environment}
+The remote Windows host runs Python 3.10.0, OpenVINO 2026.3.1, OpenVINO GenAI
+2026.3.1.0, and OpenVINO Tokenizers 2026.3.1.0. Available devices are a 13th
+Gen Intel Core i7-1355U CPU and Intel Iris Xe integrated GPU; no NPU is
+available. The first model is OpenVINO Qwen2-0.5B-Instruct INT4. Cross-model
+replication uses Qwen2.5-1.5B-Instruct and TinyLlama-1.1B-Chat-v1.0, exported
+with Optimum-Intel 2.1.0 and OpenVINO 2026.3.1 using
+\texttt{optimum-cli export openvino} with
+\texttt{--weight-format int4 --group-size 128}. Scheduler settings use a 1 GiB cache, eight sequences,
+2,048 batched tokens, prefix caching, and dynamic split/fuse. Both paired
+natural cohorts use 20 examples per dataset, two repeats, a 384-token selected
+cap, a 1,536-token full cap, and at most 24 greedy output tokens.
+
+\subsection{Conditions}
+The target resource contains \texttt{PRA\_EVIDENCE\_4821}; distractors contain
+different codes. The five one-shot conditions are no evidence, stable prefix
+only, selected text, prefix plus selected text, and full retained context. The
+same evidence is used in selected and full conditions. Each condition is run
+five times independently on CPU and GPU.
+
+The direct \texttt{ContinuousBatchingPipeline} experiment uses selected text
+and full context under shared-resource and independent-resource workloads.
+Concurrency is 1, 2, 4, and 8 with five measured waves. Every distinct resource
+is primed outside the timed interval. Reported p95/p99 values are smoke
+descriptors over small cohorts, not production service-level estimates.
+The expanded campaign uses ten waves at concurrency 1, 2, 4, 8, and 16, a
+4,096-token batch budget, and six repeated distractors. It records success,
+requests/s, output tokens/s, TTFT, TPOT, generation time, input tokens, and RSS.
+
+The distractor ablation uses 149 examples: 49 QASPER, 50 HotpotQA, and 50
+2WikiMultiHopQA. The evidence-only prompt and eight additions are constructed
+once per example. Both addition orders draw from the same example's nonselected
+candidate blocks. The condition previously called ``relevant'' ranks blocks by
+lexical overlap with the question \emph{and gold answer}; the ``irrelevant''
+condition takes the lowest-overlap blocks. Added blocks follow the selected
+evidence and precede the question. Conditions add 1, 2, 4, or 8 blocks while
+preserving the answer-bearing evidence; later additions, rather than selected
+evidence, are truncated at the input cap. One greedy GPU request per condition
+yields 1,341 requests. We report token F1, exact match, answer containment,
+source-token count, and TTFT. Gold answer log-probability is
+\textsc{not measured} by the public pipeline.
+
+\section{Results}
+\subsection{Capability status}
+\begin{table}[H]
+\centering
+\caption{OpenVINO integration status after live package and hardware audit.}
+\begin{tabular}{lll}
+\toprule
+Capability & Status & Evidence \\
+\midrule
+Selected-text E0 & Ready & CPU/GPU live generation \\
+Prefix cache controls & Ready & live SchedulerConfig audit \\
+Continuous batching & Ready & direct batched generation \\
+PRA lifecycle/isolation & Contract ready & focused tests \\
+Native selected K/V E2 & Blocked & no public attachment operation \\
+OVMS E0 & Adapter ready & endpoint not installed on host \\
+NPU comparison & Not run & no NPU device available \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{CPU and GPU one-shot behavior}
+\begin{table}[ht]
+\centering
+\small
+\caption{Evidence-bearing E0 conditions. Visible is mean input tokens; times
+are milliseconds. Success is controlled answer recovery.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_e0_device_table.tex}}
+\end{table}
+
+Controls recover the answer in 0/10 requests across CPU and GPU; every
+evidence-bearing condition succeeds in 30/30. Selected text uses 63 tokens,
+96.0\% fewer than the 1,573-token full context. On CPU, cold TTFT falls from
+7,600.3 ms for full context to 549.2 ms for selected text. On GPU it falls from
+1,129.6 to 102.9 ms. Prefix caching changes the comparison: warm full-context
+TTFT is 180.6 ms on CPU and 98.2 ms on GPU, versus 336.8 and 99.1 ms for
+selected text. Thus selected text strongly reduces cold ingestion, while a
+fully reusable prefix can remove most repeated-prefill cost in this fixed
+one-resource smoke.
+
+Pipeline construction is reported separately: 1.58 s for the CPU one-shot
+process and 39.40 s for the first GPU one-shot process. The later direct
+continuous-batching GPU process constructs in 5.05 s after system/model caches
+have been populated; these are cold-process observations, not comparable
+steady-state request latencies.
+
+\subsection{Cache-admission and lifecycle boundary}
+
+We then enable cache eviction on Qwen2.5-1.5B and constrain the scheduler by
+physical K/V blocks. The benchmark now distinguishes a capacity rejection from
+an internal cache-lifecycle failure, preserves partial rows, and stops issuing
+requests after a terminal reference-count violation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{OpenVINO GenAI cache boundary. Selected is visible selected text, not
+native E2. Full $n$ reports measured requests out of ten; tail metrics exclude
+all rejected or post-corruption cells.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cache_boundary_table.tex}}
+\label{tab:openvino-cache-boundary}
+\end{table}
+
+At 64 blocks, all 40 reduced-context requests complete before full context is
+rejected ten times for insufficient cache budget. This is a normal admission
+boundary. At 128 blocks, all four reduced conditions again complete 10/10 and
+the first 1,573-token full-context request succeeds. The next full request
+fails the engine invariant \texttt{m\_ref\_count > 0}; teardown reports a
+leaked sequence block table and 58 unreleased blocks. A 256-block diagnostic
+reproduces the invariant failure, so additional capacity does not cure it.
+
+The result does not weaken selected-text correctness. It identifies a
+prefix-cache/eviction lifecycle defect in OpenVINO GenAI 2026.3.1.0 under this
+repeated long-prefix workload. The harness labels subsequent cells
+\texttt{NOT\_RUN\_CACHE\_LIFECYCLE}; it never converts them to zero latency or
+continues timing a corrupted pipeline. Production use should disable this
+cache combination or upgrade to a release that passes the same regression.
+
+To distinguish a generic long-context failure from a state transition, we ran
+a second matrix in fresh processes. It crosses OpenVINO GenAI 2026.2.1.0 and
+the latest PyPI release, 2026.3.1.0, with cache enabled or disabled and four
+ordered workloads: repeated short, one long request, long followed by five
+short requests, and five repeated long requests. The cache-enabled condition
+sets both prefix caching and cache eviction; the disabled control turns both
+off. All cells use the same Qwen2.5-1.5B INT4 model, Iris Xe device, 128-block
+budget, and deterministic generation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Process-isolated lifecycle regression. Completed is measured requests
+over planned requests. Quality means every completed request recovered the
+controlled answer. Leaked is the teardown block deficit.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cache_lifecycle_version_table.tex}}
+\label{tab:openvino-cache-lifecycle-versions}
+\end{table}
+
+The result localizes the defect. Both versions complete 5/5 repeated short,
+1/1 one-shot long, and 6/6 long-to-short requests with the cache enabled. Both
+also complete every cache-disabled sequence, including 5/5 repeated long. In
+contrast, the first cached long request succeeds and the second fails
+\texttt{is\_all\_free}: blocks across layers must be freed simultaneously.
+Teardown then reports one leaked sequence block table and 69 free blocks where
+128 are expected, a 59-block deficit repeated by 28 allocator reports. All 60
+requests that reached generation recovered the expected answer.
+
+This controlled comparison changes the operational advice: upgrading from
+2026.2.1.0 to 2026.3.1.0 is not a remedy. For this model and scheduler geometry,
+repeated long-prefix production should avoid the combined prefix-cache and
+eviction configuration until a later release passes this exact regression.
+The failure belongs to the engine cache lifecycle, not to PRA routing or
+selected-text semantics.
+
+\subsection{Continuous batching}
+\begin{table}[ht]
+\centering
+\small
+\caption{Explicitly primed GPU continuous-batching endpoints. Every row has
+controlled answer success 1.00. RSS is process resident memory after the
+group.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_batching_table.tex}}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/continuous_batching_gpu.png}
+\caption{Warm OpenVINO GenAI E0 throughput and TTFT tail under direct continuous
+batching. Selected denotes rendered selected text, not native E2 K/V.}
+\label{fig:openvino-batching}
+\end{figure}
+
+With one shared resource and concurrency eight, selected text reaches 8.48
+requests/s compared with 7.39 for full context, while TTFT p99 falls from
+297.7 to 148.9 ms. For independent resources, selected text still lowers TTFT
+p99 (262.0 versus 319.8 ms) but reaches only 5.88 requests/s versus 7.07. This
+small reversal prevents a blanket throughput claim. It may reflect output
+length, scheduler packing, and churn in the explicitly primed independent set;
+larger cohorts and matched generated-token work are required.
+
+RSS spans roughly 1.95--2.19 GiB across endpoint rows and is not monotonic with
+transport or concurrency. The current experiment therefore supports a token
+and latency claim, not an engine-memory saving claim.
+
+\subsection{Natural QA and expanded continuous batching}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Natural-QA E0 cohort: 20 examples per dataset and two repeats. Times
+are milliseconds; retrieval is frozen across the execution conditions.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_portable_natural_table.tex}}
+\label{tab:openvino-natural}
+\end{table}
+
+The Qwen2-0.5B INT4 checkpoint shows useful but incomplete QA competence.
+Selected context improves token F1 over no context on all datasets: 0.121
+versus 0.078 on 2Wiki, 0.310 versus 0.080 on HotpotQA, and 0.124 versus 0.066
+on QASPER. Full context is stronger in this bounded cohort, with F1 0.137,
+0.412, and 0.219, exposing a retrieval/evidence-coverage gap rather than a
+transport failure. Selected median TTFT is 235--278 ms, compared with
+268--705 ms for full context. The tail difference is larger: selected p95 is
+379--390 ms, whereas full-context p95 is 1.89--2.74 s.
+
+\subsection{Cross-model natural replication}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Matched natural E0 results across two Qwen sizes and a Llama-family
+checkpoint. Each cell aggregates
+20 unique examples and two repeats. TTFT is median milliseconds; the ratio is
+full divided by selected, so larger favors selected transport.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_cross_model_table.tex}}
+\label{tab:openvino-cross-model}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_3_openvino/cross_model_natural.png}
+\caption{Cross-model quality and TTFT with frozen evidence selection. Model
+capacity and family change the quality response, while selected transport is
+faster in all nine matched dataset/model comparisons.}
+\label{fig:openvino-cross-model}
+\end{figure}
+
+The 1.5B checkpoint raises selected F1 from 0.124 to 0.260 on QASPER, from
+0.310 to 0.332 on HotpotQA, and from 0.121 to 0.157 on 2Wiki. More importantly,
+the selected/full gap narrows from 0.095 to 0.022 on QASPER and from 0.102 to
+0.014 on HotpotQA. This is positive cross-model evidence for bounded selected
+context: a more capable model uses the frozen selection nearly as well as the
+larger visible prompt on two datasets.
+
+The exception is informative. On 2Wiki the 1.5B selected/full gap is 0.102,
+versus 0.016 at 0.5B, while full-context F1 rises to 0.259. The result is
+consistent with missing multi-hop coverage in the fixed selection; it is not
+evidence against E0 transport. Across the 1.5B rows, full/selected median TTFT
+is 3.29 on QASPER, 1.91 on HotpotQA, and 1.31 on 2Wiki. Full-context p95 TTFT
+reaches 3.71--6.30 s, versus 1.21--1.29 s selected. Thus model scaling preserves
+the input-latency advantage while making retrieval coverage, rather than
+decoder capacity alone, the remaining quality variable.
+
+TinyLlama provides a deliberately different family and tokenizer. Its low
+absolute F1 (0.049--0.110 across selected and full conditions) does not support
+an answer-quality claim. It does provide a useful transport replication:
+selected median TTFT is 269--391 ms, full is 459--1,367 ms, and selected is
+faster in every dataset. Selected slightly exceeds full F1 on QASPER and
+2Wiki, but trails by 0.021 on HotpotQA. Together, the three models show that
+additional visible context is not uniformly beneficial and that the latency
+cost of presenting it survives a change in model family.
+
+\subsection{Natural distractor sensitivity}
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Natural-QA token F1 after adding answer-aware high-overlap (Rel.) or
+  low-overlap (Irr.) blocks to fixed answer-bearing evidence. Each cell
+  aggregates 49 QASPER or 50 HotpotQA/2Wiki examples.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_distractor_ablation_table.tex}}
+\label{tab:openvino-distractors}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\linewidth]{../shared/results/paper6_3_openvino/distractor_ablation.png}
+\caption{Quality and TTFT under context dilution. The point at zero is the
+same evidence-only condition for both curves. The selector is frozen; only
+the added documents differ.}
+\label{fig:openvino-distractors}
+\end{figure}
+
+The response is dataset dependent. On QASPER, four answer-aware additions raise
+F1 from 0.166 to 0.265, a 59.8\% relative gain, before falling to 0.205 at
+eight. Eight irrelevant additions instead reduce F1 to 0.140. This is a
+bounded coverage benefit: some related context helps, but adding everything
+does not. HotpotQA starts strongest with evidence alone (0.297). Four relevant
+additions nearly recover that level (0.289), while eight irrelevant additions
+fall to 0.201. On 2Wiki, relevant additions decline from 0.155 to 0.107; the
+irrelevant curve is non-monotonic and ends at 0.158. Given the small model and
+50-example cells, the 2Wiki reversal is noise-compatible and is not evidence
+that irrelevant context helps.
+
+Latency generally increases at the largest context. At eight relevant
+documents, median TTFT is 686 ms on QASPER, 745 ms on HotpotQA, and 369 ms on
+2Wiki, compared with evidence-only medians of 307, 337, and 354 ms. Smaller
+conditions fluctuate because compilation is already warm, sequence lengths
+and generated lengths differ, and the integrated GPU shares host resources.
+The robust conclusion is therefore about the joint frontier: evidence
+coverage and dilution must be calibrated per workload, while unbounded
+visible context consumes more input work without a reliable quality gain.
+
+The post-hoc paired audit in Table~\ref{tab:openvino-distractor-forensics}
+explains the apparent QASPER exception. At four answer-aware additions, mean
+paired F1 rises by 0.099: 40.8\% of examples improve and 20.4\% are harmed. The
+exact normalized answer appears in an added block for 30.6\% of examples. When
+it appears, mean F1 rises by 0.147; without it, the gain is only 0.030. By
+contrast, answer-absent additions reduce F1 by 0.073 on HotpotQA and 0.057 on
+2Wiki. Across all paired rows, F1 change correlates weakly positively with
+answer-term overlap ($r=0.171$), negatively with question overlap
+($r=-0.104$), and negligibly with added-token count ($r=-0.024$).
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Paired distractor forensics. ``Answer present'' is the fraction whose
+added text contains the exact normalized answer; ``cap hit'' records truncation
+of later additions. Rel. uses question-plus-gold-answer overlap and is not a
+deployable selector.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_distractor_forensics_table.tex}}
+\label{tab:openvino-distractor-forensics}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper6_3_openvino/distractor_forensics.png}
+\caption{Per-example quality changes expose lexical reinforcement rather than a
+generic benefit from adding related context. QASPER's positive tail is strongest
+when answer strings recur near the question; the two multi-hop datasets do not
+share that response.}
+\label{fig:openvino-distractor-forensics}
+\end{figure}
+
+\subsection{Physical Intel telemetry}
+The counterbalanced physical run alternates selected and full conditions by
+example and repeat, for 30 requests per condition on the Iris Xe GPU. Selected
+E0 carries 348 source tokens on average; FULL E0 carries 1,227. Table
+\ref{tab:openvino-physical} reports process counters and the plugin's
+\texttt{GPU\_MEMORY\_STATISTICS} allocation counter. It does not reinterpret
+process RSS as device residency.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Counterbalanced Intel physical telemetry. GPU MiB is OpenVINO plugin
+allocation; RSS and process I/O come from the operating system. Energy and GPU
+utilization are not measured because the host exposes no nonprivileged counter.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_physical_telemetry_table.tex}}
+\label{tab:openvino-physical}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper6_3_openvino/physical_telemetry.png}
+\caption{FULL/selected ratios from the live Intel run. Full context increases
+median TTFT by 1.85$\times$, p95 TTFT by 5.27$\times$, process CPU by
+1.56$\times$, bytes read by 1.95$\times$, and plugin allocation by
+1.05$\times$.}
+\label{fig:openvino-physical}
+\end{figure}
+
+Selected E0 also scores 0.159 F1 versus 0.127 for FULL E0 in this 60-request
+slice. The physical result therefore reinforces the E0 quality-adjusted frontier:
+3.53$\times$ more source tokens do not buy better answers, while they raise
+median completion latency by 19.4\% and p95 latency by 86.0\%. It remains an E0
+comparison; no physical native-K/V saving is inferred.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Expanded GPU batching endpoints. Each row has ten waves. Success and
+output-token throughput are shown because wrong short answers can inflate raw
+requests/s.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_portable_load_table.tex}}
+\label{tab:openvino-expanded-load}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/portable_e0_load.png}
+\caption{Expanded OpenVINO E0 throughput and TTFT tails through concurrency
+16. The full-context request/s lines include wrong, shorter completions and
+must be read with Table~\ref{tab:openvino-expanded-load}.}
+\label{fig:openvino-expanded-load}
+\end{figure}
+
+Selected context recovers the target in every expanded request. At shared
+concurrency 16 it reaches 11.1 requests/s and 188.9 output tokens/s, compared
+with 14.1 requests/s and 141.1 output tokens/s for full context. The latter
+follows a distractor in all 160 requests and terminates after ten tokens rather
+than 17. Under independent resources, selected remains exact while full
+context success ranges from 0.30 to 0.51. At concurrency 16, selected reaches
+8.36 requests/s, 124.9 output tokens/s, and 440 ms TTFT p99; full reaches 12.2,
+129.3, and 375 ms but only 0.45 success. This campaign therefore establishes a
+quality-adjusted selected-context advantage, not a blanket latency win.
+
+\subsection{Context-pressure curve}
+To separate concurrency from retained-context size, we repeat the peak-load
+endpoint at three frozen prompt constructions. The selected condition is
+unchanged at 63 input tokens; the full condition grows from 417 to 677 and
+831 tokens. Each point uses concurrency 16 and ten measured waves after
+explicit warmup.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{OpenVINO context pressure at concurrency 16. Success is reported
+beside throughput because the model sometimes follows a distractor and emits
+a shorter answer.}
+\resizebox{\linewidth}{!}{%
+\input{../shared/results/paper6_3_openvino/generated_context_pressure_table.tex}}
+\label{tab:openvino-context-pressure}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper6_3_openvino/context_pressure.png}
+\caption{Peak-load throughput and TTFT tail as full visible context grows.
+Selected context remains fixed; solid lines share one resource and dashed
+lines use independent resource identities.}
+\label{fig:openvino-context-pressure}
+\end{figure}
+
+Selected evidence remains exact at all three pressure points. Its shared
+throughput ranges from 11.1 to 14.2 requests/s and TTFT p99 from 233 to
+330 ms without increasing visible input. Full-context TTFT p99 grows from
+169 ms at 417 tokens to 483 ms at 831 tokens for a shared resource, and from
+247 to 530 ms for independent resources. Full-context correctness is not
+monotonic: it is exact at the smallest and largest shared points but follows a
+decoy throughout the middle shared point. This is a prompt-order/model effect,
+not evidence loss, and prevents interpreting raw throughput as a monotonic
+quality curve. The stable result is narrower: selection bounds input work and
+preserves the controlled target as retained context grows.
+
+\section{Interpretation}
+OpenVINO prefix caching and PRA selection address different reuse axes. When
+the same full context is repeatedly visible, prefix caching can make its warm
+TTFT competitive with selected text. When requests arrive concurrently,
+shorter selected inputs reduce scheduler work and improve the shared-resource
+frontier in this smoke. Native PRA would target a harder regime: encode a
+resource once, select different non-prefix intervals for many queries, and
+avoid making those source tokens visible. That regime cannot be measured until
+the attention attachment seam exists.
+
+\section{Required Native Extension}
+A minimal extension should accept an authorized set of topology-matched K/V
+handles plus source positions at request admission. The scheduler must pin the
+set, keep it outside ordinary prefix identity, expose it once to attention, and
+release it on completion or cancellation. Attention must normalize local and
+memory scores jointly. A geometry ladder should then compare ordinary prefix,
+geometry-matched cached source, full native source, sparse multi-record source,
+and cached decode before any economics claim.
+
+\section{Negative Results and Limitations}
+The controlled task verifies evidence transport; each paired natural cohort
+has only 20 unique examples per dataset and the distractor ablation has 49--50
+per dataset with one generation per condition. Three small INT4 models from
+two families, one CPU, one integrated GPU, and at most ten waves per load
+endpoint are measured. TinyLlama's weak task scores make it a transport check
+rather than a strong quality replication.
+There is no OVMS process, NPU, native K/V parity, energy or GPU-utilization
+telemetry, gold answer log-probability, long-session pressure, eviction sweep,
+or larger capable cross-family replication. Plugin allocation is available, but
+physical residency by cache class is not.
+The lifecycle version matrix covers two adjacent release lines, one model,
+one GPU, one 128-block geometry, and five repeats; it localizes a deterministic
+failure but does not estimate its prevalence across models or devices.
+All serving results are E0.
+
+\section{Conclusion}
+PRA can coexist with OpenVINO's public serving abstractions at E0 while
+preserving semantic identity and explicit capability reporting. Selected text
+substantially reduces cold ingestion and natural-input TTFT, and it avoids the
+decoy failures seen in the expanded full-context control. OpenVINO GenAI exposes the
+physical scheduling controls needed around a future integration but not the
+public arbitrary non-prefix K/V attachment needed for E2. That boundary is now
+implemented as a safe contract and measured as an open gate. The 1.5B
+replication shows that selected context approaches full-context quality on
+QASPER and HotpotQA while retaining lower TTFT, but 2Wiki keeps a meaningful
+coverage gap; better routing remains part of the product requirement.
+TinyLlama confirms the selected-input latency advantage across a second family
+without being capable enough to settle answer quality. The distractor audit
+narrows the QASPER gain to answer-aware lexical reinforcement rather than
+generic context breadth. Counterbalanced Intel telemetry further shows that the
+selected E0 frontier reduces TTFT, completion tails, process work, and plugin
+allocation in the measured slice. The isolated lifecycle matrix further shows
+that the cached repeated-long defect persists in the latest tested release,
+while one-shot long, long-to-short, and cache-disabled controls remain healthy.
+OpenVINO remains primarily an E0 result until
+a legitimate detached-K/V seam exists.
+
+\section*{Reproducibility}
+Raw JSON, generated tables and plots, environment audit, and runners are under
+\path{docs/papers/shared/results/paper6_3_openvino} and
+\path{experiments/paper6_3_openvino}.
+The version matrix is produced one process per cell by
+\path{run_cache_lifecycle_cell.py};
+\path{summarize_cache_lifecycle_versions.py} parses the JSON and teardown logs
+into Table~\ref{tab:openvino-cache-lifecycle-versions}.
+
+\begin{thebibliography}{9}
+\bibitem{praruntime}
+J. Simao. \emph{Productizing Progressive Retrieval Attention: A Runtime,
+Gateway, and Deployment Architecture}. 2026.
+\bibitem{ovgenai}
+Intel. \emph{OpenVINO GenAI LLMPipeline and SchedulerConfig API Reference}.
+\url{https://docs.openvino.ai/2026/api/genai_api/}
+\bibitem{ovrepo}
+OpenVINO Toolkit. \emph{OpenVINO GenAI}.
+\url{https://github.com/openvinotoolkit/openvino.genai}
+\end{thebibliography}
+
+\end{document}

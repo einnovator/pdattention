@@ -1,0 +1,1105 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\input{../shared/macros.tex}
+\setlength{\emergencystretch}{3em}
+\lstset{basicstyle=\ttfamily\footnotesize,breaklines=true,frame=single,columns=fullflexible}
+
+\title{Computationally Sufficient Memory:\\
+Causal Native-K/V Materialization for Progressive Retrieval Attention}
+\author{Jorge Simao\\EInnovator R\&D -- Center for the Sciences of Computation, Cognition, and Complexity}
+\date{\today}
+\hypersetup{pdftitle={Computationally Sufficient Memory for PRA},pdfauthor={Jorge Simao}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Sparse memory systems often collapse two operations: finding a relevant region and activating all
+of its key/value (K/V) states.  We separate them and ask which already-contextualized native states
+are computationally sufficient once conceptual selection is fixed.  Progressive Retrieval
+Attention (PRA) materializes source-relative logical intervals across storage shards while
+preserving resource boundaries, token order, deduplication, and grouped-query-attention shapes.
+
+The primary experiment reuses 25 frozen controlled-model checkpoints: five seeds at local
+receptive fields $W\in\{16,32,64,128,\mathrm{global}\}$.  For each checkpoint, oracle parent
+identity is fixed while exact evidence cores, local radii, complete facts, whole parents, matched
+wrong memory, fixed budgets, and gist controls vary.  Across 200 held-out checkpoint--example
+pairs, exact cores use 5.25 K/V tokens on average, reduce K/V by 92.9\% relative to whole parents,
+raise the correct-answer margin by 4.107 over no memory, and increase accuracy from .080 to .720.
+Whole-parent disclosure raises margin by only .981 and reaches .300 accuracy.  Matched wrong cores
+use the same K/V but lower margin by .798, establishing a content-causal effect.  Broader radii
+monotonically lower evidence attention and output quality; the result is stable across all five
+receptive-field settings.  Consumer layer matters, while contextual representation change is
+measurable but does not predict the exact-core advantage.
+
+We then confirm the mechanism with frozen Qwen3-0.6B using 16 validation and 32 held-out examples
+per dataset.  Exact evidence reduces active K/V by 20.9\% on MuSiQue and 44.4\% on
+2WikiMultiHopQA while preserving the corresponding whole-parent result within paired uncertainty.
+A transport audit subsequently finds that the inherited replay restarted direct-query RoPE
+positions at zero.  Under corrected source-offset transport and a separate 16-example-per-dataset
+layer calibration, contiguous late consumers dominate scattered placement.  The last 20 of 28
+layers improve gold-answer log probability over no memory by 1.946 nats on MuSiQue and 1.276 on
+2Wiki; the last eight retain 1.190 and .949 at 40\% of that layer-token cost.  All-layer replay is
+not a quality ceiling: it reaches .957 and $-2.290$, respectively, because additional memory
+consumers can amplify interference.  Native gist means do not substitute for token detail.  These
+findings are revisited on a 48~GiB M4 Pro with Qwen3-8B, 14B, and 32B plus a 30B-A3B control.
+Across 60 unique natural-QA model--example pairs, full native replay preserves every selected-text
+sequence.  Dense last-three-quarter likelihood sensitivity falls with scale, from 2.545 to 1.665
+to .356 nats mean absolute delta, but sequence agreement remains too low for profile promotion.
+Thus scale changes the frontier without producing a universal sparse consumer band.  These
+experiments support a precise distinction: annotation evidence identifies justificatory spans,
+whereas
+computationally sufficient memory specifies the contextual native states required by a particular
+consumer.  The paper establishes a memory-quality frontier, not a production speed claim.
+\end{abstract}
+
+\section{Introduction}
+
+A retrieval system answers at least three questions.  Which memory is relevant?  Which physical
+detail should become active?  Can the model use that detail to produce the answer?  These questions
+are easy to collapse because ordinary retrieval-augmented generation serializes selected text into
+one prompt.  Once a document is selected, all of its re-tokenized prompt state participates in
+attention.  Native-K/V memory exposes the separation more directly.  A compact representation can
+identify a conceptual region while the attention kernel receives a smaller set of already computed
+K/V states.
+
+PRA Paper~1 separated logical memory from active attention state~\cite{simao2026pra}.  Paper~1.5
+showed why semantic routing state and native positional attention state should remain distinct
+\cite{simao2026position}.  Paper~2 integrated that boundary into pretrained Hugging Face decoder
+families~\cite{simao2026hf}.  Paper~2.5 then treated discovery as bounded traversal over conceptual
+memory regions.  The present paper asks the next question:
+\begin{quote}
+Once relevant conceptual memory is known, how little native K/V detail must be materialized for a
+frozen model to preserve useful output behavior?
+\end{quote}
+
+The primary experiment begins with a controlled oracle.  A generated chain fixes one conceptual
+parent and marks the exact tokens that carry its facts.  A router therefore cannot take credit or
+blame for the result.  We vary exact cores, local context, complete facts, whole parents, fixed
+budgets, native gist means, and matched wrong memory.  Only after diagnosing this controlled
+frontier do we return to dataset annotations in a frozen Qwen model and to Paper-2.5's learned
+selectors.  The experimental identity is therefore
+\begin{equation}
+ Q_{\mathrm{output}} = f(M\mid S),
+\end{equation}
+where selection $S$ is fixed within a comparison and materialization $M$ alone changes.
+
+This distinction matters economically and scientifically.  Broad conceptual search can improve
+recall, but whole-parent disclosure makes breadth expensive in K/V and introduces irrelevant
+softmax competitors.  Conversely, a tiny physical budget can be evidence-dense while omitting
+required evidence regions.  We therefore report both evidence density and evidence coverage,
+rather than treating either as sufficient.
+
+The paper makes six contributions:
+\begin{enumerate}
+\item It defines \emph{computational sufficiency} as a physical-memory question distinct from
+retrieval relevance and from the consumer's learned ability to use memory.
+\item It provides a model-independent logical interval abstraction and exact cross-shard native-K/V
+gather with deduplication, resource isolation, GQA preservation, and transfer accounting.
+\item It introduces a controlled oracle intervention that matches physical K/V while changing
+content, measures attention and residual trajectories, and varies receptive field, consumer layer,
+representation context, evidence dispersion, and physical budget.
+\item It tests whether the controlled diagnosis transfers to frozen Qwen3-0.6B on MuSiQue and
+2Wiki with validation-frozen policies and paired example-level confidence intervals.
+\item It audits positional replay and calibrates contiguous and sparse consumer-layer profiles
+under corrected native-K/V transport, separating address, detail-storage, routing, and consumption
+roles.
+\item It tests consumer-depth transfer on a dense 8B--32B ladder and a 30B-A3B MoE control while
+holding annotated evidence and source width fixed.
+\item It preserves negative results: broader disclosure can dilute useful evidence, gist means are
+not token-detail substitutes, high density can hide low coverage, and Python gathering does not
+yet establish a serving-speed benefit.
+\end{enumerate}
+
+The next section separates relevance from physical sufficiency.  We then describe the interval
+materializer, use the controlled model as a causal microscope, and finally test which observations
+survive in a pretrained language model.
+
+\section{Computationally Sufficient Memory}
+
+\subsection{Selection, materialization, and use}
+
+Let $\mathcal{C}$ denote conceptual memory regions, $S(q,\mathcal{C})$ a selection procedure,
+$M(S,B)$ a materializer under physical budget $B$, and $U$ the frozen transformer's native
+attention and generation path.  PRA computes
+\begin{align}
+ C_q &= S(q,\mathcal{C}),\\
+ (K_M,V_M) &= M(C_q,B),\\
+ y &= U(q,K_M,V_M).
+\end{align}
+Paper~2.5 studies the first line.  This paper freezes the first line and studies the second.  A
+memory-use adapter would change the third line and is outside the primary experiment.
+
+This factorization separates two meanings of ``evidence.''  An annotation answers a semantic
+question: which source spans justify an answer to a human reader?  A materializer answers a
+computational question: which contextual native K/V states must remain active for this model, at
+this consumer layer, to preserve useful computation?  The two sets can coincide, but no definition
+requires them to do so.  Nearby tokens may supply entity resolution or syntax; alternatively, they
+may only add softmax competitors.  We call a disclosure computationally sufficient when it reaches
+a predeclared fraction of a physical control's output gain under fixed selection and model weights.
+
+This factorization prevents two misleading conclusions.  First, high evidence recall does not
+prove that whole selected parents help output; their irrelevant K/V can dilute attention.  Second,
+poor output after a small materialization does not prove that selection failed; the selected
+concept may be correct while its disclosed detail lacks context.
+
+Whole-parent memory is therefore a local physical control, not an oracle optimum.  If an exact
+core outperforms its parent, the correct interpretation is distractor dilution, not retention above
+an assumed ceiling.  If the parent itself fails to improve no memory, percentage retention is left
+undefined rather than converted into a misleading ratio.
+
+\subsection{Three granularities}
+
+We record three independent granularities:
+\begin{equation}
+ G_{\mathrm{encode}} \ne G_{\mathrm{search}} \ne G_{\mathrm{materialize}}.
+\end{equation}
+Canonical contextual K/V is encoded in model-safe blocks of 256 tokens.  Search addresses
+32-token parents.  Materialization operates on arbitrary source-relative token intervals.  Storage
+boundaries therefore do not define semantic windows.
+
+\subsection{Logical materialization domains}
+
+An interval is a half-open tuple
+\begin{equation}
+ I=(d,s,e),\qquad 0\le s<e,
+\end{equation}
+where $d$ is a logical domain.  Every explicit URI is a separate domain.  A window near the end of
+one resource cannot continue into another resource merely because their tensors are adjacent in a
+cache.  The displaced long-prompt resource \texttt{\#\_\_head} and the live prompt tail are one
+exception: they share the continuous prompt-history domain established by canonical PRA.
+
+For annotated evidence $[s_i,e_i)$, a symmetric local policy requests
+\begin{equation}
+ I_i(r)=[\max(0,s_i-r),\min(L_d,e_i+r)),
+\end{equation}
+with clipping inside domain $d$.  The physical request is the domain-wise union
+\begin{equation}
+ \mathcal{I}=\bigcup_i I_i,
+\end{equation}
+so each logical token is materialized at most once.
+
+\section{Materialization Mechanism}
+
+\subsection{Stored shards and canonical provenance}
+
+Each reference layer stores shards with logical span, source URI, canonical post-position K/V, and
+encoding provenance.  Primary experiments never re-encode isolated evidence.  If a semantic
+window crosses two routing chunks, the gatherer slices both stored shards and concatenates them in
+logical order.  For grouped-query attention, K/V remain
+\begin{equation}
+ [1,H_{kv},T,D_h],
+\end{equation}
+without expansion to query-head count.
+
+Figure~\ref{fig:pipeline} shows the separation.  Conceptual selection stops before the physical
+materializer.  The direct prompt K/V and selected memory K/V meet only at native attention.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\centering
+logical source / long prompt $\rightarrow$ model-safe contextual encoding blocks
+$\rightarrow$ canonical native K/V shards\\[0.35em]
+$\downarrow$\\[-0.25em]
+smaller routing parents $\rightarrow$ gists / packed conceptual index
+$\rightarrow$ fixed oracle or learned selection\\[0.35em]
+$\downarrow$\\[-0.25em]
+logical interval planner $\rightarrow$ domain union and deduplication
+$\rightarrow$ cross-shard gather under K/V budget\\[0.35em]
+$\downarrow$\\[-0.25em]
+selected native K/V $+$ direct prompt K/V $\rightarrow$ pretrained native attention
+\end{minipage}}
+\caption{Selection and physical disclosure are separate operations.  Search parents are not
+required to be encoding blocks or materialization windows.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Cross-shard gather}
+
+For each merged interval, the resolver advances a logical cursor.  Among overlapping storage
+shards covering the cursor, it selects the shard extending furthest right, slices only the uncovered
+range, and repeats until the interval ends.  Missing coverage raises an error instead of borrowing
+tokens from another URI.  CPU-resident slices are collected before transfer; only the selected
+slices move to the GPU.
+
+\begin{lstlisting}[language=Python,caption={Simplified logical K/V gathering.}]
+merged = union_intervals(requested_intervals)
+for interval in merged:
+    cursor = interval.start
+    while cursor < interval.end:
+        shard = furthest_shard_covering(interval.domain, cursor)
+        stop = min(interval.end, shard.end)
+        k_parts.append(shard.k[:, :, cursor-shard.start:stop-shard.start, :])
+        v_parts.append(shard.v[:, :, cursor-shard.start:stop-shard.start, :])
+        cursor = stop
+K = torch.cat([part.to(device) for part in k_parts], dim=2)
+V = torch.cat([part.to(device) for part in v_parts], dim=2)
+\end{lstlisting}
+
+The implementation records requested tokens before union, deduplicated tokens, materialized bytes,
+evidence and non-evidence tokens, shards touched, cross-shard interval count, interval-resolution
+time, gather time, and host-to-device time.
+
+\subsection{Fixed budgets across evidence regions}
+
+For $n$ regions with capacities $c_i$, a fixed budget assigns integer quotas $b_i$ satisfying
+\begin{equation}
+ 1\le b_i\le c_i,\qquad \sum_i b_i\le B.
+\end{equation}
+Equal, evidence-length-proportional, minimum-core-plus-remainder, and score-proportional allocation
+are implemented.  The preserved pretrained pilot uses equal allocation.  Every region receives at least one token, but a
+budget smaller than the complete evidence cores may explicitly truncate those cores.  Evidence
+coverage exposes that truncation; it is never inferred from density.
+
+\section{Controlled Disclosure Ladder}
+
+The controlled model gives every policy the same query, weights, oracle parent, and consumer
+layer.  Only the native K/V positions made visible to PRA change.  Table~\ref{tab:policies} begins
+with no memory, adds progressively broader evidence-centered detail, and ends with controls that
+separate content from budget and gists from token states.
+
+\begin{table}[H]
+\centering
+\caption{Controlled toy materialization policies.  A fact contains five serialized tokens; its
+three-token semantic core excludes framing tokens.}
+\label{tab:policies}
+\small
+\begin{tabular}{p{0.09\linewidth}p{0.25\linewidth}p{0.56\linewidth}}
+\toprule
+Policy & Name & Physical disclosure \\
+\midrule
+T0 & no memory & Direct query only \\
+T1 & exact core & Union of the three-token evidence cores \\
+T2--T5 & local radii & Core plus $r\in\{2,4,8,16\}$ tokens on each side \\
+T6 & complete facts & Complete five-token serialized evidence facts \\
+T7 & whole parent & Every native K/V state in the selected source block \\
+T8 & fixed budgets & 12, 24, or 48 K/V tokens under three region-allocation rules \\
+T9 & wrong exact & Equal-budget semantic cores from matched distractor facts \\
+T10 & native gist & One mean native K/V state for the selected parent \\
+T11 & gist plus exact & Native gist together with the T1 token detail \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+T9 is the key causal control.  T1 and T9 expose the same number of native states at the same layer,
+but only T1 carries the answer chain.  A margin difference between them therefore cannot be
+explained by a larger memory tensor.  T7 answers a different question: whether retaining every
+parent token helps the frozen consumer.  It is not assumed to be the best condition.
+
+The native gist in T10/T11 is deliberately not the routing vector.  On a GQA model, routing width
+can equal hidden size while native K/V width is $H_{kv}D_h$.  We average the parent's actual native
+K and V independently over tokens, preserving physical head layout.  The pretrained confirmation
+uses analogous M-series conditions: no memory, gist, whole selected parents, exact annotated
+evidence, and radii 2, 4, and 8 on validation.  Held-out evaluation retains exact evidence,
+radius 2, and the validation-selected radius when distinct.
+
+\section{Controlled Experimental Protocol}
+
+The controlled task is deliberately small enough to support intervention rather than correlation.
+Each source serializes a randomized chain of one to four facts among distractors.  The query asks
+for one of eight balanced labels, and the generator randomizes entities, relations, lexical
+overlap, branch structure, evidence gaps, and distractor count.  The evidence core and every
+distractor core are known exactly.  Sixteen deterministic examples are divided into eight
+validation and eight held-out identities.
+
+We reuse the final Paper-2.5 checkpoints rather than retraining for this paper.  Five seeds are
+available for each receptive field $W\in\{16,32,64,128,\mathrm{global}\}$, giving 25 frozen models.
+All policies share the same layer-native K/V computed from one contextual encoding of the complete
+source.  The primary consumer is layer 0; layers 2 and 5 form a predeclared consumer-layer profile.
+Representation portability is measured at layer 2 by comparing aligned value states from the
+contextual parent and from isolated evidence encoding.  Table~\ref{tab:protocol} records the full
+design.
+
+\begin{table}[H]
+\centering
+\caption{Controlled causal materialization protocol.}
+\label{tab:protocol}
+\small
+\begin{tabular}{p{0.30\linewidth}p{0.59\linewidth}}
+\toprule
+Property & Value \\
+\midrule
+Task & Eight-label randomized relational chains, depth 1--4, with matched distractors \\
+Frozen models & 25 checkpoints: 5 seeds $\times$ 5 receptive fields \\
+Validation / held-out & 8 / 8 identity-disjoint generated examples per checkpoint \\
+Selection & One oracle parent; parent identity cannot vary across conditions \\
+Primary / profile layers & Layer 0 primary; layers 0, 2, and 5 profiled \\
+Policies & T0--T11, radii 0/2/4/8/16, budgets 12/24/48 \\
+Primary metric & Correct-answer margin change relative to T0 \\
+Additional metrics & Accuracy, probability, NLL, Brier score, attention partitions, residual trajectory, K/V, latency \\
+Hardware & NVIDIA GeForce GTX 950M, CUDA; weights frozen for every intervention \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The primary output is the margin between the correct label and the strongest wrong label.  We also
+record correct-class probability, NLL, entropy, Brier score, and accuracy.  Final-query memory
+attention is partitioned into evidence, surrounding non-evidence, and distractor mass; the
+remaining softmax mass belongs to the direct query.  Residual hooks recover the intermediate
+answer margin after every layer, permitting immediate-gain and later-erasure measurements.
+
+\section{Controlled Results}
+
+\subsection{Exact evidence is causally useful}
+
+The controlled intervention resolves the first question before any pretrained benchmark is
+examined.  Across five receptive fields, five seeds, and eight held-out examples per checkpoint,
+T1 activates 5.25 native K/V tokens on average.  It raises mean answer margin from $-2.694$ to
+$1.413$ and accuracy from .080 to .720.  T9 activates the same number of states but lowers margin
+to $-3.492$ and reaches .050 accuracy.  The T1--T9 margin gap is therefore 4.905 points under a
+matched physical budget.
+
+Whole-parent disclosure averages 73.88 K/V tokens, a 14.1-fold larger payload.  It raises margin
+by only .981 over no memory and reaches .300 accuracy.  Exact cores improve margin by 4.107 and
+reduce K/V by 92.9\% relative to that parent.  Complete five-token facts sit between the two:
+8.75 K/V tokens, a 3.674-point margin gain, and .635 accuracy.  The model needs the evidence
+content, but the framing tokens are not helpful on average.
+
+\begin{table}[H]
+\centering
+\caption{Controlled held-out frontier.  Means cover five windows, five seeds, and eight held-out
+examples per checkpoint (200 checkpoint--example pairs per row).  $\Delta m$ is margin change from
+no memory.}
+\label{tab:toyfrontier}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Disclosure & K/V & K/V reduction & $\Delta m$ & Accuracy & Evidence mass \\
+\midrule
+No memory & 0.00 & -- & .000 & .080 & .000 \\
+Wrong exact & 5.25 & 92.9\% & $-.798$ & .050 & .000 \\
+Native gist & 1.00 & 98.6\% & .238 & .110 & .000 \\
+Exact core & 5.25 & 92.9\% & 4.107 & .720 & .604 \\
+Complete fact & 8.75 & 88.2\% & 3.674 & .635 & .527 \\
+Radius 2 & 12.25 & 83.4\% & 3.340 & .570 & .466 \\
+Radius 4 & 18.50 & 75.0\% & 3.111 & .560 & .389 \\
+Radius 8 & 27.25 & 63.1\% & 2.190 & .410 & .292 \\
+Radius 16 & 41.38 & 44.0\% & 1.438 & .340 & .215 \\
+Whole parent & 73.88 & 0.0\% & .981 & .300 & .149 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:toyfrontier} makes the physical frontier visible.  The strongest point is not the
+largest disclosure.  Once the oracle core is active, each ring of surrounding K/V lowers both its
+share of attention and the final margin.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper3_kv_materialization/toy_materialization/figures/toy_quality_kv_frontier.png}
+\caption{Held-out margin change against materialized native K/V.  Color denotes the checkpoint's
+training receptive field.  Exact-core points occupy the upper-left frontier.}
+\label{fig:toyfrontier}
+\end{figure}
+
+\subsection{Receptive field does not reverse the result}
+
+The $W\times$materialization sweep tests whether a memory state trained with broader native context
+requires a broader physical neighborhood when replayed.  Table~\ref{tab:window} rejects that
+candidate signature in this task.  Exact cores outperform whole parents at every $W$, including
+the global model.  The advantage is largest at $W=32$, but there is no monotonic increase in the
+required radius.  Validation selects radius zero for $W=16,32,64$.  For $W=128$ and global, the
+whole parent itself lowers validation margin relative to no memory, so percentage retention is
+undefined rather than reported as a radius.
+
+\begin{table}[H]
+\centering
+\caption{Held-out receptive-field interaction.  Each row averages five seeds and eight examples.}
+\label{tab:window}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+$W$ & Exact $\Delta m$ & Exact acc. & Parent $\Delta m$ & Parent acc. & Exact--parent margin \\
+\midrule
+16 & 2.994 & .625 & .501 & .175 & 2.493 \\
+32 & 5.281 & .825 & 1.238 & .250 & 4.043 \\
+64 & 4.094 & .725 & 1.236 & .350 & 2.858 \\
+128 & 4.121 & .750 & .964 & .375 & 3.157 \\
+global & 4.047 & .675 & .963 & .350 & 3.084 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The validation-selected sufficiency calculation in Table~\ref{tab:minradius} uses whole-parent
+margin gain only when that gain is positive.  Exact cores exceed 95\% of the gain for the three
+local-$W$ models.  The two broader models are marked unresolved because their validation parent
+control is worse than no memory; assigning them radius zero would hide that failed denominator.
+
+\begin{table}[H]
+\centering
+\caption{Validation-selected disclosure for 95\% of whole-parent margin gain.  Portability is
+mean layer-2 $1-\cos$ change between contextual and isolated evidence values.}
+\label{tab:minradius}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+$W$ & Selected radius & Held-out K/V & Reduction vs parent & Portability \\
+\midrule
+16 & 0 & 5.25 & 92.9\% & .286 \\
+32 & 0 & 5.25 & 92.9\% & .270 \\
+64 & 0 & 5.25 & 92.9\% & .218 \\
+128 & unresolved & -- & -- & .157 \\
+global & unresolved & -- & -- & .143 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\linewidth]{../shared/results/paper3_kv_materialization/toy_materialization/figures/toy_radius_margin_by_window.png}
+\caption{Evidence-centered radius versus held-out margin gain.  Broader disclosure lowers quality
+for every receptive-field setting; global attention does not require a broader replay window.}
+\label{fig:toyradius}
+\end{figure}
+
+\subsection{Attention dilution and residual persistence}
+
+Evidence attention falls from .604 at the exact core to .466 at radius 2, .292 at radius 8, and
+.149 for the parent.  The direct-query share also falls as memory grows.  The added states are
+therefore not free background: they consume the same normalized attention budget.  Figure
+~\ref{fig:toyattention} pairs this decomposition with the residual trajectory.  Useful disclosure
+changes the answer geometry immediately and much of that displacement survives later layers;
+wrong memory moves the margin in the opposite direction.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.49\linewidth}
+\includegraphics[width=\linewidth]{../shared/results/paper3_kv_materialization/toy_materialization/figures/toy_attention_vs_radius.png}
+\end{minipage}
+\begin{minipage}{0.49\linewidth}
+\includegraphics[width=\linewidth]{../shared/results/paper3_kv_materialization/toy_materialization/figures/toy_margin_trajectory.png}
+\end{minipage}
+\caption{Left: final-query attention partitions as radius grows.  Right: answer-margin trajectory
+after disclosure at the primary consumer.}
+\label{fig:toyattention}
+\end{figure}
+
+Consumer placement changes the final effect.  Exact-core injection at layers 0, 2, and 5 yields
+mean margin gains of 4.107, 2.369, and .554.  The attention mass remains substantial at all three,
+so attention alone does not imply that later residual computation can exploit the update.  This
+3.554-point range supports a consumer-layer mismatch diagnosis, but the pretrained confirmation
+preserves inherited Paper-2.5 layer bands to avoid tuning Qwen on the controlled outcome.
+
+\subsection{Portability, dispersion, and budgets}
+
+Aligned layer-2 values change by mean cosine distance .215 when the same evidence is encoded in its
+parent instead of isolation.  Representation context dependence is therefore real.  Its
+correlation with the exact-core minus parent margin is only $r=.026$, however, so it does not
+explain the observed advantage.  Figure~\ref{fig:portability} records this null relationship rather
+than promoting context sensitivity into a causal claim.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.70\linewidth]{../shared/results/paper3_kv_materialization/toy_materialization/figures/toy_portability_vs_disclosure.png}
+\caption{Layer-2 representation change versus exact-core advantage.  Context changes native value
+states, but variation in that change does not predict disclosure quality in this controlled task.}
+\label{fig:portability}
+\end{figure}
+
+At fixed 12 evidence tokens, replacing one contiguous envelope with two disjoint regions reduces
+active K/V from 121 to 44 and changes margin relative to no memory from $-.592$ to $+1.008$; four
+regions produce the same union in this generator.  This is a geometry result, not evidence that
+more reasoning hops are inherently easier.  It shows why a materializer must preserve disjoint
+logical regions instead of filling the gaps between them.
+
+\begin{table}[H]
+\centering
+\caption{Region dispersion at fixed evidence amount.  Grouping one region fills the intervening
+source envelope; two and four groups preserve the same disjoint interval union in this corpus.}
+\label{tab:dispersion}
+\small
+\begin{tabular}{rrrr}
+\toprule
+Physical regions & Evidence tokens & Active K/V & Margin change vs no memory \\
+\midrule
+1 & 12 & 121 & $-.592$ \\
+2 & 12 & 44 & $+1.008$ \\
+4 & 12 & 44 & $+1.008$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Budgets 12, 24, and 48 all preserve complete cores, yet their margin gains decrease from 3.146 to
+2.345 and 1.665 as non-evidence states accumulate.  Equal, evidence-proportional, and
+minimum-core-plus-remainder allocation coincide because every controlled core has equal length;
+the allocation comparison is therefore unresolved.  The diagnosis freezes exact cores and
+radius 2 for confirmation, preserves complete cores before remainder, and leaves adaptive
+allocation to a task with unequal evidence regions.
+
+Table~\ref{tab:diagnosis} freezes the causal diagnosis before pretrained confirmation.  The ranking
+distinguishes an observed representation property from a demonstrated output failure.
+
+\begin{table}[H]
+\centering
+\caption{Controlled causal diagnosis on held-out rows.}
+\label{tab:diagnosis}
+\small
+\begin{tabular}{p{0.27\linewidth}p{0.13\linewidth}p{0.50\linewidth}}
+\toprule
+Candidate failure mode & Status & Evidence \\
+\midrule
+Distractor dilution & supported & Exact core exceeds parent margin by 3.127 and matched wrong core by 4.905. \\
+Consumer-layer mismatch & supported & Exact-core effect spans 3.554 margin points across layers 0, 2, and 5. \\
+Representation-context dependence & partial & Mean value-state change is .215, but correlation with disclosure advantage is .026. \\
+Missing contextual support & unsupported & Radius 2 lowers margin by .768 relative to exact core. \\
+Evidence incompleteness & unsupported & Exact and radius policies retain complete semantic-core coverage. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Pretrained Qwen Confirmation}
+
+\subsection{Protocol}
+
+The controlled study predicts that exact evidence should be a strong physical point and that
+broader local context may dilute it.  We first tested that prediction without changing
+Qwen3-0.6B weights, conceptual selection, or inherited consumer-layer bands.  That historical
+confirmation used all 28 decoder layers for MuSiQue and layers 12, 20, 24, and 27 for 2Wiki.  A
+later transport audit, reported below, identified a direct-query position mismatch in that path.
+The materialization comparisons remain paired within the historical transport, but their absolute
+memory-versus-no-memory values are not used to choose a deployment layer profile.  Contextual K/V
+is encoded in 256-token blocks, oracle search
+parents contain 32 tokens, the direct prompt budget is 128 tokens, and the native operation limit
+is 4096.  Validation uses 16 identities per dataset and selects the smallest radius within .05
+nats/token of whole-parent likelihood, otherwise the best measured radius.  The identity-disjoint
+held-out cohort contains 32 examples per dataset.  Policies, thresholds, and cohort order are
+frozen before held-out evaluation.
+
+\section{Pretrained Oracle Frontier Results}
+
+\subsection{Validation selects exact evidence}
+
+The validation cohort contains 16 examples per dataset.  Exact evidence uses 476.3 rather than
+547.4 unique K/V tokens on MuSiQue and improves mean gold-token log probability from $-7.106$ to
+$-7.006$.  On 2Wiki it uses 79.6 rather than 152.0 tokens and improves likelihood from $-4.344$ to
+$-4.130$.  Exact evidence is the smallest candidate within .05 nats/token of the whole-parent
+control on both datasets, so the predeclared rule selects radius zero.  MuSiQue radius 4 has higher
+raw validation likelihood ($-6.786$), but it is not the minimum sufficient disclosure under that
+rule.  Held-out policies are not changed after observing this difference.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{../shared/results/paper3_kv_materialization/pretrained_confirmation/pretrained_kv_quality_frontier.png}
+\caption{Held-out pretrained K/V--quality frontier.  Labels identify the fixed conditions; quality
+is gold-token log-probability change relative to no memory.}
+\label{fig:frontier}
+\end{figure}
+
+\subsection{Exact disclosure preserves the whole-parent result}
+
+Table~\ref{tab:heldout} gives the 32-example-per-dataset held-out result.  Exact evidence reduces
+active K/V by 20.9\% on MuSiQue and 44.4\% on 2Wiki.  Its likelihood difference from whole parents
+is $+0.058$ nats/token on MuSiQue and $+0.005$ on 2Wiki.  Paired example bootstrap intervals are
+$[-0.446,0.518]$ and $[-0.245,0.202]$, respectively.  The data therefore support preservation at a
+smaller physical point; they do not establish that exact evidence improves likelihood.
+
+\begin{table}[H]
+\centering
+\caption{Pretrained held-out oracle disclosure, 32 examples per dataset.  LP is mean gold-token
+log probability.  Parent-relative LP intervals are paired 95\% bootstrap intervals.}
+\label{tab:heldout}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Dataset & Policy & K/V & Reduction & Coverage & LP & $\Delta$LP [95\% CI] & F1 \\
+\midrule
+MuSiQue & no memory & 0.0 & -- & .000 & $-4.398$ & -- & .025 \\
+MuSiQue & whole parent & 385.4 & 0.0\% & 1.000 & $-6.917$ & reference & .017 \\
+MuSiQue & evidence only & 316.8 & 20.9\% & 1.000 & $-6.859$ & $+.058\ [-.446,.518]$ & .024 \\
+MuSiQue & radius 2 & 326.8 & 17.9\% & 1.000 & $-6.851$ & $+.066\ [-.529,.511]$ & .020 \\
+\midrule
+2Wiki & no memory & 0.0 & -- & .000 & $-4.868$ & -- & .267 \\
+2Wiki & whole parent & 153.3 & 0.0\% & 1.000 & $-4.451$ & reference & .220 \\
+2Wiki & evidence only & 83.0 & 44.4\% & 1.000 & $-4.446$ & $+.005\ [-.245,.202]$ & .220 \\
+2Wiki & radius 2 & 92.1 & 38.1\% & 1.000 & $-4.494$ & $-.044\ [-.294,.146]$ & .262 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Attention dilution}
+
+The smaller disclosure concentrates attention in the pretrained model as it did in the controlled
+one.  Evidence attention rises from .556 to .689 on MuSiQue and from .171 to .208 on 2Wiki.  Radius
+2 lowers those values to .664 and .202 while adding 10.0 and 9.1 K/V tokens, respectively.  The
+effect is mechanistic rather than merely a compression statistic: non-evidence states occupy
+softmax mass without improving the held-out likelihood estimate.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\linewidth]{../shared/results/paper3_kv_materialization/pretrained_confirmation/toy_prediction_vs_pretrained.png}
+\caption{Controlled predictions and pretrained outcomes.  Bars use each experiment's native
+quality metric, so magnitudes are not compared across model classes; signs test transfer.}
+\label{fig:dilution}
+\end{figure}
+
+\subsection{Density and coverage remain separate}
+
+Exact and radius-2 conditions in the confirmation both retain full annotation coverage.  Their
+density differs: exact evidence is 1.0 by construction, while radius 2 is .962 on MuSiQue and .896
+on 2Wiki.  Figure~\ref{fig:density} keeps the two axes visible.  A compact payload can be dense yet
+incomplete, or complete yet carry avoidable context.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.68\linewidth]{../shared/results/paper3_kv_materialization/pretrained_confirmation/density_vs_coverage.png}
+\caption{Evidence density and coverage for the pretrained held-out policies.  Neither statistic
+substitutes for the other or for output quality.}
+\label{fig:density}
+\end{figure}
+
+The preserved eight-example pilot provides the corresponding failure control.  A 128-token
+MuSiQue payload was .975 dense but covered only .533 of annotated evidence and lost .522
+nats/token relative to exact evidence.  The same cap covered .966 on 2Wiki and nearly matched
+whole-parent likelihood.  This earlier result is not pooled with the 32-example confirmation, but
+it explains why ``128 tokens are enough'' is not a valid materialization rule.
+
+\subsection{Gists are routing state, not sufficient detail}
+
+Gist-only disclosure reduces K/V by 96.9\%, but likelihood is 8.378 nats/token below whole parents
+on MuSiQue and .419 below on 2Wiki.  The controlled T11 condition adds a gist to exact evidence and
+slightly lowers margin and accuracy.  Mean native K/V therefore remains a routing/index control,
+not a substitute for token detail in either experiment.
+
+\subsection{A dataset-specific MuSiQue mismatch}
+
+No-memory likelihood is $-4.398$ on held-out MuSiQue, 2.519 nats/token above whole-parent memory.
+Exact evidence recovers .058 relative to the parent but remains 2.461 below no memory.  By contrast,
+2Wiki whole-parent and exact memory improve over no memory by .417 and .422.  The materializer is
+not the source of the MuSiQue gap: exact disclosure preserves the parent result while using less
+K/V.  Nor does MuSiQue establish a universal frozen-consumer limitation.  The controlled oracle
+intervention raises accuracy from .080 to .720 without changing weights, and frozen Qwen consumes
+2Wiki memory profitably.  MuSiQue instead exhibits a dataset- and interface-specific
+memory-consumption mismatch that belongs to the consumer/adaptation question.
+
+\section{Corrected Transport and Layer Reconciliation}
+\label{sec:layer-reconciliation}
+
+\subsection{The replay audit}
+
+Native K/V is meaningful only together with its positional frame.  The historical pretrained
+runner retained source-relative post-RoPE keys but restarted the direct query at position zero.
+The corrected path assigns the query and answer positions immediately after the logical source
+extent.  It also checks that physical GQA/MQA K/V heads are not expanded, interval unions contain
+no duplicate source positions, source boundaries are clipped, direct and memory logits enter one
+softmax, and reference detail persists through prefill and decode.  These are transport
+invariants, not tuning choices.
+
+A small paired diagnostic with two HotpotQA and two QASPER identities demonstrates materiality.
+For all-layer replay, correction changes the mean gold-answer log-probability delta from $+.714$
+to $+3.751$ nats on HotpotQA and from $-9.775$ to $-2.971$ on QASPER.  Last-eight replay changes
+from $+2.489$ to $+2.089$ and from $+.614$ to $+.277$.  Four identities are too few for a quality
+claim; they are sufficient to reject the old positional path as a basis for layer selection.  The
+public audit records both modes and every checked invariant.
+
+\subsection{Four layer roles}
+
+The phrase ``PRA layer'' hid four independently selectable sets.  We use
+\begin{align}
+L_{\mathrm{addr}} &:\ \text{layers whose compact states may address memory},\\
+L_{\mathrm{detail}} &:\ \text{layers for which full native source K/V is retained},\\
+L_{\mathrm{route}} &:\ \text{layers that execute routing},\\
+L_{\mathrm{consume}} &:\ \text{layers that join selected native K/V to direct attention}.
+\end{align}
+The reconciliation varies $L_{\mathrm{consume}}$ while fixing oracle identity, corrected
+transport, and detail availability.  This paper therefore does not imply that every consumer must
+also route, or that every address layer must retain token-level K/V.  A product runtime may store
+compact address state broadly while retaining detail only where a calibrated consumer can use it.
+
+\subsection{Late contiguous bands dominate scattered placement}
+
+We evaluate 32 held-out identities, 16 each from MuSiQue and 2Wiki, with the same frozen
+Qwen3-0.6B model.  Whole-parent oracle memory is crossed with all layers, contiguous suffixes of
+24, 20, 16, 14, 12, 8, 4, and 1 layers, and matched early, middle, evenly spaced, and late sparse
+profiles.  Gold-answer likelihood is teacher-forced; intervals are paired across profiles.
+
+\begin{table}[H]
+\centering
+\caption{Corrected whole-parent replay.  $\Delta$LP is mean gold-answer log-probability relative
+to no memory; brackets are paired example-bootstrap 95\% intervals.  States count materialized
+token--layer K/V states, before the key/value and head-dimension factors.}
+\label{tab:layer-reconciliation}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Dataset & Consumer profile & Layers & $\Delta$LP [95\% CI] & States \\
+\midrule
+MuSiQue & all & 28 & $+.957\ [-1.403,2.653]$ & 13,617 \\
+MuSiQue & last 20 & 20 & $+1.946\ [1.108,2.873]$ & 9,726 \\
+MuSiQue & last 12 & 12 & $+1.400\ [.883,1.988]$ & 5,836 \\
+MuSiQue & last 8 & 8 & $+1.190\ [.705,1.812]$ & 3,891 \\
+MuSiQue & last 1 & 1 & $+.005\ [-.028,.046]$ & 486 \\
+\midrule
+2Wiki & all & 28 & $-2.290\ [-4.822,.027]$ & 4,144 \\
+2Wiki & last 20 & 20 & $+1.276\ [.610,2.000]$ & 2,960 \\
+2Wiki & last 12 & 12 & $+1.067\ [.405,1.787]$ & 1,776 \\
+2Wiki & last 8 & 8 & $+.949\ [.288,1.662]$ & 1,184 \\
+2Wiki & last 1 & 1 & $+.013\ [-.045,.067]$ & 148 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_contiguous_quality_cost.png}
+\caption{Corrected late-suffix quality versus consumer depth and materialized layer-token cost.
+The relationship is not monotone: last-20 is best on both workloads, while all-layer replay adds
+interference.}
+\label{fig:layer-cost}
+\end{figure}
+
+Placement, not count alone, explains the result.  Early-four consumers lower $\Delta$LP by 9.702
+nats on MuSiQue and 8.954 on 2Wiki; even-four lowers it by 3.573 and 2.463.  Late-four remains
+positive at .500 and .576.  Even-eight is also harmful, whereas the equally sized last-eight band
+is positive.  Thus a request to ``use eight PRA layers'' is underspecified.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_sparse_placement.png}
+\caption{Matched-count sparse and contiguous profiles under corrected transport.  Scattered
+consumption is not an economical substitute for a coherent late computation band.}
+\label{fig:sparse-placement}
+\end{figure}
+
+\subsection{Layer placement and materialization width interact}
+
+Exact cores, radius-two windows, selected records, and whole parents are crossed with all,
+last-14, last-eight, and even-eight consumers.  Late-14 and late-eight are stable across geometry:
+their maximum geometry spread is .050 nats on 2Wiki and .035 on MuSiQue.  All-layer consumption is
+not stable.  On 2Wiki its $\Delta$LP ranges from $-6.36$ for exact cores to $-2.29$ for whole
+parents; on MuSiQue it ranges from $+.96$ to $+1.33$.  Even-eight remains harmful across widths.
+Materialization cannot repair a poor consumer topology, and a geometry conclusion measured at one
+topology need not transfer to another.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{../shared/results/paper3_kv_materialization/layer_reconciliation/layer_materialization_cross.png}
+\caption{Materialization geometry crossed with consumer placement.  The late contiguous bands are
+robust; all-layer and evenly spaced consumption expose workload-specific interference.}
+\label{fig:materialization-layer-cross}
+\end{figure}
+
+\subsection{Profile objectives and handoff}
+
+No universal suffix is inferred from 32 identities and one model.  The calibration nevertheless
+supports named objectives.  \emph{Quality-max} is last-20 on both workloads.  The shared
+\emph{balanced} profile is last-eight; a dataset-specific rule chooses last-12 for MuSiQue and
+last-eight for 2Wiki when retaining at least 70\% of the best positive mean at minimum state cost.
+\emph{Economy} is last-one only as a near-zero-gain systems probe, not a quality recommendation.
+\emph{Reference-correctness} remains all eligible layers when no sparse profile has been validated,
+but it must not be reported as quality-optimal.  The runtime profile registry and cross-model
+calibration belong to Paper~4.5; this paper supplies the causal placement evidence and physical
+accounting.
+
+\subsection{Consumer-depth scaling from 8B to 32B}
+
+The corrected 0.6B placement result does not imply that the same absolute
+layer count transfers to a deeper model. We therefore run a complementary MLX
+calibration on pinned 4-bit Qwen3-8B, 14B, and 32B checkpoints and
+Qwen3-30B-A3B. Five unique annotated-evidence examples from each of QASPER,
+HotpotQA, and 2Wiki are bounded at 384 selected source tokens. Evidence
+identity, query, answer, and source width remain fixed while consumption varies
+over all layers and contiguous suffixes of three quarters, two thirds, one
+half, one third, and one quarter. This isolates consumer depth but not
+materialization width: every condition receives the same selected tokens.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Larger-model consumer calibration. Concat and segmented agreement
+are greedy-sequence agreement with selected-text E0. $|\Delta|$LP is the mean
+across dataset-level absolute answer-log-probability deltas; PRA MiB counts
+active all-layer selected K/V.}
+\resizebox{\linewidth}{!}{\input{../shared/results/paper3_kv_materialization/large_model_scaling/generated_mlx_scaling_table.tex}}
+\label{tab:large-consumer-scaling}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.94\linewidth]{../shared/results/paper3_kv_materialization/large_model_scaling/mlx_scaling_profiles.pdf}
+\caption{Left: consumer-depth sensitivity across model scale. Right: the
+selected-text, concatenated-native, and segmented-native execution costs on
+the M4 Pro. The figure calibrates placement; it is not a materialization-width
+or serving-throughput result.}
+\label{fig:large-consumer-scaling}
+\end{figure}
+
+Concatenated all-layer native replay matches all 60 selected-text sequences,
+so the transport control is closed. The live segmented implementation matches
+57/60 and has small likelihood drift; those three changes are numerical
+kernel sensitivity after deep repeated composition, not retrieval changes.
+For the dense models, the last-three-quarter mean absolute likelihood delta
+falls from 2.545 nats at 8B to 1.665 at 14B and .356 at 32B. The same profile's
+sequence agreement is only .267, .467, and .133, however. A less sensitive
+likelihood surface is not the same as behavioral equivalence.
+
+The MoE control makes the distinction sharper. Its all-layer active selected
+K/V averages 26.4 MiB, versus 70.3 MiB for dense 32B, and its completion is
+much faster on this host. Yet dropping the first quarter costs 2.662 nats mean
+absolute likelihood, not the dense model's .356. Expert sparsity changes
+weight-side computation and the K/V topology; it does not automatically make
+semantic memory sparse. The scaling evidence therefore supports
+model-normalized calibration and rejects both a universal ``last eight'' rule
+and a universal consumer fraction. All reduced bands remain candidates.
+
+The executable MLX path is owned by Paper~4.5/Paper~6.2 at commit
+\texttt{0f0ed60}; this branch vendors its immutable raw JSON, generated table,
+figure, and summary under
+\path{docs/papers/shared/results/paper3_kv_materialization/large_model_scaling}.
+
+\section{Frozen Selection by Materialization}
+
+After the oracle confirmation, we reuse one-shot, graph-sparse, graph-balanced, and graph-high Paper-2.5 selected
+spans.  Oracle annotations are unavailable to both selection and interval construction.  For each
+selector we compare the selected 32-token parents, the selector's own atomic logical spans, a
+128-token equal allocation, and native gist plus atomic detail.
+
+\begin{table}[H]
+\centering
+\caption{Representative selector/materializer pairs, four held-out examples per dataset.  $\Delta$
+LP and $\Delta$F1 are relative to the same selector with whole-parent disclosure.}
+\label{tab:factorial}
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+Dataset & Selector / disclosure & Parents & K/V & Reduction & $\Delta$LP & $\Delta$F1 \\
+\midrule
+MuSiQue & graph sparse / local & 13.75 & 216.2 & 49.4\% & $-0.153$ & .000 \\
+MuSiQue & graph sparse / budget 128 & 13.75 & 128.0 & 69.8\% & $-6.690$ & .000 \\
+MuSiQue & graph balanced / budget 128 & 11.75 & 128.0 & 91.4\% & $-8.273$ & .000 \\
+\midrule
+2Wiki & graph sparse / local & 14.00 & 221.5 & 38.2\% & $+0.069$ & $+.250$ \\
+2Wiki & graph sparse / budget 128 & 14.00 & 128.0 & 63.3\% & $+0.223$ & $+.250$ \\
+2Wiki & graph balanced / budget 128 & 6.00 & 128.0 & 81.8\% & $+0.280$ & $+.250$ \\
+2Wiki & graph high / budget 128 & 9.50 & 128.0 & 87.8\% & $+0.427$ & $+.250$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Graph-sparse selection supplies the cleanest direct test because its selected atomic spans are
+finer than their storage parents.  Local materialization nearly halves MuSiQue payload with a
+modest likelihood loss and reduces 2Wiki payload while improving both likelihood and F1.  For
+one-shot, graph-balanced, and graph-high conditions, many selected spans already cover complete
+32-token parents or merge into broad contiguous regions, so local materialization is identical to
+whole-parent disclosure.  Multi-scale discovery does not guarantee a finer physical payload if
+its final selected intervals are coarse.
+
+The hard budget again exposes a dataset interaction.  Every reported 2Wiki selector reaches F1
+.75 under 128 tokens, compared with .50 for its whole-parent counterpart.  MuSiQue remains at the
+zero-F1 floor and suffers large likelihood losses.  Smart materialization can bound broad
+conceptual discovery on 2Wiki, but a common global budget does not yet handle MuSiQue's distributed
+multi-region evidence.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper3_kv_materialization/selector_materialization_factorial.pdf}
+\caption{Frozen selection-by-materialization factorial.  The same conceptual selection can occupy
+different physical K/V points; broad selected spans sometimes leave no local compression room.}
+\label{fig:factorial}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{../shared/results/paper3_kv_materialization/conceptual_breadth_physical_kv.pdf}
+\caption{Conceptual parent count versus physical K/V.  Fixed budgets decouple the axes, but quality
+depends on whether the budget preserves all required evidence regions.}
+\label{fig:breadth}
+\end{figure}
+
+\section{Systems Accounting}
+
+Reference K/V remains on CPU in native KV-head form.  The materializer slices CPU tensors before
+transfer.  Exact disclosure reduces mean active layer-token states from 10,791 to 8,872 on
+MuSiQue and from 613 to 332 on 2Wiki.  The logical path transfers 34.65 and 1.30 MiB per example,
+respectively.  The original whole-parent runner exposed bytes and transfer timing through shared
+core metric names that the Paper-3 exporter did not collect; this naming mismatch is fixed in the
+released runner, but missing historical measurements are not reconstructed.  Unique K/V and
+layer-token state comparisons remain directly observed for both paths.
+
+The preserved pilot also records that summed cross-shard interval counts reach 63 per MuSiQue
+example across 28 active layers and 7 per 2Wiki example across four active layers.  Thus semantic
+evidence commonly crosses storage boundaries; clipping at the selected parent would change the
+experiment.
+
+Deduplication also has observable effect.  Held-out 2Wiki evidence requests average 65.1 tokens
+before union and materialize 62.5, a 4.0\% reduction.  Validation radius 64 requests 338.8 and
+materializes 310.3, an 8.4\% reduction.  MuSiQue's selected examples contain little interval
+overlap, so deduplication saves little there.  Deduplication is semantically required even when it
+does not dominate runtime.
+
+TTFT does not monotonically follow selected K/V in synchronized single-example execution.  In the
+larger confirmation, evidence only is .059 seconds slower than whole parents on MuSiQue and .027
+seconds slower on 2Wiki.
+Python interval resolution, many small slices, eager attention, Windows WDDM, and single-example
+noise dominate the token reduction.  The result is a memory frontier, not a speed frontier.  Fused
+interval indexing and batched gathers belong to a systems follow-up.
+
+\section{Implementation and Reproducibility}
+
+The implementation follows the method's ownership boundaries.  Logical planning begins at
+\texttt{src/pra\_torch/materialization.py:35}, where a half-open interval owns a domain URI and
+source-relative endpoints.  Line 81 attaches the same provenance to native K/V shards.  Line 225
+sorts and unions overlap only within a domain, and line 312 allocates integer region budgets while
+respecting capacity and minimum-core constraints.
+
+Physical resolution is separate.  Lines 378--401 advance a cursor through every requested
+interval and reject uncovered ranges.  Line 403 slices the covering shards, concatenates them in
+logical order, preserves tensors shaped $[1,H_{kv},T,D_h]$, and records tokens, shards, bytes, and
+transfer time.  The shared execution core invokes this path at
+\texttt{src/pra\_torch/core.py:249}; line 359 constructs native gist controls, while lines
+458--507 dispatch whole, gist, and logical-interval modes behind the same selected identities.
+
+Mechanistic capture is intentionally compact.  The joint native attention routine at
+\texttt{src/pra\_torch/memory\_batching.py:229} optionally retains only final-query memory weights,
+not full attention matrices.  Lines 323--351 package those weights by batch and head, and
+\texttt{src/pra\_torch/model.py:703} places them in the progressive trace.  This is sufficient to
+partition evidence, context, distractor, and direct attention without changing logits.
+
+HF reference construction begins at \texttt{src/pra\_torch/hf/injection.py:308}.  Lines 339--446
+encode model-safe blocks, preserve global source positions, and record encoding provenance.  The
+pretrained runner checkpoints every condition and releases selected-hit ownership after every
+example, preventing two complete CPU/GPU-backed reference caches from overlapping on a 4~GB GPU.
+
+The oracle harness, selector factorial, and analysis are in
+\path{experiments/paper3_kv_materialization}.  Canonical JSON/CSV rows and figures are under
+\path{docs/papers/shared/results/paper3_kv_materialization}.  Each experiment writes a JSONL
+checkpoint after every condition.  Dataset annotations enter oracle interval planning but are
+explicitly unavailable to the selector-factorial routers and materializers.
+
+\section{Related Work}
+
+Sparse-attention architectures reduce the token pairs processed inside a model through fixed or
+learned patterns~\cite{beltagy2020longformer}.  Recurrent and compressed-context approaches retain
+history through cache policies or summary state; StreamingLLM studies stable attention sinks for
+streaming caches~\cite{xiao2023streamingllm}, while Infini-attention introduces compressive memory
+inside attention~\cite{munkhdalai2024infini}.  Memorizing Transformers retrieve approximate
+nearest-neighbor K/V from prior examples~\cite{wu2022memorizing}, and landmark attention separates
+block-level addressing from token-level access~\cite{mohtashami2023landmark}.  These systems differ
+in training and storage contracts, but they motivate separating compact addressing from detailed
+state.
+
+PRA's materialization question is narrower.  The selected payload is layer-native contextual K/V,
+the host backbone is frozen, and the experiment begins with oracle evidence so retrieval recall
+cannot confound disclosure.  The contribution is not a new end-to-end long-context benchmark
+leader.  It is a controlled physical interface and evidence about how output changes along its
+K/V frontier.
+
+\section{Limitations}
+
+The controlled study uses 25 checkpoints but only eight held-out generated identities per
+checkpoint; examples are repeated across seeds and receptive fields, so 200 checkpoint--example
+pairs are not treated as 200 independent tasks.  The pretrained confirmation has 32 paired
+identities per dataset and reports example-bootstrap intervals, but those intervals remain broad.
+Greedy F1 and normalized accuracy are coarse, especially on MuSiQue where output scores remain
+near the floor.  A validated blinded LLM judge has not been run for Paper~3.
+
+The materialization-width frontier is evaluated only on Qwen3-0.6B. The added
+8B--32B and MoE study varies consumer depth while keeping full selected records;
+it does not establish how token-radius optima scale. It also remains one Qwen
+family, one 4-bit quantization, and 15 examples per model. The corrected 0.6B
+layer calibration contains 16 identities per dataset and reuses the same
+held-out cohort across profiles. Its bootstrap intervals quantify example
+variation, not model-family or training-seed uncertainty. Profiles must
+therefore be recalibrated rather than transferred by layer number or fraction.
+
+The evidence oracle assumes dataset annotations identify useful source spans.  Eighteen MuSiQue
+and 24 2Wiki held-out identities inherit frozen Paper-2.5 token geometry; the remaining 14 and 8
+map the same dataset-truth character spans directly through tokenizer offsets.  Tests enforce
+partition isolation and token-domain alignment, but this extension is not an independently
+curated benchmark split.  An annotation also does not prove every paragraph token is causally
+necessary, which is precisely why annotation evidence and computational sufficiency are separated.
+
+The direct full-context control OOMed on the available 4~GB GPU under dense eager attention.
+Latency uses a single Windows GPU without loaded concurrency, and Python gather overhead remains.
+The paper therefore makes no production throughput, cost, or asymptotic speed claim.
+
+\section{Discussion and Handoffs}
+
+The experiments tell a more conditional story than a single materialization curve.  Exact
+controlled cores dominate broader disclosure, and exact Qwen evidence preserves its paired
+whole-parent control while reducing physical state.  Corrected replay then shows that consumer
+placement can dominate that geometry effect: coherent late bands help both workloads, while early
+or scattered consumers hurt them.  Surrounding context and additional consumer layers are
+therefore resources to calibrate, not automatic support.
+
+The result also clarifies what this paper does not solve.  Exact MuSiQue disclosure preserves its
+parent control but cannot make that control competitive with no memory.  Changing the consumer's
+weights or PRA layer interface may address that mismatch, but doing so here would destroy the
+frozen causal comparison.  The falsifiable Paper-4 hypothesis is that PRA-aware training can make
+selected memory states more portable and independently consumable.  Paper~3 measures the present
+dependency; Paper~4 must change weights and test whether it moves.
+
+A separate systems follow-up receives logical intervals, exact cross-shard gather, layer-token
+accounting, and the observed Python transport overhead.  It should own fused indexing, batched
+gather, concurrency, and serving measurements.  Unequal-region tasks are also needed before
+choosing among equal, proportional, and minimum-core budget allocation, because those policies are
+identical on the balanced controlled cores.
+
+\section{Conclusion}
+
+Finding memory, loading memory, and choosing where the model consumes it are different operations.
+Under oracle selection, exact evidence produces a content-causal margin gain in controlled models
+and preserves its paired whole-parent Qwen control at lower physical cost.  A corrected positional
+audit shows that coherent late consumer bands outperform both all-layer and scattered replay on
+MuSiQue and 2Wiki.  Fixed budgets remain valid only when they preserve every required region; high
+density can hide low coverage, and more active layers can amplify interference.  Computational
+sufficiency is therefore jointly indexed by materialized content, transport geometry, and consumer
+placement.
+
+\appendix
+
+\section{Test Matrix}
+
+Focused tests cover intervals inside one shard, one-boundary and multi-boundary gathers, overlapping
+storage shards, overlapping requested intervals, exact token order, resource start/end clipping,
+explicit-resource rejection, \texttt{\#\_\_head}-to-prompt continuity, GQA shape preservation,
+CPU-to-GPU transfer bytes, fixed budgets, multi-evidence allocation, radius zero, whole-parent
+equivalence, logical-core metrics, matched wrong-memory budgets, attention-mass conservation,
+margin computation, portability, region allocation, validation-only radius selection, deterministic
+cohort extension, annotation-to-token geometry, shared transport metric names, and native gist
+controls.  Existing PRA, Paper-2, and Paper-2.5 regressions run in the full project suite.
+
+\section{Canonical Row Schema}
+
+Every result row records dataset and identity, selection and materialization policy, radii and K/V
+budget, conceptual parents, intervals, requested and deduplicated tokens, unique tokens, per-layer
+token states and bytes, evidence/non-evidence tokens, density and coverage, layer band, output and
+teacher-forced metrics, attention mass, interval/gather/H2D timing, TTFT, TPOT, total generation,
+throughput, and peak CUDA allocated/reserved bytes.  Oracle use is an explicit boolean.
+
+\section{Negative Result Ledger}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{0.29\linewidth}p{0.62\linewidth}}
+\toprule
+Observation & Consequence \\
+\midrule
+Native gist-only collapses quality & Gists remain routing/index state, not a default detail payload. \\
+Broader toy radii lower quality & Nearby native states are not automatically useful support. \\
+Contextual value states change under isolation & Representation dependence exists, but its correlation with disclosure quality is near zero here. \\
+MuSiQue budget 128 covers 53.3\% & Density must always be paired with evidence coverage. \\
+Frozen MuSiQue replay loses to no memory & Correct materialization does not solve memory-use calibration. \\
+Broad selected spans do not shrink locally & Finer physical disclosure requires finer selected intervals or a within-parent policy. \\
+Python gather does not improve TTFT & Optimize indexed/fused gather before speed or cost claims. \\
+Balanced cores do not distinguish allocation rules & Test unequal region sizes before choosing equal, proportional, or minimum-core allocation. \\
+Direct full context OOMs & No dense full-context ceiling is reported on the 4~GB device. \\
+No blinded judge yet & Behavioral equivalence is limited to deterministic and teacher-forced metrics. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\bibliographystyle{plain}
+\bibliography{../shared/references}
+
+\end{document}
