@@ -392,6 +392,11 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         cells = [row for row in cells if row["sequence_id"] in set(args.sequence_id)]
     if args.strategy_id:
         cells = [row for row in cells if row["strategy_id"] in set(args.strategy_id)]
+    if args.strategy_config_id:
+        cells = [
+            row for row in cells
+            if row["strategy_config_id"] in set(args.strategy_config_id)
+        ]
     output = args.output.resolve()
     state_path = output / "campaign_state.json"
     spec_digest = _digest(spec)
@@ -534,6 +539,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pythonpath", action="append", default=[])
     parser.add_argument("--sequence-id", action="append")
     parser.add_argument("--strategy-id", action="append")
+    parser.add_argument(
+        "--strategy-config-id",
+        action="append",
+        help="Run only explicitly named registered configurations.",
+    )
     parser.add_argument("--max-cells", type=int)
     parser.add_argument("--skip-grading", action="store_true")
     parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
