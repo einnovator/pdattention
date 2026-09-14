@@ -426,6 +426,20 @@ The future action is used only after generation for scoring. Single-group
 survivors can seed predeclared pair removals or bounded beam search; oracle
 outcomes never enter deployable-policy accuracy curves.
 
+After singleton completion, generate a bounded pair queue from only valid,
+exact-command-preserving singleton omissions:
+
+```bash
+python -m experiments.paper8_5_agent_memory.oracle_headroom_queue \
+  --input-directory /results/task/decision_24 \
+  --target-depth 2 --beam-width 8 \
+  --output /results/task/decision_24/pair_queue.json
+```
+
+After executing the queued pairs into the same directory, rerun with
+`--target-depth 3`. Only successful depth-two parents are expanded, giving a
+bounded beam search rather than a combinatorial subset sweep.
+
 For a full leave-one-middle-bundle-out decision sweep, use the resumable
 `run_oracle_singletons.sh` driver. `PAPER85_LAST_GROUP` is the last unprotected
 middle turn index after applying the declared head and tail floors:
