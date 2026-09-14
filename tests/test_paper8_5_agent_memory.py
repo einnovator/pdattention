@@ -294,16 +294,16 @@ def test_matched_token_tail_is_role_valid_and_never_exceeds_materialized_ceiling
 
 def test_matched_token_tail_does_not_trim_small_or_non_tool_records():
     history = recordize_minisweagent_messages(_messages(1))
-    prompt_tokens = sum(
+    mandatory_tokens = sum(
         whitespace_tokens(history.record_by_id[record_id].content)
-        for record_id in ("m0", "m1")
+        for record_id in ("m0", "m1", "m2", "m3")
     )
     result = materialize_matched_token_tail(
         history,
-        max_materialized_tokens=prompt_tokens + 1,
+        max_materialized_tokens=mandatory_tokens,
         config=MatchedTokenTailConfig(tool_observation_threshold_tokens=100),
     )
-    assert result.logical_plan.selected_record_ids == ("m0", "m1")
+    assert result.logical_plan.selected_record_ids == ("m0", "m1", "m2", "m3")
     assert all(row.mode == MaterializationMode.WHOLE_RECORD for row in result.records)
 
 
@@ -332,7 +332,7 @@ def test_matched_token_tail_uses_measured_fallback_for_one_oversized_line():
 
 def test_matched_token_tail_fails_closed_when_prompt_exceeds_ceiling():
     history = recordize_minisweagent_messages(_messages(1))
-    with pytest.raises(ValueError, match="immutable system/task"):
+    with pytest.raises(ValueError, match="mandatory system/task/current"):
         materialize_matched_token_tail(history, max_materialized_tokens=1)
 
 

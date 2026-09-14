@@ -25,6 +25,61 @@ class MatchedTokenTailConfig:
             raise ValueError("tool_observation_threshold_tokens must be positive")
 
 
+def matched_token_tail_mandatory_record_ids(
+    history: CanonicalAgentHistory,
+) -> frozenset[str]:
+    """Return prompt records plus the complete current causal group.
+
+    Agent protocols can append a standalone format-error or rejected-action
+    recovery record without a preceding assistant action. It is an incomplete
+    turn, but it is still the current model input and may never be retired.
+    When the last record belongs to a multi-record group, retain the entire
+    group so a strict recency ceiling cannot orphan its observation.
+    """
+
+    mandatory = {
+        record.record_id
+        for record in history.records
+        if record.has_role(AgentRecordRole.SYSTEM)
+        or record.has_role(AgentRecordRole.TASK)
+    }
+    if history.records:
+        current_group = history.records[-1].causal_group_id
+        mandatory.update(
+            record.record_id
+            for record in history.records
+            if record.causal_group_id == current_group
+        )
+    return frozenset(mandatory)
+
+
+def matched_token_tail_full_floor_record_ids(
+    history: CanonicalAgentHistory,
+) -> frozenset[str]:
+    """Records that must remain whole when establishing the budget floor."""
+
+    immutable = {
+        record.record_id
+        for record in history.records
+        if record.has_role(AgentRecordRole.SYSTEM)
+        or record.has_role(AgentRecordRole.TASK)
+    }
+    if not history.records:
+        return frozenset(immutable)
+    current_group = history.records[-1].causal_group_id
+    current_complete = any(
+        turn.causal_group_id == current_group and turn.complete
+        for turn in history.turns
+    )
+    if not current_complete:
+        immutable.update(
+            record.record_id
+            for record in history.records
+            if record.causal_group_id == current_group
+        )
+    return frozenset(immutable)
+
+
 def materialize_matched_token_tail(
     history: CanonicalAgentHistory,
     *,
@@ -51,29 +106,39 @@ def materialize_matched_token_tail(
 
     records = history.record_by_id
     costs = {record.record_id: count_tokens(record.content) for record in history.records}
-    immutable_ids = {
-        record.record_id
-        for record in history.records
-        if record.has_role(AgentRecordRole.SYSTEM) or record.has_role(AgentRecordRole.TASK)
-    }
-    immutable_tokens = sum(costs[record_id] for record_id in immutable_ids)
-    if immutable_tokens > max_materialized_tokens:
+    mandatory_ids = matched_token_tail_mandatory_record_ids(history)
+    full_floor_ids = matched_token_tail_full_floor_record_ids(history)
+    mandatory_tokens = sum(costs[record_id] for record_id in full_floor_ids)
+    if mandatory_tokens > max_materialized_tokens:
         raise ValueError(
-            "matched token ceiling is smaller than immutable system/task records: "
-            f"{max_materialized_tokens} < {immutable_tokens}"
+            "matched token ceiling is smaller than mandatory system/task/current "
+            f"records: {max_materialized_tokens} < {mandatory_tokens}"
         )
 
-    selected_ids = set(immutable_ids)
-    reasons = {record_id: "immutable_prompt" for record_id in immutable_ids}
+    selected_ids = set(full_floor_ids)
+    reasons = {
+        record_id: (
+            "immutable_prompt"
+            if records[record_id].has_role(AgentRecordRole.SYSTEM)
+            or records[record_id].has_role(AgentRecordRole.TASK)
+            else "current_causal_group"
+        )
+        for record_id in full_floor_ids
+    }
     materialized_by_id = {
         record_id: _whole_record(records[record_id], costs[record_id])
-        for record_id in immutable_ids
+        for record_id in full_floor_ids
     }
-    used = immutable_tokens
-    selected_turns = 0
+    used = mandatory_tokens
 
     complete_turns = [turn for turn in history.turns if turn.complete]
+    selected_turns = sum(
+        all(record_id in full_floor_ids for record_id in turn.record_ids)
+        for turn in complete_turns
+    )
     for turn in reversed(complete_turns):
+        if all(record_id in selected_ids for record_id in turn.record_ids):
+            continue
         turn_rows = [records[record_id] for record_id in turn.record_ids]
         turn_tokens = sum(costs[row.record_id] for row in turn_rows)
         if used + turn_tokens <= max_materialized_tokens:
@@ -145,6 +210,11 @@ def materialize_matched_token_tail(
             )
         break
 
+    if not mandatory_ids.issubset(selected_ids):
+        raise ValueError(
+            "matched token ceiling cannot preserve mandatory current causal group"
+        )
+
     ordered_ids = tuple(
         record.record_id for record in history.records if record.record_id in selected_ids
     )
@@ -159,7 +229,7 @@ def materialize_matched_token_tail(
         full_history_tokens=sum(costs.values()),
         selected_tokens=logical_tokens,
         requested_budget_tokens=max_materialized_tokens,
-        mandatory_tokens=immutable_tokens,
+        mandatory_tokens=mandatory_tokens,
         mandatory_overflow_tokens=0,
         head_turns=0,
         tail_turns=selected_turns,

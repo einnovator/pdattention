@@ -26,7 +26,11 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
-from .matched_token_tail import MatchedTokenTailConfig, materialize_matched_token_tail
+from .matched_token_tail import (
+    MatchedTokenTailConfig,
+    matched_token_tail_full_floor_record_ids,
+    materialize_matched_token_tail,
+)
 from .dag import DagCertifiedExclusionSelector
 from .model import AgentMemoryBudget, AgentMemoryPlan, AgentRecordRole
 from .negative_selection import (
@@ -426,9 +430,18 @@ def transform_autonomous_payload(
         sidecar_dependent and config.require_exact_sidecars and not sidecar_exact
     )
     matched_tail = config.policy == "matched_token_tail" and not selection_abstained
+    mandatory_ids = (
+        matched_token_tail_full_floor_record_ids(history)
+        if matched_tail
+        else frozenset(
+            row.record_id for row in history.records
+            if row.has_role(AgentRecordRole.SYSTEM)
+            or row.has_role(AgentRecordRole.TASK)
+        )
+    )
     mandatory_tokens = sum(
-        count_tokens(row.content) for row in history.records
-        if row.has_role(AgentRecordRole.SYSTEM) or row.has_role(AgentRecordRole.TASK)
+        count_tokens(history.record_by_id[record_id].content)
+        for record_id in mandatory_ids
     )
     mandatory_overflow_tokens = max(0, mandatory_tokens - budget_tokens)
     if matched_tail:

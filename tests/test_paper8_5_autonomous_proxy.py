@@ -124,6 +124,31 @@ def test_matched_token_tail_reports_unavoidable_immutable_prompt_overflow():
     assert result.trace["budget_satisfied"] is True
 
 
+def test_matched_token_tail_preserves_standalone_format_error_recovery():
+    source = _payload()
+    source["messages"] = source["messages"][:2] + [{
+        "role": "user",
+        "content": (
+            "Your previous response reached the output token limit. "
+            "Respond concisely with exactly one action."
+        ),
+    }]
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="matched_token_tail",
+            budget_fraction=.95,
+            expected_model="locked-model",
+            task_id="task-1",
+        ),
+    )
+
+    assert result.payload == source
+    assert result.trace["selected_message_count"] == 3
+    assert result.trace["exact_request_passthrough"] is True
+    assert result.trace["mandatory_budget_overflow_tokens"] > 0
+
+
 def test_abstaining_negative_policy_is_an_exact_request_noop():
     source = _payload()
     result = transform_autonomous_payload(
