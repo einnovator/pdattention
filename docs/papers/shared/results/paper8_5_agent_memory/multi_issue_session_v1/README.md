@@ -47,3 +47,8 @@ and autonomous official grading remain required.
    residence, selected K/V, copies, re-encoding, prefix-cache hits, and wall
    time are measured separately.
 
+The first frozen gate is reproducible with
+`experiments/paper8_5_agent_memory/run_multi_issue_frozen_gate.sh`. Its default
+executes the first active-issue decision in each 2- and 3-issue session; raise
+`PAPER85_MAX_DECISIONS` to cover the complete active episode after the smoke
+gate passes.
