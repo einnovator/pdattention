@@ -21,6 +21,8 @@ from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
     _official_report,
     build_agent_command,
     build_grader_command,
+    export_persistent_episode,
+    load_persistent_prefix,
     load_locked_task,
     summarize_trace,
 )
@@ -67,6 +69,33 @@ def _payload() -> dict:
     }
 
 
+def _completed_episode(instance_id: str = "repo__old-1") -> dict:
+    return {
+        "instance_id": instance_id,
+        "info": {"exit_status": "Submitted", "submission": "diff --git a/a b/a"},
+        "messages": [
+            {"role": "system", "content": "Use one bash command."},
+            {"role": "user", "content": f"Fix {instance_id}."},
+            {
+                "role": "assistant",
+                "content": "```mswea_bash_command\ncat old.py\n```",
+            },
+            {
+                "role": "user",
+                "content": "<returncode>0</returncode>\n<output>old evidence</output>",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "```mswea_bash_command\n"
+                    "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```"
+                ),
+            },
+            {"role": "exit", "content": "diff --git a/a b/a"},
+        ],
+    }
+
+
 def test_full_is_an_exact_message_and_payload_control():
     source = _payload()
     result = transform_autonomous_payload(
@@ -81,6 +110,94 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["full_tokens"] == result.trace["selected_tokens"]
     assert result.trace["selected_tokens"] == result.trace["materialized_tokens"]
     assert result.trace["excluded_causal_group_count"] == 0
+
+
+def test_persistent_full_prepends_completed_episode_without_leaking_metadata():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="full",
+            expected_model="locked-model",
+            task_id="repo__current-2",
+            session_id="session-locked",
+            episode_index=2,
+        ),
+        prior_episodes=(_completed_episode(),),
+    )
+
+    contents = [row["content"] for row in result.payload["messages"]]
+    assert any("old evidence" in value for value in contents)
+    assert any("repo__current-2" in value for value in contents)
+    assert all(set(row) <= {"role", "content"} for row in result.payload["messages"])
+    assert result.trace["persistent_prefix_applied"] is True
+    assert result.trace["prior_episode_count"] == 1
+    assert result.trace["episode_index"] == 2
+    assert result.trace["full_tokens"] == result.trace["materialized_tokens"]
+
+
+def test_persistent_active_episode_retires_all_completed_episode_detail():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="persistent_active_episode",
+            expected_model="locked-model",
+            task_id="repo__current-2",
+            session_id="session-locked",
+            episode_index=2,
+        ),
+        prior_episodes=(_completed_episode(),),
+    )
+
+    contents = [row["content"] for row in result.payload["messages"]]
+    assert not any("old evidence" in value for value in contents)
+    assert any("repo__current-2" in value for value in contents)
+    assert result.trace["selected_tokens"] < result.trace["full_tokens"]
+
+
+def test_persistent_prefix_count_must_match_episode_index():
+    with pytest.raises(ValueError, match="episode count"):
+        transform_autonomous_payload(
+            _payload(),
+            AutonomousSelectionConfig(
+                policy="full",
+                expected_model="locked-model",
+                task_id="repo__current-2",
+                session_id="session-locked",
+                episode_index=3,
+            ),
+            prior_episodes=(_completed_episode(),),
+        )
+
+
+def test_persistent_episode_export_round_trips_with_identity(tmp_path):
+    agent_output = tmp_path / "agent"
+    agent_output.mkdir()
+    trajectory = _completed_episode("repo__issue-1")
+    trajectory_path = agent_output / "repo__issue-1.traj.json"
+    trajectory_path.write_text(json.dumps(trajectory), encoding="utf-8")
+    instrumentation_root = tmp_path / "instrumentation"
+    instrumentation_root.mkdir()
+    episode_path = tmp_path / "episode.json"
+
+    exported = export_persistent_episode(
+        agent_output=agent_output,
+        instrumentation_root=instrumentation_root,
+        instance_id="repo__issue-1",
+        output=episode_path,
+    )
+    prefix_path = tmp_path / "prefix.json"
+    prefix_path.write_text(json.dumps({
+        "schema_version": 1,
+        "session_id": "session-1",
+        "episodes": [exported],
+    }), encoding="utf-8")
+
+    episodes, identity = load_persistent_prefix(prefix_path)
+    assert episodes == [exported["trajectory"]]
+    assert identity["instance_ids"] == ["repo__issue-1"]
+    assert identity["session_id"] == "session-1"
+    assert identity["episode_count"] == 1
+    assert identity["sha256"]
 
 
 def test_full_structured_observation_preserves_all_records_but_compacts_payload():

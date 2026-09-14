@@ -16,7 +16,7 @@ import math
 from pathlib import Path
 import re
 import threading
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 import urllib.error
 import urllib.request
@@ -26,6 +26,7 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
+from .multi_issue_session import compose_multi_issue_session
 from .matched_token_tail import (
     MatchedTokenTailConfig,
     matched_token_tail_full_floor_record_ids,
@@ -54,6 +55,8 @@ from .selectors import (
     HeadMiddleTailConfig,
     HeadMiddleTailSelector,
     MiddleSelectionStrategy,
+    PersistentEpisodeRetirementConfig,
+    PersistentEpisodeRetirementSelector,
     TokenCounter,
     whitespace_tokens,
 )
@@ -66,12 +69,17 @@ AUTONOMOUS_POSITIVE_POLICIES = (
     "matched_token_tail",
     "full_structured_observation",
 )
+AUTONOMOUS_EPISODE_POLICIES = (
+    "persistent_episode_retirement",
+    "persistent_active_episode",
+)
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
     "dag_certified_progress_spine",
 )
 AUTONOMOUS_POLICIES = (
-    "full", *AUTONOMOUS_POSITIVE_POLICIES, *AUTONOMOUS_DAG_POLICIES,
+    "full", *AUTONOMOUS_POSITIVE_POLICIES, *AUTONOMOUS_EPISODE_POLICIES,
+    *AUTONOMOUS_DAG_POLICIES,
     *NEGATIVE_POLICY_RULES,
 )
 
@@ -280,6 +288,12 @@ class AutonomousSelectionConfig:
     max_completion_tokens: int | None = None
     tokenizer_identity: str = "whitespace_v1_diagnostic"
     task_id: str = "unassigned"
+    session_id: str | None = None
+    episode_index: int = 1
+    completed_recent_turns: int = 1
+    completed_mutation_turns: int = 1
+    completed_verification_turns: int = 1
+    keep_completed_task_statements: bool = True
     require_exact_sidecars: bool = True
     negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
     negative_fallback: str = "none"
@@ -297,6 +311,14 @@ class AutonomousSelectionConfig:
             raise ValueError("at least one tail turn is required to preserve current state")
         if self.max_calls < 1:
             raise ValueError("max_calls must be positive")
+        if self.episode_index < 1:
+            raise ValueError("episode_index must be positive")
+        if any(value < 0 for value in (
+            self.completed_recent_turns,
+            self.completed_mutation_turns,
+            self.completed_verification_turns,
+        )):
+            raise ValueError("completed-episode turn floors cannot be negative")
         if self.max_completion_tokens is not None and self.max_completion_tokens < 1:
             raise ValueError("max_completion_tokens must be positive")
         if self.policy == "full" and self.materialization_mode != MaterializationMode.WHOLE_RECORD:
@@ -335,6 +357,26 @@ class AutonomousSelectionConfig:
             return FullHistorySelector()
         if self.policy == "full_structured_observation":
             return FullHistorySelector()
+        if self.policy == "persistent_episode_retirement":
+            return PersistentEpisodeRetirementSelector(
+                PersistentEpisodeRetirementConfig(
+                    recent_turns=self.completed_recent_turns,
+                    mutation_turns=self.completed_mutation_turns,
+                    verification_turns=self.completed_verification_turns,
+                    keep_completed_task_statements=(
+                        self.keep_completed_task_statements
+                    ),
+                )
+            )
+        if self.policy == "persistent_active_episode":
+            return PersistentEpisodeRetirementSelector(
+                PersistentEpisodeRetirementConfig(
+                    recent_turns=0,
+                    mutation_turns=0,
+                    verification_turns=0,
+                    keep_completed_task_statements=False,
+                )
+            )
         if self.policy == "head_tail_recency":
             return HeadMiddleTailSelector(HeadMiddleTailConfig(
                 head_turns=self.protected_head_turns,
@@ -406,6 +448,7 @@ def transform_autonomous_payload(
     *,
     count_tokens: TokenCounter = whitespace_tokens,
     instrumentation_root: Path | None = None,
+    prior_episodes: Sequence[Mapping[str, Any]] = (),
 ) -> AutonomousTransformation:
     """Apply one logical policy without mutating the caller's full history."""
 
@@ -414,16 +457,39 @@ def transform_autonomous_payload(
         raise ValueError("chat request must contain a messages list")
     if bool(payload.get("stream")):
         raise ValueError("streaming chat is not supported by this audit proxy")
-    messages = [dict(row) for row in raw_messages if isinstance(row, Mapping)]
-    if len(messages) != len(raw_messages):
+    incoming_messages = [dict(row) for row in raw_messages if isinstance(row, Mapping)]
+    if len(incoming_messages) != len(raw_messages):
         raise ValueError("every chat message must be a JSON object")
-    selector_messages, sidecar_join = join_instrumentation_sidecars(
-        messages, instrumentation_root
+    current_selector_messages, sidecar_join = join_instrumentation_sidecars(
+        incoming_messages, instrumentation_root
     )
-    typed_selector_messages = annotate_minisweagent_messages(selector_messages)
+    if prior_episodes:
+        current_episode = {
+            "instance_id": config.task_id,
+            "messages": current_selector_messages,
+            "info": {},
+        }
+        composed = compose_multi_issue_session(
+            (*prior_episodes, current_episode),
+            session_id=config.session_id,
+        )
+        if composed["issue_count"] != config.episode_index:
+            raise ValueError(
+                "persistent prefix episode count does not match episode_index"
+            )
+        typed_selector_messages = composed["messages"]
+        messages = [
+            {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
+            for row in typed_selector_messages
+        ]
+    else:
+        messages = incoming_messages
+        typed_selector_messages = annotate_minisweagent_messages(
+            current_selector_messages
+        )
     recordization = OpenAIRecordizer().recordize(
         typed_selector_messages,
-        request_metadata={"session_id": config.task_id},
+        request_metadata={"session_id": config.session_id or config.task_id},
     )
     if not recordization.exact:
         raise AssertionError(
@@ -444,12 +510,15 @@ def transform_autonomous_payload(
     mandatory_ids = (
         matched_token_tail_full_floor_record_ids(history)
         if matched_tail
-        else frozenset(
-            row.record_id for row in history.records
-            if row.has_role(AgentRecordRole.SYSTEM)
-            or row.has_role(AgentRecordRole.TASK)
+            else frozenset(
+                row.record_id for row in history.records
+                if row.has_role(AgentRecordRole.SYSTEM)
+                or (
+                    row.has_role(AgentRecordRole.TASK)
+                    and row.metadata.get("episode_status") != "completed"
+                )
+            )
         )
-    )
     mandatory_tokens = sum(
         count_tokens(history.record_by_id[record_id].content)
         for record_id in mandatory_ids
@@ -475,7 +544,7 @@ def transform_autonomous_payload(
         selector = FullHistorySelector() if selection_abstained else config.selector()
         plan = selector.select(
             history=history,
-            query=_query(messages),
+            query=_query(typed_selector_messages),
             budget=AgentMemoryBudget(max_tokens=budget_tokens),
             count_tokens=count_tokens,
         )
@@ -491,7 +560,7 @@ def transform_autonomous_payload(
             history,
             plan,
             materializer,
-            query=_query(messages),
+            query=_query(typed_selector_messages),
             count_tokens=count_tokens,
         )
     retention_floor = bool(
@@ -579,7 +648,7 @@ def transform_autonomous_payload(
         mediated_request = PRAWireRequest(
             model=str(payload.get("model") or config.expected_model or "model"),
             messages=tuple(typed_selector_messages),
-            session_id=config.task_id,
+            session_id=config.session_id or config.task_id,
             metadata={"agent_memory_plan": wire_plan.to_dict()},
         )
         mediated = RequestMediator({
@@ -612,7 +681,11 @@ def transform_autonomous_payload(
     selected_ids = set(plan.selected_record_ids)
     immutable_ids = {
         row.record_id for row in history.records
-        if row.primary_role.value in {"system", "task"}
+        if row.primary_role.value == "system"
+        or (
+            row.primary_role.value == "task"
+            and row.metadata.get("episode_status") != "completed"
+        )
     }
     if not immutable_ids.issubset(selected_ids):
         raise AssertionError("selector removed an immutable system/task record")
@@ -633,6 +706,10 @@ def transform_autonomous_payload(
         "schema_version": 1,
         "study": "paper8_5_autonomous_agent_memory",
         "task_id": config.task_id,
+        "session_id": config.session_id or config.task_id,
+        "episode_index": config.episode_index,
+        "prior_episode_count": len(prior_episodes),
+        "persistent_prefix_applied": bool(prior_episodes),
         "policy": config.policy,
         "plan_policy": plan.policy,
         "plan_digest": plan.digest,
@@ -741,6 +818,7 @@ class AutonomousSelectionProxy:
         upstream_api_key: str | None = None,
         timeout_seconds: int = 3600,
         instrumentation_root: Path | None = None,
+        prior_episodes: Sequence[Mapping[str, Any]] = (),
     ) -> None:
         self.upstream_base_url = upstream_base_url.rstrip("/")
         self.config = config
@@ -751,6 +829,7 @@ class AutonomousSelectionProxy:
         self.instrumentation_root = (
             Path(instrumentation_root) if instrumentation_root is not None else None
         )
+        self.prior_episodes = tuple(dict(row) for row in prior_episodes)
         self._lock = threading.Lock()
         self._request_count = 0
         self._pending_reacquisition_count = 0
@@ -873,6 +952,7 @@ class AutonomousSelectionProxy:
                 self.config,
                 count_tokens=self.count_tokens,
                 instrumentation_root=self.instrumentation_root,
+                prior_episodes=self.prior_episodes,
             )
             body = json.dumps(transformation.payload).encode("utf-8")
 

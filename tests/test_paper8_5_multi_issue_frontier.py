@@ -89,6 +89,9 @@ def test_reducer_compares_every_candidate_to_both_full_controls():
     assert row["saving_vs_fresh_full"] == pytest.approx(-0.2)
     assert row["official_resolution"] == 1.0
     assert row["failure_aware_saving_vs_persistent_full"] == pytest.approx(0.4)
+    assert row["in_primary_saving_target"] is True
+    assert row["discovery_primary_target_met"] is True
+    assert row["confirmation_primary_target_met"] is None
     assert row["successful_calls_delta_vs_persistent_full"] == 0
     assert row["first_action_divergence_rate"] == 0.0
 
@@ -104,6 +107,7 @@ def test_failure_aware_saving_cannot_reward_a_quality_loss():
     row = next(row for row in result["rows"] if row["strategy_id"].startswith("S02"))
     assert row["saving_vs_persistent_full"] == pytest.approx(0.7)
     assert row["failure_aware_saving_vs_persistent_full"] == 0.0
+    assert row["discovery_primary_target_met"] is False
     assert row["failure_aware_saving_vs_fresh_full"] == 0.0
     assert row["cost_per_resolved_issue"] == 60
 

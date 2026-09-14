@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-autonomous-multi-issue-frontier-v1",
+  "benchmark_card": "../benchmarks/easy14_longest_success5.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta": 0,
+    "claim": "30-50% failure-aware cumulative input-token saving with no observed official-resolution loss"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "independent-n1-a",
+      "sequence_stratum": "independent_cross_repository",
+      "instance_ids": ["django__django-15277"]
+    },
+    {
+      "sequence_id": "independent-n2-a",
+      "sequence_stratum": "independent_cross_repository",
+      "instance_ids": ["django__django-15277", "pytest-dev__pytest-7982"]
+    },
+    {
+      "sequence_id": "independent-n3-a",
+      "sequence_stratum": "independent_cross_repository",
+      "instance_ids": ["django__django-15277", "pytest-dev__pytest-7982", "sphinx-doc__sphinx-8721"]
+    },
+    {
+      "sequence_id": "related-n2-a",
+      "sequence_stratum": "related_same_repository_separate_workspace",
+      "instance_ids": ["django__django-15277", "django__django-15741"]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "S00_fresh_full",
+      "session_mode": "fresh_per_issue",
+      "policy": "full",
+      "repeats": 2
+    },
+    {
+      "strategy_id": "S01_persistent_full",
+      "session_mode": "persistent",
+      "policy": "full",
+      "repeats": 2
+    },
+    {
+      "strategy_id": "S02_active_episode_only",
+      "session_mode": "persistent",
+      "policy": "persistent_active_episode",
+      "keep_completed_task_statements": false,
+      "completed_recent_turns": 0,
+      "completed_mutation_turns": 0,
+      "completed_verification_turns": 0,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S03_completed_episode_spine",
+      "strategy_config_id": "r1m1v1_tasks1",
+      "session_mode": "persistent",
+      "policy": "persistent_episode_retirement",
+      "keep_completed_task_statements": true,
+      "completed_recent_turns": 1,
+      "completed_mutation_turns": 1,
+      "completed_verification_turns": 1,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S03_completed_episode_spine",
+      "strategy_config_id": "r2m2v2_tasks1",
+      "session_mode": "persistent",
+      "policy": "persistent_episode_retirement",
+      "keep_completed_task_statements": true,
+      "completed_recent_turns": 2,
+      "completed_mutation_turns": 2,
+      "completed_verification_turns": 2,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S03_completed_episode_spine",
+      "strategy_config_id": "r4m2v2_tasks1",
+      "session_mode": "persistent",
+      "policy": "persistent_episode_retirement",
+      "keep_completed_task_statements": true,
+      "completed_recent_turns": 4,
+      "completed_mutation_turns": 2,
+      "completed_verification_turns": 2,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S04_payload_only_retirement",
+      "strategy_config_id": "structured_t512_c4_a32",
+      "session_mode": "persistent",
+      "policy": "full_structured_observation",
+      "materialization_mode": "tool_structured_evidence",
+      "materialization_threshold_tokens": 512,
+      "materialization_match_context_lines": 4,
+      "materialization_max_matched_lines": 32,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S05_dag_certified_completed",
+      "session_mode": "persistent",
+      "policy": "dag_certified_exclusion",
+      "negative_realization": "protocol_stub",
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "discovery_gate": "zero official-resolution loss and 30-50% failure-aware saving versus paired persistent FULL",
+    "confirmation_gate": "zero point-estimate loss and lower 95% ordered-sequence-clustered quality-delta bound >= -0.02",
+    "stop_after_genuine_failures": 2,
+    "sub_30_percent_rule": "retain as a diagnostic or combination parent only",
+    "over_50_percent_rule": "retain as an exploratory economy point only unless the same quality gate passes"
+  },
+  "workspace_semantics": {
+    "current_campaign": "clean SWE-bench workspace per issue with persistent conversation identity",
+    "not_claimed": "dependent same-workspace execution",
+    "dependent_sequence_requirement": "separate synthetic or repository-native ordered benchmark with an explicit workspace handoff digest"
+  }
+}

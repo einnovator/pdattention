@@ -172,6 +172,11 @@ def _plot_xy(
     if not usable:
         return False
     figure, axis = plt.subplots(figsize=(7.2, 4.8))
+    if x_metric == "failure_aware_saving_vs_persistent_full":
+        axis.axvspan(
+            0.30, 0.50, color="#2ca02c", alpha=0.08,
+            label="primary 30--50% target region",
+        )
     grouped: dict[tuple[str, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for cell in usable:
         grouped[(

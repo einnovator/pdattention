@@ -31,6 +31,13 @@ The experiment ladder is:
 
 ## Multi-issue frontier
 
+The primary operating target is **30--50% failure-aware cumulative input-token
+saving with no observed loss in official issue resolution**. During discovery,
+"no loss" means a zero point-estimate delta against paired FULL. Confirmation
+also requires the lower 95% ordered-sequence-clustered resolution-delta bound
+to be at least -0.02. A setting below 30% can remain a useful mechanism or
+combination parent, but it is not a candidate default profile.
+
 The publication frontier treats one through five ordered issues as the session
 axis. Each sequence is run in both `fresh_per_issue` and `persistent` modes.
 Independent cross-repository sequences are a hygiene/control stratum; related
@@ -71,6 +78,25 @@ divergence. Single-sequence intervals are explicitly labelled non-inferential.
 The logical-to-runtime handoff and stakeholder evidence requirements are frozen
 in `configs/paper4_5_profile_promotion_contract_v1.json`; no candidate receives
 a product profile name from frozen replay alone.
+
+Run the frozen autonomous N=1--3 fresh/persistent matrix with:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign \
+  --spec experiments/paper8_5_agent_memory/configs/autonomous_multi_issue_frontier_v1.json \
+  --output /results/paper85-autonomous-multi-issue-v1 \
+  --upstream-base-url http://MODEL_HOST:PORT \
+  --tokenizer /models/qwen3-coder-tokenizer \
+  --docker-platform linux/amd64
+```
+
+The runner is resumable at issue boundaries. In persistent mode it exports the
+completed trajectory plus selector-only sidecar metadata, binds it to a stable
+session ID, and prepends it to every request in the next issue. In fresh mode
+each issue has a new session ID and no prefix. Current SWE-bench sequences use a
+clean workspace per issue; dependent same-workspace sequences require a
+separate benchmark with an explicit workspace-handoff digest and are never
+silently inferred.
 
 Before positive selection, `dag.py` can construct a conservative resource/effect
 DAG. `DAG_CERTIFIED` excludes only bundles backed by complete runtime identity

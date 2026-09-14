@@ -50,6 +50,10 @@ def load_strategy_registry(path: Path) -> dict[str, Any]:
             raise ValueError(f"{row['id']}: missing {', '.join(missing)}")
     if registry.get("issue_counts") != [1, 2, 3, 4, 5]:
         raise ValueError("registry must preserve the locked 1--5 issue axis")
+    target = registry.get("primary_target") or {}
+    saving = target.get("failure_aware_saving_fraction") or {}
+    if saving.get("minimum") != 0.30 or saving.get("maximum") != 0.50:
+        raise ValueError("registry must freeze the primary saving region at 30--50%")
     return registry
 
 
@@ -221,6 +225,11 @@ def reduce_multi_issue_runs(
             persistent_success_calls, persistent_joint_successes = (
                 _successful_call_delta(run, persistent)
             )
+            failure_aware_vs_persistent = _failure_aware_saving(run, persistent)
+            resolution_delta_vs_persistent = (
+                totals["resolved"] - persistent_totals["resolved"]
+            ) / run["issue_count"]
+            target_region = 0.30 <= failure_aware_vs_persistent <= 0.50
             rows.append({
                 "pair_id": pair_id,
                 "sequence_family_id": run["sequence_family_id"],
@@ -251,15 +260,11 @@ def reduce_multi_issue_runs(
                 "saving_vs_fresh_full": _saving(
                     totals["tokens"], fresh_totals["tokens"]
                 ),
-                "failure_aware_saving_vs_persistent_full": _failure_aware_saving(
-                    run, persistent
-                ),
+                "failure_aware_saving_vs_persistent_full": failure_aware_vs_persistent,
                 "failure_aware_saving_vs_fresh_full": _failure_aware_saving(
                     run, fresh
                 ),
-                "resolution_delta_vs_persistent_full": (
-                    totals["resolved"] - persistent_totals["resolved"]
-                ) / run["issue_count"],
+                "resolution_delta_vs_persistent_full": resolution_delta_vs_persistent,
                 "resolution_delta_vs_fresh_full": (
                     totals["resolved"] - fresh_totals["resolved"]
                 ) / run["issue_count"],
@@ -286,6 +291,16 @@ def reduce_multi_issue_runs(
                 "first_action_divergence_rate": sum(
                     int(row["first_action_diverged"]) for row in run["issues"]
                 ) / run["issue_count"],
+                "in_primary_saving_target": target_region,
+                "discovery_primary_target_met": bool(
+                    run["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
+                    and target_region
+                    and resolution_delta_vs_persistent == 0
+                ),
+                "confirmation_primary_target_met": None,
+                "confirmation_note": (
+                    "requires held-out ordered-sequence-clustered 95% interval"
+                ),
                 "run_digest": _digest(run),
             })
     return {

@@ -608,7 +608,11 @@ class RequestMediator:
                 selected = set(plan.selected_record_ids)
                 mandatory = {
                     row.record_id for row in history.records
-                    if row.primary_role.value in {"system", "task"}
+                    if row.primary_role.value == "system"
+                    or (
+                        row.primary_role.value == "task"
+                        and row.metadata.get("episode_status") != "completed"
+                    )
                 }
                 if history.records:
                     mandatory.add(history.records[-1].record_id)

@@ -29,6 +29,7 @@ from .autonomous_proxy import (
     AUTONOMOUS_POLICIES,
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
+    join_instrumentation_sidecars,
 )
 from .materialization import MaterializationMode
 from .negative_receipts import NegativeRealizationMode
@@ -37,6 +38,77 @@ from .selectors import whitespace_tokens
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def load_persistent_prefix(path: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load completed episodes without inferring session boundaries."""
+
+    if path is None:
+        return [], {"path": None, "sha256": None, "episode_count": 0}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping) or payload.get("schema_version") != 1:
+        raise ValueError("persistent prefix requires schema_version=1")
+    episodes = payload.get("episodes")
+    if not isinstance(episodes, list) or not episodes:
+        raise ValueError("persistent prefix requires completed episodes")
+    result: list[dict[str, Any]] = []
+    instance_ids: list[str] = []
+    for index, row in enumerate(episodes, 1):
+        if not isinstance(row, Mapping):
+            raise ValueError(f"persistent prefix episode {index} is not an object")
+        trajectory = row.get("trajectory", row)
+        if not isinstance(trajectory, Mapping):
+            raise ValueError(f"persistent prefix episode {index} has no trajectory")
+        instance_id = str(trajectory.get("instance_id") or "")
+        messages = trajectory.get("messages")
+        if not instance_id or not isinstance(messages, list) or not messages:
+            raise ValueError(f"persistent prefix episode {index} is incomplete")
+        instance_ids.append(instance_id)
+        result.append(dict(trajectory))
+    if len(instance_ids) != len(set(instance_ids)):
+        raise ValueError("persistent prefix episode instance IDs must be distinct")
+    return result, {
+        "path": str(path.resolve()),
+        "sha256": _sha256_bytes(path.read_bytes()),
+        "episode_count": len(result),
+        "instance_ids": instance_ids,
+        "session_id": payload.get("session_id"),
+    }
+
+
+def export_persistent_episode(
+    *, agent_output: Path, instrumentation_root: Path, instance_id: str,
+    output: Path,
+) -> dict[str, Any]:
+    """Export one completed trajectory with selector-only observation metadata."""
+
+    paths = sorted(agent_output.rglob("*.traj.json"))
+    if len(paths) != 1:
+        raise ValueError(
+            f"persistent episode export expected one trajectory, found {len(paths)}"
+        )
+    trajectory = json.loads(paths[0].read_text(encoding="utf-8"))
+    if (
+        not isinstance(trajectory, Mapping)
+        or trajectory.get("instance_id") != instance_id
+        or not isinstance(trajectory.get("messages"), list)
+    ):
+        raise ValueError("persistent episode trajectory identity is invalid")
+    enriched_messages, sidecar_join = join_instrumentation_sidecars(
+        [dict(row) for row in trajectory["messages"]], instrumentation_root
+    )
+    exported_trajectory = dict(trajectory)
+    exported_trajectory["messages"] = enriched_messages
+    artifact = {
+        "schema_version": 1,
+        "study": "paper8_5_persistent_episode_export",
+        "trajectory": exported_trajectory,
+        "trajectory_source": str(paths[0].resolve()),
+        "trajectory_source_sha256": _sha256_bytes(paths[0].read_bytes()),
+        "instrumentation_sidecar_join": sidecar_join,
+    }
+    _write_json(output, artifact)
+    return artifact
 
 
 def load_locked_task(
@@ -638,6 +710,24 @@ def run(args: argparse.Namespace) -> Path:
         args.tokenizer_revision,
         allow_whitespace=args.allow_whitespace_tokenizer,
     )
+    prior_episodes, persistent_prefix_identity = load_persistent_prefix(
+        args.persistent_prefix
+    )
+    expected_episode_index = len(prior_episodes) + 1
+    if args.episode_index != expected_episode_index:
+        raise ValueError(
+            "episode-index must equal completed prefix episode count plus one: "
+            f"expected {expected_episode_index}, got {args.episode_index}"
+        )
+    if prior_episodes and not args.session_id:
+        raise ValueError("persistent-prefix requires an explicit session-id")
+    prefix_session_id = persistent_prefix_identity.get("session_id")
+    if (
+        prior_episodes
+        and prefix_session_id
+        and prefix_session_id != args.session_id
+    ):
+        raise ValueError("persistent-prefix session-id does not match the CLI session-id")
     config = AutonomousSelectionConfig(
         policy=args.policy,
         budget_fraction=args.budget_fraction,
@@ -662,6 +752,12 @@ def run(args: argparse.Namespace) -> Path:
         max_completion_tokens=args.max_completion_tokens,
         tokenizer_identity=tokenizer_identity,
         task_id=instance_id,
+        session_id=args.session_id,
+        episode_index=args.episode_index,
+        completed_recent_turns=args.completed_recent_turns,
+        completed_mutation_turns=args.completed_mutation_turns,
+        completed_verification_turns=args.completed_verification_turns,
+        keep_completed_task_statements=args.keep_completed_task_statements,
         require_exact_sidecars=args.require_exact_sidecars,
         negative_realization=NegativeRealizationMode(args.negative_realization),
         negative_fallback=args.negative_fallback,
@@ -708,6 +804,13 @@ def run(args: argparse.Namespace) -> Path:
         "instance_id": instance_id,
         "task_index": task_index,
         "pair_id": args.pair_id,
+        "persistent_session": {
+            "session_id": args.session_id or instance_id,
+            "episode_index": args.episode_index,
+            "prefix": persistent_prefix_identity,
+            "logical_session_continues_across_agent_processes": bool(prior_episodes),
+            "workspace_continuity_claimed": False,
+        },
         "selection": {
             **asdict(config),
             "materialization_mode": config.materialization_mode.value,
@@ -775,6 +878,7 @@ def run(args: argparse.Namespace) -> Path:
         upstream_api_key=upstream_key,
         timeout_seconds=args.upstream_timeout_seconds,
         instrumentation_root=args.instrumentation_output_root,
+        prior_episodes=prior_episodes,
     )
     proxy_url = proxy.start()
     try:
@@ -822,6 +926,12 @@ def run(args: argparse.Namespace) -> Path:
         primary_predictions=predictions,
         instance_id=instance_id,
     )
+    persistent_episode = export_persistent_episode(
+        agent_output=agent_output,
+        instrumentation_root=args.instrumentation_output_root,
+        instance_id=instance_id,
+        output=output / "persistent_episode_export.json",
+    )
     auxiliary["official_grading_requested"] = bool(
         args.grade_auxiliary_workspace_state and not args.skip_grading
     )
@@ -830,6 +940,13 @@ def run(args: argparse.Namespace) -> Path:
     metrics["agent_wall_time_seconds"] = agent_wall_time
     metrics["instance_id"] = instance_id
     metrics["auxiliary_workspace_state"] = auxiliary
+    metrics["persistent_episode_export"] = {
+        "path": str(output / "persistent_episode_export.json"),
+        "sha256": _sha256_bytes(
+            (output / "persistent_episode_export.json").read_bytes()
+        ),
+        "sidecar_join": persistent_episode["instrumentation_sidecar_join"],
+    }
     _write_json(output / "autonomous_metrics.json", metrics)
     if metrics["calls"] == 0:
         raise RuntimeError(
@@ -940,6 +1057,27 @@ def build_parser() -> argparse.ArgumentParser:
             "Stable identifier shared by a FULL control and its candidate arm; "
             "required by multi-task trade-off reducers for paired deltas."
         ),
+    )
+    parser.add_argument(
+        "--persistent-prefix",
+        type=Path,
+        help=(
+            "Schema-v1 completed-episode prefix to prepend logically to every "
+            "request in this issue. The source trajectories are never inferred."
+        ),
+    )
+    parser.add_argument(
+        "--session-id",
+        help="Stable logical session identity shared by an ordered issue sequence.",
+    )
+    parser.add_argument("--episode-index", type=int, default=1)
+    parser.add_argument("--completed-recent-turns", type=int, default=1)
+    parser.add_argument("--completed-mutation-turns", type=int, default=1)
+    parser.add_argument("--completed-verification-turns", type=int, default=1)
+    parser.add_argument(
+        "--keep-completed-task-statements",
+        action=argparse.BooleanOptionalAction,
+        default=True,
     )
     parser.add_argument("--upstream-base-url", required=True)
     parser.add_argument("--upstream-api-key-env", default="OPENAI_API_KEY")

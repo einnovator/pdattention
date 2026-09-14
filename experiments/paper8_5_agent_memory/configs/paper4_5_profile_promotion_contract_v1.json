@@ -21,9 +21,9 @@
     {
       "id": "AGENT_QUALITY",
       "purpose": "maximize saving under a strict quality-preservation objective",
-      "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.02",
+      "selection_rule": "choose a nondominated frozen policy in the 30-50% failure-aware saving target region with zero point-estimate official-resolution loss and a lower 95% ordered-sequence-clustered quality-delta bound of at least -0.02",
       "required_conditions": [
-        "positive failure-aware saving versus persistent FULL",
+        "30-50% failure-aware saving versus persistent FULL",
         "no material successful-run call inflation",
         "no unresolved certificate violation",
         "confirmation evidence before naming a default"
@@ -32,7 +32,7 @@
     {
       "id": "AGENT_BALANCED",
       "purpose": "reduce cost per resolved issue while preserving most baseline capability",
-      "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.05",
+      "selection_rule": "choose the highest-saving nondominated frozen policy, preferably in the 30-50% target region, whose lower 95% ordered-sequence-clustered quality-delta bound is at least -0.05",
       "required_conditions": [
         "positive failure-aware saving versus both persistent FULL and the relevant fresh-session control",
         "cost per resolved issue improves",
@@ -45,7 +45,7 @@
       "purpose": "maximize resource reduction under an explicit capability budget",
       "selection_rule": "choose the highest-saving nondominated frozen policy whose lower 95% sequence-clustered quality-delta bound is at least -0.10",
       "required_conditions": [
-        "at least 20% failure-aware saving versus persistent FULL",
+        "at least 50% failure-aware saving versus persistent FULL, or explicit disclosure that no qualified target-region profile exists",
         "cost per resolved issue improves",
         "quality loss and fallback rate are disclosed as service-level tradeoffs",
         "confirmation evidence before naming a default"
