@@ -1,0 +1,220 @@
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index f30b5233462732af49568e314dff8490f4188511..1b46c578b42caa15765abaa9be30bf525181c4c6 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1010,7 +1010,8 @@ class CharField(Field):
+     def __init__(self, *args, db_collation=None, **kwargs):
+         super().__init__(*args, **kwargs)
+         self.db_collation = db_collation
+-        self.validators.append(validators.MaxLengthValidator(self.max_length))
++        if self.max_length is not None:
++            self.validators.append(validators.MaxLengthValidator(self.max_length))
+ 
+     def check(self, **kwargs):
+         databases = kwargs.get('databases') or []
+@@ -2122,205 +2123,6 @@ class TextField(Field):
+     def __init__(self, *args, db_collation=None, **kwargs):
+         super().__init__(*args, **kwargs)
+         self.db_collation = db_collation
+-
+-    def check(self, **kwargs):
+-        databases = kwargs.get('databases') or []
+-        return [
+-            *super().check(**kwargs),
+-            *self._check_db_collation(databases),
+-        ]
+-
+-    def _check_db_collation(self, databases):
+-        errors = []
+-        for db in databases:
+-            if not router.allow_migrate_model(db, self.model):
+-                continue
+-            connection = connections[db]
+-            if not (
+-                self.db_collation is None or
+-                'supports_collation_on_textfield' in self.model._meta.required_db_features or
+-                connection.features.supports_collation_on_textfield
+-            ):
+-                errors.append(
+-                    checks.Error(
+-                        '%s does not support a database collation on '
+-                        'TextFields.' % connection.display_name,
+-                        obj=self,
+-                        id='fields.E190',
+-                    ),
+-                )
+-        return errors
+-
+-    def get_internal_type(self):
+-        return "TextField"
+-
+-    def to_python(self, value):
+-        if isinstance(value, str) or value is None:
+-            return value
+-        return str(value)
+-
+-    def get_prep_value(self, value):
+-        value = super().get_prep_value(value)
+-        return self.to_python(value)
+-
+-    def formfield(self, **kwargs):
+-        # Passing max_length to forms.CharField means that the value's length
+-        # will be validated twice. This is considered acceptable since we want
+-        # the value in the form field (to pass into widget for example).
+-        return super().formfield(**{
+-            'max_length': self.max_length,
+-            **({} if self.choices is not None else {'widget': forms.Textarea}),
+-            **kwargs,
+-        })
+-
+-    def deconstruct(self):
+-        name, path, args, kwargs = super().deconstruct()
+-        if self.db_collation:
+-            kwargs['db_collation'] = self.db_collation
+-        return name, path, args, kwargs
+-
+-
+-class TimeField(DateTimeCheckMixin, Field):
+-    empty_strings_allowed = False
+-    default_error_messages = {
+-        'invalid': _('“%(value)s” value has an invalid format. It must be in '
+-                     'HH:MM[:ss[.uuuuuu]] format.'),
+-        'invalid_time': _('“%(value)s” value has the correct format '
+-                          '(HH:MM[:ss[.uuuuuu]]) but it is an invalid time.'),
+-    }
+-    description = _("Time")
+-
+-    def __init__(self, verbose_name=None, name=None, auto_now=False,
+-                 auto_now_add=False, **kwargs):
+-        self.auto_now, self.auto_now_add = auto_now, auto_now_add
+-        if auto_now or auto_now_add:
+-            kwargs['editable'] = False
+-            kwargs['blank'] = True
+-        super().__init__(verbose_name, name, **kwargs)
+-
+-    def _check_fix_default_value(self):
+-        """
+-        Warn that using an actual date or datetime value is probably wrong;
+-        it's only evaluated on server startup.
+-        """
+-        if not self.has_default():
+-            return []
+-
+-        value = self.default
+-        if isinstance(value, datetime.datetime):
+-            now = None
+-        elif isinstance(value, datetime.time):
+-            now = _get_naive_now()
+-            # This will not use the right date in the race condition where now
+-            # is just before the date change and value is just past 0:00.
+-            value = datetime.datetime.combine(now.date(), value)
+-        else:
+-            # No explicit time / datetime value -- no checks necessary
+-            return []
+-        # At this point, value is a datetime object.
+-        return self._check_if_value_fixed(value, now=now)
+-
+-    def deconstruct(self):
+-        name, path, args, kwargs = super().deconstruct()
+-        if self.auto_now is not False:
+-            kwargs["auto_now"] = self.auto_now
+-        if self.auto_now_add is not False:
+-            kwargs["auto_now_add"] = self.auto_now_add
+-        if self.auto_now or self.auto_now_add:
+-            del kwargs['blank']
+-            del kwargs['editable']
+-        return name, path, args, kwargs
+-
+-    def get_internal_type(self):
+-        return "TimeField"
+-
+-    def to_python(self, value):
+-        if value is None:
+-            return None
+-        if isinstance(value, datetime.time):
+-            return value
+-        if isinstance(value, datetime.datetime):
+-            # Not usually a good idea to pass in a datetime here (it loses
+-            # information), but this can be a side-effect of interacting with a
+-            # database backend (e.g. Oracle), so we'll be accommodating.
+-            return value.time()
+-
+-        try:
+-            parsed = parse_time(value)
+-            if parsed is not None:
+-                return parsed
+-        except ValueError:
+-            raise exceptions.ValidationError(
+-                self.error_messages['invalid_time'],
+-                code='invalid_time',
+-                params={'value': value},
+-            )
+-
+-        raise exceptions.ValidationError(
+-            self.error_messages['invalid'],
+-            code='invalid',
+-            params={'value': value},
+-        )
+-
+-    def pre_save(self, model_instance, add):
+-        if self.auto_now or (self.auto_now_add and add):
+-            value = datetime.datetime.now().time()
+-            setattr(model_instance, self.attname, value)
+-            return value
+-        else:
+-            return super().pre_save(model_instance, add)
+-
+-    def get_prep_value(self, value):
+-        value = super().get_prep_value(value)
+-        return self.to_python(value)
+-
+-    def get_db_prep_value(self, value, connection, prepared=False):
+-        # Casts times into the format expected by the backend
+-        if not prepared:
+-            value = self.get_prep_value(value)
+-        return connection.ops.adapt_timefield_value(value)
+-
+-    def value_to_string(self, obj):
+-        val = self.value_from_object(obj)
+-        return '' if val is None else val.isoformat()
+-
+-    def formfield(self, **kwargs):
+-        return super().formfield(**{
+-            'form_class': forms.TimeField,
+-            **kwargs,
+-        })
+-
+-
+-class URLField(CharField):
+-    default_validators = [validators.URLValidator()]
+-    description = _("URL")
+-
+-    def __init__(self, verbose_name=None, name=None, **kwargs):
+-        kwargs.setdefault('max_length', 200)
+-        super().__init__(verbose_name, name, **kwargs)
+-
+-    def deconstruct(self):
+-        name, path, args, kwargs = super().deconstruct()
+-        if kwargs.get("max_length") == 200:
+-            del kwargs['max_length']
+-        return name, path, args, kwargs
+-
+-    def formfield(self, **kwargs):
+-        # As with CharField, this will cause URL validation to be performed
+-        # twice.
+-        return super().formfield(**{
+-            'form_class': forms.URLField,
+-            **kwargs,
+-        })
+-
+-
+-class BinaryField(Field):
+-    description = _("Raw binary data")
+-    empty_values = [None, b'']
+-
+-    def __init__(self, *args, **kwargs):
+-        kwargs.setdefault('editable', False)
+-        super().__init__(*args, **kwargs)
+         if self.max_length is not None:
+             self.validators.append(validators.MaxLengthValidator(self.max_length))
+ 

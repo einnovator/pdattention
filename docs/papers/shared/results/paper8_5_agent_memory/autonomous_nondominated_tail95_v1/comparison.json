@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_autonomous_nondominated_tail95_v1",
+  "task_id": "django__django-15277",
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "temperature": 0,
+  "top_p": 1,
+  "seed": 0,
+  "arms": {
+    "full": {
+      "runs": 2,
+      "primary_resolved": 1,
+      "primary_resolution_fraction": 0.5,
+      "mean_calls": 29.0,
+      "weighted_saving_fraction": 0.0,
+      "agent_host": "192.168.1.6"
+    },
+    "matched_token_tail_95": {
+      "runs": 2,
+      "primary_resolved": 2,
+      "primary_resolution_fraction": 1.0,
+      "mean_calls": 23.0,
+      "weighted_saving_fraction": 0.060539,
+      "agent_host": "192.168.1.8",
+      "first_non_passthrough_call": 3
+    }
+  },
+  "pairing_qualification": {
+    "qualified": false,
+    "reason": "cross_host_tool_output_order",
+    "first_cross_arm_command_divergence_call": 2,
+    "first_policy_materialization_call": 3,
+    "evidence": "The first find|grep|head observation contains the same five paths in a different filesystem order on the two Docker hosts. Cross-arm trajectories therefore diverge before policy activation."
+  },
+  "interpretation": "Arm-level repeated outcomes and savings are valid observations. They are not a causal paired estimate of the effect of matched recency; same-host FULL controls are required."
+}
