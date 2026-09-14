@@ -62,7 +62,11 @@ from .serialization import serialize_materialized_messages
 
 
 _COMMAND = re.compile(r"```mswea_bash_command\s*\n(.*?)\n```", re.DOTALL)
-AUTONOMOUS_POSITIVE_POLICIES = ("head_tail_recency", "matched_token_tail")
+AUTONOMOUS_POSITIVE_POLICIES = (
+    "head_tail_recency",
+    "matched_token_tail",
+    "full_structured_observation",
+)
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
     "dag_certified_progress_spine",
@@ -303,6 +307,15 @@ class AutonomousSelectionConfig:
             raise ValueError("FULL is an exact ordinary-text control and cannot compact records")
         if self.policy == "full" and self.negative_realization != NegativeRealizationMode.DROP:
             raise ValueError("FULL cannot use a negative-selection realization")
+        if self.policy == "full_structured_observation":
+            if self.budget_fraction != 1.0:
+                raise ValueError(
+                    "full_structured_observation requires a 100% logical-history budget"
+                )
+            if self.materialization_mode != MaterializationMode.TOOL_STRUCTURED_EVIDENCE:
+                raise ValueError(
+                    "full_structured_observation requires tool_structured_evidence"
+                )
         if self.policy in AUTONOMOUS_POSITIVE_POLICIES and self.negative_realization != NegativeRealizationMode.DROP:
             raise ValueError("positive-only policies cannot use a negative-selection realization")
         if self.negative_fallback not in {"none", "recency"}:
@@ -323,6 +336,8 @@ class AutonomousSelectionConfig:
 
     def selector(self):
         if self.policy == "full":
+            return FullHistorySelector()
+        if self.policy == "full_structured_observation":
             return FullHistorySelector()
         if self.policy == "head_tail_recency":
             return HeadMiddleTailSelector(HeadMiddleTailConfig(

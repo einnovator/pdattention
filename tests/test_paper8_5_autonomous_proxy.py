@@ -29,6 +29,7 @@ from experiments.paper8_5_agent_memory.auxiliary_workspace_state import (
     create_auxiliary_workspace_state_prediction,
 )
 from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
+from experiments.paper8_5_agent_memory.materialization import MaterializationMode
 
 
 def _messages() -> list[dict]:
@@ -80,6 +81,48 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["full_tokens"] == result.trace["selected_tokens"]
     assert result.trace["selected_tokens"] == result.trace["materialized_tokens"]
     assert result.trace["excluded_causal_group_count"] == 0
+
+
+def test_full_structured_observation_preserves_all_records_but_compacts_payload():
+    source = _payload()
+    source["messages"][3]["content"] = (
+        "<returncode>0</returncode>\n<output>\n"
+        + "\n".join(
+            ["noise"] * 300
+            + ["def target_function(value):", "    return value"]
+            + ["noise"] * 300
+        )
+        + "\n</output>"
+    )
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="full_structured_observation",
+            budget_fraction=1.0,
+            materialization_mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
+            materialization_threshold_tokens=64,
+            expected_model="locked-model",
+            task_id="task-1",
+        ),
+    )
+
+    assert result.trace["selected_message_count"] == result.trace["full_message_count"]
+    assert result.trace["excluded_causal_group_count"] == 0
+    assert result.trace["selected_tokens"] == result.trace["full_tokens"]
+    assert result.trace["materialized_tokens"] < result.trace["selected_tokens"]
+    assert "def target_function" in result.payload["messages"][3]["content"]
+    assert "<elided_lines>" in result.payload["messages"][3]["content"]
+
+
+def test_full_structured_observation_rejects_selection_or_wrong_materializer():
+    with pytest.raises(ValueError, match="100% logical-history"):
+        AutonomousSelectionConfig(
+            policy="full_structured_observation",
+            budget_fraction=.9,
+            materialization_mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
+        )
+    with pytest.raises(ValueError, match="requires tool_structured_evidence"):
+        AutonomousSelectionConfig(policy="full_structured_observation")
 
 
 def test_official_report_falls_back_to_exact_per_instance_artifact(tmp_path):

@@ -366,6 +366,17 @@ def _command(
         "--seed", str(generation["seed"]),
         "--max-calls", str(generation["max_calls"]),
     ]
+    materialization = {
+        "materialization_mode": "--materialization-mode",
+        "materialization_threshold_tokens": "--materialization-threshold-tokens",
+        "materialization_head_lines": "--materialization-head-lines",
+        "materialization_tail_lines": "--materialization-tail-lines",
+        "materialization_match_context_lines": "--materialization-match-context-lines",
+        "materialization_max_matched_lines": "--materialization-max-matched-lines",
+    }
+    for key, option in materialization.items():
+        if key in cell:
+            command.extend((option, str(cell[key])))
     if generation.get("max_completion_tokens") is not None:
         command.extend((
             "--max-completion-tokens", str(generation["max_completion_tokens"]),

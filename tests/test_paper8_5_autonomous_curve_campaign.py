@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
+    _command,
     _retry_path,
     adaptive_gate,
     campaign_cells,
@@ -55,6 +56,52 @@ def test_campaign_can_share_a_frozen_pair_id_with_corrected_policy_code():
     spec["baseline_pair_campaign_id"] = "baseline"
     cells = campaign_cells(spec, ("task",))
     assert {row["pair_id"] for row in cells} == {"baseline:task:seed0"}
+
+
+def test_campaign_forwards_structured_materialization_coordinates(tmp_path):
+    spec = _spec()
+    spec.update({
+        "model": "model",
+        "served_model": "served",
+        "model_revision": "revision",
+        "tokenizer_revision": "tokenizer-revision",
+        "generation": {
+            "temperature": 0, "top_p": 1, "seed": 0, "max_calls": 40,
+            "max_completion_tokens": 1024,
+        },
+        "history": {
+            "head_turns": 2, "tail_turns": 4, "search_delay_turns": 8,
+            "write_delay_turns": 1, "same_span_reads_to_keep": 2,
+            "working_set_resources": 4,
+        },
+    })
+    cell = {
+        "cell_id": "structured", "instance_id": "task",
+        "pair_id": "pair", "policy": "full_structured_observation",
+        "negative_realization": "drop", "negative_fallback": "none",
+        "budget_fraction": 1.0,
+        "materialization_mode": "tool_structured_evidence",
+        "materialization_threshold_tokens": 768,
+        "materialization_match_context_lines": 6,
+        "materialization_max_matched_lines": 40,
+    }
+    args = SimpleNamespace(
+        upstream_base_url="http://engine/v1", tokenizer="tokenizer",
+        docker_executable=None, docker_platform=None, pythonpath=[],
+        skip_grading=False, grade_auxiliary_workspace_state=False,
+        preflight_only=False,
+    )
+    command = _command(
+        spec=spec, benchmark=tmp_path / "card.json", output=tmp_path / "out",
+        cell=cell, args=args,
+    )
+
+    assert command[command.index("--materialization-mode") + 1] == (
+        "tool_structured_evidence"
+    )
+    assert command[command.index("--materialization-threshold-tokens") + 1] == "768"
+    assert command[command.index("--materialization-match-context-lines") + 1] == "6"
+    assert command[command.index("--materialization-max-matched-lines") + 1] == "40"
 
 
 def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_path):
