@@ -16,6 +16,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
     _ensure_evaluation_image,
     _official_report,
+    _unreported_submission_result,
 )
 
 
@@ -226,6 +227,44 @@ def test_evaluation_image_pulls_when_resident_platform_mismatches(tmp_path):
     assert pull.call_args.args[0][1:4] == [
         "pull", "--platform", "linux/amd64",
     ]
+
+
+def test_unreported_empty_submission_is_a_definitive_failure(tmp_path):
+    predictions = tmp_path / "preds.json"
+    predictions.write_text(
+        json.dumps({"task": {"model_patch": ""}}), encoding="utf-8",
+    )
+
+    result = _unreported_submission_result(
+        predictions,
+        instance_id="task",
+        error=RuntimeError("no instances to run"),
+        grader_log=tmp_path / "grader.log",
+    )
+
+    assert result["resolved"] is False
+    assert result["score"] == 0.0
+    assert result["error"] is True
+    assert result["failure_class"] == "empty_submission"
+
+
+def test_unreported_nonempty_submission_remains_indeterminate(tmp_path):
+    predictions = tmp_path / "preds.json"
+    predictions.write_text(
+        json.dumps({"task": {"model_patch": "diff --git a/a b/a\n"}}),
+        encoding="utf-8",
+    )
+
+    result = _unreported_submission_result(
+        predictions,
+        instance_id="task",
+        error=RuntimeError("registry timeout"),
+        grader_log=tmp_path / "grader.log",
+    )
+
+    assert result["resolved"] is None
+    assert result["score"] is None
+    assert result["failure_class"] is None
 
 
 def test_adaptive_gate_stops_low_yield_and_low_accuracy():

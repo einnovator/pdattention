@@ -512,6 +512,31 @@ def _official_report(
     }
 
 
+def _unreported_submission_result(
+    predictions: Path,
+    *,
+    instance_id: str,
+    error: Exception,
+    grader_log: Path,
+) -> dict[str, Any]:
+    """Classify exact empty submissions while preserving other uncertainty."""
+
+    prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
+    prediction = prediction_payload.get(instance_id) or {}
+    submitted_patch_empty = not bool(str(prediction.get("model_patch") or "").strip())
+    return {
+        "official_grader": True,
+        "instance_id": instance_id,
+        "resolved": False if submitted_patch_empty else None,
+        "score": 0.0 if submitted_patch_empty else None,
+        "error": True,
+        "failure_class": "empty_submission" if submitted_patch_empty else None,
+        "error_detail": str(error),
+        "submitted_patch_empty": submitted_patch_empty,
+        "grader_log": str(grader_log),
+    }
+
+
 def run(args: argparse.Namespace) -> Path:
     card, instance_id, task_index = load_locked_task(
         args.benchmark_card,
@@ -738,20 +763,12 @@ def run(args: argparse.Namespace) -> Path:
             result["grader_process_error"] = True
             result["grader_process_error_detail"] = str(error)
         except Exception:
-            prediction_payload = json.loads(predictions.read_text(encoding="utf-8"))
-            prediction = prediction_payload.get(instance_id) or {}
-            result = {
-                "official_grader": True,
-                "instance_id": instance_id,
-                "resolved": None,
-                "score": None,
-                "error": True,
-                "error_detail": str(error),
-                "submitted_patch_empty": not bool(
-                    str(prediction.get("model_patch") or "").strip()
-                ),
-                "grader_log": str(output / "grader.log"),
-            }
+            result = _unreported_submission_result(
+                predictions,
+                instance_id=instance_id,
+                error=error,
+                grader_log=output / "grader.log",
+            )
     result["autonomous_metrics"] = str(output / "autonomous_metrics.json")
     _write_json(official_result_path, result)
     auxiliary["primary_official_result"] = str(official_result_path)

@@ -403,6 +403,8 @@ def load_autonomous_run(
         "official_outcome": (
             "patch_apply_failed"
             if official and failure_class == "patch_apply_failed"
+            else "empty_submission"
+            if official and failure_class == "empty_submission"
             else "grader_error"
             if official and official_error
             else "resolved"
@@ -964,55 +966,64 @@ def _plot(output: Path, frozen: Sequence[Mapping[str, Any]], autonomous: Sequenc
     by_cohort: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in frozen:
         by_cohort[str(row["cohort"])].append(row)
-    columns = 2
-    dense_count = sum(len(rows) > 6 for rows in by_cohort.values())
-    figure_rows = math.ceil((len(by_cohort) + dense_count) / columns)
-    fig, axes = plt.subplots(figure_rows, columns, figsize=(12, 4 * figure_rows), squeeze=False)
-    dense_legends: list[tuple[str, list[str]]] = []
-    for axis, (cohort, rows) in zip(axes.flat, sorted(by_cohort.items())):
-        dense = len(rows) > 6
-        if dense:
-            dense_legends.append((cohort, [short(row) for row in rows]))
-        for index, row in enumerate(rows):
-            x = 100 * float(row["saving_fraction"])
-            y = 100 * float(row["quality_proxy"])
-            axis.scatter(x, y, s=38)
-            label = str(index + 1) if dense else short(row)
-            y_offset = 5 if dense else (5, -10, 12, -17)[index % 4]
-            treatment = str(row.get("strategy"))
-            if not dense and "threshold=256" in treatment:
-                y_offset = 8
-            elif not dense and "threshold=512" in treatment:
-                y_offset = -12
-            axis.annotate(label, (x, y), xytext=(4, y_offset),
-                          textcoords="offset points", fontsize=6.5)
-        by_family: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-        for row in rows:
-            by_family[str(row.get("strategy_family"))].append(row)
-        for family_rows in by_family.values():
-            if len(family_rows) > 1:
-                ordered = sorted(family_rows, key=lambda row: float(row["saving_fraction"]))
-                axis.plot(
-                    [100 * float(row["saving_fraction"]) for row in ordered],
-                    [100 * float(row["quality_proxy"]) for row in ordered],
-                    linewidth=.8, alpha=.45,
-                )
-        axis.set_title(cohort.replace("_", " "), fontsize=10)
-        axis.set_xlabel("Materialized-token saving (%)")
-        axis.set_ylabel("Conservative action agreement (%)")
-        axis.set_ylim(0, 107)
-        axis.grid(alpha=.25)
-    unused = list(axes.flat[len(by_cohort):])
-    for axis, (cohort, labels) in zip(unused, dense_legends):
-        axis.axis("off")
-        axis.text(.02, .98, cohort.replace("_", " ") + " labels\n\n" +
-                  "\n".join(f"{index}. {label}" for index, label in enumerate(labels, 1)),
-                  va="top", fontsize=8, transform=axis.transAxes)
-    for axis in unused[len(dense_legends):]:
-        axis.axis("off")
-    fig.suptitle("Frozen screening by matched cohort (proxy, not task accuracy)", fontsize=13)
-    fig.tight_layout(rect=(0, 0, 1, .97))
-    save(fig, "frozen_saving_vs_action_agreement")
+    if by_cohort:
+        columns = 2
+        dense_count = sum(len(rows) > 6 for rows in by_cohort.values())
+        figure_rows = math.ceil((len(by_cohort) + dense_count) / columns)
+        fig, axes = plt.subplots(
+            figure_rows, columns, figsize=(12, 4 * figure_rows), squeeze=False,
+        )
+        dense_legends: list[tuple[str, list[str]]] = []
+        for axis, (cohort, rows) in zip(axes.flat, sorted(by_cohort.items())):
+            dense = len(rows) > 6
+            if dense:
+                dense_legends.append((cohort, [short(row) for row in rows]))
+            for index, row in enumerate(rows):
+                x = 100 * float(row["saving_fraction"])
+                y = 100 * float(row["quality_proxy"])
+                axis.scatter(x, y, s=38)
+                label = str(index + 1) if dense else short(row)
+                y_offset = 5 if dense else (5, -10, 12, -17)[index % 4]
+                treatment = str(row.get("strategy"))
+                if not dense and "threshold=256" in treatment:
+                    y_offset = 8
+                elif not dense and "threshold=512" in treatment:
+                    y_offset = -12
+                axis.annotate(label, (x, y), xytext=(4, y_offset),
+                              textcoords="offset points", fontsize=6.5)
+            by_family: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+            for row in rows:
+                by_family[str(row.get("strategy_family"))].append(row)
+            for family_rows in by_family.values():
+                if len(family_rows) > 1:
+                    ordered = sorted(
+                        family_rows,
+                        key=lambda row: float(row["saving_fraction"]),
+                    )
+                    axis.plot(
+                        [100 * float(row["saving_fraction"]) for row in ordered],
+                        [100 * float(row["quality_proxy"]) for row in ordered],
+                        linewidth=.8, alpha=.45,
+                    )
+            axis.set_title(cohort.replace("_", " "), fontsize=10)
+            axis.set_xlabel("Materialized-token saving (%)")
+            axis.set_ylabel("Conservative action agreement (%)")
+            axis.set_ylim(0, 107)
+            axis.grid(alpha=.25)
+        unused = list(axes.flat[len(by_cohort):])
+        for axis, (cohort, labels) in zip(unused, dense_legends):
+            axis.axis("off")
+            axis.text(.02, .98, cohort.replace("_", " ") + " labels\n\n" +
+                      "\n".join(f"{index}. {label}" for index, label in enumerate(labels, 1)),
+                      va="top", fontsize=8, transform=axis.transAxes)
+        for axis in unused[len(dense_legends):]:
+            axis.axis("off")
+        fig.suptitle(
+            "Frozen screening by matched cohort (proxy, not task accuracy)",
+            fontsize=13,
+        )
+        fig.tight_layout(rect=(0, 0, 1, .97))
+        save(fig, "frozen_saving_vs_action_agreement")
 
     def accuracy_plot(
         rows: Sequence[Mapping[str, Any]], metric: str, filename: str, xlabel: str,

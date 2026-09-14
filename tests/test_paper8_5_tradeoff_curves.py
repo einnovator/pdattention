@@ -8,6 +8,7 @@ from experiments.paper8_5_agent_memory.tradeoff_curves import (
     _cluster_bootstrap_mean_ci,
     _strategy_id,
     adaptive_decisions,
+    build,
     load_autonomous_run,
     pair_autonomous,
     pareto_frontier,
@@ -86,6 +87,42 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["first_action_divergence_kind"] == "command_mismatch"
     assert candidate["saving_before_first_action_divergence_fraction"] == 0
     assert candidate["official_outcome"] == "resolved"
+
+
+def test_build_accepts_autonomous_only_curve_spec(tmp_path):
+    full_a = _run(
+        tmp_path, "full-a", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair",
+    )
+    full_b = _run(
+        tmp_path, "full-b", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="pair",
+    )
+    candidate = _run(
+        tmp_path, "candidate", policy="matched_token_tail", calls=2,
+        tokens=90, resolved=True, pair_id="pair",
+    )
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({
+        "schema_version": 1,
+        "frozen_comparisons": [],
+        "autonomous_runs": [
+            {"name": "full-a", "path": str(full_a)},
+            {"name": "full-b", "path": str(full_b)},
+            {"name": "candidate", "path": str(candidate)},
+        ],
+        "autonomous_pairs": [
+            {"candidate": "full-b", "baseline": "full-a"},
+            {"candidate": "candidate", "baseline": "full-a"},
+        ],
+    }), encoding="utf-8")
+
+    result = build(spec, tmp_path / "curves")
+
+    assert result["frozen_observations"] == []
+    assert len(result["autonomous_observations"]) == 3
+    assert (tmp_path / "curves/autonomous_saving_vs_accuracy.png").is_file()
+    assert not (tmp_path / "curves/frozen_saving_vs_action_agreement.png").exists()
 
 
 def test_loader_separates_grader_error_from_ordinary_unresolved(tmp_path):
