@@ -428,6 +428,87 @@ def _run(
     return elapsed
 
 
+def _active_agent_containers(
+    args: argparse.Namespace, environment: Mapping[str, str]
+) -> set[str]:
+    executable = str(args.docker_executable or "docker")
+    result = subprocess.run(
+        [
+            executable, "ps", "--filter", "name=^/minisweagent-",
+            "--format", "{{.ID}}",
+        ],
+        capture_output=True, text=True, env=dict(environment), check=False,
+    )
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def _cleanup_owned_agent_containers(
+    args: argparse.Namespace, environment: Mapping[str, str], before: set[str],
+) -> list[str]:
+    owned = sorted(_active_agent_containers(args, environment) - before)
+    if owned:
+        executable = str(args.docker_executable or "docker")
+        subprocess.run(
+            [executable, "rm", "-f", *owned], capture_output=True, text=True,
+            env=dict(environment), check=False,
+        )
+    return owned
+
+
+def _run_agent_fail_closed(
+    command: Sequence[str], *, log: Path, environment: Mapping[str, str],
+    timeout_seconds: int, proxy: AutonomousSelectionProxy,
+    args: argparse.Namespace,
+) -> float:
+    """Terminate the owned agent after the first upstream transport failure."""
+
+    started = time.perf_counter()
+    containers_before = _active_agent_containers(args, environment)
+    with log.open("w", encoding="utf-8") as stream:
+        process = subprocess.Popen(
+            list(command), stdout=stream, stderr=subprocess.STDOUT,
+            text=True, env=dict(environment),
+        )
+        failure: str | None = None
+        try:
+            while process.poll() is None:
+                if proxy.upstream_failed:
+                    failure = (
+                        "upstream transport failed during agent execution: "
+                        f"{proxy.upstream_failure_detail}"
+                    )
+                    process.terminate()
+                    break
+                if time.perf_counter() - started > timeout_seconds:
+                    failure = f"agent exceeded {timeout_seconds}s execution timeout"
+                    process.terminate()
+                    break
+                time.sleep(0.25)
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+            if failure is not None:
+                removed = _cleanup_owned_agent_containers(
+                    args, environment, containers_before
+                )
+                stream.write(f"\n--- FAIL-CLOSED ---\n{failure}\n")
+                stream.write(f"owned_containers_removed={removed!r}\n")
+                raise RuntimeError(failure)
+            if process.returncode:
+                raise RuntimeError(
+                    f"command exited {process.returncode}; see {log}"
+                )
+        except Exception:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            raise
+    return time.perf_counter() - started
+
+
 def _execution_environment(args: argparse.Namespace) -> dict[str, str]:
     environment = os.environ.copy()
     environment.setdefault("OPENAI_API_KEY", "paper8-5-local-proxy")
@@ -896,11 +977,13 @@ def run(args: argparse.Namespace) -> Path:
             agent_output=agent_output,
         )
         agent_output.mkdir(parents=True, exist_ok=True)
-        agent_wall_time = _run(
+        agent_wall_time = _run_agent_fail_closed(
             agent_command,
             log=output / "agent.log",
             environment=environment,
             timeout_seconds=args.timeout_seconds,
+            proxy=proxy,
+            args=args,
         )
     finally:
         proxy.close()

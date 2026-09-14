@@ -1197,6 +1197,9 @@ def test_proxy_logs_transport_failure_at_the_reserved_request_index(tmp_path):
         assert row["upstream_status"] == 0
         assert row["upstream_transport_error"] == "URLError"
         assert row["assistant_command_sha256"] is None
+        assert proxy.upstream_failed is True
+        assert proxy.upstream_failure_detail["error_type"] == "URLError"
+        assert proxy.health()["upstream_failed"] is True
         summary = summarize_trace(trace)
         assert summary["upstream_error_calls"] == 1
         assert summary["upstream_transport_error_calls"] == 1

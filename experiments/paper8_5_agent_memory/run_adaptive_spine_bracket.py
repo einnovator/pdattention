@@ -31,6 +31,10 @@ def _campaign_command(args: argparse.Namespace, config_id: str) -> list[str]:
         "--sequence-id", args.sequence_id,
         "--strategy-id", "S03_completed_episode_spine",
         "--strategy-config-id", config_id,
+        "--health-probe-count", str(args.health_probe_count),
+        "--health-latency-ceiling-seconds", str(args.health_latency_ceiling_seconds),
+        "--health-timeout-seconds", str(args.health_timeout_seconds),
+        "--upstream-request-timeout-seconds", str(args.upstream_request_timeout_seconds),
     ]
     if args.docker_executable:
         command.extend(("--docker-executable", args.docker_executable))
@@ -92,6 +96,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--docker-executable")
     parser.add_argument("--docker-platform")
     parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
+    parser.add_argument("--health-probe-count", type=int, default=3)
+    parser.add_argument("--health-latency-ceiling-seconds", type=float, default=60.0)
+    parser.add_argument("--health-timeout-seconds", type=float, default=90.0)
+    parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
     return parser
 
 

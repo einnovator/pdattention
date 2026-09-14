@@ -17,8 +17,9 @@ import subprocess
 import sys
 from typing import Any, Mapping, Sequence
 
-from .run_autonomous_curve_campaign import _completed_result
+from .run_autonomous_curve_campaign import _completed_result, _retry_path
 from .run_autonomous_swebench import load_locked_task
+from .upstream_health import probe_generation_health
 
 
 TARGET_SAVING_MIN = 0.30
@@ -181,6 +182,7 @@ def _episode_command(
         "--seed", str(generation["seed"]),
         "--max-calls", str(generation["max_calls"]),
         "--max-completion-tokens", str(generation["max_completion_tokens"]),
+        "--upstream-timeout-seconds", str(args.upstream_request_timeout_seconds),
     ]
     if cell["session_mode"] == "persistent":
         command.extend((
@@ -425,6 +427,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("campaign state belongs to a different frozen specification")
 
     launched = 0
+    halt_campaign = False
     for cell in cells:
         if args.max_cells is not None and launched >= args.max_cells:
             break
@@ -442,9 +445,11 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         prefix_episodes: list[dict[str, Any]] = []
         episode_results: list[dict[str, Any]] = []
         infrastructure_error = False
+        upstream_paused = False
         for episode_number, instance_id in enumerate(cell["instance_ids"], 1):
             episode_id = f"episode_{episode_number:02d}_{_slug(instance_id)}"
-            episode_output = cell_root / episode_id
+            base_episode_output = cell_root / episode_id
+            episode_output = base_episode_output
             shared_control_cell_id: str | None = None
             if (
                 episode_number == 1
@@ -481,7 +486,23 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     "session_id": session_id,
                     "episodes": prefix_episodes,
                 })
-            completed = _completed_result(episode_output)
+            recorded_episode = row.get("episodes", {}).get(episode_id) or {}
+            recorded_output = Path(str(
+                recorded_episode.get("output", base_episode_output)
+            ))
+            if shared_control_cell_id:
+                completed = _completed_result(episode_output)
+            else:
+                recorded_result = _completed_result(recorded_output)
+                base_result = _completed_result(base_episode_output)
+                completed = recorded_result or base_result
+                if completed is not None and completed.get("status") == "complete":
+                    episode_output = (
+                        recorded_output if recorded_result is not None
+                        else base_episode_output
+                    )
+                else:
+                    episode_output = _retry_path(base_episode_output)
             completed_ok = bool(
                 completed is not None and completed.get("status") == "complete"
             )
@@ -499,6 +520,16 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 session_id=(session_id if cell["session_mode"] == "persistent" else f"{session_id}:{episode_id}"),
                 args=args,
             )
+            prior_attempts = list(recorded_episode.get("attempts") or ())
+            if recorded_episode and recorded_episode.get("output"):
+                previous = {
+                    key: recorded_episode.get(key) for key in (
+                        "output", "status", "reason", "returncode", "quarantine",
+                        "started_at", "finished_at", "health_preflight",
+                    ) if recorded_episode.get(key) is not None
+                }
+                if previous and previous not in prior_attempts:
+                    prior_attempts.append(previous)
             row["episodes"][episode_id] = {
                 "instance_id": instance_id,
                 "status": "complete" if completed_ok else "planned",
@@ -507,6 +538,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 "command": None if shared_control_cell_id else command,
                 "shared_control_cell_id": shared_control_cell_id,
                 "shared_control_episode": bool(shared_control_cell_id),
+                "attempts": prior_attempts,
             }
             _write(state_path, state)
             if args.dry_run:
@@ -519,15 +551,23 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     infrastructure_error = True
                     _write(state_path, state)
                     break
-                if episode_output.exists() and any(episode_output.iterdir()):
-                    row["episodes"][episode_id]["status"] = "infrastructure_error"
+                health = probe_generation_health(
+                    base_url=args.upstream_base_url,
+                    model=str(spec["served_model"]),
+                    count=args.health_probe_count,
+                    latency_ceiling_seconds=args.health_latency_ceiling_seconds,
+                    timeout_seconds=args.health_timeout_seconds,
+                )
+                row["episodes"][episode_id]["health_preflight"] = health
+                if not health["healthy"]:
+                    row["episodes"][episode_id]["status"] = "paused_upstream_unhealthy"
                     row["episodes"][episode_id]["reason"] = (
-                        "nonempty incomplete or infrastructure-contaminated output; "
-                        "preserve and inspect"
+                        "generation-level upstream health gate failed"
                     )
-                    if completed is not None:
-                        row["episodes"][episode_id]["quarantine"] = completed
-                    infrastructure_error = True
+                    row["status"] = "paused_upstream_unhealthy"
+                    upstream_paused = True
+                    halt_campaign = True
+                    _write(state_path, state)
                     break
                 row["status"] = "running"
                 row["episodes"][episode_id]["status"] = "running"
@@ -543,7 +583,10 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             if not completed_ok or not export_path.is_file():
                 row["episodes"][episode_id]["status"] = "infrastructure_error"
                 row["episodes"][episode_id]["reason"] = "missing complete result or persistent episode export"
+                if completed is not None:
+                    row["episodes"][episode_id]["quarantine"] = completed
                 infrastructure_error = True
+                halt_campaign = True
                 _write(state_path, state)
                 break
             row["episodes"][episode_id].update(completed)
@@ -553,6 +596,8 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             _write(state_path, state)
         if args.dry_run:
             row["status"] = "planned"
+        elif upstream_paused:
+            row["status"] = "paused_upstream_unhealthy"
         elif infrastructure_error:
             row["status"] = "infrastructure_error"
         else:
@@ -560,6 +605,8 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         row["updated_at"] = datetime.now(timezone.utc).isoformat()
         _write(state_path, state)
         launched += 1
+        if halt_campaign:
+            break
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
     ledger = write_frontier_ledger(state=state, spec=spec, output=output)
     state["frontier_ledger"] = str(ledger)
@@ -586,6 +633,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-cells", type=int)
     parser.add_argument("--skip-grading", action="store_true")
     parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
+    parser.add_argument("--health-probe-count", type=int, default=3)
+    parser.add_argument("--health-latency-ceiling-seconds", type=float, default=60.0)
+    parser.add_argument("--health-timeout-seconds", type=float, default=90.0)
+    parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

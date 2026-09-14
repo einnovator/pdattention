@@ -41,6 +41,10 @@ def _args(tmp_path: Path) -> argparse.Namespace:
         max_cells=None,
         skip_grading=False,
         grade_auxiliary_workspace_state=False,
+        health_probe_count=3,
+        health_latency_ceiling_seconds=60.0,
+        health_timeout_seconds=90.0,
+        upstream_request_timeout_seconds=180,
         dry_run=True,
     )
 
@@ -87,6 +91,24 @@ def test_dry_run_can_select_one_registered_strategy_configuration(tmp_path):
     assert episodes[0]["command"] is None
     command = episodes[1]["command"]
     assert command[command.index("--completed-recent-turns") + 1] == "4"
+
+
+def test_dirty_persistent_attempt_is_preserved_in_numbered_retry(tmp_path):
+    args = _args(tmp_path)
+    args.strategy_id = ["S01_persistent_full"]
+    first = run_campaign(args)
+    cell_id = "independent-n2-a__S01_persistent_full__r01"
+    episode_id = "episode_01_django-django-15277"
+    base = Path(first["cells"][cell_id]["episodes"][episode_id]["output"])
+    base.mkdir(parents=True)
+    (base / "contaminated.txt").write_text("preserve me", encoding="utf-8")
+
+    state = run_campaign(args)
+    episode = state["cells"][cell_id]["episodes"][episode_id]
+
+    assert episode["output"] == str(base.with_name(base.name + "__retry01"))
+    assert episode["attempts"][0]["output"] == str(base)
+    assert (base / "contaminated.txt").read_text(encoding="utf-8") == "preserve me"
 
 
 def test_sequence_aggregate_marks_saving_region_but_defers_quality_to_pairing():

@@ -834,6 +834,8 @@ class AutonomousSelectionProxy:
         self._request_count = 0
         self._pending_reacquisition_count = 0
         self._pending_reacquisition_resources: tuple[str, ...] = ()
+        self._upstream_failure = threading.Event()
+        self._upstream_failure_detail: dict[str, str] | None = None
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -902,7 +904,16 @@ class AutonomousSelectionProxy:
             "kv_metrics_available": False,
             "request_count": self._request_count,
             "max_calls": self.config.max_calls,
+            "upstream_failed": self._upstream_failure.is_set(),
         }
+
+    @property
+    def upstream_failed(self) -> bool:
+        return self._upstream_failure.is_set()
+
+    @property
+    def upstream_failure_detail(self) -> Mapping[str, str] | None:
+        return self._upstream_failure_detail
 
     def _validate_generation(self, payload: Mapping[str, Any]) -> None:
         if self.config.expected_model is not None and payload.get("model") != self.config.expected_model:
@@ -980,6 +991,11 @@ class AutonomousSelectionProxy:
             status = error.code
             response_headers = error.headers
         except (urllib.error.URLError, TimeoutError) as error:
+            self._upstream_failure_detail = {
+                "error_type": type(error).__name__,
+                "error_detail": str(error),
+            }
+            self._upstream_failure.set()
             if transformation is not None:
                 self._append_trace({
                     **transformation.trace,
