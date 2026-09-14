@@ -301,6 +301,39 @@ def _execution_environment(args: argparse.Namespace) -> dict[str, str]:
     return environment
 
 
+def _ensure_evaluation_image(
+    args: argparse.Namespace,
+    *,
+    instance_id: str,
+    environment: Mapping[str, str],
+    log: Path,
+) -> None:
+    """Pull the locked architecture before a SWE-bench grading pass.
+
+    SWE-bench's ``--clean True`` can remove the image after the primary grade.
+    On Apple Silicon the Python Docker client may then ignore
+    ``DOCKER_DEFAULT_PLATFORM`` while rebuilding the auxiliary grade and try an
+    unavailable arm64 manifest.  Use the same explicit Docker CLI/platform
+    contract as the agent environment before every independent grading pass.
+    """
+
+    if not args.docker_platform:
+        return
+    executable = str(args.docker_executable or "docker")
+    _run(
+        [
+            executable,
+            "pull",
+            "--platform",
+            str(args.docker_platform),
+            swebench_image(instance_id),
+        ],
+        log=log,
+        environment=environment,
+        timeout_seconds=args.timeout_seconds,
+    )
+
+
 def summarize_trace(path: Path) -> dict[str, Any]:
     rows = [
         json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
@@ -634,6 +667,12 @@ def run(args: argparse.Namespace) -> Path:
 
     official_result_path = output / "official_result.json"
     try:
+        _ensure_evaluation_image(
+            args,
+            instance_id=instance_id,
+            environment=environment,
+            log=output / "grader_image_pull.log",
+        )
         grader_wall_time = _run(
             grader_command,
             log=output / "grader.log",
@@ -679,6 +718,12 @@ def run(args: argparse.Namespace) -> Path:
         and auxiliary["status"] == "available"
     ):
         try:
+            _ensure_evaluation_image(
+                args,
+                instance_id=instance_id,
+                environment=environment,
+                log=output / "auxiliary_workspace_state_grader_image_pull.log",
+            )
             auxiliary_grader_wall_time = _run(
                 auxiliary_grader_command,
                 log=output / f"{AUXILIARY_WORKSPACE_STATE_LABEL}_grader.log",
