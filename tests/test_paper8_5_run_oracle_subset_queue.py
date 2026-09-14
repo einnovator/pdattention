@@ -4,6 +4,7 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_oracle_subset_queue import (
     _json_digest,
+    _qualification_slug,
     validate_queue,
 )
 
@@ -25,6 +26,13 @@ def _inputs():
 
 def test_subset_queue_validation_accepts_bound_unique_trials():
     validate_queue(*_inputs())
+
+
+def test_qualification_slug_separates_exact_and_semantic_artifacts():
+    assert _qualification_slug({}) == "exact_command"
+    assert _qualification_slug({"qualification": "semantic transition"}) == (
+        "semantic-transition"
+    )
 
 
 def test_subset_queue_validation_rejects_reference_drift():

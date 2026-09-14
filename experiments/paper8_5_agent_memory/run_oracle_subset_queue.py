@@ -18,6 +18,14 @@ def _json_digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
+def _qualification_slug(queue: Mapping[str, Any]) -> str:
+    qualification = str(queue.get("qualification") or "exact_command")
+    return "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in qualification
+    )
+
+
 def validate_queue(
     queue: Mapping[str, Any], trajectory: Mapping[str, Any],
     reference: Mapping[str, Any],
@@ -67,9 +75,12 @@ def main() -> None:
     counter, tokenizer_identity = _token_counter(str(args.tokenizer))
     args.output_directory.mkdir(parents=True, exist_ok=True)
     completed = 0
+    qualification_slug = _qualification_slug(queue)
     for trial in queue["trials"]:
         trial_id = str(trial["trial_id"])
-        output = args.output_directory / f"subset_{trial_id}.json"
+        output = args.output_directory / (
+            f"subset_{qualification_slug}_{trial_id}.json"
+        )
         result = replay(
             trajectory=trajectory,
             model=args.model,
