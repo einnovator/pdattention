@@ -72,10 +72,13 @@ actions. Model-visible H1/H2 receipts require an explicit tokenizer-based size
 gate: short receipts fail closed to canonical bytes, while oversized synthetic
 controls compress observations by more than 95\% and retain valid terminal
 actions. These receipt rows qualify the mechanism, not autonomous task utility.
-The first repeated matched-recency pilot resolves 2/2 submissions while two new
-FULL controls resolve 1/2 and matched recency saves 6.05\% of pooled input
-tokens. This is not yet a paired policy effect: host-dependent ordering of the
-first search result changes the second action before selection activates.
+Repeated same-host qualification on three task identities gives FULL 5/6 and
+matched-recency 4/6 primary resolutions. Matched recency saves 6.35\% of its
+pooled materialized history tokens, but its 66.7\% task-macro resolution is
+below the predeclared 80\% gate. On one task both treatment repeats make the
+intended source edit and then submit a source excerpt rather than a unified
+diff. Failure-aware accounting prevents those shorter failed runs from being
+reported as efficiency gains.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.
@@ -1682,56 +1685,86 @@ The digest-bound trial ledgers, queues, reductions, and per-arm requests are
 under \path{docs/papers/shared/results/paper8_5_agent_memory/}, in
 \path{oracle_headroom_v1} and \path{retirement_factorial_v1}.
 
-\subsection{Repeated matched-recency pilot and pairing audit}
+\subsection{Repeated matched-recency qualification and stop decision}
 
-We next executed the only nondominated frozen candidate, matched token-tail at
-a nominal 95\% ceiling, twice on \texttt{django\_\_django-15277}. Two new FULL
-controls use the same model digest, tokenizer, decoding fields, agent version,
-SWE-bench image, and instrumentation commit. Table~\ref{tab:tail95-repeat}
-reports arm-level observations. Mandatory system, task, and current-turn state
-may legitimately exceed the fractional ceiling; every such overflow is
-reported separately and no current causal group is retired to force an
-artificial 95\% number.
+We next executed the only nondominated frozen candidate, matched token-tail
+with two protected head turns, four protected tail turns, and a nominal 95\%
+ceiling. An initial cross-host pilot was not pairable: the first
+\texttt{find|grep|head} observation returned identical paths in different
+filesystem order, and commands diverged before selection activated. We
+therefore backfilled FULL controls on the same agent/Docker host as each
+treatment and retained the cross-host rows only as audit evidence.
+
+Table~\ref{tab:tail95-repeat} reports the qualified cohort. Each task has two
+FULL and two treatment runs under the same model digest, tokenizer, generation
+fields, agent behavior, image, and host. Mandatory system, task, and incomplete
+current-turn state may exceed the fractional ceiling. Whole-record packing can
+also round below it: the realized treatment savings range from 4.86\% to
+10.17\%, rather than being forced to exactly 5\%.
 
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{First repeated autonomous matched-recency point. Savings pool
-message-content tokens within each arm. These rows are not a causal pair
-because the agent hosts produce differently ordered first search results.}
+\caption{Repeated same-host autonomous qualification. Calls list the two
+runs. Saving pools message-content tokens within the treatment for each task.}
 \label{tab:tail95-repeat}
 \begin{tabular}{lrrrrr}
 \toprule
-Arm & Primary & Calls & Full tok. & Selected tok. & Saving \\
+Task & FULL primary & Tail primary & FULL calls & Tail calls & Tail save \\
 \midrule
-FULL-A & 0/1 & 29 & 154,173 & 154,173 & 0.00\% \\
-FULL-B & 1/1 & 29 & 149,039 & 149,039 & 0.00\% \\
-Matched tail 95-A & 1/1 & 31 & 160,078 & 150,339 & 6.08\% \\
-Matched tail 95-B & 1/1 & 15 & 50,612 & 47,596 & 5.96\% \\
+\texttt{django-15277} & 1/2 & 2/2 & 40, 27 & 31, 15 & 6.05\% \\
+\texttt{pytest-7982} & 2/2 & 2/2 & 21, 23 & 12, 17 & 10.17\% \\
+\texttt{scikit-learn-13135} & 2/2 & 0/2 & 20, 23 & 19, 19 & 4.86\% \\
+\midrule
+Three-task aggregate & 5/6 & 4/6 & 25.67 mean & 18.83 mean & 6.35\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The aggregate arm-level result is 1/2 primary resolution for FULL and 2/2 for
-matched recency, with 6.05\% pooled token saving and mean calls of 29 versus
-23. This small point is encouraging but cannot establish either an accuracy
-gain or a call-count gain. More importantly, it exposed a pairing defect.
-The first action is identical in all four runs, but its
-\texttt{find|grep|head} observation contains the same five paths in a different
-order on the two Docker hosts. The cross-arm command first diverges at call 2,
-whereas matched recency first changes the materialized request at call 3.
-Selection therefore cannot have caused the initial divergence. The current
-rows remain valid repeated arm observations, but the next causal comparison
-must run FULL and treatment on the same host/container stack or replay an
-identical frozen observation stream.
+The policy passes the 2\% yield gate but fails the predeclared quality gate:
+task-macro primary resolution is 83.3\% for FULL and 66.7\% for treatment,
+below the required 80\%. It is therefore stopped before more tasks, lower
+budgets, model families, or agents. The treatment's lower mean call count is
+diagnostic rather than a causal efficiency claim. Even the FULL repeats first
+diverge at calls 2, 4, and 3 on the three tasks, so temperature zero does not
+make an autonomous trajectory deterministic. Failure-aware paired accounting
+charges a failed treatment at least the corresponding FULL workload; the two
+short Task 5 failures consequently earn zero paired saving rather than a false
+efficiency benefit.
 
-This pilot also produced two harness corrections. First, a small newest turn
-that cannot be safely compacted now produces an explicit mandatory-budget
-overflow instead of a selection error. Second, if SWE-bench persists the
-exact per-instance report and later fails during Docker aggregate cleanup, the
-runner recovers the outcome from that report only; it never infers success from
-progress-bar text. The raw failures, reconstructed official results, traces,
-and reductions are in \path{autonomous_nondominated_tail95_v1}.
+\begin{figure}[H]
+\centering
+\includegraphics[width=.72\linewidth]{../shared/results/paper8_5_agent_memory/autonomous_nondominated_tail95_v1/qualified_three_task_curves/autonomous_saving_vs_accuracy.pdf}
+\caption{The first autonomous accuracy--saving point. Error bars are
+task-clustered and necessarily wide for three identities. The tail policy is
+not promoted because its point lies below the predeclared quality gate.}
+\label{fig:tail95-qualified-curve}
+\end{figure}
+
+The Task 5 failure is mechanistically informative. Both treatment repeats are
+exact 19-call reproductions. They make the intended one-line source edit and
+inspect its unified diff, but the completion command emits a nearby source
+excerpt after the submission sentinel. The official harness therefore records
+\texttt{Patch Apply Failed}. The original task and submission instructions are
+still pinned, so this is not simple task-statement loss. A frozen terminal
+counterfactual also restores the complete history and reproduces exactly the
+same invalid command; no omitted terminal bundle can repair the already-formed
+path. The first repeat-qualified materialization effect occurs at decision 3,
+where shortening a 5,757-token source observation to 5,468 tokens changes the
+exact reproduction command but preserves its diagnostic intent. Causal
+attribution of the later submission failure therefore requires a
+snapshot-restored rollout from that frontier, not terminal add-back. It also
+motivates a task-aware progress spine that protects mutation, verification,
+and submission state. The ungraded workspace is not counted as successful
+auxiliary evidence.
+
+The campaign also tightened the evidence machinery. Exact pre-report patch
+failures and empty submissions are now definitive primary failures; a resident
+grader image is reused only after architecture inspection; and sparse request
+indices are rejected. One paused FULL solve has indices 1--11 and 13--22 and
+is preserved but excluded rather than silently renumbered. The raw runs,
+qualification decision, curves, and reductions are in
+\path{autonomous_nondominated_tail95_v1}.
 
 \section{Transfer}
 
@@ -1838,11 +1871,12 @@ also showing that safe removals are non-additive and non-monotone. In the
 deployable frozen factorial, H1+H3 whole-record retirement misses its 2\% mean
 yield gate and payload receipts are low-yield or harmful. A matched recency arm
 preserves all three semantic transitions at 3.0\% mean saving and is the only
-candidate advanced to repeated autonomous qualification. Its first two
-autonomous runs both resolve while saving 6.05\% of pooled input tokens, but
-cross-host search-output ordering causes divergence before policy activation;
-the result is therefore an arm-level pilot rather than a paired causal effect.
-Selector
+candidate advanced to repeated autonomous qualification. In three same-host
+task identities it saves 6.35\% of pooled treatment-history tokens, but primary
+resolution falls from 5/6 FULL runs to 4/6 treatment runs. Its 66.7\%
+task-macro resolution misses the 80\% gate. The repeated failure retains the
+intended source edit but submits a non-patch excerpt, motivating explicit
+progress/submission state rather than deeper blind recency. Selector
 proliferation, native-K/V transfer, additional models, and additional harnesses
 wait for that task-success gate.
 

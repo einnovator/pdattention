@@ -35,3 +35,37 @@ raw evidence:
 pre-policy divergence audit. Each run directory contains the manifest,
 trajectory, per-request selection trace, instrumentation receipts, model patch,
 and official evidence available on the producing host.
+
+## Same-host repeated qualification
+
+The cross-host limitation above was resolved by adding contemporaneous FULL
+controls on the same agent/Docker host as each treatment. The qualified cohort
+contains three task identities and two runs per arm:
+
+| Task | FULL primary | FULL calls | Tail-95 primary | Tail-95 calls | Tail gross saving |
+|---|---:|---:|---:|---:|---:|
+| `django__django-15277` | 1/2 | 40, 27 | 2/2 | 31, 15 | 6.05% |
+| `pytest-dev__pytest-7982` | 2/2 | 21, 23 | 2/2 | 12, 17 | 10.17% |
+| `scikit-learn__scikit-learn-13135` | 2/2 | 20, 23 | 0/2 | 19, 19 | 4.86% |
+
+The pooled treatment saves 6.35% of its own cumulative materialized message
+tokens and reduces mean calls from 25.67 to 18.83. Primary task-macro
+resolution is 83.3% for FULL and 66.7% for tail-95. The treatment therefore
+passes the 2% yield gate but fails the predeclared 80% accuracy gate and is
+stopped. The large paired token reduction remains diagnostic because the FULL
+repeats are not exact trajectories; failure-aware accounting is used so a
+short failed run cannot appear efficient.
+
+Both scikit-learn treatment repeats are exact reproductions. They make the
+intended one-line source edit, but the completion command returns a source
+excerpt rather than the required unified diff. SWE-bench consequently reports
+`Patch Apply Failed`. This is a submission/progress-spine failure, not evidence
+that the code edit was wrong. The workspace-capability outcome remains unknown
+because the auxiliary checkpoint was unavailable; it does not replace the
+primary 0/2 result.
+
+`task05-full-a-contaminated` preserves an official FULL solve that is excluded
+from reduction: pausing it behind another model stream left request indexes
+1--11 and 13--22. The reducer correctly rejected the sparse trace. A clean
+FULL-C was run instead. `qualification_decision.json` records the gate, while
+`qualified_three_task_curves` contains the twelve-run reduction and plots.

@@ -1,0 +1,220 @@
+{
+  "schema_version": 2,
+  "study": "paper8_5_agent_memory_frozen_replay",
+  "evidence_class": "next_action_not_autonomous_task_quality",
+  "instance_id": "scikit-learn__scikit-learn-13135",
+  "model": "qwen3-coder:30b",
+  "tokenizer": "/Users/admin.jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+  "generation": {
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "unspecified_parameters_use_endpoint_defaults": true
+  },
+  "comparison_reference": "contemporaneous_full_replay",
+  "reference_replay_digest": "c764835deff5fcfa2b57f50ab5d01f8669173c4dca0b462abf9380a0351eb4f6",
+  "policy": "matched_token_tail",
+  "head_turns": 1,
+  "tail_turns": 2,
+  "budget_fraction": 1.0,
+  "matched_budget_source_digest": "441f181eadfc6d23ef6ef1d1e8f096316afc3450b9bb2a75e2dc85235b79f959",
+  "materialization_mode": "matched_token_tail",
+  "run_configuration": {
+    "contract": "paper8_5_frozen_replay_resume_v1",
+    "trajectory_digest": "6aab3def7e4cd1c3e04e28040b18d05fcae663d1ae1d1e3b56e414f365781212",
+    "model": "qwen3-coder:30b",
+    "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+    "policy": "matched_token_tail",
+    "head_turns": 1,
+    "tail_turns": 2,
+    "budget_fraction": 1.0,
+    "tokenizer": "/Users/admin.jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+    "materialization_mode": "matched_token_tail",
+    "materialization_threshold_tokens": 512,
+    "max_decisions": 1,
+    "min_decision": 3,
+    "temperature": 0,
+    "seed": 0,
+    "max_output_tokens": 1024,
+    "timeout": 300,
+    "invalid_generation_policy": "record_and_stop",
+    "whole_turn_budget_interpretation": "strict_materialized_token_ceiling",
+    "matched_budget_field": "materialized_tokens",
+    "reference_replay_digest": "c764835deff5fcfa2b57f50ab5d01f8669173c4dca0b462abf9380a0351eb4f6",
+    "matched_budget_source_digest": "441f181eadfc6d23ef6ef1d1e8f096316afc3450b9bb2a75e2dc85235b79f959",
+    "negative_selection": null
+  },
+  "run_configuration_digest": "d1153289ab0e86b57858df41c9c5a3713996734def2967810e4117e9bbebaccf",
+  "attempted_decisions": 1,
+  "completed_decisions": 1,
+  "exact_command_decisions": 1,
+  "reference_command_decisions": 1,
+  "exact_command_rate": 1.0,
+  "first_command_divergence": null,
+  "terminal_failure": null,
+  "rows": [
+    {
+      "decision": 3,
+      "decision_status": "completed",
+      "failure_reason": null,
+      "action_valid": true,
+      "action_validation_reason": null,
+      "trajectory_message_index": 6,
+      "comparison_reference": "contemporaneous_full_replay",
+      "historical_reference_content_sha256": "c4c6c7028a74816973f30efd07c18e79109a58a3209a7178c580180f2718227a",
+      "reference_content_sha256": "c4c6c7028a74816973f30efd07c18e79109a58a3209a7178c580180f2718227a",
+      "generated_content_sha256": "c4c6c7028a74816973f30efd07c18e79109a58a3209a7178c580180f2718227a",
+      "generated_content": "Looking at the code, I can see the issue in the `fit` method of KBinsDiscretizer. When using the 'kmeans' strategy, the centers from KMeans clustering are not guaranteed to be in sorted order, but `np.digitize` requires bin edges to be monotonically increasing or decreasing.\n\nLet me create a reproduction script first to confirm the issue:\n```mswea_bash_command\npython -c \"\nimport numpy as np\nfrom sklearn.preprocessing import KBinsDiscretizer\n\nX = np.array([0, 0.5, 2, 3, 9, 10]).reshape(-1, 1)\nprint('Data:', X.ravel())\n\n# with 5 bins - this should fail according to the issue\ntry:\n    est = KBinsDiscretizer(n_bins=5, strategy='kmeans', encode='ordinal')\n    Xt = est.fit_transform(X)\n    print('Success! Transformed data:', Xt.ravel())\nexcept Exception as e:\n    print('Error:', str(e))\n    print('Bin edges:', est.bin_edges_[0])\n\"\n```",
+      "exact_content": true,
+      "reference_command": "python -c \"\nimport numpy as np\nfrom sklearn.preprocessing import KBinsDiscretizer\n\nX = np.array([0, 0.5, 2, 3, 9, 10]).reshape(-1, 1)\nprint('Data:', X.ravel())\n\n# with 5 bins - this should fail according to the issue\ntry:\n    est = KBinsDiscretizer(n_bins=5, strategy='kmeans', encode='ordinal')\n    Xt = est.fit_transform(X)\n    print('Success! Transformed data:', Xt.ravel())\nexcept Exception as e:\n    print('Error:', str(e))\n    print('Bin edges:', est.bin_edges_[0])\n\"",
+      "generated_command": "python -c \"\nimport numpy as np\nfrom sklearn.preprocessing import KBinsDiscretizer\n\nX = np.array([0, 0.5, 2, 3, 9, 10]).reshape(-1, 1)\nprint('Data:', X.ravel())\n\n# with 5 bins - this should fail according to the issue\ntry:\n    est = KBinsDiscretizer(n_bins=5, strategy='kmeans', encode='ordinal')\n    Xt = est.fit_transform(X)\n    print('Success! Transformed data:', Xt.ravel())\nexcept Exception as e:\n    print('Error:', str(e))\n    print('Bin edges:', est.bin_edges_[0])\n\"",
+      "exact_command": true,
+      "full_history_tokens": 5757,
+      "selected_logical_tokens": 5567,
+      "selected_whole_record_tokens": 5567,
+      "materialized_tokens": 5468,
+      "requested_budget_tokens": 5468,
+      "materialized_token_ceiling": 5468,
+      "realized_record_retention_fraction": 0.966996699669967,
+      "realized_logical_retention_fraction": 0.966996699669967,
+      "realized_materialized_retention_fraction": 0.949800243182213,
+      "mandatory_overflow_tokens": 0,
+      "whole_turn_budget_overshoot_tokens": 99,
+      "whole_turn_budget_undershoot_tokens": 0,
+      "materialized_budget_overshoot_tokens": 0,
+      "materialized_budget_unused_tokens": 0,
+      "selected_record_ids": [
+        "m0",
+        "m1",
+        "m4",
+        "m5"
+      ],
+      "selection_reasons": [
+        [
+          "m0",
+          "immutable_prompt"
+        ],
+        [
+          "m1",
+          "immutable_prompt"
+        ],
+        [
+          "m4",
+          "token_tail_boundary_whole_record"
+        ],
+        [
+          "m5",
+          "token_tail_boundary_tool_observation"
+        ]
+      ],
+      "negative_realization": "drop",
+      "negative_candidate_group_count": 0,
+      "negative_candidate_record_count": 0,
+      "negative_candidate_tokens": 0,
+      "excluded_group_count": 0,
+      "excluded_record_count": 0,
+      "excluded_tokens": 0,
+      "receipt_count": 0,
+      "receipt_source_observation_tokens": 0,
+      "receipt_tokens": 0,
+      "receipt_token_saving": 0,
+      "receipt_retained_action_tokens": 0,
+      "receipt_fail_closed_group_ids": [],
+      "model_visible_receipts": [],
+      "exclusions": [],
+      "generated_reacquired_excluded_resource_ids": [],
+      "full_reference_reacquired_excluded_resource_ids": [],
+      "policy_excess_reacquired_resource_ids": [],
+      "false_exclusion_immediate_reacquisition_proxy": false,
+      "materialized_records": [
+        {
+          "record_id": "m0",
+          "mode": "whole_record",
+          "original_tokens": 111,
+          "materialized_tokens": 111,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m1",
+          "mode": "whole_record",
+          "original_tokens": 2856,
+          "materialized_tokens": 2856,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m4",
+          "mode": "whole_record",
+          "original_tokens": 74,
+          "materialized_tokens": 74,
+          "selected_line_spans": [],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 0
+        },
+        {
+          "record_id": "m5",
+          "mode": "matched_token_tail",
+          "original_tokens": 2526,
+          "materialized_tokens": 2427,
+          "selected_line_spans": [
+            [
+              7,
+              292
+            ]
+          ],
+          "token_fallback_used": false,
+          "omitted_prefix_lines": 7
+        }
+      ],
+      "plan_digest": "f9b3100fceca81914ae6917be8ee06b9ccfe2d57c9f1306e9b1b58615195ad67",
+      "usage": {
+        "prompt_tokens": 5491,
+        "prompt_tokens_details": {
+          "cached_tokens": 5490
+        },
+        "completion_tokens": 230,
+        "total_tokens": 5721
+      },
+      "response_diagnostics": {
+        "response_id": "chatcmpl-8",
+        "response_model": "qwen3-coder:30b",
+        "response_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "system_fingerprint",
+          "usage"
+        ],
+        "choice_keys": [
+          "finish_reason",
+          "index",
+          "message"
+        ],
+        "finish_reason": "stop",
+        "message_keys": [
+          "content",
+          "role"
+        ],
+        "message_role": "assistant",
+        "message_content_type": "str",
+        "message_content_chars": 840,
+        "message_content_sha256": "c4c6c7028a74816973f30efd07c18e79109a58a3209a7178c580180f2718227a",
+        "tool_call_count": 0,
+        "function_call_present": false,
+        "usage": {
+          "prompt_tokens": 5491,
+          "prompt_tokens_details": {
+            "cached_tokens": 5490
+          },
+          "completion_tokens": 230,
+          "total_tokens": 5721
+        }
+      }
+    }
+  ]
+}

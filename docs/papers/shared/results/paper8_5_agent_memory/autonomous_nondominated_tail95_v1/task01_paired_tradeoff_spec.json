@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_task01_same_host_matched_tail95_repeats",
+  "frozen_comparisons": [],
+  "autonomous_runs": [
+    {"name": "task01-full-a", "path": "task01-paired-full-a"},
+    {"name": "task01-full-b", "path": "task01-paired-full-b"},
+    {"name": "task01-tail95-a", "path": "task01-run-a-ollama-fix2"},
+    {"name": "task01-tail95-b", "path": "task01-run-b-ollama"}
+  ],
+  "autonomous_pairs": [
+    {
+      "candidate": "task01-full-a",
+      "baseline": "task01-full-b",
+      "pairing_reason": "same-host repeat-control stochastic trajectory envelope"
+    },
+    {
+      "candidate": "task01-tail95-a",
+      "baseline": "task01-full-b",
+      "allow_legacy_pair": true,
+      "pairing_reason": "the FULL controls were backfilled on the same agent host after the original tail campaign; repository revision and campaign pair labels differ, while the locked task, model, tokenizer, generation, agent behavior, Docker platform, and environment image match"
+    },
+    {
+      "candidate": "task01-tail95-b",
+      "baseline": "task01-full-b",
+      "allow_legacy_pair": true,
+      "pairing_reason": "the FULL controls were backfilled on the same agent host after the original tail campaign; repository revision and campaign pair labels differ, while the locked task, model, tokenizer, generation, agent behavior, Docker platform, and environment image match"
+    }
+  ],
+  "adaptive_pruning": {}
+}

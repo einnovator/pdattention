@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_task05_terminal_failure_oracle_v1",
+  "task_id": "scikit-learn__scikit-learn-13135",
+  "model": "qwen3-coder:30b",
+  "temperature": 0,
+  "frozen_decisions": 19,
+  "full_vs_historical_exact_commands": 7,
+  "full_vs_historical_exact_command_rate": 0.3684210526315789,
+  "matched_tail_vs_contemporaneous_full_exact_commands": 6,
+  "matched_tail_vs_contemporaneous_full_exact_command_rate": 0.3157894736842105,
+  "first_repeat_qualified_materialization_effect": {
+    "decision": 3,
+    "full_tokens": 5757,
+    "matched_tail_materialized_tokens": 5468,
+    "local_token_reduction_fraction": 0.05019975681778704,
+    "full_repeat_exact": true,
+    "matched_tail_repeat_exact": true,
+    "exact_command_equal_across_materializations": false,
+    "semantic_interpretation": "Both commands attempt the same local k-means reproduction; the shorter command omits secondary diagnostics."
+  },
+  "terminal_decision": {
+    "decision": 19,
+    "full_tokens": 12183,
+    "matched_tail_materialized_tokens": 11572,
+    "exact_command_equal_across_materializations": true,
+    "exact_historical_failure_reproduced_under_full": true,
+    "exact_historical_failure_reproduced_under_matched_tail": true,
+    "failure": "The completion sentinel is followed by a source excerpt rather than a unified diff."
+  },
+  "conclusion": "No omitted terminal bundle or payload explains the submission failure: the complete frozen history reproduces it exactly. The earliest repeat-qualified payload intervention changes decision 3, but causal attribution of the later failure requires a snapshot-restored rollout from that frontier."
+}

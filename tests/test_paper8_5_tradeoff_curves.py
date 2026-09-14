@@ -89,6 +89,29 @@ def test_autonomous_pair_reports_gross_net_calls_and_divergence(tmp_path):
     assert candidate["official_outcome"] == "resolved"
 
 
+def test_explicit_legacy_pair_can_bind_backfilled_control_pair_ids(tmp_path):
+    full = load_autonomous_run(_run(
+        tmp_path, "full", policy="full", calls=2, tokens=100,
+        resolved=True, pair_id="backfilled-control",
+    ))
+    candidate = load_autonomous_run(_run(
+        tmp_path, "candidate", policy="matched_token_tail", calls=2,
+        tokens=90, resolved=True, pair_id="original-treatment",
+    ))
+
+    pair_autonomous(
+        candidate,
+        full,
+        allow_legacy_pair=True,
+        pairing_reason="same immutable task and execution identity; control backfill",
+    )
+
+    assert candidate["legacy_pair_id_mismatch"] == {
+        "candidate": "original-treatment",
+        "baseline": "backfilled-control",
+    }
+
+
 def test_build_accepts_autonomous_only_curve_spec(tmp_path):
     full_a = _run(
         tmp_path, "full-a", policy="full", calls=2, tokens=100,
@@ -396,6 +419,27 @@ def test_strategy_identity_separates_memory_and_materialization_parameters():
         variant[key] = value
         variants.append(_strategy_id(variant))
     assert len(set(variants + [_strategy_id(base)])) == len(variants) + 1
+
+
+def test_strategy_identity_ignores_inert_heuristic_knobs_for_recency():
+    base = {
+        "policy": "matched_token_tail",
+        "materialization_mode": "whole_record",
+        "budget_fraction": .95,
+        "protected_head_turns": 2,
+        "protected_tail_turns": 4,
+        "search_delay_turns": 0,
+        "write_delay_turns": 1,
+        "same_span_reads_to_keep": 1,
+        "working_set_resources": 4,
+    }
+    changed = {
+        **base,
+        "search_delay_turns": 8,
+        "same_span_reads_to_keep": 2,
+    }
+
+    assert _strategy_id(base) == _strategy_id(changed)
 
 
 def test_autonomous_summary_macro_averages_tasks_not_repeat_runs():

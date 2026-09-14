@@ -96,11 +96,29 @@ def _strategy_id(selection: Mapping[str, Any]) -> str:
     # every policy/materialization switch. This prevents newly added options
     # from silently collapsing into an older curve point.
     if policy != "full":
-        excluded = {"expected_model", "task_id", "tokenizer_identity"}
+        parameter_fields = {
+            "Kf": "search_delay_turns",
+            "Kw": "write_delay_turns",
+            "Kr": "same_span_reads_to_keep",
+            "Kx": "working_set_resources",
+        }
+        excluded = {
+            "expected_model", "task_id", "tokenizer_identity",
+            *parameter_fields.values(),
+        }
         coordinate = {
             str(key): value for key, value in selection.items()
             if key not in excluded
         }
+        # Heuristic thresholds are inert for policies that never consult the
+        # corresponding heuristic.  Keep them in the digest only when they
+        # are semantic coordinates of the selected policy; otherwise two
+        # behaviorally identical recency arms would be split merely because
+        # their harness defaults were declared at different times.
+        coordinate.update({
+            parameter_fields[key]: selection.get(parameter_fields[key])
+            for key in relevant
+        })
         encoded = json.dumps(
             coordinate, sort_keys=True, separators=(",", ":"), default=str
         ).encode()
@@ -450,11 +468,12 @@ def pair_autonomous(
 ) -> None:
     if candidate["task_id"] != baseline["task_id"] or candidate["model"] != baseline["model"]:
         raise ValueError("paired autonomous runs must share task and model")
-    if (
+    pair_id_mismatch = (
         candidate.get("pair_id") is not None
         and baseline.get("pair_id") is not None
         and candidate["pair_id"] != baseline["pair_id"]
-    ):
+    )
+    if pair_id_mismatch and not allow_legacy_pair:
         raise ValueError("paired autonomous runs declare different pair IDs")
     if not allow_legacy_pair and (
         candidate.get("pair_id") is None or baseline.get("pair_id") is None
@@ -485,6 +504,13 @@ def pair_autonomous(
     )
     candidate["pairing_reason"] = pairing_reason
     candidate["legacy_pairing_identity_mismatches"] = identity_mismatches
+    candidate["legacy_pair_id_mismatch"] = (
+        {
+            "candidate": candidate.get("pair_id"),
+            "baseline": baseline.get("pair_id"),
+        }
+        if pair_id_mismatch else None
+    )
     candidate["baseline_official_resolved"] = baseline["official_resolved"]
     candidate["baseline_official_error"] = baseline.get("official_error")
     candidate["baseline_official_score"] = baseline.get("official_score")

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_qualified_three_task_matched_tail95",
+  "frozen_comparisons": [],
+  "autonomous_runs": [
+    {"name": "t1-full-a", "path": "task01-paired-full-a"},
+    {"name": "t1-full-b", "path": "task01-paired-full-b"},
+    {"name": "t1-tail-a", "path": "task01-run-a-ollama-fix2"},
+    {"name": "t1-tail-b", "path": "task01-run-b-ollama"},
+    {"name": "t2-full-a", "path": "task02-full-a"},
+    {"name": "t2-full-b", "path": "task02-full-b"},
+    {"name": "t2-tail-a", "path": "task02-matched-tail95-a"},
+    {"name": "t2-tail-b", "path": "task02-matched-tail95-b"},
+    {"name": "t5-full-b", "path": "task05-full-b"},
+    {"name": "t5-full-c", "path": "task05-full-c"},
+    {"name": "t5-tail-a", "path": "task05-matched-tail95-a"},
+    {"name": "t5-tail-b", "path": "task05-matched-tail95-b"}
+  ],
+  "autonomous_pairs": [
+    {"candidate": "t1-full-a", "baseline": "t1-full-b", "pairing_reason": "same-host repeat-control stochastic trajectory envelope"},
+    {"candidate": "t1-tail-a", "baseline": "t1-full-b", "allow_legacy_pair": true, "pairing_reason": "same-host backfilled FULL control; only repository revision and campaign pair label differ, with all locked execution identities matching"},
+    {"candidate": "t1-tail-b", "baseline": "t1-full-b", "allow_legacy_pair": true, "pairing_reason": "same-host backfilled FULL control; only repository revision and campaign pair label differ, with all locked execution identities matching"},
+    {"candidate": "t2-full-b", "baseline": "t2-full-a", "pairing_reason": "same-host repeat-control stochastic trajectory envelope"},
+    {"candidate": "t2-tail-a", "baseline": "t2-full-a", "allow_legacy_pair": true, "pairing_reason": "repository revision differs only because result-classification and reporting code changed; all locked execution identities match"},
+    {"candidate": "t2-tail-b", "baseline": "t2-full-a", "allow_legacy_pair": true, "pairing_reason": "repository revision differs only because result-classification and reporting code changed; all locked execution identities match"},
+    {"candidate": "t5-full-c", "baseline": "t5-full-b", "allow_legacy_pair": true, "pairing_reason": "repository revision differs only because result-classification, resident-image preflight, and reporting code changed; FULL remains exact pass-through"},
+    {"candidate": "t5-tail-a", "baseline": "t5-full-b", "pairing_reason": "same-host policy comparison against an admissible clean FULL control"},
+    {"candidate": "t5-tail-b", "baseline": "t5-full-b", "pairing_reason": "same-host policy comparison against an admissible clean FULL control"}
+  ],
+  "adaptive_pruning": {}
+}

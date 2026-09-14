@@ -1,0 +1,14 @@
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index f30b5233462732af49568e314dff8490f4188511..ceda4f136618645194a47b1ea7882649158e519b 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -1012,7 +1012,8 @@ class CharField(Field):
+         self.db_collation = db_collation
+         self.validators.append(validators.MaxLengthValidator(self.max_length))
+ 
+-    def check(self, **kwargs):
++        if self.max_length is not None:
++            self.validators.append(validators.MaxLengthValidator(self.max_length))
+         databases = kwargs.get('databases') or []
+         return [
+             *super().check(**kwargs),

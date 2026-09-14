@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_matched_tail95_repeated_autonomous_qualification",
+  "policy": "matched_token_tail;H=2;T=4;B=0.95",
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tasks": [
+    {
+      "instance_id": "django__django-15277",
+      "full_primary_resolved": 1,
+      "full_runs": 2,
+      "full_calls": [40, 27],
+      "candidate_primary_resolved": 2,
+      "candidate_runs": 2,
+      "candidate_calls": [31, 15],
+      "candidate_workload_gross_saving_fraction": 0.06053918078693821
+    },
+    {
+      "instance_id": "pytest-dev__pytest-7982",
+      "full_primary_resolved": 2,
+      "full_runs": 2,
+      "full_calls": [21, 23],
+      "candidate_primary_resolved": 2,
+      "candidate_runs": 2,
+      "candidate_calls": [12, 17],
+      "candidate_workload_gross_saving_fraction": 0.10167434399642272
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-13135",
+      "full_primary_resolved": 2,
+      "full_runs": 2,
+      "full_calls": [20, 23],
+      "candidate_primary_resolved": 0,
+      "candidate_runs": 2,
+      "candidate_calls": [19, 19],
+      "candidate_workload_gross_saving_fraction": 0.04863853408514873,
+      "candidate_failure_class": "patch_apply_failed",
+      "failure_mechanism": "both runs made the intended source edit but submitted a source excerpt rather than a unified diff"
+    }
+  ],
+  "aggregate": {
+    "full_primary_resolved_runs": 5,
+    "full_runs": 6,
+    "full_macro_task_resolution": 0.8333333333333334,
+    "full_mean_calls": 25.666666666666668,
+    "candidate_primary_resolved_runs": 4,
+    "candidate_runs": 6,
+    "candidate_macro_task_resolution": 0.6666666666666666,
+    "candidate_mean_calls": 18.833333333333332,
+    "candidate_workload_gross_saving_fraction": 0.06350767250280487,
+    "candidate_macro_task_gross_saving_fraction": 0.07028401962283655,
+    "candidate_mean_failure_aware_paired_net_saving_fraction": 0.3379738954382874,
+    "candidate_mean_tool_call_delta": -3.8333333333333335
+  },
+  "predeclared_gates": {
+    "minimum_gross_saving_fraction": 0.02,
+    "saving_gate": "pass",
+    "minimum_task_resolution_after_three_tasks": 0.8,
+    "accuracy_gate": "stop",
+    "accuracy_gate_reason": "macro task resolution 0.6667 is below 0.8000",
+    "genuine_failed_candidate_runs": 2,
+    "distinct_failed_task_identities": 1
+  },
+  "decision": "stop_matched_tail95",
+  "interpretation": "The policy passes the yield gate but fails the primary-quality gate. Call-count and paired-token reductions are diagnostics under a stochastic FULL envelope, not causal speedup estimates. No additional tasks, agents, models, or lower retention levels are admitted for this policy.",
+  "excluded_control": {
+    "path": "task05-full-a-contaminated",
+    "reason": "pause/resume left an abandoned upstream request and sparse request indices 1-11,13-22; the official solve is retained as an audit artifact but excluded from paired reduction"
+  },
+  "curve_artifact": "qualified_three_task_curves/tradeoff_curves.json"
+}
