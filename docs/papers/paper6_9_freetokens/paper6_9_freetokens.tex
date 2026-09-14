@@ -24,9 +24,10 @@ reduced mean exposed transfer latency to 22.3 ms, versus 27.1 ms for expert-only
 and 53.8 ms for independent fair sharing. At 16 GiB/s it hid both transfers in
 all seeds. At 1 GiB/s, however, PRA-only scheduling was better (162.8 versus
 258.4 ms), falsifying any claim that simple coordination is universally best.
-The available RTX 5060 host lacks the CUDA 13 toolchain and sufficient host
-memory for the documented model set, so live E0/E2/E3 model qualification is
-precisely blocked. The reported result is a scheduler design and controlled
+The available RTX 5060 host now has a working PyTorch CUDA 13 runtime, but lacks
+CUDA 13 \texttt{nvcc} and practical host-memory headroom for the documented
+20B/30B-class model set, so live E0/E2/E3 model qualification remains precisely
+blocked. The reported result is a scheduler design and controlled
 frontier, not native FreeToken PRA execution. A separate M4 Pro MLX reference
 compares dense Qwen3-32B with Qwen3-30B-A3B: the MoE uses 26.4 rather than
 70.3 MiB of all-layer selected K/V and completes substantially faster, but is
@@ -104,11 +105,10 @@ owns that arbitration and lifecycle.
 \end{figure}
 
 \section{Implementation}
-\texttt{FreeTokenEngineAdapter} uses the server's OpenAI-compatible endpoint at
-E0. An explicit \texttt{FreeTokenNativeExecutor} may advertise E2 or E3; without
-it, the provider remains E0. Native semantic blocks live in
-\texttt{LogicalPRABlockStore}, never in an expert-ID namespace. Tests enforce
-this capability boundary.
+The engine adapter uses the server's OpenAI-compatible endpoint at E0. Only an
+explicit native executor may advertise E2 or E3; without one, the provider
+remains E0. Native semantic blocks stay in the PRA logical block store, never
+in an expert-ID namespace. Tests enforce this capability boundary.
 
 The dependency-light coordinator represents each miss as
 \begin{equation}
@@ -136,11 +136,12 @@ Bandwidth is swept over 0.5, 1, 2, 4, 8, and 16 GiB/s. Each seed uses identical
 demands under every policy. The run was executed on Windows with an RTX 5060
 Laptop GPU (8,151 MiB) and driver 592.19; the calculation itself is CPU-side.
 
-The host has 12 GiB system memory, no CUDA 13 \texttt{nvcc}, and cannot satisfy
-the documented practical model configurations, which begin with models such as
-20B/30B-class MoE systems. Installing a partial stack would not make a valid
-live-engine result. We therefore mark live E0, E2, and E3 as blocked on this
-host rather than using a mock model under the FreeToken name.
+A 2026-09-08 re-audit measures 25,124,052,992 bytes (23.4 GiB) system memory,
+PyTorch 2.13.0 with a working CUDA 13.0 runtime, and no CUDA 13 \texttt{nvcc}.
+The documented practical configurations begin with 20B/30B-class MoE systems;
+23.4 GiB does not leave safe headroom for their CPU expert pool, shards, OS, and
+runtime. We therefore keep live E0, E2, and E3 blocked rather than use a mock
+model under the FreeToken name.
 
 \section{Controlled Results}
 \begin{table}[t]
@@ -240,7 +241,8 @@ No \emph{FreeToken} model generation, physical PCIe trace, expert hit trace, or
 native FreeToken attention path is measured here. The MLX reference isolates
 model architecture and cannot validate the scheduler. The synthetic demand
 distribution is a controlled instrument, not a workload proxy. The next iteration requires a
-CUDA-13-capable host with sufficient RAM for one documented model. It should
+CUDA-13 \texttt{nvcc}-capable build environment and more than 23.4 GiB of usable
+RAM for one documented model. It should
 first run FULL and frozen-selection E0, then add E2 with geometry and isolation
 controls, and finally inject the coordinator into the real scheduler. Fixed and
 oracle policies should precede any learned joint controller.
@@ -267,6 +269,7 @@ executable MLX runner is owned by \texttt{research/paper4-5-runtime} at commit
 \texttt{0f0ed60}; this branch does not duplicate that engine implementation.
 
 \begin{thebibliography}{9}
+\scriptsize
 \bibitem{freetoken} FlashML. \emph{FreeToken: Affordable LLM Inference on
 Constrained Machines}. 2026. \url{https://github.com/FlashML-org/FreeToken}
 \bibitem{freetokenpaper} FreeToken authors. \emph{FreeToken}. arXiv:2608.16157,
