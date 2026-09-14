@@ -61,6 +61,18 @@ def paired_point(
     }
 
 
+def persistent_full_controls_complete(
+    state: Mapping[str, Any], sequence_id: str, *, required_repeats: int = 2,
+) -> bool:
+    cells = state.get("cells") or {}
+    return all(
+        (cells.get(f"{sequence_id}__S01_persistent_full__r{repeat:02d}") or {}).get(
+            "status"
+        ) == "complete"
+        for repeat in range(1, required_repeats + 1)
+    )
+
+
 def recommend(state: Mapping[str, Any], sequence_id: str) -> dict[str, Any]:
     """Choose one next registered point, or return a terminal decision."""
 
@@ -123,10 +135,14 @@ def main() -> None:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--sequence-id", required=True)
     parser.add_argument("--config-only", action="store_true")
+    parser.add_argument("--controls-complete", action="store_true")
     args = parser.parse_args()
-    decision = recommend(
-        json.loads(args.state.read_text(encoding="utf-8")), args.sequence_id
-    )
+    state = json.loads(args.state.read_text(encoding="utf-8"))
+    if args.controls_complete:
+        complete = persistent_full_controls_complete(state, args.sequence_id)
+        print(json.dumps({"persistent_full_controls_complete": complete}))
+        raise SystemExit(0 if complete else 2)
+    decision = recommend(state, args.sequence_id)
     if args.config_only:
         if decision["decision"] != "run":
             raise SystemExit(2)

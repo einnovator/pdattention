@@ -1,4 +1,7 @@
-from experiments.paper8_5_agent_memory.adaptive_spine_bracket import recommend
+from experiments.paper8_5_agent_memory.adaptive_spine_bracket import (
+    persistent_full_controls_complete,
+    recommend,
+)
 
 
 def _episode(resolved: bool) -> dict:
@@ -50,3 +53,12 @@ def test_lost_success_is_charged_zero_and_retains_more() -> None:
     decision = recommend(_state(600, candidate_ok=False), "independent-n2-a")
     assert decision["strategy_config_id"] == "r6m2v2_tasks1"
     assert decision["parent_point"]["failure_aware_saving_vs_persistent_full"] == 0.0
+
+
+def test_both_persistent_full_repeats_are_required_before_bracketing() -> None:
+    state = _state()
+    assert not persistent_full_controls_complete(state, "independent-n2-a")
+    state["cells"]["independent-n2-a__S01_persistent_full__r02"] = {
+        "status": "complete"
+    }
+    assert persistent_full_controls_complete(state, "independent-n2-a")
