@@ -4,6 +4,9 @@ This directory is the canonical GitHub-facing publication index. The source and
 PDF links below are synchronized from the active research branches and validated
 together on `main`.
 
+See [PAPER_VERSION_AUDIT.md](PAPER_VERSION_AUDIT.md) for canonical branches,
+worktrees, audited commits, known conflicts, and the publication checklist.
+
 | Paper | Source | PDF |
 |---|---|---|
 | Position paper | [TeX](paper0_position/paper.tex) | [PDF](paper0_position/paper.pdf) |
