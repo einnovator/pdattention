@@ -426,6 +426,22 @@ The future action is used only after generation for scoring. Single-group
 survivors can seed predeclared pair removals or bounded beam search; oracle
 outcomes never enter deployable-policy accuracy curves.
 
+For a full leave-one-middle-bundle-out decision sweep, use the resumable
+`run_oracle_singletons.sh` driver. `PAPER85_LAST_GROUP` is the last unprotected
+middle turn index after applying the declared head and tail floors:
+
+```bash
+PAPER85_PYTHON=/qualified/bin/python \
+PAPER85_MODEL=/exact/model/snapshot \
+PAPER85_TOKENIZER=/exact/tokenizer/snapshot \
+PAPER85_BASE_URL=http://127.0.0.1:8092 \
+PAPER85_TRAJECTORY=/results/task/trajectory.json \
+PAPER85_REFERENCE=/results/task/full_a.json \
+PAPER85_DECISION=24 PAPER85_LAST_GROUP=20 \
+PAPER85_OUTPUT=/results/task/decision_24 \
+  sh experiments/paper8_5_agent_memory/run_oracle_singletons.sh
+```
+
 ### Recordizer reliability audit
 
 Prepare a blinded, stratified worksheet before crediting semantic policies to
