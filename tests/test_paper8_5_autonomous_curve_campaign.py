@@ -145,6 +145,30 @@ def test_official_report_classifies_patch_apply_failure(tmp_path):
     assert result["failure_class"] == "patch_apply_failed"
 
 
+def test_official_report_recovers_exact_pre_report_patch_apply_failure(tmp_path):
+    grader_log = tmp_path / "grader.log"
+    grader_log.write_text(
+        "task: >>>>> Patch Apply Failed:\n"
+        "patch: **** Only garbage was found in the patch input.\n",
+        encoding="utf-8",
+    )
+
+    result = _official_report(
+        tmp_path, "run", "task", grader_log=grader_log,
+    )
+
+    assert result == {
+        "official_grader": True,
+        "instance_id": "task",
+        "resolved": False,
+        "score": 0.0,
+        "error": True,
+        "failure_class": "patch_apply_failed",
+        "raw_report": str(grader_log),
+        "raw_report_kind": "per_instance_failure_log",
+    }
+
+
 def test_adaptive_gate_stops_low_yield_and_low_accuracy():
     thresholds = {
         "stop_after_failures": 5,

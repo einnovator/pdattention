@@ -430,6 +430,28 @@ def _official_report(
             )
         )
         if len(instance_matches) != 1:
+            grader_text = (
+                grader_log.read_text(encoding="utf-8", errors="replace")
+                if grader_log is not None and grader_log.is_file() else ""
+            )
+            # A malformed submission can fail before SWE-bench writes either
+            # an aggregate or per-instance report.  This line is emitted by
+            # the locked instance worker itself, so it is exact task evidence
+            # rather than a progress-bar inference.  Count the attempt as an
+            # unresolved submission-protocol failure instead of losing it as
+            # an indeterminate grader error.
+            patch_apply_marker = f"{instance_id}: >>>>> Patch Apply Failed:"
+            if patch_apply_marker in grader_text:
+                return {
+                    "official_grader": True,
+                    "instance_id": instance_id,
+                    "resolved": False,
+                    "score": 0.0,
+                    "error": True,
+                    "failure_class": "patch_apply_failed",
+                    "raw_report": str(grader_log),
+                    "raw_report_kind": "per_instance_failure_log",
+                }
             raise RuntimeError(
                 f"expected one official report for {run_id}, found 0 aggregate "
                 f"and {len(instance_matches)} per-instance reports"
