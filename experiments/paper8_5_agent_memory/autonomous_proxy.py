@@ -451,6 +451,8 @@ def transform_autonomous_payload(
             config=MatchedTokenTailConfig(),
             count_tokens=count_tokens,
         )
+        mandatory_tokens = materialized.logical_plan.mandatory_tokens
+        mandatory_overflow_tokens = max(0, mandatory_tokens - budget_tokens)
         plan = replace(
             materialized.logical_plan,
             requested_budget_tokens=budget_tokens,

@@ -149,6 +149,32 @@ def test_matched_token_tail_preserves_standalone_format_error_recovery():
     assert result.trace["mandatory_budget_overflow_tokens"] > 0
 
 
+def test_matched_token_tail_preserves_complete_current_turn_as_mandatory_overflow():
+    source = _payload()
+    source["messages"] = source["messages"][:4]
+    source["messages"][3]["content"] = (
+        "<returncode>0</returncode>\n<output>"
+        + " ".join(f"small{index}" for index in range(100))
+        + "</output>"
+    )
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="matched_token_tail",
+            budget_fraction=.95,
+            expected_model="locked-model",
+            task_id="task-1",
+        ),
+    )
+
+    assert result.payload == source
+    assert result.trace["selected_message_count"] == 4
+    assert result.trace["exact_request_passthrough"] is True
+    assert result.trace["mandatory_budget_overflow_tokens"] > 0
+    assert result.trace["unexplained_materialized_budget_overflow_tokens"] == 0
+    assert result.trace["budget_satisfied"] is True
+
+
 def test_abstaining_negative_policy_is_an_exact_request_noop():
     source = _payload()
     result = transform_autonomous_payload(

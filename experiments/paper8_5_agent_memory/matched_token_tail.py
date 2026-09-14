@@ -210,10 +210,33 @@ def materialize_matched_token_tail(
             )
         break
 
-    if not mandatory_ids.issubset(selected_ids):
-        raise ValueError(
-            "matched token ceiling cannot preserve mandatory current causal group"
-        )
+    # A small current observation can be ineligible for boundary compaction,
+    # while a highly compressed boundary representation can also be impossible.
+    # The current causal group is nevertheless live control state.  Preserve it
+    # whole and classify the excess as mandatory overflow instead of rejecting
+    # the request or silently retiring the newest action/observation pair.
+    missing_mandatory = mandatory_ids - selected_ids
+    if missing_mandatory:
+        current_group = history.records[-1].causal_group_id
+        current_ids = {
+            row.record_id for row in history.records
+            if row.causal_group_id == current_group
+        }
+        if not missing_mandatory.issubset(current_ids):
+            raise ValueError("matched token tail lost immutable mandatory state")
+        for record_id in current_ids:
+            selected_ids.add(record_id)
+            reasons[record_id] = "current_causal_group_mandatory_overflow"
+            materialized_by_id[record_id] = _whole_record(
+                records[record_id], costs[record_id]
+            )
+        selected_turns += 1
+
+    mandatory_tokens = sum(
+        materialized_by_id[record_id].materialized_tokens
+        for record_id in mandatory_ids
+    )
+    effective_ceiling = max(max_materialized_tokens, mandatory_tokens)
 
     ordered_ids = tuple(
         record.record_id for record in history.records if record.record_id in selected_ids
@@ -230,7 +253,7 @@ def materialize_matched_token_tail(
         selected_tokens=logical_tokens,
         requested_budget_tokens=max_materialized_tokens,
         mandatory_tokens=mandatory_tokens,
-        mandatory_overflow_tokens=0,
+        mandatory_overflow_tokens=max(0, mandatory_tokens - max_materialized_tokens),
         head_turns=0,
         tail_turns=selected_turns,
         middle_candidate_turns=max(0, len(complete_turns) - selected_turns),
@@ -243,7 +266,7 @@ def materialize_matched_token_tail(
         full_selected_tokens=logical_tokens,
         materialized_tokens=sum(row.materialized_tokens for row in materialized_rows),
     )
-    if result.materialized_tokens > max_materialized_tokens:
+    if result.materialized_tokens > effective_ceiling:
         raise AssertionError("matched token-tail result exceeded its materialized ceiling")
     return result
 
