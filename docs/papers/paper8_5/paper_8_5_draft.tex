@@ -302,6 +302,28 @@ P_{\mathrm{progress}},
 \]
 where each component denotes the latest required records of that semantic role.
 
+\subsection{Persistent multi-issue sessions}
+
+A developer may solve several issues without opening a new conversation.  We
+therefore separate the issue from the session: an \emph{episode} is one issue
+and workspace lifetime, while a session is an ordered sequence of one or more
+episodes.  Two modes consume the identical locked issue order:
+\textsc{Fresh-Per-Issue} assigns a new session identity to every episode, and
+\textsc{Persistent} retains one identity across $n\in\{2,3,4,5\}$ episodes.
+Every transition declares the new active task, workspace scope, prior episode
+completion, and globally unique record, turn, and causal-group identities.
+Incompatible SWE-bench base commits remain separate workspaces; persistent
+conversation state must not be confused with a physically merged repository.
+
+The first episode-aware policy keeps the active episode whole and retains each
+completed episode's task statement, newest complete turn, latest mutation, and
+latest verification.  A more aggressive diagnostic keeps only the system
+prompt and active episode.  The latter models complete retirement of unrelated
+completed work and requires behavioral qualification before promotion.  These
+episode policies operate before any within-episode token budget, so their
+saving can grow with the number of completed issues instead of being capped by
+a nominal 90\% retention treatment.
+
 \subsection{Retrieval policies}
 
 We compare lexical, dense, and hybrid retrieval over historical records using a
@@ -609,6 +631,19 @@ sandbox. Final success is measured by the official SWE-bench grader.
 Autonomous evaluation is required because a divergent action may still recover
 later, while a seemingly small memory omission may cause many additional calls.
 
+\subsection{Session schedule factorial}
+
+For each promoted policy we run both \textsc{Fresh-Per-Issue} and
+\textsc{Persistent} schedules over the same ordered issue sequences.  Required
+controls are fresh \textsc{Full}, persistent \textsc{Full}, and persistent
+policy selection.  Persistent \textsc{Full} can itself degrade through
+cross-issue interference, so policy quality is compared both with its
+contemporaneous persistent control and with official fresh-session resolution.
+We report per-episode resolution, all-episodes resolution, calls, first
+cross-issue contamination, current-prompt saving, and cumulative input saving.
+The ordered issue sequence, not an individual request, is the uncertainty unit.
+Paper~4.5 reuses the same schedule identifiers for K/V and runtime measurements.
+
 \subsection{Benchmarks}
 
 We begin with the existing SWE-bench Verified Easy-14 task sequence, then expand
@@ -844,6 +879,44 @@ Spine + lexical & 91.6\% & 80.0\% & 67.4\% & 66.5\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Persistent-session structural opportunity}
+
+We composed three already successful real trajectories into an ordered
+multi-issue session and counted tokens with the frozen Qwen3-Coder tokenizer.
+This is a structural opportunity screen only: no replay or autonomous quality
+claim follows from it.  Table~\ref{tab:persistent-session-pilot} contrasts full
+persistent history, a conservative completed-episode spine, and retirement of
+all completed episodes.  The latter is intentionally an aggressive diagnostic.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tokenizer-exact structural opportunity as completed issues accumulate.
+Savings are relative to persistent \textsc{Full}; task quality and K/V reuse
+remain unmeasured.}
+\label{tab:persistent-session-pilot}
+\begin{tabular}{lrrrr}
+\toprule
+Policy / issues & Final selected/full & Final save & Cumulative selected/full & Cumulative save \\
+\midrule
+Completed spine / 2 & 14,681/21,989 & 33.23\% & 380,891/534,359 & 28.72\% \\
+Completed spine / 3 & 15,381/33,431 & 53.99\% & 632,632/1,147,100 & 44.85\% \\
+Active only / 2 & 12,237/21,989 & 44.35\% & 329,567/534,359 & 38.32\% \\
+Active only / 3 & 11,206/33,431 & 66.48\% & 497,808/1,147,100 & 56.60\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three deliberately fresh \textsc{Full} sessions consume 496,540 cumulative
+message-content tokens.  The active-only persistent arm consumes 497,808,
+only 1,268 tokens (0.26\%) more, while preserving a single logical session
+identity.  This supports the proposed workload axis but not yet the stronger
+claim that persistence improves an engine: native K/V reuse, original-position
+sparse correctness, prefix-cache comparison, and agent-level resolution are
+deferred to Paper~4.5 after Paper~8.5 quality gates pass.  Auditable schedules,
+composed traces, and decision rows are released under
+\texttt{multi\_issue\_session\_v1}.
 
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail

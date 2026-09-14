@@ -38,7 +38,7 @@ from .negative_receipts import (
     NegativeRealizationMode,
     realize_negative_receipts,
 )
-from .recordizer import recordize_minisweagent_messages
+from .recordizer import recordize_replay_messages
 from .run_structural_screen import _policy_selectors, _query, _token_counter
 from .selectors import FullHistorySelector
 from .serialization import serialize_materialized_messages
@@ -767,7 +767,7 @@ def replay(
             if replay_reference is not None
             else historical_reference
         )
-        history = recordize_minisweagent_messages(prefix)
+        history = recordize_replay_messages(prefix)
         full_tokens = sum(count_tokens(record.content) for record in history.records)
         requested_budget = matched_budgets.get(
             decision,

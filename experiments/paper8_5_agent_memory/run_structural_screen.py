@@ -16,11 +16,13 @@ from .dag import (
     ExclusionClass,
     build_resource_effect_dag,
 )
-from .recordizer import recordize_minisweagent_messages
+from .recordizer import active_task_content, recordize_replay_messages
 from .selectors import (
     HeadMiddleTailConfig,
     HeadMiddleTailSelector,
     MiddleSelectionStrategy,
+    PersistentEpisodeRetirementSelector,
+    PersistentEpisodeRetirementConfig,
     whitespace_tokens,
 )
 
@@ -38,6 +40,8 @@ STRUCTURAL_POLICIES = (
     "dag_certified_exclusion",
     "dag_certified_progress_spine",
     "dag_certified_plus_lexical",
+    "persistent_episode_retirement",
+    "persistent_active_episode",
 )
 
 
@@ -59,10 +63,7 @@ def _token_counter(tokenizer_name: str | None) -> tuple[Callable[[str], int], st
 
 
 def _query(messages: Sequence[dict[str, Any]]) -> str:
-    task = next(
-        (str(row.get("content", "")) for row in messages if row.get("role") == "user"),
-        "",
-    )
+    task = active_task_content(messages)
     active = str(messages[-1].get("content", "")) if messages else ""
     return f"{task}\n{active}"
 
@@ -74,6 +75,15 @@ def _decision_prefixes(messages: Sequence[dict[str, Any]]):
 
 
 def _policy_selectors(head: int, tail: int, *, round_up: bool = False):
+    yield "persistent_episode_retirement", PersistentEpisodeRetirementSelector()
+    yield "persistent_active_episode", PersistentEpisodeRetirementSelector(
+        PersistentEpisodeRetirementConfig(
+            recent_turns=0,
+            mutation_turns=0,
+            verification_turns=0,
+            keep_completed_task_statements=False,
+        )
+    )
     yield "middle_none", HeadMiddleTailSelector(HeadMiddleTailConfig(
         head_turns=head, tail_turns=tail,
         middle_strategy=MiddleSelectionStrategy.NONE,
@@ -161,7 +171,15 @@ def structural_screen(
         messages = payload["messages"]
         instance_id = payload.get("instance_id", path.stem)
         info = payload.get("info", {})
-        if info.get("exit_status") != "Submitted" or not info.get("submission"):
+        persistent_session = (
+            payload.get("study") == "paper8_5_multi_issue_persistent_session"
+        )
+        reference_success = (
+            bool(payload.get("reference_success"))
+            if persistent_session
+            else info.get("exit_status") == "Submitted" and bool(info.get("submission"))
+        )
+        if not reference_success:
             raise ValueError(f"trajectory is not a successful submitted reference: {path}")
         inputs.append({
             "instance_id": instance_id,
@@ -171,7 +189,9 @@ def structural_screen(
         for decision_ordinal, (decision_turn, prefix) in enumerate(
             _decision_prefixes(messages), start=1
         ):
-            history = recordize_minisweagent_messages(prefix)
+            history = recordize_replay_messages(prefix)
+            decision_metadata = messages[decision_turn].get("metadata") or {}
+            episode_metadata = decision_metadata.get("pra_episode") or {}
             dag = build_resource_effect_dag(history)
             certified_groups = {
                 row.causal_group_id for row in dag.exclusion_candidates
@@ -212,6 +232,11 @@ def structural_screen(
                                 "instance_id": instance_id,
                                 "decision_ordinal": decision_ordinal,
                                 "decision_message_index": decision_turn,
+                                "episode_id": episode_metadata.get("episode_id"),
+                                "episode_index": episode_metadata.get("episode_index", 1),
+                                "issue_count_visible": episode_metadata.get(
+                                    "episode_index", 1
+                                ),
                                 "policy": label,
                                 "head_turns_requested": head,
                                 "tail_turns_requested": tail,

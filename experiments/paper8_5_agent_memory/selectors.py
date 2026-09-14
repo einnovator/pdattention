@@ -119,6 +119,131 @@ class FullHistorySelector:
 
 
 @dataclass(frozen=True)
+class PersistentEpisodeRetirementConfig:
+    """Retention floors for completed issues in one developer session."""
+
+    recent_turns: int = 1
+    mutation_turns: int = 1
+    verification_turns: int = 1
+    keep_completed_task_statements: bool = True
+
+    def __post_init__(self) -> None:
+        if min(self.recent_turns, self.mutation_turns, self.verification_turns) < 0:
+            raise ValueError("completed-episode turn floors cannot be negative")
+
+
+class PersistentEpisodeRetirementSelector:
+    """Keep the active issue whole and retire detail from completed issues.
+
+    This is an issue-boundary treatment, not a token-budget treatment.  It is
+    intentionally conservative: every issue statement remains verbatim, while
+    each completed issue contributes its newest turns and its latest mutation
+    and verification evidence.  Selection remains causal-group atomic.
+    """
+
+    def __init__(self, config: PersistentEpisodeRetirementConfig | None = None):
+        self.config = config or PersistentEpisodeRetirementConfig()
+
+    def select(
+        self,
+        *,
+        history: CanonicalAgentHistory,
+        query: str,
+        budget: AgentMemoryBudget,
+        count_tokens: TokenCounter = whitespace_tokens,
+    ) -> AgentMemoryPlan:
+        del query
+        costs = _record_costs(history, count_tokens)
+        records = history.record_by_id
+        episode_indices = [
+            int(record.metadata.get("episode_index", 1)) for record in history.records
+        ]
+        active_episode = max(episode_indices, default=1)
+        mandatory_ids = {
+            record.record_id
+            for record in history.records
+            if record.has_role(AgentRecordRole.SYSTEM)
+            or (
+                record.has_role(AgentRecordRole.TASK)
+                and (
+                    self.config.keep_completed_task_statements
+                    or int(record.metadata.get("episode_index", 1)) == active_episode
+                )
+            )
+            or int(record.metadata.get("episode_index", 1)) == active_episode
+        }
+        reasons = {
+            record_id: (
+                "active_episode"
+                if int(records[record_id].metadata.get("episode_index", 1))
+                == active_episode
+                and not records[record_id].has_role(AgentRecordRole.SYSTEM)
+                and not records[record_id].has_role(AgentRecordRole.TASK)
+                else "immutable_prompt"
+            )
+            for record_id in mandatory_ids
+        }
+
+        complete_by_episode: dict[int, list[AgentTurn]] = {}
+        for turn in history.turns:
+            if not turn.complete or not turn.record_ids:
+                continue
+            episode = int(records[turn.record_ids[0]].metadata.get("episode_index", 1))
+            if episode < active_episode:
+                complete_by_episode.setdefault(episode, []).append(turn)
+
+        selected_turn_ids: set[str] = set()
+        role_floors = (
+            (AgentRecordRole.MUTATION, self.config.mutation_turns),
+            (AgentRecordRole.VERIFICATION, self.config.verification_turns),
+        )
+        for turns in complete_by_episode.values():
+            if self.config.recent_turns:
+                selected_turn_ids.update(
+                    turn.turn_id for turn in turns[-self.config.recent_turns :]
+                )
+            for role, count in role_floors:
+                if not count:
+                    continue
+                eligible = [
+                    turn for turn in turns
+                    if any(records[rid].has_role(role) for rid in turn.record_ids)
+                ]
+                selected_turn_ids.update(turn.turn_id for turn in eligible[-count:])
+
+        for turn in history.turns:
+            if turn.turn_id not in selected_turn_ids:
+                continue
+            for record_id in turn.record_ids:
+                mandatory_ids.add(record_id)
+                reasons[record_id] = "completed_episode_progress_spine"
+
+        completed_turns = sum(len(turns) for turns in complete_by_episode.values())
+        return _plan(
+            policy=(
+                "persistent_episode_retirement"
+                if self.config.keep_completed_task_statements
+                or self.config.recent_turns
+                or self.config.mutation_turns
+                or self.config.verification_turns
+                else "persistent_active_episode"
+            ),
+            history=history,
+            selected_ids=set(mandatory_ids),
+            reasons=reasons,
+            costs=costs,
+            budget=budget,
+            mandatory_ids=set(mandatory_ids),
+            head_turns=0,
+            tail_turns=sum(
+                1 for turn in history.turns if turn.turn_id in selected_turn_ids
+            ),
+            middle_candidate_turns=completed_turns,
+            middle_selected_turns=len(selected_turn_ids),
+        )
+
+
+@dataclass(frozen=True)
 class HeadMiddleTailConfig:
     """Independent head/tail floors with selection restricted to the middle."""
 

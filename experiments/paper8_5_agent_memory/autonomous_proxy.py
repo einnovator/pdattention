@@ -45,8 +45,7 @@ from .negative_receipts import (
     NegativeRealizationMode,
     realize_negative_receipts,
 )
-from .recordizer import extract_resource_ids
-from .recordizer import annotate_minisweagent_messages
+from .recordizer import active_task_content, annotate_minisweagent_messages, extract_resource_ids
 from pra_hf.agent_history import OpenAIRecordizer
 from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
 from pra_hf.mediation import RequestMediator, WireAgentMemoryPlan
@@ -83,10 +82,7 @@ def _digest(value: Any) -> str:
 
 
 def _query(messages: list[Mapping[str, Any]]) -> str:
-    task = next(
-        (str(row.get("content", "")) for row in messages if row.get("role") == "user"),
-        "",
-    )
+    task = active_task_content(messages)
     active = str(messages[-1].get("content", "")) if messages else ""
     return f"{task}\n{active}"
 

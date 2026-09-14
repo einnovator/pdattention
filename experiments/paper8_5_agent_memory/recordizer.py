@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping, Sequence
 
+from pra_hf.agent_history import OpenAIRecordizer
+
 from .model import AgentRecord, AgentRecordRole, AgentTurn, CanonicalAgentHistory
 from .miniswe_semantics import (
     declared_turn_metadata,
@@ -269,3 +271,63 @@ def annotate_minisweagent_messages(
         copied["metadata"] = metadata
         annotated.append(copied)
     return annotated
+
+
+def recordize_replay_messages(
+    messages: Sequence[Mapping[str, Any]],
+) -> CanonicalAgentHistory:
+    """Recordize either one mini-swe trace or a fully typed session trace.
+
+    Multi-issue sessions have more than one task record and may span workspace
+    boundaries. Their composer declares every record explicitly. Mixing typed
+    and inferred records is rejected because an episode boundary must never be
+    guessed from ordinary user text.
+    """
+
+    declared = []
+    for message in messages:
+        metadata = message.get("metadata")
+        declared.append(bool(
+            isinstance(message.get("pra_record"), Mapping)
+            or isinstance(metadata, Mapping)
+            and isinstance(metadata.get("pra_record"), Mapping)
+        ))
+    if any(declared):
+        if not all(declared):
+            raise ValueError("multi-issue replay cannot mix typed and inferred records")
+        result = OpenAIRecordizer().recordize(
+            messages, request_metadata={"session_id": "paper8_5_frozen_session"}
+        )
+        if not result.exact:
+            raise ValueError(
+                "typed multi-issue replay is ambiguous: "
+                + ", ".join(result.ambiguity_reasons)
+            )
+        return result.history
+    return recordize_minisweagent_messages(messages)
+
+
+def active_task_content(messages: Sequence[Mapping[str, Any]]) -> str:
+    """Return the newest explicitly declared task, with legacy fallback.
+
+    A persistent developer session can contain several issue statements.  The
+    current issue is therefore the last TASK record, not the first user
+    message.  Ordinary one-issue mini-swe-agent traces remain unchanged.
+    """
+
+    tasks: list[str] = []
+    for message in messages:
+        metadata = message.get("metadata")
+        declaration = message.get("pra_record")
+        if not isinstance(declaration, Mapping) and isinstance(metadata, Mapping):
+            declaration = metadata.get("pra_record")
+        if isinstance(declaration, Mapping) and str(
+            declaration.get("primary_role") or ""
+        ).lower() == AgentRecordRole.TASK.value:
+            tasks.append(str(message.get("content") or ""))
+    if tasks:
+        return tasks[-1]
+    return next(
+        (str(row.get("content", "")) for row in messages if row.get("role") == "user"),
+        "",
+    )
