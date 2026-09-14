@@ -3,7 +3,10 @@ import pytest
 from experiments.paper8_5_agent_memory.oracle_headroom_queue import build_queue
 
 
-def _artifact(groups, *, exact=True, tokens=100, task="task", decision=10):
+def _artifact(
+    groups, *, exact=True, tokens=100, task="task", decision=10,
+    reference="pytest -q a.py", generated=None,
+):
     return {
         "study": "paper8_5_agent_memory_frozen_replay",
         "instance_id": task,
@@ -14,6 +17,8 @@ def _artifact(groups, *, exact=True, tokens=100, task="task", decision=10):
             "action_valid": True,
             "exact_command": exact,
             "exact_content": exact,
+            "reference_command": reference,
+            "generated_command": generated or reference,
             "full_history_tokens": 1000,
             "oracle_omission": {
                 "omitted_causal_group_ids": groups,
@@ -57,3 +62,24 @@ def test_queue_rejects_mixed_decisions():
             (_artifact(["a"], decision=10), "a.json"),
             (_artifact(["b"], decision=11), "b.json"),
         ], target_depth=2, beam_width=2)
+
+
+def test_semantic_transition_gate_accepts_syntax_check_variants():
+    artifacts = [
+        (_artifact(
+            ["a"], exact=False,
+            reference="python3 -c \"import ast; ast.parse(open('a.py').read())\"",
+            generated="python3 -m py_compile a.py",
+        ), "a.json"),
+        (_artifact(["b"]), "b.json"),
+    ]
+    exact = build_queue(
+        artifacts, target_depth=2, beam_width=2,
+        qualification="exact_command",
+    )
+    semantic = build_queue(
+        artifacts, target_depth=2, beam_width=2,
+        qualification="semantic_transition",
+    )
+    assert exact["trial_count"] == 0
+    assert semantic["trial_count"] == 1

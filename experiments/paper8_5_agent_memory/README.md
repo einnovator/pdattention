@@ -436,6 +436,12 @@ python -m experiments.paper8_5_agent_memory.oracle_headroom_queue \
   --output /results/task/decision_24/pair_queue.json
 ```
 
+The primary queue uses exact commands. A separately labelled secondary queue
+may use `--qualification semantic_transition`, which requires the same typed
+operation and target resources and explicitly recognizes syntax-check variants
+such as `ast.parse` versus `py_compile`. Both layers remain visible; semantic
+equivalence must never be reported as exact reproduction.
+
 After executing the queued pairs into the same directory, rerun with
 `--target-depth 3`. Only successful depth-two parents are expanded, giving a
 bounded beam search rather than a combinatorial subset sweep.

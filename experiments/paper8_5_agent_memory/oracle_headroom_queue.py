@@ -6,7 +6,34 @@ import argparse
 from itertools import combinations
 import json
 from pathlib import Path
+import re
 from typing import Any, Iterable, Mapping
+
+from .miniswe_semantics import classify_bash_operation, extract_resource_ids
+
+
+_SYNTAX_VERIFY = re.compile(r"(?:ast\.parse|py_compile|compile\s*\()")
+_RESOURCE_SUFFIX = re.compile(
+    r"\.(?:py|pyi|js|jsx|ts|tsx|java|c|cc|cpp|h|hpp|rs|go|rb|php|"
+    r"json|ya?ml|toml|ini|cfg|txt|md|rst|html|css|xml|sql|patch|diff)$",
+    re.IGNORECASE,
+)
+
+
+def _action_signature(command: Any) -> tuple[str, tuple[str, ...]] | None:
+    if not isinstance(command, str) or not command.strip():
+        return None
+    kind = (
+        "finalization"
+        if "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in command
+        else "syntax_verify" if _SYNTAX_VERIFY.search(command)
+        else classify_bash_operation(command).value
+    )
+    resources = tuple(sorted(
+        resource for resource in extract_resource_ids(command, "")
+        if "/" in resource or _RESOURCE_SUFFIX.search(resource)
+    ))
+    return kind, resources
 
 
 def _trial(artifact: Mapping[str, Any], source: str) -> dict[str, Any]:
@@ -40,6 +67,11 @@ def _trial(artifact: Mapping[str, Any], source: str) -> dict[str, Any]:
         "action_valid": bool(row.get("action_valid")),
         "exact_command": bool(row.get("exact_command")),
         "exact_content": bool(row.get("exact_content")),
+        "semantic_transition_equivalent": (
+            _action_signature(row.get("generated_command")) is not None
+            and _action_signature(row.get("generated_command"))
+            == _action_signature(row.get("reference_command"))
+        ),
     }
 
 
@@ -48,11 +80,14 @@ def build_queue(
     *,
     target_depth: int,
     beam_width: int,
+    qualification: str = "exact_command",
 ) -> dict[str, Any]:
     if target_depth < 2:
         raise ValueError("target_depth must be at least two")
     if beam_width <= 0:
         raise ValueError("beam_width must be positive")
+    if qualification not in {"exact_command", "semantic_transition"}:
+        raise ValueError("qualification must be exact_command or semantic_transition")
     trials = [_trial(artifact, source) for artifact, source in artifacts]
     if not trials:
         raise ValueError("no oracle trials supplied")
@@ -66,9 +101,13 @@ def build_queue(
         row["groups"][0]: row["omitted_tokens"]
         for row in trials if row["depth"] == 1
     }
+    quality_key = (
+        "exact_command"
+        if qualification == "exact_command" else "semantic_transition_equivalent"
+    )
     safe_singletons = {
         row["groups"][0] for row in trials
-        if row["depth"] == 1 and row["action_valid"] and row["exact_command"]
+        if row["depth"] == 1 and row["action_valid"] and row[quality_key]
     }
     if len(safe_singletons) < target_depth:
         candidates: set[tuple[str, ...]] = set()
@@ -78,7 +117,7 @@ def build_queue(
         parents = [
             row for row in trials
             if row["depth"] == target_depth - 1
-            and row["action_valid"] and row["exact_command"]
+            and row["action_valid"] and row[quality_key]
         ]
         candidates = {
             tuple(sorted((*parent["groups"], group)))
@@ -117,6 +156,7 @@ def build_queue(
         "reference_replay_digest": reference_digest,
         "target_depth": target_depth,
         "beam_width": beam_width,
+        "qualification": qualification,
         "completed_trials": len(trials),
         "safe_singletons": sorted(safe_singletons),
         "safe_singleton_count": len(safe_singletons),
@@ -132,6 +172,11 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target-depth", type=int, default=2)
     parser.add_argument("--beam-width", type=int, default=8)
+    parser.add_argument(
+        "--qualification",
+        choices=("exact_command", "semantic_transition"),
+        default="exact_command",
+    )
     args = parser.parse_args()
     paths = sorted(args.input_directory.glob("*.json"))
     artifacts = []
@@ -147,7 +192,8 @@ def main() -> None:
         ):
             artifacts.append((artifact, path.name))
     result = build_queue(
-        artifacts, target_depth=args.target_depth, beam_width=args.beam_width
+        artifacts, target_depth=args.target_depth, beam_width=args.beam_width,
+        qualification=args.qualification,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
