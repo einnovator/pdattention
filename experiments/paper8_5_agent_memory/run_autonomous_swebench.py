@@ -308,25 +308,49 @@ def _ensure_evaluation_image(
     environment: Mapping[str, str],
     log: Path,
 ) -> None:
-    """Pull the locked architecture before a SWE-bench grading pass.
+    """Ensure the locked architecture exists before a grading pass.
 
     SWE-bench's ``--clean True`` can remove the image after the primary grade.
     On Apple Silicon the Python Docker client may then ignore
     ``DOCKER_DEFAULT_PLATFORM`` while rebuilding the auxiliary grade and try an
-    unavailable arm64 manifest.  Use the same explicit Docker CLI/platform
-    contract as the agent environment before every independent grading pass.
+    unavailable arm64 manifest.  Reuse a local image only after checking its
+    platform; otherwise pull with the same explicit Docker CLI/platform
+    contract as the agent environment.  This avoids making every grade depend
+    on Docker Hub when the exact image is already resident.
     """
 
     if not args.docker_platform:
         return
     executable = str(args.docker_executable or "docker")
+    image = swebench_image(instance_id)
+    inspect = subprocess.run(
+        [
+            executable,
+            "image",
+            "inspect",
+            "--format",
+            "{{.Os}}/{{.Architecture}}",
+            image,
+        ],
+        capture_output=True,
+        text=True,
+        env=dict(environment),
+        check=False,
+    )
+    observed_platform = inspect.stdout.strip()
+    if inspect.returncode == 0 and observed_platform == str(args.docker_platform):
+        log.write_text(
+            f"Reused resident image {image} ({observed_platform}).\n",
+            encoding="utf-8",
+        )
+        return
     _run(
         [
             executable,
             "pull",
             "--platform",
             str(args.docker_platform),
-            swebench_image(instance_id),
+            image,
         ],
         log=log,
         environment=environment,

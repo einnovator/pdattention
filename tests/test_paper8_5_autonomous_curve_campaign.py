@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -11,7 +13,10 @@ from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     validate_campaign_spec,
     write_curve_spec,
 )
-from experiments.paper8_5_agent_memory.run_autonomous_swebench import _official_report
+from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
+    _ensure_evaluation_image,
+    _official_report,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,6 +172,60 @@ def test_official_report_recovers_exact_pre_report_patch_apply_failure(tmp_path)
         "raw_report": str(grader_log),
         "raw_report_kind": "per_instance_failure_log",
     }
+
+
+def test_evaluation_image_reuses_matching_resident_platform(tmp_path):
+    args = SimpleNamespace(
+        docker_platform="linux/amd64",
+        docker_executable="docker",
+        timeout_seconds=10,
+    )
+    inspected = SimpleNamespace(
+        returncode=0, stdout="linux/amd64\n", stderr="",
+    )
+    with patch(
+        "experiments.paper8_5_agent_memory.run_autonomous_swebench.subprocess.run",
+        return_value=inspected,
+    ) as inspect, patch(
+        "experiments.paper8_5_agent_memory.run_autonomous_swebench._run",
+    ) as pull:
+        _ensure_evaluation_image(
+            args,
+            instance_id="org__repo-1",
+            environment={"PATH": "locked"},
+            log=tmp_path / "image.log",
+        )
+
+    inspect.assert_called_once()
+    pull.assert_not_called()
+    assert "Reused resident image" in (tmp_path / "image.log").read_text()
+
+
+def test_evaluation_image_pulls_when_resident_platform_mismatches(tmp_path):
+    args = SimpleNamespace(
+        docker_platform="linux/amd64",
+        docker_executable="docker",
+        timeout_seconds=10,
+    )
+    inspected = SimpleNamespace(
+        returncode=0, stdout="linux/arm64\n", stderr="",
+    )
+    with patch(
+        "experiments.paper8_5_agent_memory.run_autonomous_swebench.subprocess.run",
+        return_value=inspected,
+    ), patch(
+        "experiments.paper8_5_agent_memory.run_autonomous_swebench._run",
+    ) as pull:
+        _ensure_evaluation_image(
+            args,
+            instance_id="org__repo-1",
+            environment={"PATH": "locked"},
+            log=tmp_path / "image.log",
+        )
+
+    assert pull.call_args.args[0][1:4] == [
+        "pull", "--platform", "linux/amd64",
+    ]
 
 
 def test_adaptive_gate_stops_low_yield_and_low_accuracy():
