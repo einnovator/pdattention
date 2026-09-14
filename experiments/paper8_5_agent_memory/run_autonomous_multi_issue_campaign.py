@@ -232,8 +232,12 @@ def _aggregate(cell: Mapping[str, Any], episode_rows: Sequence[Mapping[str, Any]
         "calls": sum(int(row["calls"]) for row in episode_rows),
         "cumulative_full_tokens": full,
         "cumulative_materialized_tokens": materialized,
-        "failure_aware_saving_fraction": saving,
-        "in_primary_saving_target": TARGET_SAVING_MIN <= saving <= TARGET_SAVING_MAX,
+        "candidate_trajectory_gross_saving_fraction": saving,
+        "unpaired_candidate_trajectory_target_region": (
+            TARGET_SAVING_MIN <= saving <= TARGET_SAVING_MAX
+        ),
+        "failure_aware_saving_fraction": None,
+        "in_primary_saving_target": None,
         "candidate_all_issues_resolved": all(official),
         "discovery_quality_target_met": None,
         "primary_target_met": None,
@@ -602,6 +606,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             row["status"] = "infrastructure_error"
         else:
             row.update(_aggregate(cell, episode_results))
+            row.pop("reason", None)
         row["updated_at"] = datetime.now(timezone.utc).isoformat()
         _write(state_path, state)
         launched += 1

@@ -138,7 +138,7 @@ def test_dirty_persistent_attempt_is_preserved_in_numbered_retry(tmp_path):
     assert (base / "contaminated.txt").read_text(encoding="utf-8") == "preserve me"
 
 
-def test_sequence_aggregate_marks_saving_region_but_defers_quality_to_pairing():
+def test_sequence_aggregate_labels_unpaired_saving_and_defers_primary_metrics():
     cell = {"issue_count": 2}
     rows = [
         {
@@ -155,14 +155,17 @@ def test_sequence_aggregate_marks_saving_region_but_defers_quality_to_pairing():
         },
     ]
     result = _aggregate(cell, rows)
-    assert result["failure_aware_saving_fraction"] == 0.4
+    assert result["candidate_trajectory_gross_saving_fraction"] == 0.4
+    assert result["failure_aware_saving_fraction"] is None
+    assert result["in_primary_saving_target"] is None
     assert result["candidate_all_issues_resolved"] is True
     assert result["primary_target_met"] is None
     assert result["pairing_status"].startswith("requires contemporaneous")
 
     rows[1]["official_resolved"] = False
     failed = _aggregate(cell, rows)
-    assert failed["in_primary_saving_target"] is True
+    assert failed["unpaired_candidate_trajectory_target_region"] is True
+    assert failed["in_primary_saving_target"] is None
     assert failed["candidate_all_issues_resolved"] is False
     assert failed["primary_target_met"] is None
 
