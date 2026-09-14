@@ -15,6 +15,8 @@ from .adaptive_spine_bracket import paired_point
 from .export_multi_issue_evidence import build as build_evidence, write_bundle
 from .persistent_spine_gate import evaluate
 from .run_autonomous_multi_issue_campaign import campaign_cells
+from .multi_issue_curves import aggregate_frontier, render_frontier_plots
+from .multi_issue_frontier import load_strategy_registry, reduce_multi_issue_runs
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -128,6 +130,33 @@ def _single_repeat_point(
             int(candidate["calls"]) - int(control["calls"])
         ),
     }
+
+
+def _write_products(output: Path) -> None:
+    write_bundle(build_evidence(output), output / "evidence_bundle")
+    frontier_path = output / "frontier_runs.jsonl"
+    if not frontier_path.is_file():
+        return
+    runs = [
+        json.loads(line) for line in frontier_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not runs:
+        return
+    registry_path = (
+        Path(__file__).resolve().parent / "configs" /
+        "multi_issue_strategy_registry_v1.json"
+    )
+    reduction = reduce_multi_issue_runs(runs, load_strategy_registry(registry_path))
+    reduction_path = output / "persistent_frontier_reduction.json"
+    reduction_path.write_text(json.dumps(reduction, indent=2) + "\n", encoding="utf-8")
+    summary = aggregate_frontier(reduction)
+    curves = output / "curves"
+    curves.mkdir(parents=True, exist_ok=True)
+    (curves / "curve_summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    render_frontier_plots(summary, curves)
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -253,7 +282,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     audit["finished_at"] = datetime.now(timezone.utc).isoformat()
     _write(args.audit, audit)
     if (args.output / "campaign_state.json").is_file():
-        write_bundle(build_evidence(args.output), args.output / "evidence_bundle")
+        _write_products(args.output)
     return audit
 
 
