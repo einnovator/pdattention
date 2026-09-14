@@ -5,13 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from pra_hf.deployment import PRAEngineResult, PRAWireRequest, PRAWireResource
 from pra_hf.engine_memory import (
     LogicalPRABlock,
     LogicalPRABlockId,
     LogicalPRABlockStore,
     PRAResidencyState,
 )
+from pra_hf.gateway import PRAGateway
 from pra_mlx import MLXEngineAdapter
 from pra_sglang import SGLangEngineAdapter
 from pra_vllm import VLLMEngineAdapter
@@ -152,10 +153,60 @@ def test_native_executor_is_required_before_advertising_e2(adapter) -> None:
     assert capabilities.logical_refs
     assert capabilities.native_kv
     assert capabilities.streaming
+    assert not capabilities.resource_delta
+    assert not capabilities.session_state
     result = adapter.generate(
         PRAWireRequest(model="model", messages=({"role": "user", "content": "hello"},))
     )
     assert result.text == "native"
+
+
+@pytest.mark.parametrize(
+    "adapter_type",
+    (VLLMEngineAdapter, SGLangEngineAdapter, MLXEngineAdapter),
+)
+def test_native_gateway_repeats_resource_descriptors_until_delta_is_implemented(
+    adapter_type,
+) -> None:
+    class Recorder(_NativeExecutor):
+        def __init__(self):
+            self.requests = []
+
+        def generate(self, request, block_store):
+            self.requests.append(request)
+            return PRAEngineResult("native")
+
+    executor = Recorder()
+    gateway = PRAGateway(
+        adapter_type("http://engine", native_executor=executor), mode="G11"
+    )
+    resource = PRAWireResource(
+        "resource-a", "pra://tenant-a/resource-a", text="stable context"
+    )
+    base = {
+        "model": "model",
+        "tenant_id": "tenant-a",
+        "session_id": "session-a",
+        "resources": (resource,),
+    }
+    gateway.generate(
+        PRAWireRequest(
+            **base,
+            messages=({"role": "user", "content": "first"},),
+        )
+    )
+    gateway.generate(
+        PRAWireRequest(
+            **base,
+            messages=(
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "native"},
+                {"role": "user", "content": "second"},
+            ),
+        )
+    )
+
+    assert executor.requests[1].resources == (resource,)
 
 
 def test_vllm_http_request_serializes_cache_salt() -> None:

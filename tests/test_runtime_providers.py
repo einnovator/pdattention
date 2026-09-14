@@ -27,7 +27,7 @@ def test_builtin_provider_registry_and_unknown_engine() -> None:
         registry.resolve("missing")
 
 
-def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
+def test_upstream_server_providers_do_not_overclaim_native_or_session_support() -> None:
     config = RuntimeConfig(engine="vllm", model="org/model")
     vllm = VLLMRuntimeProvider().capabilities(config)
     sglang = SGLangRuntimeProvider().capabilities(RuntimeConfig(engine="sglang"))
@@ -36,8 +36,12 @@ def test_engine_capabilities_do_not_overclaim_vllm_scheduler_support() -> None:
     assert vllm.integration_level.value == "E0"
     assert not vllm.native_kv
     assert not vllm.pra_scheduler
-    assert sglang.native_kv and sglang.integration_level.value == "E2"
-    assert mlx.native_kv and mlx.integration_level.value == "E2"
+    assert not vllm.session_state
+    assert not sglang.native_kv and sglang.integration_level.value == "E0"
+    assert not sglang.session_state
+    assert sglang.automatic_prefix_cache
+    assert not mlx.native_kv and mlx.integration_level.value == "E0"
+    assert not mlx.session_state
 
 
 def test_provider_build_command_preserves_upstream_escape_hatch() -> None:

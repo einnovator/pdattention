@@ -157,8 +157,11 @@ reuse failure found during development: upstream unified-cache housekeeping
 correctly clears ordinary idle slots, but a PRA resource is deliberately idle
 between queries. \texttt{DELETE /pra/resources/\{slot\}} removes sequence
 membership, clears the pin, and returns the slot to the ordinary pool. The
-current SDK serializes one explicit resource/request slot pair; allocation,
-authorization, and multiplexing of many pairs belong to an E3 scheduler.
+updated control plane maps tenant, session, model fingerprint, and resource
+identity/content to disjoint resource and request pools rather than accepting an
+untrusted numeric source slot. It refuses active-resource eviction and in-flight
+session invalidation. A deterministic two-tenant audit passes all seven checks;
+live transport remains one resource per request and serialized.
 
 \section{Experimental Method}
 We used an Apple M4 Pro with 14 CPU cores, 20 GPU cores, and 48 GB unified
@@ -377,8 +380,10 @@ Vulkan & not run here & not run & not run\\
 The mechanism gate is closed at narrow scope: E0 works, slot state is precisely
 classified, unified-cache sequence attachment has exact CPU/Metal logits, and
 the server path now has explicit ingest, attach, reuse, concurrency, isolation,
-and release. Multi-resource controls, physical byte accounting under sustained
-load, CUDA/Vulkan replication, and E3 scheduler ownership remain open.
+and release. Tenant-scoped control-plane allocation is implemented and passes a
+seven-check deterministic lifecycle audit, but live pooled-slot qualification,
+multi-resource controls, physical byte accounting under sustained load,
+CUDA/Vulkan replication, and full E3 scheduler ownership remain open.
 
 \section{Negative Results and Next Work}
 The cohorts remain small; the 8B replication broadens model scale but not the
@@ -389,8 +394,11 @@ tail estimates. We do not yet measure gold-answer log probability, physical
 bytes saved under pressure, or multi-resource budgeting. The sequence-attached
 mechanism also preserves prefix-equivalent positions; arbitrary non-prefix
 geometry requires a graph-level attention extension. Next work is a
-tenant-aware slot allocator, multiple selected resources, longer natural-QA
-workloads, then matched CPU, Metal, CUDA, and Vulkan runs.
+live CPU/Metal qualification of the tenant-aware pooled-slot allocator,
+multiple selected resources, longer natural-QA workloads, then matched CUDA
+and Vulkan runs. Multi-resource attachment must not be implemented as naive
+sequence copying because independently encoded prefixes would overlap position
+geometry.
 
 \section{Conclusion}
 llama.cpp supplies a portable selected-text baseline and cheap sequential slot
@@ -401,7 +409,7 @@ physical K/V copy. Exact matched generation, warm reuse, shared-resource
 concurrency, absent-memory isolation, and explicit cleanup now work end to end.
 Warm E2 beats selected text in this short cohort, while cold E2 does not. The
 remaining product boundary is no longer basic transport; it is E3 allocation,
-authorization, multi-resource geometry, pressure behavior, and portability.
+live multiplexing, multi-resource geometry, pressure behavior, and portability.
 
 \section*{Artifact Availability}
 The adapter, tests, raw JSON, figure generator, commands, and manuscript are
@@ -409,6 +417,7 @@ available on the Paper 6.7 research branch. The README records the exact branch,
 pinned model, backend flags, and benchmark invocation.
 
 \begin{thebibliography}{9}
+\scriptsize
 \bibitem{praruntime} J. Simao. \emph{Productizing Progressive Retrieval
 Attention: A Runtime, Gateway, and Deployment Architecture}. 2026.
 \bibitem{llamacpp} G. Gerganov et al. \emph{llama.cpp}. 2023--2026.

@@ -63,3 +63,22 @@ The measured run produced exact E0/E2 output in 25/25 cases, exact warm reuse
 in 25/25, correct absent-memory separation in 25/25, and exact shared-resource
 concurrency in 15/15 requests. Arbitrary non-prefix positional geometry and
 scheduler-owned slot allocation remain open.
+
+## Tenant-scoped resource-slot control plane
+
+The adapter now owns logical-to-physical slot assignment rather than accepting
+an untrusted tenant's numeric resource slot. It keys residency by tenant,
+session, model fingerprint, and resource identity/content; keeps resource and
+request pools disjoint; forbids eviction or session invalidation while a lease
+is active; and reuses only inactive slots. Reproduce the deterministic lifecycle
+audit with:
+
+```bash
+PYTHONPATH=src python -m experiments.paper6_7_llamacpp.audit_resource_slot_allocator \
+  --output docs/papers/shared/results/paper6_7_llamacpp/resource_slot_allocator_audit.json
+```
+
+This is control-plane evidence, not a new live backend measurement. The native
+server still supports one selected resource sequence per request, and the
+executor remains serialized until the pooled allocator is qualified under live
+concurrency on CPU and Metal.

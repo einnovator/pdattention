@@ -301,7 +301,11 @@ class CommandRuntimeProvider(RuntimeProvider):
             integration_level=self.integration_level,
             prefix_cache_mode=self.prefix_cache_mode,
             automatic_prefix_cache=self.prefix_cache_mode == PrefixCacheMode.AUTOMATIC_PREFIX_CACHE,
-            session_state=True,
+            # These providers launch the upstream OpenAI-compatible server.
+            # Repeated full prompts may benefit from an engine prefix cache,
+            # but the wire protocol does not expose a live session handle or
+            # accept append-only message deltas.
+            session_state=False,
             logical_refs=self.native_kv,
             typed_records=self.native_kv,
             native_kv=self.native_kv,
@@ -348,9 +352,12 @@ class SGLangRuntimeProvider(CommandRuntimeProvider):
     module = "sglang.launch_server"
     base_arguments = ()
     engine_enum = EngineType.SGLANG
-    native_kv = True
-    integration_level = "E2"
-    prefix_cache_mode = PrefixCacheMode.STATELESS
+    # ``sglang.launch_server`` alone exposes RadixAttention prefix reuse, not
+    # the in-process PRA executor in ``pra_sglang.native_executor``.  Native
+    # E2 must only be advertised by an adapter constructed with that executor.
+    native_kv = False
+    integration_level = "E0"
+    prefix_cache_mode = PrefixCacheMode.AUTOMATIC_PREFIX_CACHE
 
 
 class MLXRuntimeProvider(CommandRuntimeProvider):
@@ -360,9 +367,12 @@ class MLXRuntimeProvider(CommandRuntimeProvider):
     module = "mlx_lm.server"
     base_arguments = ()
     engine_enum = EngineType.MLX
-    native_kv = True
-    integration_level = "E2"
-    prefix_cache_mode = PrefixCacheMode.SESSION_STATE
+    # The stock ``mlx_lm.server`` command has no PRA memory/session extension.
+    # In-process MLX native execution is qualified through its dedicated
+    # adapter, not through this generic managed launcher.
+    native_kv = False
+    integration_level = "E0"
+    prefix_cache_mode = PrefixCacheMode.UNKNOWN
 
 
 class RuntimeProviderRegistry:
