@@ -156,7 +156,16 @@ def _write_products(output: Path) -> None:
     (curves / "curve_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
-    render_frontier_plots(summary, curves)
+    try:
+        render_frontier_plots(summary, curves)
+    except ModuleNotFoundError as error:
+        # The execution host intentionally carries only the agent environment.
+        # Preserve the reduction and defer rendering to the analysis host.
+        (curves / "plot_deferred.json").write_text(json.dumps({
+            "status": "deferred_missing_dependency",
+            "dependency": error.name,
+            "reason": str(error),
+        }, indent=2) + "\n", encoding="utf-8")
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
