@@ -440,6 +440,20 @@ After executing the queued pairs into the same directory, rerun with
 `--target-depth 3`. Only successful depth-two parents are expanded, giving a
 bounded beam search rather than a combinatorial subset sweep.
 
+Execute a digest-bound queue with one tokenizer load and resumable per-subset
+artifacts:
+
+```bash
+python -m experiments.paper8_5_agent_memory.run_oracle_subset_queue \
+  --trajectory /results/task/trajectory.json \
+  --reference-replay /results/task/full_a.json \
+  --queue /results/task/decision_24/pair_queue.json \
+  --output-directory /results/task/decision_24 \
+  --base-url http://127.0.0.1:8092 \
+  --model /exact/model/snapshot \
+  --tokenizer /exact/tokenizer/snapshot
+```
+
 For a full leave-one-middle-bundle-out decision sweep, use the resumable
 `run_oracle_singletons.sh` driver. `PAPER85_LAST_GROUP` is the last unprotected
 middle turn index after applying the declared head and tail floors:
