@@ -54,6 +54,13 @@ def _slug(value: str) -> str:
     return value.replace("__", "-").replace("/", "-")
 
 
+def _control_cell_id(cell: Mapping[str, Any]) -> str:
+    return (
+        f"{cell['sequence_id']}__S01_persistent_full"
+        f"__r{int(cell['repeat']):02d}"
+    )
+
+
 def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None:
     if spec.get("schema_version") != 1:
         raise ValueError("unsupported autonomous multi-issue campaign schema")
@@ -438,6 +445,29 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         for episode_number, instance_id in enumerate(cell["instance_ids"], 1):
             episode_id = f"episode_{episode_number:02d}_{_slug(instance_id)}"
             episode_output = cell_root / episode_id
+            shared_control_cell_id: str | None = None
+            if (
+                episode_number == 1
+                and bool(cell["strategy"].get("share_full_first_episode", False))
+            ):
+                shared_control_cell_id = _control_cell_id(cell)
+                control = state["cells"].get(shared_control_cell_id)
+                if not args.dry_run:
+                    if not control or control.get("status") != "complete":
+                        row["status"] = "waiting_for_persistent_full_control"
+                        row["reason"] = (
+                            f"shared first episode requires {shared_control_cell_id}"
+                        )
+                        _write(state_path, state)
+                        infrastructure_error = True
+                        break
+                    control_episodes = list(control["episodes"].values())
+                    if not control_episodes:
+                        raise ValueError("persistent-FULL control has no episode ledger")
+                    shared_episode = control_episodes[0]
+                    if shared_episode.get("instance_id") != instance_id:
+                        raise ValueError("shared FULL episode identity mismatch")
+                    episode_output = Path(str(shared_episode["output"]))
             prefix_path = cell_root / f"prefix_before_episode_{episode_number:02d}.json"
             use_prefix = (
                 cell["session_mode"] == "persistent" and episode_number > 1
@@ -474,12 +504,21 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "complete" if completed_ok else "planned",
                 "output": str(episode_output),
                 "prefix": str(prefix_path) if use_prefix else None,
-                "command": command,
+                "command": None if shared_control_cell_id else command,
+                "shared_control_cell_id": shared_control_cell_id,
+                "shared_control_episode": bool(shared_control_cell_id),
             }
             _write(state_path, state)
             if args.dry_run:
                 continue
             if not completed_ok:
+                if shared_control_cell_id:
+                    row["episodes"][episode_id]["status"] = (
+                        "invalid_shared_control_episode"
+                    )
+                    infrastructure_error = True
+                    _write(state_path, state)
+                    break
                 if episode_output.exists() and any(episode_output.iterdir()):
                     row["episodes"][episode_id]["status"] = "infrastructure_error"
                     row["episodes"][episode_id]["reason"] = (

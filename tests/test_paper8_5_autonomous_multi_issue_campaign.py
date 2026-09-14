@@ -82,11 +82,11 @@ def test_dry_run_can_select_one_registered_strategy_configuration(tmp_path):
         "independent-n2-a__S03_completed_episode_spine-r4m2v2_tasks1__r01"
     ]
     cell = next(iter(state["cells"].values()))
-    commands = [episode["command"] for episode in cell["episodes"].values()]
-    assert all(
-        command[command.index("--completed-recent-turns") + 1] == "4"
-        for command in commands
-    )
+    episodes = list(cell["episodes"].values())
+    assert episodes[0]["shared_control_episode"] is True
+    assert episodes[0]["command"] is None
+    command = episodes[1]["command"]
+    assert command[command.index("--completed-recent-turns") + 1] == "4"
 
 
 def test_sequence_aggregate_marks_saving_region_but_defers_quality_to_pairing():
