@@ -4,6 +4,7 @@ import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
+import os
 from pathlib import Path
 import tarfile
 import threading
@@ -18,6 +19,7 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
     transform_autonomous_payload,
 )
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
+    _execution_environment,
     _official_report,
     build_agent_command,
     build_grader_command,
@@ -1275,6 +1277,18 @@ def test_auxiliary_grader_command_uses_separate_predictions_and_run_id(tmp_path)
     assert command[2] == (
         "experiments.paper8_5_agent_memory.swebench_grader_entrypoint"
     )
+
+
+def test_execution_environment_binds_repository_and_src_layout(tmp_path):
+    args = argparse.Namespace(
+        pythonpath=[], docker_executable=None, docker_platform=None,
+    )
+
+    environment = _execution_environment(args)
+    python_paths = environment["PYTHONPATH"].split(os.pathsep)
+    repository = str(Path(__file__).resolve().parents[1])
+
+    assert python_paths[:2] == [repository, str(Path(repository) / "src")]
 
 
 def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):

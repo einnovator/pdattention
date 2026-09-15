@@ -514,8 +514,17 @@ def _execution_environment(args: argparse.Namespace) -> dict[str, str]:
     environment.setdefault("OPENAI_API_KEY", "paper8-5-local-proxy")
     environment.setdefault("MSWEA_COST_TRACKING", "ignore_errors")
     environment.setdefault("TOKENIZERS_PARALLELISM", "false")
-    root = str(Path(__file__).resolve().parents[2])
-    python_paths = [root, *(str(Path(row).resolve()) for row in args.pythonpath)]
+    root_path = Path(__file__).resolve().parents[2]
+    # The repository uses a ``src`` layout for ``pra_hf`` while the Paper 8.5
+    # harness lives at repository root.  Graders run with the episode output as
+    # their cwd, so relying on the launch cwd makes the wrapper importable but
+    # leaves its ``pra_hf`` dependency unavailable.  Bind both roots explicitly
+    # for every child process.
+    python_paths = [
+        str(root_path),
+        str(root_path / "src"),
+        *(str(Path(row).resolve()) for row in args.pythonpath),
+    ]
     if environment.get("PYTHONPATH"):
         python_paths.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(python_paths))
