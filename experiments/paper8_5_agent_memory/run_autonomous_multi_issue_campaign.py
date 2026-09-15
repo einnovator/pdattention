@@ -196,6 +196,9 @@ def _episode_command(
     upstream_curl_executable = getattr(args, "upstream_curl_executable", None)
     if upstream_curl_executable:
         command.extend(("--upstream-curl-executable", upstream_curl_executable))
+    upstream_relay_target = getattr(args, "upstream_relay_target", None)
+    if upstream_relay_target:
+        command.extend(("--upstream-relay-target", upstream_relay_target))
     if cell["session_mode"] == "persistent":
         command.extend((
             "--session-id", session_id,
@@ -747,6 +750,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")
+    parser.add_argument("--upstream-relay-target")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

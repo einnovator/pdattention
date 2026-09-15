@@ -81,6 +81,9 @@ def _command(
     upstream_curl_executable = getattr(args, "upstream_curl_executable", None)
     if upstream_curl_executable:
         command.extend(("--upstream-curl-executable", upstream_curl_executable))
+    upstream_relay_target = getattr(args, "upstream_relay_target", None)
+    if upstream_relay_target:
+        command.extend(("--upstream-relay-target", upstream_relay_target))
     if strategy_config_id:
         command.extend(("--strategy-config-id", strategy_config_id))
     if args.docker_executable:
@@ -362,6 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")
+    parser.add_argument("--upstream-relay-target")
     parser.add_argument("--max-infrastructure-attempts", type=int, default=3)
     parser.add_argument("--retry-wait-seconds", type=float, default=60)
     parser.add_argument(
