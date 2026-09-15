@@ -102,3 +102,27 @@ def test_generation_health_qualifies_and_reuses_one_connection() -> None:
         *[("POST", "/v1/chat/completions") for _ in range(3)],
     ]
     assert connection.closed is True
+
+
+def test_generation_health_can_use_direct_curl_transport() -> None:
+    calls = []
+
+    class Completed:
+        returncode = 0
+        stderr = b""
+        stdout = b'{"choices":[{"message":{"content":"OK"}}]}\n200'
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return Completed()
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435", model="locked-model", count=3,
+        latency_ceiling_seconds=1, timeout_seconds=2,
+        curl_executable="/usr/bin/curl", curl_runner=runner,
+    )
+
+    assert result["healthy"] is True
+    assert len(calls) == 3
+    assert all(call[0][-1].endswith("/v1/chat/completions") for call in calls)
+    assert all(call[1]["check"] is False for call in calls)

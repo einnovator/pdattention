@@ -934,6 +934,7 @@ def run(args: argparse.Namespace) -> Path:
         "upstream_qualification_path": args.upstream_qualification_path,
         "upstream_connect_attempts": args.upstream_connect_attempts,
         "upstream_connect_retry_seconds": args.upstream_connect_retry_seconds,
+        "upstream_curl_executable": args.upstream_curl_executable,
         "docker_executable": str(args.docker_executable) if args.docker_executable else None,
         "docker_platform": args.docker_platform,
         "environment_image": swebench_image(instance_id),
@@ -982,6 +983,7 @@ def run(args: argparse.Namespace) -> Path:
         upstream_qualification_path=args.upstream_qualification_path,
         upstream_connect_attempts=args.upstream_connect_attempts,
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
+        upstream_curl_executable=args.upstream_curl_executable,
     )
     proxy_url = proxy.start()
     try:
@@ -1247,6 +1249,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
+    parser.add_argument("--upstream-curl-executable")
     parser.add_argument("--docker-executable", type=Path)
     parser.add_argument("--docker-platform")
     parser.add_argument("--pythonpath", action="append", default=[])

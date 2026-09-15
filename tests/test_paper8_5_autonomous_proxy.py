@@ -1242,6 +1242,50 @@ def test_proxy_qualifies_and_reuses_connection_without_replaying_posts(tmp_path)
         upstream.close()
 
 
+def test_proxy_curl_transport_sends_each_model_request_once(tmp_path):
+    calls = []
+
+    class Completed:
+        returncode = 0
+        stderr = b""
+        stdout = json.dumps({
+            "id": "response-1",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "```mswea_bash_command\ncat a.py\n```",
+                }
+            }],
+        }).encode() + b"\n200"
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return Completed()
+
+    trace = tmp_path / "trace.jsonl"
+    proxy = AutonomousSelectionProxy(
+        "http://engine.test:11435/v1",
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=1,
+        ),
+        trace_path=trace,
+        upstream_curl_executable="/usr/bin/curl",
+        curl_runner=runner,
+    )
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert len(calls) == 1
+        command, kwargs = calls[0]
+        assert command.count("--data-binary") == 1
+        assert command[-1] == "http://engine.test:11435/v1/chat/completions"
+        assert json.loads(kwargs["input"])["model"] == "locked-model"
+        assert kwargs["check"] is False
+        assert len(trace.read_text(encoding="utf-8").splitlines()) == 1
+    finally:
+        proxy.close()
+
+
 def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     ids = ["org__repo-1", "org__repo-2"]
     digest = hashlib.sha256(("\n".join(ids) + "\n").encode()).hexdigest()

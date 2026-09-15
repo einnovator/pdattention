@@ -78,6 +78,9 @@ def _command(
             "--upstream-connect-retry-seconds",
             str(getattr(args, "upstream_connect_retry_seconds", 1.0)),
         ))
+    upstream_curl_executable = getattr(args, "upstream_curl_executable", None)
+    if upstream_curl_executable:
+        command.extend(("--upstream-curl-executable", upstream_curl_executable))
     if strategy_config_id:
         command.extend(("--strategy-config-id", strategy_config_id))
     if args.docker_executable:
@@ -358,6 +361,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-qualification-path")
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
+    parser.add_argument("--upstream-curl-executable")
     parser.add_argument("--max-infrastructure-attempts", type=int, default=3)
     parser.add_argument("--retry-wait-seconds", type=float, default=60)
     parser.add_argument(

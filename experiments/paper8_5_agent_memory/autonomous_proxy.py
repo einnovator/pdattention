@@ -16,6 +16,7 @@ import json
 import math
 from pathlib import Path
 import re
+import subprocess
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
@@ -824,6 +825,8 @@ class AutonomousSelectionProxy:
         upstream_qualification_path: str | None = None,
         upstream_connect_attempts: int = 1,
         upstream_connect_retry_seconds: float = 1.0,
+        upstream_curl_executable: str | None = None,
+        curl_runner: Callable[..., Any] = subprocess.run,
     ) -> None:
         if upstream_connect_attempts < 1:
             raise ValueError("upstream connect attempts must be positive")
@@ -844,6 +847,8 @@ class AutonomousSelectionProxy:
         self.upstream_qualification_path = upstream_qualification_path
         self.upstream_connect_attempts = upstream_connect_attempts
         self.upstream_connect_retry_seconds = upstream_connect_retry_seconds
+        self.upstream_curl_executable = upstream_curl_executable
+        self._curl_runner = curl_runner
         self._lock = threading.Lock()
         self._upstream_io_lock = threading.Lock()
         self._persistent_upstream: http.client.HTTPConnection | None = None
@@ -1024,6 +1029,47 @@ class AutonomousSelectionProxy:
                 self._persistent_upstream = None
                 raise urllib.error.URLError(error) from error
 
+    def _curl_upstream_request(
+        self, request: urllib.request.Request
+    ) -> tuple[bytes, int, Mapping[str, str]]:
+        """Forward exactly once through curl; a transport error is fail-closed."""
+
+        command = [
+            str(self.upstream_curl_executable),
+            "--silent", "--show-error",
+            "--max-time", str(self.timeout_seconds),
+            "--request", request.get_method(),
+        ]
+        for key, value in request.header_items():
+            command.extend(("--header", f"{key}: {value}"))
+        if request.data is not None:
+            command.extend(("--data-binary", "@-"))
+        command.extend((
+            "--output", "-", "--write-out", "\n%{http_code}",
+            request.full_url,
+        ))
+        try:
+            completed = self._curl_runner(
+                command,
+                input=request.data,
+                capture_output=True,
+                timeout=self.timeout_seconds + 10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise urllib.error.URLError(error) from error
+        if completed.returncode:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise urllib.error.URLError(
+                f"curl exited {completed.returncode}: {detail}"
+            )
+        try:
+            response_body, status_text = completed.stdout.rsplit(b"\n", 1)
+            status = int(status_text)
+        except (ValueError, TypeError) as error:
+            raise urllib.error.URLError("curl response lacks HTTP status") from error
+        return response_body, status, {"Content-Type": "application/json"}
+
     def _forward(self, handler: BaseHTTPRequestHandler) -> None:
         body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
         transformation: AutonomousTransformation | None = None
@@ -1062,7 +1108,11 @@ class AutonomousSelectionProxy:
         status = 200
         response_headers: Mapping[str, str]
         try:
-            if self.upstream_qualification_path is not None:
+            if self.upstream_curl_executable is not None:
+                response_body, status, response_headers = (
+                    self._curl_upstream_request(request)
+                )
+            elif self.upstream_qualification_path is not None:
                 response_body, status, response_headers = (
                     self._qualified_upstream_request(request)
                 )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 from time import monotonic, sleep
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -23,6 +24,8 @@ def probe_generation_health(
     connect_attempts: int = 1,
     connect_retry_seconds: float = 1.0,
     connection_factory: Callable[..., Any] | None = None,
+    curl_executable: str | None = None,
+    curl_runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     """Require repeated deterministic generations below a frozen latency ceiling."""
 
@@ -47,7 +50,7 @@ def probe_generation_health(
     qualification: dict[str, Any] | None = None
     connection: Any | None = None
     chat_url = _chat_url(base_url)
-    if qualification_path is not None:
+    if qualification_path is not None and curl_executable is None:
         parsed = urlparse(chat_url)
         if connection_factory is None:
             connection_type = (
@@ -97,7 +100,7 @@ def probe_generation_health(
                 "error_detail": str(last_error),
             })
     for index in range(1, count + 1):
-        if qualification_path is not None and connection is None:
+        if qualification_path is not None and curl_executable is None and connection is None:
             break
         request = urllib.request.Request(
             chat_url, data=payload,
@@ -105,7 +108,35 @@ def probe_generation_health(
         )
         started = monotonic()
         try:
-            if connection is not None:
+            response_status = 200
+            if curl_executable is not None:
+                completed = curl_runner(
+                    [
+                        curl_executable,
+                        "--silent", "--show-error",
+                        "--max-time", str(timeout_seconds),
+                        "--request", "POST",
+                        "--header", "Content-Type: application/json",
+                        "--data-binary", "@-",
+                        "--output", "-", "--write-out", "\n%{http_code}",
+                        chat_url,
+                    ],
+                    input=payload,
+                    capture_output=True,
+                    timeout=timeout_seconds + 10,
+                    check=False,
+                )
+                if completed.returncode:
+                    detail = completed.stderr.decode(
+                        "utf-8", errors="replace"
+                    ).strip()
+                    raise OSError(
+                        f"curl exited {completed.returncode}: {detail}"
+                    )
+                raw_body, status_text = completed.stdout.rsplit(b"\n", 1)
+                response_status = int(status_text)
+                body = json.loads(raw_body.decode("utf-8"))
+            elif connection is not None:
                 parsed = urlparse(chat_url)
                 target = parsed.path or "/"
                 if parsed.query:
@@ -115,9 +146,11 @@ def probe_generation_health(
                     headers={"Content-Type": "application/json"},
                 )
                 response = connection.getresponse()
+                response_status = response.status
                 body = json.loads(response.read().decode("utf-8"))
             else:
                 with opener(request, timeout=timeout_seconds) as response:
+                    response_status = int(getattr(response, "status", 200))
                     body = json.loads(response.read().decode("utf-8"))
             latency = monotonic() - started
             content = str(body["choices"][0]["message"]["content"]).strip()
@@ -125,7 +158,7 @@ def probe_generation_health(
             within_ceiling = latency <= latency_ceiling_seconds
             probes.append({
                 "probe_index": index,
-                "status": int(getattr(response, "status", 200)),
+                "status": response_status,
                 "latency_seconds": latency,
                 "response_exact": valid,
                 "within_latency_ceiling": within_ceiling,
