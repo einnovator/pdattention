@@ -47,3 +47,58 @@ def test_generation_health_fails_closed_on_transport_error() -> None:
     assert result["healthy"] is False
     assert len(result["probes"]) == 1
     assert result["probes"][0]["error_type"] == "TimeoutError"
+
+
+def test_generation_health_qualifies_and_reuses_one_connection() -> None:
+    class Response:
+        status = 200
+
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def read(self) -> bytes:
+            return self.body
+
+    class Connection:
+        def __init__(self):
+            self.requests = []
+            self.responses = [
+                Response(b'{"version":"test"}'),
+                *[
+                    Response(b'{"choices":[{"message":{"content":"OK"}}]}')
+                    for _ in range(3)
+                ],
+            ]
+            self.closed = False
+
+        def request(self, method, path, body=None, headers=None):
+            self.requests.append((method, path, body, headers))
+
+        def getresponse(self):
+            return self.responses.pop(0)
+
+        def close(self):
+            self.closed = True
+
+    connection = Connection()
+    factories = []
+
+    def factory(host, port, *, timeout):
+        factories.append((host, port, timeout))
+        return connection
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435", model="locked-model", count=3,
+        latency_ceiling_seconds=1, timeout_seconds=2,
+        qualification_path="/api/version", connect_attempts=3,
+        connection_factory=factory,
+    )
+
+    assert result["healthy"] is True
+    assert result["connection_qualification"]["healthy"] is True
+    assert factories == [("engine.test", 11435, 2)]
+    assert [row[:2] for row in connection.requests] == [
+        ("GET", "/api/version"),
+        *[("POST", "/v1/chat/completions") for _ in range(3)],
+    ]
+    assert connection.closed is True

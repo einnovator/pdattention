@@ -649,6 +649,13 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     count=args.health_probe_count,
                     latency_ceiling_seconds=args.health_latency_ceiling_seconds,
                     timeout_seconds=args.health_timeout_seconds,
+                    qualification_path=getattr(
+                        args, "upstream_qualification_path", None
+                    ),
+                    connect_attempts=getattr(args, "upstream_connect_attempts", 1),
+                    connect_retry_seconds=getattr(
+                        args, "upstream_connect_retry_seconds", 1.0
+                    ),
                 )
                 row["episodes"][episode_id]["health_preflight"] = health
                 if not health["healthy"]:

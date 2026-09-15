@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import http.client
 import json
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any, Callable
+from urllib.parse import urlparse
 import urllib.request
 
 
@@ -17,6 +19,10 @@ def probe_generation_health(
     *, base_url: str, model: str, count: int = 3,
     latency_ceiling_seconds: float = 60.0, timeout_seconds: float = 90.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
+    qualification_path: str | None = None,
+    connect_attempts: int = 1,
+    connect_retry_seconds: float = 1.0,
+    connection_factory: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Require repeated deterministic generations below a frozen latency ceiling."""
 
@@ -24,6 +30,10 @@ def probe_generation_health(
         raise ValueError("health probe count must be positive")
     if latency_ceiling_seconds <= 0 or timeout_seconds <= 0:
         raise ValueError("health latency and timeout must be positive")
+    if connect_attempts < 1 or connect_retry_seconds < 0:
+        raise ValueError("health connect retry configuration is invalid")
+    if qualification_path is not None and not qualification_path.startswith("/"):
+        raise ValueError("health qualification path must be absolute")
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": "Reply with exactly OK."}],
@@ -34,15 +44,81 @@ def probe_generation_health(
         "max_tokens": 8,
     }).encode("utf-8")
     probes: list[dict[str, Any]] = []
+    qualification: dict[str, Any] | None = None
+    connection: Any | None = None
+    chat_url = _chat_url(base_url)
+    if qualification_path is not None:
+        parsed = urlparse(chat_url)
+        if connection_factory is None:
+            connection_type = (
+                http.client.HTTPSConnection
+                if parsed.scheme == "https" else http.client.HTTPConnection
+            )
+            connection_factory = connection_type
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        last_error: Exception | None = None
+        for attempt in range(1, connect_attempts + 1):
+            started = monotonic()
+            candidate = connection_factory(
+                parsed.hostname, port, timeout=timeout_seconds
+            )
+            try:
+                candidate.request("GET", qualification_path)
+                response = candidate.getresponse()
+                response.read()
+                if response.status >= 500:
+                    raise OSError(
+                        f"qualification returned HTTP {response.status}"
+                    )
+                connection = candidate
+                qualification = {
+                    "attempt": attempt,
+                    "status": response.status,
+                    "latency_seconds": monotonic() - started,
+                    "healthy": True,
+                }
+                break
+            except (OSError, http.client.HTTPException) as error:
+                candidate.close()
+                last_error = error
+                if attempt < connect_attempts:
+                    sleep(connect_retry_seconds)
+        if connection is None:
+            qualification = {
+                "attempt": connect_attempts,
+                "healthy": False,
+                "error_type": type(last_error).__name__,
+                "error_detail": str(last_error),
+            }
+            probes.append({
+                "probe_index": 1,
+                "healthy": False,
+                "error_type": type(last_error).__name__,
+                "error_detail": str(last_error),
+            })
     for index in range(1, count + 1):
+        if qualification_path is not None and connection is None:
+            break
         request = urllib.request.Request(
-            _chat_url(base_url), data=payload,
+            chat_url, data=payload,
             headers={"Content-Type": "application/json"}, method="POST",
         )
         started = monotonic()
         try:
-            with opener(request, timeout=timeout_seconds) as response:
+            if connection is not None:
+                parsed = urlparse(chat_url)
+                target = parsed.path or "/"
+                if parsed.query:
+                    target += "?" + parsed.query
+                connection.request(
+                    "POST", target, body=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                response = connection.getresponse()
                 body = json.loads(response.read().decode("utf-8"))
+            else:
+                with opener(request, timeout=timeout_seconds) as response:
+                    body = json.loads(response.read().decode("utf-8"))
             latency = monotonic() - started
             content = str(body["choices"][0]["message"]["content"]).strip()
             valid = content == "OK"
@@ -66,6 +142,8 @@ def probe_generation_health(
                 "error_detail": str(error),
             })
             break
+    if connection is not None:
+        connection.close()
     healthy = len(probes) == count and all(row["healthy"] for row in probes)
     return {
         "schema_version": 1,
@@ -74,6 +152,7 @@ def probe_generation_health(
         "required_probe_count": count,
         "latency_ceiling_seconds": latency_ceiling_seconds,
         "timeout_seconds": timeout_seconds,
+        "connection_qualification": qualification,
         "healthy": healthy,
         "probes": probes,
     }
