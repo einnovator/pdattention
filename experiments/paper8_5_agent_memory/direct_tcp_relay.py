@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+
+# Direct execution places this directory first and would shadow the standard
+# library's ``selectors`` module with the Paper 8.5 policy module.
+if sys.path and sys.path[0].replace("\\", "/").endswith(
+    "/experiments/paper8_5_agent_memory"
+):
+    del sys.path[0]
+
 import argparse
 import json
 import select
