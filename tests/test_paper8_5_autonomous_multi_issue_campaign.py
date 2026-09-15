@@ -9,6 +9,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     TARGET_SAVING_MIN,
     _aggregate,
     _divergence_accounting,
+    _validate_sequence_pairing_identity,
     campaign_cells,
     run_campaign,
     validate_spec,
@@ -189,3 +190,55 @@ def test_divergence_saving_excludes_the_divergent_request():
     assert result["first_action_divergence_request"] == 2
     assert result["selected_tokens_before_divergence_or_terminal"] == 70
     assert result["full_tokens_before_divergence_or_terminal"] == 100
+
+
+def _pairing_manifest(instance_id: str, behavior: str) -> dict:
+    return {
+        "instance_id": instance_id,
+        "pair_id": "campaign:sequence:r1",
+        "agent_behavior_sha256": behavior,
+        "scaffold_identity_sha256": "scaffold",
+        "harness_version_observed": "2.4.6",
+        "grader_version_observed": "4.1.0",
+        "model_revision": "model",
+        "tokenizer_revision": "tokenizer",
+        "dataset_revision": "dataset",
+        "benchmark_card_sha256": "benchmark",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "max_calls": 40,
+        "max_completion_tokens": 1024,
+    }
+
+
+def test_pairing_identity_allows_task_specific_agent_behavior_digests():
+    baseline = [
+        _pairing_manifest("task-a", "behavior-a"),
+        _pairing_manifest("task-b", "behavior-b"),
+    ]
+    candidate = [dict(row) for row in baseline]
+
+    digest = _validate_sequence_pairing_identity(
+        candidate_manifests=candidate,
+        baseline_manifests=baseline,
+        expected_pair_id="campaign:sequence:r1",
+    )
+
+    assert isinstance(digest, str) and len(digest) == 64
+
+
+def test_pairing_identity_rejects_within_task_behavior_change():
+    baseline = [_pairing_manifest("task-a", "behavior-a")]
+    candidate = [dict(baseline[0], agent_behavior_sha256="changed")]
+
+    try:
+        _validate_sequence_pairing_identity(
+            candidate_manifests=candidate,
+            baseline_manifests=baseline,
+            expected_pair_id="campaign:sequence:r1",
+        )
+    except ValueError as error:
+        assert "agent_behavior_sha256" in str(error)
+    else:
+        raise AssertionError("pairing identity change was accepted")

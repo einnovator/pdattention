@@ -288,6 +288,74 @@ def _divergence_accounting(
     }
 
 
+_PAIRING_MANIFEST_FIELDS = (
+    "agent_behavior_sha256",
+    "scaffold_identity_sha256",
+    "harness_version_observed",
+    "grader_version_observed",
+    "model_revision",
+    "tokenizer_revision",
+    "dataset_revision",
+    "benchmark_card_sha256",
+    "temperature",
+    "top_p",
+    "seed",
+    "max_calls",
+    "max_completion_tokens",
+)
+
+
+def _validate_sequence_pairing_identity(
+    *,
+    candidate_manifests: Sequence[Mapping[str, Any]],
+    baseline_manifests: Sequence[Mapping[str, Any]],
+    expected_pair_id: str,
+) -> str:
+    """Validate identity per ordered task and return a sequence agent digest.
+
+    ``agent_behavior_sha256`` contains task-specific command and environment
+    identity, so it is expected to differ between episodes in a multi-issue
+    sequence.  The scientific pairing invariant is that each candidate episode
+    matches its corresponding persistent-FULL episode, while the scaffold and
+    harness remain fixed over the ordered sequence.
+    """
+
+    if len(candidate_manifests) != len(baseline_manifests):
+        raise ValueError("paired sequence issue count changed")
+    scaffold_revisions: set[str] = set()
+    harness_revisions: set[str] = set()
+    ordered_agent_behaviors: list[str] = []
+    for index, (candidate, baseline) in enumerate(
+        zip(candidate_manifests, baseline_manifests), 1
+    ):
+        if candidate.get("instance_id") != baseline.get("instance_id"):
+            raise ValueError(f"paired episode {index} instance identity changed")
+        for manifest in (candidate, baseline):
+            if manifest.get("pair_id") != expected_pair_id:
+                raise ValueError(f"paired episode {index} pair_id changed")
+        for field in _PAIRING_MANIFEST_FIELDS:
+            baseline_value = baseline.get(field)
+            candidate_value = candidate.get(field)
+            if baseline_value in (None, "") or candidate_value in (None, ""):
+                raise ValueError(
+                    f"paired episode {index} is missing manifest identity {field}"
+                )
+            if candidate_value != baseline_value:
+                raise ValueError(
+                    f"paired episode {index} changed manifest identity {field}"
+                )
+        scaffold_revisions.add(str(baseline["scaffold_identity_sha256"]))
+        harness_revisions.add(str(baseline["harness_version_observed"]))
+        ordered_agent_behaviors.append(str(baseline["agent_behavior_sha256"]))
+    if len(scaffold_revisions) != 1 or len(harness_revisions) != 1:
+        raise ValueError("paired sequence has inconsistent scaffold/harness identity")
+    return _digest({
+        "ordered_agent_behavior_sha256": ordered_agent_behaviors,
+        "scaffold_identity_sha256": next(iter(scaffold_revisions)),
+        "harness_version_observed": next(iter(harness_revisions)),
+    })
+
+
 def write_frontier_ledger(
     *, state: Mapping[str, Any], spec: Mapping[str, Any], output: Path,
 ) -> Path:
@@ -308,18 +376,11 @@ def write_frontier_ledger(
             _read(Path(str(row["output"])) / "run_manifest.json")
             for row in persistent_episodes
         ]
-        agent_revisions = {
-            _digest({
-                "agent_behavior": manifest.get("agent_behavior_sha256"),
-                "scaffold": manifest.get("scaffold_identity_sha256"),
-            })
-            for manifest in manifests
-        }
         harness_revisions = {
             str(manifest.get("harness_version_observed") or "") for manifest in manifests
         }
-        if len(agent_revisions) != 1 or len(harness_revisions) != 1 or "" in harness_revisions:
-            raise ValueError("paired sequence has inconsistent agent/harness identity")
+        if len(harness_revisions) != 1 or "" in harness_revisions:
+            raise ValueError("paired sequence has inconsistent harness identity")
         pair_id = f"{spec['campaign_id']}:{sequence_id}:r{repeat}"
         workspace_schedule_digest = _digest({
             "dataset_revision": manifests[0].get("dataset_revision"),
@@ -332,6 +393,15 @@ def write_frontier_ledger(
             candidate_episodes = list(row["episodes"].values())
             if len(candidate_episodes) != len(persistent_episodes):
                 raise ValueError("paired sequence issue count changed")
+            candidate_manifests = [
+                _read(Path(str(episode["output"])) / "run_manifest.json")
+                for episode in candidate_episodes
+            ]
+            agent_revision = _validate_sequence_pairing_identity(
+                candidate_manifests=candidate_manifests,
+                baseline_manifests=manifests,
+                expected_pair_id=pair_id,
+            )
             for index, (candidate_episode, baseline_episode) in enumerate(
                 zip(candidate_episodes, persistent_episodes), 1
             ):
@@ -367,7 +437,7 @@ def write_frontier_ledger(
                 "sequence_digest": row["sequence_digest"],
                 "sequence_stratum": row["sequence_stratum"],
                 "agent_id": "mini-swe-agent",
-                "agent_revision": next(iter(agent_revisions)),
+                "agent_revision": agent_revision,
                 "ordered_instance_ids": list(row["instance_ids"]),
                 "issue_count": int(row["issue_count"]),
                 "session_mode": row["session_mode"],
