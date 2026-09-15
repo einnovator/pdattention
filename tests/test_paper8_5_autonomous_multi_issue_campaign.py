@@ -29,6 +29,10 @@ CONFIRMATION_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_persistent_spine_confirmation_v1.json"
 )
+N3_REPLACEMENT_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_persistent_spine_n3_replacement_v1.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -89,6 +93,21 @@ def test_confirmation_registry_freezes_repeats_and_held_out_sequence():
     assert held_out["instance_ids"] == [
         "sphinx-doc__sphinx-8721", "scikit-learn__scikit-learn-13135"
     ]
+
+
+def test_n3_replacement_uses_independent_baseline_success_third_issue():
+    spec = json.loads(N3_REPLACEMENT_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    validate_spec(spec, benchmark)
+    sequence = spec["sequences"][0]
+
+    assert sequence["sequence_id"] == "independent-n3-b"
+    assert sequence["instance_ids"] == [
+        "django__django-15277",
+        "pytest-dev__pytest-7982",
+        "scikit-learn__scikit-learn-13135",
+    ]
+    assert len(campaign_cells(spec)) == 9
 
 
 def test_dry_run_distinguishes_fresh_from_persistent_prefixes(tmp_path):
