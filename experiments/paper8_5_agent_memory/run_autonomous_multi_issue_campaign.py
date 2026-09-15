@@ -177,6 +177,7 @@ def _episode_command(
         "--completed-recent-turns", str(strategy.get("completed_recent_turns", 1)),
         "--completed-mutation-turns", str(strategy.get("completed_mutation_turns", 1)),
         "--completed-verification-turns", str(strategy.get("completed_verification_turns", 1)),
+        "--completed-protocol-turns", str(strategy.get("completed_protocol_turns", 0)),
         "--temperature", str(generation["temperature"]),
         "--top-p", str(generation["top_p"]),
         "--seed", str(generation["seed"]),

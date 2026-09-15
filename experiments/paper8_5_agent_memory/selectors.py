@@ -126,10 +126,16 @@ class PersistentEpisodeRetirementConfig:
     recent_turns: int = 1
     mutation_turns: int = 1
     verification_turns: int = 1
+    protocol_turns: int = 0
     keep_completed_task_statements: bool = True
 
     def __post_init__(self) -> None:
-        if min(self.recent_turns, self.mutation_turns, self.verification_turns) < 0:
+        if min(
+            self.recent_turns,
+            self.mutation_turns,
+            self.verification_turns,
+            self.protocol_turns,
+        ) < 0:
             raise ValueError("completed-episode turn floors cannot be negative")
 
 
@@ -211,6 +217,30 @@ class PersistentEpisodeRetirementSelector:
                     if any(records[rid].has_role(role) for rid in turn.record_ids)
                 ]
                 selected_turn_ids.update(turn.turn_id for turn in eligible[-count:])
+            if self.config.protocol_turns:
+                protocol_eligible = []
+                disallowed = {
+                    AgentRecordRole.ERROR_OR_REJECTION,
+                    AgentRecordRole.MUTATION,
+                    AgentRecordRole.VERIFICATION,
+                    AgentRecordRole.FINALIZATION,
+                }
+                for turn in turns:
+                    roles = {
+                        role
+                        for record_id in turn.record_ids
+                        for role in records[record_id].semantic_roles
+                    }
+                    if (
+                        AgentRecordRole.ASSISTANT_ACTION in roles
+                        and AgentRecordRole.TOOL_OBSERVATION in roles
+                        and not roles.intersection(disallowed)
+                    ):
+                        protocol_eligible.append(turn)
+                selected_turn_ids.update(
+                    turn.turn_id
+                    for turn in protocol_eligible[-self.config.protocol_turns :]
+                )
 
         for turn in history.turns:
             if turn.turn_id not in selected_turn_ids:
@@ -227,6 +257,7 @@ class PersistentEpisodeRetirementSelector:
                 or self.config.recent_turns
                 or self.config.mutation_turns
                 or self.config.verification_turns
+                or self.config.protocol_turns
                 else "persistent_active_episode"
             ),
             history=history,

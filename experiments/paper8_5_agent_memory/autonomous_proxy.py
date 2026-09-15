@@ -297,6 +297,7 @@ class AutonomousSelectionConfig:
     completed_recent_turns: int = 1
     completed_mutation_turns: int = 1
     completed_verification_turns: int = 1
+    completed_protocol_turns: int = 0
     keep_completed_task_statements: bool = True
     require_exact_sidecars: bool = True
     negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
@@ -321,6 +322,7 @@ class AutonomousSelectionConfig:
             self.completed_recent_turns,
             self.completed_mutation_turns,
             self.completed_verification_turns,
+            self.completed_protocol_turns,
         )):
             raise ValueError("completed-episode turn floors cannot be negative")
         if self.max_completion_tokens is not None and self.max_completion_tokens < 1:
@@ -367,6 +369,7 @@ class AutonomousSelectionConfig:
                     recent_turns=self.completed_recent_turns,
                     mutation_turns=self.completed_mutation_turns,
                     verification_turns=self.completed_verification_turns,
+                    protocol_turns=self.completed_protocol_turns,
                     keep_completed_task_statements=(
                         self.keep_completed_task_statements
                     ),
@@ -378,6 +381,7 @@ class AutonomousSelectionConfig:
                     recent_turns=0,
                     mutation_turns=0,
                     verification_turns=0,
+                    protocol_turns=0,
                     keep_completed_task_statements=False,
                 )
             )

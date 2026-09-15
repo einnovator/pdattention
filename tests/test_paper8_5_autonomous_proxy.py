@@ -189,6 +189,31 @@ def test_persistent_oracle_addback_restores_one_complete_excluded_turn():
     assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
 
 
+def test_persistent_protocol_floor_keeps_clean_action_observation_exemplar():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="persistent_episode_retirement",
+            expected_model="locked-model",
+            task_id="repo__current-2",
+            session_id="session-locked",
+            episode_index=2,
+            completed_recent_turns=1,
+            completed_mutation_turns=0,
+            completed_verification_turns=0,
+            completed_protocol_turns=1,
+        ),
+        prior_episodes=(_completed_episode(),),
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "old evidence" in visible
+    assert any(
+        reason == "completed_episode_progress_spine"
+        for _, reason in result.plan.selection_reasons
+    )
+
+
 def test_persistent_prefix_count_must_match_episode_index():
     with pytest.raises(ValueError, match="episode count"):
         transform_autonomous_payload(

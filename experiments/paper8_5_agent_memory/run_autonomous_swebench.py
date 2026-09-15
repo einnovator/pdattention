@@ -854,6 +854,7 @@ def run(args: argparse.Namespace) -> Path:
         completed_recent_turns=args.completed_recent_turns,
         completed_mutation_turns=args.completed_mutation_turns,
         completed_verification_turns=args.completed_verification_turns,
+        completed_protocol_turns=args.completed_protocol_turns,
         keep_completed_task_statements=args.keep_completed_task_statements,
         require_exact_sidecars=args.require_exact_sidecars,
         negative_realization=NegativeRealizationMode(args.negative_realization),
@@ -1182,6 +1183,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--completed-recent-turns", type=int, default=1)
     parser.add_argument("--completed-mutation-turns", type=int, default=1)
     parser.add_argument("--completed-verification-turns", type=int, default=1)
+    parser.add_argument("--completed-protocol-turns", type=int, default=0)
     parser.add_argument(
         "--keep-completed-task-statements",
         action=argparse.BooleanOptionalAction,
