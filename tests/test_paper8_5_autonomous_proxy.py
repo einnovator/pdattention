@@ -1272,6 +1272,9 @@ def test_auxiliary_grader_command_uses_separate_predictions_and_run_id(tmp_path)
     assert command[command.index("--run_id") + 1] == (
         "primary-aux-workspace-state"
     )
+    assert command[2] == (
+        "experiments.paper8_5_agent_memory.swebench_grader_entrypoint"
+    )
 
 
 def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):

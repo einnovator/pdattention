@@ -258,7 +258,7 @@ def build_grader_command(
     return [
         sys.executable,
         "-m",
-        "swebench.harness.run_evaluation",
+        "experiments.paper8_5_agent_memory.swebench_grader_entrypoint",
         "-d",
         dataset,
         "-s",
