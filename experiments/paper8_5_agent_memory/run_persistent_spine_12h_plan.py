@@ -132,6 +132,28 @@ def _single_repeat_point(
     }
 
 
+def _full_reliability_gate(
+    state: Mapping[str, Any], *, sequence_id: str, minimum_all_solved: int,
+) -> dict[str, Any]:
+    controls = [
+        row for row in state.get("cells", {}).values()
+        if row.get("sequence_id") == sequence_id
+        and row.get("strategy_id") == "S01_persistent_full"
+        and row.get("status") == "complete"
+    ]
+    all_solved = sum(bool(row.get("all_issues_resolved")) for row in controls)
+    return {
+        "decision": (
+            "advance" if all_solved >= minimum_all_solved
+            else "stop_full_reliability_below_gate"
+        ),
+        "sequence_id": sequence_id,
+        "complete_full_repeats": len(controls),
+        "all_solved_full_repeats": all_solved,
+        "minimum_all_solved_full_repeats": minimum_all_solved,
+    }
+
+
 def _write_products(output: Path) -> None:
     write_bundle(build_evidence(output), output / "evidence_bundle")
     frontier_path = output / "frontier_runs.jsonl"
@@ -188,6 +210,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "stage": "persistent_full",
             }
             break
+        minimum_full_successes = int(getattr(
+            args, "minimum_all_solved_full_repeats", 0
+        ))
+        if minimum_full_successes:
+            full_gate = _full_reliability_gate(
+                _read(args.output / "campaign_state.json"),
+                sequence_id=sequence_id,
+                minimum_all_solved=minimum_full_successes,
+            )
+            audit["gates"].append(full_gate)
+            _write(args.audit, audit)
+            if full_gate["decision"] != "advance":
+                audit["terminal"] = full_gate
+                break
         if not _ensure(
             args, spec, audit, sequence_id=sequence_id,
             strategy_id="S03_completed_episode_spine",
@@ -312,6 +348,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
     parser.add_argument("--max-infrastructure-attempts", type=int, default=3)
     parser.add_argument("--retry-wait-seconds", type=float, default=60)
+    parser.add_argument(
+        "--minimum-all-solved-full-repeats",
+        type=int,
+        default=0,
+        help="Stop before policy execution unless this many FULL repeats solve all issues.",
+    )
     return parser
 
 

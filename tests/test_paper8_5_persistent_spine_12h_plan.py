@@ -3,6 +3,7 @@ from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_persistent_spine_12h_plan import (
     _complete,
+    _full_reliability_gate,
     _selected_cells,
 )
 
@@ -26,3 +27,31 @@ def test_plan_selects_both_r4_repeats_without_neighbor_collision() -> None:
     assert _complete(state, cells)
     state["cells"][cells[1]["cell_id"]]["status"] = "infrastructure_error"
     assert not _complete(state, cells)
+
+
+def test_full_reliability_gate_requires_predeclared_all_solved_count() -> None:
+    state = {"cells": {
+        "full-r1": {
+            "sequence_id": "n3", "strategy_id": "S01_persistent_full",
+            "status": "complete", "all_issues_resolved": True,
+        },
+        "full-r2": {
+            "sequence_id": "n3", "strategy_id": "S01_persistent_full",
+            "status": "complete", "all_issues_resolved": False,
+        },
+        "full-r3": {
+            "sequence_id": "n3", "strategy_id": "S01_persistent_full",
+            "status": "complete", "all_issues_resolved": True,
+        },
+    }}
+
+    passed = _full_reliability_gate(
+        state, sequence_id="n3", minimum_all_solved=2,
+    )
+    stopped = _full_reliability_gate(
+        state, sequence_id="n3", minimum_all_solved=3,
+    )
+
+    assert passed["decision"] == "advance"
+    assert passed["all_solved_full_repeats"] == 2
+    assert stopped["decision"] == "stop_full_reliability_below_gate"
