@@ -49,6 +49,7 @@ from .negative_receipts import (
     NegativeRealizationMode,
     realize_negative_receipts,
 )
+from .oracle import restore_causal_groups
 from .recordizer import active_task_content, annotate_minisweagent_messages, extract_resource_ids
 from pra_hf.agent_history import OpenAIRecordizer
 from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
@@ -452,6 +453,7 @@ def transform_autonomous_payload(
     count_tokens: TokenCounter = whitespace_tokens,
     instrumentation_root: Path | None = None,
     prior_episodes: Sequence[Mapping[str, Any]] = (),
+    oracle_addback_causal_group_ids: Sequence[str] = (),
 ) -> AutonomousTransformation:
     """Apply one logical policy without mutating the caller's full history."""
 
@@ -527,6 +529,7 @@ def transform_autonomous_payload(
         for record_id in mandatory_ids
     )
     mandatory_overflow_tokens = max(0, mandatory_tokens - budget_tokens)
+    oracle_addback = None
     if matched_tail:
         materialized = materialize_matched_token_tail(
             history,
@@ -551,6 +554,18 @@ def transform_autonomous_payload(
             budget=AgentMemoryBudget(max_tokens=budget_tokens),
             count_tokens=count_tokens,
         )
+        if oracle_addback_causal_group_ids:
+            if config.policy != "persistent_episode_retirement":
+                raise ValueError(
+                    "autonomous oracle add-back is restricted to "
+                    "persistent_episode_retirement diagnostics"
+                )
+            plan, oracle_addback = restore_causal_groups(
+                history=history,
+                plan=plan,
+                causal_group_ids=oracle_addback_causal_group_ids,
+                count_tokens=count_tokens,
+            )
         materializer = ToolObservationMaterializer(
             mode=config.materialization_mode,
             threshold_tokens=config.materialization_threshold_tokens,
@@ -804,6 +819,7 @@ def transform_autonomous_payload(
             "ambiguity_reasons": list(recordization.ambiguity_reasons),
         },
         "selection_abstained_for_sidecar": selection_abstained,
+        "oracle_addback": oracle_addback,
     }
     return AutonomousTransformation(transformed, plan, materialized.materialized_tokens, trace)
 

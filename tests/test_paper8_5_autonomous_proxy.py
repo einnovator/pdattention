@@ -156,6 +156,39 @@ def test_persistent_active_episode_retires_all_completed_episode_detail():
     assert result.trace["selected_tokens"] < result.trace["full_tokens"]
 
 
+def test_persistent_oracle_addback_restores_one_complete_excluded_turn():
+    config = AutonomousSelectionConfig(
+        policy="persistent_episode_retirement",
+        expected_model="locked-model",
+        task_id="repo__current-2",
+        session_id="session-locked",
+        episode_index=2,
+        completed_recent_turns=1,
+        completed_mutation_turns=0,
+        completed_verification_turns=0,
+    )
+    candidate = transform_autonomous_payload(
+        _payload(), config, prior_episodes=(_completed_episode(),),
+    )
+    exclusion = candidate.plan.exclusions[0]
+    restored = transform_autonomous_payload(
+        _payload(), config, prior_episodes=(_completed_episode(),),
+        oracle_addback_causal_group_ids=(exclusion.causal_group_id,),
+    )
+
+    assert "old evidence" not in "\n".join(
+        row["content"] for row in candidate.payload["messages"]
+    )
+    assert "old evidence" in "\n".join(
+        row["content"] for row in restored.payload["messages"]
+    )
+    assert restored.trace["oracle_addback"]["restored_causal_group_ids"] == (
+        exclusion.causal_group_id,
+    )
+    assert restored.trace["oracle_addback"]["restored_tokens"] > 0
+    assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
+
+
 def test_persistent_prefix_count_must_match_episode_index():
     with pytest.raises(ValueError, match="episode count"):
         transform_autonomous_payload(

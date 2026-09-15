@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import math
 import re
@@ -11,6 +11,7 @@ from typing import Callable, Mapping, Protocol
 
 from .model import (
     AgentMemoryBudget,
+    AgentMemoryExclusion,
     AgentMemoryPlan,
     AgentRecord,
     AgentRecordRole,
@@ -219,7 +220,7 @@ class PersistentEpisodeRetirementSelector:
                 reasons[record_id] = "completed_episode_progress_spine"
 
         completed_turns = sum(len(turns) for turns in complete_by_episode.values())
-        return _plan(
+        plan = _plan(
             policy=(
                 "persistent_episode_retirement"
                 if self.config.keep_completed_task_statements
@@ -241,6 +242,33 @@ class PersistentEpisodeRetirementSelector:
             middle_candidate_turns=completed_turns,
             middle_selected_turns=len(selected_turn_ids),
         )
+        retired = []
+        for turn in history.turns:
+            omitted = tuple(
+                record_id for record_id in turn.record_ids
+                if record_id not in mandatory_ids
+            )
+            if not omitted:
+                continue
+            resources = tuple(sorted({
+                str(resource)
+                for record_id in omitted
+                for resource in (
+                    records[record_id].metadata.get("resource_ids") or ()
+                )
+            }))
+            retired.append(AgentMemoryExclusion(
+                causal_group_id=records[omitted[0]].causal_group_id,
+                record_ids=omitted,
+                rule_id="completed_episode_retirement",
+                classification="policy_retirement",
+                reason="completed issue detail outside declared progress-state floors",
+                resource_ids=resources,
+                witness_record_ids=(),
+                tombstone="retired completed-episode causal group",
+                excluded_tokens=sum(costs[record_id] for record_id in omitted),
+            ))
+        return replace(plan, exclusions=tuple(retired))
 
 
 @dataclass(frozen=True)
