@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from experiments.paper8_5_agent_memory.multi_issue_curves import (
+    _compact_identity_label,
     aggregate_frontier,
     render_frontier_plots,
 )
@@ -73,3 +74,13 @@ def test_aggregation_never_pools_sequence_strata():
     second["sequence_stratum"] = "dependent_same_workspace"
     summary = aggregate_frontier({"schema_version": 1, "rows": [first, second]})
     assert len(summary["cells"]) == 2
+
+
+def test_plot_labels_preserve_compact_model_and_policy_identity():
+    prefix = ("mini-swe-agent", "agent-r1", "06c1097efce0431c", "tok", "harness")
+    assert _compact_identity_label(
+        (*prefix, "S01_persistent_full", "default")
+    ) == "mini-swe-agent / 06c1097e / FULL"
+    assert _compact_identity_label(
+        (*prefix, "S03_completed_episode_spine", "r4m2v2_tasks1")
+    ) == "mini-swe-agent / 06c1097e / R4/M2/V2"

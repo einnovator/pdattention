@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 import random
+import re
 from statistics import fmean
 from typing import Any, Mapping, Sequence
 
@@ -159,6 +160,21 @@ def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "-_" else "_" for char in value)
 
 
+def _compact_identity_label(identity: tuple[str, ...]) -> str:
+    """Keep audit identities in JSON while making plotted legends readable."""
+
+    agent, _agent_revision, model, _tokenizer, _harness, strategy, config = identity
+    if strategy == "S01_persistent_full" and config == "default":
+        policy = "FULL"
+    else:
+        match = re.fullmatch(r"r(\d+)m(\d+)v(\d+)_tasks\d+", config)
+        policy = (
+            f"R{match.group(1)}/M{match.group(2)}/V{match.group(3)}"
+            if match else f"{strategy}/{config}"
+        )
+    return f"{agent} / {model[:8]} / {policy}"
+
+
 def _plot_xy(
     cells: Sequence[Mapping[str, Any]], *, x_metric: str, y_metric: str,
     xlabel: str, ylabel: str, title: str, output: Path
@@ -186,7 +202,6 @@ def _plot_xy(
             str(cell["strategy_config_id"]),
         )].append(cell)
     for identity, group in sorted(grouped.items()):
-        agent, _agent_revision, model, _tokenizer, _harness, strategy, config = identity
         group = sorted(group, key=lambda cell: int(cell["issue_count"]))
         x = [_metric(cell, x_metric) for cell in group]
         y = [_metric(cell, y_metric) for cell in group]
@@ -197,7 +212,7 @@ def _plot_xy(
             xerr=([row[0] for row in x_errors], [row[1] for row in x_errors]),
             yerr=([row[0] for row in y_errors], [row[1] for row in y_errors]),
             marker="o", linewidth=1.2, capsize=2,
-            label=f"{agent}/{model}/{strategy}/{config}",
+            label=_compact_identity_label(identity),
         )
         for cell, x_value, y_value in zip(group, x, y):
             axis.annotate(f"N={cell['issue_count']}", (x_value, y_value), fontsize=7)
