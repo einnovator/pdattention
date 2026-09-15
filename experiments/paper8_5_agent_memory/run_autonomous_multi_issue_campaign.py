@@ -184,6 +184,15 @@ def _episode_command(
         "--max-completion-tokens", str(generation["max_completion_tokens"]),
         "--upstream-timeout-seconds", str(args.upstream_request_timeout_seconds),
     ]
+    upstream_qualification_path = getattr(args, "upstream_qualification_path", None)
+    if upstream_qualification_path:
+        command.extend((
+            "--upstream-qualification-path", upstream_qualification_path,
+            "--upstream-connect-attempts",
+            str(getattr(args, "upstream_connect_attempts", 1)),
+            "--upstream-connect-retry-seconds",
+            str(getattr(args, "upstream_connect_retry_seconds", 1.0)),
+        ))
     if cell["session_mode"] == "persistent":
         command.extend((
             "--session-id", session_id,
@@ -721,6 +730,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--health-latency-ceiling-seconds", type=float, default=60.0)
     parser.add_argument("--health-timeout-seconds", type=float, default=90.0)
     parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
+    parser.add_argument("--upstream-qualification-path")
+    parser.add_argument("--upstream-connect-attempts", type=int, default=1)
+    parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 import hashlib
+import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 from pathlib import Path
 import re
 import threading
+import time
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 import urllib.error
@@ -819,7 +821,16 @@ class AutonomousSelectionProxy:
         timeout_seconds: int = 3600,
         instrumentation_root: Path | None = None,
         prior_episodes: Sequence[Mapping[str, Any]] = (),
+        upstream_qualification_path: str | None = None,
+        upstream_connect_attempts: int = 1,
+        upstream_connect_retry_seconds: float = 1.0,
     ) -> None:
+        if upstream_connect_attempts < 1:
+            raise ValueError("upstream connect attempts must be positive")
+        if upstream_connect_retry_seconds < 0:
+            raise ValueError("upstream connect retry seconds cannot be negative")
+        if upstream_qualification_path is not None and not upstream_qualification_path.startswith("/"):
+            raise ValueError("upstream qualification path must be absolute")
         self.upstream_base_url = upstream_base_url.rstrip("/")
         self.config = config
         self.trace_path = Path(trace_path)
@@ -830,7 +841,12 @@ class AutonomousSelectionProxy:
             Path(instrumentation_root) if instrumentation_root is not None else None
         )
         self.prior_episodes = tuple(dict(row) for row in prior_episodes)
+        self.upstream_qualification_path = upstream_qualification_path
+        self.upstream_connect_attempts = upstream_connect_attempts
+        self.upstream_connect_retry_seconds = upstream_connect_retry_seconds
         self._lock = threading.Lock()
+        self._upstream_io_lock = threading.Lock()
+        self._persistent_upstream: http.client.HTTPConnection | None = None
         self._request_count = 0
         self._pending_reacquisition_count = 0
         self._pending_reacquisition_resources: tuple[str, ...] = ()
@@ -887,6 +903,10 @@ class AutonomousSelectionProxy:
         return f"http://{host}:{self._server.server_port}/v1"
 
     def close(self) -> None:
+        with self._upstream_io_lock:
+            if self._persistent_upstream is not None:
+                self._persistent_upstream.close()
+                self._persistent_upstream = None
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
@@ -944,6 +964,66 @@ class AutonomousSelectionProxy:
         root = self.upstream_base_url.removesuffix("/v1")
         return root + incoming_path
 
+    def _open_qualified_upstream(self) -> http.client.HTTPConnection:
+        parsed = urlparse(self.upstream_base_url)
+        connection_type = (
+            http.client.HTTPSConnection
+            if parsed.scheme == "https" else http.client.HTTPConnection
+        )
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        last_error: Exception | None = None
+        for attempt in range(1, self.upstream_connect_attempts + 1):
+            connection = connection_type(
+                parsed.hostname, port, timeout=self.timeout_seconds
+            )
+            try:
+                headers = {}
+                if self.upstream_api_key is not None:
+                    headers["Authorization"] = f"Bearer {self.upstream_api_key}"
+                connection.request(
+                    "GET", str(self.upstream_qualification_path), headers=headers
+                )
+                response = connection.getresponse()
+                response.read()
+                if response.status >= 500:
+                    raise OSError(
+                        "upstream connection qualification returned "
+                        f"HTTP {response.status}"
+                    )
+                return connection
+            except (OSError, http.client.HTTPException) as error:
+                connection.close()
+                last_error = error
+                if attempt < self.upstream_connect_attempts:
+                    time.sleep(self.upstream_connect_retry_seconds)
+        raise urllib.error.URLError(last_error or "upstream qualification failed")
+
+    def _qualified_upstream_request(
+        self, request: urllib.request.Request
+    ) -> tuple[bytes, int, Mapping[str, str]]:
+        """Use one qualified connection; never replay a model POST."""
+
+        with self._upstream_io_lock:
+            if self._persistent_upstream is None:
+                self._persistent_upstream = self._open_qualified_upstream()
+            parsed = urlparse(request.full_url)
+            target = parsed.path or "/"
+            if parsed.query:
+                target += "?" + parsed.query
+            try:
+                self._persistent_upstream.request(
+                    request.get_method(), target,
+                    body=request.data,
+                    headers=dict(request.header_items()),
+                )
+                response = self._persistent_upstream.getresponse()
+                body = response.read()
+                return body, response.status, response.headers
+            except (OSError, http.client.HTTPException) as error:
+                self._persistent_upstream.close()
+                self._persistent_upstream = None
+                raise urllib.error.URLError(error) from error
+
     def _forward(self, handler: BaseHTTPRequestHandler) -> None:
         body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
         transformation: AutonomousTransformation | None = None
@@ -982,10 +1062,15 @@ class AutonomousSelectionProxy:
         status = 200
         response_headers: Mapping[str, str]
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                response_body = response.read()
-                status = response.status
-                response_headers = response.headers
+            if self.upstream_qualification_path is not None:
+                response_body, status, response_headers = (
+                    self._qualified_upstream_request(request)
+                )
+            else:
+                with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                    response_body = response.read()
+                    status = response.status
+                    response_headers = response.headers
         except urllib.error.HTTPError as error:
             response_body = error.read()
             status = error.code

@@ -931,6 +931,9 @@ def run(args: argparse.Namespace) -> Path:
         "grader_version_observed": _package_version("swebench"),
         "upstream_base_url": args.upstream_base_url,
         "upstream_api_key_environment": args.upstream_api_key_env,
+        "upstream_qualification_path": args.upstream_qualification_path,
+        "upstream_connect_attempts": args.upstream_connect_attempts,
+        "upstream_connect_retry_seconds": args.upstream_connect_retry_seconds,
         "docker_executable": str(args.docker_executable) if args.docker_executable else None,
         "docker_platform": args.docker_platform,
         "environment_image": swebench_image(instance_id),
@@ -976,6 +979,9 @@ def run(args: argparse.Namespace) -> Path:
         timeout_seconds=args.upstream_timeout_seconds,
         instrumentation_root=args.instrumentation_output_root,
         prior_episodes=prior_episodes,
+        upstream_qualification_path=args.upstream_qualification_path,
+        upstream_connect_attempts=args.upstream_connect_attempts,
+        upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
     )
     proxy_url = proxy.start()
     try:
@@ -1232,6 +1238,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--grader-workers", type=int, default=1)
     parser.add_argument("--timeout-seconds", type=int, default=21600)
     parser.add_argument("--upstream-timeout-seconds", type=int, default=3600)
+    parser.add_argument(
+        "--upstream-qualification-path",
+        help=(
+            "Optional non-generating GET path used to qualify and retain one "
+            "upstream connection before any model POST."
+        ),
+    )
+    parser.add_argument("--upstream-connect-attempts", type=int, default=1)
+    parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--docker-executable", type=Path)
     parser.add_argument("--docker-platform")
     parser.add_argument("--pythonpath", action="append", default=[])

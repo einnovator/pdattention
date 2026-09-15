@@ -1036,10 +1036,16 @@ def test_sidecar_sequence_mismatch_fails_closed(tmp_path):
 class _Upstream:
     def __init__(self) -> None:
         self.requests: list[dict] = []
+        self.client_ports: list[int] = []
+        self.qualification_requests = 0
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
             def do_GET(self):  # noqa: N802
+                outer.client_ports.append(self.client_address[1])
+                outer.qualification_requests += 1
                 body = b'{"object":"list","data":[]}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -1048,6 +1054,7 @@ class _Upstream:
                 self.wfile.write(body)
 
             def do_POST(self):  # noqa: N802
+                outer.client_ports.append(self.client_address[1])
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 outer.requests.append(json.loads(body))
                 response = json.dumps({
@@ -1207,6 +1214,32 @@ def test_proxy_logs_transport_failure_at_the_reserved_request_index(tmp_path):
         assert summary["upstream_transport_error_calls"] == 1
     finally:
         proxy.close()
+
+
+def test_proxy_qualifies_and_reuses_connection_without_replaying_posts(tmp_path):
+    upstream = _Upstream()
+    trace = tmp_path / "trace.jsonl"
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=2,
+        ),
+        trace_path=trace,
+        upstream_qualification_path="/api/version",
+        upstream_connect_attempts=3,
+        upstream_connect_retry_seconds=0,
+    )
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert upstream.qualification_requests == 1
+        assert len(upstream.requests) == 2
+        assert len(set(upstream.client_ports)) == 1
+        assert len(trace.read_text(encoding="utf-8").splitlines()) == 2
+    finally:
+        proxy.close()
+        upstream.close()
 
 
 def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):

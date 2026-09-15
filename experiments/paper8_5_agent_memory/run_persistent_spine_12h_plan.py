@@ -69,6 +69,15 @@ def _command(
         "--health-timeout-seconds", str(args.health_timeout_seconds),
         "--upstream-request-timeout-seconds", str(args.upstream_request_timeout_seconds),
     ]
+    upstream_qualification_path = getattr(args, "upstream_qualification_path", None)
+    if upstream_qualification_path:
+        command.extend((
+            "--upstream-qualification-path", upstream_qualification_path,
+            "--upstream-connect-attempts",
+            str(getattr(args, "upstream_connect_attempts", 1)),
+            "--upstream-connect-retry-seconds",
+            str(getattr(args, "upstream_connect_retry_seconds", 1.0)),
+        ))
     if strategy_config_id:
         command.extend(("--strategy-config-id", strategy_config_id))
     if args.docker_executable:
@@ -346,6 +355,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--health-latency-ceiling-seconds", type=float, default=60)
     parser.add_argument("--health-timeout-seconds", type=float, default=90)
     parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
+    parser.add_argument("--upstream-qualification-path")
+    parser.add_argument("--upstream-connect-attempts", type=int, default=1)
+    parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--max-infrastructure-attempts", type=int, default=3)
     parser.add_argument("--retry-wait-seconds", type=float, default=60)
     parser.add_argument(
