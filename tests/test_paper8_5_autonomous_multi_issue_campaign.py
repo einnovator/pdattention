@@ -158,6 +158,33 @@ def test_dirty_persistent_attempt_is_preserved_in_numbered_retry(tmp_path):
     assert (base / "contaminated.txt").read_text(encoding="utf-8") == "preserve me"
 
 
+def test_health_only_attempt_reserves_retry_path_without_creating_directory(tmp_path):
+    args = _args(tmp_path)
+    args.strategy_id = ["S01_persistent_full"]
+    first = run_campaign(args)
+    cell_id = "independent-n2-a__S01_persistent_full__r01"
+    episode_id = "episode_01_django-django-15277"
+    base = Path(first["cells"][cell_id]["episodes"][episode_id]["output"])
+    retry01 = base.with_name(base.name + "__retry01")
+    base.mkdir(parents=True)
+    (base / "contaminated.txt").write_text("preserve me", encoding="utf-8")
+    state_path = args.output / "campaign_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    episode = state["cells"][cell_id]["episodes"][episode_id]
+    episode["output"] = str(retry01)
+    episode["status"] = "paused_upstream_unhealthy"
+    episode["attempts"] = [
+        {"output": str(base), "status": "infrastructure_error"},
+        {"output": str(retry01), "status": "paused_upstream_unhealthy"},
+    ]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    resumed = run_campaign(args)
+    output = resumed["cells"][cell_id]["episodes"][episode_id]["output"]
+
+    assert output == str(base.with_name(base.name + "__retry02"))
+
+
 def test_sequence_aggregate_labels_unpaired_saving_and_defers_primary_metrics():
     cell = {"issue_count": 2}
     rows = [

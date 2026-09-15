@@ -271,12 +271,16 @@ def _completed_result(path: Path) -> dict[str, Any] | None:
     }
 
 
-def _retry_path(base: Path) -> Path:
-    if not base.exists() or (base.is_dir() and not any(base.iterdir())):
+def _retry_path(base: Path, *, reserved: Sequence[Path] = ()) -> Path:
+    reserved_paths = {path.resolve() for path in reserved}
+    if (
+        base.resolve() not in reserved_paths
+        and (not base.exists() or (base.is_dir() and not any(base.iterdir())))
+    ):
         return base
     for attempt in range(1, 1000):
         candidate = base.with_name(f"{base.name}__retry{attempt:02d}")
-        if not candidate.exists():
+        if candidate.resolve() not in reserved_paths and not candidate.exists():
             return candidate
     raise RuntimeError(f"too many preserved retry attempts for {base}")
 

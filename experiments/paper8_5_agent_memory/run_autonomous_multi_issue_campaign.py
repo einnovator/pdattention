@@ -576,7 +576,16 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                         else base_episode_output
                     )
                 else:
-                    episode_output = _retry_path(base_episode_output)
+                    reserved_outputs = {
+                        Path(str(attempt["output"]))
+                        for attempt in recorded_episode.get("attempts", ())
+                        if attempt.get("output")
+                    }
+                    if recorded_episode.get("output"):
+                        reserved_outputs.add(recorded_output)
+                    episode_output = _retry_path(
+                        base_episode_output, reserved=tuple(reserved_outputs)
+                    )
             completed_ok = bool(
                 completed is not None and completed.get("status") == "complete"
             )
