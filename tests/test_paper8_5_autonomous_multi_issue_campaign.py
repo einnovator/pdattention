@@ -477,6 +477,12 @@ def test_predeclared_stop_counts_only_losses_of_completed_full_successes():
     assert _lost_paired_full_successes(
         cell=cell, row=row, state_cells=state_cells
     ) == ["lost"]
+    assert _lost_paired_full_successes(
+        cell=cell,
+        row=row,
+        state_cells=state_cells,
+        observed_episode_ids=["e2"],
+    ) == []
 
 
 def test_predeclared_stop_does_not_charge_a_full_equivalent_repeat():

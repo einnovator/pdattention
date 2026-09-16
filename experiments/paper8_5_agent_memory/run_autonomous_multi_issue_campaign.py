@@ -370,13 +370,17 @@ def _partial_aggregate(
 def _lost_paired_full_successes(
     *, cell: Mapping[str, Any], row: Mapping[str, Any],
     state_cells: Mapping[str, Mapping[str, Any]],
+    observed_episode_ids: Sequence[str] | None = None,
 ) -> list[str]:
     """Return completed issue IDs lost relative to the paired FULL control."""
 
     control_id = _control_cell_id(cell, state_cells)
     control = state_cells.get(control_id) or {}
     losses: list[str] = []
+    observed = set(observed_episode_ids) if observed_episode_ids is not None else None
     for episode_id, candidate in (row.get("episodes") or {}).items():
+        if observed is not None and episode_id not in observed:
+            continue
         baseline = (control.get("episodes") or {}).get(episode_id) or {}
         if (
             candidate.get("status") == "complete"
@@ -931,7 +935,12 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 and cell["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
             ):
                 losses = _lost_paired_full_successes(
-                    cell=cell, row=row, state_cells=state["cells"]
+                    cell=cell,
+                    row=row,
+                    state_cells=state["cells"],
+                    observed_episode_ids=(
+                        list(row["episodes"])[:len(episode_results)]
+                    ),
                 )
                 if len(losses) >= int(stop_after_losses):
                     quality_gate_stopped = True
