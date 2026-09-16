@@ -317,6 +317,37 @@ def test_instruction_epoch_atomic_retirement_drops_only_terminally_closed_prompt
     assert visible.count("COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT") == 1
 
 
+def test_atomic_retirement_keeps_instruction_for_full_prior_epoch_exemplar():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+            _trajectory("repo__issue-3", "cat c.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selected = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig(
+            prior_full_epochs=1,
+            retire_closed_instructions=True,
+        )
+    ).select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    visible = "\n".join(
+        history.record_by_id[record_id].content
+        for record_id in selected.selected_record_ids
+    )
+
+    assert "Fix repo__issue-1." not in visible
+    assert "Fix repo__issue-2." in visible
+    assert "cat b.py" in visible
+    assert "Fix repo__issue-3." in visible
+
+
 def test_oracle_alignment_audit_exposes_orphaned_e0_and_exact_e0_f1():
     trajectories = (
         _trajectory("repo__issue-1", "cat a.py"),

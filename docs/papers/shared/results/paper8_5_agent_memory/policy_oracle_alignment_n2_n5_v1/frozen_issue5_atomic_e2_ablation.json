@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_frozen_closure_ablation",
+  "evidence_class": "next_action_diagnostic_not_task_quality",
+  "created_at": "2026-09-16T16:36:16.815790+00:00",
+  "instance_id": "django__django-16145",
+  "message_prefix_length": 2,
+  "prefix_identity": {
+    "path": "D:\\tmp\\user-temp\\paper85-e2-prefix-before-episode05.json",
+    "sha256": "eae25e5b7b9a815d29cc3f91590bd5214cdd3ddea9f9f3b1c38caff964c6e6cc",
+    "episode_count": 4,
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277",
+      "scikit-learn__scikit-learn-12585",
+      "pytest-dev__pytest-7982"
+    ],
+    "session_id": "paper85-autonomous-persistent-instruction-epoch-n6-ladder-v1:independent-n6-instruction-epoch-ladder-a__S03_instruction_epoch_e2-e2_keep_two_prior_epochs_full_n6_v1__r01"
+  },
+  "tokenizer": "D:\\git\\rd\\p85-tokenizer-transfer\\paper85-qwen3coder-tokenizer@06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "model": "qwen3-coder:30b",
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0
+  },
+  "canonical_request_sha256": "86c2443937bf1dcaeafd4aac03b3ee6379a05c324060caf38d27badcc25371b9",
+  "arms": {
+    "FULL": {
+      "selected_tokens": 15861,
+      "materialized_tokens": 15861,
+      "full_tokens": 15861,
+      "saving_fraction": 0.0,
+      "selected_message_count": 86,
+      "selected_messages_sha256": "86c2443937bf1dcaeafd4aac03b3ee6379a05c324060caf38d27badcc25371b9"
+    },
+    "E0": {
+      "selected_tokens": 7621,
+      "materialized_tokens": 7621,
+      "full_tokens": 15861,
+      "saving_fraction": 0.5195132715465607,
+      "selected_message_count": 6,
+      "selected_messages_sha256": "ac522b0aa68f48ef2950ff7f874a1688d7fe759619b1418dd5ac68cd742d5132"
+    },
+    "E0_F1": {
+      "selected_tokens": 8627,
+      "materialized_tokens": 8627,
+      "full_tokens": 15861,
+      "saving_fraction": 0.45608725805434713,
+      "selected_message_count": 14,
+      "selected_messages_sha256": "e30e9fdeb395c9ff96b7ef334845719893f13e478f7a6bbb8ad9e32c4b3eec44"
+    },
+    "E0_F1C": {
+      "selected_tokens": 8627,
+      "materialized_tokens": 7709,
+      "full_tokens": 15861,
+      "saving_fraction": 0.5139650715591704,
+      "selected_message_count": 14,
+      "selected_messages_sha256": "84b7e7d0a5160fb1db4b00e9d874754374cefa1db2fb0b3238a1a1d37e75b34a"
+    },
+    "E0_ATOMIC": {
+      "selected_tokens": 1507,
+      "materialized_tokens": 1507,
+      "full_tokens": 15861,
+      "saving_fraction": 0.9049870752159385,
+      "selected_message_count": 2,
+      "selected_messages_sha256": "f4d936aaaca0c97b6b8a2d2a080ac3c9aacfc80900438537b1cd9a3775fc49ba"
+    },
+    "E1_ATOMIC": {
+      "selected_tokens": 4851,
+      "materialized_tokens": 4851,
+      "full_tokens": 15861,
+      "saving_fraction": 0.6941554756951012,
+      "selected_message_count": 31,
+      "selected_messages_sha256": "0649e51331e1741c657f106e58879517e493f8563ca7cd63bd63f4ac0ae424dc"
+    },
+    "E2_ATOMIC": {
+      "selected_tokens": 8707,
+      "materialized_tokens": 8707,
+      "full_tokens": 15861,
+      "saving_fraction": 0.4510434398839922,
+      "selected_message_count": 50,
+      "selected_messages_sha256": "73cf7ecc2ad3868e1827e08595adade1e4a1610eb04e9c956487d8ce97a8196f"
+    },
+    "E2": {
+      "selected_tokens": 11918,
+      "materialized_tokens": 11918,
+      "full_tokens": 15861,
+      "saving_fraction": 0.24859718807137,
+      "selected_message_count": 52,
+      "selected_messages_sha256": "e1532aea98d6aebec9f2c7f09a9941010de26cb21c731008f80193ef7cdf4bf9"
+    }
+  },
+  "repeats": 3,
+  "rows": [
+    {
+      "repeat": 1,
+      "arm": "E2_ATOMIC",
+      "request_sha256": "5a525913965a006d1be034e6b2269369a1d6a99fd0ae8bfc0997a67d618262c3",
+      "selected_messages_sha256": "73cf7ecc2ad3868e1827e08595adade1e4a1610eb04e9c956487d8ce97a8196f",
+      "selected_tokens": 8707,
+      "materialized_tokens": 8707,
+      "saving_fraction": 0.4510434398839922,
+      "selected_message_count": 50,
+      "excluded_group_count": 19,
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5",
+      "command_sha256": "297909be2949d3d45df380d16a893516a64d632632aa5305c6e9f314067934ca",
+      "response_content": "THOUGHT: This issue is about Django's runserver command where `0:8000` should display as `0.0.0.0:8000` in the output. I need to find Django-related files, particularly the runserver command implementation. Let me first search for Django files:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5\n```\n</format_example>",
+      "response_content_sha256": "773c5e72627e832150fc7ac4c13cef8cd29743b8804aca79517252ddc06524ce",
+      "reported_usage": {
+        "prompt_tokens": 8960,
+        "prompt_tokens_details": {
+          "cached_tokens": 129
+        },
+        "completion_tokens": 110,
+        "total_tokens": 9070
+      }
+    },
+    {
+      "repeat": 2,
+      "arm": "E2_ATOMIC",
+      "request_sha256": "5a525913965a006d1be034e6b2269369a1d6a99fd0ae8bfc0997a67d618262c3",
+      "selected_messages_sha256": "73cf7ecc2ad3868e1827e08595adade1e4a1610eb04e9c956487d8ce97a8196f",
+      "selected_tokens": 8707,
+      "materialized_tokens": 8707,
+      "saving_fraction": 0.4510434398839922,
+      "selected_message_count": 50,
+      "excluded_group_count": 19,
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5",
+      "command_sha256": "297909be2949d3d45df380d16a893516a64d632632aa5305c6e9f314067934ca",
+      "response_content": "THOUGHT: This issue is about Django's runserver command where `0:8000` should display as `0.0.0.0:8000` in the output. I need to find Django-related files, particularly the runserver command implementation. Let me first search for Django files:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5\n```\n</format_example>",
+      "response_content_sha256": "773c5e72627e832150fc7ac4c13cef8cd29743b8804aca79517252ddc06524ce",
+      "reported_usage": {
+        "prompt_tokens": 8960,
+        "prompt_tokens_details": {
+          "cached_tokens": 8959
+        },
+        "completion_tokens": 110,
+        "total_tokens": 9070
+      }
+    },
+    {
+      "repeat": 3,
+      "arm": "E2_ATOMIC",
+      "request_sha256": "5a525913965a006d1be034e6b2269369a1d6a99fd0ae8bfc0997a67d618262c3",
+      "selected_messages_sha256": "73cf7ecc2ad3868e1827e08595adade1e4a1610eb04e9c956487d8ce97a8196f",
+      "selected_tokens": 8707,
+      "materialized_tokens": 8707,
+      "saving_fraction": 0.4510434398839922,
+      "selected_message_count": 50,
+      "excluded_group_count": 19,
+      "action_valid": true,
+      "command": "find /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5",
+      "command_sha256": "297909be2949d3d45df380d16a893516a64d632632aa5305c6e9f314067934ca",
+      "response_content": "THOUGHT: This issue is about Django's runserver command where `0:8000` should display as `0.0.0.0:8000` in the output. I need to find Django-related files, particularly the runserver command implementation. Let me first search for Django files:\n\n```mswea_bash_command\nfind /testbed -name \"*.py\" | xargs grep -l \"runserver\" 2>/dev/null | head -5\n```\n</format_example>",
+      "response_content_sha256": "773c5e72627e832150fc7ac4c13cef8cd29743b8804aca79517252ddc06524ce",
+      "reported_usage": {
+        "prompt_tokens": 8960,
+        "prompt_tokens_details": {
+          "cached_tokens": 8959
+        },
+        "completion_tokens": 110,
+        "total_tokens": 9070
+      }
+    }
+  ],
+  "guardrail": "This experiment tests next-action validity/stability only. Autonomous official resolution is required before policy promotion."
+}

@@ -571,10 +571,15 @@ class PersistentInstructionEpochRetirementSelector:
 
         selected_ids = set(immutable_instruction_record_ids(history))
         if self.config.retire_closed_instructions:
+            # Epochs deliberately retained whole remain genuine in-context
+            # exemplars, so their instruction must remain paired with their
+            # interaction.  Atomic retirement applies only to older closed
+            # epochs outside that explicit full-epoch floor.
+            oldest_full_epoch = active_epoch - self.config.prior_full_epochs
             selected_ids.difference_update(
                 history.records[position].record_id
                 for epoch, position in enumerate(instruction_positions)
-                if epoch in closed_epochs
+                if epoch in closed_epochs and epoch < oldest_full_epoch
             )
         reasons = {
             record_id: "immutable_user_instruction"

@@ -109,6 +109,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             retire_closed_instructions=True,
             **common,
         ),
+        "E1_ATOMIC": AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            completed_instruction_epochs=1,
+            completed_finalization_turns=0,
+            retire_closed_instructions=True,
+            **common,
+        ),
+        "E2_ATOMIC": AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            completed_instruction_epochs=2,
+            completed_finalization_turns=0,
+            retire_closed_instructions=True,
+            **common,
+        ),
         "E2": AutonomousSelectionConfig(
             policy="persistent_instruction_epoch_retirement",
             completed_instruction_epochs=2,
@@ -258,7 +272,10 @@ def main() -> None:
         "--arm",
         dest="arms",
         action="append",
-        choices=("FULL", "E0", "E0_F1", "E0_F1C", "E0_ATOMIC", "E2"),
+        choices=(
+            "FULL", "E0", "E0_F1", "E0_F1C", "E0_ATOMIC",
+            "E1_ATOMIC", "E2_ATOMIC", "E2",
+        ),
         help="Run only the named arm; repeat to select multiple arms.",
     )
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
