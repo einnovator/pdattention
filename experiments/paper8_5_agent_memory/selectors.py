@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from bisect import bisect_right
 from dataclasses import dataclass, replace
 from enum import Enum
 import math
@@ -469,6 +470,202 @@ class PersistentGlobalRetirementSelector:
                 resource_ids=resources,
                 witness_record_ids=(),
                 tombstone="retired boundary-free causal group",
+                excluded_tokens=sum(costs[record_id] for record_id in omitted),
+            ))
+        return replace(plan, exclusions=tuple(exclusions))
+
+
+@dataclass(frozen=True)
+class PersistentInstructionEpochRetirementConfig:
+    """Floors for interaction detail preceding the latest user instruction.
+
+    An instruction epoch is an observable transcript interval, not a task
+    label.  Every system/user instruction remains immutable and the complete
+    active epoch remains visible.  Optional floors retain a progress spine
+    independently inside each older epoch.
+    """
+
+    prior_recent_turns: int = 0
+    prior_mutation_turns: int = 0
+    prior_verification_turns: int = 0
+    prior_protocol_turns: int = 0
+
+    def __post_init__(self) -> None:
+        if min(
+            self.prior_recent_turns,
+            self.prior_mutation_turns,
+            self.prior_verification_turns,
+            self.prior_protocol_turns,
+        ) < 0:
+            raise ValueError("prior instruction-epoch floors cannot be negative")
+
+
+class PersistentInstructionEpochRetirementSelector:
+    """Retire only interaction detail from earlier instruction epochs.
+
+    The policy consumes no evaluator task boundary, episode identifier,
+    workspace status, or current-task label.  It recognizes only provenance-
+    typed genuine user instructions.  Tool observations transported as
+    ``role=user`` remain tool observations and cannot start an epoch.
+
+    This policy is appropriate for the independent-issue stratum.  Related or
+    dependent work requires a resource/dependency join before older epochs can
+    be retired; absent that evidence a deployment must fail closed.
+    """
+
+    def __init__(
+        self,
+        config: PersistentInstructionEpochRetirementConfig | None = None,
+    ):
+        self.config = config or PersistentInstructionEpochRetirementConfig()
+
+    def select(
+        self,
+        *,
+        history: CanonicalAgentHistory,
+        query: str,
+        budget: AgentMemoryBudget,
+        count_tokens: TokenCounter = whitespace_tokens,
+    ) -> AgentMemoryPlan:
+        del query
+        costs = _record_costs(history, count_tokens)
+        records = history.record_by_id
+        record_positions = {
+            record.record_id: index for index, record in enumerate(history.records)
+        }
+        instruction_positions = [
+            index
+            for index, record in enumerate(history.records)
+            if record.has_role(AgentRecordRole.TASK)
+            or record.has_role(AgentRecordRole.USER_INPUT)
+        ]
+        if not instruction_positions:
+            raise ValueError("instruction-epoch policy requires a genuine user instruction")
+        active_epoch = len(instruction_positions) - 1
+
+        selected_ids = set(immutable_instruction_record_ids(history))
+        reasons = {
+            record_id: "immutable_user_instruction"
+            for record_id in selected_ids
+        }
+
+        complete_by_epoch: dict[int, list[AgentTurn]] = {}
+        active_complete_turns = 0
+        for turn in history.turns:
+            if not turn.record_ids:
+                continue
+            turn_position = max(record_positions[record_id] for record_id in turn.record_ids)
+            epoch = bisect_right(instruction_positions, turn_position) - 1
+            if epoch == active_epoch:
+                for record_id in turn.record_ids:
+                    selected_ids.add(record_id)
+                    reasons[record_id] = (
+                        "active_instruction_epoch"
+                        if turn.complete else "incomplete_causal_turn"
+                    )
+                if turn.complete:
+                    active_complete_turns += 1
+            elif epoch >= 0 and turn.complete:
+                complete_by_epoch.setdefault(epoch, []).append(turn)
+            elif not turn.complete:
+                # A causal group is never split even in malformed or partial
+                # replay input.  Failing closed is safer than retiring it.
+                for record_id in turn.record_ids:
+                    selected_ids.add(record_id)
+                    reasons[record_id] = "incomplete_causal_turn"
+
+        selected_prior_turn_ids: set[str] = set()
+        for turns in complete_by_epoch.values():
+            if self.config.prior_recent_turns:
+                selected_prior_turn_ids.update(
+                    turn.turn_id
+                    for turn in turns[-self.config.prior_recent_turns :]
+                )
+            for role, count in (
+                (AgentRecordRole.MUTATION, self.config.prior_mutation_turns),
+                (AgentRecordRole.VERIFICATION, self.config.prior_verification_turns),
+            ):
+                if not count:
+                    continue
+                eligible = [
+                    turn for turn in turns
+                    if any(records[record_id].has_role(role) for record_id in turn.record_ids)
+                ]
+                selected_prior_turn_ids.update(
+                    turn.turn_id for turn in eligible[-count:]
+                )
+            if self.config.prior_protocol_turns:
+                disallowed = {
+                    AgentRecordRole.ERROR_OR_REJECTION,
+                    AgentRecordRole.MUTATION,
+                    AgentRecordRole.VERIFICATION,
+                    AgentRecordRole.FINALIZATION,
+                }
+                eligible = []
+                for turn in turns:
+                    roles = {
+                        role
+                        for record_id in turn.record_ids
+                        for role in records[record_id].semantic_roles
+                    }
+                    if (
+                        AgentRecordRole.ASSISTANT_ACTION in roles
+                        and AgentRecordRole.TOOL_OBSERVATION in roles
+                        and not roles.intersection(disallowed)
+                    ):
+                        eligible.append(turn)
+                selected_prior_turn_ids.update(
+                    turn.turn_id
+                    for turn in eligible[-self.config.prior_protocol_turns :]
+                )
+
+        for turn in history.turns:
+            if turn.turn_id not in selected_prior_turn_ids:
+                continue
+            for record_id in turn.record_ids:
+                selected_ids.add(record_id)
+                reasons[record_id] = "prior_instruction_epoch_progress_spine"
+
+        prior_complete_turns = sum(len(turns) for turns in complete_by_epoch.values())
+        plan = _plan(
+            policy="persistent_instruction_epoch_retirement",
+            history=history,
+            selected_ids=set(selected_ids),
+            reasons=reasons,
+            costs=costs,
+            budget=budget,
+            mandatory_ids=set(selected_ids),
+            head_turns=0,
+            tail_turns=active_complete_turns + len(selected_prior_turn_ids),
+            middle_candidate_turns=prior_complete_turns,
+            middle_selected_turns=len(selected_prior_turn_ids),
+        )
+
+        omitted_by_group: dict[str, list[str]] = {}
+        for record in history.records:
+            if record.record_id not in selected_ids:
+                omitted_by_group.setdefault(record.causal_group_id, []).append(
+                    record.record_id
+                )
+        exclusions = []
+        for group_id, omitted in omitted_by_group.items():
+            resources = tuple(sorted({
+                str(resource)
+                for record_id in omitted
+                for resource in (records[record_id].metadata.get("resource_ids") or ())
+            }))
+            exclusions.append(AgentMemoryExclusion(
+                causal_group_id=group_id,
+                record_ids=tuple(omitted),
+                rule_id="prior_instruction_epoch_retirement",
+                classification="policy_retirement",
+                reason=(
+                    "assistant/tool detail predates the latest genuine user instruction "
+                    "and lies outside configured prior-epoch floors"
+                ),
+                resource_ids=resources,
+                witness_record_ids=(),
+                tombstone="retired prior instruction-epoch causal group",
                 excluded_tokens=sum(costs[record_id] for record_id in omitted),
             ))
         return replace(plan, exclusions=tuple(exclusions))

@@ -50,7 +50,8 @@ These strata are never pooled.
 Every arm and parameter grid is registered in
 `configs/multi_issue_strategy_registry_v1.json`. Simple strategies are tested
 alone at two and three issues. A mixture is allowed only after a parent is
-nondominated, and only winning frozen settings advance to four and five issues.
+nondominated, and only winning frozen settings advance first to four and five
+issues, then to the six-to-ten-issue asymptotic regime.
 This avoids a blind strategy Cartesian product while preserving the rationale
 and failure hypothesis for every reported point.
 

@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+import pytest
+
 from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign import (
     TARGET_SAVING_MAX,
     TARGET_SAVING_MIN,
@@ -25,6 +27,10 @@ BENCHMARK = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "benchmarks" /
     "easy14_longest_success5.json"
 )
+BASELINE_SUCCESS14_BENCHMARK = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "benchmarks" /
+    "easy14_baseline_success14.json"
+)
 CONFIRMATION_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_persistent_spine_confirmation_v1.json"
@@ -40,6 +46,10 @@ N3_RELIABILITY_SPEC = (
 GLOBAL_N3_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_persistent_global_n3_all_user_r4m2v2p1_v2.json"
+)
+INSTRUCTION_EPOCH_N3_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_persistent_instruction_epoch_n3_e0_v1.json"
 )
 
 
@@ -78,6 +88,50 @@ def test_frozen_registry_has_unique_cells_and_explicit_primary_target():
     assert spec["primary_target"]["maximum_saving_fraction"] == TARGET_SAVING_MAX
     assert spec["primary_target"]["official_resolution_delta_minimum"] == 0
     assert spec["primary_target"]["lost_persistent_full_successes"] == 0
+
+
+def test_instruction_epoch_registry_is_boundary_free_and_uniquely_identified():
+    spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    validate_spec(spec, benchmark)
+    cells = campaign_cells(spec)
+
+    assert len(cells) == 2
+    treatment = next(
+        row for row in cells
+        if row["policy"] == "persistent_instruction_epoch_retirement"
+    )
+    assert treatment["strategy"]["boundary_mode"] == "boundary_free"
+    assert treatment["strategy"]["completed_recent_turns"] == 0
+    assert "e0_all_user_active_epoch_full_v1" in treatment["cell_id"]
+
+
+def test_campaign_registry_accepts_ten_issue_asymptotic_sequence():
+    benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
+    spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
+    spec["sequences"] = [{
+        "sequence_id": "independent-n10-planned",
+        "sequence_stratum": "independent_clean_workspace",
+        "instance_ids": benchmark["instance_ids"][:10],
+    }]
+
+    validate_spec(spec, benchmark)
+    cells = campaign_cells(spec)
+    assert len(cells) == 2
+    assert all(row["issue_count"] == 10 for row in cells)
+
+
+def test_campaign_registry_rejects_more_than_ten_issues():
+    benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
+    spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
+    spec["sequences"] = [{
+        "sequence_id": "independent-n11-invalid",
+        "sequence_stratum": "independent_clean_workspace",
+        "instance_ids": benchmark["instance_ids"][:11],
+    }]
+
+    with pytest.raises(ValueError, match="one to ten"):
+        validate_spec(spec, benchmark)
 
 
 def test_confirmation_registry_freezes_repeats_and_held_out_sequence():

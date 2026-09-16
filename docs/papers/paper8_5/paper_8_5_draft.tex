@@ -101,7 +101,7 @@ deployment profile.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
-one-issue sessions and persistent sequences of one to five issues.  A
+one-issue sessions and persistent sequences of one to ten issues.  A
 persistent policy is credited only against the appropriate baseline: matching
 a fresh reset is automatic session hygiene, while an advantage over fresh
 sessions requires preserved cross-issue utility or reduced rediscovery.
@@ -160,7 +160,7 @@ We ask:
     \item When bounded memory changes behavior, how much cost appears as direct
     reacquisition, trajectory inflation, submission failure, or loss of a
     resolving workspace state?
-    \item As one session grows from one to five issues, which episode-retirement,
+    \item As one session grows from one to ten issues, which episode-retirement,
     selection, and materialization strategies preserve sequence-level quality,
     and do any retain useful cross-issue state more efficiently than a fresh
     session reset?
@@ -1301,6 +1301,57 @@ metadata or a removed user prompt.  The predeclared adaptive response is to
 retain more interaction history (global R8) and rerun the complete paired
 cohort; R4 is rejected regardless of its 51.10\% raw paired saving.
 
+This failure exposes a conflation in a flat global floor.  It uses the same
+parameter both to protect the active issue and to retire completed work.  We
+therefore introduce a two-level \emph{instruction-epoch} policy.  A genuine
+provenance-typed user instruction begins an observable epoch; a tool result
+transported with the user role does not.  The policy keeps the system prompt,
+every user instruction, and the entire current epoch.  Only assistant--tool
+causal groups before the latest instruction are eligible for retirement.
+There is no evaluator task ID, episode marker, completion flag, or workspace
+label in the selector input.  For independent repositories, the E0 treatment
+retires all such older interaction detail.  For related or dependent work,
+that retirement is only an opportunity oracle until resource-version and
+dependency edges certify disconnection; otherwise the deployable policy must
+fail closed.
+
+Before spending another autonomous cohort, we replayed the clean 3/3
+persistent-\textsc{Full} trajectories through E0 with the exact locked Qwen
+tokenizer.  Table~\ref{tab:instruction-epoch-oracle} counts every growing
+request.  It is fixed-trajectory logical opportunity, not evidence that a
+selected model run still solves the tasks.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Instruction-epoch opportunity on the clean N=3 persistent-\textsc{Full}
+sequence. ``Interaction saving'' excludes the immutable system/user
+instruction floor from both numerator and denominator.}
+\label{tab:instruction-epoch-oracle}
+\begin{tabular}{rrrrrr}
+\toprule
+Issues & Requests & Full tokens & E0 tokens & Whole saving & Interaction saving \\
+\midrule
+1 & 27 & 153,654 & 153,654 & 0.00\% & 0.00\% \\
+2 & 41 & 328,401 & 232,193 & 29.30\% & 42.72\% \\
+3 & 55 & 599,397 & 356,091 & 40.59\% & 59.56\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At N=3, immutable instructions account for 31.85\% of cumulative content
+tokens.  This distinction resolves the apparent ``ten tasks imply 90\%
+saving'' argument.  If equal-size independent tasks retain only the active
+assistant/tool epoch, the ideal saving \emph{within interaction history} is
+$1-1/N$, reaching 90\% at N=10.  Whole-request saving is bounded instead by
+$(1-p)(1-1/N)$ when the pinned instruction fraction is $p$, and accumulated
+task statements can make $p$ grow with $N$.  We therefore report both curves
+and the fraction of oracle headroom captured.  The active autonomous E0 run
+is the behavioral test: any first-issue difference remains backend variance
+because E0 is an exact logical no-op until the second genuine instruction.
+The exact evidence is released under
+\texttt{instruction\_epoch\_oracle\_n3\_clean\_full\_v1}.
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation
@@ -2383,7 +2434,7 @@ default: the uncertainty unit is still one ordered sequence family.  In the
 realistic boundary-free setting, global R4 preserves all user instructions yet
 resolves only 2/3, adds 11 calls, and receives zero failure-aware saving.  This
 rules out treating the explicit-boundary frontier as a deployable default.  The
-one-to-five-issue campaign continues to treat active-only
+one-to-ten-issue campaign continues to treat active-only
 retirement as session hygiene unless it beats deliberate fresh sessions on
 related or dependent sequences. Held-out sequences, additional models, and
 additional harnesses remain the confirmation frontier.

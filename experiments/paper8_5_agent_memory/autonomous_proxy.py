@@ -63,6 +63,8 @@ from .selectors import (
     PersistentEpisodeRetirementSelector,
     PersistentGlobalRetirementConfig,
     PersistentGlobalRetirementSelector,
+    PersistentInstructionEpochRetirementConfig,
+    PersistentInstructionEpochRetirementSelector,
     TokenCounter,
     immutable_instruction_record_ids,
     whitespace_tokens,
@@ -80,6 +82,7 @@ AUTONOMOUS_EPISODE_POLICIES = (
     "persistent_episode_retirement",
     "persistent_active_episode",
     "persistent_global_retirement",
+    "persistent_instruction_epoch_retirement",
 )
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
@@ -325,11 +328,14 @@ class AutonomousSelectionConfig:
         if self.episode_index < 1:
             raise ValueError("episode_index must be positive")
         if (
-            self.policy == "persistent_global_retirement"
+            self.policy in {
+                "persistent_global_retirement",
+                "persistent_instruction_epoch_retirement",
+            }
             and self.boundary_mode is not BoundaryMode.BOUNDARY_FREE
         ):
             raise ValueError(
-                "persistent_global_retirement requires boundary_free composition"
+                f"{self.policy} requires boundary_free composition"
             )
         if any(value < 0 for value in (
             self.completed_recent_turns,
@@ -405,6 +411,15 @@ class AutonomousSelectionConfig:
                     mutation_turns=self.completed_mutation_turns,
                     verification_turns=self.completed_verification_turns,
                     protocol_turns=self.completed_protocol_turns,
+                )
+            )
+        if self.policy == "persistent_instruction_epoch_retirement":
+            return PersistentInstructionEpochRetirementSelector(
+                PersistentInstructionEpochRetirementConfig(
+                    prior_recent_turns=self.completed_recent_turns,
+                    prior_mutation_turns=self.completed_mutation_turns,
+                    prior_verification_turns=self.completed_verification_turns,
+                    prior_protocol_turns=self.completed_protocol_turns,
                 )
             )
         if self.policy == "head_tail_recency":

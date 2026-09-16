@@ -244,9 +244,39 @@ def test_boundary_free_global_policy_receives_no_episode_signal():
     }
 
 
+def test_instruction_epoch_policy_keeps_current_history_without_episode_signal():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            boundary_mode="boundary_free",
+            expected_model="locked-model",
+            task_id="repo__current-2",
+            session_id="session-locked",
+            episode_index=2,
+            completed_recent_turns=0,
+            completed_mutation_turns=0,
+            completed_verification_turns=0,
+            completed_protocol_turns=0,
+        ),
+        prior_episodes=(_completed_episode(),),
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "Fix repo__old-1." in visible
+    assert "old evidence" not in visible
+    assert "Fix the issue." in visible
+    for resource in ("a.py", "b.py", "c.py", "d.py"):
+        assert f"cat {resource}" in visible
+    assert result.plan.policy == "persistent_instruction_epoch_retirement"
+    assert all("episode" not in reason for _, reason in result.plan.selection_reasons)
+
+
 def test_boundary_free_global_policy_rejects_explicit_composition():
     with pytest.raises(ValueError, match="requires boundary_free"):
         AutonomousSelectionConfig(policy="persistent_global_retirement")
+    with pytest.raises(ValueError, match="requires boundary_free"):
+        AutonomousSelectionConfig(policy="persistent_instruction_epoch_retirement")
 
 
 def test_persistent_prefix_count_must_match_episode_index():

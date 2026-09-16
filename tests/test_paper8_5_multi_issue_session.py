@@ -28,6 +28,8 @@ from experiments.paper8_5_agent_memory.selectors import (
     PersistentEpisodeRetirementConfig,
     PersistentGlobalRetirementConfig,
     PersistentGlobalRetirementSelector,
+    PersistentInstructionEpochRetirementConfig,
+    PersistentInstructionEpochRetirementSelector,
     immutable_instruction_record_ids,
     whitespace_tokens,
 )
@@ -146,6 +148,97 @@ def test_boundary_free_global_policy_uses_only_continuous_stream_floors():
         reason == "immutable_user_instruction"
         for _, reason in selected.selection_reasons
     ) == 2
+
+
+def test_instruction_epoch_policy_keeps_active_epoch_and_retires_only_prior_detail():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+            _trajectory("repo__issue-3", "cat c.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selector = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig()
+    )
+    selected = selector.select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    selected_ids = set(selected.selected_record_ids)
+    records = history.record_by_id
+
+    # System plus all three genuine prompts are immutable.
+    assert immutable_instruction_record_ids(history) <= selected_ids
+    # The complete active epoch is retained; assistant/tool groups in both
+    # older epochs are retired atomically.
+    active_instruction = max(
+        index for index, record in enumerate(history.records)
+        if record.has_role(AgentRecordRole.TASK)
+        or record.has_role(AgentRecordRole.USER_INPUT)
+    )
+    assert all(
+        record.record_id in selected_ids
+        for record in history.records[active_instruction:]
+    )
+    assert all(
+        all(record_id not in selected_ids for record_id in turn.record_ids)
+        for turn in history.turns[:-2]
+    )
+    assert all(
+        all(record_id in selected_ids for record_id in turn.record_ids)
+        for turn in history.turns[-2:]
+    )
+    assert selected.policy == "persistent_instruction_epoch_retirement"
+    assert selected.middle_candidate_turns == 4
+    assert selected.middle_selected_turns == 0
+    assert len(selected.exclusions) == 4
+    assert all(
+        "episode" not in reason
+        for _, reason in selected.selection_reasons
+    )
+    # The old tool observations use transport role=user but do not become
+    # instruction boundaries.
+    assert any(
+        records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+        for exclusion in selected.exclusions
+        for record_id in exclusion.record_ids
+    )
+
+
+def test_instruction_epoch_policy_applies_prior_floors_per_epoch():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+            _trajectory("repo__issue-3", "cat c.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selected = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig(prior_recent_turns=1)
+    ).select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    selected_ids = set(selected.selected_record_ids)
+
+    # One final causal group is retained from each earlier instruction epoch.
+    assert all(
+        all(record_id in selected_ids for record_id in history.turns[index].record_ids)
+        for index in (1, 3)
+    )
+    assert all(
+        all(record_id not in selected_ids for record_id in history.turns[index].record_ids)
+        for index in (0, 2)
+    )
+    assert selected.middle_candidate_turns == 4
+    assert selected.middle_selected_turns == 2
 
 
 def test_every_selector_family_preserves_all_user_instructions():
