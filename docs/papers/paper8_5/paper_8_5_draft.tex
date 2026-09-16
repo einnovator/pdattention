@@ -100,7 +100,11 @@ epoch policy instead keeps the active epoch whole and retires only earlier
 assistant--tool detail.  On a clean 3/3 persistent-\textsc{Full} replication,
 this E0 policy also resolves 3/3, saves 34.83\% against the paired control, and
 reduces calls from 66 to 64.  This is one ordered sequence family, not yet a
-general deployment profile.
+general deployment profile.  At N=6 the same aggressive E0 rule resolves 6/6
+versus \textsc{Full}'s 5/6 and removes 55.34\% on its own trajectory, but calls
+rise from 60 to 114; against the paired \textsc{Full} denominator it consumes
+43.87\% more input tokens.  Per-request retention is therefore not an
+efficiency result unless trajectory length is included.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1475,6 +1479,43 @@ provenance.  Screen evidence is released separately under
 \texttt{instruction\_epoch\_n1\_candidate\_screen\_v1} and
 \texttt{instruction\_epoch\_n1\_candidate\_repeat\_v1}.
 
+The autonomous N=6 execution exposes the distinction between local retention
+and end-to-end efficiency.  E0 resolves all six issues, including one issue
+that the contemporaneous \textsc{Full} control misses, and its own growing
+trajectory sends 55.34\% fewer tokens than that same trajectory without
+retirement.  However, E0 takes 114 calls versus \textsc{Full}'s 60.  Its
+1,171,988 sent tokens exceed the control's entire 814,617-token workload, so
+paired failure-aware saving is $-43.87$\%, not $+55.34$\%.  The run loses none
+of the five \textsc{Full} successes, but it fails the no-call-increase and
+30--50\% net-saving gates.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Autonomous N=6 instruction-epoch result.  ``Gross'' uses each row's
+own trajectory counterfactual; ``paired'' compares sent tokens with the
+contemporaneous persistent-\textsc{Full} workload and therefore includes the
+cost of extra calls.}
+\label{tab:instruction-epoch-n6-e0}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Policy & Resolved & Calls & Full tokens & Sent tokens & Gross & Paired \\
+\midrule
+Persistent \textsc{Full} & 5/6 & 60 & 814,617 & 814,617 & 0.00\% & 0.00\% \\
+Instruction epoch E0 & 6/6 & 114 & 2,624,244 & 1,171,988 & 55.34\% & $-43.87$\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This is a useful negative result rather than a failed mechanism: retirement
+fires exactly as specified and preserves official resolution, but the model
+uses the shorter context less efficiently.  We therefore predeclare E1 and E2,
+which keep the immediately preceding one or two genuine-user instruction
+epochs whole.  These policies consume no task identifier; they use only the
+ordinary user-instruction boundaries already present in the transcript.  The
+N=6 E0 evidence is released under
+\texttt{autonomous\_persistent\_instruction\_epoch\_n6\_e0\_v1}.
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation
@@ -2561,11 +2602,17 @@ two-level instruction-epoch policy fixes the immediate error by keeping the
 active epoch whole: its first admissible clean replication resolves 3/3 like
 persistent \textsc{Full}, saves 34.83\% on the paired denominator, and uses two
 fewer calls.  This qualifies sequence expansion while retaining the stronger
-guardrail that dependent epochs need resource-DAG evidence.  The one-to-ten-
-issue campaign continues to treat active-only
-retirement as session hygiene unless it beats deliberate fresh sessions on
-related or dependent sequences. Held-out sequences, additional models, and
-additional harnesses remain the confirmation frontier.
+guardrail that dependent epochs need resource-DAG evidence.  The N=6 expansion
+then rejects E0 as a deployment profile: it resolves 6/6 versus \textsc{Full}'s
+5/6 and removes 55.34\% relative to its own trajectory, yet its 114 calls
+consume 43.87\% more input tokens than the 60-call control.  This is the
+paper's clearest demonstration that per-request pruning can lose end-to-end.
+E1/E2 therefore retain one or two recent instruction epochs whole and test
+whether 30--50\% net saving can be recovered without the call expansion.  The
+one-to-ten-issue campaign continues to treat active-only retirement as session
+hygiene unless it beats deliberate fresh sessions on related or dependent
+sequences. Held-out sequences, additional models, and additional harnesses
+remain the confirmation frontier.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}

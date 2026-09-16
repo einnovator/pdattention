@@ -23,7 +23,7 @@
     "fresh_per_issue": "one logical session identity per issue",
     "persistent": "one logical session identity across the ordered issue sequence"
   },
-  "issue_counts": [1, 2, 3, 4, 5],
+  "issue_counts": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
   "sequence_strata": [
     {
       "id": "independent_cross_repository",
@@ -150,6 +150,36 @@
       "rationale": "upper bound on useful completed-episode memory",
       "configuration_rule": "leave-one-episode/record-out, pair removals, then bounded subset search",
       "primary_comparison": "best deployable strategy"
+    },
+    {
+      "id": "S03_instruction_epoch_retirement",
+      "status": "autonomous_n3_qualified_n6_call_dominated",
+      "family": "instruction_epoch_retirement",
+      "rationale": "pin every user instruction and the active instruction epoch while retiring earlier assistant/tool detail without evaluator task IDs",
+      "configuration": {
+        "completed_instruction_epochs": 0
+      },
+      "primary_comparison": "S01_persistent_full"
+    },
+    {
+      "id": "S03_instruction_epoch_e1",
+      "status": "autonomous_n6_running",
+      "family": "instruction_epoch_retirement",
+      "rationale": "retain the active and immediately preceding genuine-user instruction epochs whole to recover behavioral conditioning",
+      "configuration": {
+        "completed_instruction_epochs": 1
+      },
+      "primary_comparison": "S01_persistent_full"
+    },
+    {
+      "id": "S03_instruction_epoch_e2",
+      "status": "autonomous_n6_running",
+      "family": "instruction_epoch_retirement",
+      "rationale": "retain the active and two immediately preceding genuine-user instruction epochs whole as a conservative persistent-session profile",
+      "configuration": {
+        "completed_instruction_epochs": 2
+      },
+      "primary_comparison": "S01_persistent_full"
     }
   ],
   "advancement": {
@@ -157,7 +187,7 @@
     "stage_2": "run each S04-S06 family alone on N=2,3",
     "stage_3": "stop dominated settings and combinations whose parents fail",
     "stage_4": "run S07 combinations only from nondominated parents",
-    "stage_5": "expand nondominated profiles to N=4,5 and held-out sequences",
+    "stage_5": "expand nondominated profiles to N=4--10 and held-out sequences",
     "quality_gate": "zero lost persistent-FULL successes in every stage; confirmation also requires lower 95% ordered-sequence-clustered paired quality-delta bound at least 0.00",
     "efficiency_gate": "30-50% failure-aware saving with no material successful-run calls-to-solution regression",
     "subtarget_rule": "settings below 30% saving may identify useful mechanisms or parents, but are not default-profile candidates",

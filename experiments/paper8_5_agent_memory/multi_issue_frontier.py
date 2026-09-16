@@ -48,8 +48,8 @@ def load_strategy_registry(path: Path) -> dict[str, Any]:
         missing = sorted(required.difference(row))
         if missing:
             raise ValueError(f"{row['id']}: missing {', '.join(missing)}")
-    if registry.get("issue_counts") != [1, 2, 3, 4, 5]:
-        raise ValueError("registry must preserve the locked 1--5 issue axis")
+    if registry.get("issue_counts") != list(range(1, 11)):
+        raise ValueError("registry must preserve the locked 1--10 issue axis")
     target = registry.get("primary_target") or {}
     saving = target.get("failure_aware_saving_fraction") or {}
     if saving.get("minimum") != 0.30 or saving.get("maximum") != 0.50:
@@ -67,8 +67,8 @@ def _validate_run(run: Mapping[str, Any], known_strategies: set[str]) -> None:
     if strategy not in known_strategies:
         raise ValueError(f"unregistered strategy {strategy!r}")
     issue_count = int(run.get("issue_count") or 0)
-    if issue_count not in {1, 2, 3, 4, 5}:
-        raise ValueError("issue_count must be in 1..5")
+    if issue_count not in set(range(1, 11)):
+        raise ValueError("issue_count must be in 1..10")
     ordered = run.get("ordered_instance_ids")
     issues = run.get("issues")
     if not isinstance(ordered, list) or len(ordered) != issue_count:

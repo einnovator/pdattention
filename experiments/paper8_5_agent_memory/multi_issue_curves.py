@@ -87,7 +87,7 @@ def aggregate_frontier(
             row.get("strategy_config_id"),
             row.get("strategy_config_digest"),
         )
-        if not all(key[:6]) or key[6] not in {1, 2, 3, 4, 5} or not all(key[7:]):
+        if not all(key[:6]) or key[6] not in set(range(1, 11)) or not all(key[7:]):
             raise ValueError("row lacks a complete curve-cell identity")
         cells[key].append(row)
 
