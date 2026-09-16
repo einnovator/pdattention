@@ -235,9 +235,13 @@ def test_boundary_free_global_policy_receives_no_episode_signal():
     visible = "\n".join(row["content"] for row in result.payload["messages"])
     assert "pra_episode_boundary" not in visible
     assert "old evidence" not in visible
+    assert "Fix repo__old-1." in visible
     assert "Fix the issue." in visible
     assert all("episode-" not in row for row in result.plan.selected_record_ids)
     assert all("episode" not in reason for _, reason in result.plan.selection_reasons)
+    assert result.trace["wire_plan"]["decision_metadata"] == {
+        "instruction_floor": "all_user_instructions"
+    }
 
 
 def test_boundary_free_global_policy_rejects_explicit_composition():

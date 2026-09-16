@@ -39,7 +39,7 @@ N3_RELIABILITY_SPEC = (
 )
 GLOBAL_N3_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
-    "autonomous_persistent_global_n3_r4m2v2p1_v1.json"
+    "autonomous_persistent_global_n3_all_user_r4m2v2p1_v2.json"
 )
 
 
@@ -145,6 +145,8 @@ def test_boundary_free_n3_spec_hides_boundaries_in_both_arms(tmp_path):
     assert not any(
         row["strategy"].get("share_full_first_episode", False) for row in cells
     )
+    candidate = next(row for row in cells if row["policy"] != "full")
+    assert candidate["strategy"]["keep_completed_task_statements"] is True
 
     args = _args(tmp_path)
     args.spec = GLOBAL_N3_SPEC

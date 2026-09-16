@@ -677,7 +677,7 @@ def transform_autonomous_payload(
         },
         source_history_digest=history.digest,
         decision_metadata=(
-            {"instruction_floor": "newest_user_instruction"}
+            {"instruction_floor": "all_user_instructions"}
             if config.policy == "persistent_global_retirement"
             else {}
         ),
@@ -742,8 +742,7 @@ def transform_autonomous_payload(
             row for row in history.records
             if row.primary_role in {AgentRecordRole.TASK, AgentRecordRole.USER_INPUT}
         ]
-        if user_instructions:
-            immutable_ids.add(user_instructions[-1].record_id)
+        immutable_ids.update(row.record_id for row in user_instructions)
     if not immutable_ids.issubset(selected_ids):
         raise AssertionError("selector removed an immutable system/task record")
     if history.records and history.records[-1].record_id not in selected_ids:

@@ -325,9 +325,12 @@ class PersistentGlobalRetirementSelector:
     """Apply progress-state floors without task or workspace boundaries.
 
     The selector receives a single monotonically ordered transcript.  It keeps
-    the system record, the newest ordinary user instruction, incomplete causal
-    turns, and global recent/mutation/verification/protocol floors.  It never
-    reads episode IDs, task status, workspace scope, or a current-task label.
+    the system record, every user-authored instruction, incomplete causal
+    turns, and global recent/mutation/verification/protocol floors.  Tool
+    observations may use the transport role ``user`` in a compatibility
+    harness, but remain typed tool records and are selectable.  The selector
+    never reads episode IDs, task status, workspace scope, or a current-task
+    label.
     """
 
     def __init__(self, config: PersistentGlobalRetirementConfig | None = None):
@@ -351,18 +354,18 @@ class PersistentGlobalRetirementSelector:
         }
         reasons = {record_id: "immutable_system" for record_id in selected_ids}
 
-        # A new issue appears only as an ordinary new user instruction.  Keep
-        # the newest such record by stream position, without labeling a task
-        # transition or assigning it an episode identity.
+        # User-authored task statements and follow-up instructions are an
+        # immutable semantic floor.  This is based on record provenance, not
+        # task-boundary knowledge.  Tool observations are intentionally not
+        # included even when mini-swe-agent transports them with role=user.
         user_instructions = [
             record for record in history.records
             if record.has_role(AgentRecordRole.TASK)
             or record.has_role(AgentRecordRole.USER_INPUT)
         ]
-        if user_instructions:
-            newest = max(user_instructions, key=lambda row: row.message_index)
-            selected_ids.add(newest.record_id)
-            reasons[newest.record_id] = "newest_user_instruction"
+        for instruction in user_instructions:
+            selected_ids.add(instruction.record_id)
+            reasons[instruction.record_id] = "immutable_user_instruction"
 
         complete_turns = [turn for turn in history.turns if turn.complete]
         selected_turn_ids: set[str] = set()

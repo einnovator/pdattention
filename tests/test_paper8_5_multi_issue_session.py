@@ -127,11 +127,15 @@ def test_boundary_free_global_policy_uses_only_continuous_stream_floors():
 
     assert selected.policy == "persistent_global_retirement"
     assert sum(row.has_role(AgentRecordRole.USER_INPUT) for row in rows) == 1
-    assert not any(row.has_role(AgentRecordRole.TASK) for row in rows)
+    assert sum(row.has_role(AgentRecordRole.TASK) for row in rows) == 1
     assert {
         row.record_id for row in rows if row.has_role(AgentRecordRole.ASSISTANT_ACTION)
     } == {history.turns[-1].record_ids[0]}
     assert all("episode" not in reason for _, reason in selected.selection_reasons)
+    assert sum(
+        reason == "immutable_user_instruction"
+        for _, reason in selected.selection_reasons
+    ) == 2
 
 
 def test_replay_recordizer_rejects_mixed_typed_and_inferred_records():

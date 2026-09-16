@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-autonomous-persistent-global-n3-all-user-r4m2v2p1-v2",
+  "benchmark_card": "../benchmarks/easy14_longest_success5.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "claim": "30-50% failure-aware cumulative input-token saving with no observed official-resolution loss"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "independent-n3-boundary-free-all-user-a",
+      "sequence_stratum": "independent_cross_repository",
+      "instance_ids": [
+        "django__django-15277",
+        "pytest-dev__pytest-7982",
+        "scikit-learn__scikit-learn-13135"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "S01_persistent_full",
+      "strategy_config_id": "boundary_free_all_user_v2",
+      "session_mode": "persistent",
+      "policy": "full",
+      "boundary_mode": "boundary_free",
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S03_global_progress_spine",
+      "strategy_config_id": "r4m2v2p1_boundary_free_all_user_v2",
+      "session_mode": "persistent",
+      "policy": "persistent_global_retirement",
+      "boundary_mode": "boundary_free",
+      "keep_completed_task_statements": true,
+      "completed_recent_turns": 4,
+      "completed_mutation_turns": 2,
+      "completed_verification_turns": 2,
+      "completed_protocol_turns": 1,
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "purpose": "test a continuous-session policy without visible task boundaries while preserving every user-authored instruction",
+    "gate": "30-50% failure-aware saving, zero lost FULL successes, and no aggregate call increase",
+    "immutable_floor": "all TASK and USER_INPUT records; tool observations remain selectable regardless of transport role",
+    "guardrail": "the explicit-boundary P1 result is an upper bound and cannot qualify this boundary-free policy"
+  },
+  "workspace_semantics": {
+    "current_campaign": "clean SWE-bench workspace per issue; one continuous transcript; evaluator-only issue ledger",
+    "model_policy_visibility": "all user instructions remain verbatim; no episode marker, ID, status, or workspace scope",
+    "selectable_scope": "assistant action plus tool-observation causal groups only",
+    "not_claimed": "dependent same-workspace execution"
+  }
+}

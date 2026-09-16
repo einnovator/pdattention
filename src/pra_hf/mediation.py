@@ -612,7 +612,8 @@ class RequestMediator:
                     )
                 )
                 if instruction_floor not in {
-                    "all_active_tasks", "newest_user_instruction"
+                    "all_active_tasks", "newest_user_instruction",
+                    "all_user_instructions",
                 }:
                     raise RecordInferenceError(
                         "unsupported agent-memory instruction floor: "
@@ -622,12 +623,16 @@ class RequestMediator:
                     row.record_id for row in history.records
                     if row.primary_role.value == "system"
                 }
-                if instruction_floor == "newest_user_instruction":
+                if instruction_floor in {
+                    "newest_user_instruction", "all_user_instructions"
+                }:
                     instructions = [
                         row for row in history.records
                         if row.primary_role.value in {"task", "user_input"}
                     ]
-                    if instructions:
+                    if instruction_floor == "all_user_instructions":
+                        mandatory.update(row.record_id for row in instructions)
+                    elif instructions:
                         mandatory.add(instructions[-1].record_id)
                 else:
                     mandatory.update(
