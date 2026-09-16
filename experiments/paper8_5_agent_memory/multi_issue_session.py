@@ -17,6 +17,13 @@ class SessionMode(str, Enum):
     PERSISTENT = "persistent"
 
 
+class BoundaryMode(str, Enum):
+    """How issue transitions are represented in the model/policy history."""
+
+    EXPLICIT = "explicit"
+    BOUNDARY_FREE = "boundary_free"
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -30,6 +37,7 @@ def compose_multi_issue_session(
     *,
     source_paths: Sequence[Path] | None = None,
     session_id: str | None = None,
+    boundary_mode: BoundaryMode | str = BoundaryMode.EXPLICIT,
 ) -> dict[str, Any]:
     """Join issue episodes while keeping all logical identities explicit.
 
@@ -40,6 +48,7 @@ def compose_multi_issue_session(
     incompatible base commit.
     """
 
+    selected_boundary_mode = BoundaryMode(boundary_mode)
     if not trajectories:
         raise ValueError("at least one issue trajectory is required")
     paths = list(source_paths or ())
@@ -52,6 +61,8 @@ def compose_multi_issue_session(
     combined: list[dict[str, Any]] = []
     episodes: list[dict[str, Any]] = []
     assistant_count = 0
+    global_record_index = 0
+    global_turn_index = 0
     for episode_index, (trajectory, instance_id) in enumerate(
         zip(trajectories, instance_ids), 1
     ):
@@ -60,6 +71,7 @@ def compose_multi_issue_session(
             raise ValueError(f"{instance_id}: trajectory has no messages")
         annotated = annotate_minisweagent_messages(raw_messages)
         episode_id = f"episode-{episode_index:02d}"
+        local_turn_ids: dict[str, str] = {}
         start_decision = assistant_count + 1
         kept = 0
         for message in annotated:
@@ -69,28 +81,65 @@ def compose_multi_issue_session(
             copied = dict(message)
             metadata = dict(copied.get("metadata") or {})
             declaration = dict(metadata.get("pra_record") or {})
-            declaration["record_id"] = _prefix(declaration["record_id"], episode_id)
-            declaration["turn_id"] = _prefix(declaration["turn_id"], episode_id)
-            declaration["causal_group_id"] = _prefix(
-                declaration["causal_group_id"], episode_id
-            )
             record_metadata = dict(declaration.get("metadata") or {})
-            record_metadata.update({
-                "episode_id": episode_id,
-                "episode_index": episode_index,
-                "episode_status": (
-                    "active" if episode_index == len(trajectories) else "completed"
-                ),
-                "workspace_scope": instance_id,
-            })
+            if selected_boundary_mode is BoundaryMode.EXPLICIT:
+                declaration["record_id"] = _prefix(
+                    declaration["record_id"], episode_id
+                )
+                declaration["turn_id"] = _prefix(
+                    declaration["turn_id"], episode_id
+                )
+                declaration["causal_group_id"] = _prefix(
+                    declaration["causal_group_id"], episode_id
+                )
+                record_metadata.update({
+                    "episode_id": episode_id,
+                    "episode_index": episode_index,
+                    "episode_status": (
+                        "active" if episode_index == len(trajectories) else "completed"
+                    ),
+                    "workspace_scope": instance_id,
+                })
+            else:
+                # Resequence identities over the continuous transcript.  The
+                # selector sees neither an episode namespace nor a workspace
+                # transition.  The separate ``episodes`` ledger below remains
+                # evaluator-only and never enters the request history.
+                declaration["record_id"] = f"record-{global_record_index:06d}"
+                global_record_index += 1
+                local_turn_id = str(declaration["turn_id"])
+                if declaration.get("primary_role") == "system":
+                    global_turn_id = "system"
+                elif episode_index == 1 and declaration.get("primary_role") == "task":
+                    global_turn_id = "task"
+                elif declaration.get("primary_role") == "task":
+                    global_turn_id = f"input-{global_record_index - 1:06d}"
+                    declaration["primary_role"] = "user_input"
+                    declaration["semantic_roles"] = ["user_input"]
+                else:
+                    global_turn_id = local_turn_ids.get(local_turn_id, "")
+                    if not global_turn_id:
+                        global_turn_id = f"turn-{global_turn_index:06d}"
+                        global_turn_index += 1
+                        local_turn_ids[local_turn_id] = global_turn_id
+                declaration["turn_id"] = global_turn_id
+                declaration["causal_group_id"] = global_turn_id
+                for key in (
+                    "episode_id", "episode_index", "episode_status",
+                    "workspace_scope",
+                ):
+                    record_metadata.pop(key, None)
             declaration["metadata"] = record_metadata
             metadata["pra_record"] = declaration
-            metadata["pra_episode"] = {
-                "episode_id": episode_id,
-                "episode_index": episode_index,
-                "status": record_metadata["episode_status"],
-                "workspace_scope": instance_id,
-            }
+            if selected_boundary_mode is BoundaryMode.EXPLICIT:
+                metadata["pra_episode"] = {
+                    "episode_id": episode_id,
+                    "episode_index": episode_index,
+                    "status": record_metadata["episode_status"],
+                    "workspace_scope": instance_id,
+                }
+            else:
+                metadata.pop("pra_episode", None)
             copied["metadata"] = metadata
             if role == "exit":
                 # mini-swe-agent stores the observation produced by its final
@@ -106,7 +155,11 @@ def compose_multi_issue_session(
                 declaration["semantic_roles"] = semantic_roles
                 metadata["pra_record"] = declaration
                 copied["metadata"] = metadata
-            if declaration.get("primary_role") == "task" and episode_index > 1:
+            if (
+                selected_boundary_mode is BoundaryMode.EXPLICIT
+                and declaration.get("primary_role") == "task"
+                and episode_index > 1
+            ):
                 copied["content"] = (
                     f'<pra_episode_boundary id="{episode_id}" '
                     f'workspace="{instance_id}" prior_status="completed"/>\n'
@@ -141,8 +194,13 @@ def compose_multi_issue_session(
         "instance_id": "persistent-session:" + "+".join(instance_ids),
         "issue_count": len(episodes),
         "session_mode": SessionMode.PERSISTENT.value,
+        "boundary_mode": selected_boundary_mode.value,
         "session_id": session_id or "persistent:" + "+".join(instance_ids),
         "session_semantics": (
+            "one model-visible conversation with evaluator-hidden issue boundaries; "
+            "prior workspaces are not physically merged"
+            if selected_boundary_mode is BoundaryMode.BOUNDARY_FREE
+            else
             "one model-visible conversation across explicitly declared issue and "
             "workspace transitions; prior workspaces are not physically merged"
         ),

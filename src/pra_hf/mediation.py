@@ -606,14 +606,35 @@ class RequestMediator:
                         + ", ".join(sorted(unselected_replacements))
                     )
                 selected = set(plan.selected_record_ids)
+                instruction_floor = str(
+                    plan.decision_metadata.get(
+                        "instruction_floor", "all_active_tasks"
+                    )
+                )
+                if instruction_floor not in {
+                    "all_active_tasks", "newest_user_instruction"
+                }:
+                    raise RecordInferenceError(
+                        "unsupported agent-memory instruction floor: "
+                        + instruction_floor
+                    )
                 mandatory = {
                     row.record_id for row in history.records
                     if row.primary_role.value == "system"
-                    or (
-                        row.primary_role.value == "task"
+                }
+                if instruction_floor == "newest_user_instruction":
+                    instructions = [
+                        row for row in history.records
+                        if row.primary_role.value in {"task", "user_input"}
+                    ]
+                    if instructions:
+                        mandatory.add(instructions[-1].record_id)
+                else:
+                    mandatory.update(
+                        row.record_id for row in history.records
+                        if row.primary_role.value == "task"
                         and row.metadata.get("episode_status") != "completed"
                     )
-                }
                 if history.records:
                     mandatory.add(history.records[-1].record_id)
                 if not mandatory <= selected:

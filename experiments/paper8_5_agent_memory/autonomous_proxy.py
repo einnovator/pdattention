@@ -29,7 +29,7 @@ from .materialization import (
     ToolObservationMaterializer,
     materialize_plan,
 )
-from .multi_issue_session import compose_multi_issue_session
+from .multi_issue_session import BoundaryMode, compose_multi_issue_session
 from .matched_token_tail import (
     MatchedTokenTailConfig,
     matched_token_tail_full_floor_record_ids,
@@ -61,6 +61,8 @@ from .selectors import (
     MiddleSelectionStrategy,
     PersistentEpisodeRetirementConfig,
     PersistentEpisodeRetirementSelector,
+    PersistentGlobalRetirementConfig,
+    PersistentGlobalRetirementSelector,
     TokenCounter,
     whitespace_tokens,
 )
@@ -76,6 +78,7 @@ AUTONOMOUS_POSITIVE_POLICIES = (
 AUTONOMOUS_EPISODE_POLICIES = (
     "persistent_episode_retirement",
     "persistent_active_episode",
+    "persistent_global_retirement",
 )
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
@@ -299,11 +302,13 @@ class AutonomousSelectionConfig:
     completed_verification_turns: int = 1
     completed_protocol_turns: int = 0
     keep_completed_task_statements: bool = True
+    boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
     require_exact_sidecars: bool = True
     negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
     negative_fallback: str = "none"
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "boundary_mode", BoundaryMode(self.boundary_mode))
         if self.policy not in AUTONOMOUS_POLICIES:
             raise ValueError(
                 f"policy must be one of {AUTONOMOUS_POLICIES}"
@@ -318,6 +323,13 @@ class AutonomousSelectionConfig:
             raise ValueError("max_calls must be positive")
         if self.episode_index < 1:
             raise ValueError("episode_index must be positive")
+        if (
+            self.policy == "persistent_global_retirement"
+            and self.boundary_mode is not BoundaryMode.BOUNDARY_FREE
+        ):
+            raise ValueError(
+                "persistent_global_retirement requires boundary_free composition"
+            )
         if any(value < 0 for value in (
             self.completed_recent_turns,
             self.completed_mutation_turns,
@@ -383,6 +395,15 @@ class AutonomousSelectionConfig:
                     verification_turns=0,
                     protocol_turns=0,
                     keep_completed_task_statements=False,
+                )
+            )
+        if self.policy == "persistent_global_retirement":
+            return PersistentGlobalRetirementSelector(
+                PersistentGlobalRetirementConfig(
+                    recent_turns=self.completed_recent_turns,
+                    mutation_turns=self.completed_mutation_turns,
+                    verification_turns=self.completed_verification_turns,
+                    protocol_turns=self.completed_protocol_turns,
                 )
             )
         if self.policy == "head_tail_recency":
@@ -481,6 +502,7 @@ def transform_autonomous_payload(
         composed = compose_multi_issue_session(
             (*prior_episodes, current_episode),
             session_id=config.session_id,
+            boundary_mode=config.boundary_mode,
         )
         if composed["issue_count"] != config.episode_index:
             raise ValueError(
@@ -654,6 +676,11 @@ def transform_autonomous_payload(
             if row.content != history.record_by_id[row.record_id].content
         },
         source_history_digest=history.digest,
+        decision_metadata=(
+            {"instruction_floor": "newest_user_instruction"}
+            if config.policy == "persistent_global_retirement"
+            else {}
+        ),
     )
     # FULL is the behavioral control.  A negative policy that currently has
     # nothing to remove must be the same control too: retain every incoming
@@ -705,10 +732,18 @@ def transform_autonomous_payload(
         row.record_id for row in history.records
         if row.primary_role.value == "system"
         or (
-            row.primary_role.value == "task"
+            config.policy != "persistent_global_retirement"
+            and row.primary_role.value == "task"
             and row.metadata.get("episode_status") != "completed"
         )
     }
+    if config.policy == "persistent_global_retirement":
+        user_instructions = [
+            row for row in history.records
+            if row.primary_role in {AgentRecordRole.TASK, AgentRecordRole.USER_INPUT}
+        ]
+        if user_instructions:
+            immutable_ids.add(user_instructions[-1].record_id)
     if not immutable_ids.issubset(selected_ids):
         raise AssertionError("selector removed an immutable system/task record")
     if history.records and history.records[-1].record_id not in selected_ids:

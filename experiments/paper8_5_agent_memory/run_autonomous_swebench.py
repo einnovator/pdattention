@@ -856,6 +856,7 @@ def run(args: argparse.Namespace) -> Path:
         completed_verification_turns=args.completed_verification_turns,
         completed_protocol_turns=args.completed_protocol_turns,
         keep_completed_task_statements=args.keep_completed_task_statements,
+        boundary_mode=args.boundary_mode,
         require_exact_sidecars=args.require_exact_sidecars,
         negative_realization=NegativeRealizationMode(args.negative_realization),
         negative_fallback=args.negative_fallback,
@@ -1184,6 +1185,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--completed-mutation-turns", type=int, default=1)
     parser.add_argument("--completed-verification-turns", type=int, default=1)
     parser.add_argument("--completed-protocol-turns", type=int, default=0)
+    parser.add_argument(
+        "--boundary-mode",
+        choices=("explicit", "boundary_free"),
+        default="explicit",
+        help=(
+            "Whether persistent issue transitions are exposed to the model/policy "
+            "or retained only in the evaluator ledger."
+        ),
+    )
     parser.add_argument(
         "--keep-completed-task-statements",
         action=argparse.BooleanOptionalAction,

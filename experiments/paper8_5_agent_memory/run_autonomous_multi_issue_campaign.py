@@ -107,6 +107,16 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
             raise ValueError(f"{strategy_id}: invalid session mode")
         if mode == "fresh_per_issue" and strategy.get("policy") != "full":
             raise ValueError("fresh-per-issue is a FULL control, not a selection arm")
+        boundary_mode = str(strategy.get("boundary_mode", "explicit"))
+        if boundary_mode not in {"explicit", "boundary_free"}:
+            raise ValueError(f"{strategy_id}: invalid boundary mode")
+        if (
+            strategy.get("policy") == "persistent_global_retirement"
+            and boundary_mode != "boundary_free"
+        ):
+            raise ValueError(
+                "persistent_global_retirement requires boundary_free mode"
+            )
 
 
 def campaign_cells(spec: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -178,6 +188,7 @@ def _episode_command(
         "--completed-mutation-turns", str(strategy.get("completed_mutation_turns", 1)),
         "--completed-verification-turns", str(strategy.get("completed_verification_turns", 1)),
         "--completed-protocol-turns", str(strategy.get("completed_protocol_turns", 0)),
+        "--boundary-mode", str(strategy.get("boundary_mode", "explicit")),
         "--temperature", str(generation["temperature"]),
         "--top-p", str(generation["top_p"]),
         "--seed", str(generation["seed"]),

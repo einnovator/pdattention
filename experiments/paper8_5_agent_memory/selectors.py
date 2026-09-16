@@ -303,6 +303,164 @@ class PersistentEpisodeRetirementSelector:
 
 
 @dataclass(frozen=True)
+class PersistentGlobalRetirementConfig:
+    """Retention floors over one continuous, boundary-free session."""
+
+    recent_turns: int = 4
+    mutation_turns: int = 2
+    verification_turns: int = 2
+    protocol_turns: int = 1
+
+    def __post_init__(self) -> None:
+        if min(
+            self.recent_turns,
+            self.mutation_turns,
+            self.verification_turns,
+            self.protocol_turns,
+        ) < 0:
+            raise ValueError("global turn floors cannot be negative")
+
+
+class PersistentGlobalRetirementSelector:
+    """Apply progress-state floors without task or workspace boundaries.
+
+    The selector receives a single monotonically ordered transcript.  It keeps
+    the system record, the newest ordinary user instruction, incomplete causal
+    turns, and global recent/mutation/verification/protocol floors.  It never
+    reads episode IDs, task status, workspace scope, or a current-task label.
+    """
+
+    def __init__(self, config: PersistentGlobalRetirementConfig | None = None):
+        self.config = config or PersistentGlobalRetirementConfig()
+
+    def select(
+        self,
+        *,
+        history: CanonicalAgentHistory,
+        query: str,
+        budget: AgentMemoryBudget,
+        count_tokens: TokenCounter = whitespace_tokens,
+    ) -> AgentMemoryPlan:
+        del query
+        costs = _record_costs(history, count_tokens)
+        records = history.record_by_id
+        selected_ids = {
+            record.record_id
+            for record in history.records
+            if record.has_role(AgentRecordRole.SYSTEM)
+        }
+        reasons = {record_id: "immutable_system" for record_id in selected_ids}
+
+        # A new issue appears only as an ordinary new user instruction.  Keep
+        # the newest such record by stream position, without labeling a task
+        # transition or assigning it an episode identity.
+        user_instructions = [
+            record for record in history.records
+            if record.has_role(AgentRecordRole.TASK)
+            or record.has_role(AgentRecordRole.USER_INPUT)
+        ]
+        if user_instructions:
+            newest = max(user_instructions, key=lambda row: row.message_index)
+            selected_ids.add(newest.record_id)
+            reasons[newest.record_id] = "newest_user_instruction"
+
+        complete_turns = [turn for turn in history.turns if turn.complete]
+        selected_turn_ids: set[str] = set()
+        if self.config.recent_turns:
+            selected_turn_ids.update(
+                turn.turn_id for turn in complete_turns[-self.config.recent_turns :]
+            )
+
+        for role, count in (
+            (AgentRecordRole.MUTATION, self.config.mutation_turns),
+            (AgentRecordRole.VERIFICATION, self.config.verification_turns),
+        ):
+            if not count:
+                continue
+            eligible = [
+                turn for turn in complete_turns
+                if any(records[record_id].has_role(role) for record_id in turn.record_ids)
+            ]
+            selected_turn_ids.update(turn.turn_id for turn in eligible[-count:])
+
+        if self.config.protocol_turns:
+            disallowed = {
+                AgentRecordRole.ERROR_OR_REJECTION,
+                AgentRecordRole.MUTATION,
+                AgentRecordRole.VERIFICATION,
+                AgentRecordRole.FINALIZATION,
+            }
+            eligible = []
+            for turn in complete_turns:
+                roles = {
+                    role
+                    for record_id in turn.record_ids
+                    for role in records[record_id].semantic_roles
+                }
+                if (
+                    AgentRecordRole.ASSISTANT_ACTION in roles
+                    and AgentRecordRole.TOOL_OBSERVATION in roles
+                    and not roles.intersection(disallowed)
+                ):
+                    eligible.append(turn)
+            selected_turn_ids.update(
+                turn.turn_id for turn in eligible[-self.config.protocol_turns :]
+            )
+
+        for turn in history.turns:
+            if not turn.complete:
+                for record_id in turn.record_ids:
+                    selected_ids.add(record_id)
+                    reasons[record_id] = "incomplete_causal_turn"
+            elif turn.turn_id in selected_turn_ids:
+                for record_id in turn.record_ids:
+                    selected_ids.add(record_id)
+                    reasons[record_id] = "global_progress_floor"
+
+        plan = _plan(
+            policy="persistent_global_retirement",
+            history=history,
+            selected_ids=set(selected_ids),
+            reasons=reasons,
+            costs=costs,
+            budget=budget,
+            mandatory_ids=set(selected_ids),
+            head_turns=0,
+            tail_turns=sum(
+                1 for turn in history.turns if turn.turn_id in selected_turn_ids
+            ),
+            middle_candidate_turns=len(complete_turns),
+            middle_selected_turns=len(selected_turn_ids),
+        )
+
+        omitted_by_group: dict[str, list[str]] = {}
+        for record in history.records:
+            if record.record_id not in selected_ids:
+                omitted_by_group.setdefault(record.causal_group_id, []).append(
+                    record.record_id
+                )
+        exclusions = []
+        for group_id, omitted in omitted_by_group.items():
+            resources = tuple(sorted({
+                str(resource)
+                for record_id in omitted
+                for resource in (records[record_id].metadata.get("resource_ids") or ())
+            }))
+            exclusions.append(AgentMemoryExclusion(
+                causal_group_id=group_id,
+                record_ids=tuple(omitted),
+                rule_id="global_progress_retirement",
+                classification="policy_retirement",
+                reason="continuous-session detail outside global progress-state floors",
+                resource_ids=resources,
+                witness_record_ids=(),
+                tombstone="retired boundary-free causal group",
+                excluded_tokens=sum(costs[record_id] for record_id in omitted),
+            ))
+        return replace(plan, exclusions=tuple(exclusions))
+
+
+@dataclass(frozen=True)
 class HeadMiddleTailConfig:
     """Independent head/tail floors with selection restricted to the middle."""
 

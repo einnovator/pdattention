@@ -3,6 +3,7 @@ import copy
 import pytest
 
 from experiments.paper8_5_agent_memory.multi_issue_session import (
+    BoundaryMode,
     SessionMode,
     compose_issue_session_schedule,
     compose_multi_issue_session,
@@ -17,6 +18,8 @@ from experiments.paper8_5_agent_memory.selectors import (
     FullHistorySelector,
     PersistentEpisodeRetirementSelector,
     PersistentEpisodeRetirementConfig,
+    PersistentGlobalRetirementConfig,
+    PersistentGlobalRetirementSelector,
 )
 
 
@@ -72,6 +75,63 @@ def test_composer_rejects_duplicate_issue_identity():
     trajectory = _trajectory("repo__issue-1", "true")
     with pytest.raises(ValueError, match="distinct non-empty"):
         compose_multi_issue_session((trajectory, trajectory))
+
+
+def test_boundary_free_composer_hides_episode_identity_from_history():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+
+    assert result["boundary_mode"] == "boundary_free"
+    assert len(result["episodes"]) == 2  # private evaluator ledger
+    assert "pra_episode_boundary" not in "\n".join(
+        str(row.get("content") or "") for row in result["messages"]
+    )
+    assert all("pra_episode" not in (row.get("metadata") or {}) for row in result["messages"])
+    assert all("episode-" not in row.record_id for row in history.records)
+    assert all(
+        not {"episode_id", "episode_index", "episode_status", "workspace_scope"}
+        .intersection(row.metadata)
+        for row in history.records
+    )
+    assert [row.primary_role for row in history.records].count(AgentRecordRole.TASK) == 1
+    assert [row.primary_role for row in history.records].count(AgentRecordRole.USER_INPUT) == 1
+
+
+def test_boundary_free_global_policy_uses_only_continuous_stream_floors():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selector = PersistentGlobalRetirementSelector(
+        PersistentGlobalRetirementConfig(
+            recent_turns=1,
+            mutation_turns=0,
+            verification_turns=0,
+            protocol_turns=0,
+        )
+    )
+    selected = selector.select(
+        history=history, query="ignored", budget=AgentMemoryBudget(max_tokens=100_000)
+    )
+    rows = [history.record_by_id[row] for row in selected.selected_record_ids]
+
+    assert selected.policy == "persistent_global_retirement"
+    assert sum(row.has_role(AgentRecordRole.USER_INPUT) for row in rows) == 1
+    assert not any(row.has_role(AgentRecordRole.TASK) for row in rows)
+    assert {
+        row.record_id for row in rows if row.has_role(AgentRecordRole.ASSISTANT_ACTION)
+    } == {history.turns[-1].record_ids[0]}
+    assert all("episode" not in reason for _, reason in selected.selection_reasons)
 
 
 def test_replay_recordizer_rejects_mixed_typed_and_inferred_records():

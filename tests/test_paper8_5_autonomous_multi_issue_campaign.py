@@ -37,6 +37,10 @@ N3_RELIABILITY_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_persistent_spine_n3_reliability_v1.json"
 )
+GLOBAL_N3_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_persistent_global_n3_r4m2v2p1_v1.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -129,6 +133,34 @@ def test_n3_reliability_spec_predeclares_three_full_and_two_r4_repeats():
     assert spec["qualification"]["full_reliability_gate"].startswith(
         "at least two of three"
     )
+
+
+def test_boundary_free_n3_spec_hides_boundaries_in_both_arms(tmp_path):
+    spec = json.loads(GLOBAL_N3_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    validate_spec(spec, benchmark)
+    cells = campaign_cells(spec)
+    assert len(cells) == 2
+    assert all(row["strategy"]["boundary_mode"] == "boundary_free" for row in cells)
+    assert not any(
+        row["strategy"].get("share_full_first_episode", False) for row in cells
+    )
+
+    args = _args(tmp_path)
+    args.spec = GLOBAL_N3_SPEC
+    args.sequence_id = None
+    args.strategy_id = None
+    state = run_campaign(args)
+    for cell in state["cells"].values():
+        commands = [
+            row["command"] for row in cell["episodes"].values()
+            if row["command"] is not None
+        ]
+        assert commands
+        assert all(
+            command[command.index("--boundary-mode") + 1] == "boundary_free"
+            for command in commands
+        )
 
 
 def test_dry_run_distinguishes_fresh_from_persistent_prefixes(tmp_path):
