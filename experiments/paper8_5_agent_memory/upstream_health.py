@@ -21,6 +21,8 @@ def probe_generation_health(
     latency_ceiling_seconds: float = 60.0, timeout_seconds: float = 90.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
     qualification_path: str | None = None,
+    runtime_state_path: str | None = None,
+    minimum_active_context_tokens: int | None = None,
     connect_attempts: int = 1,
     connect_retry_seconds: float = 1.0,
     connection_factory: Callable[..., Any] | None = None,
@@ -37,6 +39,15 @@ def probe_generation_health(
         raise ValueError("health connect retry configuration is invalid")
     if qualification_path is not None and not qualification_path.startswith("/"):
         raise ValueError("health qualification path must be absolute")
+    if runtime_state_path is not None and not runtime_state_path.startswith("/"):
+        raise ValueError("runtime state path must be absolute")
+    if minimum_active_context_tokens is not None:
+        if minimum_active_context_tokens < 1:
+            raise ValueError("minimum active context tokens must be positive")
+        if runtime_state_path is None:
+            raise ValueError(
+                "minimum active context tokens requires a runtime state path"
+            )
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": "Reply with exactly OK."}],
@@ -48,6 +59,7 @@ def probe_generation_health(
     }).encode("utf-8")
     probes: list[dict[str, Any]] = []
     qualification: dict[str, Any] | None = None
+    runtime_context: dict[str, Any] | None = None
     connection: Any | None = None
     chat_url = _chat_url(base_url)
     if qualification_path is not None and curl_executable is None:
@@ -80,6 +92,45 @@ def probe_generation_health(
                     "latency_seconds": monotonic() - started,
                     "healthy": True,
                 }
+                if runtime_state_path is not None:
+                    context_started = monotonic()
+                    candidate.request("GET", runtime_state_path)
+                    context_response = candidate.getresponse()
+                    context_body = json.loads(
+                        context_response.read().decode("utf-8")
+                    )
+                    active_models = list(context_body.get("models") or ())
+                    active = next((
+                        row for row in active_models
+                        if str(row.get("name") or row.get("model")) == model
+                    ), None)
+                    active_context = (
+                        int(active.get("context_length"))
+                        if active is not None and active.get("context_length") is not None
+                        else None
+                    )
+                    context_healthy = (
+                        context_response.status < 500
+                        and active_context is not None
+                        and (
+                            minimum_active_context_tokens is None
+                            or active_context >= minimum_active_context_tokens
+                        )
+                    )
+                    runtime_context = {
+                        "status": context_response.status,
+                        "latency_seconds": monotonic() - context_started,
+                        "model_found": active is not None,
+                        "active_context_tokens": active_context,
+                        "minimum_active_context_tokens": minimum_active_context_tokens,
+                        "healthy": context_healthy,
+                    }
+                    if not context_healthy:
+                        raise OSError(
+                            "active runtime context is missing or below the "
+                            f"required {minimum_active_context_tokens} tokens: "
+                            f"observed {active_context}"
+                        )
                 break
             except (OSError, http.client.HTTPException) as error:
                 candidate.close()
@@ -186,6 +237,7 @@ def probe_generation_health(
         "latency_ceiling_seconds": latency_ceiling_seconds,
         "timeout_seconds": timeout_seconds,
         "connection_qualification": qualification,
+        "runtime_context_qualification": runtime_context,
         "healthy": healthy,
         "probes": probes,
     }

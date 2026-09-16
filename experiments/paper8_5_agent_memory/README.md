@@ -40,8 +40,11 @@ for a lost FULL success. Confirmation admits no noninferiority margin: the lower
 zero. A setting below 30% can remain a useful mechanism or combination parent,
 but it is not a candidate default profile.
 
-The publication frontier treats one through five ordered issues as the session
-axis. Each sequence is run in both `fresh_per_issue` and `persistent` modes.
+The discovery frontier treats one through five ordered issues as the initial
+session axis; the current frozen confirmation mechanism cohort extends one
+continuous persistent session through all fourteen Easy-14 identities. Each
+sequence is run in both `fresh_per_issue` and `persistent` modes where the
+comparison requires both controls.
 Independent cross-repository sequences are a hygiene/control stratum; related
 same-repository and dependent same-workspace sequences are the strata in which
 retained prior state can legitimately outperform deliberate fresh sessions.
@@ -51,9 +54,10 @@ Every arm and parameter grid is registered in
 `configs/multi_issue_strategy_registry_v1.json`. Simple strategies are tested
 alone at two and three issues. A mixture is allowed only after a parent is
 nondominated, and only winning frozen settings advance first to four and five
-issues, then to the six-to-ten-issue asymptotic regime.
+issues, then to the Easy-14 asymptotic mechanism cohort.
 This avoids a blind strategy Cartesian product while preserving the rationale
-and failure hypothesis for every reported point.
+and failure hypothesis for every reported point. Winning settings then advance
+to the Easy-14 asymptotic mechanism cohort.
 
 Reduce one or more JSON/JSONL run ledgers with strict pairing, config-digest,
 failure-aware and pre-divergence accounting:
@@ -116,6 +120,31 @@ the recent tail is dominated by recovery and submission turns.
 instruction epoch and the immediately preceding `N` epochs whole while still
 pinning every user-authored instruction.  This exposes a causal E0/E1/E2
 quality--saving ladder without evaluator task IDs or explicit episode markers.
+
+With `--retire-closed-instructions`, a terminally closed old instruction and
+its causal interaction retire atomically instead of leaving an orphaned user
+prompt. The frozen, active-context-qualified Easy-14 profile campaign is
+registered in `configs/autonomous_easy14_atomic_profiles_v2_ctx131k.json`:
+E3 is the conservative
+quality candidate, E2 the repeat-qualified balanced candidate, and E1 the
+economy candidate. Run persistent FULL before candidates; E1 stops on its first
+lost paired FULL success.  The runner queries `/api/ps` before every episode
+and fails closed unless the named model is active with at least 131,072 tokens;
+the model's advertised maximum is not accepted as evidence of its active
+runtime allocation. Export both aggregate and per-task paired metrics,
+then render the descriptive N=1--14 prefix curves with:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.export_multi_issue_evidence \
+  --campaign-root /results/easy14-atomic-profiles-v1 \
+  --output /results/easy14-atomic-evidence
+PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.plot_easy14_atomic_frontier \
+  --evidence /results/easy14-atomic-evidence/evidence.json \
+  --output /results/easy14-atomic-evidence
+```
+
+These prefix points share one ordered sequence and are descriptive, not
+independent observations or confidence intervals.
 
 Before positive selection, `dag.py` can construct a conservative resource/effect
 DAG. `DAG_CERTIFIED` excludes only bundles backed by complete runtime identity

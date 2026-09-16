@@ -567,6 +567,15 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
     benchmark = _resolve(spec_path, str(spec["benchmark_card"]))
     benchmark_card = _read(benchmark)
     validate_spec(spec, benchmark_card)
+    runtime_qualification = dict(spec.get("runtime_qualification") or {})
+    runtime_state_path = (
+        getattr(args, "upstream_runtime_state_path", None)
+        or runtime_qualification.get("active_state_path")
+    )
+    minimum_active_context_tokens = (
+        getattr(args, "minimum_active_context_tokens", None)
+        or runtime_qualification.get("minimum_active_context_tokens")
+    )
     for instance_id in benchmark_card["instance_ids"]:
         load_locked_task(benchmark, task_index=None, instance_id=instance_id)
 
@@ -748,6 +757,12 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     qualification_path=getattr(
                         args, "upstream_qualification_path", None
                     ),
+                    runtime_state_path=getattr(
+                        args, "upstream_runtime_state_path", None
+                    ) or runtime_state_path,
+                    minimum_active_context_tokens=getattr(
+                        args, "minimum_active_context_tokens", None
+                    ) or minimum_active_context_tokens,
                     connect_attempts=getattr(args, "upstream_connect_attempts", 1),
                     connect_retry_seconds=getattr(
                         args, "upstream_connect_retry_seconds", 1.0
@@ -837,6 +852,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--health-timeout-seconds", type=float, default=90.0)
     parser.add_argument("--upstream-request-timeout-seconds", type=int, default=180)
     parser.add_argument("--upstream-qualification-path")
+    parser.add_argument("--upstream-runtime-state-path")
+    parser.add_argument("--minimum-active-context-tokens", type=int)
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")

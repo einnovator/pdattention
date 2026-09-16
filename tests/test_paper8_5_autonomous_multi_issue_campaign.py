@@ -57,6 +57,10 @@ EASY14_ATOMIC_PROFILES_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_easy14_atomic_profiles_v1.json"
 )
+EASY14_ATOMIC_PROFILES_CTX131K_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_easy14_atomic_profiles_v2_ctx131k.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -181,6 +185,22 @@ def test_easy14_atomic_profile_registry_freezes_distinct_e1_e2_e3_cells():
     ]
     assert all(row["strategy"]["retire_closed_instructions"] for row in candidates)
     assert all(row["strategy"]["boundary_mode"] == "boundary_free" for row in cells)
+
+
+def test_easy14_ctx131k_registry_fails_closed_on_small_active_context():
+    benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
+    spec = json.loads(EASY14_ATOMIC_PROFILES_CTX131K_SPEC.read_text(encoding="utf-8"))
+
+    validate_spec(spec, benchmark)
+    assert spec["runtime_qualification"] == {
+        "active_state_path": "/api/ps",
+        "minimum_active_context_tokens": 131072,
+        "reason": (
+            "fail closed before a persistent FULL control can exceed the "
+            "engine's active context"
+        ),
+    }
+    assert all(row["issue_count"] == 14 for row in campaign_cells(spec))
 
 
 def test_campaign_registry_rejects_more_than_twenty_issues():

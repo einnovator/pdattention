@@ -126,3 +126,97 @@ def test_generation_health_can_use_direct_curl_transport() -> None:
     assert len(calls) == 3
     assert all(call[0][-1].endswith("/v1/chat/completions") for call in calls)
     assert all(call[1]["check"] is False for call in calls)
+
+
+def test_generation_health_requires_active_runtime_context() -> None:
+    class Response:
+        status = 200
+
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def read(self) -> bytes:
+            return self.body
+
+    class Connection:
+        def __init__(self):
+            self.responses = [
+                Response(b'{"version":"test"}'),
+                Response(
+                    b'{"models":[{"name":"locked-model",'
+                    b'"context_length":131072}]}'
+                ),
+                *[
+                    Response(b'{"choices":[{"message":{"content":"OK"}}]}')
+                    for _ in range(3)
+                ],
+            ]
+
+        def request(self, *_args, **_kwargs):
+            return None
+
+        def getresponse(self):
+            return self.responses.pop(0)
+
+        def close(self):
+            return None
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435", model="locked-model", count=3,
+        latency_ceiling_seconds=1, timeout_seconds=2,
+        qualification_path="/api/version", runtime_state_path="/api/ps",
+        minimum_active_context_tokens=131072,
+        connection_factory=lambda *_args, **_kwargs: Connection(),
+    )
+
+    assert result["healthy"] is True
+    assert result["runtime_context_qualification"] == {
+        "status": 200,
+        "latency_seconds": result["runtime_context_qualification"]["latency_seconds"],
+        "model_found": True,
+        "active_context_tokens": 131072,
+        "minimum_active_context_tokens": 131072,
+        "healthy": True,
+    }
+
+
+def test_generation_health_fails_closed_on_undersized_active_context() -> None:
+    class Response:
+        status = 200
+
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def read(self) -> bytes:
+            return self.body
+
+    class Connection:
+        def __init__(self):
+            self.responses = [
+                Response(b'{"version":"test"}'),
+                Response(
+                    b'{"models":[{"name":"locked-model",'
+                    b'"context_length":32768}]}'
+                ),
+            ]
+
+        def request(self, *_args, **_kwargs):
+            return None
+
+        def getresponse(self):
+            return self.responses.pop(0)
+
+        def close(self):
+            return None
+
+    result = probe_generation_health(
+        base_url="http://engine.test:11435", model="locked-model", count=3,
+        latency_ceiling_seconds=1, timeout_seconds=2,
+        qualification_path="/api/version", runtime_state_path="/api/ps",
+        minimum_active_context_tokens=131072,
+        connection_factory=lambda *_args, **_kwargs: Connection(),
+    )
+
+    assert result["healthy"] is False
+    assert result["runtime_context_qualification"]["active_context_tokens"] == 32768
+    assert result["probes"][0]["healthy"] is False
