@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-instruction-epoch-n1-candidate-repeat-v1",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "claim": "repeat-qualification screen only; no saving claim"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "repeat-sympy-16886",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["sympy__sympy-16886"]
+    },
+    {
+      "sequence_id": "repeat-scikit-12585",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["scikit-learn__scikit-learn-12585"]
+    },
+    {
+      "sequence_id": "repeat-scikit-14496",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["scikit-learn__scikit-learn-14496"]
+    },
+    {
+      "sequence_id": "repeat-django-15368",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["django__django-15368"]
+    },
+    {
+      "sequence_id": "repeat-django-14089",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["django__django-14089"]
+    },
+    {
+      "sequence_id": "repeat-django-16145",
+      "sequence_stratum": "independent_n1_repeat_qualification",
+      "instance_ids": ["django__django-16145"]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "S01_persistent_full",
+      "strategy_config_id": "current_endpoint_candidate_repeat_v1",
+      "session_mode": "persistent",
+      "policy": "full",
+      "boundary_mode": "boundary_free",
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "purpose": "repeat the current-endpoint FULL successes before constructing N=6 instruction-epoch sessions",
+    "advancement": "an identity enters N=6 only if both independent FULL executions are officially resolved",
+    "guardrail": "first-screen and repeat outcomes remain separate immutable evidence"
+  },
+  "workspace_semantics": {
+    "current_campaign": "one clean SWE-bench workspace and one fresh session per candidate",
+    "model_policy_visibility": "ordinary FULL request",
+    "selectable_scope": "not applicable",
+    "not_claimed": "persistent-session saving"
+  }
+}
