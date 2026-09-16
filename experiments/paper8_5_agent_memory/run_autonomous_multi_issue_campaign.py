@@ -226,6 +226,9 @@ def _episode_command(
         "--max-calls", str(generation["max_calls"]),
         "--max-completion-tokens", str(generation["max_completion_tokens"]),
         "--upstream-timeout-seconds", str(args.upstream_request_timeout_seconds),
+        "--docker-pull-timeout-seconds", str(getattr(
+            args, "docker_pull_timeout_seconds", 900
+        )),
     ]
     upstream_qualification_path = getattr(args, "upstream_qualification_path", None)
     if upstream_qualification_path:
@@ -836,6 +839,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--docker-executable")
     parser.add_argument("--docker-platform")
+    parser.add_argument("--docker-pull-timeout-seconds", type=int, default=900)
     parser.add_argument("--pythonpath", action="append", default=[])
     parser.add_argument("--sequence-id", action="append")
     parser.add_argument("--strategy-id", action="append")

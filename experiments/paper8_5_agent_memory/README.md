@@ -134,6 +134,10 @@ the model's advertised maximum is not accepted as evidence of its active
 runtime allocation. Export both aggregate and per-task paired metrics,
 then render the descriptive N=1--14 prefix curves with:
 
+The autonomous launcher also freezes a 900-second Docker acquisition/startup
+ceiling.  This is an infrastructure guard for first-use x86 SWE images on
+Apple Silicon; a timeout is quarantined and never scored as a task failure.
+
 ```bash
 PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.export_multi_issue_evidence \
   --campaign-root /results/easy14-atomic-profiles-v1 \

@@ -1603,6 +1603,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert "model.model_kwargs.temperature=0.0" in joined
     assert "model.model_kwargs.seed=0" in joined
     assert "agent.step_limit=12" in joined
+    assert "environment.pull_timeout=900" in joined
     assert "InstrumentedDockerEnvironment" in joined
     assert (
         "environment.image=docker.io/swebench/"

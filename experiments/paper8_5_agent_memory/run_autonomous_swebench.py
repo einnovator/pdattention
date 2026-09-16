@@ -191,6 +191,11 @@ def build_agent_command(
         command.extend((
             "-c", f"environment.executable={Path(args.docker_executable).resolve()}"
         ))
+    command.extend((
+        "-c",
+        "environment.pull_timeout="
+        f"{int(getattr(args, 'docker_pull_timeout_seconds', 900))}",
+    ))
     if args.instrument_observations:
         command.extend((
             "-c",
@@ -1310,6 +1315,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--docker-executable", type=Path)
     parser.add_argument("--docker-platform")
+    parser.add_argument(
+        "--docker-pull-timeout-seconds",
+        type=int,
+        default=900,
+        help=(
+            "Fail-closed ceiling for Docker image acquisition and first "
+            "container startup; x86 images on Apple Silicon can exceed the "
+            "mini-swe-agent default."
+        ),
+    )
     parser.add_argument("--pythonpath", action="append", default=[])
     parser.add_argument("--instrumentation-output-root", type=Path)
     parser.add_argument(

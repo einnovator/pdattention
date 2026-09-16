@@ -152,6 +152,7 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
     )
 
     assert command[command.index("--completed-instruction-epochs") + 1] == "2"
+    assert command[command.index("--docker-pull-timeout-seconds") + 1] == "900"
 
 
 def test_campaign_registry_accepts_easy14_sequence():
