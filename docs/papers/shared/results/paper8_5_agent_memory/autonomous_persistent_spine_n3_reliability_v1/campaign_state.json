@@ -2740,7 +2740,7 @@
         "completed_verification_turns": 2,
         "repeats": 1
       },
-      "status": "paused_upstream_unhealthy",
+      "status": "complete",
       "episodes": {
         "episode_01_django-django-15277": {
           "instance_id": "django__django-15277",
@@ -2766,8 +2766,8 @@
         },
         "episode_02_pytest-dev-pytest-7982": {
           "instance_id": "pytest-dev__pytest-7982",
-          "status": "paused_upstream_unhealthy",
-          "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry05",
+          "status": "complete",
+          "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry13",
           "prefix": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/prefix_before_episode_02.json",
           "command": [
             "/Users/jorge.simao/.venvs/paper45-agent/bin/python",
@@ -2778,13 +2778,13 @@
             "--instance-id",
             "pytest-dev__pytest-7982",
             "--output",
-            "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry05",
+            "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry13",
             "--run-id",
             "independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01__e02",
             "--pair-id",
             "paper85-autonomous-persistent-spine-n3-reliability-v1:independent-n3-b:r1",
             "--upstream-base-url",
-            "http://192.168.1.6:11435",
+            "http://127.0.0.1:11436",
             "--model",
             "qwen3-coder:30b",
             "--served-model",
@@ -2833,6 +2833,8 @@
             "1024",
             "--upstream-timeout-seconds",
             "600",
+            "--upstream-relay-target",
+            "http://192.168.1.6:11435 via restricted direct-host SSH tunnel",
             "--session-id",
             "paper85-autonomous-persistent-spine-n3-reliability-v1:independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01",
             "--episode-index",
@@ -2982,33 +2984,442 @@
                   }
                 ]
               }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry05",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "latency_seconds": 7.80981483310461,
+                    "healthy": false,
+                    "error_type": "URLError",
+                    "error_detail": "<urlopen error [Errno 60] Operation timed out>"
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry06",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "latency_seconds": 7.81670687533915,
+                    "healthy": false,
+                    "error_type": "URLError",
+                    "error_detail": "<urlopen error [Errno 60] Operation timed out>"
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry07",
+              "status": "infrastructure_error",
+              "reason": "missing complete result or persistent episode export",
+              "returncode": 1,
+              "started_at": "2026-09-15T22:35:58.498287+00:00",
+              "finished_at": "2026-09-15T22:36:36.776110+00:00",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "healthy": true,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "status": 200,
+                    "latency_seconds": 0.1014942079782486,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  },
+                  {
+                    "probe_index": 2,
+                    "status": 200,
+                    "latency_seconds": 0.05073295906186104,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  },
+                  {
+                    "probe_index": 3,
+                    "status": 200,
+                    "latency_seconds": 0.04829083336517215,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry08",
+              "status": "infrastructure_error",
+              "reason": "missing complete result or persistent episode export",
+              "returncode": 1,
+              "started_at": "2026-09-15T22:38:31.629863+00:00",
+              "finished_at": "2026-09-15T22:39:09.574993+00:00",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "healthy": true,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "status": 200,
+                    "latency_seconds": 0.1049345419742167,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  },
+                  {
+                    "probe_index": 2,
+                    "status": 200,
+                    "latency_seconds": 0.05414858367294073,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  },
+                  {
+                    "probe_index": 3,
+                    "status": 200,
+                    "latency_seconds": 0.051643125247210264,
+                    "response_exact": true,
+                    "within_latency_ceiling": true,
+                    "healthy": true
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry09",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "latency_seconds": 7.816474041901529,
+                    "healthy": false,
+                    "error_type": "URLError",
+                    "error_detail": "<urlopen error [Errno 60] Operation timed out>"
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry10",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "connection_qualification": {
+                  "attempt": 5,
+                  "healthy": false,
+                  "error_type": "TimeoutError",
+                  "error_detail": "[Errno 60] Operation timed out"
+                },
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "healthy": false,
+                    "error_type": "TimeoutError",
+                    "error_detail": "[Errno 60] Operation timed out"
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry11",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "connection_qualification": {
+                  "attempt": 5,
+                  "healthy": false,
+                  "error_type": "TimeoutError",
+                  "error_detail": "[Errno 60] Operation timed out"
+                },
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "healthy": false,
+                    "error_type": "TimeoutError",
+                    "error_detail": "[Errno 60] Operation timed out"
+                  }
+                ]
+              }
+            },
+            {
+              "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_02_pytest-dev-pytest-7982__retry12",
+              "status": "paused_upstream_unhealthy",
+              "reason": "generation-level upstream health gate failed",
+              "health_preflight": {
+                "schema_version": 1,
+                "endpoint": "http://[2a01:14:8022:df00:18d6:8e72:b453:de64]:11435/v1/chat/completions",
+                "model": "qwen3-coder:30b",
+                "required_probe_count": 3,
+                "latency_ceiling_seconds": 60.0,
+                "timeout_seconds": 90.0,
+                "connection_qualification": null,
+                "healthy": false,
+                "probes": [
+                  {
+                    "probe_index": 1,
+                    "latency_seconds": 75.02826808393002,
+                    "healthy": false,
+                    "error_type": "URLError",
+                    "error_detail": "<urlopen error [Errno 60] Operation timed out>"
+                  }
+                ]
+              }
             }
           ],
           "health_preflight": {
             "schema_version": 1,
-            "endpoint": "http://192.168.1.6:11435/v1/chat/completions",
+            "endpoint": "http://127.0.0.1:11436/v1/chat/completions",
             "model": "qwen3-coder:30b",
             "required_probe_count": 3,
             "latency_ceiling_seconds": 60.0,
             "timeout_seconds": 90.0,
-            "healthy": false,
+            "connection_qualification": null,
+            "healthy": true,
             "probes": [
               {
                 "probe_index": 1,
-                "latency_seconds": 7.80981483310461,
-                "healthy": false,
-                "error_type": "URLError",
-                "error_detail": "<urlopen error [Errno 60] Operation timed out>"
+                "status": 200,
+                "latency_seconds": 0.099631582852453,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
+              },
+              {
+                "probe_index": 2,
+                "status": 200,
+                "latency_seconds": 0.04467874998226762,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
+              },
+              {
+                "probe_index": 3,
+                "status": 200,
+                "latency_seconds": 0.05188220925629139,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
               }
             ]
           },
-          "reason": "generation-level upstream health gate failed"
+          "started_at": "2026-09-15T23:09:52.190284+00:00",
+          "returncode": 0,
+          "finished_at": "2026-09-15T23:12:33.379553+00:00",
+          "official_resolved": true,
+          "official_error": false,
+          "official_outcome": "resolved",
+          "calls": 14,
+          "cumulative_full_tokens": 165218,
+          "cumulative_materialized_tokens": 94658,
+          "gross_saving_fraction": 0.4270721107869603
+        },
+        "episode_03_scikit-learn-scikit-learn-13135": {
+          "instance_id": "scikit-learn__scikit-learn-13135",
+          "status": "complete",
+          "output": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_03_scikit-learn-scikit-learn-13135",
+          "prefix": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/prefix_before_episode_03.json",
+          "command": [
+            "/Users/jorge.simao/.venvs/paper45-agent/bin/python",
+            "-m",
+            "experiments.paper8_5_agent_memory.run_autonomous_swebench",
+            "--benchmark-card",
+            "/Users/jorge.simao/git/rd/p85-multi-issue-run/experiments/paper8_5_agent_memory/benchmarks/easy14_longest_success5.json",
+            "--instance-id",
+            "scikit-learn__scikit-learn-13135",
+            "--output",
+            "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/episode_03_scikit-learn-scikit-learn-13135",
+            "--run-id",
+            "independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01__e03",
+            "--pair-id",
+            "paper85-autonomous-persistent-spine-n3-reliability-v1:independent-n3-b:r1",
+            "--upstream-base-url",
+            "http://127.0.0.1:11436",
+            "--model",
+            "qwen3-coder:30b",
+            "--served-model",
+            "qwen3-coder:30b",
+            "--model-revision",
+            "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+            "--tokenizer",
+            "/Users/jorge.simao/git/rd/paper85-qwen3coder-tokenizer",
+            "--tokenizer-revision",
+            "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+            "--policy",
+            "persistent_episode_retirement",
+            "--budget-fraction",
+            "1.0",
+            "--negative-realization",
+            "drop",
+            "--negative-fallback",
+            "none",
+            "--head",
+            "2",
+            "--tail",
+            "4",
+            "--search-delay-turns",
+            "8",
+            "--write-delay-turns",
+            "1",
+            "--same-span-reads-to-keep",
+            "2",
+            "--working-set-resources",
+            "4",
+            "--completed-recent-turns",
+            "8",
+            "--completed-mutation-turns",
+            "2",
+            "--completed-verification-turns",
+            "2",
+            "--temperature",
+            "0",
+            "--top-p",
+            "1",
+            "--seed",
+            "0",
+            "--max-calls",
+            "40",
+            "--max-completion-tokens",
+            "1024",
+            "--upstream-timeout-seconds",
+            "600",
+            "--upstream-relay-target",
+            "http://192.168.1.6:11435 via restricted direct-host SSH tunnel",
+            "--session-id",
+            "paper85-autonomous-persistent-spine-n3-reliability-v1:independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01",
+            "--episode-index",
+            "3",
+            "--persistent-prefix",
+            "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/independent-n3-b__S03_completed_episode_spine-r8m2v2_tasks1__r01/prefix_before_episode_03.json",
+            "--docker-executable",
+            "/Applications/Docker.app/Contents/Resources/bin/docker",
+            "--docker-platform",
+            "linux/amd64",
+            "--grade-auxiliary-workspace-state"
+          ],
+          "shared_control_cell_id": null,
+          "shared_control_episode": false,
+          "attempts": [],
+          "health_preflight": {
+            "schema_version": 1,
+            "endpoint": "http://127.0.0.1:11436/v1/chat/completions",
+            "model": "qwen3-coder:30b",
+            "required_probe_count": 3,
+            "latency_ceiling_seconds": 60.0,
+            "timeout_seconds": 90.0,
+            "connection_qualification": null,
+            "healthy": true,
+            "probes": [
+              {
+                "probe_index": 1,
+                "status": 200,
+                "latency_seconds": 0.29030250012874603,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
+              },
+              {
+                "probe_index": 2,
+                "status": 200,
+                "latency_seconds": 0.1609715004451573,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
+              },
+              {
+                "probe_index": 3,
+                "status": 200,
+                "latency_seconds": 0.15500483429059386,
+                "response_exact": true,
+                "within_latency_ceiling": true,
+                "healthy": true
+              }
+            ]
+          },
+          "started_at": "2026-09-15T23:12:34.025018+00:00",
+          "returncode": 0,
+          "finished_at": "2026-09-15T23:16:50.235245+00:00",
+          "official_resolved": true,
+          "official_error": false,
+          "official_outcome": "resolved",
+          "calls": 18,
+          "cumulative_full_tokens": 325670,
+          "cumulative_materialized_tokens": 205754,
+          "gross_saving_fraction": 0.368213221973163
         }
       },
       "sequence_digest": "5f25f135f350c7587f0466328c4a034d67d3d8bab5eb6369bd1470705ed24586",
-      "updated_at": "2026-09-15T20:52:49.359732+00:00"
+      "updated_at": "2026-09-15T23:16:50.248790+00:00",
+      "official_resolved_count": 3,
+      "official_resolution_fraction": 1.0,
+      "all_issues_resolved": true,
+      "calls": 59,
+      "cumulative_full_tokens": 644542,
+      "cumulative_materialized_tokens": 454066,
+      "candidate_trajectory_gross_saving_fraction": 0.29552147106007054,
+      "unpaired_candidate_trajectory_target_region": false,
+      "failure_aware_saving_fraction": null,
+      "in_primary_saving_target": null,
+      "candidate_all_issues_resolved": true,
+      "discovery_quality_target_met": null,
+      "primary_target_met": null,
+      "pairing_status": "requires contemporaneous persistent-FULL sequence comparison"
     }
   },
-  "updated_at": "2026-09-15T20:52:49.369144+00:00",
+  "updated_at": "2026-09-15T23:16:50.256630+00:00",
   "frontier_ledger": "/Users/jorge.simao/git/rd/paper85-runs/autonomous-persistent-spine-n3-reliability-v1/frontier_runs.jsonl"
 }

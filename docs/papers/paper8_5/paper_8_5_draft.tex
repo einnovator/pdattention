@@ -82,6 +82,18 @@ below the predeclared 80\% gate. On one task both treatment repeats make the
 intended source edit and then submit a source excerpt rather than a unified
 diff. Failure-aware accounting prevents those shorter failed runs from being
 reported as efficiency gains.
+In the persistent three-issue cohort, six clean \textsc{Full} controls resolve
+18/18 issues. R4/M2/V2 resolves 4/6, two R6/M2/V2 executions resolve 5/6 with
+mean failure-aware saving of $-1.52$\%, and R8/M2/V2 resolves 3/3 but saves only
+13.09\% while adding six calls. A frozen same-prefix Scikit counterfactual localizes the
+R4 first divergence: \textsc{Full} yields a valid Bash action in 5/5 repeats,
+R4 in 0/5, and 24/25 one-group add-backs restore a valid action. The broad
+repair set implicates tool-protocol conditioning rather than one omitted task
+fact and motivates a generic clean action--observation exemplar floor. The
+resulting R4/M2/V2/P1 policy resolves 6/6 issues in two autonomous executions,
+saves 36.41\% and 45.82\% against contemporaneous \textsc{Full}, and reduces
+calls by six and nine. This repeated discovery result meets the predeclared
+gate on one ordered sequence family; held-out sequences remain required.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1114,38 +1126,109 @@ bitwise replay guarantee for this backend.  Policy claims require repeated
 official outcomes; exact logical-input identity is an audit control, not a
 replacement for replication.  More conservative R6 and R8 arms are evaluated
 only as adaptive repairs after this predeclared R4 rejection.  R6/M2/V2
-restores 3/3 official resolution, but Scikit-learn expands to 27 calls and the
-ordered sequence to 63 calls versus 53 for paired \textsc{Full}.  R6
+restores 3/3 official resolution in its first execution, but Scikit-learn
+expands to 27 calls and the ordered sequence to 63 calls versus 53 for paired
+\textsc{Full}.  R6
 materializes 538,318 of 807,886 tokens on its own inflated trajectory, a
 33.37\% candidate-gross saving, yet paired \textsc{Full} consumes only 522,479
 tokens.  Its paired raw and failure-aware saving are both $-3.03$\%, so it
 fails the saving and no-call-increase gates.  This is precisely why a
 retention-only curve is not a utility frontier: the policy can remove a large
 fraction of each prompt while causing enough extra decisions to increase total
-consumption.
+consumption.  An independent R6 execution reverses the apparent tradeoff: it
+uses 46 calls and materializes 326,252 of 456,267 candidate tokens, for
+28.50\% candidate-gross and 37.56\% paired-raw saving, but loses the paired
+Scikit-learn success.  Its failure-aware saving is therefore zero.  Across
+the two R6 executions, official resolution is 5/6 versus 6/6 for paired
+\textsc{Full}, and calls total 109 versus 106.  R6 is not a reliable repair.
+
+R8/M2/V2 completes 3/3 issues.  It uses 59 calls, materializes 454,066 of
+644,542 candidate tokens (29.55\% candidate-gross saving), and saves 13.09\%
+against its 522,479-token paired \textsc{Full}.  The extra six calls and the
+sub-30\% paired saving reject it under both remaining gates.  Table~\ref{tab:persistent-n3-repairs}
+keeps candidate-local compression separate from paired utility.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Adaptive N=3 repairs.  Failure-aware saving is zero for an execution
+that loses a paired \textsc{Full} success; each row remains visible.}
+\label{tab:persistent-n3-repairs}
+\begin{tabular}{lrrrrrr}
+\toprule
+Arm & Resolved & Calls & Selected & Gross save & Paired raw & Failure-aware \\
+\midrule
+R6/M2/V2, execution 1 & 3/3 & 63 & 538,318 & 33.37\% & $-3.03$\% & $-3.03$\% \\
+R6/M2/V2, execution 2 & 2/3 & 46 & 326,252 & 28.50\% & 37.56\% & 0.00\% \\
+R8/M2/V2, execution 1 & 3/3 & 59 & 454,066 & 29.55\% & 13.09\% & 13.09\% \\
+R4/M2/V2/P1, execution 1 & 3/3 & 47 & 332,269 & 30.02\% & 36.41\% & 36.41\% \\
+R4/M2/V2/P1, execution 2 & 3/3 & 44 & 299,078 & 28.23\% & 45.82\% & 45.82\% \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 Figure~\ref{fig:persistent-n3-frontier} makes the gate explicit in the primary
-failure-aware coordinate.  R4 is charged zero saving after losing two paired
-successes; R6 preserves the observed successes but moves left of the
-no-saving baseline because its longer trajectory consumes more total input.
+failure-aware coordinate.  R4 is charged zero saving after losing paired
+successes; the two R6 outcomes average $-1.52$\% failure-aware saving after
+ordered-sequence-family clustering; R8 remains well below the target band.
+P1 is the first arm to enter the target band while preserving every paired
+success: its two executions average 41.11\% failure-aware saving and 7.5 fewer
+calls.
 These points are descriptive measurements of one ordered three-issue family,
-not a population interval.
+not a population interval.  Repeated executions measure reliability and are
+not counted as independent task identities.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.82\linewidth]{../shared/results/paper8_5_agent_memory/autonomous_persistent_spine_n3_reliability_v1/curves/independent_cross_repository/quality_vs_persistent.png}
+  \includegraphics[width=0.82\linewidth]{../shared/results/paper8_5_agent_memory/autonomous_persistent_spine_n3_combined_v1/curves/independent_cross_repository/quality_vs_persistent.png}
   \caption{Failure-aware quality--saving frontier for the replacement N=3
-  cohort.  The shaded band is the predeclared 30--50\% target; no tested arm
-  enters it while preserving all paired successes.  Error bars are absent
+  cohort.  The shaded band is the predeclared 30--50\% target; P1 enters it
+  while preserving all paired successes in both executions.  Error bars are absent
   because this cohort contains only one ordered sequence family.}
   \label{fig:persistent-n3-frontier}
 \end{figure}
 
-R8/M2/V2 has no scientific outcome: its direct-endpoint attempt was stopped
-after the first Pytest request when the client could no longer reach the
-otherwise healthy dedicated model listener.  We retain the immutable run as
-infrastructure evidence and exclude it from all quality and saving
-denominators.
+\subsection{Frozen Scikit first-divergence oracle}
+
+The autonomous outcomes alone cannot separate selection from backend
+trajectory variance.  We therefore freeze the R4 repeat-1 completed-episode
+prefix and reconstruct the exact first Scikit-learn selected-message digest.
+On this identical prefix, full materialization produces a valid Bash action in
+5/5 requests, although two response and command hashes occur.  R4/M2/V2
+produces the same format-invalid response in 5/5 requests.  Temperature-zero
+backend variance is real, but it does not explain this stable arm difference.
+
+The R4 prompt already contains every available prior verification and
+finalization record and the two latest mutation turns per completed issue.  We
+then restore each of its 25 retired causal groups separately.  The restorations
+range from 82 to 2,513 tokens; 24/25 recover one valid action, and every valid
+action is a semantically equivalent source-file search represented by three
+exact command hashes.  Only a 139-token mutation turn remains invalid.  This
+is strong evidence for a selection-induced prompt-conditioning failure, but
+not for one missing Scikit-relevant fact: many unrelated old groups repair the
+protocol.  Oracle trials remain diagnostic and do not enter policy-quality
+curves.
+
+The deployable counterfactual is consequently content-independent: retain one
+clean completed action--observation exemplar per prior issue in addition to
+the recent, mutation, verification, and finalization floors.  We denote this
+R4/M2/V2/P1.  P1 selects the latest complete turn containing both a valid
+assistant action and tool observation while excluding error, mutation,
+verification, and finalization roles.  It uses no future action and is not the
+oracle choice.  The digest-bound oracle and
+guardrails are released under
+\texttt{oracle\_scikit\_r4\_r01\_first\_request\_v1}.
+
+Two independent autonomous P1 executions pass the predeclared discovery gate.
+Both paired \textsc{Full} controls resolve 3/3 in 53 calls.  P1 resolves 3/3
+in 47 and 44 calls, materializing 332,269 and 299,078 input tokens.  Relative
+to contemporaneous \textsc{Full}, the savings are 36.41\% and 45.82\%, with
+six and nine fewer calls.  The descriptive means are 41.11\% saving and 7.5
+fewer calls.  Candidate-trajectory gross savings are 30.02\% and 28.23\%; the
+difference from paired savings reflects avoided decisions rather than hidden
+token accounting.  This result qualifies P1 for frozen transfer to the
+Paper~4.5 native-K/V evaluation.  It does not yet establish generality across
+ordered sequences, agents, or model families.
 
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
@@ -2215,10 +2298,20 @@ Task-5 execution it preserves official resolution in 22 calls while saving
 6.10\% of its trajectory-counterfactual materialized tokens; one of two FULL
 controls resolves, and the other creates a patch but submits an empty payload.
 It therefore advances to repeated multi-task confirmation, not to a profile.
-The new one-to-five-issue campaign additionally treats active-only retirement
-as session hygiene unless it beats deliberate fresh sessions on related or
-dependent issue sequences. Selector proliferation, native-K/V transfer,
-additional models, and additional harnesses wait for these task-success gates.
+The persistent N=3 campaign then provides the first profile-quality discovery
+point.  Blind R4 loses both paired Scikit-learn successes; R6 is unreliable;
+and R8 preserves success but saves only 13.09\% while adding calls.  A frozen
+first-divergence oracle shows that this is selection-induced protocol
+conditioning, not merely backend variance, and motivates one clean completed
+action--observation exemplar per prior issue.  The resulting R4/M2/V2/P1 arm
+resolves 6/6 issues across two executions, saves 36.41\% and 45.82\% against
+paired \textsc{Full}, and reduces calls in both.  This repeated discovery result
+now qualifies the logical policy for frozen Paper~4.5 native-K/V transfer, but
+not yet for a general default: the uncertainty unit is still one ordered
+sequence family.  The one-to-five-issue campaign continues to treat active-only
+retirement as session hygiene unless it beats deliberate fresh sessions on
+related or dependent sequences. Held-out sequences, additional models, and
+additional harnesses remain the confirmation frontier.
 
 \bibliographystyle{plain}
 % \bibliography{../shared/references}
