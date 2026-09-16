@@ -1,7 +1,10 @@
-# Paper 8.5 R4/M2/V2/P1 qualification
+# Paper 8.5 R4/M2/V2/P1 mechanism upper bound
 
-This bundle freezes the logical policy admitted to Paper 4.5's native-K/V
-evaluation. It is not an engine-performance result.
+The preserved directory name is a historical artifact identity. A later audit
+found that P1 consumes typed issue scope; an ordinary continuous session does
+not provide that boundary. The measurements remain valid, but they do not
+qualify a generic boundary-free policy or product profile. This is not an
+engine-performance result.
 
 | Execution | FULL | P1 | FULL calls | P1 calls | Paired saving |
 |---|---:|---:|---:|---:|---:|
