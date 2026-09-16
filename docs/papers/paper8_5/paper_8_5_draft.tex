@@ -25,6 +25,35 @@
 \maketitle
 
 \begin{abstract}
+Language-model coding agents accumulate task instructions, shell actions,
+observations, edits, and verification state.  This paper asks which logical
+history records can be retired without relying on any particular inference
+engine.  We introduce typed records and causal action--observation bundles,
+separate record selection from within-record materialization, and evaluate
+fresh and persistent mini-swe-agent sessions on SWE-bench Verified.  The
+primary endpoints are official resolution, failure-aware cumulative input-token
+saving, calls to solution, and first behavioral divergence.
+
+Simple semantic deletion is unsafe.  Old task prompts become harmful orphaned
+instructions when their completion evidence is removed, and per-request token
+retention can look favorable while extra calls increase total work.  Our
+boundary-free repair infers instruction epochs only from ordinary user-message
+provenance and retires a terminally closed old instruction together with its
+causal interaction.  Retaining the two latest complete epochs while atomically
+retiring older ones is the first balanced candidate: on a repeat-qualified
+single-task fork it resolves 2/2, produces the same patch, and saves 38.17\% of
+cumulative message-content input tokens.  Retiring every prior epoch saves
+71.03\% but fails, establishing a useful quality--saving bracket.  A frozen
+Easy-14 campaign now evaluates conservative E3, balanced E2, and economy E1
+variants against a contemporaneous persistent-full control without exposing
+evaluator task boundaries.  Only policies that preserve paired successes,
+avoid aggregate call inflation, and survive repeat confirmation transfer to
+native-K/V evaluation.  Thus agent-memory policy and engine reuse remain
+separate contracts: this paper selects logical evidence; Paper~4.5 measures
+whether engines realize the identical plan without re-encoding or copying K/V.
+\end{abstract}
+
+\iffalse
 Long-running language-model agents accumulate task statements, model actions,
 tool observations, source-code views, edits, tests, error messages, and
 intermediate hypotheses. The common baseline is to replay as much recent
@@ -136,7 +165,7 @@ one-issue sessions and persistent sequences of one to ten issues.  A
 persistent policy is credited only against the appropriate baseline: matching
 a fresh reset is automatic session hygiene, while an advantage over fresh
 sessions requires preserved cross-issue utility or reduced rediscovery.
-\end{abstract}
+\fi
 
 \section{Introduction}
 
@@ -875,7 +904,107 @@ d(r_i,t)=t-\operatorname{created}(r_i).
 We report dependency-age distributions by record type. This estimates how long
 coding-agent memory must remain accessible.
 
-\section{Adaptive Policy Campaign}
+\section{Main Results}
+
+The central result is not that any old record can be deleted.  It is that a
+policy needs an auditable unit of retirement.  Independent record deletion
+breaks causal turns; keeping old user prompts while deleting their resolution
+creates unanswered instructions; and retaining only current state removes
+behavioral exemplars that condition valid tool use.  The safe unit found so
+far is a terminally closed instruction epoch: its instruction and causal
+interaction retire together, and only after a newer genuine user instruction
+exists.  The selector receives no evaluator task identifier, workspace label,
+or explicit issue boundary.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Most informative autonomous persistent-session results available
+before the frozen Easy-14 confirmation.  Saving is cumulative selected
+message-content input relative to the stated comparator; failed candidates
+receive no positive failure-aware credit.}
+\label{tab:main-frontier}
+\begin{tabular}{>{\raggedright\arraybackslash}p{.22\linewidth}
+                >{\centering\arraybackslash}p{.09\linewidth}
+                >{\centering\arraybackslash}p{.12\linewidth}
+                >{\centering\arraybackslash}p{.14\linewidth}
+                >{\raggedright\arraybackslash}p{.26\linewidth}}
+\toprule
+Policy/cohort & Resolution & Calls & Saving & Interpretation \\
+\midrule
+Explicit-boundary R4/P1, two N=3 runs & 6/6 & $-6,-9$ vs Full & 36.41--45.82\% & Mechanism positive, but uses unavailable issue metadata. \\
+Boundary-free E0, N=3 & 3/3 & 64 vs 66 & 34.83\% & Advances locally; active epoch retained whole. \\
+Boundary-free E0, N=6 & 6/6 vs 5/6 & 114 vs 60 & $-43.87$\% paired & Reject: pruning causes trajectory inflation. \\
+Atomic active-only, one task & 0/1 & 22 & 71.03\% own trajectory & Reject: insufficient behavioral conditioning. \\
+Atomic E2, one task, two resets & 2/2 & 16,16 & 38.17\% own trajectory & Repeat-qualified balanced candidate; identical patch. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Atomic E2's three extra calls relative to an older E2 fork are not explained
+by missing task evidence.  The first three actions agree; at the fourth action,
+three syntactically valid \texttt{sed} mutations match no text, return status
+zero, and produce empty output before a Perl edit succeeds.  This identifies a
+generic mediation requirement: mutation observations should expose whether a
+resource version changed and how many replacements matched.  Such receipts
+are control metadata, not extra prompt text unless a materializer explicitly
+chooses to show them.
+
+The frozen Easy-14 sequence is the confirmatory mechanism cohort.  One
+continuous ordinary-role transcript spans fourteen clean official workspaces.
+The campaign order is persistent Full, atomic E2, E3, and E1.  E2 runs first
+because it is the only repeat-qualified candidate; E3 retains one more complete
+epoch when quality needs protection, while E1 is stopped on its first lost
+paired success.  Promotion requires all fourteen paired tasks, no lost Full
+success, no aggregate call increase, and a repeat of the winner.  This design
+prevents high token saving from being mistaken for deployable utility.
+
+\section{Deployable Logical Profiles}
+
+The profile names describe constraints, not preselected winners.  Their frozen
+logical plan is serialized identically for every runtime:
+
+\begin{table}[H]
+\centering
+\small
+\caption{Candidate profile mapping used by the Easy-14 campaign and the later
+Paper~4.5 handoff.  Only Balanced is presently repeat-qualified, and only on
+one task; none is yet a production default.}
+\label{tab:main-profiles}
+\begin{tabular}{lll>{\raggedright\arraybackslash}p{.43\linewidth}}
+\toprule
+Profile & Candidate & Prior complete epochs & Promotion constraint \\
+\midrule
+Agent-Full & Full & all & Correctness and trajectory-cost control. \\
+Agent-Quality & Atomic E3 & 3 & Zero paired losses; prefer retention over target saving. \\
+Agent-Balanced & Atomic E2 & 2 & 30--50\% failure-aware saving, zero paired losses, no call inflation. \\
+Agent-Economy & Atomic E1 & 1 & Higher saving allowed, but no hidden early-termination credit. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Paper~4.5 consumes the selected record IDs and original logical positions from
+these profiles.  It must independently report resident K/V hits, K/V bytes
+copied, history tokens re-encoded, consumer temporary bytes, and lifecycle
+correctness.  Logical token saving in this paper is therefore neither a cache
+hit nor a latency claim.
+
+\section{Main Limitations and Conclusion}
+
+The repeat-qualified atomic result currently covers one task identity and one
+model family.  Temperature zero does not guarantee exact endpoint trajectory
+repeatability, and clean workspaces isolate cross-issue conversation memory
+from persistent repository state.  Easy-14 is a mechanism cohort rather than
+a population estimate.  The main scientific conclusion is correspondingly
+narrow: safe coding-agent retirement must preserve causal and closure
+semantics, and efficiency must be measured over the realized trajectory.
+Cross-task confirmation, a second model and agent, and dependent same-workspace
+instructions remain necessary before a profile is called a default.
+
+\clearpage
+\appendix
+
+\section{Detailed Adaptive Policy Campaign}
 
 Every reported strategy has a stable identifier, a predeclared rationale,
 configuration coordinates, primary matched comparison, predicted failure mode,
@@ -2693,7 +2822,7 @@ is preserved but excluded rather than silently renumbered. The raw runs,
 qualification decision, curves, and reductions are in
 \path{autonomous_nondominated_tail95_v1}.
 
-\section{Transfer}
+\section{Detailed Transfer Protocol}
 
 \subsection{Second open-source harness}
 
@@ -2708,7 +2837,7 @@ The final transfer uses PRA Agent, where typed task, tool, result, progress, and
 subagent records are native objects. This tests whether a record-native agent can
 exploit the same policy more cleanly than a retrofitted linear-message harness.
 
-\section{Handoff to Native Runtime Evaluation}
+\section{Detailed Handoff to Native Runtime Evaluation}
 
 Paper 8.5 should freeze a small set of logical policies, for example
 \[
@@ -2724,7 +2853,7 @@ Paper~8.5 reports selected logical tokens, not K/V savings. K/V residence,
 copying, re-encoding, TTFT, and latency are measured only after the frozen plan
 is transferred to the runtime study.
 
-\section{Expected Outcomes}
+\section{Pending Confirmatory Outcomes}
 
 Our main hypothesis is
 \[
@@ -2753,7 +2882,7 @@ important result is
 A negative result would also be informative: if simple recency performs as well
 as structured policies, coding-agent memory may be more local than assumed.
 
-\section{Limitations}
+\section{Detailed Limitations}
 
 Text realization recontextualizes selected records and therefore does not
 establish native-K/V equivalence. Frozen-trajectory screening also cannot replace
@@ -2769,7 +2898,7 @@ FULL controls and separately labelled solution-state diagnostics are needed
 before attributing success or failure to a memory policy. Auxiliary workspace
 grades are post-hoc diagnostics and never replace the primary agent submission.
 
-\section{Conclusion}
+\section{Evidence Chronology Synthesis}
 
 Agent memory selection is a distinct problem from transformer cache reuse. A
 serving engine may perfectly preserve selected native K/V while an agent policy
@@ -2854,11 +2983,6 @@ hygiene unless it beats deliberate fresh sessions on related or dependent
 sequences. Held-out sequences, additional models, and additional harnesses
 remain the confirmation frontier.
 
-\bibliographystyle{plain}
-% \bibliography{../shared/references}
-
-\appendix
-
 \section{Artifact Schema}
 
 Each request/run should persist:
@@ -2900,5 +3024,8 @@ MEMORY_FORMAT_REGRESSION
 MEMORY_RECOVERY_SUCCESS
 MEMORY_RECOVERY_FAILURE
 \end{verbatim}
+
+\bibliographystyle{plain}
+% \bibliography{../shared/references}
 
 \end{document}
