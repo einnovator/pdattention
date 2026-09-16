@@ -593,10 +593,13 @@ def transform_autonomous_payload(
             count_tokens=count_tokens,
         )
         if oracle_addback_causal_group_ids:
-            if config.policy != "persistent_episode_retirement":
+            if config.policy not in {
+                "persistent_episode_retirement",
+                "persistent_instruction_epoch_retirement",
+            }:
                 raise ValueError(
                     "autonomous oracle add-back is restricted to "
-                    "persistent_episode_retirement diagnostics"
+                    "persistent retirement diagnostics"
                 )
             plan, oracle_addback = restore_causal_groups(
                 history=history,

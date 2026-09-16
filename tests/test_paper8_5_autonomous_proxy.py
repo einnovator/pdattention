@@ -189,6 +189,40 @@ def test_persistent_oracle_addback_restores_one_complete_excluded_turn():
     assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
 
 
+def test_instruction_epoch_oracle_addback_restores_retired_turn():
+    config = AutonomousSelectionConfig(
+        policy="persistent_instruction_epoch_retirement",
+        boundary_mode="boundary_free",
+        expected_model="locked-model",
+        task_id="repo__current-3",
+        session_id="session-locked",
+        episode_index=3,
+        completed_recent_turns=0,
+        completed_mutation_turns=0,
+        completed_verification_turns=0,
+        completed_protocol_turns=0,
+        completed_instruction_epochs=1,
+    )
+    prior = (
+        _completed_episode("repo__old-1"),
+        _completed_episode("repo__old-2"),
+    )
+    candidate = transform_autonomous_payload(
+        _payload(), config, prior_episodes=prior,
+    )
+    exclusion = candidate.plan.exclusions[0]
+    restored = transform_autonomous_payload(
+        _payload(), config, prior_episodes=prior,
+        oracle_addback_causal_group_ids=(exclusion.causal_group_id,),
+    )
+
+    assert restored.trace["oracle_addback"]["restored_causal_group_ids"] == (
+        exclusion.causal_group_id,
+    )
+    assert restored.trace["oracle_addback"]["restored_tokens"] > 0
+    assert len(restored.plan.exclusions) == len(candidate.plan.exclusions) - 1
+
+
 def test_persistent_protocol_floor_keeps_clean_action_observation_exemplar():
     result = transform_autonomous_payload(
         _payload(),

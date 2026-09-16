@@ -104,7 +104,18 @@ general deployment profile.  At N=6 the same aggressive E0 rule resolves 6/6
 versus \textsc{Full}'s 5/6 and removes 55.34\% on its own trajectory, but calls
 rise from 60 to 114; against the paired \textsc{Full} denominator it consumes
 43.87\% more input tokens.  Per-request retention is therefore not an
-efficiency result unless trajectory length is included.
+efficiency result unless trajectory length is included.  Retaining one prior
+epoch (E1) raises resolution from 4/6 to 5/6 in a subsequent ladder but adds
+eight calls and yields only 14.21\% raw paired saving.  Retaining two (E2)
+reduces calls by two and yields 21.93\% raw paired saving, but loses one
+\textsc{Full} success, so its failure-aware saving is zero.  The ladder control
+also contains a submission error and is ineligible for a positive paired
+claim.  Neither E1 nor E2 advances.  A targeted same-prefix diagnosis then
+reverses the apparent E2 loss: two E2 forks resolve 2/2 with identical
+13-call patches, while two \textsc{Full} forks resolve 0/2 with different
+incorrect patches.  E2 sends 21.92\% fewer tokens at equal mean calls, but the
+reversal is diagnostic evidence of trajectory instability, not a policy
+qualification result.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1520,6 +1531,71 @@ ordinary user-instruction boundaries already present in the transcript.  The
 N=6 E0 evidence is released under
 \texttt{autonomous\_persistent\_instruction\_epoch\_n6\_e0\_v1}.
 
+The completed E1/E2 ladder rejects both repairs
+(Table~\ref{tab:instruction-epoch-n6-ladder}).  Its contemporaneous
+\textsc{Full} control resolves 4/6 in 62 calls, but the Django-15277 submission
+ends in \texttt{patch\_apply\_failed}; the whole paired sequence is therefore a
+preserved reliability observation, not admissible positive evidence.  E1
+resolves 5/6 and loses no observed \textsc{Full} success, but its 70 calls
+produce only 14.21\% raw paired saving and add 22 calls over the four jointly
+successful issues.  E2 uses 60 calls and sends 21.93\% fewer tokens than the
+control, but swaps outcomes: it gains Django-15277 and loses the control's
+Django-16145 success.  The predeclared failure-aware charge is consequently
+zero.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{N=6 instruction-epoch ladder. ``Gross'' compares each policy with
+its own unpruned trajectory; ``raw paired'' uses the contemporaneous
+persistent-\textsc{Full} token denominator; ``aware'' charges any lost control
+success as zero saving.  No treatment qualifies.}
+\label{tab:instruction-epoch-n6-ladder}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Policy & Resolved & Calls & Sent tokens & Gross & Raw paired & Aware & Lost \\
+\midrule
+Persistent \textsc{Full} & 4/6 & 62 & 830,776 & 0.00\% & 0.00\% & 0.00\% & 0 \\
+E1: keep one prior epoch & 5/6 & 70 & 712,763 & 27.90\% & 14.21\% & 14.21\% & 0 \\
+E2: keep two prior epochs & 4/6 & 60 & 648,571 & 16.48\% & 21.93\% & 0.00\% & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ladder also identifies backend variance directly.  E1 and E2 remove
+nothing on issue 2: the first request is byte-identical to \textsc{Full}, all
+three runs use temperature zero, top-$p$ one, seed zero, and 100\% realized
+retention, yet \textsc{Full}'s first command differs.  E1 and E2 match for six
+actions, diverge at action seven, and reconverge at action eight; both solve.
+Thus action divergence before any exclusion cannot be attributed to memory
+selection.  The released reducer reports identical-input divergence and
+selection-active divergence separately and marks the ladder points
+inadmissible in the curves.
+
+A targeted issue-5 diagnosis freezes E2's successful four-issue prefix, resets
+the Django workspace for every fork, and first repeats only the next request.
+E2 retains 11,918 of 15,861 content tokens (24.86\% first-request saving) and
+emits the same command in 5/5 repeats.  \textsc{Full} emits two commands in
+five byte-identical repeats.  Restoring retired epoch 1 retains 13,945 tokens
+and reproduces one \textsc{Full} command exactly; restoring epoch 2 retains
+13,834 and produces a third command.  All four commands are semantically
+equivalent searches for Django's \texttt{runserver} implementation.  The
+first action therefore does not implicate either retired epoch.
+
+We then repeat the complete autonomous task from that same prefix and base
+workspace.  Two E2 forks both resolve officially in 13 calls with the
+identical patch.  Each sends 188,720 tokens versus its 239,979-token
+own-trajectory \textsc{Full} counterfactual (21.36\% gross saving).  Two
+\textsc{Full} forks both fail official grading, in 8 and 18 calls, with
+different incorrect patches.  Mean calls are equal at 13 and E2 sends 21.92\%
+fewer tokens than the mean \textsc{Full} execution (188,720 versus 241,687).
+This reversal does not show that pruning improves accuracy: it shows that the
+ladder's single E2 loss is not a reproducible deterministic selection failure.
+E2 remains below the 30\% target, and reliable promotion now requires
+randomized, interleaved repeats over complete ordered sequences.  The complete
+ladder and diagnostic are released under
+\texttt{autonomous\_persistent\_instruction\_epoch\_n6\_ladder\_v1}.
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation
@@ -2611,8 +2687,18 @@ then rejects E0 as a deployment profile: it resolves 6/6 versus \textsc{Full}'s
 5/6 and removes 55.34\% relative to its own trajectory, yet its 114 calls
 consume 43.87\% more input tokens than the 60-call control.  This is the
 paper's clearest demonstration that per-request pruning can lose end-to-end.
-E1/E2 therefore retain one or two recent instruction epochs whole and test
-whether 30--50\% net saving can be recovered without the call expansion.  The
+The completed E1/E2 ladder, which retains one or two recent instruction epochs
+whole, rejects both repairs: E1 resolves 5/6 but adds eight calls and reaches
+only 14.21\% raw paired saving; E2 uses two fewer calls and reaches 21.93\%
+raw paired saving but loses a \textsc{Full} success, receiving zero
+failure-aware saving in that ladder.  The frozen-prefix diagnosis reverses the
+outcome: E2 resolves 2/2 and \textsc{Full} 0/2 at equal mean calls, with E2
+sending 21.92\% fewer tokens.  Because byte-identical no-removal requests also
+diverge at temperature zero, this is evidence of a noisy outcome surface, not
+an accuracy gain.  No instruction-epoch profile transfers to Paper~4.5 yet.
+The next valid test randomizes and interleaves repeated full-sequence E2 and
+\textsc{Full} executions before moving toward an E0-plus-compact-control
+policy that can reach the 30--50\% target without E0's call expansion.  The
 one-to-ten-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent
 sequences. Held-out sequences, additional models, and additional harnesses

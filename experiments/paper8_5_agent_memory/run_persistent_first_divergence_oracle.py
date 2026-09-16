@@ -58,6 +58,62 @@ def _selection_config(manifest: Mapping[str, Any]) -> AutonomousSelectionConfig:
     return AutonomousSelectionConfig(**selection)
 
 
+def _completed_epoch_addback_batches(
+    *,
+    composed: Mapping[str, Any],
+    history,
+    exclusions: Sequence[Any],
+) -> list[dict[str, Any]]:
+    """Group retired causal records by their evaluator-hidden source epoch.
+
+    Boundary-free policies deliberately strip episode IDs from model-visible
+    metadata.  The diagnostic may nevertheless use the frozen prefix ledger
+    to ask which retired *source epoch* changes the next action.  This mapping
+    remains oracle-only and is never exposed to the selector or model.
+    """
+
+    episodes = list(composed.get("episodes") or ())
+    records = list(history.records)
+    record_epoch: dict[str, int] = {}
+    offset = 0
+    for episode in episodes:
+        count = int(episode.get("model_visible_messages") or 0)
+        if count < 1 or offset + count > len(records):
+            raise ValueError("composed episode ledger does not align with records")
+        epoch_index = int(episode["episode_index"])
+        for record in records[offset:offset + count]:
+            record_epoch[record.record_id] = epoch_index
+        offset += count
+    if offset != len(records):
+        raise ValueError("composed episode ledger does not cover every record")
+
+    groups_by_epoch: dict[int, list[str]] = {}
+    tokens_by_epoch: dict[int, int] = {}
+    for exclusion in exclusions:
+        epochs = {
+            record_epoch[record_id]
+            for record_id in exclusion.record_ids
+        }
+        if len(epochs) != 1:
+            raise ValueError(
+                f"causal group {exclusion.causal_group_id} crosses source epochs"
+            )
+        epoch = epochs.pop()
+        groups_by_epoch.setdefault(epoch, []).append(exclusion.causal_group_id)
+        tokens_by_epoch[epoch] = (
+            tokens_by_epoch.get(epoch, 0) + int(exclusion.excluded_tokens)
+        )
+
+    return [
+        {
+            "epoch_index": epoch,
+            "causal_group_ids": tuple(groups_by_epoch[epoch]),
+            "excluded_tokens": tokens_by_epoch[epoch],
+        }
+        for epoch in sorted(groups_by_epoch)
+    ]
+
+
 def _payload(manifest: Mapping[str, Any], messages: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": manifest["served_model"],
@@ -198,6 +254,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "info": {},
         }),
         session_id=candidate_config.session_id,
+        boundary_mode=candidate_config.boundary_mode,
     )
     history = OpenAIRecordizer().recordize(composed["messages"]).history
     selected = set(candidate.plan.selected_record_ids)
@@ -229,18 +286,44 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             arm="candidate_same_prefix", repeat=repeat, transformation=candidate,
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
-    for index, exclusion in enumerate(exclusions, 1):
+    if args.addback_mode == "completed_epoch":
+        addback_batches = _completed_epoch_addback_batches(
+            composed=composed,
+            history=history,
+            exclusions=exclusions,
+        )
+    else:
+        addback_batches = [
+            {
+                "epoch_index": None,
+                "causal_group_ids": (exclusion.causal_group_id,),
+                "excluded_tokens": int(exclusion.excluded_tokens),
+            }
+            for exclusion in exclusions
+        ]
+    for index, batch in enumerate(addback_batches, 1):
         transformed = transform_autonomous_payload(
             frozen_payload,
             candidate_config,
             count_tokens=count_tokens,
             prior_episodes=prior_episodes,
-            oracle_addback_causal_group_ids=(exclusion.causal_group_id,),
+            oracle_addback_causal_group_ids=batch["causal_group_ids"],
         )
-        rows.append(_generation_row(
-            arm=f"addback_{index:03d}", repeat=1, transformation=transformed,
-            endpoint=endpoint, timeout=args.timeout_seconds,
-        ))
+        row = _generation_row(
+            arm=(
+                f"addback_epoch_{batch['epoch_index']:02d}"
+                if batch["epoch_index"] is not None
+                else f"addback_{index:03d}"
+            ),
+            repeat=1,
+            transformation=transformed,
+            endpoint=endpoint,
+            timeout=args.timeout_seconds,
+        )
+        row["addback_epoch_index"] = batch["epoch_index"]
+        row["addback_causal_group_ids"] = list(batch["causal_group_ids"])
+        row["addback_excluded_tokens"] = batch["excluded_tokens"]
+        rows.append(row)
         partial = {
             "schema_version": 1,
             "study": "paper8_5_persistent_first_divergence_oracle",
@@ -264,6 +347,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "full_same_prefix_selected_messages_sha256": full.trace["selected_messages_sha256"],
         "preserved_completed_state": preserved_roles,
         "excluded_group_count": len(exclusions),
+        "addback_mode": args.addback_mode,
+        "addback_batch_count": len(addback_batches),
+        "addback_batches": addback_batches,
         "control_repeats": args.control_repeats,
         "rows": rows,
         "interpretation_guardrail": (
@@ -286,6 +372,15 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=1)
     parser.add_argument("--control-repeats", type=int, default=3)
+    parser.add_argument(
+        "--addback-mode",
+        choices=("causal_group", "completed_epoch"),
+        default="causal_group",
+        help=(
+            "restore one excluded causal group at a time, or restore every "
+            "excluded group from one evaluator-hidden completed source epoch"
+        ),
+    )
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
     args = parser.parse_args()
     result = run(args)
