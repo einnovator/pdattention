@@ -312,6 +312,60 @@ def _aggregate(cell: Mapping[str, Any], episode_rows: Sequence[Mapping[str, Any]
     }
 
 
+def _partial_aggregate(
+    episode_rows: Sequence[Mapping[str, Any]], *, status: str,
+) -> dict[str, Any]:
+    """Summarize an intentionally stopped prefix without calling it a cohort."""
+
+    if not episode_rows:
+        raise ValueError("cannot summarize an empty stopped sequence")
+    full = sum(int(row["cumulative_full_tokens"]) for row in episode_rows)
+    materialized = sum(
+        int(row["cumulative_materialized_tokens"]) for row in episode_rows
+    )
+    official = [bool(row["official_resolved"]) for row in episode_rows]
+    return {
+        "status": status,
+        "observed_issue_count": len(episode_rows),
+        "official_resolved_count": sum(official),
+        "official_resolution_fraction": sum(official) / len(official),
+        "all_observed_issues_resolved": all(official),
+        "calls": sum(int(row["calls"]) for row in episode_rows),
+        "cumulative_full_tokens": full,
+        "cumulative_materialized_tokens": materialized,
+        "candidate_trajectory_gross_saving_fraction": (
+            1 - materialized / full if full else 0.0
+        ),
+        "failure_aware_saving_fraction": 0.0,
+        "in_primary_saving_target": False,
+        "primary_target_met": False,
+        "pairing_status": "stopped after predeclared paired-quality gate",
+    }
+
+
+def _lost_paired_full_successes(
+    *, cell: Mapping[str, Any], row: Mapping[str, Any],
+    state_cells: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Return completed issue IDs lost relative to the paired FULL control."""
+
+    control_id = _control_cell_id(cell, state_cells)
+    control = state_cells.get(control_id) or {}
+    losses: list[str] = []
+    for episode_id, candidate in (row.get("episodes") or {}).items():
+        baseline = (control.get("episodes") or {}).get(episode_id) or {}
+        if (
+            candidate.get("status") == "complete"
+            and baseline.get("status") == "complete"
+            and baseline.get("official_resolved") is True
+            and candidate.get("official_resolved") is False
+            and int(candidate.get("cumulative_materialized_tokens") or 0)
+            < int(candidate.get("cumulative_full_tokens") or 0)
+        ):
+            losses.append(str(candidate.get("instance_id") or episode_id))
+    return losses
+
+
 def _trace(path: Path) -> list[dict[str, Any]]:
     trace_path = path / "request_selection.jsonl"
     if not trace_path.is_file():
@@ -506,8 +560,8 @@ def write_frontier_ledger(
                 evidence_admissible = bool(
                     trace_contiguous
                     and upstream_error_calls == 0
+                    and official.get("official_grader") is True
                     and isinstance(official.get("resolved"), bool)
-                    and not bool(official.get("error"))
                 )
                 repeated = metrics.get("repeated_same_operation_resource_counts") or {}
                 divergence = _divergence_accounting(
@@ -634,6 +688,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         episode_results: list[dict[str, Any]] = []
         infrastructure_error = False
         upstream_paused = False
+        quality_gate_stopped = False
         for episode_number, instance_id in enumerate(cell["instance_ids"], 1):
             episode_id = f"episode_{episode_number:02d}_{_slug(instance_id)}"
             base_episode_output = cell_root / episode_id
@@ -810,12 +865,44 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             exported = _read(export_path)
             prefix_episodes.append(exported)
             _write(state_path, state)
+            stop_after_losses = getattr(
+                args, "stop_after_lost_paired_full_successes", None
+            )
+            if (
+                stop_after_losses is not None
+                and cell["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
+            ):
+                losses = _lost_paired_full_successes(
+                    cell=cell, row=row, state_cells=state["cells"]
+                )
+                if len(losses) >= int(stop_after_losses):
+                    quality_gate_stopped = True
+                    row.update(_partial_aggregate(
+                        episode_results,
+                        status="stopped_predeclared_quality_gate",
+                    ))
+                    row["stop_gate"] = {
+                        "rule": "lost_paired_full_successes",
+                        "threshold": int(stop_after_losses),
+                        "observed": len(losses),
+                        "instance_ids": losses,
+                    }
+                    for later in row["episodes"].values():
+                        if later.get("status") != "complete":
+                            later["status"] = "aborted_by_quality_gate"
+                            later["reason"] = (
+                                "arm stopped after predeclared paired-quality gate"
+                            )
+                    _write(state_path, state)
+                    break
         if args.dry_run:
             row["status"] = "planned"
         elif upstream_paused:
             row["status"] = "paused_upstream_unhealthy"
         elif infrastructure_error:
             row["status"] = "infrastructure_error"
+        elif quality_gate_stopped:
+            row["status"] = "stopped_predeclared_quality_gate"
         else:
             row.update(_aggregate(cell, episode_results))
             row.pop("reason", None)
@@ -849,6 +936,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run only explicitly named registered configurations.",
     )
     parser.add_argument("--max-cells", type=int)
+    parser.add_argument(
+        "--stop-after-lost-paired-full-successes",
+        type=int,
+        help=(
+            "Stop a treatment cell after this many completed issues that its "
+            "paired persistent-FULL control solved."
+        ),
+    )
     parser.add_argument("--skip-grading", action="store_true")
     parser.add_argument("--grade-auxiliary-workspace-state", action="store_true")
     parser.add_argument("--health-probe-count", type=int, default=3)

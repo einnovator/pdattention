@@ -11,7 +11,9 @@ from experiments.paper8_5_agent_memory.export_multi_issue_evidence import (
 )
 
 
-def _episode(path: Path, instance_id: str, calls: int) -> dict:
+def _episode(
+    path: Path, instance_id: str, calls: int, *, resolved: bool = True,
+) -> dict:
     path.mkdir(parents=True)
     rows = [
         {
@@ -35,14 +37,20 @@ def _episode(path: Path, instance_id: str, calls: int) -> dict:
         "max_completion_tokens": 1024,
     }), encoding="utf-8")
     (path / "official_result.json").write_text(
-        json.dumps({"resolved": True, "error": False}), encoding="utf-8"
+        json.dumps({
+            "official_grader": True,
+            "resolved": resolved,
+            "error": not resolved,
+            "failure_class": None if resolved else "patch_apply_failed",
+        }),
+        encoding="utf-8",
     )
     (path / "persistent_episode_export.json").write_text(
         json.dumps({"instance_id": instance_id}), encoding="utf-8"
     )
     return {
         "instance_id": instance_id, "output": str(path),
-        "official_resolved": True, "calls": calls,
+        "official_resolved": resolved, "calls": calls,
     }
 
 
@@ -136,3 +144,61 @@ def test_export_pairs_control_with_nondefault_strategy_config_id(tmp_path):
         "S01_persistent_full-boundary_free_v2__r01"
     )
     assert candidate["paired"]["failure_aware_saving_vs_persistent_full"] == 0.4
+
+
+def test_export_keeps_predeclared_stopped_prefix_out_of_complete_denominator(tmp_path):
+    root = tmp_path / "campaign"
+    full_first = _episode(root / "full-first", "task-a", 2)
+    full_second = _episode(root / "full-second", "task-b", 2)
+    full_third = _episode(root / "full-third", "task-c", 2)
+    candidate_first = _episode(root / "candidate-first", "task-a", 1)
+    candidate_second = _episode(
+        root / "candidate-second", "task-b", 1, resolved=False
+    )
+    candidate_first["status"] = "complete"
+    candidate_second["status"] = "complete"
+    state = {
+        "campaign_id": "campaign-stopped-v1",
+        "cells": {
+            "control": {
+                "status": "complete", "sequence_id": "sequence", "repeat": 1,
+                "strategy_id": "S01_persistent_full", "strategy_config_id": "full",
+                "official_resolved_count": 3, "issue_count": 3, "calls": 6,
+                "cumulative_full_tokens": 600,
+                "cumulative_materialized_tokens": 600,
+                "episodes": {
+                    "first": full_first, "second": full_second, "third": full_third,
+                },
+            },
+            "candidate": {
+                "status": "stopped_predeclared_quality_gate",
+                "sequence_id": "sequence", "repeat": 1,
+                "strategy_id": "S08_atomic_epoch_e2",
+                "strategy_config_id": "e2", "official_resolved_count": 1,
+                "issue_count": 3, "observed_issue_count": 2, "calls": 2,
+                "cumulative_full_tokens": 200,
+                "cumulative_materialized_tokens": 160,
+                "episodes": {
+                    "first": candidate_first, "second": candidate_second,
+                    "third": {"status": "aborted_by_quality_gate"},
+                },
+                "stop_gate": {"threshold": 1, "observed": 1},
+            },
+        },
+    }
+    root.mkdir(exist_ok=True)
+    (root / "campaign_state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    evidence = build(root)
+    candidate = next(
+        row for row in evidence["runs"]
+        if row["strategy_id"] == "S08_atomic_epoch_e2"
+    )
+
+    assert candidate["campaign_cell_status"] == "stopped_predeclared_quality_gate"
+    assert candidate["issue_count"] == 2
+    assert candidate["planned_issue_count"] == 3
+    assert candidate["paired"]["partial_stopped_prefix"] is True
+    assert candidate["paired"]["lost_persistent_full_successes"] == 1
+    assert candidate["paired"]["failure_aware_saving_vs_persistent_full"] == 0.0
+    assert candidate["evidence_admissible"] is True

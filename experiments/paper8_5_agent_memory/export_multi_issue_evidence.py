@@ -86,8 +86,8 @@ def _episode_summary(episode: Mapping[str, Any]) -> dict[str, Any]:
         "upstream_error_calls": upstream_errors,
         "evidence_admissible": (
             contiguous and upstream_errors == 0
+            and official.get("official_grader") is True
             and isinstance(official.get("resolved"), bool)
-            and not bool(official.get("error"))
         ),
         "identities": identities,
         "artifact_sha256": artifacts,
@@ -113,10 +113,20 @@ def build(campaign_root: Path) -> dict[str, Any]:
             )
         controls[key] = (str(control_id), control)
     runs: list[dict[str, Any]] = []
+    exportable_statuses = {"complete", "stopped_predeclared_quality_gate"}
     for cell_id, cell in sorted(cells.items()):
-        if cell.get("status") != "complete":
+        if cell.get("status") not in exportable_statuses:
             continue
-        episodes = [_episode_summary(row) for row in cell["episodes"].values()]
+        completed_episode_rows = (
+            list(cell["episodes"].values())
+            if cell.get("status") == "complete"
+            else [
+                row for row in cell["episodes"].values()
+                if row.get("status") == "complete"
+            ]
+        )
+        episodes = [_episode_summary(row) for row in completed_episode_rows]
+        observed_issue_count = len(episodes)
         row: dict[str, Any] = {
             "cell_id": cell_id,
             "sequence_id": cell["sequence_id"],
@@ -124,7 +134,10 @@ def build(campaign_root: Path) -> dict[str, Any]:
             "strategy_id": cell["strategy_id"],
             "strategy_config_id": cell.get("strategy_config_id", "default"),
             "official_resolved_count": int(cell["official_resolved_count"]),
-            "issue_count": int(cell["issue_count"]),
+            "issue_count": observed_issue_count,
+            "planned_issue_count": int(cell["issue_count"]),
+            "campaign_cell_status": cell.get("status"),
+            "stop_gate": cell.get("stop_gate"),
             "calls": int(cell["calls"]),
             "cumulative_full_tokens": int(cell["cumulative_full_tokens"]),
             "cumulative_materialized_tokens": int(
@@ -144,18 +157,49 @@ def build(campaign_root: Path) -> dict[str, Any]:
             if control_entry is not None:
                 control_id, control = control_entry
                 row["paired_persistent_full_cell_id"] = control_id
-                row["paired"] = paired_point(cell, control)
-                row["calls_delta_vs_persistent_full"] = (
-                    int(cell["calls"]) - int(control["calls"])
-                )
                 divergences = []
                 paired_issues = []
                 control_summaries = [
                     _episode_summary(episode)
-                    for episode in control["episodes"].values()
+                    for episode in list(control["episodes"].values())[:observed_issue_count]
                 ]
+                if cell.get("status") == "complete":
+                    row["paired"] = paired_point(cell, control)
+                else:
+                    baseline_tokens = sum(
+                        int(item["cumulative_full_tokens"])
+                        for item in control_summaries
+                    )
+                    lost = sum(
+                        bool(base["official_resolved"])
+                        and not bool(test["official_resolved"])
+                        for test, base in zip(episodes, control_summaries)
+                    )
+                    raw = (
+                        1 - int(cell["cumulative_materialized_tokens"])
+                        / baseline_tokens
+                        if baseline_tokens else 0.0
+                    )
+                    row["paired"] = {
+                        "raw_saving_vs_persistent_full": raw,
+                        "failure_aware_saving_vs_persistent_full": (
+                            0.0 if lost else raw
+                        ),
+                        "lost_persistent_full_successes": lost,
+                        "resolution_delta_vs_persistent_full": (
+                            int(cell["official_resolved_count"])
+                            - sum(bool(item["official_resolved"])
+                                  for item in control_summaries)
+                        ),
+                        "partial_stopped_prefix": True,
+                    }
+                row["calls_delta_vs_persistent_full"] = (
+                    int(cell["calls"])
+                    - sum(int(item["calls"]) for item in control_summaries)
+                )
                 for candidate_episode, control_episode, candidate_summary, control_summary in zip(
-                    cell["episodes"].values(), control["episodes"].values(),
+                    completed_episode_rows,
+                    list(control["episodes"].values())[:observed_issue_count],
                     episodes, control_summaries,
                 ):
                     divergence = _divergence_accounting(
@@ -216,7 +260,7 @@ def build(campaign_root: Path) -> dict[str, Any]:
                     })
                 row["episode_divergence"] = divergences
                 row["paired_issues"] = paired_issues
-                first_candidate = Path(str(next(iter(cell["episodes"].values()))["output"]))
+                first_candidate = Path(str(completed_episode_rows[0]["output"]))
                 first_control = Path(str(next(iter(control["episodes"].values()))["output"]))
                 row["shared_first_episode_exact"] = (
                     first_candidate.resolve() == first_control.resolve()

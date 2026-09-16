@@ -13,6 +13,8 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     _episode_command,
     _aggregate,
     _divergence_accounting,
+    _lost_paired_full_successes,
+    _partial_aggregate,
     _validate_sequence_pairing_identity,
     campaign_cells,
     run_campaign,
@@ -429,6 +431,82 @@ def test_sequence_aggregate_labels_unpaired_saving_and_defers_primary_metrics():
     assert failed["in_primary_saving_target"] is None
     assert failed["candidate_all_issues_resolved"] is False
     assert failed["primary_target_met"] is None
+
+
+def test_predeclared_stop_counts_only_losses_of_completed_full_successes():
+    cell = {"sequence_id": "sequence", "repeat": 1}
+    state_cells = {
+        "control": {
+            "sequence_id": "sequence", "repeat": 1,
+            "strategy_id": "S01_persistent_full",
+            "episodes": {
+                "e1": {"status": "complete", "official_resolved": True},
+                "e2": {"status": "complete", "official_resolved": False},
+                "e3": {"status": "complete", "official_resolved": True},
+            },
+        }
+    }
+    row = {
+        "episodes": {
+            "e1": {"status": "complete", "official_resolved": False,
+                   "instance_id": "lost", "cumulative_full_tokens": 100,
+                   "cumulative_materialized_tokens": 80},
+            "e2": {"status": "complete", "official_resolved": False,
+                   "instance_id": "joint-failure", "cumulative_full_tokens": 100,
+                   "cumulative_materialized_tokens": 80},
+            "e3": {"status": "running", "official_resolved": False,
+                   "instance_id": "incomplete", "cumulative_full_tokens": 100,
+                   "cumulative_materialized_tokens": 80},
+        }
+    }
+
+    assert _lost_paired_full_successes(
+        cell=cell, row=row, state_cells=state_cells
+    ) == ["lost"]
+
+
+def test_predeclared_stop_does_not_charge_a_full_equivalent_repeat():
+    cell = {"sequence_id": "sequence", "repeat": 1}
+    state_cells = {
+        "control": {
+            "sequence_id": "sequence", "repeat": 1,
+            "strategy_id": "S01_persistent_full",
+            "episodes": {
+                "e1": {"status": "complete", "official_resolved": True},
+            },
+        }
+    }
+    row = {"episodes": {"e1": {
+        "status": "complete", "official_resolved": False,
+        "instance_id": "backend-variance", "cumulative_full_tokens": 100,
+        "cumulative_materialized_tokens": 100,
+    }}}
+
+    assert _lost_paired_full_successes(
+        cell=cell, row=row, state_cells=state_cells
+    ) == []
+
+
+def test_stopped_prefix_summary_is_failure_aware_and_not_a_complete_cohort():
+    rows = [
+        {"official_resolved": True, "calls": 2,
+         "cumulative_full_tokens": 100, "cumulative_materialized_tokens": 70},
+        {"official_resolved": False, "calls": 3,
+         "cumulative_full_tokens": 200, "cumulative_materialized_tokens": 100},
+    ]
+
+    result = _partial_aggregate(
+        rows, status="stopped_predeclared_quality_gate"
+    )
+
+    assert result["status"] == "stopped_predeclared_quality_gate"
+    assert result["observed_issue_count"] == 2
+    assert result["official_resolved_count"] == 1
+    assert result["candidate_trajectory_gross_saving_fraction"] == pytest.approx(
+        1 - 170 / 300
+    )
+    assert result["failure_aware_saving_fraction"] == 0.0
+    assert result["primary_target_met"] is False
 
 
 def test_divergence_saving_excludes_the_divergent_request():
