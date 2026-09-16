@@ -102,6 +102,12 @@ def _validate_run(run: Mapping[str, Any], known_strategies: set[str]) -> None:
         if not isinstance(row.get("first_action_diverged"), bool):
             raise ValueError("every issue requires a boolean first_action_diverged")
         for field in (
+            "identical_input_first_action_divergence",
+            "selection_active_at_first_action_divergence",
+        ):
+            if field in row and not isinstance(row[field], bool):
+                raise ValueError(f"{field} must be boolean when present")
+        for field in (
             "selected_tokens_before_divergence_or_terminal",
             "full_tokens_before_divergence_or_terminal",
         ):
@@ -337,6 +343,14 @@ def reduce_multi_issue_runs(
                 "first_divergence_preceding_saving": _pre_divergence_saving(run),
                 "first_action_divergence_rate": sum(
                     int(row["first_action_diverged"]) for row in run["issues"]
+                ) / run["issue_count"],
+                "identical_input_first_action_divergence_rate": sum(
+                    int(bool(row.get("identical_input_first_action_divergence", False)))
+                    for row in run["issues"]
+                ) / run["issue_count"],
+                "selection_active_first_action_divergence_rate": sum(
+                    int(bool(row.get("selection_active_at_first_action_divergence", False)))
+                    for row in run["issues"]
                 ) / run["issue_count"],
                 "in_primary_saving_target": target_region,
                 "discovery_primary_target_met": bool(

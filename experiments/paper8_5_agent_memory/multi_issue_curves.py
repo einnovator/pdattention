@@ -29,6 +29,8 @@ METRICS = (
     "rediscovery_delta_vs_fresh_full",
     "cost_per_resolved_issue",
     "first_action_divergence_rate",
+    "identical_input_first_action_divergence_rate",
+    "selection_active_first_action_divergence_rate",
     "first_divergence_preceding_saving",
     "selected_input_tokens",
 )

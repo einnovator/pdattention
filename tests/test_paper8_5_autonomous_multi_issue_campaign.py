@@ -408,6 +408,28 @@ def test_divergence_saving_excludes_the_divergent_request():
     assert result["full_tokens_before_divergence_or_terminal"] == 100
 
 
+def test_divergence_accounting_identifies_identical_input_backend_variance():
+    baseline = [{
+        "request_index": 1,
+        "assistant_command_sha256": "baseline",
+        "request_input_sha256": "same-input",
+        "materialized_tokens": 100,
+        "full_tokens": 100,
+    }]
+    candidate = [{
+        "request_index": 1,
+        "assistant_command_sha256": "candidate",
+        "request_input_sha256": "same-input",
+        "materialized_tokens": 100,
+        "full_tokens": 100,
+    }]
+
+    result = _divergence_accounting(candidate, baseline)
+
+    assert result["identical_input_first_action_divergence"] is True
+    assert result["selection_active_at_first_action_divergence"] is False
+
+
 def _pairing_manifest(instance_id: str, behavior: str) -> dict:
     return {
         "instance_id": instance_id,

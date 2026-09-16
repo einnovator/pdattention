@@ -323,6 +323,23 @@ def _divergence_accounting(
     if first is None:
         one_sided = sorted(set(candidate_by_index) ^ set(baseline_by_index))
         first = one_sided[0] if one_sided else None
+    identical_input_divergence = False
+    selection_active_at_divergence = False
+    if first is not None and first in candidate_by_index and first in baseline_by_index:
+        candidate_row = candidate_by_index[first]
+        baseline_row = baseline_by_index[first]
+        candidate_input = candidate_row.get("request_input_sha256")
+        baseline_input = baseline_row.get("request_input_sha256")
+        identical_input_divergence = bool(
+            candidate_input
+            and baseline_input
+            and candidate_input == baseline_input
+        )
+        selection_active_at_divergence = int(
+            candidate_row.get(
+                "materialized_tokens", candidate_row.get("selected_tokens", 0)
+            ) or 0
+        ) < int(candidate_row.get("full_tokens") or 0)
     through = first - 1 if first is not None else max(candidate_by_index, default=0)
     prefix = [
         row for index, row in candidate_by_index.items() if index <= through
@@ -330,6 +347,8 @@ def _divergence_accounting(
     return {
         "first_action_diverged": first is not None,
         "first_action_divergence_request": first,
+        "identical_input_first_action_divergence": identical_input_divergence,
+        "selection_active_at_first_action_divergence": selection_active_at_divergence,
         "selected_tokens_before_divergence_or_terminal": sum(
             int(row.get("materialized_tokens", row.get("selected_tokens", 0)) or 0)
             for row in prefix

@@ -56,6 +56,8 @@ def _run(strategy: str, mode: str, tokens: tuple[int, int], resolved=(True, True
                 "calls": 10,
                 "rediscovery_calls": index - 1,
                 "first_action_diverged": False,
+                "identical_input_first_action_divergence": False,
+                "selection_active_at_first_action_divergence": False,
                 "selected_tokens_before_divergence_or_terminal": token_count,
                 "full_tokens_before_divergence_or_terminal": 100,
             }
@@ -97,6 +99,7 @@ def test_reducer_compares_every_candidate_to_both_full_controls():
     assert row["confirmation_primary_target_met"] is None
     assert row["successful_calls_delta_vs_persistent_full"] == 0
     assert row["first_action_divergence_rate"] == 0.0
+    assert row["identical_input_first_action_divergence_rate"] == 0.0
 
 
 def test_primary_persistent_frontier_does_not_require_fresh_control():
