@@ -24,6 +24,7 @@ from .upstream_health import probe_generation_health
 
 TARGET_SAVING_MIN = 0.30
 TARGET_SAVING_MAX = 0.50
+MAX_SEQUENCE_ISSUES = 20
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -107,8 +108,10 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
         if not sequence_id or sequence_id in sequence_ids:
             raise ValueError("sequence IDs must be distinct and non-empty")
         sequence_ids.add(sequence_id)
-        if not instance_ids or len(instance_ids) > 10:
-            raise ValueError(f"{sequence_id}: expected one to ten issues")
+        if not instance_ids or len(instance_ids) > MAX_SEQUENCE_ISSUES:
+            raise ValueError(
+                f"{sequence_id}: expected one to {MAX_SEQUENCE_ISSUES} issues"
+            )
         if len(instance_ids) != len(set(instance_ids)):
             raise ValueError(f"{sequence_id}: duplicate issue identity")
         if any(instance_id not in known for instance_id in instance_ids):

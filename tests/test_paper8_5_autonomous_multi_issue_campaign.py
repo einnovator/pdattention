@@ -53,6 +53,10 @@ INSTRUCTION_EPOCH_N3_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_persistent_instruction_epoch_n3_e0_v1.json"
 )
+EASY14_ATOMIC_PROFILES_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_easy14_atomic_profiles_v1.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -146,31 +150,50 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
     assert command[command.index("--completed-instruction-epochs") + 1] == "2"
 
 
-def test_campaign_registry_accepts_ten_issue_asymptotic_sequence():
+def test_campaign_registry_accepts_easy14_sequence():
     benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
     spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
     spec["sequences"] = [{
-        "sequence_id": "independent-n10-planned",
+        "sequence_id": "independent-n14-planned",
         "sequence_stratum": "independent_clean_workspace",
-        "instance_ids": benchmark["instance_ids"][:10],
+        "instance_ids": benchmark["instance_ids"],
     }]
 
     validate_spec(spec, benchmark)
     cells = campaign_cells(spec)
     assert len(cells) == 2
-    assert all(row["issue_count"] == 10 for row in cells)
+    assert all(row["issue_count"] == 14 for row in cells)
 
 
-def test_campaign_registry_rejects_more_than_ten_issues():
+def test_easy14_atomic_profile_registry_freezes_distinct_e1_e2_e3_cells():
+    benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
+    spec = json.loads(EASY14_ATOMIC_PROFILES_SPEC.read_text(encoding="utf-8"))
+
+    validate_spec(spec, benchmark)
+    cells = campaign_cells(spec)
+
+    assert len(cells) == 4
+    assert all(row["issue_count"] == 14 for row in cells)
+    assert cells[0]["strategy_id"] == "S01_persistent_full"
+    candidates = cells[1:]
+    assert [row["strategy"]["completed_instruction_epochs"] for row in candidates] == [
+        2, 3, 1,
+    ]
+    assert all(row["strategy"]["retire_closed_instructions"] for row in candidates)
+    assert all(row["strategy"]["boundary_mode"] == "boundary_free" for row in cells)
+
+
+def test_campaign_registry_rejects_more_than_twenty_issues():
     benchmark = json.loads(BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8"))
     spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
     spec["sequences"] = [{
-        "sequence_id": "independent-n11-invalid",
+        "sequence_id": "independent-n21-invalid",
         "sequence_stratum": "independent_clean_workspace",
-        "instance_ids": benchmark["instance_ids"][:11],
+        "instance_ids": [f"task-{index}" for index in range(21)],
     }]
+    benchmark["instance_ids"] = list(spec["sequences"][0]["instance_ids"])
 
-    with pytest.raises(ValueError, match="one to ten"):
+    with pytest.raises(ValueError, match="one to 20"):
         validate_spec(spec, benchmark)
 
 
