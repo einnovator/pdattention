@@ -39,18 +39,24 @@ instructions when their completion evidence is removed, and per-request token
 retention can look favorable while extra calls increase total work.  Our
 boundary-free repair infers instruction epochs only from ordinary user-message
 provenance and retires a terminally closed old instruction together with its
-causal interaction.  Retaining the two latest complete epochs while atomically
-retiring older ones is the first balanced candidate: on a repeat-qualified
-single-task fork it resolves 2/2, produces the same patch, and saves 38.17\% of
-cumulative message-content input tokens.  Retiring every prior epoch saves
-71.03\% but fails, establishing a useful quality--saving bracket.  A frozen
-Easy-14 campaign now evaluates conservative E3, balanced E2, and economy E1
-variants against a contemporaneous persistent-full control without exposing
-evaluator task boundaries.  Only policies that preserve paired successes,
-avoid aggregate call inflation, and survive repeat confirmation transfer to
-native-K/V evaluation.  Thus agent-memory policy and engine reuse remain
-separate contracts: this paper selects logical evidence; Paper~4.5 measures
-whether engines realize the identical plan without re-encoding or copying K/V.
+causal interaction.  In a context-qualified 131,072-token Easy-14 campaign,
+persistent \textsc{Full} resolves 10/14 tasks in 207 calls and sends 8.90
+million cumulative message-content tokens; its largest request is 85,801
+tokens.  The balanced two-epoch candidate is stopped after five tasks: it
+resolves 2/5 versus \textsc{Full}'s 4/5, losing two paired successes through
+invalid submitted patches.  Its 28.22\% raw paired saving therefore receives
+zero failure-aware credit.  Moreover, two pre-intervention repeats with
+byte-identical full materialization already change call counts, demonstrating
+that temperature zero and a fixed seed do not ensure trajectory repeatability.
+An exact saved-prefix Task-5 diagnosis then compares two executions per policy.
+Three-epoch E3 matches \textsc{Full}'s 1/2 resolution and saves 16.62\% paired
+input with one extra aggregate call; E2 also resolves 1/2 and removes 41.94\%
+of its own counterfactual history, but trajectory inflation more than doubles
+paired token work.  No policy therefore meets the 30--50\%, zero-loss,
+no-call-increase target, and no production default is promoted.  Agent-memory
+policy and engine reuse remain separate contracts: this paper selects logical
+evidence; Paper~4.5 measures whether engines realize the identical plan without
+re-encoding or copying K/V.
 \end{abstract}
 
 \iffalse
@@ -919,10 +925,10 @@ or explicit issue boundary.
 \begin{table}[H]
 \centering
 \scriptsize
-\caption{Most informative autonomous persistent-session results available
-before the frozen Easy-14 confirmation.  Saving is cumulative selected
-message-content input relative to the stated comparator; failed candidates
-receive no positive failure-aware credit.}
+\caption{Primary autonomous persistent-session frontier.  Easy-14 is one
+ordered mechanism cohort.  Raw saving is cumulative selected message-content
+input relative to paired \textsc{Full}; a lost paired success receives zero
+failure-aware credit.}
 \label{tab:main-frontier}
 \begin{tabular}{>{\raggedright\arraybackslash}p{.22\linewidth}
                 >{\centering\arraybackslash}p{.09\linewidth}
@@ -932,32 +938,41 @@ receive no positive failure-aware credit.}
 \toprule
 Policy/cohort & Resolution & Calls & Saving & Interpretation \\
 \midrule
-Explicit-boundary R4/P1, two N=3 runs & 6/6 & $-6,-9$ vs Full & 36.41--45.82\% & Mechanism positive, but uses unavailable issue metadata. \\
-Boundary-free E0, N=3 & 3/3 & 64 vs 66 & 34.83\% & Advances locally; active epoch retained whole. \\
-Boundary-free E0, N=6 & 6/6 vs 5/6 & 114 vs 60 & $-43.87$\% paired & Reject: pruning causes trajectory inflation. \\
+Persistent \textsc{Full}, Easy-14 & 10/14 & 207 & 0\% & Context-qualified control; persistent history itself is not 14/14. \\
+Atomic E2, stopped prefix & 2/5 vs 4/5 & 84 vs 85 & 28.22\% raw; 0\% failure-aware & Reject after two lost paired successes. \\
+Atomic E3, Task-5 exact-prefix repeats & 1/2 vs 1/2 & 9 vs 8 & 16.62\% paired & Nondominated diagnostic, below target and adds one call. \\
+Atomic E2, Task-5 exact-prefix repeats & 1/2 vs 1/2 & 27 vs 8 & $-106.77$\% paired & Reject: 41.94\% gross saving is erased by call inflation. \\
+Atomic E2, earlier same-prefix diagnostic & 2/2 & 16,16 & 38.17\% own trajectory & Motivated confirmation but does not survive cross-task transfer. \\
 Atomic active-only, one task & 0/1 & 22 & 71.03\% own trajectory & Reject: insufficient behavioral conditioning. \\
-Atomic E2, one task, two resets & 2/2 & 16,16 & 38.17\% own trajectory & Repeat-qualified balanced candidate; identical patch. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Atomic E2's three extra calls relative to an older E2 fork are not explained
-by missing task evidence.  The first three actions agree; at the fourth action,
-three syntactically valid \texttt{sed} mutations match no text, return status
-zero, and produce empty output before a Perl edit succeeds.  This identifies a
-generic mediation requirement: mutation observations should expose whether a
-resource version changed and how many replacements matched.  Such receipts
-are control metadata, not extra prompt text unless a materializer explicitly
-chooses to show them.
+The Easy-14 control changes the interpretation of the earlier single-task
+positive.  The sequence comprises one continuous ordinary-role transcript over
+fourteen clean official workspaces, with no evaluator issue identifier or
+explicit boundary exposed to the policy.  \textsc{Full}'s 10/14 result is the
+paired quality denominator, not the historical isolated-session 14/14 used to
+select task identities.  Atomic E2 performs no retirement in Tasks~2--3, yet
+the full-materialization repeats use 13 versus 18 and 19 versus 11 calls.
+Selection begins at Task~4; E2 then loses the next two \textsc{Full} successes
+through \texttt{patch\_apply\_failed}.  The arm is stopped rather than averaged
+with nine unrun tasks.  Per-task traces, token denominators, and the failure
+taxonomy are in the appendix.
 
-The frozen Easy-14 sequence is the confirmatory mechanism cohort.  One
-continuous ordinary-role transcript spans fourteen clean official workspaces.
-The campaign order is persistent Full, atomic E2, E3, and E1.  E2 runs first
-because it is the only repeat-qualified candidate; E3 retains one more complete
-epoch when quality needs protection, while E1 is stopped on its first lost
-paired success.  Promotion requires all fourteen paired tasks, no lost Full
-success, no aggregate call increase, and a repeat of the winner.  This design
-prevents high token saving from being mistaken for deployable utility.
+E3 retains three complete prior epochs.  Its first four tasks are
+full-materialization repeat controls and its first actual retirement is
+Task~5.  The autonomous prefix diverges before that intervention: Tasks~3--4
+both reach the 40-call limit despite \textsc{Full} using 11 and 23 calls.
+We therefore stop that arm and fork Task~5 from the exact saved four-episode
+\textsc{Full} prefix.  Across two executions, \textsc{Full}, E3, and E2 each
+resolve 1/2.  E3 is the nondominated candidate but reaches only 16.62\% paired
+saving and uses nine calls versus eight; E2 reaches the desired gross-retention
+band but uses 27 calls and 106.77\% more paired tokens.  Promotion still
+requires the complete fourteen-task sequence, no lost selection-active
+\textsc{Full} success, no aggregate call increase, and a repeat of the selected
+winner.  This design prevents raw token saving, early termination, or endpoint
+variance from being mistaken for deployable utility.
 
 \section{Deployable Logical Profiles}
 
@@ -968,17 +983,16 @@ logical plan is serialized identically for every runtime:
 \centering
 \small
 \caption{Candidate profile mapping used by the Easy-14 campaign and the later
-Paper~4.5 handoff.  Only Balanced is presently repeat-qualified, and only on
-one task; none is yet a production default.}
+Paper~4.5 handoff.  None is presently a production default.}
 \label{tab:main-profiles}
 \begin{tabular}{lll>{\raggedright\arraybackslash}p{.43\linewidth}}
 \toprule
 Profile & Candidate & Prior complete epochs & Promotion constraint \\
 \midrule
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
-Agent-Quality & Atomic E3 & 3 & Zero paired losses; prefer retention over target saving. \\
-Agent-Balanced & Atomic E2 & 2 & 30--50\% failure-aware saving, zero paired losses, no call inflation. \\
-Agent-Economy & Atomic E1 & 1 & Higher saving allowed, but no hidden early-termination credit. \\
+Agent-Quality & Atomic E3 & 3 & Nondominated diagnostic; below the 30\% paired-saving floor and adds one call. \\
+Agent-Balanced & Atomic E2 & 2 & Rejected on the first five Easy-14 tasks after two paired losses. \\
+Agent-Economy & Atomic E1 & 1 & Not advanced because the less aggressive E2 failed its quality gate. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -991,18 +1005,140 @@ hit nor a latency claim.
 
 \section{Main Limitations and Conclusion}
 
-The repeat-qualified atomic result currently covers one task identity and one
+The context-qualified campaign currently covers one ordered sequence and one
 model family.  Temperature zero does not guarantee exact endpoint trajectory
 repeatability, and clean workspaces isolate cross-issue conversation memory
 from persistent repository state.  Easy-14 is a mechanism cohort rather than
 a population estimate.  The main scientific conclusion is correspondingly
 narrow: safe coding-agent retirement must preserve causal and closure
-semantics, and efficiency must be measured over the realized trajectory.
-Cross-task confirmation, a second model and agent, and dependent same-workspace
-instructions remain necessary before a profile is called a default.
+semantics, efficiency must be measured over the realized trajectory, and a
+single-task positive cannot select a default.  A larger repeated exact-prefix
+cohort on a stable endpoint, cross-task confirmation of a nondominated policy,
+a second model and agent, and dependent same-workspace instructions remain
+necessary before any profile is promoted.
 
 \clearpage
 \appendix
+
+\section{Context-Qualified Easy-14 Confirmation Ledger}
+
+The confirmatory campaign uses \texttt{qwen3-coder:30b}, temperature zero,
+top-$p=1$, seed zero, mini-swe-agent's single Bash interface, clean official
+workspaces, and one continuous conversation.  Before every episode the harness
+verifies that the active model advertises a 131,072-token context.  The largest
+\textsc{Full} request contains 85,801 message-content tokens, so no row is a
+hidden context-overflow treatment.  \textsc{Full} sends 8,902,105 cumulative
+message-content tokens over 207 calls and resolves 10/14 issues.  These are the
+paired persistent-session controls; ``Easy-14'' denotes identities selected
+from prior isolated successes, not a claim that persistent \textsc{Full} must
+resolve fourteen tasks.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Per-issue Easy-14 control and stopped Atomic-E2 prefix.  ``Full'' in
+the materialization column means the candidate did not yet retire any record;
+its trajectory differences are endpoint-repeatability evidence, not policy
+effects.  Input delta is relative to the paired \textsc{Full} issue and can be
+positive after fewer calls or negative after trajectory inflation.}
+\label{tab:easy14-context-ledger}
+\begin{tabular}{r>{\raggedright\arraybackslash}p{.31\linewidth}rrrrr}
+\toprule
+& & \multicolumn{2}{c}{Persistent Full} &
+\multicolumn{3}{c}{Atomic E2} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-7}
+$i$ & Instance & Res. & Calls & Materialization & Res./calls & Input delta \\
+\midrule
+1 & django-15277 & 1 & 27 & shared & 1/27 & 0.00\% \\
+2 & django-15368 & 1 & 18 & Full & 1/13 & $+31.38$\% \\
+3 & scikit-learn-13135 & 0 & 11 & Full & 0/19 & $-71.14$\% \\
+4 & django-15741 & 1 & 23 & active & 0/16 & $+63.06$\% \\
+5 & pytest-7982 & 1 & 6 & active & 0/9 & $+38.88$\% \\
+6 & django-16145 & 1 & 23 & stopped & --- & --- \\
+7 & django-14089 & 0 & 21 & stopped & --- & --- \\
+8 & sphinx-8721 & 0 & 13 & stopped & --- & --- \\
+9 & scikit-learn-14496 & 1 & 8 & stopped & --- & --- \\
+10 & sympy-23534 & 1 & 14 & stopped & --- & --- \\
+11 & scikit-learn-12585 & 1 & 9 & stopped & --- & --- \\
+12 & requests-2317 & 1 & 11 & stopped & --- & --- \\
+13 & sympy-16886 & 1 & 10 & stopped & --- & --- \\
+14 & django-12741 & 0 & 13 & stopped & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Across the observed five-issue prefix, E2 resolves 2/5 versus 4/5, uses 84
+versus 85 calls, and materializes 1,016,037 tokens versus the control's
+1,415,568, a raw paired reduction of 28.22\%.  Both selection-active losses are
+\texttt{patch\_apply\_failed}; hence failure-aware saving is zero and the arm
+is rejected.  Tasks~2--3 are especially important controls: E2 is still exact
+Full materialization, yet the calls change from 18 to 13 and from 11 to 19.
+Any causal claim based only on a single temperature-zero replay would therefore
+be invalid.  The autonomous traces, official reports, active-context probes,
+and immutable retry directories are retained in the evidence bundle; earlier
+32K and Docker-pull-contaminated attempts are quarantined infrastructure audit,
+not scientific rows.
+
+The E3 autonomous prefix is itself unusable for a first-intervention causal
+claim.  Before E3 removes any record, its Task~2 call count is 19 versus 18,
+Task~3 reaches 40 versus 11, and Task~4 reaches 40 versus 23 and loses the
+control's success.  We stop before Task~5 and instead restore the exact
+\textsc{Full} prefix after four episodes.  Table~\ref{tab:task5-exact-prefix}
+reports the resulting repeated Task-5 diagnosis.  The original \textsc{Full}
+execution and its repeat consume byte-identical first model inputs but emit
+different first actions and opposite official outcomes, directly measuring
+endpoint variance.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Exact-prefix Task-5 diagnostic.  All rows start from the same saved
+four-episode \textsc{Full} prefix and clean task workspace.  ``Full ctrf.'' is
+the candidate trajectory's full-history counterfactual, not the paired-control
+denominator.}
+\label{tab:task5-exact-prefix}
+\begin{tabular}{lrrrrr}
+\toprule
+Policy & Repeat & Resolved & Calls & Full ctrf. & Materialized \\
+\midrule
+Full & 1 & 1 & 6 & 200,169 & 200,169 \\
+Full & 2 & 0 & 2 & 63,009 & 63,009 \\
+Atomic E3 & 1 & 0 & 2 & 62,953 & 45,323 \\
+Atomic E3 & 2 & 1 & 7 & 235,824 & 174,119 \\
+Atomic E2 & 1 & 1 & 14 & 490,465 & 286,667 \\
+Atomic E2 & 2 & 0 & 13 & 446,755 & 257,514 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Aggregated over the two observations, \textsc{Full}, E3, and E2 each resolve
+1/2.  E3 materializes 219,442 tokens versus \textsc{Full}'s 263,178, a 16.62\%
+paired reduction, while using nine versus eight calls.  E2 removes 41.94\% of
+its own full-history counterfactual but materializes 544,181 tokens in 27 calls:
+106.77\% more tokens than \textsc{Full}.  Thus E2's attractive per-request
+retention is dominated after trajectory cost.  The reducer also now compares
+\texttt{selected\_messages\_sha256}, not the canonical pre-selection
+\texttt{request\_input\_sha256}; the latter is intentionally equal across a
+selection treatment and its control and cannot prove model-visible identity.
+
+An exploratory E2-plus-progress-spine treatment then exposed a separate chat
+construction defect before inference: retaining an action--observation spine
+from a retired epoch while deleting that epoch's user instruction produced an
+invalid \texttt{system}$\rightarrow$\texttt{assistant} prefix.  The corrected
+selector restores the genuine instruction and natural terminal turn whenever
+any interior spine from that epoch survives.  Structural selector/proxy tests
+pass after the repair.  Its first corrected remote retry stalled before any
+model response and is quarantined as infrastructure evidence; it contributes
+neither a failure nor a frontier point.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\linewidth]{../shared/results/paper8_5_agent_memory/easy14_atomic_profiles_ctx131k_v2/easy14_atomic_prefix_frontier.pdf}
+\caption{Descriptive prefix curves for the stopped E2 and E3 arms.  Dashed
+saving becomes zero after a lost paired \textsc{Full} success.  Prefix points
+share tasks and are not independent confidence-interval samples.}
+\label{fig:easy14-atomic-prefix-frontier}
+\end{figure}
 
 \section{Detailed Adaptive Policy Campaign}
 
