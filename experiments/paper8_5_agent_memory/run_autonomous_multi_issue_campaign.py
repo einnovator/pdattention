@@ -460,14 +460,33 @@ def write_frontier_ledger(
                 candidate_output = Path(str(candidate_episode["output"]))
                 baseline_output = Path(str(baseline_episode["output"]))
                 metrics = _read(candidate_output / "autonomous_metrics.json")
+                official = _read(candidate_output / "official_result.json")
+                candidate_trace = _trace(candidate_output)
+                trace_indexes = [int(item["request_index"]) for item in candidate_trace]
+                trace_contiguous = trace_indexes == list(
+                    range(1, len(trace_indexes) + 1)
+                )
+                upstream_error_calls = sum(
+                    int(item.get("upstream_status") or 0) < 100
+                    or int(item.get("upstream_status") or 0) >= 400
+                    for item in candidate_trace
+                )
+                evidence_admissible = bool(
+                    trace_contiguous
+                    and upstream_error_calls == 0
+                    and isinstance(official.get("resolved"), bool)
+                    and not bool(official.get("error"))
+                )
                 repeated = metrics.get("repeated_same_operation_resource_counts") or {}
                 divergence = _divergence_accounting(
-                    _trace(candidate_output), _trace(baseline_output)
+                    candidate_trace, _trace(baseline_output)
                 )
                 issue_rows.append({
                     "issue_index": index,
                     "instance_id": candidate_episode["instance_id"],
                     "resolved": bool(candidate_episode["official_resolved"]),
+                    "official_error": bool(official.get("error")),
+                    "evidence_admissible": evidence_admissible,
                     "selected_input_tokens": int(
                         candidate_episode["cumulative_materialized_tokens"]
                     ),

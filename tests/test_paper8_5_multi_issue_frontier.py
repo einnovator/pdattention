@@ -50,6 +50,8 @@ def _run(strategy: str, mode: str, tokens: tuple[int, int], resolved=(True, True
             {
                 "issue_index": index,
                 "resolved": outcome,
+                "official_error": False,
+                "evidence_admissible": True,
                 "selected_input_tokens": token_count,
                 "calls": 10,
                 "rediscovery_calls": index - 1,
@@ -147,6 +149,23 @@ def test_candidate_win_cannot_compensate_for_a_lost_full_success():
     assert row["lost_persistent_full_successes"] == 1
     assert row["gained_over_persistent_full"] == 1
     assert row["failure_aware_saving_vs_persistent_full"] == 0
+    assert row["discovery_primary_target_met"] is False
+
+
+def test_inadmissible_control_is_reported_but_cannot_promote_candidate():
+    registry = load_strategy_registry(REGISTRY)
+    persistent = _run("S01_persistent_full", "persistent", (100, 100))
+    persistent["issues"][0]["official_error"] = True
+    persistent["issues"][0]["evidence_admissible"] = False
+    candidate = _run("S03_completed_episode_spine", "persistent", (60, 60))
+
+    result = reduce_multi_issue_runs((persistent, candidate), registry)
+    row = next(row for row in result["rows"] if row["strategy_id"].startswith("S03"))
+
+    assert row["official_resolution"] == 1.0
+    assert row["failure_aware_saving_vs_persistent_full"] == pytest.approx(0.4)
+    assert row["persistent_full_evidence_admissible"] is False
+    assert row["comparison_evidence_admissible"] is False
     assert row["discovery_primary_target_met"] is False
 
 

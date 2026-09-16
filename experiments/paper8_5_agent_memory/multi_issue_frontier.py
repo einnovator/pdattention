@@ -89,6 +89,12 @@ def _validate_run(run: Mapping[str, Any], known_strategies: set[str]) -> None:
     for row in issues:
         if not isinstance(row.get("resolved"), bool):
             raise ValueError("every issue requires a boolean official resolved outcome")
+        if "official_error" in row and not isinstance(row["official_error"], bool):
+            raise ValueError("official_error must be boolean when present")
+        if "evidence_admissible" in row and not isinstance(
+            row["evidence_admissible"], bool
+        ):
+            raise ValueError("evidence_admissible must be boolean when present")
         for field in ("selected_input_tokens", "calls", "rediscovery_calls"):
             value = row.get(field)
             if not isinstance(value, int) or value < 0:
@@ -113,6 +119,14 @@ def _totals(run: Mapping[str, Any]) -> dict[str, Any]:
         "calls": sum(int(row["calls"]) for row in issues),
         "resolved_calls": sum(int(row["calls"]) for row in issues if row["resolved"]),
         "rediscovery_calls": sum(int(row["rediscovery_calls"]) for row in issues),
+        # Historical frozen ledgers predate this field and are treated as
+        # admissible.  New autonomous ledgers always emit it explicitly.
+        "evidence_admissible": all(
+            bool(row.get("evidence_admissible", True)) for row in issues
+        ),
+        "official_error_count": sum(
+            int(bool(row.get("official_error", False))) for row in issues
+        ),
     }
 
 
@@ -244,6 +258,11 @@ def reduce_multi_issue_runs(
                 totals["resolved"] - persistent_totals["resolved"]
             ) / run["issue_count"]
             target_region = 0.30 <= failure_aware_vs_persistent <= 0.50
+            comparison_admissible = bool(
+                totals["evidence_admissible"]
+                and persistent_totals["evidence_admissible"]
+                and (fresh_totals is None or fresh_totals["evidence_admissible"])
+            )
             rows.append({
                 "pair_id": pair_id,
                 "sequence_family_id": run["sequence_family_id"],
@@ -268,6 +287,12 @@ def reduce_multi_issue_runs(
                 "calls": totals["calls"],
                 "resolved_calls": totals["resolved_calls"],
                 "rediscovery_calls": totals["rediscovery_calls"],
+                "official_error_count": totals["official_error_count"],
+                "evidence_admissible": totals["evidence_admissible"],
+                "persistent_full_evidence_admissible": persistent_totals[
+                    "evidence_admissible"
+                ],
+                "comparison_evidence_admissible": comparison_admissible,
                 "saving_vs_persistent_full": _saving(
                     totals["tokens"], persistent_totals["tokens"]
                 ),
@@ -316,6 +341,7 @@ def reduce_multi_issue_runs(
                 "in_primary_saving_target": target_region,
                 "discovery_primary_target_met": bool(
                     run["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
+                    and comparison_admissible
                     and target_region
                     and lost_persistent_successes == 0
                     and resolution_delta_vs_persistent >= 0
