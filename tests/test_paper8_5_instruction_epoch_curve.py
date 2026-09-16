@@ -2,6 +2,9 @@ from experiments.paper8_5_agent_memory.instruction_epoch_curve import (
     instruction_epoch_curve,
 )
 from experiments.paper8_5_agent_memory.plot_instruction_epoch_curve import curve_series
+from experiments.paper8_5_agent_memory.selectors import (
+    PersistentInstructionEpochRetirementConfig,
+)
 
 
 def _trajectory(instance_id: str, payload: str) -> dict:
@@ -56,3 +59,30 @@ def test_scaling_curve_distinguishes_interaction_ideal_from_whole_request():
     assert series["interaction_ideal"][-1] == 0.9
     assert series["fixed_instruction_fraction_illustration"][-1] < 0.9
     assert series["empirical_interaction"][-1] > series["empirical_whole"][-1]
+
+
+def test_instruction_epoch_curve_records_and_applies_progress_spine_config():
+    trajectories = (
+        _trajectory("repo-a__one", "old payload " * 100),
+        _trajectory("repo-b__two", "middle payload " * 100),
+        _trajectory("repo-c__three", "new payload " * 100),
+    )
+    e0 = instruction_epoch_curve(trajectories)
+    spine = instruction_epoch_curve(
+        trajectories,
+        config=PersistentInstructionEpochRetirementConfig(
+            prior_protocol_turns=1,
+        ),
+    )
+
+    assert spine["selector_configuration"] == {
+        "prior_recent_turns": 0,
+        "prior_mutation_turns": 0,
+        "prior_verification_turns": 0,
+        "prior_protocol_turns": 1,
+        "prior_full_epochs": 0,
+    }
+    assert (
+        spine["points"][-1]["selected_cumulative_tokens"]
+        >= e0["points"][-1]["selected_cumulative_tokens"]
+    )

@@ -126,6 +126,13 @@ def instruction_epoch_curve(
         "stratum": "independent_cross_repository",
         "instruction_floor": "system plus every TASK and USER_INPUT record",
         "active_floor": "complete latest genuine-user-instruction epoch",
+        "selector_configuration": {
+            "prior_recent_turns": selector.config.prior_recent_turns,
+            "prior_mutation_turns": selector.config.prior_mutation_turns,
+            "prior_verification_turns": selector.config.prior_verification_turns,
+            "prior_protocol_turns": selector.config.prior_protocol_turns,
+            "prior_full_epochs": selector.config.prior_full_epochs,
+        },
         "tokenizer_identity": tokenizer_identity,
         "instance_ids": [str(row.get("instance_id") or "") for row in trajectories],
         "points": points,
@@ -141,6 +148,11 @@ def main() -> None:
         help="Optional local Hugging Face tokenizer path for exact content counts.",
     )
     parser.add_argument("--tokenizer-revision", default="unversioned")
+    parser.add_argument("--prior-recent-turns", type=int, default=0)
+    parser.add_argument("--prior-mutation-turns", type=int, default=0)
+    parser.add_argument("--prior-verification-turns", type=int, default=0)
+    parser.add_argument("--prior-protocol-turns", type=int, default=0)
+    parser.add_argument("--prior-full-epochs", type=int, default=0)
     args = parser.parse_args()
     trajectories = [
         json.loads(path.read_text(encoding="utf-8"))
@@ -162,6 +174,13 @@ def main() -> None:
         trajectories,
         count_tokens=count_tokens,
         tokenizer_identity=tokenizer_identity,
+        config=PersistentInstructionEpochRetirementConfig(
+            prior_recent_turns=args.prior_recent_turns,
+            prior_mutation_turns=args.prior_mutation_turns,
+            prior_verification_turns=args.prior_verification_turns,
+            prior_protocol_turns=args.prior_protocol_turns,
+            prior_full_epochs=args.prior_full_epochs,
+        ),
     )
     result["source_trajectories"] = [
         {

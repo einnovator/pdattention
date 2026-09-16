@@ -42,3 +42,26 @@ This targeted reversal does not establish that E2 improves quality. It shows
 that the ladder's single E2 loss is not reproducible as a deterministic
 selection failure. E2 remains below the 30% saving target and neither policy
 is promotable without repeated, interleaved multi-task sequences.
+
+## Frozen N=1--6 hybrid-profile screen
+
+`diagnostics/profile_screen/` replays the 62 requests from the locked FULL
+trajectories without new model calls. It preserves the active instruction
+epoch and every user instruction, then varies only compact floors inside older
+epochs.
+
+| Profile | N=6 gross saving |
+|---|---:|
+| E0: no old assistant/tool detail | 48.22% |
+| E0 + P1 | 44.87% |
+| E0 + M1/V1/P1 | 39.81% |
+| E0 + R1/M1/V1/P1 | 37.43% |
+| E0 + R2/M1/V1/P1 | 35.61% |
+| E1: keep one old epoch whole | 31.80% |
+
+All six reach the 30--50% opportunity band by N=6. The first autonomous
+candidate is E0+M1/V1/P1: unlike call-dominated E0, it keeps one mutation,
+verification, and clean protocol causal turn from every older instruction
+epoch while retaining 39.81% fixed-trajectory opportunity. R1/M1/V1/P1 is the
+predeclared conservative fallback. These are opportunity points, not quality
+or end-to-end saving results.

@@ -1596,6 +1596,28 @@ randomized, interleaved repeats over complete ordered sequences.  The complete
 ladder and diagnostic are released under
 \texttt{autonomous\_persistent\_instruction\_epoch\_n6\_ladder\_v1}.
 
+Before spending another autonomous sequence, we screen hybrid floors on the
+62 locked \textsc{Full} requests (Figure~\ref{fig:instruction-epoch-profile-screen}).
+All user instructions and the active epoch remain whole.  E0 offers 48.22\%
+fixed-trajectory gross saving at N=6; one clean protocol turn per older epoch
+(P1) leaves 44.87\%; one mutation, verification, and protocol turn per older
+epoch (M1/V1/P1) leaves 39.81\%.  Adding one or two ordinary recent turns per
+older epoch yields 37.43\% and 35.61\%, respectively.  Keeping the most recent
+old epoch whole (E1) yields 31.80\%.  Thus the desired 30--50\% opportunity
+band is not the remaining problem.  The next autonomous candidate is
+E0+M1/V1/P1, with R1/M1/V1/P1 as its conservative fallback; whether either
+avoids E0's extra-call cost remains unmeasured.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\linewidth]{../shared/results/paper8_5_agent_memory/autonomous_persistent_instruction_epoch_n6_ladder_v1/diagnostics/profile_screen/profile_saving_by_n.png}
+\caption{Fixed-trajectory logical opportunity as independent issues accumulate
+in one boundary-free session.  The shaded region is the 30--50\% target.  The
+curves freeze model actions and therefore do not measure accuracy or
+calls-to-solution.}
+\label{fig:instruction-epoch-profile-screen}
+\end{figure}
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation
@@ -2697,8 +2719,10 @@ sending 21.92\% fewer tokens.  Because byte-identical no-removal requests also
 diverge at temperature zero, this is evidence of a noisy outcome surface, not
 an accuracy gain.  No instruction-epoch profile transfers to Paper~4.5 yet.
 The next valid test randomizes and interleaves repeated full-sequence E2 and
-\textsc{Full} executions before moving toward an E0-plus-compact-control
-policy that can reach the 30--50\% target without E0's call expansion.  The
+\textsc{Full} executions.  The frozen profile screen identifies
+E0+M1/V1/P1 at 39.81\% opportunity and R1/M1/V1/P1 at 37.43\% as the next
+compact-control candidates; autonomous runs must now establish whether they
+avoid E0's call expansion.  The
 one-to-ten-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent
 sequences. Held-out sequences, additional models, and additional harnesses
