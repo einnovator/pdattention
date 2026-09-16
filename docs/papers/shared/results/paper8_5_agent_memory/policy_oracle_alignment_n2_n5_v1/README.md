@@ -43,9 +43,8 @@ Counts use the locked local Qwen3-Coder tokenizer.
    are scoped by the runtime-traced environment fingerprint, cross-workspace
    overlap is zero for all four prior/active comparisons at N=5.
 
-The next behavioral experiment is therefore a frozen same-prefix comparison of
-E0, E0+F1, and a compact E0+F1 closure receipt.  Broad R/K sweeps are suspended
-until this causal test is complete.
+The behavioral follow-up therefore tests closure realization directly.  Broad
+R/K sweeps remain suspended until this causal defect is resolved.
 
 ## Frozen next-action closure ablation
 
@@ -71,7 +70,32 @@ failure is caused by orphaned old task prompts, not by aggressive removal from
 the active task.  One closure bundle restores protocol validity while retaining
 the desired 30--50% saving region.
 
+The single autonomous E0+F1 fork then falsified whole-bundle retention as a
+deployable policy.  It saved 43.10% cumulatively but submitted after three
+actions without modifying the repository.  The old finalization bundle had
+made the prior prompt look closed, but also exposed the historical submission
+sentinel as an action exemplar.
+
+Two compact closure receipts were tested next on the identical frozen request:
+
+| Closure realization | Materialized tokens | Saving | Valid one-command actions | Diagnostic outcome |
+|---|---:|---:|---:|---|
+| synthetic Bash `true` turn | not retained by v1 reducer | not reported | 3/3 | all 3 copy `true`; reject |
+| text-only assistant/user closure | 7,709 | 51.40% | 0/3 | active issue understood, but no command; reject |
+| atomic closed-epoch retirement | 1,507 | 90.50% | 3/3 | one identical active-issue search command |
+
+The initial compact-receipt reducer reported logical selected tokens rather
+than post-replacement materialized tokens; that value is deliberately not
+reconstructed after observing the outcome.  The last treatment adds no
+synthetic message and consumes no evaluator boundary.  It recognizes genuine user
+instructions from record provenance, proves an older instruction epoch closed
+only when that epoch contains complete terminal/finalization evidence, and then
+retires the old prompt and its interaction detail atomically.  If closure is
+absent, it fails closed and retains the old prompt.  Its command is not byte-
+identical to FULL, but is semantically equivalent: both search the repository
+for the `runserver` implementation.
+
 This remains next-action evidence.  The next single expensive test is one
-autonomous E0+F1 fork from the identical prefix and reset workspace.  Only if it
-resolves without call inflation should the policy advance to repeated N=6
-sequences.
+autonomous atomic-retirement fork from the identical prefix and reset
+workspace.  Only official resolution with no material call inflation can
+promote the treatment beyond a diagnostic.

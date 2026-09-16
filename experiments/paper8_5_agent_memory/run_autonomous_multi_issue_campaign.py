@@ -248,6 +248,10 @@ def _episode_command(
             command.extend(("--persistent-prefix", str(prefix)))
     if not strategy.get("keep_completed_task_statements", True):
         command.append("--no-keep-completed-task-statements")
+    if strategy.get("compact_completed_finalizations", False):
+        command.append("--compact-completed-finalizations")
+    if strategy.get("retire_closed_instructions", False):
+        command.append("--retire-closed-instructions")
     option_map = {
         "materialization_mode": "--materialization-mode",
         "materialization_threshold_tokens": "--materialization-threshold-tokens",

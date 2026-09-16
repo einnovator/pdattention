@@ -1,4 +1,4 @@
-"""Compare FULL, E0, E0+F1, and E2 on one frozen next-action request.
+"""Compare closure-retirement variants on one frozen next-action request.
 
 The experiment isolates a structural question discovered by the oracle audit:
 does retaining one terminal finalization bundle per pinned old user instruction
@@ -95,6 +95,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed_finalization_turns=1,
             **common,
         ),
+        "E0_F1C": AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            completed_instruction_epochs=0,
+            completed_finalization_turns=1,
+            compact_completed_finalizations=True,
+            **common,
+        ),
+        "E0_ATOMIC": AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            completed_instruction_epochs=0,
+            completed_finalization_turns=0,
+            retire_closed_instructions=True,
+            **common,
+        ),
         "E2": AutonomousSelectionConfig(
             policy="persistent_instruction_epoch_retirement",
             completed_instruction_epochs=2,
@@ -129,7 +143,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     endpoint = args.base_url.rstrip("/")
     if not endpoint.endswith("/v1/chat/completions"):
         endpoint += "/v1/chat/completions"
-    names = tuple(configs)
+    names = tuple(args.arms or configs)
+    unknown_arms = set(names).difference(configs)
+    if unknown_arms:
+        raise ValueError(f"unknown arms: {sorted(unknown_arms)}")
     rows = []
     for repeat in range(1, args.repeats + 1):
         offset = (repeat - 1) % len(names)
@@ -144,8 +161,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "request_sha256": _digest(treatment.payload),
                     "selected_messages_sha256": treatment.trace["selected_messages_sha256"],
                     "selected_tokens": treatment.plan.selected_tokens,
+                    "materialized_tokens": treatment.materialized_tokens,
                     "saving_fraction": 1.0 - (
-                        treatment.plan.selected_tokens / treatment.plan.full_history_tokens
+                        treatment.materialized_tokens / treatment.plan.full_history_tokens
                     ),
                     "selected_message_count": treatment.trace["selected_message_count"],
                     "excluded_group_count": treatment.trace["excluded_causal_group_count"],
@@ -167,8 +185,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "request_sha256": _digest(treatment.payload),
                 "selected_messages_sha256": treatment.trace["selected_messages_sha256"],
                 "selected_tokens": treatment.plan.selected_tokens,
+                "materialized_tokens": treatment.materialized_tokens,
                 "saving_fraction": 1.0 - (
-                    treatment.plan.selected_tokens / treatment.plan.full_history_tokens
+                    treatment.materialized_tokens / treatment.plan.full_history_tokens
                 ),
                 "selected_message_count": treatment.trace["selected_message_count"],
                 "excluded_group_count": treatment.trace["excluded_causal_group_count"],
@@ -204,8 +223,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "arms": {
             name: {
                 "selected_tokens": row.plan.selected_tokens,
+                "materialized_tokens": row.materialized_tokens,
                 "full_tokens": row.plan.full_history_tokens,
-                "saving_fraction": 1.0 - row.plan.realized_retention_fraction,
+                "saving_fraction": 1.0 - (
+                    row.materialized_tokens / row.plan.full_history_tokens
+                ),
                 "selected_message_count": row.trace["selected_message_count"],
                 "selected_messages_sha256": row.trace["selected_messages_sha256"],
             }
@@ -232,6 +254,13 @@ def main() -> None:
     parser.add_argument("--model", default="qwen3-coder:30b")
     parser.add_argument("--message-prefix-length", type=int, default=2)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--arm",
+        dest="arms",
+        action="append",
+        choices=("FULL", "E0", "E0_F1", "E0_F1C", "E0_ATOMIC", "E2"),
+        help="Run only the named arm; repeat to select multiple arms.",
+    )
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
     parser.add_argument("--output", type=Path, required=True)

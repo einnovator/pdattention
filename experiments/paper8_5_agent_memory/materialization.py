@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import re
 from typing import Callable
@@ -18,6 +18,7 @@ class MaterializationMode(str, Enum):
     TOOL_STRUCTURED_EVIDENCE = "tool_structured_evidence"
     TOOL_NEGATIVE_RECEIPT = "tool_negative_receipt"
     MATCHED_TOKEN_TAIL = "matched_token_tail"
+    PRIOR_FINALIZATION_RECEIPT = "prior_finalization_receipt"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,95 @@ class MaterializedMemoryPlan:
         if self.logical_plan.full_history_tokens == 0:
             return 1.0
         return self.materialized_tokens / self.logical_plan.full_history_tokens
+
+
+_PRIOR_CLOSURE_ACTION = (
+    "[PRA memory] Prior instruction completed."
+)
+_PRIOR_CLOSURE_OBSERVATION = (
+    "[PRA memory] Closure recorded; continue with the latest user instruction."
+)
+
+
+def materialize_prior_finalization_receipts(
+    history: CanonicalAgentHistory,
+    materialized: MaterializedMemoryPlan,
+    *,
+    count_tokens: TokenCounter = whitespace_tokens,
+) -> MaterializedMemoryPlan:
+    """Replace retired-epoch submission payloads with neutral closure turns.
+
+    Pinning every user instruction while dropping its answer leaves old tasks
+    apparently unresolved.  Keeping the original submission command repairs
+    closure but exposes a dangerous sentinel/diff exemplar.  This realization
+    retains causal role alternation without exposing any old or synthetic tool
+    action for the model to imitate.  It applies
+    only to finalization groups selected by the prior-epoch progress floor and
+    fails closed unless the replacement is strictly smaller.
+    """
+
+    reasons = dict(materialized.logical_plan.selection_reasons)
+    source = history.record_by_id
+    selected = {row.record_id: row for row in materialized.records}
+    eligible_groups: dict[str, list[str]] = {}
+    for record_id, row in selected.items():
+        record = source[record_id]
+        if (
+            reasons.get(record_id) == "prior_instruction_epoch_progress_spine"
+            and record.has_role(AgentRecordRole.FINALIZATION)
+        ):
+            eligible_groups.setdefault(record.causal_group_id, []).append(record_id)
+
+    replacements: dict[str, MaterializedRecord] = {}
+    for group_id in eligible_groups:
+        turn = next(
+            (row for row in history.turns if row.causal_group_id == group_id),
+            None,
+        )
+        if turn is None or not turn.complete or not set(turn.record_ids).issubset(selected):
+            continue
+        assistant = [
+            record_id for record_id in turn.record_ids
+            if source[record_id].has_role(AgentRecordRole.ASSISTANT_ACTION)
+        ]
+        observations = [
+            record_id for record_id in turn.record_ids
+            if source[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+        ]
+        if len(assistant) != 1 or not observations:
+            continue
+        proposed = {
+            assistant[0]: _PRIOR_CLOSURE_ACTION,
+            **{
+                record_id: _PRIOR_CLOSURE_OBSERVATION
+                for record_id in observations
+            },
+        }
+        original_tokens = sum(selected[row].materialized_tokens for row in turn.record_ids)
+        receipt_tokens = sum(count_tokens(value) for value in proposed.values())
+        if receipt_tokens >= original_tokens:
+            continue
+        for record_id, content in proposed.items():
+            current = selected[record_id]
+            replacements[record_id] = replace(
+                current,
+                content=content,
+                mode=MaterializationMode.PRIOR_FINALIZATION_RECEIPT,
+                materialized_tokens=count_tokens(content),
+                selected_line_spans=(),
+                token_fallback_used=False,
+            )
+
+    if not replacements:
+        return materialized
+    records = tuple(
+        replacements.get(row.record_id, row) for row in materialized.records
+    )
+    return replace(
+        materialized,
+        records=records,
+        materialized_tokens=sum(row.materialized_tokens for row in records),
+    )
 
 
 class ToolObservationMaterializer:

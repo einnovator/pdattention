@@ -856,6 +856,8 @@ def run(args: argparse.Namespace) -> Path:
         completed_verification_turns=args.completed_verification_turns,
         completed_protocol_turns=args.completed_protocol_turns,
         completed_finalization_turns=args.completed_finalization_turns,
+        compact_completed_finalizations=args.compact_completed_finalizations,
+        retire_closed_instructions=args.retire_closed_instructions,
         completed_instruction_epochs=args.completed_instruction_epochs,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
@@ -1195,6 +1197,24 @@ def build_parser() -> argparse.ArgumentParser:
             "Keep this many terminal submission/finalization turns from each "
             "retired instruction epoch. This prevents preserved user prompts "
             "from appearing unanswered after their interaction detail is retired."
+        ),
+    )
+    parser.add_argument(
+        "--compact-completed-finalizations",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Replace retained prior-epoch submission turns with a compact, "
+            "protocol-safe closure receipt."
+        ),
+    )
+    parser.add_argument(
+        "--retire-closed-instructions",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Atomically retire old user instructions whose inferred instruction "
+            "epoch contains terminal evidence; no evaluator task boundary is used."
         ),
     )
     parser.add_argument(

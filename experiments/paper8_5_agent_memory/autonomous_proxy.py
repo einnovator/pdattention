@@ -27,6 +27,7 @@ import urllib.request
 from .materialization import (
     MaterializationMode,
     ToolObservationMaterializer,
+    materialize_prior_finalization_receipts,
     materialize_plan,
 )
 from .multi_issue_session import BoundaryMode, compose_multi_issue_session
@@ -306,6 +307,8 @@ class AutonomousSelectionConfig:
     completed_verification_turns: int = 1
     completed_protocol_turns: int = 0
     completed_finalization_turns: int = 0
+    compact_completed_finalizations: bool = False
+    retire_closed_instructions: bool = False
     completed_instruction_epochs: int = 0
     keep_completed_task_statements: bool = True
     boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
@@ -354,6 +357,18 @@ class AutonomousSelectionConfig:
             raise ValueError("FULL is an exact ordinary-text control and cannot compact records")
         if self.policy == "full" and self.negative_realization != NegativeRealizationMode.DROP:
             raise ValueError("FULL cannot use a negative-selection realization")
+        if self.compact_completed_finalizations and (
+            self.policy != "persistent_instruction_epoch_retirement"
+            or self.completed_finalization_turns < 1
+        ):
+            raise ValueError(
+                "compact_completed_finalizations requires instruction-epoch "
+                "retirement with a positive finalization floor"
+            )
+        if self.retire_closed_instructions and self.policy != "persistent_instruction_epoch_retirement":
+            raise ValueError(
+                "retire_closed_instructions requires instruction-epoch retirement"
+            )
         if self.policy == "full_structured_observation":
             if self.budget_fraction != 1.0:
                 raise ValueError(
@@ -426,6 +441,7 @@ class AutonomousSelectionConfig:
                     prior_protocol_turns=self.completed_protocol_turns,
                     prior_finalization_turns=self.completed_finalization_turns,
                     prior_full_epochs=self.completed_instruction_epochs,
+                    retire_closed_instructions=self.retire_closed_instructions,
                 )
             )
         if self.policy == "head_tail_recency":
@@ -625,6 +641,12 @@ def transform_autonomous_payload(
             query=_query(typed_selector_messages),
             count_tokens=count_tokens,
         )
+        if config.compact_completed_finalizations:
+            materialized = materialize_prior_finalization_receipts(
+                history,
+                materialized,
+                count_tokens=count_tokens,
+            )
     retention_floor = bool(
         config.policy in {"head_tail_recency", "dag_certified_progress_spine"}
         or config.negative_fallback == "recency"
@@ -694,7 +716,14 @@ def transform_autonomous_payload(
             if row.content != history.record_by_id[row.record_id].content
         },
         source_history_digest=history.digest,
-        decision_metadata={"instruction_floor": "all_user_instructions"},
+        decision_metadata=(
+            {
+                "instruction_floor": "newest_user_instruction",
+                "prior_instruction_retirement": "terminal_epoch_atomic",
+            }
+            if config.retire_closed_instructions else
+            {"instruction_floor": "all_user_instructions"}
+        ),
     )
     # FULL is the behavioral control.  A negative policy that currently has
     # nothing to remove must be the same control too: retain every incoming
@@ -743,6 +772,17 @@ def transform_autonomous_payload(
             raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
     selected_ids = set(plan.selected_record_ids)
     immutable_ids = set(immutable_instruction_record_ids(history))
+    if config.retire_closed_instructions:
+        genuine_instructions = [
+            row.record_id for row in history.records
+            if row.has_role(AgentRecordRole.TASK)
+            or row.has_role(AgentRecordRole.USER_INPUT)
+        ]
+        immutable_ids = {
+            row.record_id for row in history.records
+            if row.has_role(AgentRecordRole.SYSTEM)
+        }
+        immutable_ids.add(genuine_instructions[-1])
     if not immutable_ids.issubset(selected_ids):
         raise AssertionError("selector removed an immutable user instruction")
     if history.records and history.records[-1].record_id not in selected_ids:
@@ -758,6 +798,14 @@ def transform_autonomous_payload(
     version_rows = sum(bool(row.metadata.get("resource_version_fingerprints")) for row in observations)
     completeness_rows = sum(row.metadata.get("output_complete") is not None for row in observations)
     excluded_tokens = sum(row.excluded_tokens for row in plan.exclusions)
+    compact_finalization_rows = [
+        row for row in materialized.records
+        if row.mode == MaterializationMode.PRIOR_FINALIZATION_RECEIPT
+    ]
+    compact_finalization_group_ids = {
+        history.record_by_id[row.record_id].causal_group_id
+        for row in compact_finalization_rows
+    }
     trace = {
         "schema_version": 1,
         "study": "paper8_5_autonomous_agent_memory",
@@ -794,6 +842,16 @@ def transform_autonomous_payload(
         "materialized_tokens": materialized.materialized_tokens,
         "logical_retention_fraction": plan.realized_retention_fraction,
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
+        "compact_completed_finalizations": config.compact_completed_finalizations,
+        "retire_closed_instructions": config.retire_closed_instructions,
+        "prior_finalization_receipt_count": len(compact_finalization_group_ids),
+        "prior_finalization_receipt_tokens": sum(
+            row.materialized_tokens for row in compact_finalization_rows
+        ),
+        "prior_finalization_receipt_token_saving": sum(
+            row.original_tokens - row.materialized_tokens
+            for row in compact_finalization_rows
+        ),
         "budget_interpretation": (
             "strict_materialized_token_ceiling_with_mandatory_overflow"
             if matched_tail

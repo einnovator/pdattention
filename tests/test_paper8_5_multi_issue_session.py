@@ -283,6 +283,40 @@ def test_instruction_epoch_finalization_floor_closes_each_pinned_prior_prompt():
     )
 
 
+def test_instruction_epoch_atomic_retirement_drops_only_terminally_closed_prompts():
+    first = _trajectory("repo__issue-1", "cat a.py")
+    second = _trajectory("repo__issue-2", "cat b.py")
+    # Remove terminal evidence from the second old instruction epoch.  It must
+    # fail closed even though a newer genuine instruction follows it.
+    second["messages"] = second["messages"][:-2]
+    result = compose_multi_issue_session(
+        (first, second, _trajectory("repo__issue-3", "cat c.py")),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selected = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig(
+            retire_closed_instructions=True,
+        )
+    ).select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    visible = "\n".join(
+        history.record_by_id[record_id].content
+        for record_id in selected.selected_record_ids
+    )
+
+    assert "Fix repo__issue-1." not in visible
+    assert "Fix repo__issue-2." in visible
+    assert "Fix repo__issue-3." in visible
+    # Only the active third epoch contributes a submission sentinel.  The
+    # terminally closed first epoch was retired; the unfinished second epoch
+    # had no sentinel and its prompt remains visible.
+    assert visible.count("COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT") == 1
+
+
 def test_oracle_alignment_audit_exposes_orphaned_e0_and_exact_e0_f1():
     trajectories = (
         _trajectory("repo__issue-1", "cat a.py"),

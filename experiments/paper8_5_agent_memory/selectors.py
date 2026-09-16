@@ -480,9 +480,12 @@ class PersistentInstructionEpochRetirementConfig:
     """Floors for interaction detail preceding the latest user instruction.
 
     An instruction epoch is an observable transcript interval, not a task
-    label.  Every system/user instruction remains immutable and the complete
-    active epoch remains visible.  Optional floors retain a progress spine
-    independently inside each older epoch.
+    label.  By default every system/user instruction remains immutable and the
+    complete active epoch remains visible.  ``retire_closed_instructions`` is
+    a stricter independent-task treatment: an older instruction may be retired
+    only when its own epoch contains complete terminal/finalization evidence.
+    Optional floors retain a progress spine independently inside each older
+    epoch.
     """
 
     prior_recent_turns: int = 0
@@ -491,6 +494,7 @@ class PersistentInstructionEpochRetirementConfig:
     prior_protocol_turns: int = 0
     prior_finalization_turns: int = 0
     prior_full_epochs: int = 0
+    retire_closed_instructions: bool = False
 
     def __post_init__(self) -> None:
         if min(
@@ -546,8 +550,32 @@ class PersistentInstructionEpochRetirementSelector:
         if not instruction_positions:
             raise ValueError("instruction-epoch policy requires a genuine user instruction")
         active_epoch = len(instruction_positions) - 1
+        turn_epochs: dict[str, int] = {}
+        closed_epochs: set[int] = set()
+        for turn in history.turns:
+            if not turn.record_ids:
+                continue
+            turn_position = max(record_positions[record_id] for record_id in turn.record_ids)
+            epoch = bisect_right(instruction_positions, turn_position) - 1
+            turn_epochs[turn.turn_id] = epoch
+            if (
+                epoch >= 0
+                and epoch < active_epoch
+                and turn.complete
+                and any(
+                    records[record_id].has_role(AgentRecordRole.FINALIZATION)
+                    for record_id in turn.record_ids
+                )
+            ):
+                closed_epochs.add(epoch)
 
         selected_ids = set(immutable_instruction_record_ids(history))
+        if self.config.retire_closed_instructions:
+            selected_ids.difference_update(
+                history.records[position].record_id
+                for epoch, position in enumerate(instruction_positions)
+                if epoch in closed_epochs
+            )
         reasons = {
             record_id: "immutable_user_instruction"
             for record_id in selected_ids
@@ -559,8 +587,7 @@ class PersistentInstructionEpochRetirementSelector:
         for turn in history.turns:
             if not turn.record_ids:
                 continue
-            turn_position = max(record_positions[record_id] for record_id in turn.record_ids)
-            epoch = bisect_right(instruction_positions, turn_position) - 1
+            epoch = turn_epochs[turn.turn_id]
             if epoch == active_epoch:
                 for record_id in turn.record_ids:
                     selected_ids.add(record_id)
@@ -681,8 +708,9 @@ class PersistentInstructionEpochRetirementSelector:
                 rule_id="prior_instruction_epoch_retirement",
                 classification="policy_retirement",
                 reason=(
-                    "assistant/tool detail predates the latest genuine user instruction "
-                    "and lies outside configured prior-epoch floors"
+                    "record belongs to a terminally closed instruction epoch "
+                    "or its assistant/tool detail predates the latest genuine "
+                    "user instruction and lies outside configured prior-epoch floors"
                 ),
                 resource_ids=resources,
                 witness_record_ids=(),
