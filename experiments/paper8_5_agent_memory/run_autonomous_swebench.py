@@ -599,7 +599,10 @@ def _ensure_evaluation_image(
         ],
         log=log,
         environment=environment,
-        timeout_seconds=args.timeout_seconds,
+        timeout_seconds=min(
+            args.timeout_seconds,
+            int(getattr(args, "docker_pull_timeout_seconds", 900)),
+        ),
     )
 
 
@@ -982,6 +985,12 @@ def run(args: argparse.Namespace) -> Path:
         return output / "run_manifest.json"
 
     environment = _execution_environment(args)
+    _ensure_evaluation_image(
+        args,
+        instance_id=instance_id,
+        environment=environment,
+        log=output / "agent_image_pull.log",
+    )
     upstream_key = os.environ.get(args.upstream_api_key_env)
     proxy = AutonomousSelectionProxy(
         args.upstream_base_url,

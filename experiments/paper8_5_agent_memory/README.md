@@ -140,6 +140,9 @@ Apple Silicon; a timeout is quarantined and never scored as a task failure.
 The official grader uses its supported `instance` cache level so that grading
 one issue does not delete every pre-fetched evaluation image needed by later
 episodes.  Containers are still cleaned, and image digests remain recorded.
+The harness resolves and platform-checks the image before starting the agent;
+`docker run` therefore never performs an implicit pull inside mini-swe-agent's
+container-start subprocess.
 
 ```bash
 PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.export_multi_issue_evidence \
