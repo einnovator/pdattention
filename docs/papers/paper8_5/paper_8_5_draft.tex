@@ -1350,22 +1350,26 @@ At N=3, immutable instructions account for 31.85\% of cumulative content
 tokens.  This distinction resolves the apparent ``ten tasks imply 90\%
 saving'' argument.  If equal-size independent tasks retain only the active
 assistant/tool epoch, the ideal saving \emph{within interaction history} is
-$1-1/N$, reaching 90\% at N=10.  Whole-request saving is bounded instead by
-$(1-p)(1-1/N)$ when the pinned instruction fraction is $p$, and accumulated
-task statements can make $p$ grow with $N$.  We therefore report both curves
-and the fraction of oracle headroom captured.  The active autonomous E0 run
-is the behavioral test: any first-issue difference remains backend variance
-because E0 is an exact logical no-op until the second genuine instruction.
+$1-1/N$ for the \emph{final request}, reaching 90\% at N=10.  It is not the
+cumulative-session saving: in the one-equal-request-per-epoch abstraction,
+that quantity is $1-2/(N+1)$, or 81.8\% at N=10.  Real sessions weight each
+epoch by its number and size of growing requests.  Whole-request saving is
+smaller again because system and user instructions remain pinned, and their
+share can grow with $N$.  We therefore report final-request opportunity,
+cumulative own-trajectory saving, and paired end-to-end saving separately.
+The active autonomous E0 run is the behavioral test: any first-issue
+difference remains backend variance because E0 is an exact logical no-op until
+the second genuine instruction.
 The exact evidence is released under
 \texttt{instruction\_epoch\_oracle\_n3\_clean\_full\_v1}.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.88\linewidth]{../shared/results/paper8_5_agent_memory/instruction_epoch_oracle_n3_clean_full_v1/instruction_epoch_scaling.png}
-  \caption{Empirical fixed-trajectory opportunity at N=1--3 and analytic
-  equal-size scaling to N=10.  The dotted whole-request line holds the observed
-  N=3 instruction share fixed only to illustrate the denominator effect; it is
-  not a forecast because the immutable prompt share can change with N.}
+  \caption{Empirical cumulative fixed-trajectory opportunity at N=1--3 and
+  analytic equal-size interaction-history scaling to N=10.  The dashed curve
+  is the final-request limit $1-1/N$; the dotted curve is the cumulative-session
+  abstraction $1-2/(N+1)$.  Neither is a whole-request quality forecast.}
   \label{fig:instruction-epoch-scaling}
 \end{figure}
 

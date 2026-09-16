@@ -9,3 +9,9 @@ This is logical opportunity evidence, not an autonomous quality result. The
 three source trajectory paths and SHA-256 digests are embedded in the evidence
 file. The corresponding autonomous E0 treatment is registered by
 `autonomous_persistent_instruction_epoch_n3_e0_v1.json`.
+
+`instruction_epoch_scaling.png` deliberately separates the analytic
+equal-size final-request opportunity, `1 - 1/N`, from the equal-size
+cumulative-session opportunity, `1 - 2/(N + 1)`.  The empirical N=1--3 points
+are cumulative over every growing request and therefore must not be labeled as
+the same estimand as the 90% N=10 final-request limit.
