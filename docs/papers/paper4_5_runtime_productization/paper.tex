@@ -107,9 +107,14 @@ success, calls, selected tokens, realized retention, K/V reuse, copy, and time.
 The companion Paper~8.5 owns the engine-independent agent-memory question:
 record exclusion and selection policies, oracle add-back analysis, and logical
 task efficiency under ordinary text replay.  Paper~4.5 does not select a policy
-winner from those screens.  It imports a frozen policy and asks whether each
-engine preserves live-K/V semantics, lifecycle safety, task behavior, and
-measurable resource use.
+winner from those screens.  Its first context-qualified Easy-14 campaign
+promotes no reduced-history policy: the least dominated exact-prefix candidate
+saves 16.62\% after pairing against its own trajectory but adds one call, while
+the more aggressive candidate loses paired successes and expands trajectory
+cost.  Paper~4.5 therefore imports reduced plans only as quarantined research
+candidates and asks whether each engine preserves live-K/V semantics,
+lifecycle safety, task behavior, and measurable resource use.  Full history
+remains the only qualified agent profile.
 
 More precisely, Paper~8.5 decides which logical records or observation spans
 remain visible.  Paper~4.5 consumes a frozen, hashable
@@ -1617,12 +1622,15 @@ dimension at most 256 and direct MLX batch one, while SGLang evaluates batched
 rows independently.  vLLM CUDA still excludes partial pages, hybrid groups,
 and multiprocess execution. \\
 Agent retention semantics & Paper~8.5 supplies backend-neutral plans and
-matched-budget controls.  Explicit-episode R4/M2/V2/P1 resolves 6/6 paired
-issues, but relies on issue scope unavailable to a generic boundary-free
-runtime.  Boundary-free atomic E2 resolves 2/2 reset-workspace forks of one
-task with 38.17\% own-trajectory saving. & R4/P1 is a mechanism upper bound.
-Atomic E2 is a candidate pending the frozen Easy-14 campaign; Paper~4.5 does
-not reinterpret logical token saving as physical K/V saving. \\
+matched-budget controls.  Its context-qualified persistent \textsc{Full}
+control resolves 10/14 Easy-14 issues.  Atomic-policy E2 (a Paper~8.5 memory
+policy, not the E2 engine depth) is stopped after five issues:
+2/5 versus 4/5 paired \textsc{Full}, despite 28.22\% raw saving.  Exact-prefix
+Task-5 E3 is the nondominated diagnostic at 1/2 resolution, 16.62\% paired
+saving, and one extra call. & No reduced-history profile passes the 30--50\%
+paired-saving, zero-loss, no-call-increase gate.  R4/P1 remains a typed-boundary
+mechanism upper bound; E2/E3 remain quarantined candidates.  Paper~4.5 does not
+reinterpret logical token saving as physical K/V saving. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and a 25-call PRA-90 solve at 93.32\% retention.
 Direct MLX and SGLang-MLX add action-exact six-call plain/PRA-100 Task-01 solves
@@ -3398,23 +3406,75 @@ task quality after an exact 100\% control.  llama.cpp, MLX, and SGLang-MLX
 complete their frozen sequences with successful PRA-90 outcomes.  HF remains
 blocked on plain task success.  The campaign is therefore frozen at one task
 per engine, and no Easy-14 expansion is permitted until HF completes its
-sequence and the frozen 90\% policy clears the quality gate.
+sequence and Paper~8.5 qualifies a reduced-history policy under its paired
+saving, success, and call-count gate.
 
 \subsubsection{Claim 4: observed coding-agent utility frontier}
 
 Paper~8.5 studies agent-history policies without attributing logical task
-effects to an engine.  Its earlier matched-token-tail and H1/H3 screens did not
-establish a semantic winner.  A later first-divergence oracle identified a
-tool-protocol conditioning failure and motivated R4/M2/V2/P1: the completed
-episode spine plus one clean action--observation exemplar per prior issue.
-Across two autonomous executions on one ordered three-issue family, P1 resolves
-6/6 paired issues, saves 36.41\% and 45.82\% against \textsc{Full}, and uses
-six and nine fewer calls.  A later audit shows that this arm consumes typed
-issue scope, so it is a mechanism upper bound rather than a deployable
-boundary-free policy.  Boundary-free atomic E2 is the next candidate: it
-resolves 2/2 reset-workspace forks of one task with the same patch and 38.17\%
-own-trajectory saving, but remains unqualified until its frozen Easy-14 run
-passes.  The causal-tail rows below remain negative controls.
+effects to an engine.  Its context-qualified Easy-14 campaign uses one
+continuous ordinary-role conversation, clean workspaces, Qwen3-Coder-30B at
+temperature zero, and a fail-closed 131,072-token context.  The policy receives
+no evaluator task identifier, repository label, workspace identity, or explicit
+issue boundary.  Persistent \textsc{Full} resolves 10/14 issues in 207 calls and
+materializes 8,902,105 cumulative message-content tokens.
+
+Atomic-policy E2 is stopped by the predeclared quality gate after five issues: it
+resolves 2/5 where paired \textsc{Full} resolves 4/5, uses 84 versus 85 calls,
+and materializes 1,016,037 versus 1,415,568 tokens.  The apparent 28.22\% raw
+paired saving becomes zero under failure-aware accounting.  Atomic-policy E3 is
+stopped even earlier, before its first deletion, because the nominally
+full-materialization replay has already diverged: 2/4 resolutions and 126 calls
+versus 3/4 and 79 for \textsc{Full}.  These stopped prefixes are evidence about
+quality and backend repeatability, not incomplete rows silently projected to
+14 tasks.
+
+The causal effect of selection is isolated on Task~5 by forking from the exact
+saved four-episode \textsc{Full} prefix and a clean workspace, with two repeats
+per arm.  \textsc{Full}, E3, and E2 each resolve 1/2.  E3 materializes 219,442
+tokens against a 298,777-token same-trajectory full-history counterfactual
+(26.55\% gross, 16.62\% paired saving) and adds one aggregate call.  E2
+materializes 544,181 against 937,220 counterfactual tokens (41.94\% gross), but
+its 27-call trajectory costs 106.77\% more than the eight-call \textsc{Full}
+control.  Even byte-identical first \textsc{Full} inputs produce different
+first actions and opposite official outcomes across repeats, so repeatability
+is measured explicitly and model-visible equality is keyed by the selected-
+message digest rather than the pre-selection request digest.
+
+
+\begin{table}[H]
+\centering
+\small
+\caption{Paper~8.5 policy-to-product decision imported into Paper~4.5.  Saving
+is paired cumulative input over the realized trajectory; gross per-request
+reduction alone cannot qualify a profile.}
+\begin{tabularx}{\linewidth}{p{.18\linewidth}p{.25\linewidth}Yp{.20\linewidth}}
+\toprule
+Product label & Frozen logical policy & Current evidence & Decision \\
+\midrule
+Agent-Full & Persistent full history & 10/14 official Easy-14 resolutions &
+Qualified correctness control \\
+Agent-Quality & Atomic-policy E3 candidate & Exact-prefix Task~5: 1/2, 16.62\% paired
+saving, +1 call & Diagnostic only; below saving floor \\
+Agent-Balanced & Atomic-policy E2 candidate & Stopped at 2/5 versus 4/5; exact-prefix
+Task~5 has $-106.77$\% paired saving & Rejected for default use \\
+Agent-Economy & Atomic-policy E1 candidate & Not advanced after the less aggressive
+E2 failed its gate & Unqualified \\
+\bottomrule
+\end{tabularx}
+\label{tab:paper85-agent-profile-transfer}
+\end{table}
+
+Consequently, Paper~4.5 promotes no reduced-history default.  Its native-engine
+matrix may execute E2 or E3 only as a named research treatment using an exact
+record plan.  Every such row must preserve the selected-message digest and
+report official resolution, calls, materialized tokens, selected-history
+re-encoding, K/V-copy bytes, and consumer temporary bytes separately.  A
+progress-spine plan must additionally preserve the natural user instruction
+and terminal turn of every retained epoch; otherwise deleting the envelope can
+create an invalid system-to-assistant chat transition.  Detailed task rows,
+stop diagnostics, hashes, and curves remain in the Paper~8.5 appendix and
+machine-readable bundle rather than being duplicated here.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
@@ -4079,13 +4139,13 @@ latest source evidence both survive the 90\% policy.
 Paper~8.5's explicit-episode R4/M2/V2/P1 result is not eligible as a generic
 native-transfer default because it depends on typed issue scope.  Its 6/6
 paired result and descriptive 41.11\% mean saving remain a mechanism upper
-bound.  The replacement candidate is boundary-free atomic E2, which infers
-genuine user instruction epochs, retains the active and two most recent
-complete epochs, and atomically retires older terminally closed instructions
-together with their causal interaction.  It resolves 2/2 reset-workspace forks
-of one task with 38.17\% own-trajectory saving.  Paper~4.5 may import this
-frozen plan only after the Easy-14 gate; a native run must then prove zero
-selected-history re-encoding/copy and preserve official resolution.
+bound.  The boundary-free atomic-policy E2 replacement then fails its Easy-14
+gate: it is stopped at 2/5 resolutions versus paired \textsc{Full} 4/5, and
+its 28.22\% raw saving becomes zero under failure-aware accounting.  The exact-
+prefix E3 candidate is least dominated but reaches only 16.62\% paired saving
+and adds one call.  Paper~4.5 therefore imports neither as a default; a named
+diagnostic native run must prove zero selected-history re-encoding/copy while
+preserving the exact frozen plan and reporting official resolution.
 
 The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of
@@ -4571,9 +4631,10 @@ causally recovers task 03's efficient command and directionally improves task
 90\% regression.  Engine-independent exclusion, selection, and oracle work now
 belongs to Paper~8.5; Paper~4.5 consumes a frozen policy and measures the engine
 contract.  Paper~8.5's earlier R4/M2/V2/P1 result is now explicitly quarantined
-as an issue-boundary mechanism upper bound.  Boundary-free atomic E2 resolves
-2/2 forks of one task with 38.17\% own-trajectory logical saving and is the
-candidate under Easy-14 confirmation; it is not yet a runtime default.  HF,
+as an issue-boundary mechanism upper bound.  Its context-qualified Easy-14
+campaign promotes no reduced-history policy: atomic-policy E2 is stopped after
+two lost paired successes, while exact-prefix E3 yields 16.62\% paired saving
+but one extra call.  Agent-Full is therefore the sole qualified profile.  HF,
 MLX, SGLang-MLX, and vLLM-Metal now pass their declared
 consumer and lifecycle scopes.  HF's fused Triton path consumes canonical K/V
 through interval descriptors and is matched-consumer logit exact.  A bounded
@@ -4591,9 +4652,9 @@ it fails MLX Task~01 after nine calls and vLLM Task~05 after 28 calls, despite
 zero selected-history re-encoding/copy on both engines.  The latter terminates
 at bounded context exhaustion after a repeated-action loop.  This separates a
 portable native-K/V mechanism from the previously unqualified causal-tail
-policy.  Atomic E2 becomes the next frozen engine treatment only if Easy-14
-passes; task-aware progress state remains the runtime default until that native
-run passes.  The vLLM path
+policy.  Future reduced-history engine treatments remain named diagnostics
+until a Paper~8.5 policy passes the 30--50\% paired-saving, zero-loss, no-call-
+increase gate; task-aware progress state is not a production default.  The vLLM path
 is not yet general: multiprocess execution, hybrid K/V
 groups, partial pages, and runtime economics remain open.
 MLX and SGLang
@@ -4621,8 +4682,9 @@ pre-fix endpoint exceeds the nominal context cap.  The corrected endpoint now
 enforces and advertises that cap, but no HF PRA arm is run.  vLLM's earlier 7B AWQ
 plain Task~13 also fails, while the independent 8K Task~05 sequence completes:
 its exact 100\% control passes and its 90\% treatment fails task quality.
-Easy-14 expansion remains locked until every target engine has a qualified
-plain/PRA-100/PRA-90 task sequence.  Under the
+Easy-14 native expansion remains locked until every target engine has a
+qualified plain/PRA-100 sequence and a reduced-history policy has independently
+passed Paper~8.5's logical-quality gate.  Under the
 historical pre-gate RAG workload, frozen contiguous MLX selections produced
 matching outputs and retained K/V cut total latency by 78.9\% for Qwen3-4B at
 2K, 86.9\% at 4K, and

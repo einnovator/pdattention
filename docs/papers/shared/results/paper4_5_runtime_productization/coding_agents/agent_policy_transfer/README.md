@@ -13,11 +13,16 @@ ordinary continuous session. It is retained as a mechanism upper bound, not a
 deployable boundary-free qualification. The frozen historical contract and
 source evidence remain in `paper85_r4m2v2p1_qualification/`.
 
-The replacement boundary-free candidate is atomic E2: infer instruction epochs
-from genuine user-message provenance, retain the active and two most recent
-complete epochs, and atomically retire older terminally closed instructions
-with their interaction. Current evidence is 2/2 reset-workspace forks of one
-task at 38.17% own-trajectory saving. It remains pending Easy-14 confirmation.
+The replacement boundary-free atomic-policy candidates (Paper 8.5 policy
+labels, not the E2/E3 engine depths) were tested in a context-qualified
+Easy-14 persistent-session campaign. Persistent FULL resolves 10/14 issues.
+Atomic E2 is stopped after five issues at 2/5 versus paired FULL 4/5; its 28.22%
+raw paired saving is zero under failure-aware accounting. Atomic E3 is stopped
+before its first deletion because a full-materialization replay has already
+diverged. The exact-prefix Task-5 diagnosis finds E3 nondominated but still
+unqualified: 1/2 resolutions, 16.62% paired saving, and one extra call. E2 also
+resolves 1/2, but its longer trajectory turns 41.94% gross saving into -106.77%
+paired saving relative to FULL.
 
 - `mlx_task01_causal_tail/`: Qwen2.5-Coder-14B MLX, Task 01. The engine honors
   the exact frozen record plan with zero selected-history re-encoding/copy, but
@@ -30,7 +35,13 @@ task at 38.17% own-trajectory saving. It remains pending Easy-14 confirmation.
 Both engines had already passed their matching plain/PRA-100 behavioral gates.
 The transfer therefore isolates a policy-quality failure from the native K/V
 correctness gate. Paper 8.5 owns subsequent matched-budget policy and oracle
-work; Paper 4.5 retains the task-aware progress-spine policy for its next engine
-experiments. No native engine experiment may treat P1 as a generic default.
-Atomic E2 transfers only after its frozen Easy-14 gate passes, without
-retuning, and its text-replay saving is not physical cache saving.
+work. No native engine experiment may treat P1, E2, or E3 as a generic default.
+Agent-Full is the sole qualified correctness profile. Agent-Quality/E3 remains
+a named diagnostic candidate, Agent-Balanced/E2 is rejected for default use,
+and Agent-Economy/E1 was not advanced. Any future native transfer must use an
+exact frozen record plan, preserve its selected-message digest, and treat
+text-replay saving as distinct from physical cache saving.
+
+The complete imported Easy-14 decision receipt is in
+`paper85_easy14_ctx131k_v2/`; detailed per-task trajectories and curves remain
+in the Paper 8.5 appendix to avoid duplicating that policy study here.

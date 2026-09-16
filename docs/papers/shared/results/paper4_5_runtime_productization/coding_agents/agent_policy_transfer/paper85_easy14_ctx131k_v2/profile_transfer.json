@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "source_paper_commit": "433bac19",
+  "source_implementation_commit": "fe8d2643",
+  "campaign_id": "paper85-autonomous-easy14-atomic-profiles-ctx131k-v2",
+  "qualification_gate": {
+    "paired_saving_fraction_min": 0.30,
+    "paired_saving_fraction_max": 0.50,
+    "lost_full_successes_max": 0,
+    "aggregate_call_delta_max": 0
+  },
+  "profiles": {
+    "agent_full": {
+      "policy": "persistent_full",
+      "status": "qualified_correctness_control",
+      "official_resolved": 10,
+      "issues": 14,
+      "calls": 207,
+      "materialized_tokens": 8902105
+    },
+    "agent_quality": {
+      "policy": "atomic_e3",
+      "status": "diagnostic_only",
+      "exact_prefix_resolved": 1,
+      "exact_prefix_repeats": 2,
+      "paired_saving_fraction": 0.16618410353448998,
+      "aggregate_call_delta": 1,
+      "reason": "below paired-saving floor and adds a call"
+    },
+    "agent_balanced": {
+      "policy": "atomic_e2",
+      "status": "rejected_default",
+      "stopped_prefix_resolved": 2,
+      "stopped_prefix_issues": 5,
+      "paired_full_resolved": 4,
+      "raw_paired_saving_fraction": 0.2822407683700112,
+      "failure_aware_saving_fraction": 0.0,
+      "exact_prefix_paired_saving_fraction": -1.067729825441336,
+      "reason": "lost two paired FULL successes and inflated trajectory cost"
+    },
+    "agent_economy": {
+      "policy": "atomic_e1",
+      "status": "unqualified",
+      "reason": "not advanced after the less aggressive E2 failed"
+    }
+  },
+  "promotion_decision": "no_reduced_history_profile_promoted"
+}
