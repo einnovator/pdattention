@@ -35,6 +35,7 @@ def _row(pair: str, family: str, strategy: str, saving: float, quality: float):
         "first_action_divergence_rate": 0,
         "first_divergence_preceding_saving": saving / 2,
         "selected_input_tokens": 200,
+        "comparison_evidence_admissible": True,
     }
 
 
@@ -74,6 +75,17 @@ def test_aggregation_never_pools_sequence_strata():
     second["sequence_stratum"] = "dependent_same_workspace"
     summary = aggregate_frontier({"schema_version": 1, "rows": [first, second]})
     assert len(summary["cells"]) == 2
+
+
+def test_inadmissible_rows_remain_descriptive_and_are_marked(tmp_path: Path):
+    invalid = _row("p1", "family-a", "S02_active_episode_only", 0.4, 0.5)
+    invalid["comparison_evidence_admissible"] = False
+    summary = aggregate_frontier({"schema_version": 1, "rows": [invalid]})
+    cell = summary["cells"][0]
+    assert cell["admissible_execution_rows"] == 0
+    assert cell["comparison_evidence_admissible"] is False
+    manifest = render_frontier_plots(summary, tmp_path)
+    assert "x/dashed" in manifest["admissibility_marker"]
 
 
 def test_plot_labels_preserve_compact_model_and_policy_identity():

@@ -130,6 +130,14 @@ def aggregate_frontier(
             "strategy_config_digest": key[10],
             "strategy_config": dict(cell_rows[0].get("strategy_config") or {}),
             "execution_rows": len(cell_rows),
+            "admissible_execution_rows": sum(
+                int(bool(row.get("comparison_evidence_admissible", True)))
+                for row in cell_rows
+            ),
+            "comparison_evidence_admissible": all(
+                bool(row.get("comparison_evidence_admissible", True))
+                for row in cell_rows
+            ),
             "sequence_clusters": len(by_family),
             "metrics": metric_summary,
         })
@@ -193,13 +201,14 @@ def _plot_xy(
             0.30, 0.50, color="#2ca02c", alpha=0.08,
             label="primary 30--50% target region",
         )
-    grouped: dict[tuple[str, ...], list[Mapping[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for cell in usable:
         grouped[(
             str(cell["agent_id"]), str(cell["agent_revision"]),
             str(cell["model_revision"]), str(cell["tokenizer_revision"]),
             str(cell["harness_revision"]), str(cell["strategy_id"]),
             str(cell["strategy_config_id"]),
+            bool(cell.get("comparison_evidence_admissible", True)),
         )].append(cell)
     for identity, group in sorted(grouped.items()):
         group = sorted(group, key=lambda cell: int(cell["issue_count"]))
@@ -207,12 +216,18 @@ def _plot_xy(
         y = [_metric(cell, y_metric) for cell in group]
         x_errors = [_errors(cell, x_metric) for cell in group]
         y_errors = [_errors(cell, y_metric) for cell in group]
+        admissible = bool(identity[-1])
         axis.errorbar(
             x, y,
             xerr=([row[0] for row in x_errors], [row[1] for row in x_errors]),
             yerr=([row[0] for row in y_errors], [row[1] for row in y_errors]),
-            marker="o", linewidth=1.2, capsize=2,
-            label=_compact_identity_label(identity),
+            marker="o" if admissible else "x",
+            linestyle="-" if admissible else "--",
+            linewidth=1.2, capsize=2,
+            label=(
+                _compact_identity_label(identity[:-1])
+                + ("" if admissible else " [inadmissible]")
+            ),
         )
         for cell, x_value, y_value in zip(group, x, y):
             axis.annotate(f"N={cell['issue_count']}", (x_value, y_value), fontsize=7)
@@ -268,6 +283,7 @@ def render_frontier_plots(summary: Mapping[str, Any], output_directory: Path) ->
         "plot_count": len(emitted),
         "plots": emitted,
         "warning": "Plots are descriptive until multiple independent ordered sequence families exist.",
+        "admissibility_marker": "x/dashed points are retained reliability observations but are ineligible for a paired policy claim",
     }
     output_directory.mkdir(parents=True, exist_ok=True)
     (output_directory / "plot_manifest.json").write_text(
