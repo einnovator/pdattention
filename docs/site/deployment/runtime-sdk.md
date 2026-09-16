@@ -46,6 +46,7 @@ request = PRAWireRequest(
         recent_progress_turns=1,
         recent_mutation_turns=1,
         recent_verification_turns=1,
+        recent_protocol_turns=1,
         large_record_chunk_tokens=2048,
         max_records_per_turn_before_chunking=8,
         causal_bundle_round_up=True,
@@ -70,6 +71,12 @@ proposed fix. The runtime does not classify a turn merely because it contains a
 long THOUGHT section, and it ignores matching words inside the command block.
 The selected action and observation identities are exposed in
 `pinned_progress_state_segments` for audit.
+`recent_protocol_turns` protects clean completed action--observation exemplars,
+separately from task facts and progress state. Harnesses should supply generic
+`memory_roles` plus `episode_id`, `task_id`, or `issue_id`; the runtime then
+keeps the requested number per completed scope and exposes the result as
+`pinned_protocol_segments`. The default is zero, so existing applications do
+not change behavior until they opt in.
 
 Large tool observations are split within the record at natural structure—files,
 test cases, stack frames, diff hunks, then lines—before token fallback. A turn

@@ -1617,11 +1617,12 @@ dimension at most 256 and direct MLX batch one, while SGLang evaluates batched
 rows independently.  vLLM CUDA still excludes partial pages, hybrid groups,
 and multiprocess execution. \\
 Agent retention semantics & Paper~8.5 supplies backend-neutral plans and
-matched-budget controls.  Its current high-retention frozen screen favors a
-causal-valid matched tail over H1+H3 on exact commands, so structured-policy
-superiority remains unestablished. & Task-03/04 restore-only replays localize
-valuable state, but superiority to recency or fixed token windows on official
-end-task outcomes is not yet established. \\
+matched-budget controls.  Its R4/M2/V2/P1 completed-episode spine resolves
+6/6 paired issues across two executions, saves 36.41\% and 45.82\% against
+contemporaneous \textsc{Full}, and reduces calls by six and nine. & This is a
+repeated discovery result on one ordered sequence family, not held-out or
+population confirmation.  Paper~4.5 imports its frozen record plan; it does
+not reinterpret logical token saving as physical K/V saving. \\
 Coding-agent utility frontier & The llama.cpp Task-01 gate records a 30-action
 exact plain/PRA-100 solve and a 25-call PRA-90 solve at 93.32\% retention.
 Direct MLX and SGLang-MLX add action-exact six-call plain/PRA-100 Task-01 solves
@@ -3402,11 +3403,16 @@ sequence and the frozen 90\% policy clears the quality gate.
 \subsubsection{Claim 4: observed coding-agent utility frontier}
 
 Paper~8.5 studies agent-history policies without attributing logical task
-effects to an engine.  Its current screens have not established a semantic
-winner: matched token-tail is the strongest control, while the tested H1/H3
-full causal-group exclusions remove too much of the progress spine.  The
-results below therefore evaluate the frozen causal policy as an experimental
-treatment, not as a generally recommended selector.
+effects to an engine.  Its earlier matched-token-tail and H1/H3 screens did not
+establish a semantic winner.  A later first-divergence oracle identified a
+tool-protocol conditioning failure and motivated R4/M2/V2/P1: the completed
+episode spine plus one clean action--observation exemplar per prior issue.
+Across two autonomous executions on one ordered three-issue family, P1 resolves
+6/6 paired issues, saves 36.41\% and 45.82\% against \textsc{Full}, and uses
+six and nine fewer calls.  This passes the discovery transfer gate but is not
+yet a generally recommended selector.  The causal-tail rows below remain
+negative controls; P1 is the newly frozen treatment for the next native-K/V
+evaluation.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
@@ -4068,8 +4074,17 @@ latest source evidence both survive the 90\% policy.
 
 \subsubsection{Claim 4: locked next-stage matrix}
 
-Paper~8.5 has not yet qualified a structured agent-memory winner.  We therefore
-import its causal-valid matched token-tail only as a control plan.  In the
+Paper~8.5 has now qualified R4/M2/V2/P1 for discovery-stage native transfer.
+The policy keeps completed task statements, four recent turns, two mutation
+turns, two verification turns, and one clean action--observation protocol
+exemplar per prior typed issue.  Two executions resolve 6/6 paired issues,
+save a descriptive mean 41.11\%, and reduce calls by 7.5 on average.  The
+runtime exposes the added floor as \texttt{recent\_protocol\_turns}; portable
+harnesses provide generic semantic roles and task/episode scope rather than
+mini-swe-agent-specific engine logic.  The frozen native run must still prove
+zero selected-history re-encoding/copy and preserve official resolution.
+
+The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of
 tokens and reproduces 14/18 exact commands, compared with 97.22\% and 11/18
 for delayed consumed-search exclusion plus two-read supersession (H1+H3);
@@ -4552,7 +4567,9 @@ causally recovers task 03's efficient command and directionally improves task
 \texttt{recent\_progress\_turns} floor now preserves that state in the frozen
 90\% regression.  Engine-independent exclusion, selection, and oracle work now
 belongs to Paper~8.5; Paper~4.5 consumes a frozen policy and measures the engine
-contract.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
+contract.  Paper~8.5's R4/M2/V2/P1 policy is now admitted to that transfer after
+two 3/3 executions with 36.41\% and 45.82\% paired logical savings and fewer
+calls; held-out confirmation remains open.  HF, MLX, SGLang-MLX, and vLLM-Metal now pass their declared
 consumer and lifecycle scopes.  HF's fused Triton path consumes canonical K/V
 through interval descriptors and is matched-consumer logit exact.  A bounded
 vLLM 0.28 CUDA scheduler hook additionally demonstrates genuine
@@ -4568,8 +4585,9 @@ H2D.  Importing Paper~8.5's causal-tail control does not improve this frontier:
 it fails MLX Task~01 after nine calls and vLLM Task~05 after 28 calls, despite
 zero selected-history re-encoding/copy on both engines.  The latter terminates
 at bounded context exhaustion after a repeated-action loop.  This separates a
-portable native-K/V mechanism from an unqualified agent-memory policy and
-keeps task-aware progress state in the current runtime default.  The vLLM path
+portable native-K/V mechanism from the previously unqualified causal-tail
+policy.  P1 is now the next frozen engine treatment; task-aware progress state
+remains the runtime default until that native run passes.  The vLLM path
 is not yet general: multiprocess execution, hybrid K/V
 groups, partial pages, and runtime economics remain open.
 MLX and SGLang
@@ -4914,8 +4932,9 @@ agent-visible Selected Context proxy with per-request budget telemetry\\
 & Official task locks, canonical trajectories, verifier records, normalized
 rows, and qualification summaries\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/agent_policy_transfer/}
-& Frozen Paper~8.5 causal-tail transfer receipts, official outcomes, interaction
-histories, and logical-versus-physical K/V accounting\\
+& Frozen Paper~8.5 causal-tail transfer receipts plus the R4/M2/V2/P1 logical
+qualification contract, official outcomes, interaction histories, and
+logical-versus-physical K/V accounting\\
 \path{experiments/paper4_5_agent/summarize_baseline.py} & Wilson uncertainty,
 trajectory distributions, and explicit insufficient-cohort gate\\
 \path{docs/papers/shared/results/paper4_5_runtime_productization/rag/paper3_2_runtime_policy.json}

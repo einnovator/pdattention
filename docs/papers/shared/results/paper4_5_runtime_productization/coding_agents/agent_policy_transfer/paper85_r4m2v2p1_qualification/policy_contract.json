@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "policy_id": "paper8.5-r4m2v2p1-v1",
+  "selection_contract": "frozen-agent-memory-plan-v1",
+  "session_mode": "persistent",
+  "completed_recent_turns": 4,
+  "completed_mutation_turns": 2,
+  "completed_verification_turns": 2,
+  "completed_protocol_turns": 1,
+  "keep_completed_task_statements": true,
+  "protocol_exemplar": {
+    "unit": "complete action-observation causal bundle",
+    "per_scope": "completed task or episode",
+    "exclude_roles": [
+      "error",
+      "mutation",
+      "verification",
+      "finalization",
+      "rejected"
+    ],
+    "portable_metadata": {
+      "semantic_roles": "memory_roles",
+      "scope_keys": ["episode_id", "task_id", "issue_id"]
+    },
+    "mini_swe_agent_fallback": "bash command plus successful return-code observation"
+  },
+  "qualification": {
+    "ordered_sequence_families": 1,
+    "executions": 2,
+    "paired_full_resolved": 6,
+    "candidate_resolved": 6,
+    "paired_saving_fractions": [0.3641, 0.4582],
+    "call_deltas": [-6, -9],
+    "status": "discovery_gate_pass",
+    "held_out_confirmation": false
+  }
+}

@@ -971,6 +971,7 @@ def test_progress_spine_retention_counts_are_explicit_and_auditable() -> None:
     assert policy["recent_progress_turns"] == 1
     assert policy["recent_mutation_turns"] == 2
     assert policy["recent_verification_turns"] == 2
+    assert policy["recent_protocol_turns"] == 0
     assert policy["large_record_chunk_tokens"] == 32
     assert policy["preserve_action_observation_pairs"] is True
 
@@ -1024,6 +1025,7 @@ def test_request_metadata_controls_dense_turn_record_floor_and_chunk_size() -> N
         "recent_progress_turns": 1,
         "recent_mutation_turns": 0,
         "recent_verification_turns": 0,
+        "recent_protocol_turns": 0,
         "large_record_chunk_tokens": 2,
         "max_records_per_turn_before_chunking": 3,
         "preserve_action_observation_pairs": True,
@@ -1034,6 +1036,58 @@ def test_request_metadata_controls_dense_turn_record_floor_and_chunk_size() -> N
         len(row["text"].split()) <= 2
         for row in transformed["pra"]["resources"]
     )
+
+
+def test_protocol_floor_keeps_one_clean_exemplar_per_typed_episode() -> None:
+    def record(role: str, content: str, episode: str) -> dict[str, object]:
+        return {
+            "role": role,
+            "content": content,
+            "metadata": {"episode_id": episode},
+        }
+
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            record("assistant", "```mswea_bash_command\npwd\n```", "a"),
+            record("tool", "<returncode>0</returncode>\nold", "a"),
+            record(
+                "assistant",
+                "```mswea_bash_command\nls\n```",
+                "a",
+            ),
+            record("tool", "<returncode>0</returncode>\nnew", "a"),
+            {
+                **record("assistant", "tool call", "b"),
+                "tool_calls": [{"id": "call-1"}],
+                "memory_roles": ["protocol_exemplar"],
+            },
+            record("tool", "ok", "b"),
+            {"role": "assistant", "content": "active action"},
+            {"role": "tool", "content": "active result"},
+        ]
+    }
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=0.01,
+        recent_completed_turns=0,
+        recent_source_turns=0,
+        recent_progress_turns=0,
+        recent_mutation_turns=0,
+        recent_verification_turns=0,
+        recent_protocol_turns=1,
+    )
+
+    protocol_segments = transformed["pra"]["metadata"]["pinned_protocol_segments"]
+    assert {int(segment.split("-", 2)[0][1:]) for segment in protocol_segments} == {
+        4, 5, 6, 7,
+    }
+    assert transformed["pra"]["metadata"]["retention_policy"][
+        "recent_protocol_turns"
+    ] == 1
 
 
 def test_hard_cap_policy_does_not_round_up_an_oversized_causal_bundle() -> None:

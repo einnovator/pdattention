@@ -183,6 +183,7 @@ def test_agent_retention_policy_round_trips_as_typed_request_metadata() -> None:
                     "recent_completed_turns": 4,
                     "recent_records_per_turn": 3,
                     "recent_progress_turns": 2,
+                    "recent_protocol_turns": 1,
                     "large_record_chunk_tokens": 512,
                     "max_records_per_turn_before_chunking": 9,
                 }
@@ -198,6 +199,7 @@ def test_agent_retention_policy_round_trips_as_typed_request_metadata() -> None:
         "recent_completed_turns": 4,
         "recent_records_per_turn": 3,
         "recent_progress_turns": 2,
+        "recent_protocol_turns": 1,
         "large_record_chunk_tokens": 512,
         "max_records_per_turn_before_chunking": 9,
     }

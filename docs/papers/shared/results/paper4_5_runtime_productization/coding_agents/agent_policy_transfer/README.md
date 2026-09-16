@@ -5,6 +5,13 @@ executed by qualified native PRA paths. They do not rank policies: the imported
 causal-tail treatment and the existing task-aware PRA-90 arms have different
 realized retention.
 
+Paper 8.5 has now also qualified `paper8.5-r4m2v2p1-v1` for native transfer:
+two autonomous executions resolve 6/6 paired issues, save 36.41% and 45.82%
+against contemporaneous FULL, and use six and nine fewer calls. This is a
+repeated discovery result on one ordered sequence family, not yet a general
+default. The frozen contract and source evidence are in
+`paper85_r4m2v2p1_qualification/`.
+
 - `mlx_task01_causal_tail/`: Qwen2.5-Coder-14B MLX, Task 01. The engine honors
   the exact frozen record plan with zero selected-history re-encoding/copy, but
   the task fails after nine calls at 89.57% aggregate logical retention.
@@ -17,4 +24,6 @@ Both engines had already passed their matching plain/PRA-100 behavioral gates.
 The transfer therefore isolates a policy-quality failure from the native K/V
 correctness gate. Paper 8.5 owns subsequent matched-budget policy and oracle
 work; Paper 4.5 retains the task-aware progress-spine policy for its next engine
-experiments until a better policy is qualified there.
+experiments. The next engine experiment consumes the newly qualified P1 record
+plan from resident K/V; it must not reinterpret the Paper 8.5 text-replay
+savings as physical cache savings.

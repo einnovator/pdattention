@@ -85,6 +85,7 @@ PRA-aware requests retain ordinary top-level chat fields:
         "recent_progress_turns": 1,
         "recent_mutation_turns": 1,
         "recent_verification_turns": 1,
+        "recent_protocol_turns": 1,
         "large_record_chunk_tokens": 2048,
         "max_records_per_turn_before_chunking": 8,
         "causal_bundle_round_up": true,
@@ -113,6 +114,7 @@ to flatten the transcript into fixed token windows:
 | `recent_progress_turns` | Keep the newest `N` completed assistant turns that state an explicit diagnosis, working hypothesis, or proposed fix, together with their resulting observations. This is independent of source, mutation, and verification recency. |
 | `recent_mutation_turns` | Keep the newest `N` completed code-mutation turns. |
 | `recent_verification_turns` | Keep the newest `N` completed verification or submission turns. |
+| `recent_protocol_turns` | Keep the newest `N` clean completed action--observation exemplars per harness-supplied task/episode scope. With no scope metadata, this is a global floor. The default is zero. |
 | `large_record_chunk_tokens` | Subdivide an individual oversized record near this token size. Split tool output at natural boundaries such as files, test cases, stack frames, diff hunks, or lines before falling back to token boundaries. |
 | `max_records_per_turn_before_chunking` | Permit record-aligned subdivision inside a turn once its record count exceeds this threshold, including inside the otherwise protected `M`-record tail. The logical records and causal group remain identifiable. |
 | `causal_bundle_round_up` | Treat the requested token retention as a floor and retain the whole causal bundle that crosses it. |
@@ -137,6 +139,11 @@ state explicit diagnostic or decision language such as a root cause, current
 hypothesis, identified issue, or proposed fix. Matching is limited to narrative
 text before the tool-command block. The trace reports the resulting causal
 records in `pinned_progress_state_segments` so callers can audit the heuristic.
+Clean protocol exemplars are reported separately in `pinned_protocol_segments`.
+Agent-neutral integrations should mark records with `memory_roles` (for example
+`protocol_exemplar`, `mutation`, `verification`, `finalization`, or `error`) and
+an `episode_id`, `task_id`, or `issue_id`. A narrow Bash/return-code fallback is
+provided for mini-swe-agent; it is not the portable contract.
 
 Because full turns and causal pairs are indivisible, realized retention can be
 higher than the requested fraction. A trace for a retention-aware request

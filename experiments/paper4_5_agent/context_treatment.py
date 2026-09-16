@@ -138,6 +138,7 @@ def transform_chat_payload(
     recent_progress_turns: int | None = None,
     recent_mutation_turns: int | None = None,
     recent_verification_turns: int | None = None,
+    recent_protocol_turns: int | None = None,
     max_records_per_turn_before_chunking: int | None = None,
     preserve_action_observation_pairs: bool | None = None,
     causal_bundle_round_up: bool | None = None,
@@ -188,6 +189,10 @@ def transform_chat_payload(
             policy.recent_verification_turns
             if recent_verification_turns is None else recent_verification_turns
         ),
+        recent_protocol_turns=(
+            policy.recent_protocol_turns
+            if recent_protocol_turns is None else recent_protocol_turns
+        ),
         large_record_chunk_tokens=(
             policy.large_record_chunk_tokens
             if segment_tokens is None else segment_tokens
@@ -232,7 +237,7 @@ def transform_chat_payload(
         progress_indices = set()
         progress_classes = {
             "recent": set(), "source": set(), "progress_state": set(),
-            "mutation": set(), "verification": set(),
+            "mutation": set(), "verification": set(), "protocol": set(),
         }
     else:
         progress_indices, progress_classes = _progress_pinned_indices(
@@ -243,6 +248,7 @@ def transform_chat_payload(
             progress_turns=policy.recent_progress_turns,
             mutation_turns=policy.recent_mutation_turns,
             verification_turns=policy.recent_verification_turns,
+            protocol_turns=policy.recent_protocol_turns,
             max_records_per_turn_before_chunking=(
                 policy.max_records_per_turn_before_chunking
             ),
@@ -509,6 +515,13 @@ def transform_chat_payload(
                     segment_id for segment_id, _ in _segments(
                         messages,
                         sorted(progress_classes["progress_state"]),
+                        segment_tokens,
+                    )
+                ],
+                "pinned_protocol_segments": [
+                    segment_id for segment_id, _ in _segments(
+                        messages,
+                        sorted(progress_classes["protocol"]),
                         segment_tokens,
                     )
                 ],
@@ -808,6 +821,7 @@ def _progress_pinned_indices(
     progress_turns: int = 1,
     mutation_turns: int = 1,
     verification_turns: int = 1,
+    protocol_turns: int = 0,
     max_records_per_turn_before_chunking: int = 8,
     preserve_action_observation_pairs: bool = True,
 ) -> tuple[set[int], dict[str, set[int]]]:
@@ -817,8 +831,10 @@ def _progress_pinned_indices(
     action/observation turns preserve local plan continuity. The most recent
     source-evidence, explicit hypothesis/progress-state, mutation, and
     verification turns preserve durable task progress even after they leave
-    that recency window. Progress-state matching only inspects the narrative
-    before a command block and requires explicit diagnostic or fix language;
+    that recency window. An optional protocol floor keeps clean completed
+    action--observation exemplars per typed task/episode scope. Progress-state
+    matching only inspects the narrative before a command block and requires
+    explicit diagnostic or fix language;
     an ordinary verbose THOUGHT block is not sufficient.
     """
 
@@ -833,6 +849,7 @@ def _progress_pinned_indices(
         "progress_state": set(),
         "mutation": set(),
         "verification": set(),
+        "protocol": set(),
     }
 
     def pin_bundle(bundle: Sequence[int], category: str) -> None:
@@ -876,7 +893,107 @@ def _progress_pinned_indices(
         ]
         for bundle in matched[-keep:]:
             pin_bundle(bundle, category)
+
+    if protocol_turns:
+        clean = [
+            bundle for bundle in bundles
+            if _is_clean_protocol_bundle(messages, bundle)
+        ]
+        scoped: dict[str, list[list[int]]] = {}
+        unscoped: list[list[int]] = []
+        for bundle in clean:
+            scope_id = _bundle_scope_id(messages, bundle)
+            if scope_id is None:
+                unscoped.append(bundle)
+            else:
+                scoped.setdefault(scope_id, []).append(bundle)
+        if scoped:
+            for scoped_bundles in scoped.values():
+                for bundle in scoped_bundles[-protocol_turns:]:
+                    pin_bundle(bundle, "protocol")
+        for bundle in unscoped[-protocol_turns:]:
+            pin_bundle(bundle, "protocol")
     return pinned, classes
+
+
+def _message_memory_roles(message: Mapping[str, Any]) -> set[str]:
+    """Read generic harness-supplied semantic roles without agent coupling."""
+
+    values: list[Any] = []
+    for source in (message, message.get("metadata") or {}):
+        if not isinstance(source, Mapping):
+            continue
+        for key in ("memory_roles", "pra_memory_roles", "record_roles"):
+            if key in source:
+                values.append(source[key])
+    roles: set[str] = set()
+    for value in values:
+        if isinstance(value, str):
+            roles.add(value.strip().lower())
+        elif isinstance(value, Sequence):
+            roles.update(str(item).strip().lower() for item in value)
+    return roles
+
+
+def _bundle_scope_id(
+    messages: Sequence[Mapping[str, Any]], bundle: Sequence[int],
+) -> str | None:
+    """Return an optional task/episode scope supplied by an agent harness."""
+
+    for index in bundle:
+        message = messages[index]
+        for source in (message, message.get("metadata") or {}):
+            if not isinstance(source, Mapping):
+                continue
+            for key in ("episode_id", "task_id", "issue_id"):
+                value = source.get(key)
+                if value not in (None, ""):
+                    return f"{key}:{value}"
+    return None
+
+
+def _is_clean_protocol_bundle(
+    messages: Sequence[Mapping[str, Any]], bundle: Sequence[int],
+) -> bool:
+    """Recognize a successful action--observation exemplar conservatively.
+
+    Typed harness roles are authoritative. The Bash fallback is intentionally
+    narrow and exists for mini-swe-agent compatibility; other agents should
+    attach generic ``memory_roles`` and task/episode identifiers.
+    """
+
+    if not bundle:
+        return False
+    records = [messages[index] for index in bundle]
+    assistant = next(
+        (record for record in records if str(record.get("role")) == "assistant"),
+        None,
+    )
+    observations = [
+        record for record in records
+        if str(record.get("role")) not in {"assistant", "system"}
+    ]
+    if assistant is None or not observations:
+        return False
+    roles = set().union(*(_message_memory_roles(record) for record in records))
+    if roles & {"error", "mutation", "verification", "finalization", "rejected"}:
+        return False
+    if roles & {"protocol_exemplar", "clean_action_observation"}:
+        return True
+    action = str(assistant.get("content") or "")
+    if _MUTATION.search(action) or _VERIFICATION.search(action):
+        return False
+    if not (_COMMAND_BLOCK.search(action) or assistant.get("tool_calls")):
+        return False
+    for observation in observations:
+        content = str(observation.get("content") or "")
+        status = str(observation.get("status") or "").lower()
+        code = observation.get("return_code", observation.get("exit_code"))
+        if code == 0 or status in {"ok", "success", "completed"}:
+            return True
+        if "<returncode>0</returncode>" in content:
+            return True
+    return False
 
 
 def _task_aware_query(
@@ -1264,6 +1381,7 @@ class TreatmentProxy:
         recent_progress_turns: int = 1,
         recent_mutation_turns: int = 1,
         recent_verification_turns: int = 1,
+        recent_protocol_turns: int = 0,
         large_record_chunk_tokens: int = 256,
         max_records_per_turn_before_chunking: int = 8,
         preserve_action_observation_pairs: bool = True,
@@ -1291,6 +1409,7 @@ class TreatmentProxy:
             recent_progress_turns=recent_progress_turns,
             recent_mutation_turns=recent_mutation_turns,
             recent_verification_turns=recent_verification_turns,
+            recent_protocol_turns=recent_protocol_turns,
             large_record_chunk_tokens=large_record_chunk_tokens,
             max_records_per_turn_before_chunking=max_records_per_turn_before_chunking,
             preserve_action_observation_pairs=preserve_action_observation_pairs,
@@ -1463,6 +1582,7 @@ class TreatmentProxy:
                 recent_progress_turns=effective_retention.recent_progress_turns,
                 recent_mutation_turns=effective_retention.recent_mutation_turns,
                 recent_verification_turns=effective_retention.recent_verification_turns,
+                recent_protocol_turns=effective_retention.recent_protocol_turns,
                 max_records_per_turn_before_chunking=(
                     effective_retention.max_records_per_turn_before_chunking
                 ),

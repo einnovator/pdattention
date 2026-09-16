@@ -199,6 +199,7 @@ class PRAAgentRetentionPolicy:
     recent_progress_turns: int = 1
     recent_mutation_turns: int = 1
     recent_verification_turns: int = 1
+    recent_protocol_turns: int = 0
     large_record_chunk_tokens: int = 256
     max_records_per_turn_before_chunking: int = 8
     preserve_action_observation_pairs: bool = True
@@ -212,6 +213,7 @@ class PRAAgentRetentionPolicy:
             self.recent_progress_turns,
             self.recent_mutation_turns,
             self.recent_verification_turns,
+            self.recent_protocol_turns,
         )
         if any(value < 0 for value in counts):
             raise ValueError("PRA agent retention counts must be non-negative.")

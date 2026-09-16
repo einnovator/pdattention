@@ -602,6 +602,7 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
             "recent_progress_turns": getattr(args, "recent_progress_turns", 1),
             "recent_mutation_turns": getattr(args, "recent_mutation_turns", 1),
             "recent_verification_turns": getattr(args, "recent_verification_turns", 1),
+            "recent_protocol_turns": getattr(args, "recent_protocol_turns", 0),
             "large_record_chunk_tokens": getattr(
                 args, "large_record_chunk_tokens", 256,
             ),
@@ -709,6 +710,7 @@ def run(args: argparse.Namespace) -> Path:
             recent_progress_turns=getattr(args, "recent_progress_turns", 1),
             recent_mutation_turns=getattr(args, "recent_mutation_turns", 1),
             recent_verification_turns=getattr(args, "recent_verification_turns", 1),
+            recent_protocol_turns=getattr(args, "recent_protocol_turns", 0),
             large_record_chunk_tokens=getattr(
                 args, "large_record_chunk_tokens", 256,
             ),
@@ -1689,6 +1691,7 @@ def main() -> None:
     parser.add_argument("--recent-progress-turns", type=int, default=1)
     parser.add_argument("--recent-mutation-turns", type=int, default=1)
     parser.add_argument("--recent-verification-turns", type=int, default=1)
+    parser.add_argument("--recent-protocol-turns", type=int, default=0)
     parser.add_argument("--large-record-chunk-tokens", type=int, default=256)
     parser.add_argument(
         "--max-records-per-turn-before-chunking", type=int, default=8,
