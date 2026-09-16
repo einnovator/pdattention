@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_atomic_instruction_epoch_bracket",
+  "evidence_class": "repeat_qualified_single_task_candidate",
+  "instance_id": "django__django-16145",
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0
+  },
+  "frozen_prefix": {
+    "prior_completed_instruction_epochs": 4,
+    "explicit_evaluator_boundary_visible_to_policy": false,
+    "workspace_reset_per_fork": true
+  },
+  "treatments": {
+    "atomic_active_only": {
+      "official_resolved": [false],
+      "calls": [22],
+      "cumulative_full_tokens": [444568],
+      "cumulative_selected_tokens": [128780],
+      "cumulative_saving_fraction": [0.7103255295027981],
+      "interpretation": "Reject: maximum retirement preserves the active epoch but loses useful behavioral conditioning."
+    },
+    "atomic_e2": {
+      "policy": "retain two most recent complete instruction epochs; atomically retire older terminally closed epochs including their prompts",
+      "official_resolved": [true, true],
+      "calls": [16, 16],
+      "cumulative_full_tokens": [299851, 299851],
+      "cumulative_selected_tokens": [185387, 185387],
+      "cumulative_saving_fraction": [0.3817362623436307, 0.3817362623436307],
+      "identical_patch": true,
+      "promotion": "held_out_task_only",
+      "limitation": "Two repeats of one task are not a population accuracy estimate and calls exceed the E2 and historical plain references."
+    }
+  },
+  "source_artifacts": [
+    {
+      "path": "autonomous_atomic_epoch_django16145_r01/official_result.json",
+      "sha256": "f8b67f3f740bde889e45b6444c2b6ad3481502d6645c184cdf97295678d5fa16"
+    },
+    {
+      "path": "autonomous_atomic_epoch_django16145_r01/autonomous_metrics.json",
+      "sha256": "7b6987bc415024b21a73477febc60b2ab7dc529b2b89f3dea5d0dc8aa3afbe02"
+    },
+    {
+      "path": "autonomous_atomic_e2_django16145_r01/official_result.json",
+      "sha256": "15fb4f55fbca9ea7961c2f133adca1d701f44ec1bc0bb507aea8de26eadff6fc"
+    },
+    {
+      "path": "autonomous_atomic_e2_django16145_r01/autonomous_metrics.json",
+      "sha256": "9b9921dfb959a9daa60d9039cbdda96795123a3b5a79a9ec2d6e28d109e8dcba"
+    },
+    {
+      "path": "autonomous_atomic_e2_django16145_r02/official_result.json",
+      "sha256": "e4d135712b393ea1901a18d70f5586db2df70139092f7b53a6d608b811a45b30"
+    },
+    {
+      "path": "autonomous_atomic_e2_django16145_r02/autonomous_metrics.json",
+      "sha256": "3f4785da3ee7d71a8175934d86d0ecb751b796234602afb7aa36c4dd77d97c6f"
+    }
+  ]
+}

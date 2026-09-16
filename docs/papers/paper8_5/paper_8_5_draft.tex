@@ -118,12 +118,17 @@ reversal is diagnostic evidence of trajectory instability, not a policy
 qualification result.
 A subsequent structural audit finds the missing invariant: E0 preserves old
 user task statements but removes their terminal closure turns, making resolved
-tasks appear unanswered.  Adding one finalization bundle per retired epoch
-(E0+F1) removes no active-issue interaction, exactly matches the predeclared
-cross-workspace closure oracle, and saves 43.7\% at N=5.  On one frozen
-15,861-token request, E0 yields 0/3 valid actions, whereas E0+F1 yields 3/3
-repeat-identical valid actions at 45.61\% saving; this is next-action evidence,
-not yet autonomous qualification.
+tasks appear unanswered.  Merely retaining or synthesizing a closure is not
+safe: a real old finalization induces premature submission, a synthetic Bash
+closure is imitated, and a text-only closure breaks action formatting.  We
+therefore retire a terminally closed old instruction and its interaction
+atomically, using no evaluator boundary.  Active-only atomic retirement saves
+90.50\% on one frozen request but fails autonomously.  Keeping the two latest
+natural successful epochs while atomically retiring older ones saves 45.10\%
+on that frozen request (3/3 valid stable actions) and resolves the task in two
+independent reset-workspace forks, each in 16 calls with 38.17\% cumulative
+token saving and the same patch.  This is a repeat-qualified single-task point
+pending cross-task qualification.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1645,8 +1650,9 @@ interaction detail but keeps one closure bundle per pinned prompt.
 \centering
 \small
 \caption{Tokenizer-exact structural alignment on locked persistent-\textsc{Full}
-prefixes.  E0+F1 keeps the active issue whole and exactly matches the stated
-closure oracle.  Structural alignment is not autonomous quality evidence.}
+prefixes.  E0+F1 keeps the active issue whole and exactly matches the initial
+closure oracle, which later autonomous tests falsify as behaviorally
+insufficient.  Structural alignment is not autonomous quality evidence.}
 \label{tab:closure-oracle-alignment}
 \begin{tabular}{rrrrr}
 \toprule
@@ -1661,8 +1667,8 @@ Completed issues & E0+F1 saving & Active removed & Oracle P/R & Orphaned prompts
 \end{table}
 
 The corresponding frozen issue-5 ablation isolates closure from backend
-variance.  The four arms share one canonical 15,861-token request and are
-interleaved for three repeats.
+variance.  The initial four arms share one canonical 15,861-token request and
+are interleaved for three repeats.
 \textsc{Full} produces one valid, repeat-identical search in 3/3 trials.  E0
 selects 7,621 tokens (51.95\% saving) but produces no valid one-command action
 in 0/3: its response enumerates all five issue statements as simultaneous
@@ -1670,10 +1676,60 @@ unrelated problems and emits four command blocks.  E0+F1 selects 8,627 tokens
 (45.61\% saving) and restores one valid, repeat-identical current-Django search
 in 3/3.  E2 is also valid in 3/3 but selects 11,918 tokens (24.86\% saving).
 This directly implicates orphaned prompt closure rather than loss of active-
-issue evidence.  The next expensive test is therefore one autonomous E0+F1
-fork from the identical prefix and reset workspace, not another broad floor
-sweep.  Artifacts are released under
-\texttt{policy\_oracle\_alignment\_n2\_n5\_v1}.
+issue evidence, but the autonomous E0+F1 fork then fails after only three
+actions: retaining the historical finalization also exposes the old submission
+sentinel as an action exemplar.  Two synthetic replacements fail in opposite
+ways.  A Bash \texttt{true} closure is copied in 3/3 frozen trials; a text-only
+assistant/user closure identifies the active issue but emits no command in
+3/3.  Closure semantics and action-protocol exemplars therefore cannot be
+conflated.
+
+The next treatment retires a prior instruction epoch atomically, including its
+old user prompt, but only when the epoch itself contains complete terminal
+evidence and a newer genuine user instruction exists.  It consumes no task ID,
+evaluator episode boundary, repository name, or workspace-reset signal.  If
+terminal evidence is absent, the old prompt remains.  Active-only atomic
+retirement selects 1,507 tokens (90.50\% frozen-prefix saving) and produces a
+valid stable search in 3/3, yet its autonomous fork fails after 22 calls with
+an incorrect address-parsing patch.  The selected request at every decision
+still contains the complete active epoch; the failure is not within-task
+truncation.
+
+This result, combined with E2's 2/2 same-prefix successes, motivates one causal
+bracket rather than a grid: retain the two most recent natural successful
+epochs as behavioral exemplars and atomically retire every older closed epoch.
+The resulting atomic-E2 arm selects 8,707 tokens on the frozen request
+(45.10\% saving) and yields one identical valid current-task search in 3/3.
+Two independent reset-workspace autonomous forks resolve officially in 16
+calls each, each sending 185,387 of 299,851 cumulative message-content tokens
+(38.17\% saving) and producing the same patch.  Atomic E2 uses three more calls
+than the two E2 diagnostic successes and four more than the older independent-
+session reference, so it is a repeat-qualified single-task quality-preserving
+point, not yet a no-call-increase default.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Same-prefix autonomous diagnosis on Django-16145.  Savings use each
+run's own full-history counterfactual; rows are not a population accuracy
+estimate.}
+\label{tab:atomic-epoch-bracket}
+\begin{tabular}{lrrr}
+\toprule
+Policy & Official solves & Calls & Cumulative saving \\
+\midrule
+Persistent \textsc{Full} & 0/2 & 8, 18 & 0.00\% \\
+E2, old prompts pinned & 2/2 & 13, 13 & 21.36\% \\
+Atomic active-only & 0/1 & 22 & 71.03\% \\
+Atomic E2 & 2/2 & 16, 16 & 38.17\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Artifacts, including the negative closure controls, are released under
+\path{policy_oracle_alignment_n2_n5_v1}.  Atomic E2 now advances to a
+held-out-task gate with the policy frozen; no broader parameter sweep is
+justified by one task identity.
 
 \begin{figure}[H]
 \centering

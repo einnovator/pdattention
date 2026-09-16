@@ -95,7 +95,25 @@ absent, it fails closed and retains the old prompt.  Its command is not byte-
 identical to FULL, but is semantically equivalent: both search the repository
 for the `runserver` implementation.
 
-This remains next-action evidence.  The next single expensive test is one
-autonomous atomic-retirement fork from the identical prefix and reset
-workspace.  Only official resolution with no material call inflation can
-promote the treatment beyond a diagnostic.
+The active-only atomic fork fails official grading after 22 calls despite
+71.03% cumulative saving.  It preserves the complete current epoch but makes
+an incorrect address-parsing edit.  This failure, together with two successful
+13-call E2 forks, suggests that natural successful trajectories can act as
+behavioral exemplars even when their task facts are unrelated.
+
+We therefore run one bracket rather than a parameter sweep: keep the two most
+recent complete epochs exactly as E2 does, but atomically retire every older
+terminally closed epoch including its user prompt.  This `E2_ATOMIC` treatment
+selects 8,707 of 15,861 frozen-prefix tokens (45.10% saving) and produces one
+identical valid current-task search in 3/3 trials.  Its first autonomous fork
+resolves officially in 16 calls and sends 185,387 of 299,851 cumulative
+message-content tokens, a 38.17% saving against its own full-history
+counterfactual.  An independent reset-workspace repeat is exact: it also
+resolves in 16 calls, sends the same 185,387 of 299,851 tokens, and produces
+the same patch.  Atomic E2 therefore resolves 2/2 at 38.17% saving, but takes
+three more calls than the two E2 successes and four more than the historical
+independent-session success, so it has not passed the no-call-increase gate.
+
+The next test is a held-out task with the policy frozen.  The repeated result
+promotes atomic E2 beyond a one-run diagnostic, but two executions of one task
+are not an accuracy estimate.
