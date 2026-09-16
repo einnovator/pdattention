@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-autonomous-persistent-spine-n3-protocol-replication-v1",
+  "benchmark_card": "../benchmarks/easy14_longest_success5.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "claim": "30-50% failure-aware cumulative input-token saving with no observed official-resolution loss"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "independent-n3-b",
+      "sequence_stratum": "independent_cross_repository",
+      "instance_ids": [
+        "django__django-15277",
+        "pytest-dev__pytest-7982",
+        "scikit-learn__scikit-learn-13135"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "S01_persistent_full",
+      "session_mode": "persistent",
+      "policy": "full",
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S03_completed_episode_spine",
+      "strategy_config_id": "r4m2v2p1_tasks1",
+      "session_mode": "persistent",
+      "policy": "persistent_episode_retirement",
+      "share_full_first_episode": true,
+      "keep_completed_task_statements": true,
+      "completed_recent_turns": 4,
+      "completed_mutation_turns": 2,
+      "completed_verification_turns": 2,
+      "completed_protocol_turns": 1,
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "purpose": "independent replication of the first gate-passing R4/M2/V2/P1 execution",
+    "gate": "30-50% failure-aware saving, zero lost FULL successes, and no aggregate call increase",
+    "guardrail": "promotion and Paper 4.5 transfer require this independent replication to pass"
+  },
+  "workspace_semantics": {
+    "current_campaign": "clean SWE-bench workspace per issue with persistent conversation identity",
+    "not_claimed": "dependent same-workspace execution"
+  }
+}

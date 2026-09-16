@@ -100,6 +100,16 @@ clean workspace per issue; dependent same-workspace sequences require a
 separate benchmark with an explicit workspace-handoff digest and are never
 silently inferred.
 
+`persistent_episode_retirement` exposes independent completed-issue floors for
+recent turns, mutation turns, verification turns, and clean protocol exemplars:
+`--completed-recent-turns`, `--completed-mutation-turns`,
+`--completed-verification-turns`, and `--completed-protocol-turns`. A protocol
+exemplar is a complete assistant-action/tool-observation turn with no error,
+mutation, verification, or finalization role. The floor selects the latest
+eligible turn per completed issue. It is a causal deployable rule, not an
+oracle add-back; its purpose is to retain ordinary tool-use conditioning when
+the recent tail is dominated by recovery and submission turns.
+
 Before positive selection, `dag.py` can construct a conservative resource/effect
 DAG. `DAG_CERTIFIED` excludes only bundles backed by complete runtime identity
 (cwd, environment, resource versions, complete output, and witnesses). Static
