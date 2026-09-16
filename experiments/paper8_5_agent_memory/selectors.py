@@ -666,6 +666,35 @@ class PersistentInstructionEpochRetirementSelector:
                     for turn in eligible[-self.config.prior_protocol_turns :]
                 )
 
+        # A retained spine from an atomically retired epoch needs its natural
+        # chat envelope. Otherwise the selected transcript can begin with an
+        # assistant action after the system prompt, and the old task appears
+        # either missing or unresolved. Restore the epoch's genuine user
+        # instruction plus its natural terminal turn; this is transcript
+        # control state, not an evaluator-provided boundary.
+        spine_epochs = {
+            epoch
+            for epoch, turns in complete_by_epoch.items()
+            if any(turn.turn_id in selected_prior_turn_ids for turn in turns)
+        }
+        if self.config.retire_closed_instructions:
+            for epoch in sorted(spine_epochs.intersection(closed_epochs)):
+                instruction_id = history.records[
+                    instruction_positions[epoch]
+                ].record_id
+                selected_ids.add(instruction_id)
+                reasons[instruction_id] = "prior_instruction_epoch_envelope"
+                terminal_turns = [
+                    turn for turn in complete_by_epoch.get(epoch, ())
+                    if any(
+                        records[record_id].has_role(AgentRecordRole.FINALIZATION)
+                        for record_id in turn.record_ids
+                    )
+                ]
+                if not terminal_turns:
+                    raise AssertionError("closed instruction epoch lacks terminal turn")
+                selected_prior_turn_ids.add(terminal_turns[-1].turn_id)
+
         for turn in history.turns:
             if turn.turn_id not in selected_prior_turn_ids:
                 continue

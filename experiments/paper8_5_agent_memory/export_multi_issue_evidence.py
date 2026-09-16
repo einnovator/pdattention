@@ -113,7 +113,11 @@ def build(campaign_root: Path) -> dict[str, Any]:
             )
         controls[key] = (str(control_id), control)
     runs: list[dict[str, Any]] = []
-    exportable_statuses = {"complete", "stopped_predeclared_quality_gate"}
+    exportable_statuses = {
+        "complete",
+        "stopped_predeclared_quality_gate",
+        "stopped_causal_attribution_gate",
+    }
     for cell_id, cell in sorted(cells.items()):
         if cell.get("status") not in exportable_statuses:
             continue

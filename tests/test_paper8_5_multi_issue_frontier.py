@@ -69,7 +69,7 @@ def _run(strategy: str, mode: str, tokens: tuple[int, int], resolved=(True, True
 def test_registry_has_unique_reasoned_strategies_and_locked_issue_axis():
     registry = load_strategy_registry(REGISTRY)
     assert registry["issue_counts"] == list(range(1, 11))
-    assert len(registry["strategies"]) == 13
+    assert len(registry["strategies"]) == 15
 
 
 def test_profile_promotion_contract_separates_quality_and_runtime_evidence():

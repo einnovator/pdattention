@@ -317,6 +317,40 @@ def test_instruction_epoch_atomic_retirement_drops_only_terminally_closed_prompt
     assert visible.count("COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT") == 1
 
 
+def test_atomic_retirement_wraps_retained_spine_in_natural_epoch_envelope():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+            _trajectory("repo__issue-3", "cat c.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selected = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig(
+            prior_recent_turns=1,
+            retire_closed_instructions=True,
+        )
+    ).select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    selected_ids = set(selected.selected_record_ids)
+    selected_records = [
+        record for record in history.records if record.record_id in selected_ids
+    ]
+
+    assert selected_records[0].role == "system"
+    assert selected_records[1].role == "user"
+    assert "Fix repo__issue-1." in selected_records[1].content
+    assert sum(
+        record.has_role(AgentRecordRole.FINALIZATION)
+        for record in selected_records
+    ) >= 3
+
+
 def test_atomic_retirement_keeps_instruction_for_full_prior_epoch_exemplar():
     result = compose_multi_issue_session(
         (

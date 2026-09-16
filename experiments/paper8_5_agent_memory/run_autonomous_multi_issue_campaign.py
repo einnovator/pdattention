@@ -82,6 +82,21 @@ def _control_cell_id(
     return candidates[0]
 
 
+def _shared_control_prefix_count(strategy: Mapping[str, Any]) -> int:
+    """Return the number of leading episodes borrowed byte-for-byte from FULL."""
+
+    explicit = strategy.get("share_full_prefix_episodes")
+    if explicit is None:
+        return 1 if bool(strategy.get("share_full_first_episode", False)) else 0
+    if isinstance(explicit, bool) or not isinstance(explicit, int) or explicit < 0:
+        raise ValueError("share_full_prefix_episodes must be a nonnegative integer")
+    if strategy.get("share_full_first_episode", False) and explicit < 1:
+        raise ValueError(
+            "share_full_first_episode conflicts with share_full_prefix_episodes"
+        )
+    return explicit
+
+
 def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None:
     if spec.get("schema_version") != 1:
         raise ValueError("unsupported autonomous multi-issue campaign schema")
@@ -142,6 +157,15 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
             raise ValueError(
                 f"{strategy.get('policy')} requires boundary_free mode"
             )
+        shared_prefix = _shared_control_prefix_count(strategy)
+        if shared_prefix and mode != "persistent":
+            raise ValueError("shared FULL prefixes require persistent session mode")
+        if shared_prefix > min(
+            (len(sequence.get("instance_ids") or ())
+             for sequence in spec.get("sequences") or ()),
+            default=0,
+        ):
+            raise ValueError("shared FULL prefix exceeds a registered sequence")
 
 
 def campaign_cells(spec: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -395,8 +419,10 @@ def _divergence_accounting(
     if first is not None and first in candidate_by_index and first in baseline_by_index:
         candidate_row = candidate_by_index[first]
         baseline_row = baseline_by_index[first]
-        candidate_input = candidate_row.get("request_input_sha256")
-        baseline_input = baseline_row.get("request_input_sha256")
+        # ``request_input_sha256`` hashes the canonical pre-selection request.
+        # Causal repeatability requires identity of what the model consumed.
+        candidate_input = candidate_row.get("selected_messages_sha256")
+        baseline_input = baseline_row.get("selected_messages_sha256")
         identical_input_divergence = bool(
             candidate_input
             and baseline_input
@@ -619,6 +645,14 @@ def write_frontier_ledger(
 
 
 def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
+    stop_after_episodes = getattr(args, "stop_after_completed_episodes", None)
+    if stop_after_episodes is not None and int(stop_after_episodes) < 1:
+        raise ValueError("stop_after_completed_episodes must be positive")
+    stop_after_losses = getattr(
+        args, "stop_after_lost_paired_full_successes", None
+    )
+    if stop_after_losses is not None and int(stop_after_losses) < 1:
+        raise ValueError("stop_after_lost_paired_full_successes must be positive")
     spec_path = args.spec.resolve()
     spec = _read(spec_path)
     benchmark = _resolve(spec_path, str(spec["benchmark_card"]))
@@ -689,15 +723,39 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         infrastructure_error = False
         upstream_paused = False
         quality_gate_stopped = False
+        causal_gate_stopped = False
         for episode_number, instance_id in enumerate(cell["instance_ids"], 1):
+            stop_after_episodes = getattr(args, "stop_after_completed_episodes", None)
+            if (
+                stop_after_episodes is not None
+                and episode_number > int(stop_after_episodes)
+                and episode_results
+            ):
+                causal_gate_stopped = True
+                row.update(_partial_aggregate(
+                    episode_results,
+                    status="stopped_causal_attribution_gate",
+                ))
+                row["stop_gate"] = {
+                    "rule": "completed_episode_prefix",
+                    "threshold": int(stop_after_episodes),
+                    "observed": len(episode_results),
+                    "reason": (
+                        "stop before the first intervention because the "
+                        "full-materialization repeat prefix diverged"
+                    ),
+                }
+                for later in row["episodes"].values():
+                    if later.get("status") != "complete":
+                        later["status"] = "aborted_by_causal_attribution_gate"
+                        later["reason"] = row["stop_gate"]["reason"]
+                _write(state_path, state)
+                break
             episode_id = f"episode_{episode_number:02d}_{_slug(instance_id)}"
             base_episode_output = cell_root / episode_id
             episode_output = base_episode_output
             shared_control_cell_id: str | None = None
-            if (
-                episode_number == 1
-                and bool(cell["strategy"].get("share_full_first_episode", False))
-            ):
+            if episode_number <= _shared_control_prefix_count(cell["strategy"]):
                 shared_control_cell_id = _control_cell_id(
                     cell,
                     {**cell_registry, **state["cells"]},
@@ -715,7 +773,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     control_episodes = list(control["episodes"].values())
                     if not control_episodes:
                         raise ValueError("persistent-FULL control has no episode ledger")
-                    shared_episode = control_episodes[0]
+                    shared_episode = control_episodes[episode_number - 1]
                     if shared_episode.get("instance_id") != instance_id:
                         raise ValueError("shared FULL episode identity mismatch")
                     episode_output = Path(str(shared_episode["output"]))
@@ -903,6 +961,8 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             row["status"] = "infrastructure_error"
         elif quality_gate_stopped:
             row["status"] = "stopped_predeclared_quality_gate"
+        elif causal_gate_stopped:
+            row["status"] = "stopped_causal_attribution_gate"
         else:
             row.update(_aggregate(cell, episode_results))
             row.pop("reason", None)
@@ -942,6 +1002,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Stop a treatment cell after this many completed issues that its "
             "paired persistent-FULL control solved."
+        ),
+    )
+    parser.add_argument(
+        "--stop-after-completed-episodes",
+        type=int,
+        help=(
+            "Record an intentional causal-attribution stop after this many "
+            "completed episodes instead of launching the next episode."
         ),
     )
     parser.add_argument("--skip-grading", action="store_true")

@@ -15,6 +15,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     _divergence_accounting,
     _lost_paired_full_successes,
     _partial_aggregate,
+    _shared_control_prefix_count,
     _validate_sequence_pairing_identity,
     campaign_cells,
     run_campaign,
@@ -116,6 +117,19 @@ def test_instruction_epoch_registry_is_boundary_free_and_uniquely_identified():
     assert treatment["strategy"]["boundary_mode"] == "boundary_free"
     assert treatment["strategy"]["completed_recent_turns"] == 0
     assert "e0_all_user_active_epoch_full_v1" in treatment["cell_id"]
+
+
+def test_shared_full_prefix_count_supports_legacy_and_exact_prefix_forks():
+    assert _shared_control_prefix_count({}) == 0
+    assert _shared_control_prefix_count({"share_full_first_episode": True}) == 1
+    assert _shared_control_prefix_count({"share_full_prefix_episodes": 4}) == 4
+    with pytest.raises(ValueError, match="nonnegative integer"):
+        _shared_control_prefix_count({"share_full_prefix_episodes": True})
+    with pytest.raises(ValueError, match="conflicts"):
+        _shared_control_prefix_count({
+            "share_full_first_episode": True,
+            "share_full_prefix_episodes": 0,
+        })
 
 
 def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
@@ -534,14 +548,16 @@ def test_divergence_accounting_identifies_identical_input_backend_variance():
     baseline = [{
         "request_index": 1,
         "assistant_command_sha256": "baseline",
-        "request_input_sha256": "same-input",
+        "request_input_sha256": "same-canonical-input",
+        "selected_messages_sha256": "same-materialized-input",
         "materialized_tokens": 100,
         "full_tokens": 100,
     }]
     candidate = [{
         "request_index": 1,
         "assistant_command_sha256": "candidate",
-        "request_input_sha256": "same-input",
+        "request_input_sha256": "same-canonical-input",
+        "selected_messages_sha256": "same-materialized-input",
         "materialized_tokens": 100,
         "full_tokens": 100,
     }]
@@ -550,6 +566,30 @@ def test_divergence_accounting_identifies_identical_input_backend_variance():
 
     assert result["identical_input_first_action_divergence"] is True
     assert result["selection_active_at_first_action_divergence"] is False
+
+
+def test_divergence_does_not_confuse_canonical_with_materialized_input():
+    baseline = [{
+        "request_index": 1,
+        "assistant_command_sha256": "baseline",
+        "request_input_sha256": "same-canonical-input",
+        "selected_messages_sha256": "full-materialization",
+        "materialized_tokens": 100,
+        "full_tokens": 100,
+    }]
+    candidate = [{
+        "request_index": 1,
+        "assistant_command_sha256": "candidate",
+        "request_input_sha256": "same-canonical-input",
+        "selected_messages_sha256": "selected-materialization",
+        "materialized_tokens": 80,
+        "full_tokens": 100,
+    }]
+
+    result = _divergence_accounting(candidate, baseline)
+
+    assert result["identical_input_first_action_divergence"] is False
+    assert result["selection_active_at_first_action_divergence"] is True
 
 
 def _pairing_manifest(instance_id: str, behavior: str) -> dict:
