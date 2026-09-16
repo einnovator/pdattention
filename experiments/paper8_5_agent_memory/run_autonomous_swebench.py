@@ -277,7 +277,7 @@ def build_grader_command(
         "--max_workers",
         str(args.grader_workers),
         "--cache_level",
-        "base",
+        "instance",
         "--clean",
         "True",
         "--report_dir",
