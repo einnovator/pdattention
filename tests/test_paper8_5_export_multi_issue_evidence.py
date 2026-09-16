@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from experiments.paper8_5_agent_memory.export_multi_issue_evidence import (
     build,
     write_bundle,
@@ -84,11 +86,18 @@ def test_export_separates_candidate_gross_from_paired_failure_aware(tmp_path):
     assert candidate["calls_delta_vs_persistent_full"] == -1
     assert candidate["shared_first_episode_exact"] is True
     assert candidate["evidence_admissible"] is True
+    assert candidate["paired_issues"][0]["raw_saving_vs_persistent_full"] == pytest.approx(0.2)
+    assert candidate["paired_issues"][1]["raw_saving_vs_persistent_full"] == pytest.approx(0.6)
+    assert candidate["paired_issues"][1]["calls_delta_vs_persistent_full"] == -1
+    assert candidate["paired_issues"][1]["joint_success"] is True
 
     output = tmp_path / "bundle"
     write_bundle(evidence, output)
     assert "40.00%" in (output / "README.md").read_text(encoding="utf-8")
     assert (output / "runs.csv").is_file()
+    issues = (output / "issues.csv").read_text(encoding="utf-8")
+    assert "candidate_official_resolved" in issues
+    assert "task-b" in issues
 
 
 def test_export_pairs_control_with_nondefault_strategy_config_id(tmp_path):

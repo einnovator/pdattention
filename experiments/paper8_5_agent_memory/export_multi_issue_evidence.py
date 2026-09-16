@@ -44,6 +44,17 @@ def _episode_summary(episode: Mapping[str, Any]) -> dict[str, Any]:
     )
     manifest = _read(output / "run_manifest.json")
     official = _read(output / "official_result.json")
+    full_tokens = int(
+        episode.get("cumulative_full_tokens")
+        or sum(int(row.get("full_tokens") or 0) for row in trace)
+    )
+    materialized_tokens = int(
+        episode.get("cumulative_materialized_tokens")
+        or sum(
+            int(row.get("materialized_tokens", row.get("selected_tokens", 0)) or 0)
+            for row in trace
+        )
+    )
     identities = {
         key: manifest.get(key) for key in (
             "model_revision", "tokenizer_revision", "harness_version_observed",
@@ -64,6 +75,11 @@ def _episode_summary(episode: Mapping[str, Any]) -> dict[str, Any]:
         "instance_id": episode["instance_id"],
         "output": str(output),
         "calls": len(trace),
+        "cumulative_full_tokens": full_tokens,
+        "cumulative_materialized_tokens": materialized_tokens,
+        "candidate_trajectory_gross_saving_fraction": (
+            1 - materialized_tokens / full_tokens if full_tokens else 0.0
+        ),
         "official_resolved": official.get("resolved"),
         "official_error": official.get("error"),
         "trace_indices_contiguous": contiguous,
@@ -133,14 +149,73 @@ def build(campaign_root: Path) -> dict[str, Any]:
                     int(cell["calls"]) - int(control["calls"])
                 )
                 divergences = []
-                for candidate_episode, control_episode in zip(
-                    cell["episodes"].values(), control["episodes"].values()
+                paired_issues = []
+                control_summaries = [
+                    _episode_summary(episode)
+                    for episode in control["episodes"].values()
+                ]
+                for candidate_episode, control_episode, candidate_summary, control_summary in zip(
+                    cell["episodes"].values(), control["episodes"].values(),
+                    episodes, control_summaries,
                 ):
-                    divergences.append(_divergence_accounting(
+                    divergence = _divergence_accounting(
                         _trace(Path(str(candidate_episode["output"]))),
                         _trace(Path(str(control_episode["output"]))),
-                    ))
+                    )
+                    divergences.append(divergence)
+                    baseline_tokens = int(control_summary["cumulative_full_tokens"])
+                    candidate_tokens = int(
+                        candidate_summary["cumulative_materialized_tokens"]
+                    )
+                    raw_saving = (
+                        1 - candidate_tokens / baseline_tokens
+                        if baseline_tokens else 0.0
+                    )
+                    lost_success = bool(
+                        control_summary["official_resolved"]
+                        and not candidate_summary["official_resolved"]
+                    )
+                    paired_issues.append({
+                        "instance_id": candidate_summary["instance_id"],
+                        "candidate_official_resolved": bool(
+                            candidate_summary["official_resolved"]
+                        ),
+                        "control_official_resolved": bool(
+                            control_summary["official_resolved"]
+                        ),
+                        "joint_success": bool(
+                            candidate_summary["official_resolved"]
+                            and control_summary["official_resolved"]
+                        ),
+                        "lost_persistent_full_success": lost_success,
+                        "candidate_calls": int(candidate_summary["calls"]),
+                        "control_calls": int(control_summary["calls"]),
+                        "calls_delta_vs_persistent_full": (
+                            int(candidate_summary["calls"])
+                            - int(control_summary["calls"])
+                        ),
+                        "candidate_full_tokens": int(
+                            candidate_summary["cumulative_full_tokens"]
+                        ),
+                        "candidate_materialized_tokens": candidate_tokens,
+                        "control_full_tokens": baseline_tokens,
+                        "raw_saving_vs_persistent_full": raw_saving,
+                        "failure_aware_saving_vs_persistent_full": (
+                            0.0 if lost_success else raw_saving
+                        ),
+                        "candidate_trajectory_gross_saving_fraction": (
+                            candidate_summary[
+                                "candidate_trajectory_gross_saving_fraction"
+                            ]
+                        ),
+                        "evidence_admissible": bool(
+                            candidate_summary["evidence_admissible"]
+                            and control_summary["evidence_admissible"]
+                        ),
+                        **divergence,
+                    })
                 row["episode_divergence"] = divergences
+                row["paired_issues"] = paired_issues
                 first_candidate = Path(str(next(iter(cell["episodes"].values()))["output"]))
                 first_control = Path(str(next(iter(control["episodes"].values()))["output"]))
                 row["shared_first_episode_exact"] = (
@@ -182,6 +257,34 @@ def write_bundle(evidence: Mapping[str, Any], output: Path) -> None:
                     "failure_aware_saving_vs_persistent_full"
                 ),
             })
+    issue_fields = [
+        "sequence_id", "repeat", "strategy_id", "strategy_config_id",
+        "instance_id", "candidate_official_resolved",
+        "control_official_resolved", "joint_success",
+        "lost_persistent_full_success", "candidate_calls", "control_calls",
+        "calls_delta_vs_persistent_full", "candidate_full_tokens",
+        "candidate_materialized_tokens", "control_full_tokens",
+        "candidate_trajectory_gross_saving_fraction",
+        "raw_saving_vs_persistent_full",
+        "failure_aware_saving_vs_persistent_full",
+        "first_action_diverged", "first_action_divergence_request",
+        "identical_input_first_action_divergence",
+        "selection_active_at_first_action_divergence",
+        "selected_tokens_before_divergence_or_terminal",
+        "full_tokens_before_divergence_or_terminal", "evidence_admissible",
+    ]
+    with (output / "issues.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=issue_fields)
+        writer.writeheader()
+        for run in evidence["runs"]:
+            for issue in run.get("paired_issues") or ():
+                writer.writerow({
+                    "sequence_id": run["sequence_id"],
+                    "repeat": run["repeat"],
+                    "strategy_id": run["strategy_id"],
+                    "strategy_config_id": run["strategy_config_id"],
+                    **{key: issue.get(key) for key in issue_fields[4:]},
+                })
     lines = [
         "# Autonomous persistent-session evidence", "",
         f"Campaign: `{evidence['campaign_id']}`", "",
