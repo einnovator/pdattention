@@ -1606,7 +1606,14 @@ older epoch yields 37.43\% and 35.61\%, respectively.  Keeping the most recent
 old epoch whole (E1) yields 31.80\%.  Thus the desired 30--50\% opportunity
 band is not the remaining problem.  The next autonomous candidate is
 E0+M1/V1/P1, with R1/M1/V1/P1 as its conservative fallback; whether either
-avoids E0's extra-call cost remains unmeasured.
+avoids E0's extra-call cost is the next gate.  Targeted pilots on the frozen
+issue-5 prefix reject both.  M1/V1/P1 fails official grading after 18 calls
+while saving 34.97\% on its own trajectory; R1/M1/V1/P1 fails in 9 calls while
+saving 37.23\%.  Both independently produce the same incorrect patch, mapping
+address \texttt{0} to Django's default address instead of \texttt{0.0.0.0}.
+Because E2 resolves 2/2 from the same prefix, one old mutation, verification,
+and protocol turn per epoch does not preserve all useful conditioning carried
+by two complete epochs.  Neither hybrid advances.
 
 \begin{figure}[H]
 \centering
@@ -2720,9 +2727,12 @@ diverge at temperature zero, this is evidence of a noisy outcome surface, not
 an accuracy gain.  No instruction-epoch profile transfers to Paper~4.5 yet.
 The next valid test randomizes and interleaves repeated full-sequence E2 and
 \textsc{Full} executions.  The frozen profile screen identifies
-E0+M1/V1/P1 at 39.81\% opportunity and R1/M1/V1/P1 at 37.43\% as the next
-compact-control candidates; autonomous runs must now establish whether they
-avoid E0's call expansion.  The
+E0+M1/V1/P1 at 39.81\% opportunity and R1/M1/V1/P1 at 37.43\%, but their first
+autonomous pilots both fail with the same incorrect patch.  Coarse semantic
+role floors therefore do not substitute for the two complete epochs that let
+E2 solve 2/2.  The next causal test must compare E2 with the compact spine and
+restore one omitted causal group at a time before another autonomous profile
+advances.  The
 one-to-ten-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent
 sequences. Held-out sequences, additional models, and additional harnesses

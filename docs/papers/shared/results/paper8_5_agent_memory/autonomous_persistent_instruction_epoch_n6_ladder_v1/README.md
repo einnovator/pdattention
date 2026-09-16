@@ -59,9 +59,15 @@ epochs.
 | E0 + R2/M1/V1/P1 | 35.61% |
 | E1: keep one old epoch whole | 31.80% |
 
-All six reach the 30--50% opportunity band by N=6. The first autonomous
-candidate is E0+M1/V1/P1: unlike call-dominated E0, it keeps one mutation,
-verification, and clean protocol causal turn from every older instruction
-epoch while retaining 39.81% fixed-trajectory opportunity. R1/M1/V1/P1 is the
-predeclared conservative fallback. These are opportunity points, not quality
-or end-to-end saving results.
+All six reach the 30--50% opportunity band by N=6. E0+M1/V1/P1 keeps one
+mutation, verification, and clean protocol causal turn from every older
+instruction epoch while retaining 39.81% fixed-trajectory opportunity;
+R1/M1/V1/P1 is the predeclared conservative fallback at 37.43%.
+
+The targeted autonomous pilots reject both compact spines on the frozen
+issue-5 prefix. M1/V1/P1 fails official grading after 18 calls while saving
+34.97% on its own trajectory. R1/M1/V1/P1 fails in 9 calls while saving
+37.23%. Both independently produce the same incorrect patch, mapping address
+`0` to Django's default address rather than `0.0.0.0`. Since E2 solves 2/2 on
+the same prefix, coarse mutation/verification/protocol roles do not capture
+all useful conditioning in the two retained epochs. Neither hybrid advances.
