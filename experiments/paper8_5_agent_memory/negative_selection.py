@@ -123,6 +123,7 @@ class TurnSemantics:
     changed_resources: tuple[str, ...]
     successful: bool
     observation_complete: bool
+    resource_scope: str | None = None
 
     @property
     def resources(self) -> tuple[str, ...]:
@@ -188,6 +189,33 @@ def _declared_accesses(rows: Iterable[AgentRecord]) -> tuple[ResourceAccess, ...
     return tuple(unique.values())
 
 
+def _runtime_resource_scope(rows: Iterable[AgentRecord]) -> str | None:
+    """Return a stable non-task scope for resource identity.
+
+    Relative paths such as ``setup.cfg`` recur across unrelated repositories.
+    The instrumented runtime already supplies an environment fingerprint and
+    cwd; omitting that scope creates false DAG edges between different
+    workspaces.  Missing scope deliberately preserves the legacy identity and
+    therefore cannot be used as cross-workspace proof.
+    """
+
+    for row in reversed(tuple(rows)):
+        environment = row.metadata.get("environment_fingerprint")
+        if not isinstance(environment, str) or not environment:
+            continue
+        cwd = row.metadata.get("cwd")
+        return f"env={environment}|cwd={cwd if isinstance(cwd, str) else '?'}"
+    return None
+
+
+def _scoped_resource(resource: str, scope: str | None) -> str:
+    return f"{scope}::{resource}" if scope else resource
+
+
+def _unscoped_resource(resource: str) -> str:
+    return resource.split("::", 1)[1] if "::" in resource else resource
+
+
 def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
     records = history.record_by_id
     epochs: dict[str, int] = {}
@@ -209,12 +237,19 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
             for row in observations
         )
         declared_rows = (action, *observations)
+        resource_scope = _runtime_resource_scope(declared_rows)
         operation = _declared_operation(declared_rows)
-        accesses = list(_declared_accesses(declared_rows))
+        accesses = [
+            replace(
+                access,
+                resource_id=_scoped_resource(access.resource_id, resource_scope),
+            )
+            for access in _declared_accesses(declared_rows)
+        ]
         resources = tuple(dict.fromkeys(
             access.resource_id for access in accesses
         )) or tuple(dict.fromkeys(
-            _normalize_resource(value)
+            _scoped_resource(_normalize_resource(value), resource_scope)
             for row in declared_rows for value in row.resource_ids
         ))
         if not accesses:
@@ -232,11 +267,17 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
                 span_end=None,
                 signature=None,
             ) for access in accesses]
-        changed_resources = list(_declared_values(declared_rows, "changed_resource_ids"))
+        changed_resources = [
+            _scoped_resource(resource, resource_scope)
+            for resource in _declared_values(declared_rows, "changed_resource_ids")
+        ]
         if operation == OperationKind.WRITE:
             for resource in resources:
                 epochs[resource] = epochs.get(resource, 0) + 1
-        discovered = _declared_values(declared_rows, "discovered_resource_ids")
+        discovered = tuple(
+            _scoped_resource(resource, resource_scope)
+            for resource in _declared_values(declared_rows, "discovered_resource_ids")
+        )
         rows.append(TurnSemantics(
             turn,
             action,
@@ -247,6 +288,7 @@ def _turn_semantics(history: CanonicalAgentHistory) -> list[TurnSemantics]:
             tuple(changed_resources),
             bool(observations) and all(row.return_code in (None, 0) for row in observations),
             observation_complete,
+            resource_scope,
         ))
     return rows
 
@@ -403,7 +445,7 @@ def build_negative_exclusions(
                 continue
             concrete = {
                 resource for resource in older.discovered_resources
-                if not resource.startswith("search:")
+                if not _unscoped_resource(resource).startswith("search:")
             }
             if not concrete:
                 continue
@@ -516,12 +558,18 @@ def build_negative_exclusions(
                 ):
                     continue
                 dependencies = set(later.resources)
-                dependencies.update(_metadata_resource_ids(
-                    later.observations, "verification_resource_ids"
-                ))
-                dependencies.update(_metadata_resource_ids(
-                    later.observations, "dependency_resource_ids"
-                ))
+                dependencies.update(
+                    _scoped_resource(resource, later.resource_scope)
+                    for resource in _metadata_resource_ids(
+                        later.observations, "verification_resource_ids"
+                    )
+                )
+                dependencies.update(
+                    _scoped_resource(resource, later.resource_scope)
+                    for resource in _metadata_resource_ids(
+                        later.observations, "dependency_resource_ids"
+                    )
+                )
                 shared = set(write.changed_resources).intersection(dependencies)
                 if not shared and not config.h2b_allow_workspace_verification:
                     continue
@@ -629,9 +677,17 @@ def build_negative_exclusions(
         }
         pinned.update(_metadata_resource_ids(history.records, "dependency_resource_ids"))
         pinned = {_normalize_resource(resource) for resource in pinned}
+        pinned_unscoped = {_unscoped_resource(resource) for resource in pinned}
         for older in reads:
             resources = set(older.resources)
-            if resources and resources.isdisjoint(active) and resources.isdisjoint(pinned):
+            if (
+                resources
+                and resources.isdisjoint(active)
+                and resources.isdisjoint(pinned)
+                and {
+                    _unscoped_resource(resource) for resource in resources
+                }.isdisjoint(pinned_unscoped)
+            ):
                 candidates.append(_candidate(
                     history=history,
                     semantics=older,
@@ -785,5 +841,8 @@ def reacquired_excluded_resources(
     requested = set(_command_resources(command))
     if operation == BashOperation.SEARCH_DISCOVERY:
         requested.add(_search_signature(command or ""))
-    hidden = {resource for row in exclusions for resource in row.resource_ids}
+    hidden = {
+        _unscoped_resource(resource)
+        for row in exclusions for resource in row.resource_ids
+    }
     return tuple(sorted(requested.intersection(hidden)))

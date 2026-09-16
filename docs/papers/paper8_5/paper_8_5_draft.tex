@@ -116,6 +116,14 @@ reverses the apparent E2 loss: two E2 forks resolve 2/2 with identical
 incorrect patches.  E2 sends 21.92\% fewer tokens at equal mean calls, but the
 reversal is diagnostic evidence of trajectory instability, not a policy
 qualification result.
+A subsequent structural audit finds the missing invariant: E0 preserves old
+user task statements but removes their terminal closure turns, making resolved
+tasks appear unanswered.  Adding one finalization bundle per retired epoch
+(E0+F1) removes no active-issue interaction, exactly matches the predeclared
+cross-workspace closure oracle, and saves 43.7\% at N=5.  On one frozen
+15,861-token request, E0 yields 0/3 valid actions, whereas E0+F1 yields 3/3
+repeat-identical valid actions at 45.61\% saving; this is next-action evidence,
+not yet autonomous qualification.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1614,6 +1622,58 @@ address \texttt{0} to Django's default address instead of \texttt{0.0.0.0}.
 Because E2 resolves 2/2 from the same prefix, one old mutation, verification,
 and protocol turn per epoch does not preserve all useful conditioning carried
 by two complete epochs.  Neither hybrid advances.
+
+That conclusion was incomplete because it compared coarse floors before
+checking whether the serialized policies preserved a resolved conversation
+structure.  A record-level oracle-alignment audit exposes the defect.  Global
+R4/M2/V2/P1 removes 37.2--79.1\% of the active issue's interaction tokens at
+the N=3--5 prefixes.  E0 removes none of the active issue, but pins every old
+user task statement while deleting every corresponding completion turn.  At
+N=5 its request therefore begins with five consecutive task descriptions,
+four of which appear unanswered.  E1 and E2 merely leave one or two such
+epochs whole; they do not express the actual invariant.
+
+We add F1: retain the latest terminal finalization action--observation bundle
+from each retired instruction epoch.  E0+F1 consumes no evaluator task ID,
+episode label, or workspace boundary; it uses the same genuine-user
+instruction epochs and typed finalization records already present in the
+ordinary history.  Evaluator episode identity is used only afterward to score
+alignment against an independent-cross-workspace oracle that retires prior
+interaction detail but keeps one closure bundle per pinned prompt.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tokenizer-exact structural alignment on locked persistent-\textsc{Full}
+prefixes.  E0+F1 keeps the active issue whole and exactly matches the stated
+closure oracle.  Structural alignment is not autonomous quality evidence.}
+\label{tab:closure-oracle-alignment}
+\begin{tabular}{rrrrr}
+\toprule
+Completed issues & E0+F1 saving & Active removed & Oracle P/R & Orphaned prompts \\
+\midrule
+2 & 13.8\% & 0.0\% & 100\% / 100\% & 0 \\
+3 & 52.7\% & 0.0\% & 100\% / 100\% & 0 \\
+4 & 52.6\% & 0.0\% & 100\% / 100\% & 0 \\
+5 & 43.7\% & 0.0\% & 100\% / 100\% & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The corresponding frozen issue-5 ablation isolates closure from backend
+variance.  The four arms share one canonical 15,861-token request and are
+interleaved for three repeats.
+\textsc{Full} produces one valid, repeat-identical search in 3/3 trials.  E0
+selects 7,621 tokens (51.95\% saving) but produces no valid one-command action
+in 0/3: its response enumerates all five issue statements as simultaneous
+unrelated problems and emits four command blocks.  E0+F1 selects 8,627 tokens
+(45.61\% saving) and restores one valid, repeat-identical current-Django search
+in 3/3.  E2 is also valid in 3/3 but selects 11,918 tokens (24.86\% saving).
+This directly implicates orphaned prompt closure rather than loss of active-
+issue evidence.  The next expensive test is therefore one autonomous E0+F1
+fork from the identical prefix and reset workspace, not another broad floor
+sweep.  Artifacts are released under
+\texttt{policy\_oracle\_alignment\_n2\_n5\_v1}.
 
 \begin{figure}[H]
 \centering

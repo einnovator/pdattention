@@ -210,6 +210,9 @@ def _episode_command(
         "--completed-mutation-turns", str(strategy.get("completed_mutation_turns", 1)),
         "--completed-verification-turns", str(strategy.get("completed_verification_turns", 1)),
         "--completed-protocol-turns", str(strategy.get("completed_protocol_turns", 0)),
+        "--completed-finalization-turns", str(
+            strategy.get("completed_finalization_turns", 0)
+        ),
         "--completed-instruction-epochs", str(
             strategy.get("completed_instruction_epochs", 0)
         ),

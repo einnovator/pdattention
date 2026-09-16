@@ -489,6 +489,7 @@ class PersistentInstructionEpochRetirementConfig:
     prior_mutation_turns: int = 0
     prior_verification_turns: int = 0
     prior_protocol_turns: int = 0
+    prior_finalization_turns: int = 0
     prior_full_epochs: int = 0
 
     def __post_init__(self) -> None:
@@ -497,6 +498,7 @@ class PersistentInstructionEpochRetirementConfig:
             self.prior_mutation_turns,
             self.prior_verification_turns,
             self.prior_protocol_turns,
+            self.prior_finalization_turns,
             self.prior_full_epochs,
         ) < 0:
             raise ValueError("prior instruction-epoch floors cannot be negative")
@@ -596,6 +598,7 @@ class PersistentInstructionEpochRetirementSelector:
             for role, count in (
                 (AgentRecordRole.MUTATION, self.config.prior_mutation_turns),
                 (AgentRecordRole.VERIFICATION, self.config.prior_verification_turns),
+                (AgentRecordRole.FINALIZATION, self.config.prior_finalization_turns),
             ):
                 if not count:
                     continue

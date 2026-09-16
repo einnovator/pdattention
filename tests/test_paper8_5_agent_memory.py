@@ -1170,6 +1170,35 @@ def test_h3_keeps_kr_newest_reads_for_the_same_resource_version_and_span():
         _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
     )
 
+
+def test_h3_scopes_identical_paths_by_runtime_environment():
+    common = {
+        "cwd": "/testbed",
+        "output_complete": True,
+        "resource_version_fingerprints": {"setup.cfg": "same-bytes"},
+    }
+    cross_workspace = recordize_minisweagent_messages(_heuristic_messages(
+        ("cat setup.cfg", "first", {**common, "environment_fingerprint": "env-a"}),
+        ("cat setup.cfg", "second", {**common, "environment_fingerprint": "env-b"}),
+    ))
+    assert not build_negative_exclusions(
+        cross_workspace,
+        _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
+    )
+
+    same_workspace = recordize_minisweagent_messages(_heuristic_messages(
+        ("cat setup.cfg", "first", {**common, "environment_fingerprint": "env-a"}),
+        ("cat setup.cfg", "second", {**common, "environment_fingerprint": "env-a"}),
+    ))
+    rows = build_negative_exclusions(
+        same_workspace,
+        _negative_config(NegativeRule.H3_READ_SUPERSEDED, same_span_reads_to_keep=1),
+    )
+    assert [row.causal_group_id for row in rows] == ["turn:t0000"]
+    assert rows[0].resource_ids == (
+        "env=env-a|cwd=/testbed::setup.cfg",
+    )
+
     incomplete = recordize_minisweagent_messages(_heuristic_messages(
         ("cat foo.py", "partial", {
             "resource_version_fingerprints": {"foo.py": "v1"},

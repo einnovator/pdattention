@@ -855,6 +855,7 @@ def run(args: argparse.Namespace) -> Path:
         completed_mutation_turns=args.completed_mutation_turns,
         completed_verification_turns=args.completed_verification_turns,
         completed_protocol_turns=args.completed_protocol_turns,
+        completed_finalization_turns=args.completed_finalization_turns,
         completed_instruction_epochs=args.completed_instruction_epochs,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
@@ -1186,6 +1187,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--completed-mutation-turns", type=int, default=1)
     parser.add_argument("--completed-verification-turns", type=int, default=1)
     parser.add_argument("--completed-protocol-turns", type=int, default=0)
+    parser.add_argument(
+        "--completed-finalization-turns",
+        type=int,
+        default=0,
+        help=(
+            "Keep this many terminal submission/finalization turns from each "
+            "retired instruction epoch. This prevents preserved user prompts "
+            "from appearing unanswered after their interaction detail is retired."
+        ),
+    )
     parser.add_argument(
         "--completed-instruction-epochs",
         type=int,

@@ -8,6 +8,9 @@ from experiments.paper8_5_agent_memory.multi_issue_session import (
     compose_issue_session_schedule,
     compose_multi_issue_session,
 )
+from experiments.paper8_5_agent_memory.audit_policy_oracle_alignment import (
+    audit_prefix,
+)
 from experiments.paper8_5_agent_memory.recordizer import (
     active_task_content,
     recordize_replay_messages,
@@ -239,6 +242,66 @@ def test_instruction_epoch_policy_applies_prior_floors_per_epoch():
     )
     assert selected.middle_candidate_turns == 4
     assert selected.middle_selected_turns == 2
+
+
+def test_instruction_epoch_finalization_floor_closes_each_pinned_prior_prompt():
+    trajectories = (
+        _trajectory("repo__issue-1", "cat a.py"),
+        _trajectory("repo__issue-2", "cat b.py"),
+        _trajectory("repo__issue-3", "cat c.py"),
+    )
+    result = compose_multi_issue_session(
+        trajectories,
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    selected = PersistentInstructionEpochRetirementSelector(
+        PersistentInstructionEpochRetirementConfig(prior_finalization_turns=1)
+    ).select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=100_000),
+    )
+    selected_ids = set(selected.selected_record_ids)
+
+    prior_finalization_turns = [
+        turn for turn in history.turns[:-2]
+        if any(
+            history.record_by_id[record_id].has_role(AgentRecordRole.FINALIZATION)
+            for record_id in turn.record_ids
+        )
+    ]
+    assert len(prior_finalization_turns) == 2
+    assert all(
+        set(turn.record_ids).issubset(selected_ids)
+        for turn in prior_finalization_turns
+    )
+    assert all(
+        set(turn.record_ids).isdisjoint(selected_ids)
+        for turn in history.turns[:-2]
+        if turn not in prior_finalization_turns
+    )
+
+
+def test_oracle_alignment_audit_exposes_orphaned_e0_and_exact_e0_f1():
+    trajectories = (
+        _trajectory("repo__issue-1", "cat a.py"),
+        _trajectory("repo__issue-2", "cat b.py"),
+        _trajectory("repo__issue-3", "cat c.py"),
+    )
+    result = audit_prefix({
+        "schema_version": 1,
+        "session_id": "audit-test",
+        "episodes": [{"trajectory": row} for row in trajectories],
+    })
+    policies = {row["policy"]: row for row in result["policies"]}
+
+    assert policies["E0"]["active_interaction_excluded_tokens"] == 0
+    assert policies["E0"]["orphaned_prior_instruction_epochs"] == 2
+    assert policies["E0_F1"]["active_interaction_excluded_tokens"] == 0
+    assert policies["E0_F1"]["orphaned_prior_instruction_epochs"] == 0
+    assert policies["E0_F1"]["oracle_exclusion_precision"] == 1.0
+    assert policies["E0_F1"]["oracle_exclusion_recall"] == 1.0
 
 
 def test_every_selector_family_preserves_all_user_instructions():
