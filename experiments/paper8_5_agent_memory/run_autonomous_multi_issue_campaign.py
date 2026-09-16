@@ -55,11 +55,30 @@ def _slug(value: str) -> str:
     return value.replace("__", "-").replace("/", "-")
 
 
-def _control_cell_id(cell: Mapping[str, Any]) -> str:
-    return (
-        f"{cell['sequence_id']}__S01_persistent_full"
-        f"__r{int(cell['repeat']):02d}"
-    )
+def _control_cell_id(
+    cell: Mapping[str, Any],
+    state_cells: Mapping[str, Mapping[str, Any]],
+) -> str:
+    """Resolve the unique same-sequence persistent-FULL control identity.
+
+    Cell IDs include ``strategy_config_id`` when it is non-default, so
+    reconstructing the ID from only the strategy name silently fails for
+    frozen configured controls.  Resolve from the campaign ledger instead.
+    """
+
+    candidates = [
+        cell_id
+        for cell_id, row in state_cells.items()
+        if row.get("sequence_id") == cell.get("sequence_id")
+        and int(row.get("repeat", -1)) == int(cell.get("repeat", -2))
+        and row.get("strategy_id") == "S01_persistent_full"
+    ]
+    if len(candidates) != 1:
+        raise ValueError(
+            "shared first episode requires exactly one same-sequence "
+            f"persistent-FULL control; found {len(candidates)}"
+        )
+    return candidates[0]
 
 
 def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None:
@@ -500,7 +519,9 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
     for instance_id in benchmark_card["instance_ids"]:
         load_locked_task(benchmark, task_index=None, instance_id=instance_id)
 
-    cells = campaign_cells(spec)
+    all_cells = campaign_cells(spec)
+    cell_registry = {str(row["cell_id"]): row for row in all_cells}
+    cells = list(all_cells)
     if args.sequence_id:
         cells = [row for row in cells if row["sequence_id"] in set(args.sequence_id)]
     if args.strategy_id:
@@ -559,7 +580,10 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 episode_number == 1
                 and bool(cell["strategy"].get("share_full_first_episode", False))
             ):
-                shared_control_cell_id = _control_cell_id(cell)
+                shared_control_cell_id = _control_cell_id(
+                    cell,
+                    {**cell_registry, **state["cells"]},
+                )
                 control = state["cells"].get(shared_control_cell_id)
                 if not args.dry_run:
                     if not control or control.get("status") != "complete":

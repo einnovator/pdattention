@@ -95,9 +95,12 @@ autonomous executions, saves 36.41\% and 45.82\% against contemporaneous
 \textsc{Full}, and reduces calls by six and nine.  Removing the episode signal
 changes the result: boundary-free global R4/M2/V2/P1, while preserving every
 user instruction, resolves only 2/3, increases calls from 55 to 66, and is
-assigned zero failure-aware saving.  The episode-aware result therefore meets
-the discovery gate on one ordered sequence family but is not yet a general
-deployment profile.
+assigned zero failure-aware saving.  A two-level boundary-free instruction-
+epoch policy instead keeps the active epoch whole and retires only earlier
+assistant--tool detail.  On a clean 3/3 persistent-\textsc{Full} replication,
+this E0 policy also resolves 3/3, saves 34.83\% against the paired control, and
+reduces calls from 66 to 64.  This is one ordered sequence family, not yet a
+general deployment profile.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -1352,6 +1355,85 @@ because E0 is an exact logical no-op until the second genuine instruction.
 The exact evidence is released under
 \texttt{instruction\_epoch\_oracle\_n3\_clean\_full\_v1}.
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.88\linewidth]{../shared/results/paper8_5_agent_memory/instruction_epoch_oracle_n3_clean_full_v1/instruction_epoch_scaling.png}
+  \caption{Empirical fixed-trajectory opportunity at N=1--3 and analytic
+  equal-size scaling to N=10.  The dotted whole-request line holds the observed
+  N=3 instruction share fixed only to illustrate the denominator effect; it is
+  not a forecast because the immutable prompt share can change with N.}
+  \label{fig:instruction-epoch-scaling}
+\end{figure}
+
+The first autonomous E0 execution lands inside the desired saving region but
+does not qualify because its contemporaneous control is not a clean accuracy
+baseline.  Persistent \textsc{Full} resolves only Scikit-learn (1/3); Django
+and Pytest end in grader/submission errors.  E0 preserves the Scikit-learn
+success, resolves Pytest, and reproduces all 17 Django actions exactly because
+the first issue is a logical no-op.  Table~\ref{tab:instruction-epoch-autonomous}
+reports both denominators.
+
+\begin{table}[H]
+\centering
+\small
+\caption{First autonomous instruction-epoch E0 execution.  Paired saving uses
+the contemporaneous persistent-\textsc{Full} denominator; candidate gross uses
+E0's own unpruned trajectory.  Both rows are evidence-inadmissible for a quality
+claim because the control contains grader errors.}
+\label{tab:instruction-epoch-autonomous}
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Resolved & Calls & Full tokens & Sent tokens & Gross & Paired \\
+\midrule
+Persistent \textsc{Full} & 1/3 & 47 & 623,656 & 623,656 & 0.00\% & 0.00\% \\
+Instruction epoch E0 & 2/3 & 44 & 567,826 & 320,375 & 43.58\% & 48.63\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Thus E0 loses zero contemporaneous \textsc{Full} successes, reduces calls by
+three, and meets the 30--50\% paired-saving interval.  It nevertheless reaches
+only 66.7\% unconditional resolution, below the predeclared 80\% gate, and the
+sequence-level evidence is inadmissible.  We preserve rather than retry away
+that baseline instability and run a fresh paired replication.  A positive
+claim requires a repeat-qualified \textsc{Full} control, not merely conditional
+preservation of one success.  The complete first execution is released under
+\texttt{autonomous\_persistent\_instruction\_epoch\_n3\_e0\_v1}.
+
+A fresh replication supplies the missing clean control and passes every
+predeclared discovery gate.  Persistent \textsc{Full} resolves 3/3 in 66 calls.
+E0 shares issue 1 exactly---a valid optimization because no earlier
+instruction epoch exists---then independently executes issues 2 and 3.  It
+resolves 3/3 in 64 calls, sends 506,776 tokens, and has an 839,601-token own-
+trajectory counterfactual.  Its paired saving is 34.83\% and its own-trajectory
+gross saving is 39.64\%.  Pytest falls from 14 to 10 calls; Scikit-learn rises
+from 15 to 17, leaving two fewer calls in aggregate.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Clean autonomous N=3 instruction-epoch replication.  Both rows are
+admissible; E0 loses no official success and remains inside the frozen 30--50\%
+paired-saving interval.}
+\label{tab:instruction-epoch-clean-replication}
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Resolved & Calls & Full tokens & Sent tokens & Gross & Paired \\
+\midrule
+Persistent \textsc{Full} & 3/3 & 66 & 777,645 & 777,645 & 0.00\% & 0.00\% \\
+Instruction epoch E0 & 3/3 & 64 & 839,601 & 506,776 & 39.64\% & 34.83\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This is the first valid boundary-free point in the requested quality--saving
+region.  It qualifies E0 for repeat and sequence expansion, not for a universal
+default: retirement assumes independent instruction epochs, the uncertainty
+unit is one ordered sequence, and related/dependent work still requires a
+resource-DAG disconnection certificate or fail-closed retention.  The evidence
+is released under
+\texttt{autonomous\_persistent\_instruction\_epoch\_n3\_e0\_replication\_v1}.
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation
@@ -2433,8 +2515,13 @@ transfer when equivalent episode metadata exists, but not yet for a general
 default: the uncertainty unit is still one ordered sequence family.  In the
 realistic boundary-free setting, global R4 preserves all user instructions yet
 resolves only 2/3, adds 11 calls, and receives zero failure-aware saving.  This
-rules out treating the explicit-boundary frontier as a deployable default.  The
-one-to-ten-issue campaign continues to treat active-only
+rules out treating the explicit-boundary frontier as a deployable default.  A
+two-level instruction-epoch policy fixes the immediate error by keeping the
+active epoch whole: its first admissible clean replication resolves 3/3 like
+persistent \textsc{Full}, saves 34.83\% on the paired denominator, and uses two
+fewer calls.  This qualifies sequence expansion while retaining the stronger
+guardrail that dependent epochs need resource-DAG evidence.  The one-to-ten-
+issue campaign continues to treat active-only
 retirement as session hygiene unless it beats deliberate fresh sessions on
 related or dependent sequences. Held-out sequences, additional models, and
 additional harnesses remain the confirmation frontier.

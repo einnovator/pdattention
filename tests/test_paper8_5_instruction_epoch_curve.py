@@ -1,6 +1,7 @@
 from experiments.paper8_5_agent_memory.instruction_epoch_curve import (
     instruction_epoch_curve,
 )
+from experiments.paper8_5_agent_memory.plot_instruction_epoch_curve import curve_series
 
 
 def _trajectory(instance_id: str, payload: str) -> dict:
@@ -42,3 +43,16 @@ def test_instruction_epoch_curve_separates_whole_request_and_interaction_saving(
     )
     assert all(row["instruction_floor_fraction"] > 0 for row in points)
     assert result["claim_scope"].startswith("logical opportunity")
+
+
+def test_scaling_curve_distinguishes_interaction_ideal_from_whole_request():
+    evidence = instruction_epoch_curve((
+        _trajectory("repo-a__one", "old payload " * 100),
+        _trajectory("repo-b__two", "middle payload " * 100),
+        _trajectory("repo-c__three", "new payload " * 100),
+    ))
+    series = curve_series(evidence, maximum_n=10)
+
+    assert series["interaction_ideal"][-1] == 0.9
+    assert series["fixed_instruction_fraction_illustration"][-1] < 0.9
+    assert series["empirical_interaction"][-1] > series["empirical_whole"][-1]

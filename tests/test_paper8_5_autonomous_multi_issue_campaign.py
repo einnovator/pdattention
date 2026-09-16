@@ -9,6 +9,7 @@ import pytest
 from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign import (
     TARGET_SAVING_MAX,
     TARGET_SAVING_MIN,
+    _control_cell_id,
     _aggregate,
     _divergence_accounting,
     _validate_sequence_pairing_identity,
@@ -132,6 +133,27 @@ def test_campaign_registry_rejects_more_than_ten_issues():
 
     with pytest.raises(ValueError, match="one to ten"):
         validate_spec(spec, benchmark)
+
+
+def test_shared_first_episode_resolves_configured_control_cell_identity():
+    treatment = {
+        "sequence_id": "sequence-a",
+        "repeat": 1,
+        "strategy_id": "S03_instruction_epoch_retirement",
+    }
+    configured_control_id = (
+        "sequence-a__S01_persistent_full-configured-control-v1__r01"
+    )
+    state_cells = {
+        configured_control_id: {
+            "sequence_id": "sequence-a",
+            "repeat": 1,
+            "strategy_id": "S01_persistent_full",
+        },
+        "sequence-a__S03_instruction_epoch_retirement-e0__r01": treatment,
+    }
+
+    assert _control_cell_id(treatment, state_cells) == configured_control_id
 
 
 def test_confirmation_registry_freezes_repeats_and_held_out_sequence():
