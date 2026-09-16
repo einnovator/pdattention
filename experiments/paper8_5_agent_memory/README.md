@@ -111,6 +111,12 @@ eligible turn per completed issue. It is a causal deployable rule, not an
 oracle add-back; its purpose is to retain ordinary tool-use conditioning when
 the recent tail is dominated by recovery and submission turns.
 
+`persistent_instruction_epoch_retirement` additionally accepts
+`--completed-instruction-epochs N`.  It keeps the current genuine-user
+instruction epoch and the immediately preceding `N` epochs whole while still
+pinning every user-authored instruction.  This exposes a causal E0/E1/E2
+quality--saving ladder without evaluator task IDs or explicit episode markers.
+
 Before positive selection, `dag.py` can construct a conservative resource/effect
 DAG. `DAG_CERTIFIED` excludes only bundles backed by complete runtime identity
 (cwd, environment, resource versions, complete output, and witnesses). Static

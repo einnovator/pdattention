@@ -305,6 +305,7 @@ class AutonomousSelectionConfig:
     completed_mutation_turns: int = 1
     completed_verification_turns: int = 1
     completed_protocol_turns: int = 0
+    completed_instruction_epochs: int = 0
     keep_completed_task_statements: bool = True
     boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
     require_exact_sidecars: bool = True
@@ -342,6 +343,7 @@ class AutonomousSelectionConfig:
             self.completed_mutation_turns,
             self.completed_verification_turns,
             self.completed_protocol_turns,
+            self.completed_instruction_epochs,
         )):
             raise ValueError("completed-episode turn floors cannot be negative")
         if self.max_completion_tokens is not None and self.max_completion_tokens < 1:
@@ -420,6 +422,7 @@ class AutonomousSelectionConfig:
                     prior_mutation_turns=self.completed_mutation_turns,
                     prior_verification_turns=self.completed_verification_turns,
                     prior_protocol_turns=self.completed_protocol_turns,
+                    prior_full_epochs=self.completed_instruction_epochs,
                 )
             )
         if self.policy == "head_tail_recency":

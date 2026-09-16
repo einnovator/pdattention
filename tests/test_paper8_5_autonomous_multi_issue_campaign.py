@@ -10,6 +10,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     TARGET_SAVING_MAX,
     TARGET_SAVING_MIN,
     _control_cell_id,
+    _episode_command,
     _aggregate,
     _divergence_accounting,
     _validate_sequence_pairing_identity,
@@ -105,6 +106,44 @@ def test_instruction_epoch_registry_is_boundary_free_and_uniquely_identified():
     assert treatment["strategy"]["boundary_mode"] == "boundary_free"
     assert treatment["strategy"]["completed_recent_turns"] == 0
     assert "e0_all_user_active_epoch_full_v1" in treatment["cell_id"]
+
+
+def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
+    spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    spec["strategies"][1]["completed_instruction_epochs"] = 2
+    cells = campaign_cells(spec)
+    treatment = next(
+        row for row in cells
+        if row["policy"] == "persistent_instruction_epoch_retirement"
+    )
+    args = argparse.Namespace(
+        upstream_base_url="http://127.0.0.1:1234",
+        tokenizer="tokenizer",
+        upstream_request_timeout_seconds=60,
+        upstream_qualification_path=None,
+        upstream_connect_attempts=1,
+        upstream_connect_retry_seconds=0,
+        upstream_relay_target=None,
+        docker_executable="docker",
+        docker_platform=None,
+        pythonpath=[],
+        skip_grading=False,
+        grade_auxiliary_workspace_state=False,
+    )
+    command = _episode_command(
+        spec=spec,
+        benchmark=BENCHMARK,
+        cell=treatment,
+        instance_id=spec["sequences"][0]["instance_ids"][0],
+        episode_number=1,
+        output=tmp_path,
+        prefix=None,
+        session_id="session-test",
+        args=args,
+    )
+
+    assert command[command.index("--completed-instruction-epochs") + 1] == "2"
 
 
 def test_campaign_registry_accepts_ten_issue_asymptotic_sequence():

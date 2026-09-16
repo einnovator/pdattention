@@ -1434,6 +1434,47 @@ resource-DAG disconnection certificate or fail-closed retention.  The evidence
 is released under
 \texttt{autonomous\_persistent\_instruction\_epoch\_n3\_e0\_replication\_v1}.
 
+Before expanding to N=6, we screened six additional short Easy-14 identities
+under ordinary \textsc{Full} and then repeated every first-pass success.  All six
+resolve in the first screen, but only three resolve again: SymPy-16886,
+Scikit-12585, and Django-16145.  Scikit-14496 and Django-14089 are genuine
+second-run failures, while Django-15368 ends in an inadmissible
+\texttt{patch\_apply\_failed} grader/submission error.  Calls also vary despite
+temperature zero---for example, Scikit-12585 increases from 14 to 19 calls.
+Thus ``baseline-success task'' is not a deterministic task label, and a policy
+comparison must expose unconditional resolution and repeat reliability rather
+than conditioning silently on one convenient \textsc{Full} trajectory.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Current-endpoint N=1 qualification screen.  The second execution is
+preserved even when it fails; only identities with two official successes
+advance.}
+\label{tab:instruction-epoch-n1-repeat-screen}
+\begin{tabular}{lrrrrl}
+\toprule
+Identity & Calls A & A & Calls B & B & Advances? \\
+\midrule
+SymPy-16886 & 9 & pass & 10 & pass & yes \\
+Scikit-12585 & 14 & pass & 19 & pass & yes \\
+Scikit-14496 & 13 & pass & 22 & fail & no \\
+Django-15368 & 16 & pass & 21 & error & no \\
+Django-14089 & 22 & pass & 40 & fail & no \\
+Django-16145 & 26 & pass & 26 & pass & yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The N=6 sequence combines those three new repeat-qualified identities with
+Django-15277, Pytest-7982, and Scikit-13135, each of which already has multiple
+admissible \textsc{Full} successes in the released persistent-session evidence.
+The selector still receives no task ID, episode ID, completion flag, or
+workspace scope: it observes only ordinary message roles and record
+provenance.  Screen evidence is released separately under
+\texttt{instruction\_epoch\_n1\_candidate\_screen\_v1} and
+\texttt{instruction\_epoch\_n1\_candidate\_repeat\_v1}.
+
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
 turns pinned, and a whitespace counter. After making explicit truncation

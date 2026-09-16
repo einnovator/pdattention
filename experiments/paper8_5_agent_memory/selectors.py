@@ -489,6 +489,7 @@ class PersistentInstructionEpochRetirementConfig:
     prior_mutation_turns: int = 0
     prior_verification_turns: int = 0
     prior_protocol_turns: int = 0
+    prior_full_epochs: int = 0
 
     def __post_init__(self) -> None:
         if min(
@@ -496,6 +497,7 @@ class PersistentInstructionEpochRetirementConfig:
             self.prior_mutation_turns,
             self.prior_verification_turns,
             self.prior_protocol_turns,
+            self.prior_full_epochs,
         ) < 0:
             raise ValueError("prior instruction-epoch floors cannot be negative")
 
@@ -551,6 +553,7 @@ class PersistentInstructionEpochRetirementSelector:
 
         complete_by_epoch: dict[int, list[AgentTurn]] = {}
         active_complete_turns = 0
+        retained_prior_complete_turns = 0
         for turn in history.turns:
             if not turn.record_ids:
                 continue
@@ -565,6 +568,15 @@ class PersistentInstructionEpochRetirementSelector:
                     )
                 if turn.complete:
                     active_complete_turns += 1
+            elif (
+                epoch >= 0
+                and epoch >= active_epoch - self.config.prior_full_epochs
+            ):
+                for record_id in turn.record_ids:
+                    selected_ids.add(record_id)
+                    reasons[record_id] = "recent_complete_instruction_epoch"
+                if turn.complete:
+                    retained_prior_complete_turns += 1
             elif epoch >= 0 and turn.complete:
                 complete_by_epoch.setdefault(epoch, []).append(turn)
             elif not turn.complete:
@@ -636,9 +648,15 @@ class PersistentInstructionEpochRetirementSelector:
             budget=budget,
             mandatory_ids=set(selected_ids),
             head_turns=0,
-            tail_turns=active_complete_turns + len(selected_prior_turn_ids),
-            middle_candidate_turns=prior_complete_turns,
-            middle_selected_turns=len(selected_prior_turn_ids),
+            tail_turns=(
+                active_complete_turns
+                + retained_prior_complete_turns
+                + len(selected_prior_turn_ids)
+            ),
+            middle_candidate_turns=prior_complete_turns + retained_prior_complete_turns,
+            middle_selected_turns=(
+                retained_prior_complete_turns + len(selected_prior_turn_ids)
+            ),
         )
 
         omitted_by_group: dict[str, list[str]] = {}
