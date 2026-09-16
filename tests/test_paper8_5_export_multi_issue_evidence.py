@@ -89,3 +89,41 @@ def test_export_separates_candidate_gross_from_paired_failure_aware(tmp_path):
     write_bundle(evidence, output)
     assert "40.00%" in (output / "README.md").read_text(encoding="utf-8")
     assert (output / "runs.csv").is_file()
+
+
+def test_export_pairs_control_with_nondefault_strategy_config_id(tmp_path):
+    root = tmp_path / "campaign"
+    full = _episode(root / "full", "task-a", 2)
+    candidate_episode = _episode(root / "candidate", "task-a", 1)
+    state = {
+        "campaign_id": "campaign-configured-control-v1",
+        "cells": {
+            "sequence__S01_persistent_full-boundary_free_v2__r01": {
+                "status": "complete", "sequence_id": "sequence", "repeat": 1,
+                "strategy_id": "S01_persistent_full",
+                "strategy_config_id": "boundary_free_v2",
+                "official_resolved_count": 1, "issue_count": 1, "calls": 2,
+                "cumulative_full_tokens": 1000,
+                "cumulative_materialized_tokens": 1000,
+                "episodes": {"first": full},
+            },
+            "sequence__S03_global-r4__r01": {
+                "status": "complete", "sequence_id": "sequence", "repeat": 1,
+                "strategy_id": "S03_global", "strategy_config_id": "r4",
+                "official_resolved_count": 1, "issue_count": 1, "calls": 1,
+                "cumulative_full_tokens": 800,
+                "cumulative_materialized_tokens": 600,
+                "episodes": {"first": candidate_episode},
+            },
+        },
+    }
+    root.mkdir(exist_ok=True)
+    (root / "campaign_state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    evidence = build(root)
+    candidate = next(row for row in evidence["runs"] if row["strategy_id"] == "S03_global")
+
+    assert candidate["paired_persistent_full_cell_id"].endswith(
+        "S01_persistent_full-boundary_free_v2__r01"
+    )
+    assert candidate["paired"]["failure_aware_saving_vs_persistent_full"] == 0.4

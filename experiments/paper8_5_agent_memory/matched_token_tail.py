@@ -11,7 +11,11 @@ from .materialization import (
     materialize_tool_observation_tail_to_ceiling,
 )
 from .model import AgentMemoryPlan, AgentRecordRole, CanonicalAgentHistory
-from .selectors import TokenCounter, whitespace_tokens
+from .selectors import (
+    TokenCounter,
+    immutable_instruction_record_ids,
+    whitespace_tokens,
+)
 
 
 @dataclass(frozen=True)
@@ -37,12 +41,7 @@ def matched_token_tail_mandatory_record_ids(
     group so a strict recency ceiling cannot orphan its observation.
     """
 
-    mandatory = {
-        record.record_id
-        for record in history.records
-        if record.has_role(AgentRecordRole.SYSTEM)
-        or record.has_role(AgentRecordRole.TASK)
-    }
+    mandatory = set(immutable_instruction_record_ids(history))
     if history.records:
         current_group = history.records[-1].causal_group_id
         mandatory.update(
@@ -58,12 +57,7 @@ def matched_token_tail_full_floor_record_ids(
 ) -> frozenset[str]:
     """Records that must remain whole when establishing the budget floor."""
 
-    immutable = {
-        record.record_id
-        for record in history.records
-        if record.has_role(AgentRecordRole.SYSTEM)
-        or record.has_role(AgentRecordRole.TASK)
-    }
+    immutable = set(immutable_instruction_record_ids(history))
     if not history.records:
         return frozenset(immutable)
     current_group = history.records[-1].causal_group_id
@@ -89,8 +83,8 @@ def materialize_matched_token_tail(
 ) -> MaterializedMemoryPlan:
     """Build a role-valid tail under a strict materialized-token ceiling.
 
-    System and task records are immutable. Complete action--observation turns
-    are admitted newest first. The oldest admitted boundary turn may be made to
+    System and all user-authored instruction records are immutable. Complete
+    action--observation turns are admitted newest first. The oldest admitted boundary turn may be made to
     fit only by trimming oversized tool observations; every other record stays
     byte-for-byte whole. Once a boundary turn is partial, no older turn is
     considered, preserving a contiguous recency tail.
@@ -119,8 +113,7 @@ def materialize_matched_token_tail(
     reasons = {
         record_id: (
             "immutable_prompt"
-            if records[record_id].has_role(AgentRecordRole.SYSTEM)
-            or records[record_id].has_role(AgentRecordRole.TASK)
+            if record_id in immutable_instruction_record_ids(history)
             else "current_causal_group"
         )
         for record_id in full_floor_ids

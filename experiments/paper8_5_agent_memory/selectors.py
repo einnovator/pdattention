@@ -54,6 +54,25 @@ def _record_costs(
     return {record.record_id: count_tokens(record.content) for record in history.records}
 
 
+def immutable_instruction_record_ids(
+    history: CanonicalAgentHistory,
+) -> frozenset[str]:
+    """Return the semantic prompt floor shared by every memory policy.
+
+    ``USER_INPUT`` is provenance-sensitive: later user-authored instructions
+    are immutable, whereas tool observations transported with ``role=user``
+    remain typed ``TOOL_OBSERVATION`` and are eligible for retirement.
+    """
+
+    return frozenset(
+        record.record_id
+        for record in history.records
+        if record.has_role(AgentRecordRole.SYSTEM)
+        or record.has_role(AgentRecordRole.TASK)
+        or record.has_role(AgentRecordRole.USER_INPUT)
+    )
+
+
 def _plan(
     *,
     policy: str,
@@ -127,6 +146,9 @@ class PersistentEpisodeRetirementConfig:
     mutation_turns: int = 1
     verification_turns: int = 1
     protocol_turns: int = 0
+    # Kept for schema compatibility with early active-only pilots.  User
+    # instructions are now an unconditional semantic floor, so False can only
+    # select the legacy policy label; it never removes a task statement.
     keep_completed_task_statements: bool = True
 
     def __post_init__(self) -> None:
@@ -166,26 +188,19 @@ class PersistentEpisodeRetirementSelector:
             int(record.metadata.get("episode_index", 1)) for record in history.records
         ]
         active_episode = max(episode_indices, default=1)
-        mandatory_ids = {
+        mandatory_ids = set(immutable_instruction_record_ids(history))
+        mandatory_ids.update(
             record.record_id
             for record in history.records
-            if record.has_role(AgentRecordRole.SYSTEM)
-            or (
-                record.has_role(AgentRecordRole.TASK)
-                and (
-                    self.config.keep_completed_task_statements
-                    or int(record.metadata.get("episode_index", 1)) == active_episode
-                )
-            )
-            or int(record.metadata.get("episode_index", 1)) == active_episode
-        }
+            if int(record.metadata.get("episode_index", 1)) == active_episode
+        )
         reasons = {
             record_id: (
                 "active_episode"
                 if int(records[record_id].metadata.get("episode_index", 1))
                 == active_episode
                 and not records[record_id].has_role(AgentRecordRole.SYSTEM)
-                and not records[record_id].has_role(AgentRecordRole.TASK)
+                and record_id not in immutable_instruction_record_ids(history)
                 else "immutable_prompt"
             )
             for record_id in mandatory_ids
@@ -347,11 +362,7 @@ class PersistentGlobalRetirementSelector:
         del query
         costs = _record_costs(history, count_tokens)
         records = history.record_by_id
-        selected_ids = {
-            record.record_id
-            for record in history.records
-            if record.has_role(AgentRecordRole.SYSTEM)
-        }
+        selected_ids = set(immutable_instruction_record_ids(history))
         reasons = {record_id: "immutable_system" for record_id in selected_ids}
 
         # User-authored task statements and follow-up instructions are an
@@ -524,12 +535,7 @@ class HeadMiddleTailSelector:
         mandatory_turn_ids = {turn.turn_id for turn in (*head, *tail)}
         middle = [turn for turn in complete if turn.turn_id not in mandatory_turn_ids]
 
-        mandatory_ids = {
-            record.record_id
-            for record in history.records
-            if record.has_role(AgentRecordRole.SYSTEM)
-            or record.has_role(AgentRecordRole.TASK)
-        }
+        mandatory_ids = set(immutable_instruction_record_ids(history))
         reasons = {record_id: "immutable_prompt" for record_id in mandatory_ids}
         for turn in head:
             mandatory_ids.update(turn.record_ids)

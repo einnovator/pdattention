@@ -64,6 +64,7 @@ from .selectors import (
     PersistentGlobalRetirementConfig,
     PersistentGlobalRetirementSelector,
     TokenCounter,
+    immutable_instruction_record_ids,
     whitespace_tokens,
 )
 from .serialization import serialize_materialized_messages
@@ -541,14 +542,7 @@ def transform_autonomous_payload(
     mandatory_ids = (
         matched_token_tail_full_floor_record_ids(history)
         if matched_tail
-            else frozenset(
-                row.record_id for row in history.records
-                if row.has_role(AgentRecordRole.SYSTEM)
-                or (
-                    row.has_role(AgentRecordRole.TASK)
-                    and row.metadata.get("episode_status") != "completed"
-                )
-            )
+            else immutable_instruction_record_ids(history)
         )
     mandatory_tokens = sum(
         count_tokens(history.record_by_id[record_id].content)
@@ -676,11 +670,7 @@ def transform_autonomous_payload(
             if row.content != history.record_by_id[row.record_id].content
         },
         source_history_digest=history.digest,
-        decision_metadata=(
-            {"instruction_floor": "all_user_instructions"}
-            if config.policy == "persistent_global_retirement"
-            else {}
-        ),
+        decision_metadata={"instruction_floor": "all_user_instructions"},
     )
     # FULL is the behavioral control.  A negative policy that currently has
     # nothing to remove must be the same control too: retain every incoming
@@ -728,23 +718,9 @@ def transform_autonomous_payload(
         if selected_messages != legacy_projection:
             raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
     selected_ids = set(plan.selected_record_ids)
-    immutable_ids = {
-        row.record_id for row in history.records
-        if row.primary_role.value == "system"
-        or (
-            config.policy != "persistent_global_retirement"
-            and row.primary_role.value == "task"
-            and row.metadata.get("episode_status") != "completed"
-        )
-    }
-    if config.policy == "persistent_global_retirement":
-        user_instructions = [
-            row for row in history.records
-            if row.primary_role in {AgentRecordRole.TASK, AgentRecordRole.USER_INPUT}
-        ]
-        immutable_ids.update(row.record_id for row in user_instructions)
+    immutable_ids = set(immutable_instruction_record_ids(history))
     if not immutable_ids.issubset(selected_ids):
-        raise AssertionError("selector removed an immutable system/task record")
+        raise AssertionError("selector removed an immutable user instruction")
     if history.records and history.records[-1].record_id not in selected_ids:
         raise AssertionError("selector removed the current trajectory record")
 

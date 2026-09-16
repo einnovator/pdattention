@@ -12,14 +12,24 @@ from experiments.paper8_5_agent_memory.recordizer import (
     active_task_content,
     recordize_replay_messages,
 )
+from experiments.paper8_5_agent_memory.oracle import leave_one_bundle_out_cases
 from experiments.paper8_5_agent_memory.run_structural_screen import _query
 from experiments.paper8_5_agent_memory.model import AgentMemoryBudget, AgentRecordRole
+from experiments.paper8_5_agent_memory.matched_token_tail import (
+    matched_token_tail_mandatory_record_ids,
+    materialize_matched_token_tail,
+)
 from experiments.paper8_5_agent_memory.selectors import (
     FullHistorySelector,
+    HeadMiddleTailConfig,
+    HeadMiddleTailSelector,
+    MiddleSelectionStrategy,
     PersistentEpisodeRetirementSelector,
     PersistentEpisodeRetirementConfig,
     PersistentGlobalRetirementConfig,
     PersistentGlobalRetirementSelector,
+    immutable_instruction_record_ids,
+    whitespace_tokens,
 )
 
 
@@ -138,6 +148,65 @@ def test_boundary_free_global_policy_uses_only_continuous_stream_floors():
     ) == 2
 
 
+def test_every_selector_family_preserves_all_user_instructions():
+    result = compose_multi_issue_session(
+        (
+            _trajectory("repo__issue-1", "cat a.py"),
+            _trajectory("repo__issue-2", "cat b.py"),
+        ),
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+    )
+    history = recordize_replay_messages(result["messages"])
+    immutable = immutable_instruction_record_ids(history)
+    assert len(immutable) == 3  # system, initial task, and later user prompt
+
+    selectors = (
+        PersistentEpisodeRetirementSelector(PersistentEpisodeRetirementConfig(
+            recent_turns=0,
+            mutation_turns=0,
+            verification_turns=0,
+            keep_completed_task_statements=False,
+        )),
+        HeadMiddleTailSelector(HeadMiddleTailConfig(
+            head_turns=0,
+            tail_turns=1,
+            middle_strategy=MiddleSelectionStrategy.NONE,
+        )),
+    )
+    for selector in selectors:
+        plan = selector.select(
+            history=history,
+            query="ignored",
+            budget=AgentMemoryBudget(max_tokens=10_000),
+        )
+        assert immutable <= set(plan.selected_record_ids)
+
+    mandatory = matched_token_tail_mandatory_record_ids(history)
+    ceiling = sum(
+        whitespace_tokens(history.record_by_id[record_id].content)
+        for record_id in mandatory
+    )
+    matched = materialize_matched_token_tail(
+        history,
+        max_materialized_tokens=ceiling,
+    )
+    assert immutable <= set(matched.logical_plan.selected_record_ids)
+
+    full = FullHistorySelector().select(
+        history=history,
+        query="ignored",
+        budget=AgentMemoryBudget(max_tokens=10_000),
+    )
+    cases = leave_one_bundle_out_cases(
+        history=history,
+        full_plan=full,
+        decision_turn=2,
+        reference_action_digest="reference",
+    )
+    assert cases
+    assert all(immutable <= set(case.selected_record_ids) for case in cases)
+
+
 def test_replay_recordizer_rejects_mixed_typed_and_inferred_records():
     result = compose_multi_issue_session((
         _trajectory("repo__issue-1", "true"),
@@ -204,7 +273,7 @@ def test_same_locked_order_can_be_scheduled_fresh_or_persistent():
     assert len({row["session_id"] for row in fresh["sessions"]}) == 2
 
 
-def test_active_episode_policy_removes_all_completed_issue_records():
+def test_active_episode_policy_retires_completed_tools_but_keeps_instructions():
     composed = compose_multi_issue_session((
         _trajectory("repo__issue-1", "cat a.py"),
         _trajectory("repo__issue-2", "cat b.py"),
@@ -223,8 +292,16 @@ def test_active_episode_policy_removes_all_completed_issue_records():
     )
     selected_records = [history.record_by_id[row] for row in selected.selected_record_ids]
     assert selected.policy == "persistent_active_episode"
+    assert sum(row.has_role(AgentRecordRole.TASK) for row in selected_records) == 2
     assert all(
         row.has_role(AgentRecordRole.SYSTEM)
+        or row.has_role(AgentRecordRole.TASK)
+        or row.has_role(AgentRecordRole.USER_INPUT)
         or row.metadata.get("episode_index") == 2
+        for row in selected_records
+    )
+    assert not any(
+        row.metadata.get("episode_index") == 1
+        and row.has_role(AgentRecordRole.ASSISTANT_ACTION)
         for row in selected_records
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Sequence
 
-from .model import AgentMemoryPlan, CanonicalAgentHistory
+from .model import AgentMemoryPlan, AgentRecordRole, CanonicalAgentHistory
 
 
 def restore_causal_groups(
@@ -104,15 +104,17 @@ def leave_one_bundle_out_cases(
 
     Future action data appears only in the scoring label.  It is never included
     in selected_record_ids and therefore cannot leak into the model request.
-    TASK/SYSTEM groups are excluded because their removal is a separate explicit
-    semantic-role ablation, not part of the deployment-policy oracle.
+    SYSTEM, TASK, and later USER_INPUT groups are excluded because user-authored
+    instructions are outside the deployment-policy optimization space.
     """
 
     records = history.record_by_id
     immutable_groups = {
         record.causal_group_id
         for record in history.records
-        if record.turn_id in {"system", "task"}
+        if record.has_role(AgentRecordRole.SYSTEM)
+        or record.has_role(AgentRecordRole.TASK)
+        or record.has_role(AgentRecordRole.USER_INPUT)
     }
     groups = [
         group for group in full_plan.selected_causal_group_ids

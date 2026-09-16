@@ -622,6 +622,7 @@ def build_negative_exclusions(
             resource
             for record in history.records
             if record.has_role(AgentRecordRole.TASK)
+            or record.has_role(AgentRecordRole.USER_INPUT)
             or record.has_role(AgentRecordRole.MUTATION)
             or record.has_role(AgentRecordRole.ERROR_OR_REJECTION)
             for resource in record.resource_ids
@@ -656,6 +657,8 @@ def build_negative_exclusions(
     protected.update(
         record.causal_group_id for record in history.records
         if record.has_role(AgentRecordRole.ERROR_OR_REJECTION)
+        or record.has_role(AgentRecordRole.TASK)
+        or record.has_role(AgentRecordRole.USER_INPUT)
     )
     # One group can satisfy more than one rule. Keep the first rule in the
     # predeclared config order so arm accounting remains mutually exclusive.
@@ -729,11 +732,14 @@ class NegativeHeuristicSelector:
             protected_groups.update(
                 row.causal_group_id for row in history.records
                 if row.has_role(AgentRecordRole.ERROR_OR_REJECTION)
+                or row.has_role(AgentRecordRole.TASK)
+                or row.has_role(AgentRecordRole.USER_INPUT)
             )
             mandatory_ids = {
                 row.record_id for row in history.records
                 if row.has_role(AgentRecordRole.SYSTEM)
                 or row.has_role(AgentRecordRole.TASK)
+                or row.has_role(AgentRecordRole.USER_INPUT)
                 or row.causal_group_id in protected_groups
             }
             selected_middle = [

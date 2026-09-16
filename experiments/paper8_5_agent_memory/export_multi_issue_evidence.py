@@ -82,6 +82,20 @@ def build(campaign_root: Path) -> dict[str, Any]:
     state_path = campaign_root / "campaign_state.json"
     state = _read(state_path)
     cells = state.get("cells") or {}
+    controls: dict[tuple[str, int], tuple[str, Mapping[str, Any]]] = {}
+    for control_id, control in cells.items():
+        if (
+            control.get("strategy_id") != "S01_persistent_full"
+            or control.get("status") != "complete"
+        ):
+            continue
+        key = (str(control["sequence_id"]), int(control["repeat"]))
+        if key in controls:
+            raise ValueError(
+                "ambiguous persistent-FULL controls for "
+                f"sequence={key[0]!r}, repeat={key[1]}"
+            )
+        controls[key] = (str(control_id), control)
     runs: list[dict[str, Any]] = []
     for cell_id, cell in sorted(cells.items()):
         if cell.get("status") != "complete":
@@ -108,12 +122,11 @@ def build(campaign_root: Path) -> dict[str, Any]:
             "evidence_admissible": all(e["evidence_admissible"] for e in episodes),
         }
         if cell["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}:
-            control_id = (
-                f"{cell['sequence_id']}__S01_persistent_full"
-                f"__r{int(cell['repeat']):02d}"
+            control_entry = controls.get(
+                (str(cell["sequence_id"]), int(cell["repeat"]))
             )
-            control = cells.get(control_id)
-            if control and control.get("status") == "complete":
+            if control_entry is not None:
+                control_id, control = control_entry
                 row["paired_persistent_full_cell_id"] = control_id
                 row["paired"] = paired_point(cell, control)
                 row["calls_delta_vs_persistent_full"] = (

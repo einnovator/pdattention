@@ -325,16 +325,23 @@ Do not conflate the immutable beginning of an agent run with its recency tail.
 Every structured policy must expose two independent controls:
 
 ```text
-SYSTEM + TASK
+SYSTEM + ALL USER-AUTHORED INSTRUCTIONS
 + first H complete causal turns
 + selected middle turns
 + last T complete causal turns
 ```
 
 `H` and `T` are independent. Selection and retrieval operate only on the
-middle interval after removing overlap between the head and tail. The initial
-system/task records remain pinned even when `H=0`; `H` counts completed
+middle interval after removing overlap between the head and tail. The system,
+initial task, and later user-authored instruction records remain pinned even
+when `H=0`; `H` counts completed
 assistant--observation turns after the task statement.
+
+This floor is semantic, not based on transport role. A tool observation carried
+as an OpenAI `user` message remains selectable when typed provenance marks it
+as `TOOL_OBSERVATION`. Oversized user instructions may later be internally
+handled by engine-side PRA, but logical agent-history policies do not retire
+them.
 
 Required pilot values:
 
@@ -405,7 +412,7 @@ arm `PRA-100`, which is reserved for Paper 4.5's exact full-history runtime gate
 
 Initial rules fail closed:
 
-- never exclude system, task, incomplete/current turn, mandatory head/tail,
+- never exclude system, any user-authored instruction, incomplete/current turn, mandatory head/tail,
   unresolved error, latest unverified mutation, or an unknown effect;
 - require complete stdout/stderr, return code, no timeout/truncation, canonical
   cwd, and input resource-version fingerprints;

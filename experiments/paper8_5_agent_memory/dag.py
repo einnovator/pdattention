@@ -401,7 +401,12 @@ class DagCertifiedExclusionSelector:
             for turn in protected_turns
         }
         for record in history.records:
-            if record.has_role(AgentRecordRole.ERROR_OR_REJECTION):
+            if (
+                record.has_role(AgentRecordRole.ERROR_OR_REJECTION)
+                or record.has_role(AgentRecordRole.SYSTEM)
+                or record.has_role(AgentRecordRole.TASK)
+                or record.has_role(AgentRecordRole.USER_INPUT)
+            ):
                 protected.add(record.causal_group_id)
         for role in (AgentRecordRole.MUTATION, AgentRecordRole.VERIFICATION):
             matching = [record for record in history.records if record.has_role(role)]

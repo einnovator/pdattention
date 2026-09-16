@@ -90,10 +90,14 @@ R4 first divergence: \textsc{Full} yields a valid Bash action in 5/5 repeats,
 R4 in 0/5, and 24/25 one-group add-backs restore a valid action. The broad
 repair set implicates tool-protocol conditioning rather than one omitted task
 fact and motivates a generic clean action--observation exemplar floor. The
-resulting R4/M2/V2/P1 policy resolves 6/6 issues in two autonomous executions,
-saves 36.41\% and 45.82\% against contemporaneous \textsc{Full}, and reduces
-calls by six and nine. This repeated discovery result meets the predeclared
-gate on one ordered sequence family; held-out sequences remain required.
+resulting episode-aware R4/M2/V2/P1 policy resolves 6/6 issues in two
+autonomous executions, saves 36.41\% and 45.82\% against contemporaneous
+\textsc{Full}, and reduces calls by six and nine.  Removing the episode signal
+changes the result: boundary-free global R4/M2/V2/P1, while preserving every
+user instruction, resolves only 2/3, increases calls from 55 to 66, and is
+assigned zero failure-aware saving.  The episode-aware result therefore meets
+the discovery gate on one ordered sequence family but is not yet a general
+deployment profile.
 The resulting thesis is that obsolete state and obsolete agent memory are
 different concepts; bounded memory should retire payload separately from
 provenance and control.  The central evaluation therefore includes both fresh
@@ -291,11 +295,18 @@ three-zone policy
 \[
 S_t = I \cup H_h \cup \pi_{\mathrm{middle}}(M_t,Q_t,B') \cup T_\tau,
 \]
-where $I$ is the immutable system prompt and task statement, $H_h$ contains the
+where $I$ is the immutable system prompt and all user-authored instructions,
+$H_h$ contains the
 first $h$ complete action--observation turns, $T_\tau$ contains the latest
 $\tau$ complete turns, and the selector operates only on the non-overlapping
 middle $M_t$. The head and tail controls are independent; $h=0$ never removes
-$I$. Our pilot grid uses
+$I$.  Thus task definitions and later user prompts are not optimization
+candidates in this study.  A tool observation transported through a
+user-role message remains selectable because its semantic type and provenance
+are \textsc{Tool-Observation}, not \textsc{User-Instruction}.  Oversized user
+instructions may eventually be handled internally by an engine-side PRA
+implementation, but that is outside the logical-retirement intervention
+measured here. Our pilot grid uses
 \[
 h\in\{0,1,2,4\},\qquad \tau\in\{1,2,3,5,10\}.
 \]
@@ -344,12 +355,24 @@ conversation state must not be confused with a physically merged repository.
 
 The first episode-aware policy keeps the active episode whole and retains each
 completed episode's task statement, newest complete turn, latest mutation, and
-latest verification.  A more aggressive diagnostic keeps only the system
-prompt and active episode.  The latter models complete retirement of unrelated
-completed work and requires behavioral qualification before promotion.  These
-episode policies operate before any within-episode token budget, so their
+latest verification.  An early aggressive diagnostic kept only the system
+prompt and active episode.  That legacy arm is now superseded because it could
+remove an earlier user-authored task statement.  Under the current invariant,
+``active only'' can retire all completed assistant--tool interaction but still
+retains every user instruction.  These episode policies operate before any within-episode token budget, so their
 saving can grow with the number of completed issues instead of being capped by
 a nominal 90\% retention treatment.
+
+Explicit episode boundaries are useful to an evaluator but are not a sound
+deployment assumption: developers need not announce that a new issue has
+started.  We therefore also evaluate a \emph{boundary-free global} policy over
+one continuous transcript.  It receives no episode identifier, completion
+marker, or workspace-scope annotation.  Every user-authored instruction is
+still immutable, while recent-turn, mutation, verification, and protocol
+floors are computed globally over typed assistant--tool causal groups.  This
+arm isolates the realistic question: how much of the tool-interaction history
+can be retired when the selector is not told where one task ends and another
+begins?
 
 \subsection{Retrieval policies}
 
@@ -974,6 +997,12 @@ Active only / 3 & 11,206/33,431 & 66.48\% & 497,808/1,147,100 & 56.60\% \\
 \end{tabular}
 \end{table}
 
+The displayed active-only rows are retained as a historical structural upper
+bound but are not eligible policy evidence: their legacy configuration allowed
+completed task statements to be removed.  Every subsequent experiment pins
+all user-authored instructions.  Tool observations remain selectable based on
+typed provenance even when the harness transports them with the user role.
+
 Three deliberately fresh \textsc{Full} sessions consume 496,540 cumulative
 message-content tokens.  The active-only persistent arm consumes 497,808,
 only 1,268 tokens (0.26\%) more, while preserving a single logical session
@@ -1227,8 +1256,50 @@ six and nine fewer calls.  The descriptive means are 41.11\% saving and 7.5
 fewer calls.  Candidate-trajectory gross savings are 30.02\% and 28.23\%; the
 difference from paired savings reflects avoided decisions rather than hidden
 token accounting.  This result qualifies P1 for frozen transfer to the
-Paper~4.5 native-K/V evaluation.  It does not yet establish generality across
-ordered sequences, agents, or model families.
+Paper~4.5 native-K/V evaluation \emph{when equivalent episode metadata is
+available}.  It does not yet establish generality across boundary-free
+sessions, ordered sequences, agents, or model families.
+
+\subsection{Boundary-free global retention}
+
+The preceding policy is allowed to know which completed turns belong to each
+issue.  We next remove that signal.  The model and selector receive one
+continuous transcript with no episode identifier, completion marker, or
+workspace-scope annotation.  The immutable floor contains the system prompt
+and every user-authored instruction; mini-swe-agent tool observations remain
+selectable even though its compatibility protocol transports them using the
+user message role.  R4/M2/V2/P1 is then applied globally to assistant--tool
+causal groups.  Thus this treatment measures retirement of interaction
+history, not accidental deletion of a task statement.
+
+\begin{table}[H]
+\centering
+\small
+\caption{First autonomous boundary-free N=3 result.  ``Candidate gross''
+uses the candidate's own unpruned trajectory counterfactual.  Paired saving
+charges materialized candidate tokens against contemporaneous persistent
+\textsc{Full}; failure-aware saving is zero after any lost paired success.}
+\label{tab:persistent-global-boundary-free-r4}
+\begin{tabular}{lrrrrrr}
+\toprule
+Policy & Resolved & Calls & Full tokens & Sent tokens & Gross & Paired / aware \\
+\midrule
+Persistent \textsc{Full} & 3/3 & 55 & 599,397 & 599,397 & 0.00\% & 0.00\% / 0.00\% \\
+Global R4/M2/V2/P1 & 2/3 & 66 & 748,306 & 293,091 & 60.83\% & 51.10\% / 0.00\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The aggregate compression is therefore not a viable saving.  Django falls
+from a 27-call success to an unresolved 40-call cap; Pytest improves from 14
+to 9 calls and remains resolved; Scikit-learn remains resolved but rises from
+14 to 17 calls.  Django's first action divergence occurs at request six, the
+first request after a causal group is retired, while still in the first issue.
+No prior-issue boundary exists at that point.  This localizes the failure to
+an overly short global tool-history floor rather than missing task-boundary
+metadata or a removed user prompt.  The predeclared adaptive response is to
+retain more interaction history (global R8) and rerun the complete paired
+cohort; R4 is rejected regardless of its 51.10\% raw paired saving.
 
 We also ran a structural-only opportunity screen for H1--H4 over the 23
 growing prefixes of the first instrumented trajectory, with $h=0$, two tail
@@ -2306,9 +2377,13 @@ conditioning, not merely backend variance, and motivates one clean completed
 action--observation exemplar per prior issue.  The resulting R4/M2/V2/P1 arm
 resolves 6/6 issues across two executions, saves 36.41\% and 45.82\% against
 paired \textsc{Full}, and reduces calls in both.  This repeated discovery result
-now qualifies the logical policy for frozen Paper~4.5 native-K/V transfer, but
-not yet for a general default: the uncertainty unit is still one ordered
-sequence family.  The one-to-five-issue campaign continues to treat active-only
+conditionally qualifies the logical policy for frozen Paper~4.5 native-K/V
+transfer when equivalent episode metadata exists, but not yet for a general
+default: the uncertainty unit is still one ordered sequence family.  In the
+realistic boundary-free setting, global R4 preserves all user instructions yet
+resolves only 2/3, adds 11 calls, and receives zero failure-aware saving.  This
+rules out treating the explicit-boundary frontier as a deployable default.  The
+one-to-five-issue campaign continues to treat active-only
 retirement as session hygiene unless it beats deliberate fresh sessions on
 related or dependent sequences. Held-out sequences, additional models, and
 additional harnesses remain the confirmation frontier.
