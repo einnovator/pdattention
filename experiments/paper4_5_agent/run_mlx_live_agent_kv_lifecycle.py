@@ -108,6 +108,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         source_ids = list(geometry.source_ids)
         wire_tail = list(geometry.wire_tail_ids)
         plan = geometry.plan
+        materialized_history = tuple(
+            (span.token_ids, span.position_start)
+            for span in geometry.materialized_history_spans
+        )
     else:
         if args.trajectory is None:
             raise ValueError(
@@ -132,6 +136,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             source_tokens=len(source_ids),
             retention_fraction=args.retention_fraction,
         )
+        materialized_history = ()
 
     source_cache = make_prompt_cache(model)
     _chunked_source_prefill(
@@ -328,6 +333,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        materialized_history=materialized_history,
     )
     one_borrower = runtime.registry.view(identities["source_id"]).active_request_ids
     try:
@@ -341,19 +347,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        materialized_history=materialized_history,
     )
     # A second oracle consumes the same packed selected K/V through mlx-lm's
     # ordinary dense attention.  The first reference isolates interval
     # addressing by using the same Metal consumer as the zero-copy candidate;
     # this oracle separately detects consumer-level numerical/behavioral drift.
     engine_oracle = begin(
-        "engine-oracle", segmented=False, disjoint_selection=False
+        "engine-oracle",
+        segmented=bool(materialized_history),
+        disjoint_selection=bool(materialized_history),
     )
     engine_oracle_result = engine_oracle.generate(
         model,
         wire_tail,
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        materialized_history=materialized_history,
     )
 
     cancelled = begin("cancelled")
@@ -364,6 +374,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             max_new_tokens=args.continuation_tokens,
             cancelled=lambda: True,
             prefill_step_size=args.prefill_step_size,
+            materialized_history=materialized_history,
         )
     except MLXLiveKVRequestCancelled:
         cancellation_observed = True
@@ -395,6 +406,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        materialized_history=materialized_history,
     )
 
     active_at_termination = begin("terminated-active")
@@ -464,8 +476,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "termination_tombstone_rejected_recreation": "terminated" in tombstone_error,
         "original_positions_preserved": candidate_result.source_position_base == len(source_ids),
-        "zero_selected_history_reencoding": all(
-            row.selected_text_reencoded_tokens == 0
+        "selected_history_reencoding_equals_explicit_materialization": all(
+            row.selected_text_reencoded_tokens
+            == sum(len(tokens) for tokens, _position in materialized_history)
             for row in (
                 candidate_result,
                 reference_result,
@@ -523,7 +536,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "turn": args.turn if frozen_decision is None else None,
         "retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + sum(len(tokens) for tokens, _position in materialized_history)
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision else args.retention_fraction
         ),
         "source_tokens": len(source_ids),
@@ -531,8 +548,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "wire_prefill_step_size": args.prefill_step_size,
         "source_prefill_step_size": args.source_prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
+        "materialized_history_tokens": sum(
+            len(tokens) for tokens, _position in materialized_history
+        ),
         "realized_retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + sum(len(tokens) for tokens, _position in materialized_history)
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision
             else plan.selected_tokens / max(len(source_ids), 1)
         ),

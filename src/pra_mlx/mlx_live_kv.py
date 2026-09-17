@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Callable
+from typing import Callable, Sequence
 
 from pra_hf.live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 
@@ -106,6 +106,7 @@ class MLXLiveKVRequest:
         max_new_tokens: int,
         cancelled: Callable[[], bool] | None = None,
         prefill_step_size: int | None = None,
+        materialized_history: Sequence[tuple[Sequence[int], int]] = (),
     ) -> MLXLiveKVGeneration:
         """Decode from selected live K/V without evaluating selected text.
 
@@ -135,6 +136,10 @@ class MLXLiveKVRequest:
                 segmented=self.segmented,
                 query_position_base=self.selection.plan.source_position_base,
             )
+            if materialized_history and not self.disjoint_selection:
+                raise ValueError(
+                    "Positioned materialized MLX history requires disjoint selection."
+                )
         except BaseException:
             self.fail()
             raise
@@ -145,6 +150,32 @@ class MLXLiveKVRequest:
             with self.runtime._model_runner_lock:
                 step_size = prefill_step_size or len(values)
                 logits = None
+                materialized_tokens = 0
+                previous_end = -1
+                for token_values, position_start_value in materialized_history:
+                    receipt = [int(value) for value in token_values]
+                    position_start = int(position_start_value)
+                    if not receipt:
+                        raise ValueError("Materialized MLX history spans cannot be empty.")
+                    if position_start < previous_end:
+                        raise ValueError(
+                            "Materialized MLX history spans must be ordered and disjoint."
+                        )
+                    position_end = position_start + len(receipt)
+                    if position_end > self.selection.plan.source_position_base:
+                        raise ValueError(
+                            "Materialized MLX history must precede the active wire tail."
+                        )
+                    _set_cache_query_start(cache, position_start)
+                    for offset in range(0, len(receipt), step_size):
+                        self._check_cancelled(cancelled)
+                        step = receipt[offset : offset + step_size]
+                        logits = model(mx.array([step], dtype=mx.int32), cache=cache)
+                    materialized_tokens += len(receipt)
+                    previous_end = position_end
+                _set_cache_query_start(
+                    cache, self.selection.plan.source_position_base
+                )
                 for offset in range(0, len(values), step_size):
                     self._check_cancelled(cancelled)
                     step = values[offset : offset + step_size]
@@ -178,7 +209,7 @@ class MLXLiveKVRequest:
             tuple(logits_trace),
             self.selection.plan.source_position_base,
             self.selection.plan.selected_tokens,
-            self.selection.selected_text_reencoded_tokens,
+            self.selection.selected_text_reencoded_tokens + materialized_tokens,
             self.selection.physical_kv_copy,
             len(self.selection.plan.intervals),
             (
@@ -192,6 +223,15 @@ class MLXLiveKVRequest:
                 else "dense_segmented" if self.segmented else "dense_pack"
             ),
         )
+
+
+def _set_cache_query_start(cache: Sequence[object], position_start: int) -> None:
+    """Move only the next-query RoPE frame; keep accumulated local K/V intact."""
+
+    for layer in cache:
+        if not hasattr(layer, "position_base") or not hasattr(layer, "local_offset"):
+            raise TypeError("MLX mixed-history cache lacks positioned-layer support.")
+        layer.position_base = int(position_start) - int(layer.local_offset)
 
 
 class MLXLiveKVRuntime:

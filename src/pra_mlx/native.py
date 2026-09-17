@@ -367,7 +367,16 @@ class MLXSelectedKVCache:
             local = create_causal_mask(n, self.local_offset, window_size=local_window)
         else:
             local = create_causal_mask(n, self.local_offset)
-        memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
+        if self.memory.intervals:
+            key_positions = mx.concatenate(
+                tuple(mx.arange(start, end) for start, end in self.memory.intervals)
+            )
+            query_positions = mx.arange(self.offset, self.offset + n)
+            memory = mx.expand_dims(query_positions, 1) >= mx.expand_dims(
+                key_positions, 0
+            )
+        else:
+            memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
         return mx.concatenate((memory, local), axis=1)
 
 

@@ -257,3 +257,24 @@ def test_mlx_disjoint_request_keeps_source_views_without_pack_copy(fake_mlx) -> 
     assert result.selection_pack_bytes == 0
     assert result.materialization_policy == "disjoint_segmented"
     assert request.outcome == "finished"
+
+
+def test_mlx_disjoint_request_materializes_original_position_history(fake_mlx) -> None:
+    runtime = _runtime()
+    runtime.register_source(
+        "source", _memory(), tenant_id="tenant", session_id="session", generation=1
+    )
+    request = _begin(runtime, "materialized", segmented=True)
+    model = _DeterministicMLXModel()
+
+    result = request.generate(
+        model,
+        [5],
+        max_new_tokens=1,
+        materialized_history=(([9, 10], 2),),
+    )
+
+    assert model.position_offsets == [2, 3, 6]
+    assert result.selected_kv_tokens == 4
+    assert result.selected_text_reencoded_tokens == 2
+    assert result.materialization_policy == "disjoint_segmented"
