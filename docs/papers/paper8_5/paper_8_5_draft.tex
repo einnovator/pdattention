@@ -60,7 +60,7 @@ re-encoding or copying K/V.  A new offline six-issue mechanism screen instead
 defines the frontier by the last two or three ordinary user prompts and retires
 only older causal groups with no information-flow path into that frontier.  It
 matches the independent-workspace oracle at 100\% token-weighted precision and
-recall and exposes up to 32.95\% final-snapshot opportunity, but remains an
+recall and exposes up to 39.30\% final-snapshot opportunity, but remains an
 offline result until autonomous quality and cumulative work are measured.
 \end{abstract}
 
@@ -996,15 +996,15 @@ recall.  This is a structural gate, not an accuracy result.
 \centering
 \small
 \caption{Offline recent-frontier DAG opportunity on one final frozen six-issue
-history snapshot (14,184 whitespace tokens).  Historical traces lack the new
+history snapshot (30,190 pinned-Qwen-tokenizer tokens).  Historical traces lack the new
 workspace-lineage field, so no-path decisions are heuristic.}
 \label{tab:frontier-dag-oracle}
 \begin{tabular}{lrrrr}
 \toprule
 Frontier & Oracle P/R & Whole group & Result only & Parameters+result \\
 \midrule
-Last 2 user prompts & 100/100\% & 32.95\% & 12.41\% & 27.72\% \\
-Last 3 user prompts & 100/100\% & 29.84\% & 11.35\% & 25.36\% \\
+Last 2 user prompts & 100/100\% & 39.30\% & 18.49\% & 33.78\% \\
+Last 3 user prompts & 100/100\% & 35.47\% & 17.09\% & 30.80\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1016,6 +1016,15 @@ and return-code envelope but removes payload detail.  The most aggressive
 stub also removes old tool parameters while preserving role alternation.  A
 future autonomous factorial must compare all three against the same
 \textsc{Full} executions; none is promoted from this offline screen.
+
+The first whole-group autonomous pilot is already a useful rejection.  Forked
+from the exact saved five-issue prefix, $M=2$ removes 41.19\% relative to its
+own trajectory counterfactual but takes 15 calls and sends 254,090 tokens,
+versus five calls and 142,822 tokens for historical \textsc{Full}.  Both fail
+official grading, so the row says nothing about accuracy; it does show that
+41.19\% per-request pruning can become $-77.91$\% paired end-to-end saving
+through trajectory inflation.  The next quality test therefore uses a paired
+\textsc{Full}-success task rather than averaging this failed control.
 
 \section{Deployable Logical Profiles}
 

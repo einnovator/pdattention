@@ -26,16 +26,16 @@ closed at 75% recall while heuristic mode reaches 100%; this is intended.
 ## Frozen real six-issue chain
 
 The real screen uses the completed persistent-FULL six-issue chain
-(`qwen3-coder:30b`) and whitespace token counts. The historical traces do not
+(`qwen3-coder:30b`) and its pinned Qwen tokenizer. The historical traces do not
 contain the new workspace-lineage field, so these rows are heuristic, not
 certified and not autonomous quality evidence.
 
 | Frontier | DAG vs independent-workspace oracle | Drop whole groups | Omit result payloads | Omit action parameters + results |
 |---|---:|---:|---:|---:|
-| last 2 user prompts | 100% precision / 100% recall | 32.95% | 12.41% | 27.72% |
-| last 3 user prompts | 100% precision / 100% recall | 29.84% | 11.35% | 25.36% |
+| last 2 user prompts | 100% precision / 100% recall | 39.30% | 18.49% | 33.78% |
+| last 3 user prompts | 100% precision / 100% recall | 35.47% | 17.09% | 30.80% |
 
-The denominator is one final 14,184-whitespace-token frozen history snapshot,
+The denominator is one final 30,190-token frozen history snapshot,
 not cumulative autonomous input. The result establishes logical opportunity
 and oracle alignment only. It does **not** establish unchanged task accuracy,
 calls-to-solution, or end-to-end token saving.
