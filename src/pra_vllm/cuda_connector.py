@@ -68,9 +68,7 @@ class _RequestTransfer:
         request_id: str,
         detached: bool = False,
     ) -> "_RequestTransfer":
-        if command.source_tokens % block_size:
-            raise ValueError("PRA CUDA source K/V must be block aligned.")
-        required_blocks = command.source_tokens // block_size
+        required_blocks = (int(command.source_tokens) + block_size - 1) // block_size
         if not detached and len(block_ids) < required_blocks:
             raise RuntimeError("vLLM allocated too few blocks for PRA source K/V.")
         if detached:
@@ -79,6 +77,7 @@ class _RequestTransfer:
             blocks = torch.tensor(block_ids[:required_blocks], dtype=torch.int64)
             offsets = torch.arange(block_size, dtype=torch.int64)
             slots = (blocks[:, None] * block_size + offsets[None, :]).flatten()
+            slots = slots[: int(command.source_tokens)]
         return cls(
             request_id=request_id,
             logical_key=command.logical_key,

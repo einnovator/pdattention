@@ -11,7 +11,13 @@ from pra_vllm.cuda_scheduler_alias import (
     SchedulerPageSelection,
     VLLMCudaSchedulerPageRegistry,
 )
-from pra_vllm.cuda_sparse_connector import _completed_append_pages
+from pra_vllm.cuda_connector import _RequestTransfer
+from pra_vllm.cuda_protocol import CudaConnectorCommand
+from pra_vllm.cuda_sparse_connector import (
+    _SparseRequestTransfer,
+    _completed_append_pages,
+)
+from pra_vllm.cuda_sparse_protocol import SparseCudaConnectorCommand
 
 
 @dataclass(eq=False)
@@ -78,6 +84,41 @@ def test_load_completion_counts_pages_from_explicit_scheduler_manager() -> None:
     assert _completed_append_pages(
         manager, SimpleNamespace(num_computed_tokens=101), 64
     ) == 2
+
+
+def test_partial_external_source_maps_only_valid_terminal_slots() -> None:
+    command = CudaConnectorCommand("load", "receipt", 11, "hot", "scope")
+    transfer = _RequestTransfer.create(
+        command,
+        [5],
+        16,
+        "request",
+    )
+    assert transfer.slot_mapping.tolist() == list(range(80, 91))
+
+
+def test_sparse_receipt_capture_maps_only_new_suffix_tokens() -> None:
+    command = SparseCudaConnectorCommand(
+        "load",
+        "selection",
+        32,
+        80,
+        source_generation=3,
+    )
+    transfer = _SparseRequestTransfer.create_sparse(
+        command,
+        [10, 11, 12],
+        16,
+        "request",
+        detached=False,
+        scheduler_alias=True,
+        capture_logical_key="receipt-capture",
+        capture_token_start=32,
+        capture_token_count=11,
+    )
+    assert transfer.slot_mapping.numel() == 0
+    assert transfer.capture_slot_mapping.tolist() == list(range(192, 203))
+    assert transfer.capture_token_count == 11
 
 
 def test_authoritative_alias_uses_exact_source_objects_and_native_refcounts() -> None:
@@ -312,6 +353,7 @@ def test_partial_receipt_page_keeps_exact_valid_length_in_composite() -> None:
         position_extent=96,
         components=(("source", 7, (0, 2)), ("receipt", 3, (0,))),
         selected_token_count=43,
+        partial_terminal_copy_bytes=1024,
         materialized_history_encoded_tokens=11,
     )
     assert valid_tokens == 43
@@ -334,6 +376,12 @@ def test_partial_receipt_page_keeps_exact_valid_length_in_composite() -> None:
         create_kv_cache_blocks=_blocks,
     )
     assert installed.blocks[0] == (source_pages[0], source_pages[2], receipt_page[0])
+    copied_terminal = _Block(99)
+    registry.commit_alias(
+        "mixed-request",
+        _blocks(((source_pages[0], source_pages[2], copied_terminal),)),
+    )
+    assert registry.telemetry().materialized_history_copy_bytes == 1024
 
 
 def test_partial_alias_must_end_at_sources_terminal_page() -> None:

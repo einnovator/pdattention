@@ -61,6 +61,7 @@ class _PinnedSource:
     block_size: int
     blocks: tuple[Any, ...]
     block_pool: Any
+    partial_terminal_copy_bytes: int = 0
     borrowers: set[str] = field(default_factory=set)
     pending: set[str] = field(default_factory=set)
     tombstoned: bool = False
@@ -108,6 +109,7 @@ class VLLMCudaSchedulerPageRegistry:
         block_sizes: Sequence[int],
         block_pool: Any,
         position_extent: int | None = None,
+        partial_terminal_copy_bytes: int = 0,
     ) -> None:
         """Pin a completed request's pages before scheduler request teardown."""
 
@@ -118,6 +120,8 @@ class VLLMCudaSchedulerPageRegistry:
         block_size = int(block_sizes[0])
         if source_tokens <= 0:
             raise ValueError("A live CUDA source must contain at least one token.")
+        if int(partial_terminal_copy_bytes) < 0:
+            raise ValueError("Partial terminal copy accounting cannot be negative.")
         # vLLM owns partially filled terminal pages as ordinary request state.
         # Receipt materialization needs to preserve that exact valid-token count
         # rather than padding model-visible history merely to fill a page.
@@ -145,6 +149,9 @@ class VLLMCudaSchedulerPageRegistry:
                     and tuple(id(block) for block in previous.blocks)
                     == tuple(id(block) for block in blocks)
                     and previous.position_extent == logical_extent
+                    and previous.source_tokens == int(source_tokens)
+                    and previous.partial_terminal_copy_bytes
+                    == int(partial_terminal_copy_bytes)
                     and not previous.tombstoned
                 )
                 if same:
@@ -169,6 +176,7 @@ class VLLMCudaSchedulerPageRegistry:
                 block_size=block_size,
                 blocks=blocks,
                 block_pool=block_pool,
+                partial_terminal_copy_bytes=int(partial_terminal_copy_bytes),
             )
             self._source_pin_events += 1
 
@@ -180,6 +188,7 @@ class VLLMCudaSchedulerPageRegistry:
         position_extent: int,
         components: Sequence[tuple[str, int, Sequence[int]]],
         selected_token_count: int | None = None,
+        partial_terminal_copy_bytes: int = 0,
         materialized_history_encoded_tokens: int = 0,
         materialized_history_copy_bytes: int = 0,
     ) -> int:
@@ -205,6 +214,8 @@ class VLLMCudaSchedulerPageRegistry:
         copied_bytes = int(materialized_history_copy_bytes)
         if encoded_tokens < 0 or copied_bytes < 0:
             raise ValueError("CUDA materialization accounting cannot be negative.")
+        if int(partial_terminal_copy_bytes) < 0:
+            raise ValueError("Partial terminal copy accounting cannot be negative.")
         with self._lock:
             selected: list[Any] = []
             pool = None
@@ -256,6 +267,9 @@ class VLLMCudaSchedulerPageRegistry:
                 same = (
                     previous.generation == int(generation)
                     and previous.position_extent == int(position_extent)
+                    and previous.source_tokens == valid_tokens
+                    and previous.partial_terminal_copy_bytes
+                    == int(partial_terminal_copy_bytes)
                     and tuple(id(block) for block in previous.blocks)
                     == tuple(id(block) for block in selected)
                     and not previous.tombstoned
@@ -279,6 +293,7 @@ class VLLMCudaSchedulerPageRegistry:
                 block_size=block_size,
                 blocks=tuple(selected),
                 block_pool=pool,
+                partial_terminal_copy_bytes=int(partial_terminal_copy_bytes),
             )
             self._source_pin_events += 1
             self._materialized_history_encoded_tokens += encoded_tokens
@@ -372,20 +387,43 @@ class VLLMCudaSchedulerPageRegistry:
                 source.blocks[index] for index in selection.selected_page_indices
             )
             groups = tuple(getattr(installed_blocks, "blocks", ()))
-            if len(groups) != 1 or any(
-                actual is not wanted
-                for actual, wanted in zip(groups[0][: len(expected)], expected)
-            ) or len(groups[0]) < len(expected):
+            if len(groups) != 1 or len(groups[0]) < len(expected):
                 source.pending.discard(request_key)
                 raise RuntimeError(
                     "vLLM did not install the authoritative source block table."
                 )
-            if any(
+            partial = selection.selected_token_count != (
+                len(expected) * source.block_size
+            )
+            exact_prefix = all(
+                actual is wanted
+                for actual, wanted in zip(groups[0][: max(len(expected) - 1, 0)], expected)
+            )
+            exact_terminal = bool(expected) and groups[0][len(expected) - 1] is expected[-1]
+            terminal_cow = bool(
+                partial
+                and exact_prefix
+                and not exact_terminal
+                and source.partial_terminal_copy_bytes > 0
+            )
+            if (
+                not exact_prefix
+                or (not exact_terminal and not terminal_cow)
+            ):
+                source.pending.discard(request_key)
+                raise RuntimeError(
+                    "vLLM did not install the authoritative source block table."
+                )
+            if not terminal_cow and any(
                 int(getattr(actual, "block_id")) != int(getattr(wanted, "block_id"))
                 for actual, wanted in zip(groups[0], expected)
             ):
                 source.pending.discard(request_key)
                 raise RuntimeError("Installed CUDA physical page IDs do not match source.")
+            if terminal_cow:
+                self._materialized_history_copy_bytes += (
+                    source.partial_terminal_copy_bytes
+                )
             source.pending.discard(request_key)
             source.borrowers.add(request_key)
             self._active[request_key] = selection
@@ -573,6 +611,9 @@ class VLLMCudaSchedulerPageRegistry:
                         "generation": source.generation,
                         "source_tokens": source.source_tokens,
                         "position_extent": source.position_extent,
+                        "partial_terminal_copy_bytes": (
+                            source.partial_terminal_copy_bytes
+                        ),
                         "block_ids": [int(block.block_id) for block in source.blocks],
                         "borrowers": sorted(source.borrowers),
                         "pending": sorted(source.pending),

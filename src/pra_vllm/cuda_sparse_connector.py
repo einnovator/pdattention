@@ -14,10 +14,14 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import safetensors.torch
+import torch
+
 from pra_vllm.cuda_connector import (
     PRASemanticConnector,
     PRASemanticConnectorMetadata,
     _RequestTransfer,
+    _layer_file_name,
 )
 from pra_vllm.cuda_scheduler_alias import (
     SchedulerPageSelection,
@@ -55,6 +59,9 @@ def _position_delta(selected_tokens: int, source_position_base: int) -> int:
 class _SparseRequestTransfer(_RequestTransfer):
     source_position_base: int = 0
     scheduler_alias: bool = False
+    capture_logical_key: str | None = None
+    capture_slot_mapping: Any = None
+    capture_token_count: int = 0
 
     @classmethod
     def create_sparse(
@@ -65,6 +72,9 @@ class _SparseRequestTransfer(_RequestTransfer):
         request_id: str,
         detached: bool,
         scheduler_alias: bool = False,
+        capture_logical_key: str | None = None,
+        capture_token_start: int = 0,
+        capture_token_count: int = 0,
     ) -> "_SparseRequestTransfer":
         base = _RequestTransfer.create(
             command,
@@ -75,6 +85,21 @@ class _SparseRequestTransfer(_RequestTransfer):
             # metadata exists only to carry original-position geometry.
             detached or scheduler_alias,
         )
+        capture_slots = torch.empty(0, dtype=torch.int64)
+        if capture_logical_key is not None:
+            start = int(capture_token_start)
+            count = int(capture_token_count)
+            if start < 0 or count <= 0:
+                raise ValueError("CUDA receipt capture needs a positive token span.")
+            end = start + count
+            required_blocks = (end + block_size - 1) // block_size
+            if len(block_ids) < required_blocks:
+                raise RuntimeError(
+                    "vLLM allocated too few blocks for the receipt capture span."
+                )
+            logical = torch.arange(start, end, dtype=torch.int64)
+            pages = torch.tensor(block_ids, dtype=torch.int64)[logical // block_size]
+            capture_slots = pages * block_size + logical % block_size
         return cls(
             request_id=base.request_id,
             logical_key=base.logical_key,
@@ -85,6 +110,9 @@ class _SparseRequestTransfer(_RequestTransfer):
             detached=bool(detached),
             source_position_base=command.source_position_base,
             scheduler_alias=bool(scheduler_alias),
+            capture_logical_key=capture_logical_key,
+            capture_slot_mapping=capture_slots,
+            capture_token_count=int(capture_token_count),
         )
 
 
@@ -286,6 +314,17 @@ class PRASparseConnector(PRASemanticConnector):
             and req_id not in self._loads
         ):
             return
+        capture_key = None
+        capture_start = 0
+        capture_count = 0
+        if scheduler_alias and block_ids:
+            manifest_path = self._directory(command.logical_key) / "manifest.json"
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            capture = payload.get("capture_materialized_history")
+            if capture is not None:
+                capture_key = str(capture["logical_key"])
+                capture_start = int(capture["token_start"])
+                capture_count = int(capture["token_count"])
         metadata.requests.append(
             _SparseRequestTransfer.create_sparse(
                 command,
@@ -294,8 +333,71 @@ class PRASparseConnector(PRASemanticConnector):
                 req_id,
                 detached=self._detached and command.mode == "load",
                 scheduler_alias=scheduler_alias,
+                capture_logical_key=capture_key,
+                capture_token_start=capture_start,
+                capture_token_count=capture_count,
             )
         )
+
+    def save_kv_layer(
+        self,
+        layer_name: str,
+        kv_layer: torch.Tensor,
+        attn_metadata: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Capture newly encoded receipt K/V without copying selected history."""
+
+        super().save_kv_layer(layer_name, kv_layer, attn_metadata, **kwargs)
+        metadata = self._get_connector_metadata()
+        if not isinstance(metadata, PRASemanticConnectorMetadata):
+            raise TypeError("Unexpected PRA CUDA connector metadata.")
+        for request in metadata.requests:
+            capture_key = getattr(request, "capture_logical_key", None)
+            slots = getattr(request, "capture_slot_mapping", None)
+            if not capture_key or slots is None or int(slots.numel()) == 0:
+                continue
+            if capture_key not in self._active_store_keys:
+                self._stored_tensor_bytes[capture_key] = 0
+            directory = self._directory(capture_key)
+            directory.mkdir(parents=True, exist_ok=True)
+            selected = self._extract(
+                kv_layer,
+                slots,
+                attn_metadata,
+                self._block_size,
+            )
+            self._stored_tensor_bytes[capture_key] += (
+                selected.numel() * selected.element_size()
+            )
+            safetensors.torch.save_file(
+                {"kv_cache": selected.detach().cpu().contiguous()},
+                str(directory / _layer_file_name(layer_name)),
+            )
+            self._active_store_keys.add(capture_key)
+
+    def wait_for_save(self) -> None:
+        metadata = self._get_connector_metadata()
+        super().wait_for_save()
+        if not isinstance(metadata, PRASemanticConnectorMetadata):
+            return
+        for request in metadata.requests:
+            capture_key = getattr(request, "capture_logical_key", None)
+            if not capture_key or capture_key not in self._active_store_keys:
+                continue
+            directory = self._directory(capture_key)
+            manifest = {
+                "schema_version": "pra-vllm-cuda-materialized-history-v1",
+                "logical_key": capture_key,
+                "source_tokens": int(request.capture_token_count),
+                "layer_files": len(list(directory.glob("layer-*.safetensors"))),
+                "native_tensor_bytes": self._stored_tensor_bytes.get(capture_key, 0),
+            }
+            (directory / "manifest.json").write_text(
+                json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            self._active_store_keys.discard(capture_key)
+            self._stored_tensor_bytes.pop(capture_key, None)
 
     def request_finished(self, request: Any, block_ids: list[int]):
         """Pin sources and close aliases before vLLM frees request blocks."""
@@ -327,6 +429,23 @@ class PRASparseConnector(PRASemanticConnector):
             elif command is not None and command.mode == "load":
                 manifest_path = self._directory(command.logical_key) / "manifest.json"
                 payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                publish = payload.get("publish_scheduler_source")
+                if publish is not None:
+                    published_key = str(publish["logical_key"])
+                    published_generation = int(publish["generation"])
+                    published_extent = int(publish["position_extent"])
+                    self._scheduler_alias_registry.publish_source(
+                        published_key,
+                        generation=published_generation,
+                        source_tokens=int(command.source_tokens),
+                        blocks_by_group=manager.get_blocks(request.request_id).blocks,
+                        block_sizes=tuple(
+                            int(item.block_size)
+                            for item in manager.coordinator.single_type_managers
+                        ),
+                        block_pool=manager.block_pool,
+                        position_extent=published_extent,
+                    )
                 destination = payload.get("commit_source_logical_key")
                 destination_generation = payload.get("commit_source_generation")
                 if destination is not None or destination_generation is not None:
@@ -400,6 +519,7 @@ class PRASparseConnector(PRASemanticConnector):
         source_position_base: int,
         components: tuple[tuple[str, int, tuple[int, ...]], ...],
         selected_token_count: int | None = None,
+        partial_terminal_copy_bytes: int = 0,
         materialized_history_encoded_tokens: int = 0,
         materialized_history_copy_bytes: int = 0,
     ) -> int:
@@ -413,6 +533,7 @@ class PRASparseConnector(PRASemanticConnector):
             position_extent=source_position_base,
             components=components,
             selected_token_count=selected_token_count,
+            partial_terminal_copy_bytes=partial_terminal_copy_bytes,
             materialized_history_encoded_tokens=(
                 materialized_history_encoded_tokens
             ),
