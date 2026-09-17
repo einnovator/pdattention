@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import importlib.metadata
 import json
@@ -689,8 +690,27 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     except RuntimeError as exc:
         stale_error = str(exc)
 
+    closed_request_metrics = {
+        "candidate_outcome": candidate.outcome,
+        "reference_outcome": reference.outcome,
+        "cancelled_outcome": cancelled.outcome,
+        "errored_outcome": errored.outcome,
+        "cancelled_request_id": cancelled.request_id,
+        "candidate_physical_kv_copy": candidate.selection.physical_kv_copy,
+        "candidate_selection_nbytes": candidate.selection.memory.nbytes,
+        "reference_selection_nbytes": reference.selection.memory.nbytes,
+        "resident_selection_reencoded_tokens": (
+            candidate.selection.selected_text_reencoded_tokens,
+            reference.selection.selected_text_reencoded_tokens,
+            survivor.selection.selected_text_reencoded_tokens,
+            cancelled.selection.selected_text_reencoded_tokens,
+            errored.selection.selected_text_reencoded_tokens,
+        ),
+    }
+
     offloaded = runtime.offload_source(identities["source_id"])
     offloaded_view = runtime.registry.view(identities["source_id"])
+    source_owner_released_on_offload = prime_id not in runner._req_caches
     offloaded_bytes = (
         len(offloaded[1])
         if isinstance(offloaded, tuple)
@@ -703,6 +723,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         if offloaded_bytes is not None
         else None
     )
+    # Closed request objects and diagnostic lists retain disjoint source views.
+    # Drop those experiment-only references before measuring restore so the
+    # lifecycle gate reflects the runtime's actual offloaded residency rather
+    # than keeping the canonical Metal arrays alive from Python locals.
+    source_caches = ()
+    canonical = None
+    candidate_arrays = ()
+    dense_arrays = ()
+    registered = None
+    candidate = reference = survivor = cancelled = errored = None
+    if use_disjoint:
+        packed_layers = ()
+        matched_memory = None
+        first_layer = first_segment = None
+        probe_queries = probe_local_keys = probe_local_values = probe_output = None
+    gc.collect()
+    mx.clear_cache()
     restored = begin("restored")
     restored_view = runtime.registry.view(identities["source_id"])
     restored_selected_fingerprint = _fingerprint(restored.selection.memory)
@@ -735,7 +772,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     try:
         runtime.register_source(
             "replacement",
-            canonical,
+            MLXNativeMemory((), 0),
             owner_request_id=prime_id,
             tenant_id=identities["tenant_id"],
             session_id=identities["session_id"],
@@ -769,22 +806,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "offload_rejected_while_borrowed": "while requests borrow" in offload_error,
         "eviction_rejected_while_borrowed": "while requests borrow" in eviction_error,
         "native_batched_decode_executed": (
-            len(concurrent_tokens[cancelled.request_id]) >= 2
+            len(concurrent_tokens[closed_request_metrics["cancelled_request_id"]]) >= 2
         ),
         "normal_finish_released_exactly_once": (
-            candidate.outcome == "finished"
+            closed_request_metrics["candidate_outcome"] == "finished"
             and candidate_second_finish is False
-            and reference.outcome == "finished"
+            and closed_request_metrics["reference_outcome"] == "finished"
             and reference_second_finish is False
         ),
         "cancel_released_exactly_once": (
-            cancelled.outcome == "cancelled"
+            closed_request_metrics["cancelled_outcome"] == "cancelled"
             and cancelled_second_cancel is False
             and one_borrower == ("survivor",)
         ),
         "error_callback_released_exactly_once": (
             bool(native_error)
-            and errored.outcome == "error"
+            and closed_request_metrics["errored_outcome"] == "error"
             and errored_second_fail is False
         ),
         "same_subset_token_exact": candidate_tokens == reference_tokens,
@@ -804,6 +841,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "concurrent_survivor_token_exact": survivor_tokens == candidate_tokens,
         "stale_generation_rejected": "Stale" in stale_error,
         "idle_offload_reached_non_hot_tier": offloaded_view.tier == "offloaded",
+        "engine_source_owner_released_on_offload": source_owner_released_on_offload,
         "restore_reached_hot_tier": restored_view.tier == "hot",
         "restored_selected_kv_fingerprint_exact": (
             restored_selected_fingerprint == candidate_selected_fingerprint
@@ -827,13 +865,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             - materialized_history_tokens
         ),
         "selected_history_reencoding_equals_explicit_materialization": (
-            candidate.selection.selected_text_reencoded_tokens == 0
-            and reference.selection.selected_text_reencoded_tokens == 0
-            and survivor.selection.selected_text_reencoded_tokens == 0
+            all(
+                value == 0
+                for value in closed_request_metrics[
+                    "resident_selection_reencoded_tokens"
+                ]
+            )
             and restored.selection.selected_text_reencoded_tokens == 0
         ),
         "physical_kv_copy_reported": (
-            candidate.selection.physical_kv_copy
+            closed_request_metrics["candidate_physical_kv_copy"]
             == (None if use_disjoint else len(plan.intervals) > 1)
         ),
         "disjoint_selection_did_not_allocate": (
@@ -916,11 +957,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 ]
             )
             if use_disjoint
-            else candidate.selection.physical_kv_copy
+            else closed_request_metrics["candidate_physical_kv_copy"]
         ),
-        "runtime_physical_kv_copy_report": candidate.selection.physical_kv_copy,
+        "runtime_physical_kv_copy_report": closed_request_metrics[
+            "candidate_physical_kv_copy"
+        ],
         "pra_interval_pack_copy": (
-            False if use_disjoint else candidate.selection.physical_kv_copy
+            False
+            if use_disjoint
+            else closed_request_metrics["candidate_physical_kv_copy"]
         ),
         "physical_kv_copy_qualification": (
             "qualified_zero_copy_interval_addressed_metal"
@@ -938,7 +983,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "selected_kv_segments": len(plan.intervals),
         "selection_pack_bytes": (
-            0 if use_disjoint else candidate.selection.memory.nbytes
+            0
+            if use_disjoint
+            else closed_request_metrics["candidate_selection_nbytes"]
         ),
         "selection_active_before_bytes": active_before_selection,
         "selection_active_after_bytes": active_after_selection,
@@ -947,7 +994,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "selection_peak_memory_bytes": peak_after_selection,
         "selection_materialization_elapsed_ms": selection_elapsed_ms,
-        "dense_reference_pack_bytes": reference.selection.memory.nbytes,
+        "dense_reference_pack_bytes": closed_request_metrics[
+            "reference_selection_nbytes"
+        ],
         "dense_reference_materialization_elapsed_ms": dense_elapsed_ms,
         "disjoint_attention_allocation": disjoint_attention_allocation,
         "allocation_measurement_method": {
