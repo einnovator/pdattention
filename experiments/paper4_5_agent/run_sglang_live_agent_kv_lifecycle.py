@@ -248,6 +248,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     ):
         raise RuntimeError("Lifecycle qualification requires a disjoint sparse plan.")
 
+    ordinary_full_tokens = None
+    ordinary_full_logits = None
+    if frozen_decision and args.frozen_full_retention:
+        ordinary_full_tokens, ordinary_full_logits = _generate_with_logits(
+            runner,
+            "ordinary-full-engine-oracle",
+            prompt_ids,
+            max_tokens=args.continuation_tokens,
+            prefill_step_size=args.source_prefill_step_size,
+        )
+        runner.remove_request("ordinary-full-engine-oracle")
+
     prime_id = "task02-source-owner"
     _prefill(
         runner,
@@ -621,6 +633,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             _max_delta(candidate_logits, reference_logits)
             <= args.max_abs_logit_delta
         ),
+        "ordinary_full_engine_oracle_token_exact": (
+            ordinary_full_tokens is None
+            or candidate_tokens == ordinary_full_tokens
+        ),
+        "ordinary_full_engine_oracle_logit_within_tolerance": (
+            ordinary_full_logits is None
+            or _max_delta(candidate_logits, ordinary_full_logits)
+            <= args.max_abs_logit_delta
+        ),
         "concurrent_survivor_token_exact": survivor_tokens == candidate_tokens,
         "stale_generation_rejected": "Stale" in stale_error,
         "idle_offload_reached_non_hot_tier": offloaded_view.tier == "offloaded",
@@ -671,7 +692,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "radix_pool_ownership_isolated": not radix_pool_contains_selected_wrapper,
     }
     result = {
-        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v2",
+        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v3",
         "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
@@ -789,6 +810,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "same_subset_logit_exact": (
             _max_delta(candidate_logits, reference_logits) == 0.0
+        ),
+        "ordinary_full_engine_oracle_token_ids": (
+            list(ordinary_full_tokens)
+            if ordinary_full_tokens is not None
+            else None
+        ),
+        "max_abs_logit_delta_ordinary_full_engine_oracle": (
+            _max_delta(candidate_logits, ordinary_full_logits)
+            if ordinary_full_logits is not None
+            else None
         ),
         "offloaded_payload_type": type(offloaded).__name__,
         "offloaded_payload_bytes": offloaded_bytes,
