@@ -43,7 +43,19 @@ peak to 172,499 bytes, 0.234% of the 73,637,888-byte selected-layer K/V extent.
 The SGLang row additionally verifies that offload
 removes the source owner without returning its cache to SGLang's reusable pool,
 then restores the exact selected K/V. These are request-level mechanism results,
-not autonomous task-accuracy results. vLLM still requires causally positioned
-receipt-page construction. Its 16-token page geometry would select 18,016
-tokens (38 tokens above the logical plan), predicting 35.73% history and 35.36%
-total-visible saving after receipts; those values are not yet measured evidence.
+not autonomous task-accuracy results.
+
+The receipt-aware vLLM/CUDA request-9 run is recorded in
+`vllm_cuda_request9_mixed_final_v1.json`. It causally encodes all six old-
+position receipts, page-rounds 17,978 logical selected-history tokens to 18,016
+resident tokens, and moves five active-tail tokens into the otherwise partial
+terminal source page. It therefore measures 35.75% historical saving after
+receipts and 35.38% total-visible saving, 0.11 percentage point below the
+interval-addressed engines. Two final requests both emit token IDs
+`[151667, 198]`, matching HF and SGLang; the first token also matches MLX,
+whose frozen run generated one continuation token. Original selected history
+is neither re-encoded nor copied, and all scheduler sources and aliases are
+released. Receipt construction is a correctness path rather than a runtime
+claim: it performs 76.15 MB D2H capture, 239.93 MB host packing, 240.27 MB H2D
+reload, and 12.85 MB receipt-page copy-on-write. The adjacent
+`vllm_cuda_receipt_capture_smoke_v1.json` is the smaller primitive smoke.
