@@ -73,8 +73,11 @@ heterogeneity blocks a universal default.  On Task~5 the contemporaneous
 reliability evidence rather than a preservation point.  Across the repeat
 cohort M2/P1 resolves 3/3 versus 2/3 and descriptively reduces input 31.03\%;
 conditional on the two \textsc{Full} successes it preserves 2/2 and saves
-28.67\%, just below the 30\% gate.  Three identities do not establish
-greater-than-90\% population accuracy.
+28.67\%, just below the 30\% gate.  A sharper boundary-free M1/P1 Task~5
+mechanism repeat resolves 2/2 with an identical executed-action trajectory and
+53.95\% within-trajectory saving; an edge audit finds no unintended link among
+the five issues.  Three identities do not establish greater-than-90\%
+population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1095,12 +1098,13 @@ identity and one repeat-qualified low-saving identity, not a stable universal
 40--50\% frontier.
 
 Task~5 cannot enter the conditional preservation gate: contemporaneous
-\textsc{Full} fails official grading in 10 calls with 211,898 tokens, whereas
-the frozen M2/P1 arm resolves in 12 calls with 138,570 tokens.  The latter
-exactly repeats its preceding successful candidate metrics and sends 34.61\%
-less input than the failed control trajectory.  This is unconditional evidence
-consistent with exclusion removing harmful cross-task interference, not proof
-of a quality improvement; randomized repeated pairs are required.
+\textsc{Full} fails (10 calls; 211,898 tokens), while M2/P1 resolves (12;
+138,570).  A sharper boundary-free $M=1$/P1 diagnostic then resolves 2/2
+repeats with identical executed actions, 11 calls, and 109,443 of 237,648
+counterfactual tokens (53.95\% saving).  Its 12-request audit retires all 44
+prior-issue groups and finds only the intended P1 cross-epoch edge, with zero
+unexplained links.  This is repeat evidence for one identity, not a
+contemporaneous preservation pair or population-accuracy estimate.
 
 Across all three contemporaneous repeats, \textsc{Full} resolves 2/3 and M2/P1
 3/3.  They use 30 and 31 calls and send 532,986 and 367,617 tokens, a
@@ -1130,7 +1134,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Task-3/4 repeats save 9.96/59.24\%; Task-5 control fails; blocked. \\
-Agent-Economy & DAG $M=2$/P1 + structured frontier & last 2 prompts + valid protocol & Unexecuted extension; cannot inherit Balanced's quality result. \\
+Agent-Economy & DAG $M=1$/P1 whole-group & last prompt + valid protocol & Task~5 resolves 2/2 at 53.95\% own-trajectory saving; cross-task qualification pending. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1161,9 +1165,13 @@ directed path from an older record to any record in the last $M$ instruction
 epochs.  Same-path edges are keyed first by a generic
 \texttt{workspace\_lineage\_id}.  The mini-swe-agent harness derives this opaque
 identity from the live container, not from an evaluator issue ID.  Older traces
-without it use a stable environment fingerprint as a weaker namespace and are
-labelled heuristic.  Cwd alone is never a namespace because independent
-containers commonly reuse \texttt{/testbed}.
+without it are labelled heuristic.  An environment fingerprint may scope
+resources within one instruction epoch, but it can no longer create a
+cross-epoch edge: independent containers can share an image fingerprint, cwd,
+and path.  Cross-epoch resource reachability now requires an exact opaque
+workspace-lineage identity or an explicit dependency record.  Cwd alone is
+never a namespace because independent containers commonly reuse
+\texttt{/testbed}.
 
 The first real-chain reduction found a concrete adapter bug: repeated agent
 instructions containing \texttt{patch.txt}, \texttt{pyproject.toml}, and other
@@ -1173,11 +1181,30 @@ only 16--18\% oracle recall.  Task-resource extraction now uses only the actual
 retirement reaches 100\% token-weighted precision and recall for both $M=2$
 and $M=3$ on the known independent chain.  Constructed cases separately test
 distinct resources, a genuine old-to-current shared resource, the same path in
-different declared workspaces, and unknown effects.  Unknown effects downgrade
+different declared workspaces, the same path under a shared environment image
+without a workspace identity, and unknown effects.  Unknown effects downgrade
 confidence and make the certified gate fail closed rather than inventing a
 proof of irrelevance.  Full candidates, source hashes, simplification costs,
 and oracle errors are stored in
 \path{frontier_information_flow_oracle_v1/evidence.json}.
+
+The exact Task~5 cross-epoch audits are
+\path{task5_boundary_free_cross_epoch_audit_m1_p1.json} and
+\path{task5_boundary_free_cross_epoch_audit_m2_p1.json}.  They cover all 12
+requests in the successful trajectory and report edge kind, source and target
+instruction epoch, resource identity, and workspace-lineage evidence for every
+cross-epoch edge.  Both report zero unexplained edges; M1 retains one prior
+protocol record, whereas M2 additionally keeps the complete immediately
+preceding instruction epoch.
+
+Two clean M1/P1 executions resolve officially with identical 10-action
+trajectories, 11 model calls, and identical cumulative token counts.  All 11
+request-input and selected-message hashes match.  Ten of 11 semantic assistant
+outputs match; the first rejected, non-executed model response differs, while
+the accepted command and every model-visible trajectory message remain the
+same.  This distinction prevents raw response-envelope nondeterminism from
+being mislabeled as behavioral divergence.  The repeat ledger is
+\path{autonomous_m1_p1_task5_repeat.json}.
 
 Autonomous forks then test cumulative behavior.  Task~6 is an efficiency
 rejection: both treatment and historical \textsc{Full} fail, while $M=2$ adds

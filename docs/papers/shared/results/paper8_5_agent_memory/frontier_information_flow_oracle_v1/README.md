@@ -6,10 +6,12 @@ older causal group only when no directed information-flow path reaches that
 frontier. The policy sees no evaluator task ID or source-episode boundary.
 
 The graph contains instruction-control, action–observation, next-decision,
-same-resource, and declared-dependency edges. Resource identity is scoped by a
-generic workspace-lineage ID when available, otherwise by the weaker
-environment fingerprint, and finally by an explicit unknown scope. Unknown
-tool effects downgrade a no-path result from certified to heuristic.
+same-resource, and declared-dependency edges. Cross-instruction resource
+identity requires a generic workspace-lineage ID or an explicit dependency.
+An environment/image fingerprint may scope records within one instruction
+epoch, but cannot link two epochs because independent containers can share an
+image, cwd, and path. Missing lineage makes retirement heuristic rather than
+certified. Unknown tool effects also downgrade confidence.
 
 ## Structural oracle results
 
@@ -90,6 +92,24 @@ reproducing its preceding successful candidate run and using 34.61% less input
 than the failed FULL trajectory. This is unconditional reliability evidence,
 not a preserved-FULL-success point. It motivates randomized repeated pairing
 to test whether exclusion reduces harmful cross-task interference.
+
+The sharper boundary-free M1+P1 diagnostic resolves Task 5 officially in two
+of two repeats with identical executed-action trajectories. Both use 11 model
+calls (10 executed actions) and materialize 109,443 of their own 237,648
+counterfactual FULL tokens, a 53.95% within-trajectory saving. Against the
+earlier exact-prefix successful FULL row (12 calls, 264,204 tokens), the
+descriptive saving is 58.58% with one fewer call. This is a repeated mechanism
+point on one task identity, not a population-accuracy claim or a
+contemporaneous randomized pair. The repeat ledger is
+`autonomous_m1_p1_task5_repeat.json`.
+
+`task5_boundary_free_cross_epoch_audit_m1_p1.json` and
+`task5_boundary_free_cross_epoch_audit_m2_p1.json` reconstruct all 12 request
+frontiers without evaluator task IDs or episode markers. Both report zero
+unexplained cross-epoch edges. M1 retires all 44 causal groups from the four
+previous issues and retains one atomic valid-protocol exemplar; M2 also keeps
+the immediately preceding issue whole. Therefore the observed Task 5
+instability is not caused by an accidental graph path between issues.
 
 Across the complete contemporaneous repeat cohort, FULL resolves 2/3 and
 M2+P1 resolves 3/3. The arms use 30 and 31 calls and send 532,986 and 367,617

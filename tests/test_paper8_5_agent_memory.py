@@ -10,6 +10,7 @@ from experiments.paper8_5_agent_memory import (
     AgentMemoryBudget,
     AgentRecord,
     BashOperation,
+    DagEdgeKind,
     DagCertifiedExclusionSelector,
     ExclusionClass,
     AgentRecordRole,
@@ -179,20 +180,47 @@ def test_frontier_dag_retires_only_old_disconnected_epochs():
 
 
 def test_frontier_dag_preserves_old_resource_lineage_reaching_live_prompt():
-    history = _information_flow_chain([
-        "src/shared.py",
-        "src/task_1.py",
-        "src/task_2.py",
-        "src/task_3.py",
-        "src/task_4.py",
-        "src/shared.py",
-    ])
+    history = _information_flow_chain(
+        [
+            "src/shared.py",
+            "src/task_1.py",
+            "src/task_2.py",
+            "src/task_3.py",
+            "src/task_4.py",
+            "src/shared.py",
+        ],
+        workspace_scopes=["workspace-live"] * 6,
+    )
     dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
 
     retired = {row.causal_group_id for row in dag.retirement_candidates}
     assert "turn-0" not in retired
     assert retired == {"turn-1", "turn-2", "turn-3"}
     assert {"action-0", "observation-0"}.issubset(dag.live_ancestor_record_ids)
+
+
+def test_frontier_dag_does_not_treat_environment_as_cross_epoch_lineage():
+    history = _information_flow_chain(["/testbed/common.py"] * 4)
+    records = tuple(
+        replace(
+            row,
+            metadata={**row.metadata, "environment_fingerprint": "shared-image"},
+        )
+        for row in history.records
+    )
+    history = CanonicalAgentHistory(records, history.turns)
+
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+
+    assert {row.causal_group_id for row in dag.retirement_candidates} == {
+        "turn-0", "turn-1"
+    }
+    assert not any(
+        edge.kind == DagEdgeKind.RESOURCE_FLOW
+        and edge.source_id in {"instruction-0", "action-0", "observation-0"}
+        and edge.target_id in {"instruction-3", "action-3", "observation-3"}
+        for edge in dag.edges
+    )
 
 
 def test_frontier_dag_does_not_alias_same_path_across_declared_workspaces():

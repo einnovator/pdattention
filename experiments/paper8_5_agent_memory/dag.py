@@ -385,10 +385,15 @@ def build_frontier_information_flow_dag(
                 ))
             prior = observations[-1] if observations else action
 
-    # Resource flow prefers a real lineage declaration.  A stable per-epoch
-    # environment fingerprint is a weaker heuristic scope.  When neither is
-    # available, use a shared unknown scope: same-path reuse remains a possible
-    # dependency, but distinct paths can still be disconnected.
+    # Resource flow across instruction epochs requires a real workspace
+    # lineage declaration.  An environment/image fingerprint is not a
+    # workspace identity: independent containers commonly share both it and a
+    # cwd such as /testbed.  Without an explicit lineage, scope inferred
+    # resources to the current instruction epoch.  This still models resource
+    # flow within one issue, while preventing same-path coincidences from
+    # manufacturing dependencies between unrelated issues.  The resulting
+    # retirement remains HEURISTIC (and therefore opt-in) because missing
+    # lineage is not a proof of independence.
     last_resource_record: dict[tuple[str, str], str] = {}
     for record in sorted(history.records, key=lambda row: row.message_index):
         epoch_index = epoch_for_record.get(record.record_id)
@@ -400,8 +405,11 @@ def build_frontier_information_flow_dag(
         )
         scope = (
             f"workspace:{lineage}" if lineage is not None
-            else f"environment:{environment}" if environment is not None
-            else "workspace:unknown"
+            else (
+                f"epoch:{epoch_index}:environment:{environment}"
+                if environment is not None
+                else f"epoch:{epoch_index}:workspace:unknown"
+            )
         )
         for resource in _record_resources(record):
             key = (scope, resource)

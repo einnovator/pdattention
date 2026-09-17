@@ -11,6 +11,9 @@ from experiments.paper8_5_agent_memory.multi_issue_session import (
 from experiments.paper8_5_agent_memory.audit_policy_oracle_alignment import (
     audit_prefix,
 )
+from experiments.paper8_5_agent_memory.audit_frontier_cross_epoch_edges import (
+    audit_cross_epoch_edges,
+)
 from experiments.paper8_5_agent_memory.recordizer import (
     active_task_content,
     recordize_replay_messages,
@@ -133,6 +136,29 @@ def test_boundary_free_composer_hides_episode_identity_from_history():
     )
     assert [row.primary_role for row in history.records].count(AgentRecordRole.TASK) == 1
     assert [row.primary_role for row in history.records].count(AgentRecordRole.USER_INPUT) == 1
+
+
+def test_cross_epoch_audit_finds_no_implicit_link_between_independent_issues():
+    result = audit_cross_epoch_edges(
+        prefix_episodes=[
+            _trajectory("repo_a__issue-1", "cat a.py"),
+            _trajectory("repo_b__issue-2", "cat b.py"),
+        ],
+        active_episode=_trajectory("repo_c__issue-3", "cat c.py"),
+        recent_user_prompts=1,
+        protocol_exemplars=0,
+    )
+
+    assert result["active_request_count"] == 2
+    assert result["unexplained_cross_epoch_edge_count"] == 0
+    assert all(
+        request["cross_epoch_edge_count"] == 0
+        for request in result["requests"]
+    )
+    assert all(
+        request["frontier_epoch_indices"] == [2]
+        for request in result["requests"]
+    )
 
 
 def test_boundary_free_global_policy_uses_only_continuous_stream_floors():
