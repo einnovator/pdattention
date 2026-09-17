@@ -105,3 +105,103 @@ def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> N
     assert manifest["request_replay_sha256"] == hashlib.sha256(
         replay.read_bytes()
     ).hexdigest()
+
+
+def test_exporter_preserves_wire_materialized_receipts(tmp_path: Path) -> None:
+    prior = {
+        "schema_version": 1,
+        "session_id": "session",
+        "episodes": [{
+            "trajectory": {
+                "instance_id": "old-task",
+                "messages": [
+                    {"role": "system", "content": "system"},
+                    {"role": "user", "content": "old task"},
+                    {"role": "assistant", "content": "large old action"},
+                    {"role": "exit", "content": "large old final result"},
+                ],
+                "info": {"exit_status": "Submitted", "submission": "diff"},
+            }
+        }],
+    }
+    current = {
+        "instance_id": "new-task",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "new task"},
+            {"role": "assistant", "content": "new action"},
+        ],
+        "info": {},
+    }
+    request = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "large old action"},
+        {"role": "user", "content": "large old final result"},
+        {"role": "user", "content": "new task"},
+    ]
+    replacements = {
+        "record-000002": "[PRA memory] Prior instruction completed.",
+        "record-000003": "[PRA memory] Closure recorded.",
+    }
+    selected = [
+        request[0],
+        request[1],
+        {"role": "assistant", "content": replacements["record-000002"]},
+        {"role": "user", "content": replacements["record-000003"]},
+        request[4],
+    ]
+    trace = {
+        "request_index": 1,
+        "session_id": "session",
+        "policy": "persistent_instruction_epoch_retirement",
+        "plan_policy": "persistent_instruction_epoch_retirement",
+        "plan_digest": "logical",
+        "wire_plan_digest": "wire",
+        "request_input_sha256": _digest(request),
+        "request_message_content_sha256": [
+            _content_digest(row["content"]) for row in request
+        ],
+        "selected_message_content_sha256": [
+            _content_digest(row["content"]) for row in selected
+        ],
+        "selected_messages_sha256": _digest(selected),
+        "wire_plan": {
+            "selected_record_ids": [
+                "record-000000",
+                "record-000001",
+                "record-000002",
+                "record-000003",
+                "record-000004",
+            ],
+            "record_replacements": replacements,
+        },
+    }
+    prefix = tmp_path / "prefix.json"
+    trajectory = tmp_path / "trajectory.json"
+    selection = tmp_path / "selection.jsonl"
+    output = tmp_path / "fixture.jsonl"
+    prefix.write_text(json.dumps(prior), encoding="utf-8")
+    trajectory.write_text(json.dumps(current), encoding="utf-8")
+    selection.write_text(json.dumps(trace) + "\n", encoding="utf-8")
+
+    export_fixture(
+        persistent_prefix=prefix,
+        trajectory=trajectory,
+        request_selection=selection,
+        output=output,
+    )
+
+    row = json.loads(output.read_text(encoding="utf-8"))
+    assert row["selected_message_indices"] == [0, 1, 2, 3, 4]
+    assert row["resources"] == [
+        {"resource_id": "m1-0-user", "text": "old task"},
+        {
+            "resource_id": "m2-0-assistant",
+            "text": "[PRA memory] Prior instruction completed.",
+        },
+        {
+            "resource_id": "m3-0-user",
+            "text": "[PRA memory] Closure recorded.",
+        },
+    ]

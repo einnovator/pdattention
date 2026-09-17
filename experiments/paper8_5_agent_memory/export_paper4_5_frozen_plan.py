@@ -129,6 +129,70 @@ def _selected_indices(
     return indices
 
 
+def _selected_materialized_messages(
+    messages: Sequence[Mapping[str, Any]], trace: Mapping[str, Any],
+) -> tuple[list[int], list[dict[str, str]]]:
+    """Resolve an exact selected subsequence, including wire replacements.
+
+    Older fixtures selected unchanged records and can be recovered from their
+    content hashes alone.  Newer policies may replace a selected record's
+    payload with a compact receipt.  In that case the wire plan supplies both
+    the stable record identity and replacement text; treating the replacement
+    hash as if it belonged to the source request would either fail export or,
+    worse, silently approximate a different policy.
+    """
+
+    selected_hashes = [
+        str(value) for value in trace.get("selected_message_content_sha256", ())
+    ]
+    wire_plan = trace.get("wire_plan")
+    if not isinstance(wire_plan, Mapping):
+        indices = _selected_indices(messages, selected_hashes)
+        return indices, [
+            {
+                "role": str(messages[index].get("role", "")),
+                "content": str(messages[index].get("content", "")),
+            }
+            for index in indices
+        ]
+
+    record_ids = wire_plan.get("selected_record_ids")
+    replacements = wire_plan.get("record_replacements", {})
+    if not isinstance(record_ids, list) or len(record_ids) != len(selected_hashes):
+        raise ValueError(
+            "wire plan selected-record identities do not match recorded "
+            "selected-message hashes"
+        )
+    if not isinstance(replacements, Mapping):
+        raise ValueError("wire plan record replacements are not an object")
+
+    indices: list[int] = []
+    selected_messages: list[dict[str, str]] = []
+    previous = -1
+    for record_id_value, expected_hash in zip(record_ids, selected_hashes):
+        record_id = str(record_id_value)
+        match = re.fullmatch(r"record-(\d+)", record_id)
+        if match is None:
+            raise ValueError(f"unsupported selected record identity: {record_id}")
+        index = int(match.group(1))
+        if index <= previous or index >= len(messages):
+            raise ValueError("wire plan selected records are not an ordered request subset")
+        source = messages[index]
+        content = str(replacements.get(record_id, source.get("content", "")))
+        if _content_digest(content) != expected_hash:
+            raise ValueError(
+                f"wire materialization for {record_id} does not match the "
+                "recorded selected-message hash"
+            )
+        indices.append(index)
+        selected_messages.append({
+            "role": str(source.get("role", "")),
+            "content": content,
+        })
+        previous = index
+    return indices, selected_messages
+
+
 def _request_messages(
     prior_episodes: Sequence[Mapping[str, Any]],
     current_trajectory: Mapping[str, Any],
@@ -233,9 +297,9 @@ def export_fixture(
         request_hashes = [_content_digest(row["content"]) for row in messages]
         if request_hashes != trace.get("request_message_content_sha256"):
             raise ValueError(f"request {ordinal} failed message-content validation")
-        selected_hashes = [str(value) for value in trace.get("selected_message_content_sha256", ())]
-        selected_indices = _selected_indices(messages, selected_hashes)
-        selected_messages = [messages[index] for index in selected_indices]
+        selected_indices, selected_messages = _selected_materialized_messages(
+            messages, trace,
+        )
         if _digest(selected_messages) != trace.get("selected_messages_sha256"):
             raise ValueError(f"request {ordinal} failed selected-message validation")
 
@@ -248,9 +312,10 @@ def export_fixture(
             )
         resource_indices = [index for index in selected_indices if index not in mandatory]
         resources: list[tuple[str, str]] = []
+        selected_by_index = dict(zip(selected_indices, selected_messages))
         for index in resource_indices:
-            role = messages[index]["role"]
-            content = messages[index]["content"]
+            role = selected_by_index[index]["role"]
+            content = selected_by_index[index]["content"]
             for child, text in enumerate(
                 _split_record_text(
                     content,

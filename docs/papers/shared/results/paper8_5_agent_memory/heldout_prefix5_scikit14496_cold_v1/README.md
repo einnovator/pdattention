@@ -37,3 +37,16 @@ and engine-transfer candidate status. Three successes do not establish a
 population accuracy rate or a production default; repeat qualification,
 additional identities, cross-model transfer, and autonomous post-fix engine
 runs remain required.
+
+## Frozen Paper 4.5 handoff
+
+`paper4_5_e2f1c_frozen_plan.jsonl` exports all nine treatment requests without
+rerunning the selector. Its adjacent request replay and manifest bind the
+source prefix, trajectory, selection trace, generation settings, and 256-token
+physical segmentation. The exporter validates compact closure receipts against
+the recorded wire-plan replacements; these receipts are materialized selected
+records, not hashes incorrectly searched for in the unmodified FULL request.
+
+- frozen-plan SHA-256: `3f1666323bf6d7409a70a7754210f5e79c7b92029bda5ad1f232ff1f66e596c9`;
+- request-replay SHA-256: `ec9c8c12a2830d0e27ab9bcb4ef1ee5087fae35abaa7423ae3f0b2fac698eeed`;
+- source prefix SHA-256: `c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283`.
