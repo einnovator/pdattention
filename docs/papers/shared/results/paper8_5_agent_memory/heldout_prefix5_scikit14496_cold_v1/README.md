@@ -47,6 +47,6 @@ physical segmentation. The exporter validates compact closure receipts against
 the recorded wire-plan replacements; these receipts are materialized selected
 records, not hashes incorrectly searched for in the unmodified FULL request.
 
-- frozen-plan SHA-256: `3f1666323bf6d7409a70a7754210f5e79c7b92029bda5ad1f232ff1f66e596c9`;
+- frozen-plan SHA-256: `b2aba82e9474ffdb9b1d6a0ed93fab47dcbed6aa652ab8f6c373ffb4c72ba902`;
 - request-replay SHA-256: `ec9c8c12a2830d0e27ab9bcb4ef1ee5087fae35abaa7423ae3f0b2fac698eeed`;
 - source prefix SHA-256: `c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283`.

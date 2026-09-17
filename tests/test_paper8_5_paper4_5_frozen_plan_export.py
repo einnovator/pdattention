@@ -205,3 +205,21 @@ def test_exporter_preserves_wire_materialized_receipts(tmp_path: Path) -> None:
             "text": "[PRA memory] Closure recorded.",
         },
     ]
+    assert row["materialized_message_replacements"] == [
+        {
+            "record_id": "record-000002",
+            "message_index": 2,
+            "role": "assistant",
+            "content": "[PRA memory] Prior instruction completed.",
+            "content_sha256": _content_digest(
+                "[PRA memory] Prior instruction completed."
+            ),
+        },
+        {
+            "record_id": "record-000003",
+            "message_index": 3,
+            "role": "user",
+            "content": "[PRA memory] Closure recorded.",
+            "content_sha256": _content_digest("[PRA memory] Closure recorded."),
+        },
+    ]

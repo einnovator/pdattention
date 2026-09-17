@@ -324,6 +324,31 @@ def export_fixture(
                 )
             ):
                 resources.append((f"m{index}-{child}-{role}", text))
+        wire_plan = trace.get("wire_plan")
+        raw_replacements = (
+            wire_plan.get("record_replacements", {})
+            if isinstance(wire_plan, Mapping)
+            else {}
+        )
+        materialized_replacements: list[dict[str, Any]] = []
+        for record_id_value, replacement_value in raw_replacements.items():
+            record_id = str(record_id_value)
+            match = re.fullmatch(r"record-(\d+)", record_id)
+            if match is None:
+                raise ValueError(f"unsupported replacement record identity: {record_id}")
+            index = int(match.group(1))
+            if index not in selected_by_index:
+                raise ValueError(f"replacement record is not selected: {record_id}")
+            content = str(replacement_value)
+            if selected_by_index[index]["content"] != content:
+                raise ValueError(f"replacement content disagrees for {record_id}")
+            materialized_replacements.append({
+                "record_id": record_id,
+                "message_index": index,
+                "role": selected_by_index[index]["role"],
+                "content": content,
+                "content_sha256": _content_digest(content),
+            })
         fixture_rows.append({
             "schema_version": 1,
             "contract": "frozen-agent-memory-plan-v1",
@@ -336,6 +361,7 @@ def export_fixture(
             "segment_tokens": segment_tokens,
             "mandatory_message_indices": sorted(mandatory),
             "selected_message_indices": selected_indices,
+            "materialized_message_replacements": materialized_replacements,
             "selected_resource_digest": _selection_digest(resources),
             "resources": [
                 {"resource_id": resource_id, "text": text}
