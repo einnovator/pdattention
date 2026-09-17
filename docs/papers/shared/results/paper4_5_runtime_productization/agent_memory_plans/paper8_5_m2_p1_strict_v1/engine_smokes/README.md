@@ -1,8 +1,8 @@
 # Frozen-plan request smokes
 
 These rows exercise exact Paper 8.5 M2/P1 request and selection fixtures on
-`mlx-community/Qwen3-0.6B-4bit`, MLX-LM 0.31.3, and the 16 GB M5 host. They
-are request-level engine-contract probes, not autonomous task solves.
+MLX, SGLang-MLX, vLLM-Metal, and Transformers/PyTorch. They are request-level
+engine-contract probes, not autonomous task solves.
 
 The strict gate requires the candidate to match a dense engine oracle that
 uses the identical selected K/V values, original positions, and next wire
@@ -12,6 +12,7 @@ offload, restoration, and termination checks.
 
 | Artifact | Retention | Wire prefill | Dense-oracle logit delta | Next token | Contract result |
 |---|---:|---:|---:|---|---|
+| `hf_qwen3_06b_task4_request5_step1.json` | 47.92% | 1 | 0.000 | exact | qualified on RTX/CUDA |
 | `mlx_qwen3_06b_task4_request1.json` | 45.26% | 16 | 1.000 | exact | quarantined numerical negative |
 | `mlx_qwen3_06b_task4_request1_precise.json` | 45.26% | 16 | 1.000 | exact | quarantined numerical negative; precise exponential did not repair it |
 | `mlx_qwen3_06b_task4_request2_dtype_match.json` | 45.77% | 16 | 1.125 | exact | quarantined numerical negative; explicit dtype rounding did not repair it |
@@ -33,6 +34,18 @@ exactly. This is a kernel-dispatch boundary, not evidence that selected K/V
 values or original positions are wrong. It does not license a runtime-speed
 claim: token-at-a-time prefill is the correctness mode until a matching fused
 multi-token consumer is qualified.
+
+The post-fix HF/CUDA row consumes the identical Task 4 request-5 plan on
+Qwen3-0.6B. It selects 8,617/18,110 historical K/V tokens and evaluates the
+same 117-token wire suffix as MLX and SGLang-MLX: 52.42% of resident history
+K/V is omitted and total visible-token saving is 51.77%. The fused Triton
+consumer is same-subset token and logit exact, re-encodes zero selected-history
+tokens, performs no interval packing or selected-K/V copy, and clears the
+ownership, cancellation, stale-generation, offload/restore, and termination
+checks. The 13,426,224 attention-temporary bytes are consumer workspace, not
+selected-K/V copying; the 2,077,017,595-byte explicit offload payload is a
+separate lifecycle event. This closes the same-request HF/MLX/SGLang geometry
+comparison but does not yet constitute an autonomous HF task run.
 
 For the qualified 47.92% row, 8,617 historical K/V tokens are selected from
 18,110 source tokens across 23 disjoint segments. Selected-history

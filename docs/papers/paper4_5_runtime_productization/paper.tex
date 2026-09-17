@@ -3503,6 +3503,22 @@ create an invalid system-to-assistant chat transition.  Detailed task rows,
 stop diagnostics, hashes, and curves remain in the Paper~8.5 appendix and
 machine-readable bundle rather than being duplicated here.
 
+The first cross-engine same-plan row now fixes Task~4 request~5 and consumes it
+unchanged through HF/CUDA, MLX, SGLang-MLX, and vLLM-Metal.  HF, MLX, and
+SGLang each select 8,617/18,110 historical K/V tokens and append the same
+117-token wire suffix, omitting 52.42\% of resident history K/V and saving
+51.77\% of total visible tokens.  All three are same-subset token and logit
+exact, re-encode zero selected-history tokens, and perform no selected-K/V or
+interval-pack copy.  vLLM selects 8,624/18,096 complete-page source tokens and
+appends 131 suffix tokens: page rounding adds 21 tokens, reducing historical
+K/V saving to 52.34\% and total visible saving to 51.62\%.  It remains token
+exact and attaches existing pages without copying.  Thus engine granularity
+changes this request's realized saving by only 0.16 percentage point; it does
+not change the frozen logical decision.  The HF row also clears ownership,
+cancellation, stale-generation, offload/restore, and termination checks on an
+RTX CUDA host.  These are request-level mechanism results, not autonomous
+task-accuracy evidence.
+
 The first real MLX frozen-plan check now qualifies one Task~4 request at both
 full and reduced retention on Qwen3-0.6B-4bit.  The reduced row retains
 8,617/18,110 historical K/V tokens across 23 disjoint original-position
