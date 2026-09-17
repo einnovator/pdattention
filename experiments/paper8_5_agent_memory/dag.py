@@ -435,6 +435,7 @@ def build_frontier_information_flow_dag(
     # system prompt still describes the protocol.  Validity is declared by the
     # harness adapter from the actual completion envelope; the generic DAG
     # never parses agent-specific command syntax.
+    protocol_barrier_ids: set[str] = set()
     if valid_protocol_exemplars:
         valid_groups: list[tuple[str, str]] = []
         seen_groups: set[str] = set()
@@ -454,6 +455,7 @@ def build_frontier_information_flow_dag(
             if epoch.epoch_index in frontier_epochs
         )
         for _, source_id in valid_groups:
+            protocol_barrier_ids.add(source_id)
             for target_id in frontier_instructions:
                 if source_id != target_id:
                     edge_rows.append(DagEdge(
@@ -482,6 +484,12 @@ def build_frontier_information_flow_dag(
     pending = list(frontier_ids)
     while pending:
         target = pending.pop()
+        # A protocol exemplar is retained as an atomic behavioral example.
+        # Its own causal predecessors are task-specific work, not protocol
+        # dependencies, so liveness must not flood backward through the whole
+        # completed instruction epoch.
+        if target in protocol_barrier_ids:
+            continue
         for source in incoming.get(target, ()):
             if source not in live:
                 live.add(source)

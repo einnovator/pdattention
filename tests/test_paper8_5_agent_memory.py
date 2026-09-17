@@ -297,6 +297,72 @@ def test_frontier_dag_p1_retains_latest_valid_not_latest_malformed_completion():
     assert "observation-1" not in dag.live_ancestor_record_ids
 
 
+def test_frontier_dag_p1_is_a_barrier_not_a_whole_epoch_reachability_flood():
+    base = _information_flow_chain(
+        ["src/old.py", "src/current.py"],
+        workspace_scopes=["workspace-old", "workspace-current"],
+    )
+    records = list(base.records)
+    old_action = records[1]
+    old_observation = records[2]
+    extra_action = replace(
+        old_action,
+        record_id="action-0-final",
+        turn_id="turn-0-final",
+        causal_group_id="turn-0-final",
+        message_index=3,
+        content="```mswea_bash_command\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt\n```",
+        command="echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt",
+        semantic_roles=(AgentRecordRole.ASSISTANT_ACTION, AgentRecordRole.FINALIZATION),
+        resource_ids=(),
+    )
+    extra_observation = replace(
+        old_observation,
+        record_id="observation-0-final",
+        turn_id="turn-0-final",
+        causal_group_id="turn-0-final",
+        message_index=4,
+        content="diff --git a/src/old.py b/src/old.py",
+        semantic_roles=(AgentRecordRole.TOOL_OBSERVATION, AgentRecordRole.FINALIZATION),
+        resource_ids=(),
+        metadata={
+            **old_observation.metadata,
+            "protocol_completion_valid": True,
+        },
+    )
+    shifted = [
+        replace(row, message_index=row.message_index + 2)
+        if row.message_index >= 3 else row
+        for row in records[3:]
+    ]
+    history = CanonicalAgentHistory(
+        tuple((*records[:3], extra_action, extra_observation, *shifted)),
+        (
+            base.turns[0],
+            AgentTurn(
+                "turn-0-final",
+                "turn-0-final",
+                ("action-0-final", "observation-0-final"),
+                3,
+                True,
+            ),
+            replace(base.turns[1], first_message_index=base.turns[1].first_message_index + 2),
+        ),
+    )
+
+    dag = build_frontier_information_flow_dag(
+        history,
+        recent_user_prompts=1,
+        valid_protocol_exemplars=1,
+    )
+    retired = {row.causal_group_id for row in dag.retirement_candidates}
+
+    assert "turn-0-final" not in retired
+    assert "turn-0" in retired
+    assert "observation-0-final" in dag.live_ancestor_record_ids
+    assert "observation-0" not in dag.live_ancestor_record_ids
+
+
 def test_recordizer_preserves_action_observation_causal_bundles():
     history = recordize_minisweagent_messages(_messages(3))
     assert len(history.turns) == 3
