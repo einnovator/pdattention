@@ -17,12 +17,14 @@ four-episode persistent FULL prefix:
 | M1/P1/W1 | 0 | 9 | 191,610 | 88,506 | 53.81% | 53.83% |
 | M2/P1 | 1 | 9 | 194,161 | 97,780 | 49.64% | 48.99% |
 
-A second same-prefix FULL qualifier was then run before an intended M2/P1
-repeat. It reproduced the first five FULL actions exactly, diverged at action
-six, failed officially with `patch_apply_failed`, and used 18 calls and
-414,217 materialized tokens. M2/P1 was therefore withheld. This row estimates
-FULL reliability (1/2 on this exact prefix); it is not a paired M2 failure and
-does not alter the three-arm table above.
+Two further same-prefix FULL qualifiers were then run before intended M2/P1
+repeats. Both reproduced the successful FULL run's first five assistant actions
+exactly, consumed byte-identical model-visible inputs through request six, and
+diverged in the response to request six. They then followed identical 18-call
+failure trajectories, each materializing 414,217 tokens and receiving
+`patch_apply_failed`. M2/P1 was withheld after both controls. These rows
+estimate FULL reliability (1/3 on this exact prefix); they are not paired M2
+failures and do not alter the three-arm table above.
 
 The pair passed identity checks for pair ID, task, frozen prefix, logical
 session, source workspace, model and tokenizer revisions, harness, scaffold,
@@ -40,11 +42,11 @@ in the same nine calls as FULL.
 
 This is a one-task, one-qualified-repeat result. It establishes a quality
 boundary and a testable mechanism, not a population accuracy estimate or
-deployable default. The failed second FULL qualifier demonstrates why a
-treatment cannot inherit qualification from an earlier successful replay.
-A promotion decision still requires another successful exact-prefix FULL
-control immediately before a repeated M2/P1 treatment and expansion to other
-task identities. The persistent exports currently report one fewer receipt
+deployable default. The two failed FULL qualifiers demonstrate why a treatment
+cannot inherit qualification from an earlier successful replay. Task 5 is
+stopped after two genuine control failures. Qualification now moves to other
+task identities; each treatment still requires a successful exact-prefix FULL
+control immediately beforehand. The persistent exports currently report one fewer receipt
 than commands; the raw selection traces, trajectories, workspace checkpoints,
 manifests, and official grader outputs are retained so that this terminal
 sidecar discrepancy remains auditable.

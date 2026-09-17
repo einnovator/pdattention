@@ -1,0 +1,18 @@
+diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py
+index 3c39f57e4ddae82d8449be704d6263cb8e0cf2e5..5090f7facf956444b0577747e4dd1eefd6eec351 100644
+--- a/django/core/management/commands/runserver.py
++++ b/django/core/management/commands/runserver.py
+@@ -106,10 +106,11 @@ class Command(BaseCommand):
+                 elif self.use_ipv6 and not _fqdn:
+                     raise CommandError('"%s" is not a valid IPv6 address.' % self.addr)
+         if not self.addr:
++            if self.addr == "0":
++                self.addr = "0.0.0.0"
+             self.addr = self.default_addr_ipv6 if self.use_ipv6 else self.default_addr
+             self._raw_ipv6 = self.use_ipv6
+-        self.run(**options)
+-
++            if self.addr == "0":
+     def run(self, **options):
+         """Run the server, using the autoreloader if needed."""
+         use_reloader = options["use_reloader"]

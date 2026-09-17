@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_exact_prefix_qualified_task3",
+  "evidence_class": "autonomous_agent_logical_selection",
+  "repository_revision": "8c8cf6ea9a289e6deee393a711eb578ad370597e",
+  "pair_id": "paper85-exact-prefix-qualified-task3-v1:r01",
+  "instance_id": "scikit-learn__scikit-learn-12585",
+  "episode_index": 3,
+  "frozen_prefix": {
+    "sha256": "a30f35190dbbcb79f28f8465943286fc1c5d56e31b3e8951baa487d18e463431",
+    "episode_count": 2,
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277"
+    ]
+  },
+  "identity_validation": {
+    "status": "passed",
+    "fields": [
+      "pair_id",
+      "instance_id",
+      "persistent_session.session_id",
+      "persistent_session.prefix.sha256",
+      "persistent_session.prefix.episode_count",
+      "model_revision",
+      "tokenizer_revision",
+      "temperature",
+      "top_p",
+      "seed",
+      "max_calls",
+      "max_completion_tokens",
+      "agent_behavior_sha256",
+      "scaffold_identity_sha256",
+      "workspace_source_identity_sha256"
+    ],
+    "full_control_created_before_treatment": true,
+    "workspace_source_identity_sha256": "8c78e429c412f73ec417c77351f8ceafe549124b0fc49cfbac3388ffedf6a7a2",
+    "agent_behavior_sha256": "fdf564c1f091b4a7fff639ea3ed560a059ad0bd873ea4d7f448addbf0c007d4d",
+    "scaffold_identity_sha256": "fdc45d1310b045814a0bca7fa4c9e0ed42d86142b5b5f6139d204fd4a0546677"
+  },
+  "generation": {
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "arms": [
+    {
+      "arm": "FULL",
+      "output": "full_r01",
+      "official_resolved": true,
+      "calls": 7,
+      "cumulative_full_tokens": 103713,
+      "cumulative_materialized_tokens": 103713,
+      "own_trajectory_saving_fraction": 0.0,
+      "paired_saving_vs_full_fraction": 0.0,
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 7,
+        "receipts": 6
+      }
+    },
+    {
+      "arm": "M2/P1",
+      "output": "m2_p1_r01",
+      "official_resolved": true,
+      "calls": 7,
+      "cumulative_full_tokens": 104474,
+      "cumulative_materialized_tokens": 92434,
+      "own_trajectory_saving_fraction": 0.1152439841491663,
+      "paired_saving_vs_full_fraction": 0.1087520368709805,
+      "success_preserved_after_successful_same_prefix_full": true,
+      "call_delta_vs_full": 0,
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 7,
+        "receipts": 6
+      }
+    }
+  ],
+  "interpretation": {
+    "finding": "M2/P1 preserves the official solve and call count with 11.52% own-trajectory saving.",
+    "scaling_note": "At episode 3, keeping the two latest instruction epochs leaves only the oldest issue eligible for retirement.",
+    "scope": "single task identity and one paired repeat",
+    "promotion_status": "strict_pair_pass_not_default_qualified"
+  }
+}

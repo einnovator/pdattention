@@ -82,11 +82,19 @@ session prefix.  A strict Task-5 rerun closes that attribution gap: same-prefix
 \textsc{Full} and M2/P1 both solve in nine calls, while M2/P1 sends 97,780
 versus 191,697 paired input tokens (48.99\% saving).  M1/P1/W1 also uses nine
 calls and saves 53.83\%, but loses the solve after mutating before sufficient
-current-task source localization.  A second \textsc{Full} qualifier then fails
-after 18 calls, so its planned M2/P1 treatment is correctly withheld.  This
-one-task quality boundary is a mechanism result, not a population estimate or
-promoted default.  Three identities do not establish greater-than-90\%
-population accuracy.
+current-task source localization.  Two further \textsc{Full} qualifiers then
+fail in the same 18-call trajectory, so both planned M2/P1 treatments are
+correctly withheld.  A second strict pair on Task~4 resolves in both arms;
+M2/P1 sends 49,667 tokens in six calls versus 260,662 in fourteen for
+\textsc{Full}.  Its 80.95\% paired reduction includes a favorable trajectory
+effect; the selector removes 52.56\% within the candidate trajectory.  A third
+strict pair on Task~3 preserves the solve and seven-call trajectory while
+saving 11.52\% within trajectory.  Across these three exact-prefix pairs,
+M2/P1 preserves 3/3 solves, uses 22 versus 30 calls, and removes 40.53\% of its
+own full-history counterfactual.  This meets the selector-only 30--50\% target
+as a three-task promotion candidate, not a greater-than-90\% population
+accuracy estimate or production default.  Task~6 is excluded rather than
+charged to selection after two same-prefix \textsc{Full} controls both fail.
 \end{abstract}
 
 \iffalse
@@ -1158,7 +1166,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 \midrule
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
-Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Task-3/4 repeats save 9.96/59.24\%; Task-5 control fails; blocked. \\
+Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1173,12 +1181,17 @@ hit nor a latency claim.
 \section{Main Limitations and Conclusion}
 
 One sequence, one model, and an unstable temperature-zero endpoint limit
-inference.  The initial 3/3, 40.83\% pilot is not stable: repeats span
-9.96--59.24\% saving, one \textsc{Full} control fails while M2/P1 resolves, and
-conditional saving is 28.67\%, below the profile floor.  No profile is promoted.
-Stable-endpoint Easy-14 repetition, cross-model and cross-agent transfer, and
-dependent same-workspace tasks remain necessary; three identities cannot
-establish 90\% population accuracy.
+inference.  The initial 3/3, 40.83\% pilot is not stable: historical repeats
+span 9.96--59.24\% saving, and the strict Task-5 \textsc{Full} control resolves
+only 1/3 times.  M2/P1 preserves all three strict Task-3--5 pairs whose
+immediately preceding exact-prefix \textsc{Full} control succeeds, with 40.53\%
+aggregate own-trajectory saving and no call increase.  This clears the
+three-task promotion-candidate gate, but three identities do not estimate
+population accuracy.  No profile is a production default.  Additional
+same-prefix task identities and repeats, cross-model and cross-agent transfer,
+and dependent same-workspace tasks remain necessary.  Task~6 supplies a second
+guardrail: both exact-prefix \textsc{Full} controls fail, so no treatment is run
+or scored on that identity.
 
 \clearpage
 \appendix
@@ -1474,17 +1487,105 @@ a second successful exact-prefix \textsc{Full} qualification and additional
 task identities.  The auditable bundle is
 \path{exact_prefix_qualified_task5_v1/evidence.json}.
 
-The next prequalification attempt confirms that this caution is operational,
-not rhetorical.  A second \textsc{Full} replay reproduces the first five
-assistant actions exactly, diverges at action six, and eventually submits an
-invalid patch after 18 calls and 414,217 materialized tokens.  The official
-grader reports \texttt{patch\_apply\_failed}; there are no upstream-error
-calls.  The intended M2/P1 repeat is therefore not executed.  On this exact
-prefix, observed \textsc{Full} reliability is only 1/2, and the failed control
-cannot be attributed to selection.  Future treatment repeats require a new
+The next two prequalification attempts confirm that this caution is
+operational, not rhetorical.  Both \textsc{Full} replays reproduce the first
+five assistant actions exactly.  Their model-visible request hashes also match
+the successful control through request six, yet response six diverges.  The
+two retries then follow the same 18-call trajectory, materialize 414,217 tokens
+each, and submit invalid patches.  The official grader reports
+\texttt{patch\_apply\_failed}; there are no upstream-error calls.  Neither
+intended M2/P1 repeat is executed.  On this exact prefix, observed
+\textsc{Full} reliability is only 1/3, and the failed controls cannot be
+attributed to selection.  Task~5 is stopped after two genuine control failures;
+future treatment repeats move to other task identities and still require a new
 successful same-prefix \textsc{Full} control immediately beforehand.
 
-\begin{figure}[H]
+The same fail-closed protocol next qualifies Task~4 from its frozen
+three-episode prefix.  Table~\ref{tab:task4-strict-prefix} reports a successful
+pair.  Both arms solve officially; M2/P1 uses six rather than fourteen calls.
+Its 52.56\% own-trajectory saving is the direct logical-selection quantity.
+The 80.95\% paired saving is also a valid task-level cost result, but it includes
+the treatment's shorter trajectory and therefore is not a pure compression
+ratio or a population expectation.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Strict exact-prefix Task-4 comparison.  Both rows use the same frozen
+three-episode prefix, source workspace, model, scaffold, and decoding settings.}
+\label{tab:task4-strict-prefix}
+\begin{tabular}{lrrrrr}
+\toprule
+Policy & Resolved & Calls & Full ctrf. & Materialized & Paired saving \\
+\midrule
+\textsc{Full} & 1 & 14 & 260,662 & 260,662 & 0.00\% \\
+M2/P1 & 1 & 6 & 104,705 & 49,667 & 80.95\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This second strict success strengthens the current-task-locality hypothesis:
+the policy can retire disconnected earlier-issue state while retaining two
+recent prompt epochs and one valid protocol exemplar.  It does not establish
+that the 80.95\% paired reduction will transfer, because the denominator is an
+unusually long successful \textsc{Full} trajectory.  The auditable bundle is
+\path{exact_prefix_qualified_task4_v1/evidence.json}; qualification proceeds to
+another task identity before any Easy-14 expansion or Paper~4.5 default.
+
+Task~3 supplies that next identity from a frozen two-episode prefix.  Both arms
+solve in seven calls.  M2/P1 materializes 92,434 tokens versus 103,713 for
+\textsc{Full}, a 10.88\% paired reduction, and removes 11.52\% relative to its
+own 104,474-token full-history counterfactual.  The small reduction is predicted
+by the policy rather than an implementation failure: at episode three, an
+$M=2$ frontier leaves only the oldest prior issue eligible for retirement.
+The bundle is \path{exact_prefix_qualified_task3_v1/evidence.json}.
+
+Table~\ref{tab:strict-m2-p1-cohort} aggregates only the three treatment rows
+whose exact-prefix \textsc{Full} control ran first and resolved.  The primary
+selector denominator is the candidate's own full-history counterfactual because
+it holds the action trajectory fixed.  The paired denominator measures total
+task-level workload and therefore also rewards fewer calls.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Strict exact-prefix M2/P1 cohort.  ``Own save'' isolates logical
+selection along the candidate trajectory; ``paired save'' includes trajectory
+length differences.}
+\label{tab:strict-m2-p1-cohort}
+\begin{tabular}{lrrrrr}
+\toprule
+Task & Resolved F/P & Calls F/P & Materialized F/P & Own save & Paired save \\
+\midrule
+3 & 1/1 & 7/7 & 103,713/92,434 & 11.52\% & 10.88\% \\
+4 & 1/1 & 14/6 & 260,662/49,667 & 52.56\% & 80.95\% \\
+5 & 1/1 & 9/9 & 191,697/97,780 & 49.64\% & 48.99\% \\
+\midrule
+Aggregate & 3/3 & 30/22 & 556,072/239,881 & 40.53\% & 56.86\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The strict cohort reaches the predeclared 30--50\% band on the
+selector-specific denominator, preserves all three observed solves, and reduces
+rather than increases calls.  It therefore advances M2/P1 from a mechanism
+diagnostic to the leading expansion candidate.  It does not establish 90\%
+population accuracy: three clustered task identities are insufficient, Task~5
+\textsc{Full} is only 1/3 repeat-reliable on its prefix, and Task~4's unusually
+long control inflates the paired saving.  The aggregate ledger is
+\path{exact_prefix_m2_p1_strict_cohort_v1/evidence.json}.
+
+Episode six does not enter this table.  Two exact-prefix \textsc{Full}
+qualifiers on Task~6 both fail in five calls, materializing 142,805 and 142,821
+tokens.  Their first two actions are
+identical; response three differs, and the final two actions reconverge.  M2/P1
+is withheld after the second genuine control failure.  This row measures
+baseline/session reliability and validates the admission rule; treating it as
+a policy failure or zero-saving treatment would be scientifically incorrect.
+The audit is retained under
+\path{exact_prefix_qualified_task6_v1/evidence.json}.
+
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=0.86\linewidth]{../shared/results/paper8_5_agent_memory/easy14_atomic_profiles_ctx131k_v2/easy14_atomic_prefix_frontier.pdf}
 \caption{Descriptive prefix curves for the stopped E2 and E3 arms.  Dashed

@@ -113,6 +113,14 @@ instability is not caused by an accidental graph path between issues.
 The exact prefix and active-episode export consumed by the audit are retained
 as `task5_persistent_prefix_before_episode_05.json` and
 `autonomous_task5_m2_p1_v1_r03/persistent_episode_export.json`.
+The exact two- and three-episode FULL prefixes used for strict Task 3 and
+Task 4 qualification are also retained as
+`task3_persistent_prefix_before_episode_03.json` and
+`task4_persistent_prefix_before_episode_04.json`; their SHA-256 values match
+the original run manifests.
+The five-episode prefix used for the stopped Task 6 FULL qualification is
+retained as `task6_persistent_prefix_before_episode_06.json` and likewise
+matches both repeat manifests.
 
 M1+P1 transfers successfully to Scikit-learn Task 3 (8 calls; 49,345 of
 120,273 counterfactual tokens; 58.97% saving), but fails Pytest Task 4 after

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_exact_prefix_qualified_task6",
+  "evidence_class": "autonomous_agent_full_control_reliability",
+  "repository_revision": "8c8cf6ea9a289e6deee393a711eb578ad370597e",
+  "instance_id": "scikit-learn__scikit-learn-13135",
+  "episode_index": 6,
+  "frozen_prefix": {
+    "sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283",
+    "episode_count": 5,
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277",
+      "scikit-learn__scikit-learn-12585",
+      "pytest-dev__pytest-7982",
+      "django__django-16145"
+    ]
+  },
+  "identity_validation": {
+    "status": "passed",
+    "workspace_source_identity_sha256": "fb3602e03c2e76f443737b3deaece2fa0acb3aac1893defadcacb80ce748fb08",
+    "agent_behavior_sha256": "f254765baddca84817e4d686aabefbb53235f20ffd4c045f127bfc30aed12169",
+    "scaffold_identity_sha256": "fdc45d1310b045814a0bca7fa4c9e0ed42d86142b5b5f6139d204fd4a0546677"
+  },
+  "generation": {
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "full_controls": [
+    {
+      "repeat": 1,
+      "pair_id": "paper85-exact-prefix-qualified-task6-v1:r01",
+      "output": "full_r01",
+      "official_resolved": false,
+      "official_error": false,
+      "calls": 5,
+      "cumulative_materialized_tokens": 142805,
+      "upstream_error_calls": 0
+    },
+    {
+      "repeat": 2,
+      "pair_id": "paper85-exact-prefix-qualified-task6-v1:r02",
+      "output": "full_r02",
+      "official_resolved": false,
+      "official_error": false,
+      "calls": 5,
+      "cumulative_materialized_tokens": 142821,
+      "upstream_error_calls": 0
+    }
+  ],
+  "trajectory_comparison": {
+    "identical_model_visible_inputs_through_request": 2,
+    "identical_assistant_actions_through_request": 2,
+    "first_divergent_response": 3,
+    "assistant_actions_reconverge_for_requests": [4, 5]
+  },
+  "interpretation": {
+    "full_control_reliability_on_exact_prefix": "0/2",
+    "treatment_executed": false,
+    "reason_treatment_withheld": "two genuine exact-prefix FULL failures",
+    "scope": "baseline/session reliability; excluded from policy accuracy and saving aggregates"
+  }
+}
