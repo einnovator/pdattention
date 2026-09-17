@@ -91,6 +91,14 @@ than the failed FULL trajectory. This is unconditional reliability evidence,
 not a preserved-FULL-success point. It motivates randomized repeated pairing
 to test whether exclusion reduces harmful cross-task interference.
 
+Across the complete contemporaneous repeat cohort, FULL resolves 2/3 and
+M2+P1 resolves 3/3. The arms use 30 and 31 calls and send 532,986 and 367,617
+tokens, a descriptive 31.03% input reduction. Conditional on the two FULL
+successes, M2+P1 preserves 2/2, uses 19 versus 20 calls, and saves 28.67%
+(229,047 versus 321,088 tokens). The conditional estimate is the promotion
+metric and narrowly misses the predeclared 30% floor. The unconditional result
+is retained separately as reliability evidence.
+
 The Task 6 pilot is an efficiency rejection. Both arms fail official grading,
 while DAG `M=2` takes 15 calls versus five and materializes 77.91% more paired
 input despite pruning 41.19% relative to its own trajectory counterfactual.
@@ -98,6 +106,8 @@ This demonstrates why per-request pruning must not be reported as end-to-end
 saving when the policy changes the trajectory.
 
 `autonomous_m2_p1_three_task_gate.json` is the frozen initial aggregate, and
+`autonomous_m2_p1_three_task_repeat_cohort.json` is the contemporaneous repeat
+aggregate. The
 `autonomous_m2_p1_task{3,4,5}_repeat_pair.json` record the contemporaneous
 repeats.
 Complete
