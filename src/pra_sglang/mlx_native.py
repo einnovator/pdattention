@@ -936,6 +936,7 @@ class SGLangMLXLiveKVRuntime:
             dump=dump, load=load
         )
         self._requests: dict[str, SGLangMLXLiveKVRequest] = {}
+        self._source_owners: dict[str, tuple[str, str, str]] = {}
         self._terminal_counts = {"finished": 0, "cancelled": 0, "error": 0}
         self._lock = RLock()
 
@@ -970,6 +971,9 @@ class SGLangMLXLiveKVRuntime:
         owner = str(owner_request_id)
         if not owner:
             raise ValueError("SGLang live-K/V source owner ID cannot be empty.")
+        # Tombstones must win before checking an engine-local owner.  After a
+        # real offload the owner request is deliberately no longer resident.
+        self.registry.assert_session_active(tenant_id, session_id)
         runner_requests = getattr(self.bridge.runner, "_req_caches", None)
         if runner_requests is not None and owner not in runner_requests:
             raise KeyError(
@@ -994,6 +998,11 @@ class SGLangMLXLiveKVRuntime:
             tenant_id=tenant_id,
             session_id=session_id,
             generation=generation,
+        )
+        self._source_owners[str(source_id)] = (
+            owner,
+            str(tenant_id),
+            str(session_id),
         )
 
     def begin_request(
@@ -1097,7 +1106,18 @@ class SGLangMLXLiveKVRuntime:
             return False if request is None else request.cancel()
 
     def offload_source(self, source_id: str) -> object:
-        return self.registry.offload(source_id)
+        """Serialize an idle source, then release its engine-owned hot cache."""
+
+        source_key = str(source_id)
+        with self._lock:
+            payload = self.registry.offload(source_key)
+            owner_row = self._source_owners.get(source_key)
+            if owner_row is not None:
+                owner = owner_row[0]
+                runner_requests = getattr(self.bridge.runner, "_req_caches", None)
+                if runner_requests is None or owner in runner_requests:
+                    self.bridge.runner.remove_request(owner)
+            return payload
 
     evict_source = offload_source
 
@@ -1113,7 +1133,18 @@ class SGLangMLXLiveKVRuntime:
             )
             for request in affected:
                 request.cancel()
-            return self.registry.terminate_session(tenant_id, session_id)
+            removed = self.registry.terminate_session(tenant_id, session_id)
+            matching = [
+                (source_id, owner)
+                for source_id, (owner, tenant, session) in self._source_owners.items()
+                if (tenant, session) == (str(tenant_id), str(session_id))
+            ]
+            runner_requests = getattr(self.bridge.runner, "_req_caches", None)
+            for source_id, owner in matching:
+                if runner_requests is None or owner in runner_requests:
+                    self.bridge.runner.remove_request(owner)
+                self._source_owners.pop(source_id, None)
+            return removed
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:

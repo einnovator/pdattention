@@ -536,6 +536,56 @@ def test_sglang_live_registry_rejects_stale_and_borrowed_eviction_and_tombstones
         )
 
 
+def test_sglang_offload_releases_engine_owner_and_restores_without_it(
+    monkeypatch,
+) -> None:
+    runner, bridge = _bridge(monkeypatch)
+    runtime = SGLangMLXLiveKVRuntime(
+        bridge,
+        dump=lambda source: ("offloaded", source),
+        load=lambda payload: payload[1],
+    )
+    source = _memory()
+    runtime.register_source(
+        "history",
+        source,
+        owner_request_id="source-owner",
+        tenant_id="tenant",
+        session_id="session",
+        generation=1,
+    )
+
+    payload = runtime.offload_source("history")
+    assert payload[0] == "offloaded"
+    assert "source-owner" not in runner._req_caches
+    assert runtime.registry.view("history").tier == "offloaded"
+
+    restored = runtime.begin_request(
+        "restored",
+        "history",
+        LiveKVSelectionPlan.full(6),
+        tenant_id="tenant",
+        session_id="session",
+        expected_generation=1,
+    )
+    runner.prefill_start("restored", [1], [1], [], [], 0)
+    assert runtime.registry.view("history").tier == "hot"
+    assert restored.finish()
+    assert runtime.terminate_session("tenant", "session") == 1
+
+    # The tombstone is authoritative even though the old engine owner was
+    # deliberately removed by offload.
+    with pytest.raises(RuntimeError, match="terminated"):
+        runtime.register_source(
+            "replacement",
+            source,
+            owner_request_id="source-owner",
+            tenant_id="tenant",
+            session_id="session",
+            generation=2,
+        )
+
+
 def test_sglang_radix_pool_never_receives_selected_memory_for_two_borrowers(
     monkeypatch,
 ) -> None:

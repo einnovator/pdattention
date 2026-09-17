@@ -744,7 +744,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     except RuntimeError as exc:
         tombstone_error = str(exc)
 
-    runner.remove_request(prime_id)
+    # A qualifying offload releases the engine-owned source request after its
+    # exact host image is durable.  Older adapters left that duplicate Metal K/V
+    # resident while reporting the registry tier as offloaded.
+    if prime_id in runner._req_caches:
+        runner.remove_request(prime_id)
     radix_pool_contains_selected_wrapper = any(
         isinstance(cache, SGLangSelectedKVCache)
         for cache_list in runner._cache_pool
@@ -835,7 +839,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "disjoint_selection_did_not_allocate": (
             not use_disjoint
             or (
-                active_after_selection == active_before_selection
+                active_after_selection <= active_before_selection
                 and peak_after_selection == 0
             )
         ),
@@ -936,6 +940,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "selection_pack_bytes": (
             0 if use_disjoint else candidate.selection.memory.nbytes
         ),
+        "selection_active_before_bytes": active_before_selection,
+        "selection_active_after_bytes": active_after_selection,
         "selection_active_memory_delta_bytes": max(
             active_after_selection - active_before_selection, 0
         ),
