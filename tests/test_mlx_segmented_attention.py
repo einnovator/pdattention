@@ -104,6 +104,53 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
     assert float(mx.max(mx.abs(reference - actual)).item()) <= 2e-3
 
 
+def test_fused_disjoint_two_pass_survives_mostly_future_mask() -> None:
+    """Old-position receipts may see only a small prefix of selected K/V."""
+
+    mx = pytest.importorskip("mlx.core")
+    from pra_mlx.native import disjoint_segmented_selected_attention
+
+    head_dim = 32
+    source_tokens = 4096
+    query = mx.random.normal((1, 4, 1, head_dim)).astype(mx.float16)
+    source_k = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
+    source_v = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
+    intervals = ((0, 2048), (2048, source_tokens))
+    memory_k = tuple(source_k[:, :, start:end, :] for start, end in intervals)
+    memory_v = tuple(source_v[:, :, start:end, :] for start, end in intervals)
+    local_k = mx.random.normal((1, 2, 1, head_dim)).astype(mx.float16)
+    local_v = mx.random.normal((1, 2, 1, head_dim)).astype(mx.float16)
+    mask = mx.concatenate(
+        (
+            mx.ones((1, 16), dtype=mx.bool_),
+            mx.zeros((1, source_tokens - 16), dtype=mx.bool_),
+            mx.ones((1, 1), dtype=mx.bool_),
+        ),
+        axis=1,
+    )
+
+    dense_k = mx.repeat(mx.concatenate((*memory_k, local_k), axis=2), 2, axis=1)
+    dense_v = mx.repeat(mx.concatenate((*memory_v, local_v), axis=2), 2, axis=1)
+    scores = (query @ mx.swapaxes(dense_k, -1, -2)) * (head_dim**-0.5)
+    reference = mx.softmax(mx.where(mask, scores, -1e9), axis=-1) @ dense_v
+    actual = disjoint_segmented_selected_attention(
+        query,
+        memory_k,
+        memory_v,
+        local_k,
+        local_v,
+        scale=head_dim**-0.5,
+        mask=mask,
+        source_keys=source_k,
+        source_values=source_v,
+        source_intervals=intervals,
+    )
+    mx.eval(reference, actual)
+
+    assert bool(mx.all(mx.isfinite(actual)).item())
+    assert float(mx.max(mx.abs(reference - actual)).item()) <= 5e-3
+
+
 def test_compiled_segmented_attention_matches_eager_with_growing_cache() -> None:
     mx = pytest.importorskip("mlx.core")
     from pra_mlx.native import (
