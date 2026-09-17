@@ -103,8 +103,12 @@ silently ignored the all-user-prompt floor, prompt-pinned E2+F1C resolves the
 held-out task in 2/2 exact cold repeats, uses eight rather than 13 calls, and
 materializes 125,643 rather than 361,680 input tokens.  It removes 40.39\% of
 its own full-history counterfactual and 65.26\% relative to the paired
-\textsc{Full} trajectory.  This is one repeat-qualified identity, not a
-population accuracy estimate.
+\textsc{Full} trajectory.  Two further cold, identity-matched tasks preserve
+both paired \textsc{Full} successes.  Across one task-clustered observation
+from each of three identities, E2+F1C resolves 3/3 versus 3/3, uses 33 versus
+34 calls, and materializes 539,022 versus 924,686 input tokens (41.71\%
+paired saving; 39.45\% against its own full-history counterfactual).  This
+passes the three-identity discovery gate, not a population accuracy estimate.
 \end{abstract}
 
 \iffalse
@@ -1212,6 +1216,42 @@ but additional cold-matched task identities are required before promotion.  The
 auditable bundle is
 \path{shared/results/paper8_5_agent_memory/heldout_prefix5_cold_cache_v1}.
 
+We next freeze the same policy on two additional episode-six identities under
+the same prefix and cold-start protocol.  Table~\ref{tab:heldout-cold-three-task}
+reports one task-clustered observation per identity.  The Django-15368
+treatment adds four calls, so its 39.52\% own-trajectory reduction yields only
+18.21\% paired saving.  Scikit-learn-14496 instead preserves the nine-call
+count and saves 37.48\% paired.  The heterogeneity is scientifically important:
+the aggregate target is not evidence that every task lies near its mean.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Three-identity, cold, exact-prefix E2+F1C discovery gate.  F/C gives
+paired \textsc{Full}/candidate calls.  The aggregate is a ratio of token sums,
+not an unweighted mean of task percentages.}
+\label{tab:heldout-cold-three-task}
+\begin{tabular}{lrrrrr}
+\toprule
+Identity & Official F/C & Calls F/C & Input F/C & Own save & Paired save \\
+\midrule
+Django-15741 & 1/1 & 13/8 & 361,680/125,643 & 40.39\% & 65.26\% \\
+Django-15368 & 1/1 & 12/16 & 318,595/260,578 & 39.52\% & 18.21\% \\
+Scikit-learn-14496 & 1/1 & 9/9 & 244,411/152,801 & 38.53\% & 37.48\% \\
+\midrule
+Aggregate & 3/3 & 34/33 & 924,686/539,022 & 39.45\% & 41.71\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The aggregate clears the predeclared 30--50\%, zero-loss, and
+no-aggregate-call-increase discovery gate.  It promotes E2+F1C to a frozen
+replication and engine-transfer candidate, not to a production default.  The
+second and third identities each have one admissible pair, and 3/3 successes
+do not estimate greater-than-90\% population preservation.  Their bundles are
+\path{heldout_prefix5_django15368_cold_v1} and
+\path{heldout_prefix5_scikit14496_cold_v1}.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1233,7 +1273,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
-Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Held-out cold repeats preserve 2/2, save 40.39\% within trajectory, and use 8 vs 13 calls. One identity only; expand before transfer. \\
+Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Replicate and transfer; not yet a default. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1259,13 +1299,15 @@ same-prefix task identities and repeats, cross-model and cross-agent transfer,
 and dependent same-workspace tasks remain necessary.  Task~6 supplies a second
 guardrail: both exact-prefix \textsc{Full} controls fail, so no treatment is run
 or scored on that identity.
-The held-out cold-cache experiment adds a distinct positive mechanism result:
-prompt-pinned E2+F1C repeats exactly, preserves 2/2 official resolutions, saves
-40.39\% within its realized trajectory, and uses five fewer calls than
-\textsc{Full}.  It also shows why cache-state matching and enforcement of the
-all-user-prompt floor are experimental prerequisites.  Because this result is
-still one task identity, it remains a candidate profile pending cross-task
-qualification and must not yet be transferred as a Paper~4.5 default.
+The held-out cold-cache experiment adds a distinct positive mechanism result.
+Prompt-pinned E2+F1C first repeats exactly on one identity, then preserves the
+paired \textsc{Full} solve on two further identities.  Across the three
+task-clustered observations it resolves 3/3 versus 3/3, uses 33 versus 34
+calls, saves 41.71\% on the paired denominator, and saves 39.45\% against its
+own realized full-history counterfactual.  It also shows why cache-state
+matching and enforcement of the all-user-prompt floor are prerequisites.  The
+three-identity gate qualifies frozen replication and Paper~4.5 mechanism
+transfer, but not a greater-than-90\% population claim or production default.
 
 \clearpage
 \appendix
