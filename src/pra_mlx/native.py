@@ -1526,21 +1526,32 @@ def serialize_native_memory(
         for suffix, value in (("k", layer.keys), ("v", layer.values)):
             name = f"layer_{index:04d}_{suffix}"
             logical_dtype = str(value.dtype)
-            try:
-                host = np.asarray(value).copy()
-            except (TypeError, ValueError, RuntimeError):
-                import mlx.core as mx
-
-                # MLX bfloat16 does not expose a NumPy-compatible PEP 3118
-                # buffer. Float32 is an exact value-preserving carrier for
-                # bfloat16 and is cast back to the logical dtype on restore.
-                host = np.asarray(value.astype(mx.float32)).copy()
             component_enabled = quantize_keys if suffix == "k" else quantize_values
             selected_for_quantization = (
                 quantization == "int8"
                 and component_enabled
                 and (layer_filter is None or index in layer_filter)
             )
+            storage_encoding = "numeric"
+            if "bfloat16" in logical_dtype and not selected_for_quantization:
+                import mlx.core as mx
+
+                # NumPy has no portable bfloat16 buffer protocol.  Preserve the
+                # raw 16-bit payload instead of widening every K/V element to
+                # float32.  Besides halving the offload image, this avoids a
+                # float32-plus-bfloat16 restore transient that can exceed unified
+                # memory on long agent histories.
+                host = np.asarray(value.view(mx.uint16)).copy()
+                storage_encoding = "bfloat16_uint16_bits"
+            else:
+                try:
+                    host = np.asarray(value).copy()
+                except (TypeError, ValueError, RuntimeError):
+                    import mlx.core as mx
+
+                    # Quantization needs numeric values, so bfloat16 is widened
+                    # only for the arrays that are actually quantized.
+                    host = np.asarray(value.astype(mx.float32)).copy()
             if selected_for_quantization:
                 floating = host.astype(np.float32)
                 maximum = float(np.max(np.abs(floating))) if floating.size else 0.0
@@ -1556,6 +1567,7 @@ def serialize_native_memory(
                 descriptors[name] = {
                     "logical_dtype": logical_dtype,
                     "quantization": "none",
+                    "storage_encoding": storage_encoding,
                 }
     metadata = json.dumps(
         {
@@ -1599,9 +1611,16 @@ def deserialize_native_memory(payload: bytes) -> MLXNativeMemory:
     except ImportError:
         convert = lambda value, _dtype: value
     else:
-        def convert(value, logical_dtype):
+        def convert(value, descriptor):
             array = mx.array(value)
+            logical_dtype = str(descriptor["logical_dtype"])
+            if descriptor.get("storage_encoding") == "bfloat16_uint16_bits":
+                if str(array.dtype) != "mlx.core.uint16":
+                    raise ValueError("Malformed bfloat16 raw-bit K/V payload.")
+                return array.view(mx.bfloat16)
             if "bfloat16" in logical_dtype:
+                # Compatibility with v2 payloads written before raw-bit
+                # bfloat16 storage was introduced.
                 return array.astype(mx.bfloat16)
             dtype = getattr(mx, logical_dtype, None)
             return array if dtype is None else array.astype(dtype)
@@ -1610,11 +1629,11 @@ def deserialize_native_memory(payload: bytes) -> MLXNativeMemory:
         MLXNativeLayerKV(
             convert(
                 restored[f"layer_{index:04d}_k"],
-                metadata["arrays"][f"layer_{index:04d}_k"]["logical_dtype"],
+                metadata["arrays"][f"layer_{index:04d}_k"],
             ),
             convert(
                 restored[f"layer_{index:04d}_v"],
-                metadata["arrays"][f"layer_{index:04d}_v"]["logical_dtype"],
+                metadata["arrays"][f"layer_{index:04d}_v"],
             ),
         )
         for index in range(int(metadata["layer_count"]))
