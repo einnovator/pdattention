@@ -57,6 +57,7 @@ from experiments.paper4_5_agent.context_treatment import (
     ContextTreatment,
     FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
     MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+    PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
     TreatmentProxy,
     _load_selection_fixture,
     _selection_digest,
@@ -2475,6 +2476,69 @@ def test_frozen_selection_replays_exact_order_and_content() -> None:
     ] == frozen
     assert trace.selected_segments == 3
     assert trace.selected_resource_digest
+
+
+def test_paper8_5_frontier_plan_requires_exact_external_selection() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "inspect source"},
+            {"role": "user", "content": "source output"},
+            {"role": "assistant", "content": "check current state"},
+            {"role": "user", "content": "current state output"},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="requires an exact frozen selection"):
+        transform_chat_payload(
+            payload,
+            mode=ContextTreatment.DIRECT_NATIVE_PRA,
+            budget_fraction=1.0,
+            agent_history_selection_policy=PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+        )
+
+
+def test_paper8_5_frontier_plan_uses_common_frozen_engine_contract() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "inspect source"},
+            {"role": "user", "content": "source output"},
+            {"role": "assistant", "content": "check current state"},
+            {"role": "user", "content": "current state output"},
+        ]
+    }
+    frozen = [
+        ("m1-0-user", "task"),
+        ("m2-0-assistant", "inspect source"),
+        ("m3-0-user", "source output"),
+    ]
+
+    transformed, trace = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0,
+        frozen_selection=frozen,
+        agent_history_selection_policy=PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+    )
+
+    metadata = transformed["pra"]["metadata"]
+    assert metadata["selection_contract"] == FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+    assert metadata["agent_history_selection_policy"] == (
+        PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+    )
+    assert metadata["selection_budget_policy"] == (
+        "paper8.5_frontier_dag_m2_p1_frozen_v1"
+    )
+    assert metadata["selection_materialization"] == (
+        "paper8.5-frozen-record-aligned-segments-v1"
+    )
+    assert transformed["pra"]["pra_policy"]["profile"] == (
+        PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+    )
+    assert trace.selected_segments == len(frozen)
 
 
 def test_selection_fixture_rejects_modified_content(tmp_path: Path) -> None:

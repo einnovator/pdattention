@@ -26,6 +26,7 @@ from ..context_treatment import (
     ContextTreatment,
     FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
     MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+    PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
     TreatmentProxy,
     session_id_for_messages,
 )
@@ -531,10 +532,13 @@ def preflight(args: argparse.Namespace, card: dict[str, Any]) -> dict[str, Any]:
         )
     selection_record = getattr(args, "selection_record", None)
     selection_replay = getattr(args, "selection_replay", None)
+    selection_policy = getattr(args, "selection_policy", "task-aware-v1")
     selection_contract = (
         FROZEN_AGENT_MEMORY_PLAN_CONTRACT
-        if getattr(args, "selection_policy", "task-aware-v1")
-        == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+        if selection_policy in {
+            MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+            PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+        }
         else "frozen_replay" if selection_replay
         else "route_owned" if args.mode in {
             ContextTreatment.PRA_SELECTED_CONTEXT.value,
@@ -666,6 +670,20 @@ def run(args: argparse.Namespace) -> Path:
             raise ValueError(
                 "matched causal token-tail is a frozen policy, not a request-digest "
                 "selection replay"
+            )
+    if getattr(args, "selection_policy", "task-aware-v1") == (
+        PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+    ):
+        if args.mode != ContextTreatment.DIRECT_NATIVE_PRA.value:
+            raise ValueError(
+                "Paper 8.5 frontier-DAG M2/P1 is initially restricted to "
+                "direct native PRA"
+            )
+        if not selection_replay:
+            raise ValueError(
+                "Paper 8.5 frontier-DAG M2/P1 requires --selection-replay; "
+                "Paper 4.5 consumes the frozen logical plan and does not "
+                "rerun the policy"
             )
     card = load_benchmark_card(args.benchmark_card)
     card = derive_task_card(
@@ -1672,7 +1690,8 @@ def main() -> None:
         default="task-aware-v1",
         help=(
             "Frozen logical agent-history policy. The Paper 8.5 matched tail "
-            "uses exact tokenizer counts and whole causal turns."
+            "uses exact tokenizer counts and whole causal turns; frontier-DAG "
+            "M2/P1 requires an exact Paper 8.5 selection replay fixture."
         ),
     )
     parser.add_argument(

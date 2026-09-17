@@ -54,8 +54,14 @@ CONSUMPTION_POLICIES = (
 AGENT_HISTORY_SELECTION_POLICIES = (
     "task-aware-v1",
     "paper8.5-matched-causal-token-tail-v1",
+    "paper8.5-frontier-dag-m2-p1-v1",
 )
 MATCHED_CAUSAL_TOKEN_TAIL_POLICY = AGENT_HISTORY_SELECTION_POLICIES[1]
+PAPER8_5_FRONTIER_DAG_M2_P1_POLICY = AGENT_HISTORY_SELECTION_POLICIES[2]
+FROZEN_AGENT_MEMORY_POLICIES = frozenset({
+    MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
+    PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+})
 FROZEN_AGENT_MEMORY_PLAN_CONTRACT = "frozen-agent-memory-plan-v1"
 
 
@@ -217,6 +223,15 @@ def transform_chat_payload(
         raise ValueError("budget_fraction must be in (0, 1]")
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
+    if (
+        agent_history_selection_policy == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+        and frozen_selection is None
+    ):
+        raise ValueError(
+            "Paper 8.5 frontier-DAG M2/P1 requires an exact frozen selection "
+            "fixture; Paper 4.5 measures engine realization and must not "
+            "reimplement or reroute the logical policy"
+        )
     transformed = dict(payload)
     messages = [dict(row) for row in payload.get("messages", ())]
     if not messages:
@@ -233,7 +248,7 @@ def transform_chat_payload(
 
     mandatory_indices = _mandatory_indices(messages)
     task_indices = _pinned_task_indices(messages, mandatory_indices)
-    if agent_history_selection_policy == MATCHED_CAUSAL_TOKEN_TAIL_POLICY:
+    if agent_history_selection_policy in FROZEN_AGENT_MEMORY_POLICIES:
         progress_indices = set()
         progress_classes = {
             "recent": set(), "source": set(), "progress_state": set(),
@@ -370,7 +385,12 @@ def transform_chat_payload(
             "whole-causal-records-v1"
             if agent_history_selection_policy
             == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
-            else "record-aligned-segments-v1"
+            else (
+                "paper8.5-frozen-record-aligned-segments-v1"
+                if agent_history_selection_policy
+                == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+                else "record-aligned-segments-v1"
+            )
         )
         agent_memory_plan_digest = hashlib.sha256(json.dumps(
             {
@@ -430,9 +450,9 @@ def transform_chat_payload(
             "required_capabilities": ["logical_refs", "native_kv"] if native_requested else [],
             "pra_policy": {
                 "profile": (
-                    MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    agent_history_selection_policy
                     if agent_history_selection_policy
-                    == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    in FROZEN_AGENT_MEMORY_POLICIES
                     else "swebench-balanced-v1"
                 )
             },
@@ -448,7 +468,7 @@ def transform_chat_payload(
                 "selection_contract": (
                     FROZEN_AGENT_MEMORY_PLAN_CONTRACT
                     if agent_history_selection_policy
-                    == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
+                    in FROZEN_AGENT_MEMORY_POLICIES
                     else "minimum-retention-floor"
                 ),
                 "agent_history_selection_policy": agent_history_selection_policy,
@@ -467,9 +487,14 @@ def transform_chat_payload(
                     if agent_history_selection_policy
                     == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
                     else (
-                        "causal_bundle_round_up_v1"
-                        if policy.causal_bundle_round_up
-                        else "causal_bundle_hard_cap_v1"
+                        "paper8.5_frontier_dag_m2_p1_frozen_v1"
+                        if agent_history_selection_policy
+                        == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+                        else (
+                            "causal_bundle_round_up_v1"
+                            if policy.causal_bundle_round_up
+                            else "causal_bundle_hard_cap_v1"
+                        )
                     )
                 ),
                 "target_physical_tokens_estimate": requested_budget_tokens,
