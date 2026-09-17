@@ -52,6 +52,7 @@ def _run(strategy: str, mode: str, tokens: tuple[int, int], resolved=(True, True
                 "resolved": outcome,
                 "official_error": False,
                 "evidence_admissible": True,
+                "same_prefix_full_qualified": True,
                 "selected_input_tokens": token_count,
                 "calls": 10,
                 "rediscovery_calls": index - 1,
@@ -132,6 +133,28 @@ def test_failure_aware_saving_cannot_reward_a_quality_loss():
     assert row["lost_persistent_full_successes"] == 1
     assert row["failure_aware_saving_vs_fresh_full"] == 0.0
     assert row["cost_per_resolved_issue"] == 60
+
+
+def test_unqualified_same_prefix_full_failure_is_not_blamed_on_heuristic():
+    registry = load_strategy_registry(REGISTRY)
+    persistent = _run("S01_persistent_full", "persistent", (100, 100))
+    candidate = _run(
+        "S02_active_episode_only", "persistent", (30, 30),
+        resolved=(True, False),
+    )
+    candidate["issues"][1]["same_prefix_full_qualified"] = False
+
+    result = reduce_multi_issue_runs((persistent, candidate), registry)
+    row = next(row for row in result["rows"] if row["strategy_id"].startswith("S02"))
+
+    assert row["official_resolution"] == 0.5
+    assert row["same_prefix_full_qualified_issues"] == 1
+    assert row["heuristic_attribution_admissible"] is False
+    assert row["failure_aware_saving_vs_persistent_full"] is None
+    assert row["lost_persistent_full_successes"] is None
+    assert row["in_primary_saving_target"] is None
+    assert row["comparison_evidence_admissible"] is False
+    assert row["discovery_primary_target_met"] is False
 
 
 def test_candidate_win_cannot_compensate_for_a_lost_full_success():

@@ -97,6 +97,44 @@ def _shared_control_prefix_count(strategy: Mapping[str, Any]) -> int:
     return explicit
 
 
+def _requires_same_prefix_full_control(cell: Mapping[str, Any]) -> bool:
+    """Return whether an episode needs an in-place no-selection control.
+
+    A separate persistent-FULL sequence is not enough after the treatment has
+    changed an earlier episode: its later prefix is then a different prefix.
+    Every persistent treatment episode is therefore qualified from the exact
+    prefix that the treatment is about to consume.
+    """
+
+    return bool(
+        cell.get("session_mode") == "persistent" and cell.get("policy") != "full"
+    )
+
+
+def _same_prefix_full_cell(cell: Mapping[str, Any]) -> dict[str, Any]:
+    """Build a logical FULL arm without inheriting treatment materialization."""
+
+    strategy = dict(cell["strategy"])
+    strategy.update({
+        "policy": "full",
+        "budget_fraction": 1.0,
+        "negative_realization": "drop",
+        "negative_fallback": "none",
+        "keep_completed_task_statements": True,
+        "compact_completed_finalizations": False,
+        "retire_closed_instructions": False,
+        "materialization_mode": "whole_record",
+    })
+    return {
+        **cell,
+        "cell_id": f"{cell['cell_id']}__same_prefix_full",
+        "strategy_id": "S01_same_prefix_full_qualification",
+        "strategy_config_id": "same_prefix_full_v1",
+        "policy": "full",
+        "strategy": strategy,
+    }
+
+
 def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None:
     if spec.get("schema_version") != 1:
         raise ValueError("unsupported autonomous multi-issue campaign schema")
@@ -315,6 +353,129 @@ def _episode_command(
     return command
 
 
+def _run_same_prefix_full_control(
+    *,
+    spec: Mapping[str, Any],
+    benchmark: Path,
+    cell: Mapping[str, Any],
+    instance_id: str,
+    episode_number: int,
+    output: Path,
+    prefix: Path | None,
+    session_id: str,
+    args: argparse.Namespace,
+    previous: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run FULL from the treatment's exact prefix before the treatment.
+
+    The returned record is deliberately self-contained so the campaign ledger
+    can distinguish a task that FULL could not solve in this multi-task state
+    from a task that a memory heuristic lost.
+    """
+
+    qualification_cell = _same_prefix_full_cell(cell)
+    prior_attempts = list((previous or {}).get("attempts") or ())
+    if previous and previous.get("output"):
+        prior = {
+            key: previous.get(key) for key in (
+                "output", "status", "reason", "returncode", "quarantine",
+                "started_at", "finished_at", "health_preflight",
+            ) if previous.get(key) is not None
+        }
+        if prior and prior not in prior_attempts:
+            prior_attempts.append(prior)
+    recorded_output = Path(str((previous or {}).get("output", output)))
+    completed = _completed_result(recorded_output) or _completed_result(output)
+    qualification_output = recorded_output if completed is not None else output
+    if completed is None and (qualification_output.exists() or prior_attempts):
+        reserved = [
+            Path(str(attempt["output"]))
+            for attempt in prior_attempts
+            if attempt.get("output")
+        ]
+        reserved.append(qualification_output)
+        qualification_output = _retry_path(output, reserved=tuple(reserved))
+    command = _episode_command(
+        spec=spec,
+        benchmark=benchmark,
+        cell=qualification_cell,
+        instance_id=instance_id,
+        episode_number=episode_number,
+        output=qualification_output,
+        prefix=prefix,
+        session_id=f"{session_id}:same-prefix-full",
+        args=args,
+    )
+    record: dict[str, Any] = {
+        "required": True,
+        "qualification_kind": "exact_candidate_prefix_full_v1",
+        "status": "complete" if completed is not None else "planned",
+        "output": str(qualification_output),
+        "prefix": str(prefix) if prefix is not None else None,
+        "prefix_sha256": (
+            hashlib.sha256(prefix.read_bytes()).hexdigest()
+            if prefix is not None and prefix.is_file() else _digest([])
+        ),
+        "command": command,
+        "attempts": prior_attempts,
+    }
+    if args.dry_run:
+        return record
+    if completed is None:
+        runtime_qualification = dict(spec.get("runtime_qualification") or {})
+        health = probe_generation_health(
+            base_url=args.upstream_base_url,
+            model=str(spec["served_model"]),
+            count=args.health_probe_count,
+            latency_ceiling_seconds=args.health_latency_ceiling_seconds,
+            timeout_seconds=args.health_timeout_seconds,
+            qualification_path=getattr(args, "upstream_qualification_path", None),
+            runtime_state_path=(
+                getattr(args, "upstream_runtime_state_path", None)
+                or runtime_qualification.get("active_state_path")
+            ),
+            minimum_active_context_tokens=(
+                getattr(args, "minimum_active_context_tokens", None)
+                or runtime_qualification.get("minimum_active_context_tokens")
+            ),
+            connect_attempts=getattr(args, "upstream_connect_attempts", 1),
+            connect_retry_seconds=getattr(
+                args, "upstream_connect_retry_seconds", 1.0
+            ),
+            curl_executable=getattr(args, "upstream_curl_executable", None),
+        )
+        record["health_preflight"] = health
+        if not health["healthy"]:
+            record.update({
+                "status": "paused_upstream_unhealthy",
+                "reason": "generation-level upstream health gate failed",
+            })
+            return record
+        record["status"] = "running"
+        record["started_at"] = datetime.now(timezone.utc).isoformat()
+        process = subprocess.run(command, check=False)
+        record["returncode"] = process.returncode
+        record["finished_at"] = datetime.now(timezone.utc).isoformat()
+        completed = _completed_result(qualification_output)
+    if completed is None or completed.get("status") != "complete":
+        record.update({
+            "status": "infrastructure_error",
+            "reason": "same-prefix FULL control did not produce admissible results",
+        })
+        if completed is not None:
+            record["quarantine"] = completed
+        return record
+    record.update(completed)
+    record["status"] = (
+        "qualified" if completed["official_resolved"]
+        else "full_control_unresolved"
+    )
+    record["heuristic_attribution_admissible"] = bool(
+        completed["official_resolved"]
+    )
+    return record
+
+
 def _aggregate(cell: Mapping[str, Any], episode_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     if len(episode_rows) != int(cell["issue_count"]):
         raise ValueError("cannot aggregate an incomplete ordered issue sequence")
@@ -481,6 +642,54 @@ _PAIRING_MANIFEST_FIELDS = (
     "max_completion_tokens",
 )
 
+_SAME_PREFIX_FULL_FIELDS = (
+    "instance_id",
+    "pair_id",
+    "model_revision",
+    "tokenizer_revision",
+    "dataset_revision",
+    "benchmark_card_sha256",
+    "temperature",
+    "top_p",
+    "seed",
+    "max_calls",
+    "max_completion_tokens",
+    "scaffold_identity_sha256",
+    "workspace_source_identity_sha256",
+)
+
+
+def _validate_same_prefix_full_qualification(
+    *, candidate_episode: Mapping[str, Any], candidate_manifest: Mapping[str, Any],
+) -> None:
+    qualification = candidate_episode.get("same_prefix_full_control") or {}
+    if qualification.get("status") != "qualified":
+        raise ValueError("treatment episode lacks a successful same-prefix FULL control")
+    control_manifest = _read(
+        Path(str(qualification["output"])) / "run_manifest.json"
+    )
+    for field in _SAME_PREFIX_FULL_FIELDS:
+        if candidate_manifest.get(field) in (None, "") or (
+            candidate_manifest.get(field) != control_manifest.get(field)
+        ):
+            raise ValueError(f"same-prefix FULL changed manifest identity {field}")
+    candidate_session = candidate_manifest.get("persistent_session") or {}
+    control_session = control_manifest.get("persistent_session") or {}
+    if candidate_session.get("episode_index") != control_session.get("episode_index"):
+        raise ValueError("same-prefix FULL changed episode index")
+    candidate_prefix = candidate_session.get("prefix") or {}
+    control_prefix = control_session.get("prefix") or {}
+    if candidate_prefix.get("sha256") != control_prefix.get("sha256"):
+        raise ValueError("same-prefix FULL did not consume the candidate prefix")
+    if candidate_prefix.get("episode_count") != control_prefix.get("episode_count"):
+        raise ValueError("same-prefix FULL changed prefix episode count")
+    if (control_manifest.get("selection") or {}).get("policy") != "full":
+        raise ValueError("same-prefix qualification control applied selection")
+    control_created = str(control_manifest.get("created_at") or "")
+    candidate_created = str(candidate_manifest.get("created_at") or "")
+    if not control_created or not candidate_created or control_created >= candidate_created:
+        raise ValueError("same-prefix FULL was not executed before the treatment")
+
 
 def _validate_sequence_pairing_identity(
     *,
@@ -574,6 +783,16 @@ def write_frontier_ledger(
                 _read(Path(str(episode["output"])) / "run_manifest.json")
                 for episode in candidate_episodes
             ]
+            if row["policy"] != "full":
+                for candidate_episode, candidate_manifest in zip(
+                    candidate_episodes, candidate_manifests
+                ):
+                    if candidate_episode.get("shared_control_episode"):
+                        continue
+                    _validate_same_prefix_full_qualification(
+                        candidate_episode=candidate_episode,
+                        candidate_manifest=candidate_manifest,
+                    )
             agent_revision = _validate_sequence_pairing_identity(
                 candidate_manifests=candidate_manifests,
                 baseline_manifests=manifests,
@@ -612,6 +831,19 @@ def write_frontier_ledger(
                     "resolved": bool(candidate_episode["official_resolved"]),
                     "official_error": bool(official.get("error")),
                     "evidence_admissible": evidence_admissible,
+                    "same_prefix_full_qualified": bool(
+                        row["policy"] == "full"
+                        or candidate_episode.get(
+                            "heuristic_attribution_admissible", False
+                        )
+                    ),
+                    "same_prefix_full_control_status": (
+                        (
+                            candidate_episode.get("same_prefix_full_control")
+                            or {}
+                        ).get("status")
+                        if row["policy"] != "full" else "not_applicable_full"
+                    ),
                     "selected_input_tokens": int(
                         candidate_episode["cumulative_materialized_tokens"]
                     ),
@@ -737,6 +969,7 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
         upstream_paused = False
         quality_gate_stopped = False
         causal_gate_stopped = False
+        session_interference_stopped = False
         for episode_number, instance_id in enumerate(cell["instance_ids"], 1):
             stop_after_episodes = getattr(args, "stop_after_completed_episodes", None)
             if (
@@ -804,6 +1037,59 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     "episodes": prefix_episodes,
                 })
             recorded_episode = row.get("episodes", {}).get(episode_id) or {}
+            same_prefix_full_control: dict[str, Any] | None = None
+            if (
+                _requires_same_prefix_full_control(cell)
+                and shared_control_cell_id is None
+            ):
+                same_prefix_full_control = _run_same_prefix_full_control(
+                    spec=spec,
+                    benchmark=benchmark,
+                    cell=cell,
+                    instance_id=instance_id,
+                    episode_number=episode_number,
+                    output=(
+                        cell_root / "same_prefix_full_controls" / episode_id
+                    ),
+                    prefix=prefix_path if use_prefix else None,
+                    session_id=session_id,
+                    args=args,
+                    previous=recorded_episode.get("same_prefix_full_control"),
+                )
+                if not args.dry_run and same_prefix_full_control["status"] != "qualified":
+                    control_status = str(same_prefix_full_control["status"])
+                    row["episodes"][episode_id] = {
+                        "instance_id": instance_id,
+                        "status": (
+                            "unqualified_session_interference"
+                            if control_status == "full_control_unresolved"
+                            else control_status
+                        ),
+                        "output": str(base_episode_output),
+                        "prefix": str(prefix_path) if use_prefix else None,
+                        "command": None,
+                        "same_prefix_full_control": same_prefix_full_control,
+                        "heuristic_launched": False,
+                        "heuristic_attribution_admissible": False,
+                    }
+                    if control_status == "paused_upstream_unhealthy":
+                        row["status"] = "paused_upstream_unhealthy"
+                        upstream_paused = True
+                        halt_campaign = True
+                    elif control_status == "infrastructure_error":
+                        row["status"] = "infrastructure_error"
+                        infrastructure_error = True
+                        halt_campaign = True
+                    else:
+                        row["status"] = "stopped_unqualified_session_interference"
+                        row["reason"] = (
+                            "FULL did not resolve from the candidate's exact current "
+                            "session prefix; no heuristic was launched and no failure "
+                            "is attributed to selection"
+                        )
+                        session_interference_stopped = True
+                    _write(state_path, state)
+                    break
             recorded_output = Path(str(
                 recorded_episode.get("output", base_episode_output)
             ))
@@ -864,6 +1150,19 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 "command": None if shared_control_cell_id else command,
                 "shared_control_cell_id": shared_control_cell_id,
                 "shared_control_episode": bool(shared_control_cell_id),
+                "same_prefix_full_control": same_prefix_full_control,
+                "heuristic_scheduled": bool(
+                    cell["policy"] != "full" and not shared_control_cell_id
+                ),
+                "heuristic_launched": False,
+                "heuristic_attribution_admissible": bool(
+                    cell["policy"] == "full"
+                    or shared_control_cell_id
+                    or (
+                        same_prefix_full_control
+                        and same_prefix_full_control.get("status") == "qualified"
+                    )
+                ),
                 "attempts": prior_attempts,
             }
             _write(state_path, state)
@@ -914,6 +1213,9 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 row["status"] = "running"
                 row["episodes"][episode_id]["status"] = "running"
                 row["episodes"][episode_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+                row["episodes"][episode_id]["heuristic_launched"] = bool(
+                    cell["policy"] != "full" and not shared_control_cell_id
+                )
                 _write(state_path, state)
                 process = subprocess.run(command, check=False)
                 completed = _completed_result(episode_output)
@@ -981,6 +1283,8 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             row["status"] = "stopped_predeclared_quality_gate"
         elif causal_gate_stopped:
             row["status"] = "stopped_causal_attribution_gate"
+        elif session_interference_stopped:
+            row["status"] = "stopped_unqualified_session_interference"
         else:
             row.update(_aggregate(cell, episode_results))
             row.pop("reason", None)

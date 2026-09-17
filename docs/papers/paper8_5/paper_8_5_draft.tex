@@ -76,10 +76,13 @@ conditional on the two \textsc{Full} successes it preserves 2/2 and saves
 28.67\%, just below the 30\% gate.  A sharper boundary-free M1/P1 Task~5
 mechanism repeat resolves 2/2 with an identical executed-action trajectory and
 53.95\% within-trajectory saving; an edge audit finds no unintended link among
-the five issues.  Transfer resolves Task~3 but loses Task~4; preserving a raw
-mutation--verification--submission exemplar repairs Task~4 in 2/2 repeats but
-then loses Task~5.  Neither aggressive variant is promoted.  Three identities
-do not establish greater-than-90\% population accuracy.
+the five issues.  Exploratory transfer resolves Task~3, is unresolved on
+Task~4, and a raw mutation--verification--submission exemplar restores
+Task~4 in 2/2 repeats but is unresolved on Task~5.  Those transfer cells were
+not preceded by a successful \textsc{Full} execution from the candidate's
+exact current session prefix.  They are therefore mechanism diagnostics, not
+attributable heuristic losses, and neither aggressive variant is promoted.
+Three identities do not establish greater-than-90\% population accuracy.
 \end{abstract}
 
 \iffalse
@@ -778,6 +781,16 @@ controls are fresh \textsc{Full}, persistent \textsc{Full}, and persistent
 policy selection.  Persistent \textsc{Full} can itself degrade through
 cross-issue interference, so policy quality is compared both with its
 contemporaneous persistent control and with official fresh-session resolution.
+That whole-sequence control is necessary but not sufficient.  Once a treatment
+changes an earlier trajectory, its next-task prefix differs from the separate
+persistent-\textsc{Full} arm.  Before every persistent treatment episode, we
+therefore run \textsc{Full} first from the treatment's exact serialized prefix,
+with the same task, workspace snapshot, model, tokenizer, scaffold, and
+generation settings.  The treatment is launched only if this in-place control
+resolves officially.  If it fails, the cell is labelled
+\texttt{unqualified\_session\_interference}; the heuristic is not launched and
+the outcome is not counted as a heuristic failure.  Prefix and control hashes,
+execution order, and official outcomes are retained in the ledger.
 We report per-episode resolution, all-episodes resolution, calls, first
 cross-issue contamination, current-prompt saving, and cumulative input saving.
 The ordered issue sequence, not an individual request, is the uncertainty unit.
@@ -895,9 +908,12 @@ then across tasks; confidence intervals bootstrap task identities, never
 individual executions. We report endpoint and exact-action agreement between
 the \textsc{Full} repeats as an instability control. A conditional preservation
 analysis additionally evaluates candidates only on declared pairs for which
-\textsc{Full} resolves.  This avoids treating a baseline failure as a memory
-policy failure while retaining the unconditional resolution curve as the
-primary population result.
+\textsc{Full} resolves.  For multi-task treatment cells, the declared pair is
+the successful in-place \textsc{Full} execution from the exact candidate prefix,
+not merely an isolated-task success, an older run, or the divergent prefix of a
+separate persistent-\textsc{Full} sequence.  This avoids treating session
+interference or backend variability as a memory-policy failure while retaining
+the unconditional resolution curve as a separate population result.
 
 The current autonomous curve is deliberately underpowered and is reported as
 a pilot, not a profile result. In the latest same-host three-task cohort,
@@ -1102,11 +1118,14 @@ identity and one repeat-qualified low-saving identity, not a stable universal
 Task~5 cannot enter the conditional preservation gate: contemporaneous
 \textsc{Full} fails (10 calls; 211,898 tokens), while M2/P1 resolves (12;
 138,570).  Boundary-free M1/P1 resolves Task~5 in 2/2 repeats at 53.95\%
-within-trajectory saving and also resolves Task~3, but loses Task~4 by
-submitting without mutating.  W1 retains only the latest successful
+within-trajectory saving and also resolves Task~3, but its Task~4 pilot submits
+without mutating.  W1 retains only the latest successful
 mutation--verification--submission spine and restores Task~4 in 2/2 repeats;
-it nevertheless loses Task~5.  Its three-task resolution is 2/3 despite 56.52\%
-own-trajectory saving, hence zero failure-aware credit.  Neither is promoted.
+its Task~5 pilot is unresolved.  These M1/W1 transfer pilots were not preceded
+by exact-candidate-prefix successful \textsc{Full} controls.  Their descriptive
+three-task resolution is 2/3 at 56.52\% own-trajectory saving, but
+failure-aware saving and heuristic-loss attribution are undefined rather than
+zero.  Neither is promoted; both require rerun under the new fail-closed gate.
 
 Across all three contemporaneous repeats, \textsc{Full} resolves 2/3 and M2/P1
 3/3.  They use 30 and 31 calls and send 532,986 and 367,617 tokens, a
@@ -1136,7 +1155,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Task-3/4 repeats save 9.96/59.24\%; Task-5 control fails; blocked. \\
-Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Both resolve 2/3 identities; each loses a different paired success. Reject. \\
+Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1208,13 +1227,16 @@ same.  This distinction prevents raw response-envelope nondeterminism from
 being mislabeled as behavioral divergence.  The repeat ledger is
 \path{autonomous_m1_p1_task5_repeat.json}.
 
-Cross-task transfer supplies the necessary rejection.  M1/P1 resolves
+Cross-task transfer supplies a mechanism warning, not a causal rejection.
+M1/P1 resolves
 Scikit-learn Task~3 in eight calls with 49,345 of 120,273 counterfactual tokens
 (58.97\% saving), but on Pytest Task~4 it describes the correct edit and then
 submits \texttt{git diff} without ever mutating the workspace.  This is not an
 accidental DAG path: the old issues are disconnected.  P1 preserves a valid
 submission example but not the fact that mutation and verification must occur
-before submission.
+before submission.  Because no successful in-place \textsc{Full} control was
+run immediately beforehand from this exact candidate prefix, the unresolved
+outcome cannot be attributed to M1/P1.
 
 W1 is a causal add-back, not another age sweep.  From the latest epoch with a
 harness-certified valid completion it pins only three generic causal groups:
@@ -1227,13 +1249,15 @@ repeats: six calls and 42,864 selected of 103,758 counterfactual tokens
 there is no mutation; with W1 the accepted trajectory mutates, inspects, and
 submits.
 
-Raw W1 is not a safe default.  It preserves Task~3 (eight calls, 57.15\%
-saving) but loses Task~5 in seven calls.  The Task~5 trace mutates the correct
+Raw W1 is not yet a safe default.  It preserves Task~3 (eight calls, 57.15\%
+saving) but its Task~5 pilot is unresolved after seven calls.  The Task~5 trace mutates the correct
 file and explicitly notices that \texttt{display\_addr} is missing from the
 format dictionary, yet submits before correcting that defect.  Across the
 three identities W1 resolves 2/3 while removing 56.52\% of its own cumulative
-counterfactual input, so failure-aware saving is zero.  The result rules out
-both plain M1/P1 and raw cross-task workflow text as defaults.  The next repair
+counterfactual input.  Since the pilot lacked successful exact-prefix
+prequalification, failure-aware saving is undefined and this does not establish
+a heuristic-induced loss.  The result blocks promotion of both plain M1/P1 and
+raw cross-task workflow text as defaults.  The next repair
 must encode the workflow as task-neutral control state or a compact receipt,
 without exposing old code payloads.  Full evidence and both quarantined
 transport failures are indexed by
@@ -3407,6 +3431,8 @@ Each request/run should persist:
     \item model/tokenizer revision;
     \item generation settings;
     \item canonical trajectory digest;
+    \item exact persistent-prefix digest, in-place \textsc{Full} control run ID,
+    launch order, and official qualification outcome;
     \item typed record list and causal groups;
     \item selector name/revision;
     \item materializer name/revision;
@@ -3438,6 +3464,7 @@ MEMORY_REPEAT_FAILED_EDIT
 MEMORY_FORMAT_REGRESSION
 MEMORY_RECOVERY_SUCCESS
 MEMORY_RECOVERY_FAILURE
+UNQUALIFIED_SESSION_INTERFERENCE
 \end{verbatim}
 
 \bibliographystyle{plain}

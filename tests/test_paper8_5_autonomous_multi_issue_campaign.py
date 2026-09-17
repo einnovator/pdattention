@@ -15,7 +15,10 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     _divergence_accounting,
     _lost_paired_full_successes,
     _partial_aggregate,
+    _requires_same_prefix_full_control,
+    _same_prefix_full_cell,
     _shared_control_prefix_count,
+    _validate_same_prefix_full_qualification,
     _validate_sequence_pairing_identity,
     campaign_cells,
     run_campaign,
@@ -130,6 +133,84 @@ def test_shared_full_prefix_count_supports_legacy_and_exact_prefix_forks():
             "share_full_first_episode": True,
             "share_full_prefix_episodes": 0,
         })
+
+
+def test_every_persistent_treatment_requires_exact_prefix_full_control():
+    treatment = {
+        "cell_id": "candidate",
+        "session_mode": "persistent",
+        "policy": "frontier_dag_retirement",
+        "strategy": {
+            "policy": "frontier_dag_retirement",
+            "budget_fraction": 0.5,
+            "materialization_mode": "tool_structured_evidence",
+            "keep_completed_task_statements": False,
+        },
+    }
+    assert _requires_same_prefix_full_control(treatment) is True
+    assert _requires_same_prefix_full_control({
+        **treatment, "policy": "full"
+    }) is False
+
+    control = _same_prefix_full_cell(treatment)
+    assert control["policy"] == "full"
+    assert control["strategy"]["budget_fraction"] == 1.0
+    assert control["strategy"]["materialization_mode"] == "whole_record"
+    assert control["strategy"]["keep_completed_task_statements"] is True
+
+
+def test_same_prefix_qualification_rejects_a_different_prefix(tmp_path):
+    fields = {
+        "instance_id": "repo__1",
+        "pair_id": "pair",
+        "model_revision": "model-r1",
+        "tokenizer_revision": "tokenizer-r1",
+        "dataset_revision": "dataset-r1",
+        "benchmark_card_sha256": "benchmark",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "max_calls": 40,
+        "max_completion_tokens": 2048,
+        "scaffold_identity_sha256": "scaffold",
+        "workspace_source_identity_sha256": "workspace",
+    }
+    control_output = tmp_path / "control"
+    control_output.mkdir()
+    control_manifest = {
+        **fields,
+        "created_at": "2026-09-17T10:00:00+00:00",
+        "persistent_session": {
+            "episode_index": 3,
+            "prefix": {"sha256": "prefix-a", "episode_count": 2},
+        },
+        "selection": {"policy": "full"},
+    }
+    (control_output / "run_manifest.json").write_text(
+        json.dumps(control_manifest), encoding="utf-8"
+    )
+    episode = {
+        "same_prefix_full_control": {
+            "status": "qualified", "output": str(control_output)
+        }
+    }
+    candidate = {
+        **fields,
+        "created_at": "2026-09-17T10:01:00+00:00",
+        "persistent_session": {
+            "episode_index": 3,
+            "prefix": {"sha256": "prefix-a", "episode_count": 2},
+        },
+    }
+    _validate_same_prefix_full_qualification(
+        candidate_episode=episode, candidate_manifest=candidate
+    )
+
+    candidate["persistent_session"]["prefix"]["sha256"] = "prefix-b"
+    with pytest.raises(ValueError, match="did not consume the candidate prefix"):
+        _validate_same_prefix_full_qualification(
+            candidate_episode=episode, candidate_manifest=candidate
+        )
 
 
 def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
@@ -368,6 +449,15 @@ def test_dry_run_can_select_one_registered_strategy_configuration(tmp_path):
     assert episodes[0]["command"] is None
     command = episodes[1]["command"]
     assert command[command.index("--completed-recent-turns") + 1] == "4"
+    qualifier = episodes[1]["same_prefix_full_control"]
+    assert qualifier["status"] == "planned"
+    qualifier_command = qualifier["command"]
+    assert qualifier_command[qualifier_command.index("--policy") + 1] == "full"
+    assert (
+        qualifier_command[qualifier_command.index("--persistent-prefix") + 1]
+        == episodes[1]["prefix"]
+    )
+    assert episodes[1]["heuristic_attribution_admissible"] is False
 
 
 def test_dirty_persistent_attempt_is_preserved_in_numbered_retry(tmp_path):

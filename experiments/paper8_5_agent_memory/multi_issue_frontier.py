@@ -95,6 +95,10 @@ def _validate_run(run: Mapping[str, Any], known_strategies: set[str]) -> None:
             row["evidence_admissible"], bool
         ):
             raise ValueError("evidence_admissible must be boolean when present")
+        if "same_prefix_full_qualified" in row and not isinstance(
+            row["same_prefix_full_qualified"], bool
+        ):
+            raise ValueError("same_prefix_full_qualified must be boolean when present")
         for field in ("selected_input_tokens", "calls", "rediscovery_calls"):
             value = row.get(field)
             if not isinstance(value, int) or value < 0:
@@ -242,6 +246,16 @@ def reduce_multi_issue_runs(
         persistent_totals = _totals(persistent)
         for run in paired:
             totals = _totals(run)
+            is_treatment = run["strategy_id"] not in {
+                "S00_fresh_full", "S01_persistent_full"
+            }
+            qualified_issue_count = sum(
+                int(bool(issue.get("same_prefix_full_qualified", False)))
+                for issue in run["issues"]
+            )
+            heuristic_attribution_admissible = bool(
+                not is_treatment or qualified_issue_count == run["issue_count"]
+            )
             if fresh is not None:
                 fresh_success_calls, fresh_joint_successes = _successful_call_delta(
                     run, fresh
@@ -251,10 +265,18 @@ def reduce_multi_issue_runs(
             persistent_success_calls, persistent_joint_successes = (
                 _successful_call_delta(run, persistent)
             )
-            failure_aware_vs_persistent = _failure_aware_saving(run, persistent)
-            lost_persistent_successes = sum(
-                int(baseline["resolved"] and not candidate["resolved"])
-                for candidate, baseline in zip(run["issues"], persistent["issues"])
+            failure_aware_vs_persistent = (
+                _failure_aware_saving(run, persistent)
+                if heuristic_attribution_admissible else None
+            )
+            lost_persistent_successes = (
+                sum(
+                    int(baseline["resolved"] and not candidate["resolved"])
+                    for candidate, baseline in zip(
+                        run["issues"], persistent["issues"]
+                    )
+                )
+                if heuristic_attribution_admissible else None
             )
             gained_over_persistent = sum(
                 int(candidate["resolved"] and not baseline["resolved"])
@@ -263,11 +285,15 @@ def reduce_multi_issue_runs(
             resolution_delta_vs_persistent = (
                 totals["resolved"] - persistent_totals["resolved"]
             ) / run["issue_count"]
-            target_region = 0.30 <= failure_aware_vs_persistent <= 0.50
+            target_region = bool(
+                failure_aware_vs_persistent is not None
+                and 0.30 <= failure_aware_vs_persistent <= 0.50
+            )
             comparison_admissible = bool(
                 totals["evidence_admissible"]
                 and persistent_totals["evidence_admissible"]
                 and (fresh_totals is None or fresh_totals["evidence_admissible"])
+                and heuristic_attribution_admissible
             )
             rows.append({
                 "pair_id": pair_id,
@@ -299,6 +325,10 @@ def reduce_multi_issue_runs(
                     "evidence_admissible"
                 ],
                 "comparison_evidence_admissible": comparison_admissible,
+                "same_prefix_full_qualified_issues": qualified_issue_count,
+                "heuristic_attribution_admissible": (
+                    heuristic_attribution_admissible
+                ),
                 "saving_vs_persistent_full": _saving(
                     totals["tokens"], persistent_totals["tokens"]
                 ),
@@ -308,7 +338,9 @@ def reduce_multi_issue_runs(
                 ),
                 "failure_aware_saving_vs_persistent_full": failure_aware_vs_persistent,
                 "failure_aware_saving_vs_fresh_full": (
-                    _failure_aware_saving(run, fresh) if fresh is not None else None
+                    _failure_aware_saving(run, fresh)
+                    if fresh is not None and heuristic_attribution_admissible
+                    else None
                 ),
                 "resolution_delta_vs_persistent_full": resolution_delta_vs_persistent,
                 "lost_persistent_full_successes": lost_persistent_successes,
@@ -352,7 +384,9 @@ def reduce_multi_issue_runs(
                     int(bool(row.get("selection_active_at_first_action_divergence", False)))
                     for row in run["issues"]
                 ) / run["issue_count"],
-                "in_primary_saving_target": target_region,
+                "in_primary_saving_target": (
+                    target_region if heuristic_attribution_admissible else None
+                ),
                 "discovery_primary_target_met": bool(
                     run["strategy_id"] not in {"S00_fresh_full", "S01_persistent_full"}
                     and comparison_admissible
