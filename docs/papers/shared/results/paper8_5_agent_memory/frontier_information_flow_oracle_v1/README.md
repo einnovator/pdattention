@@ -114,6 +114,24 @@ The exact prefix and active-episode export consumed by the audit are retained
 as `task5_persistent_prefix_before_episode_05.json` and
 `autonomous_task5_m2_p1_v1_r03/persistent_episode_export.json`.
 
+M1+P1 transfers successfully to Scikit-learn Task 3 (8 calls; 49,345 of
+120,273 counterfactual tokens; 58.97% saving), but fails Pytest Task 4 after
+three actions: the agent states the correct edit and submits `git diff` without
+mutating the workspace. This narrows the missing state to workflow control,
+not a cross-issue resource edge.
+
+The W1 causal add-back retains only the latest successful changed-resource
+group, the latest successful observation of that post-mutation resource, and
+the harness-certified completion. It restores Task 4 in 2/2 exact-metric
+repeats (6 calls; 42,864 of 103,758 tokens; 58.69% saving) and preserves Task 3
+(8 calls; 57.15% saving). It then loses Task 5: the model identifies that its
+new `display_addr` is absent from the format dictionary but submits before
+fixing it. The three-task W1 gate is therefore 2/3 with 56.52% raw
+own-trajectory saving and zero failure-aware credit. Raw cross-task workflow
+text is not promoted; the next test must use a task-neutral control receipt.
+The aggregate and causal diagnosis are in
+`autonomous_m1_workflow_spine_three_task_gate.json`.
+
 Across the complete contemporaneous repeat cohort, FULL resolves 2/3 and
 M2+P1 resolves 3/3. The arms use 30 and 31 calls and send 532,986 and 367,617
 tokens, a descriptive 31.03% input reduction. Conditional on the two FULL

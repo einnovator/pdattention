@@ -76,8 +76,10 @@ conditional on the two \textsc{Full} successes it preserves 2/2 and saves
 28.67\%, just below the 30\% gate.  A sharper boundary-free M1/P1 Task~5
 mechanism repeat resolves 2/2 with an identical executed-action trajectory and
 53.95\% within-trajectory saving; an edge audit finds no unintended link among
-the five issues.  Three identities do not establish greater-than-90\%
-population accuracy.
+the five issues.  Transfer resolves Task~3 but loses Task~4; preserving a raw
+mutation--verification--submission exemplar repairs Task~4 in 2/2 repeats but
+then loses Task~5.  Neither aggressive variant is promoted.  Three identities
+do not establish greater-than-90\% population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1099,12 +1101,12 @@ identity and one repeat-qualified low-saving identity, not a stable universal
 
 Task~5 cannot enter the conditional preservation gate: contemporaneous
 \textsc{Full} fails (10 calls; 211,898 tokens), while M2/P1 resolves (12;
-138,570).  A sharper boundary-free $M=1$/P1 diagnostic then resolves 2/2
-repeats with identical executed actions, 11 calls, and 109,443 of 237,648
-counterfactual tokens (53.95\% saving).  Its 12-request audit retires all 44
-prior-issue groups and finds only the intended P1 cross-epoch edge, with zero
-unexplained links.  This is repeat evidence for one identity, not a
-contemporaneous preservation pair or population-accuracy estimate.
+138,570).  Boundary-free M1/P1 resolves Task~5 in 2/2 repeats at 53.95\%
+within-trajectory saving and also resolves Task~3, but loses Task~4 by
+submitting without mutating.  W1 retains only the latest successful
+mutation--verification--submission spine and restores Task~4 in 2/2 repeats;
+it nevertheless loses Task~5.  Its three-task resolution is 2/3 despite 56.52\%
+own-trajectory saving, hence zero failure-aware credit.  Neither is promoted.
 
 Across all three contemporaneous repeats, \textsc{Full} resolves 2/3 and M2/P1
 3/3.  They use 30 and 31 calls and send 532,986 and 367,617 tokens, a
@@ -1134,7 +1136,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Task-3/4 repeats save 9.96/59.24\%; Task-5 control fails; blocked. \\
-Agent-Economy & DAG $M=1$/P1 whole-group & last prompt + valid protocol & Task~5 resolves 2/2 at 53.95\% own-trajectory saving; cross-task qualification pending. \\
+Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Both resolve 2/3 identities; each loses a different paired success. Reject. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1205,6 +1207,37 @@ the accepted command and every model-visible trajectory message remain the
 same.  This distinction prevents raw response-envelope nondeterminism from
 being mislabeled as behavioral divergence.  The repeat ledger is
 \path{autonomous_m1_p1_task5_repeat.json}.
+
+Cross-task transfer supplies the necessary rejection.  M1/P1 resolves
+Scikit-learn Task~3 in eight calls with 49,345 of 120,273 counterfactual tokens
+(58.97\% saving), but on Pytest Task~4 it describes the correct edit and then
+submits \texttt{git diff} without ever mutating the workspace.  This is not an
+accidental DAG path: the old issues are disconnected.  P1 preserves a valid
+submission example but not the fact that mutation and verification must occur
+before submission.
+
+W1 is a causal add-back, not another age sweep.  From the latest epoch with a
+harness-certified valid completion it pins only three generic causal groups:
+the last successful changed-resource receipt, the last successful
+post-mutation observation of that resource, and the valid completion.  It uses
+typed effect metadata and no issue ID or repository-specific command rule.
+On Task~4, M1/P1/W1 restores the official solve in two of two exact-metric
+repeats: six calls and 42,864 selected of 103,758 counterfactual tokens
+(58.69\% saving).  The intervention is mechanistically specific: without W1
+there is no mutation; with W1 the accepted trajectory mutates, inspects, and
+submits.
+
+Raw W1 is not a safe default.  It preserves Task~3 (eight calls, 57.15\%
+saving) but loses Task~5 in seven calls.  The Task~5 trace mutates the correct
+file and explicitly notices that \texttt{display\_addr} is missing from the
+format dictionary, yet submits before correcting that defect.  Across the
+three identities W1 resolves 2/3 while removing 56.52\% of its own cumulative
+counterfactual input, so failure-aware saving is zero.  The result rules out
+both plain M1/P1 and raw cross-task workflow text as defaults.  The next repair
+must encode the workflow as task-neutral control state or a compact receipt,
+without exposing old code payloads.  Full evidence and both quarantined
+transport failures are indexed by
+\path{autonomous_m1_workflow_spine_three_task_gate.json}.
 
 Autonomous forks then test cumulative behavior.  Task~6 is an efficiency
 rejection: both treatment and historical \textsc{Full} fail, while $M=2$ adds
