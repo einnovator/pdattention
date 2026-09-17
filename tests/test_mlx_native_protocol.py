@@ -146,6 +146,32 @@ def test_native_memory_wire_format_round_trips_and_quantizes() -> None:
     assert np.max(np.abs(decoded.layers[0].keys - keys)) < 0.02
 
 
+def test_bfloat_wire_format_preserves_raw_bits_without_float32_widening() -> None:
+    import io
+    import json
+    import numpy as np
+    import pytest
+
+    mx = pytest.importorskip("mlx.core")
+    keys = mx.array([-1.5, 0.0, 1.0, 3.25], dtype=mx.bfloat16).reshape(
+        1, 1, 1, 4
+    )
+    memory = MLXNativeMemory((MLXNativeLayerKV(keys, keys),), source_tokens=1)
+
+    payload = serialize_native_memory(memory)
+    with np.load(io.BytesIO(payload), allow_pickle=False) as archive:
+        metadata = json.loads(bytes(archive["__pra_metadata__"]).decode("utf-8"))
+        stored = archive["layer_0000_k"]
+        assert stored.dtype == np.uint16
+        assert metadata["arrays"]["layer_0000_k"]["storage_encoding"] == (
+            "bfloat16_uint16_bits"
+        )
+    restored = deserialize_native_memory(payload)
+    mx.eval(restored.layers[0].keys)
+    assert restored.layers[0].keys.dtype == mx.bfloat16
+    assert bool(mx.all(restored.layers[0].keys == keys).item())
+
+
 def test_native_cold_codec_can_quantize_values_in_selected_layers_only() -> None:
     import numpy as np
 
