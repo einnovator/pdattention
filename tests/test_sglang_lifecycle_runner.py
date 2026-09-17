@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle import _prefill
+from experiments.paper4_5_agent.run_sglang_live_agent_kv_lifecycle import (
+    _extend_prefill,
+    _prefill,
+)
 
 
 class FakeRunner:
@@ -56,3 +59,14 @@ def test_lifecycle_prefill_rejects_invalid_inputs() -> None:
         _prefill(runner, "request", [1], step_size=0)
     with pytest.raises(ValueError, match="non-empty"):
         _prefill(runner, "request", [], step_size=1)
+
+
+def test_lifecycle_extend_prefill_uses_only_existing_request() -> None:
+    runner = FakeRunner()
+    token = _extend_prefill(runner, "request", [1, 2, 3], step_size=2)
+
+    assert token == 2
+    assert runner.calls == [
+        ("extend", [1, 2], False),
+        ("extend", [3], True),
+    ]

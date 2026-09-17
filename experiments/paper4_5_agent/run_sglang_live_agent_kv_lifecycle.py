@@ -125,6 +125,37 @@ def _decode_with_logits(runner, request_id: str) -> tuple[int, np.ndarray]:
     return token, captured[0]
 
 
+def _extend_prefill(
+    runner,
+    request_id: str,
+    wire_tail: list[int],
+    *,
+    step_size: int,
+) -> int:
+    """Append a wire suffix to an already resident ordinary request."""
+
+    if step_size < 1:
+        raise ValueError("prefill step size must be positive")
+    chunks = [
+        wire_tail[start : start + step_size]
+        for start in range(0, len(wire_tail), step_size)
+    ]
+    if not chunks:
+        raise ValueError("SGLang lifecycle extension requires a non-empty wire tail")
+    token = None
+    for index, chunk in enumerate(chunks):
+        pending = runner.extend_start(
+            request_id,
+            chunk,
+            [],
+            needs_logits=index == len(chunks) - 1,
+        )
+        runner.eval_pending(pending)
+        token = int(runner.extend_finalize(pending))
+    assert token is not None
+    return token
+
+
 def _generate_with_logits(
     runner,
     request_id: str,
@@ -137,6 +168,31 @@ def _generate_with_logits(
         raise ValueError("Logit qualification requires at least two generated tokens.")
     generated = [
         _prefill(
+            runner,
+            request_id,
+            wire_tail,
+            step_size=prefill_step_size,
+        )
+    ]
+    token, logits = _decode_with_logits(runner, request_id)
+    generated.append(token)
+    while len(generated) < max_tokens:
+        generated.extend(_decode(runner, [request_id]))
+    return tuple(generated), logits
+
+
+def _generate_existing_with_logits(
+    runner,
+    request_id: str,
+    wire_tail: list[int],
+    *,
+    max_tokens: int,
+    prefill_step_size: int,
+) -> tuple[tuple[int, ...], np.ndarray]:
+    if max_tokens < 2:
+        raise ValueError("Logit qualification requires at least two generated tokens.")
+    generated = [
+        _extend_prefill(
             runner,
             request_id,
             wire_tail,
@@ -251,14 +307,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     ordinary_full_tokens = None
     ordinary_full_logits = None
     if frozen_decision and args.frozen_full_retention:
-        ordinary_full_tokens, ordinary_full_logits = _generate_with_logits(
+        ordinary_request_id = "ordinary-resident-prefix-engine-oracle"
+        _prefill(
             runner,
-            "ordinary-full-engine-oracle",
-            prompt_ids,
-            max_tokens=args.continuation_tokens,
-            prefill_step_size=args.source_prefill_step_size,
+            ordinary_request_id,
+            source_ids,
+            step_size=args.source_prefill_step_size,
         )
-        runner.remove_request("ordinary-full-engine-oracle")
+        ordinary_full_tokens, ordinary_full_logits = _generate_existing_with_logits(
+            runner,
+            ordinary_request_id,
+            wire_tail,
+            max_tokens=args.continuation_tokens,
+            prefill_step_size=args.prefill_step_size,
+        )
+        runner.remove_request(ordinary_request_id)
 
     prime_id = "task02-source-owner"
     _prefill(
@@ -692,7 +755,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "radix_pool_ownership_isolated": not radix_pool_contains_selected_wrapper,
     }
     result = {
-        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v3",
+        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v4",
         "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
@@ -813,6 +876,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "ordinary_full_engine_oracle_token_ids": (
             list(ordinary_full_tokens)
+            if ordinary_full_tokens is not None
+            else None
+        ),
+        "ordinary_full_engine_oracle_mode": (
+            "independent_resident_prefix_then_wire_tail"
             if ordinary_full_tokens is not None
             else None
         ),
