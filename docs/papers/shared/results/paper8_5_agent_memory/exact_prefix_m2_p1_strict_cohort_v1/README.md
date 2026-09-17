@@ -24,3 +24,25 @@ justifies additional task identities; it does not yet justify a production
 default or Easy-14 accuracy claim.
 
 See `evidence.json` for machine-readable totals and links to each task bundle.
+
+## Frozen Paper 4.5 handoff
+
+`export_paper4_5_frozen_plan.py` reconstructs every canonical pre-selection
+request from the immutable prefix and trajectory, verifies its request and
+selected-message hashes, and translates the already selected records into the
+common Paper 4.5 resource fixture.  It does not rerun or approximate M2/P1.
+The current-episode mandatory floor is exported explicitly so a downstream
+engine harness cannot pull the preceding issue's final turn back into a new
+issue.
+
+| Task | Requests | Frozen fixture | SHA-256 |
+|---|---:|---|---|
+| 3 | 7 | `paper4_5_task3_frozen_plan.jsonl` | `04c9fbad18b9a98648da86edecf8a88fe40dc915a1e58e75154ab472dcd2f1e5` |
+| 4 | 6 | `paper4_5_task4_frozen_plan.jsonl` | `b1f0b05f3266d2d3cf2dd18c3d308da90898aedd9d4b7909b3a6f4e80d8bf777` |
+| 5 | 9 | `paper4_5_task5_frozen_plan.jsonl` | `e292c5e255a17d4b77f354f09a73cedbae2e9172d965872811f537d0cf9dfc82` |
+
+The adjacent manifests bind each fixture to the prefix, trajectory, selection
+trace, segmentation rule, source policy, and request count.  Logical success
+and token saving remain Paper 8.5 claims.  Paper 4.5 must replay these fixtures
+unchanged and report resident-K/V realization, re-encoding, copy, temporary
+bytes, lifecycle behavior, and task behavior separately.
