@@ -1086,7 +1086,11 @@ def _metal_disjoint_selected_attention_2pass(
         grid=(kv_heads * 32, groups, query_tokens * blocks),
         threadgroup=(32, groups, query_tokens),
         output_shapes=(partial_shape, stat_shape, stat_shape),
-        output_dtypes=(queries.dtype, mx.float32, mx.float32),
+        # The pass-one recurrence is deliberately FP32.  Keeping its partial
+        # vector in the query dtype made BF16 models emit an illegal Metal
+        # assignment (float -> bfloat16_t) and would also discard precision
+        # before the cross-block reduction.  Cast only the final output.
+        output_dtypes=(mx.float32, mx.float32, mx.float32),
     )
     return pass2(
         inputs=(partials, sums, maxs),
