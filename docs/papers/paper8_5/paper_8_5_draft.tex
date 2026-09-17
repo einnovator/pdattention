@@ -67,8 +67,11 @@ protocol-aware $M=2$/P1 repair then preserves 3/3 distinct paired
 474,697 cumulative input tokens (40.83\% saving).  A contemporaneous Task~3
 repeat preserves success and 13-versus-13 calls but saves only 9.96\%, exposing
 large backend trajectory variance and failing the repeated 30--50\% saving
-gate.  No profile is promoted, and three identities do not establish
-greater-than-90\% population accuracy.
+gate; Task~4 instead repeats at 59.24\% saving and one fewer call.  This
+heterogeneity blocks a universal default.  On Task~5 the contemporaneous
+\textsc{Full} repeat fails while M2/P1 resolves, so it is unconditional
+reliability evidence rather than a preservation point.  Three identities do
+not establish greater-than-90\% population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1081,6 +1084,21 @@ the earlier repaired run; generation diverges on request~2.  Thus the repeat
 passes quality and call preservation, fails the saving target, and confirms
 that temperature zero and a fixed seed do not remove backend variance.
 
+Task~4 is the contrasting stable repeat.  Its contemporaneous \textsc{Full}
+control resolves in seven calls with 121,856 tokens, while $M=2$/P1 repeats
+exactly at six calls and 49,667 tokens: 59.24\% paired saving and one fewer
+call.  The evidence therefore contains one repeat-qualified high-saving
+identity and one repeat-qualified low-saving identity, not a stable universal
+40--50\% frontier.
+
+Task~5 cannot enter the conditional preservation gate: contemporaneous
+\textsc{Full} fails official grading in 10 calls with 211,898 tokens, whereas
+the frozen M2/P1 arm resolves in 12 calls with 138,570 tokens.  The latter
+exactly repeats its preceding successful candidate metrics and sends 34.61\%
+less input than the failed control trajectory.  This is unconditional evidence
+consistent with exclusion removing harmful cross-task interference, not proof
+of a quality improvement; randomized repeated pairs are required.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1101,7 +1119,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 \midrule
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
-Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Initial 3/3, 40.83\%; Task-3 repeat saves 9.96\%, so promotion remains blocked. \\
+Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Task-3/4 repeats save 9.96/59.24\%; Task-5 control fails; blocked. \\
 Agent-Economy & DAG $M=2$/P1 + structured frontier & last 2 prompts + valid protocol & Unexecuted extension; cannot inherit Balanced's quality result. \\
 \bottomrule
 \end{tabular}
@@ -1120,6 +1138,8 @@ family.  Temperature zero does not guarantee endpoint repeatability, and clean
 workspaces isolate conversation memory from persistent repository state.
 Easy-14 is a mechanism cohort, not a population estimate.  The failed saving
 repeat shows that one favorable three-task aggregate is not a stable frontier.
+The two completed repeats span 9.96--59.24\% saving despite preserved success.
+The third control changes from success to failure while the candidate resolves.
 Safe retirement
 must preserve causal and closure semantics, efficiency must be measured over
 the realized trajectory, and three positive identities cannot establish
@@ -1190,6 +1210,20 @@ trajectory used six calls and 88,510 tokens, demonstrating why it is an invalid
 denominator for this repeat.  The exact paired ledger is
 \path{autonomous_m2_p1_task3_repeat_pair.json}.  This repeat preserves quality
 but fails the saving gate, so the policy does not yet advance to Easy-14.
+
+Task~4 supplies a stable positive repeat: contemporaneous \textsc{Full}
+resolves in seven calls with 121,856 tokens, and M2/P1 resolves in six calls
+with 49,667 tokens, for 59.24\% paired saving.  The candidate exactly repeats
+its earlier call and token counts.  The paired ledger is
+\path{autonomous_m2_p1_task4_repeat_pair.json}.  Together, Tasks~3--4 show
+preserved quality but strongly heterogeneous logical opportunity.
+
+On Task~5 the contemporaneous \textsc{Full} repeat fails in 10 calls with
+211,898 tokens, while M2/P1 resolves in 12 calls with 138,570 tokens, exactly
+repeating its prior successful candidate metrics.  The 34.61\% descriptive
+input reduction is recorded in
+\path{autonomous_m2_p1_task5_repeat_pair.json}, but is excluded from the
+conditional preservation gate because the control does not resolve.
 
 \section{Context-Qualified Easy-14 Confirmation Ledger}
 
@@ -3284,7 +3318,9 @@ for an information-flow test.  The later recent-frontier DAG $M=2$/P1 policy
 supersedes these candidates in the initial screen: it preserves 3/3 paired
 successes with 40.83\% aggregate saving and no call increase.  Its first
 contemporaneous Task-3 repeat preserves success and calls but saves only
-9.96\%, failing the repeated saving gate.  It therefore does not yet qualify
+9.96\%, while Task~4 repeats at 59.24\% saving and one fewer call.  This
+heterogeneity fails the profile-level repeated saving gate; Task~5 additionally
+has a failed contemporaneous control while M2/P1 resolves.  It therefore does not yet qualify
 Easy-14 expansion or transfer as a Paper~4.5 production default.  The
 one-to-fourteen-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent

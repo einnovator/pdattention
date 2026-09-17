@@ -75,6 +75,22 @@ repaired run byte-for-byte and generation diverges on request 2, confirming
 that temperature zero and fixed seed do not eliminate backend trajectory
 variance. The frozen policy remains unpromoted.
 
+Task 4 provides the contrasting stable repeat. Contemporaneous FULL resolves
+in seven calls and sends 121,856 tokens, closely matching its historical
+7-call/121,983-token control. M2+P1 again resolves in six calls and sends
+exactly 49,667 tokens, reproducing the first candidate execution. The valid
+paired saving is 59.24% with one fewer call. Thus the current evidence contains
+one repeat-qualified high-saving identity and one repeat-qualified low-saving
+identity; it does not support a universal 40--50% default.
+
+Task 5 cannot enter the conditional preservation gate because its
+contemporaneous FULL repeat fails official grading (10 calls, 211,898 tokens).
+The frozen M2+P1 arm resolves in 12 calls with 138,570 tokens, exactly
+reproducing its preceding successful candidate run and using 34.61% less input
+than the failed FULL trajectory. This is unconditional reliability evidence,
+not a preserved-FULL-success point. It motivates randomized repeated pairing
+to test whether exclusion reduces harmful cross-task interference.
+
 The Task 6 pilot is an efficiency rejection. Both arms fail official grading,
 while DAG `M=2` takes 15 calls versus five and materializes 77.91% more paired
 input despite pruning 41.19% relative to its own trajectory counterfactual.
@@ -82,7 +98,8 @@ This demonstrates why per-request pruning must not be reported as end-to-end
 saving when the policy changes the trajectory.
 
 `autonomous_m2_p1_three_task_gate.json` is the frozen initial aggregate, and
-`autonomous_m2_p1_task3_repeat_pair.json` records the contemporaneous repeat.
+`autonomous_m2_p1_task{3,4,5}_repeat_pair.json` record the contemporaneous
+repeats.
 Complete
 trajectories, manifests, and official outcomes are in the adjacent
 `autonomous_task*_m2*` directories. One concurrent Task-5 execution diverged
