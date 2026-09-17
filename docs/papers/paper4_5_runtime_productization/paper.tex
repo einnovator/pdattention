@@ -3503,6 +3503,36 @@ create an invalid system-to-assistant chat transition.  Detailed task rows,
 stop diagnostics, hashes, and curves remain in the Paper~8.5 appendix and
 machine-readable bundle rather than being duplicated here.
 
+The first real MLX frozen-plan check now qualifies one Task~4 request at both
+full and reduced retention on Qwen3-0.6B-4bit.  The reduced row retains
+8,617/18,110 historical K/V tokens across 23 disjoint original-position
+segments (47.92\% total visible retention), re-encodes zero selected-history
+tokens, packs or copies zero selected K/V bytes, and matches the identical-
+subset dense oracle with zero maximum logit delta and the same next token.
+Its first-layer consumer peak increases by 148,061 bytes, only 0.42\% of the
+35,295,232-byte selected-layer K/V extent.  The matched full-retention row is
+also exact and clears the same lifecycle gate.  These are request-level engine
+results, not an autonomous Task~4 solve or a three-task policy replication.
+A second reduced request from Task~5 also qualifies: it selects
+11,988/23,077 historical K/V tokens across 34 segments (52.35\% retention),
+has zero oracle logit delta and zero re-encoding or copy, and limits the
+first-layer peak delta to 151,526 bytes (0.31\% of selected-layer K/V).  This
+extends same-subset correctness to a second task identity.  A Task~3 request
+also qualifies at 88.82\% retention, with 14,154/15,954 historical K/V tokens,
+zero oracle logit delta, and a 153,916-byte first-layer peak delta (0.27\% of
+selected-layer K/V).  The strict reduced-history smoke therefore covers one
+request from each of the three frozen policy tasks, but Task~4 is still the
+only matched full-retention control.
+
+This smoke also exposes a material kernel-dispatch constraint.  With 16-token
+wire-prefill chunks, two earlier rows remain next-token exact but differ from
+MLX's dense prefill kernel by maximum logit deltas of 1.000 and 1.125, above
+the predeclared 0.005 gate.  Fast-exponential and explicit dtype-rounding
+changes do not repair the mismatch.  Token-at-a-time wire prefill makes the
+dense and sparse paths use a compatible vector reduction and yields zero
+delta.  We therefore retain step one as a correctness mode and make no speed
+claim; a matching fused multi-token consumer remains required for economics.
+
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
 458681e1 with Qwen3-Coder-30B Q4 on task 01

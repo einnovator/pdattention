@@ -17,6 +17,10 @@ from pra_hf.hf_live_kv import HFLiveKVRequestCancelled, HFLiveKVRuntime
 from pra_hf.agent_executor import split_generation_prompt
 
 from .run_hf_agent_cache_equivalence import _max_delta, _prefill
+from .frozen_agent_plan import (
+    frozen_live_kv_geometry,
+    load_frozen_agent_decisions,
+)
 from .sparse_gate_common import sparse_causal_plan
 
 
@@ -89,26 +93,52 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         torch_dtype=dtype,
         local_files_only=args.local_files_only,
     ).to(device).eval()
-    trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    messages = trajectory["messages"]
-    assistant_indexes = [
-        index for index, message in enumerate(messages)
-        if message.get("role") == "assistant"
-    ][: args.turn]
-    assistant_index = assistant_indexes[-1]
-    prompt_ids, source_ids, wire_tail = split_generation_prompt(
-        tokenizer,
-        messages[:assistant_index],
-    )
+    frozen_decision = None
+    if args.request_replay or args.selection_fixture:
+        if not args.request_replay or not args.selection_fixture:
+            raise ValueError(
+                "frozen replay requires both --request-replay and --selection-fixture"
+            )
+        decisions = load_frozen_agent_decisions(
+            args.request_replay, args.selection_fixture
+        )
+        if args.request_index < 1 or args.request_index > len(decisions):
+            raise ValueError("--request-index is outside the frozen replay")
+        frozen_decision = decisions[args.request_index - 1]
+        geometry = frozen_live_kv_geometry(
+            tokenizer,
+            frozen_decision,
+            full_retention=args.frozen_full_retention,
+        )
+        prompt_ids = list(geometry.prompt_ids)
+        source_ids = list(geometry.source_ids)
+        wire_tail = list(geometry.wire_tail_ids)
+        plan = geometry.plan
+    else:
+        if args.trajectory is None:
+            raise ValueError(
+                "provide --trajectory or the frozen request/selection pair"
+            )
+        trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
+        messages = trajectory["messages"]
+        assistant_indexes = [
+            index for index, message in enumerate(messages)
+            if message.get("role") == "assistant"
+        ][: args.turn]
+        assistant_index = assistant_indexes[-1]
+        prompt_ids, source_ids, wire_tail = split_generation_prompt(
+            tokenizer,
+            messages[:assistant_index],
+        )
+        plan = sparse_causal_plan(
+            tokenizer,
+            messages[:assistant_index],
+            prompt_ids,
+            source_tokens=len(source_ids),
+            retention_fraction=args.retention_fraction,
+        )
     source = _prefill(model, source_ids, device)
     source_cache = source.past_key_values
-    plan = sparse_causal_plan(
-        tokenizer,
-        messages[:assistant_index],
-        prompt_ids,
-        source_tokens=len(source_ids),
-        retention_fraction=args.retention_fraction,
-    )
     source_fingerprint = _fingerprint_cache(source_cache)
     restored_fingerprints: list[str] = []
 
@@ -251,7 +281,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.hf-live-kv-lifecycle.v1",
+        "schema_version": "paper4.5.hf-live-kv-lifecycle.v2",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
         "model": args.model,
@@ -260,13 +290,36 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "python_version": platform.python_version(),
         "device": str(device),
         "dtype": args.dtype,
-        "trajectory": str(args.trajectory),
-        "turn": args.turn,
-        "retention_fraction": args.retention_fraction,
+        "trajectory": str(args.trajectory) if args.trajectory else None,
+        "request_replay": str(args.request_replay) if args.request_replay else None,
+        "selection_fixture": (
+            str(args.selection_fixture) if args.selection_fixture else None
+        ),
+        "request_index": (
+            frozen_decision.request_index if frozen_decision else None
+        ),
+        "request_input_sha256": (
+            frozen_decision.request_input_sha256 if frozen_decision else None
+        ),
+        "source_policy": (
+            frozen_decision.source_policy if frozen_decision else None
+        ),
+        "turn": args.turn if frozen_decision is None else None,
+        "retention_fraction": (
+            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            if frozen_decision else args.retention_fraction
+        ),
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
         "selected_kv_tokens": plan.selected_tokens,
-        "realized_retention_fraction": plan.selected_tokens / max(len(source_ids), 1),
+        "realized_retention_fraction": (
+            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            if frozen_decision
+            else plan.selected_tokens / max(len(source_ids), 1)
+        ),
+        "historical_kv_retention_fraction": (
+            plan.selected_tokens / max(len(source_ids), 1)
+        ),
         "source_position_base": plan.source_position_base,
         "has_holes": plan.has_holes,
         "physical_kv_copy": candidate_result.physical_kv_copy,
@@ -295,7 +348,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trajectory", type=Path, required=True)
+    parser.add_argument("--trajectory", type=Path)
+    parser.add_argument("--request-replay", type=Path)
+    parser.add_argument("--selection-fixture", type=Path)
+    parser.add_argument("--request-index", type=int, default=1)
+    parser.add_argument(
+        "--frozen-full-retention",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--turn", type=int, default=4)

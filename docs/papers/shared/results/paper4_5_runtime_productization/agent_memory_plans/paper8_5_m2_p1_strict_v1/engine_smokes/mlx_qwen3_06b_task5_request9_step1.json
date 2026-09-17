@@ -1,0 +1,320 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-lifecycle.v2",
+  "probe": "mlx_real_model_request_owned_sparse_kv",
+  "engine": "mlx-lm",
+  "model": "/Users/jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-0.6B-4bit/snapshots/73e3e38d981303bc594367cd910ea6eb48349da8",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.12.12",
+  "hardware": "medium-mac-m5-16gb",
+  "materialization_policy": "disjoint_segmented",
+  "segmented_attention_patched_layers": 28,
+  "trajectory": null,
+  "request_replay": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task5_request_replay.jsonl",
+  "selection_fixture": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task5_frozen_plan.jsonl",
+  "request_index": 9,
+  "request_input_sha256": "f55011d2b58f8f6e581110be6aa2f86ee081769038e7db7b17217691d7aa8788",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 0.523504640770024,
+  "source_tokens": 23077,
+  "wire_suffix_tokens": 195,
+  "wire_prefill_step_size": 1,
+  "selected_kv_tokens": 11988,
+  "realized_retention_fraction": 0.523504640770024,
+  "historical_kv_retention_fraction": 0.5194782684057719,
+  "source_position_base": 23077,
+  "has_holes": true,
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 34,
+  "selection_pack_bytes": 0,
+  "selection_materialization_elapsed_ms": 229.151166,
+  "dense_reference_pack_bytes": 1374879744,
+  "dense_reference_materialization_elapsed_ms": 1059.20975,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 49102848,
+    "active_before_bytes": 10019627016,
+    "active_after_bytes": 10019778541,
+    "active_delta_bytes": 151525,
+    "absolute_peak_bytes": 10019778542,
+    "peak_delta_bytes": 151526,
+    "peak_delta_to_selected_layer_kv_ratio": 0.003085890252231398,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the selected interval views, force every selected key/value array with mx.eval, and compare active and peak bytes with the pre-selection baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over all selected interval key/value views plus one local token, force the output with mx.eval, and compare peak delta against the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 5293329432,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "max_abs_logit_delta_dense_engine_oracle": 0.0,
+  "dense_engine_oracle_token_ids": [
+    151667
+  ],
+  "candidate_token_ids": [
+    151667
+  ],
+  "max_abs_logit_delta_after_restore": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": true,
+    "cooperative_cancel_released_exactly_once": true,
+    "error_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "zero_selected_history_reencoding": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 23077,
+    "source_position_base": 23077,
+    "selected_tokens": 11988,
+    "full_retention": false,
+    "has_holes": true,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 1389,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 3506,
+        "end": 5454,
+        "record_id": "message:20:user",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 12830,
+        "end": 14382,
+        "record_id": "message:67:user",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 15978,
+        "end": 17339,
+        "record_id": "message:80:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 17339,
+        "end": 17342,
+        "record_id": "message:81:assistant",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17342,
+        "end": 17512,
+        "record_id": "message:82:user",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17512,
+        "end": 17515,
+        "record_id": "message:83:assistant",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17515,
+        "end": 17615,
+        "record_id": "message:84:user",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17615,
+        "end": 17618,
+        "record_id": "message:85:assistant",
+        "causal_group_id": "turn:85"
+      },
+      {
+        "start": 17618,
+        "end": 17834,
+        "record_id": "message:86:user",
+        "causal_group_id": "turn:85"
+      },
+      {
+        "start": 17834,
+        "end": 17837,
+        "record_id": "message:87:assistant",
+        "causal_group_id": "turn:87"
+      },
+      {
+        "start": 17837,
+        "end": 18126,
+        "record_id": "message:88:user",
+        "causal_group_id": "turn:87"
+      },
+      {
+        "start": 18126,
+        "end": 18129,
+        "record_id": "message:89:assistant",
+        "causal_group_id": "turn:89"
+      },
+      {
+        "start": 18129,
+        "end": 18257,
+        "record_id": "message:90:user",
+        "causal_group_id": "turn:89"
+      },
+      {
+        "start": 18257,
+        "end": 18260,
+        "record_id": "message:91:assistant",
+        "causal_group_id": "turn:91"
+      },
+      {
+        "start": 18260,
+        "end": 18345,
+        "record_id": "message:92:user",
+        "causal_group_id": "turn:91"
+      },
+      {
+        "start": 18345,
+        "end": 18348,
+        "record_id": "message:93:assistant",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 18348,
+        "end": 18565,
+        "record_id": "message:94:user",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 18565,
+        "end": 19966,
+        "record_id": "message:95:user",
+        "causal_group_id": "turn:93"
+      },
+      {
+        "start": 19966,
+        "end": 19969,
+        "record_id": "message:96:assistant",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 19969,
+        "end": 20226,
+        "record_id": "message:97:user",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 20226,
+        "end": 20229,
+        "record_id": "message:98:assistant",
+        "causal_group_id": "turn:98"
+      },
+      {
+        "start": 20229,
+        "end": 21815,
+        "record_id": "message:99:user",
+        "causal_group_id": "turn:98"
+      },
+      {
+        "start": 21815,
+        "end": 21818,
+        "record_id": "message:100:assistant",
+        "causal_group_id": "turn:100"
+      },
+      {
+        "start": 21818,
+        "end": 22187,
+        "record_id": "message:101:user",
+        "causal_group_id": "turn:100"
+      },
+      {
+        "start": 22187,
+        "end": 22190,
+        "record_id": "message:102:assistant",
+        "causal_group_id": "turn:102"
+      },
+      {
+        "start": 22190,
+        "end": 22610,
+        "record_id": "message:103:user",
+        "causal_group_id": "turn:102"
+      },
+      {
+        "start": 22610,
+        "end": 22613,
+        "record_id": "message:104:assistant",
+        "causal_group_id": "turn:104"
+      },
+      {
+        "start": 22613,
+        "end": 22744,
+        "record_id": "message:105:user",
+        "causal_group_id": "turn:104"
+      },
+      {
+        "start": 22744,
+        "end": 22747,
+        "record_id": "message:106:assistant",
+        "causal_group_id": "turn:106"
+      },
+      {
+        "start": 22747,
+        "end": 22947,
+        "record_id": "message:107:user",
+        "causal_group_id": "turn:106"
+      },
+      {
+        "start": 22947,
+        "end": 22950,
+        "record_id": "message:108:assistant",
+        "causal_group_id": "turn:108"
+      },
+      {
+        "start": 22950,
+        "end": 23077,
+        "record_id": "message:109:user",
+        "causal_group_id": "turn:108"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": []
+}

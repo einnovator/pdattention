@@ -32,6 +32,10 @@ from pra_sglang.mlx_native import (
 )
 
 from .sparse_gate_common import sparse_causal_plan
+from .frozen_agent_plan import (
+    frozen_live_kv_geometry,
+    load_frozen_agent_decisions,
+)
 
 
 def _max_delta(left: np.ndarray, right: np.ndarray) -> float:
@@ -61,12 +65,43 @@ def _fingerprint(memory: MLXNativeMemory | MLXDisjointNativeMemory) -> str:
     return digest.hexdigest()
 
 
-def _prefill(runner, request_id: str, wire_tail: list[int]) -> int:
+def _prefill(
+    runner,
+    request_id: str,
+    wire_tail: list[int],
+    *,
+    step_size: int,
+) -> int:
+    if step_size < 1:
+        raise ValueError("prefill step size must be positive")
+    chunks = [
+        wire_tail[start : start + step_size]
+        for start in range(0, len(wire_tail), step_size)
+    ]
+    if not chunks:
+        raise ValueError("SGLang lifecycle prefill requires a non-empty wire tail")
+    first = chunks[0]
     pending = runner.prefill_start(
-        request_id, wire_tail, wire_tail, [], [], 0
+        request_id,
+        first,
+        first,
+        [],
+        [],
+        0,
+        needs_logits=len(chunks) == 1,
     )
     runner.eval_pending(pending)
-    return int(runner.prefill_finalize(pending))
+    token = int(runner.prefill_finalize(pending))
+    for index, chunk in enumerate(chunks[1:], start=1):
+        pending = runner.extend_start(
+            request_id,
+            chunk,
+            [],
+            needs_logits=index == len(chunks) - 1,
+        )
+        runner.eval_pending(pending)
+        token = int(runner.extend_finalize(pending))
+    return token
 
 
 def _decode(runner, request_ids: list[str]) -> list[int]:
@@ -96,10 +131,18 @@ def _generate_with_logits(
     wire_tail: list[int],
     *,
     max_tokens: int,
+    prefill_step_size: int,
 ) -> tuple[tuple[int, ...], np.ndarray]:
     if max_tokens < 2:
         raise ValueError("Logit qualification requires at least two generated tokens.")
-    generated = [_prefill(runner, request_id, wire_tail)]
+    generated = [
+        _prefill(
+            runner,
+            request_id,
+            wire_tail,
+            step_size=prefill_step_size,
+        )
+    ]
     token, logits = _decode_with_logits(runner, request_id)
     generated.append(token)
     while len(generated) < max_tokens:
@@ -113,8 +156,16 @@ def _generate(
     wire_tail: list[int],
     *,
     max_tokens: int,
+    prefill_step_size: int,
 ) -> tuple[int, ...]:
-    generated = [_prefill(runner, request_id, wire_tail)]
+    generated = [
+        _prefill(
+            runner,
+            request_id,
+            wire_tail,
+            step_size=prefill_step_size,
+        )
+    ]
     while len(generated) < max_tokens:
         generated.extend(_decode(runner, [request_id]))
     return tuple(generated)
@@ -146,32 +197,64 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     )
     runner.init_cache_pools(None)
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
-    trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    messages = trajectory["messages"]
-    assistant_indexes = [
-        index
-        for index, message in enumerate(messages)
-        if message.get("role") == "assistant"
-    ][: args.turn]
-    assistant_index = assistant_indexes[-1]
-    prompt_ids, source_ids, wire_tail = split_generation_prompt(
-        tokenizer,
-        messages[:assistant_index],
-    )
-    plan = sparse_causal_plan(
-        tokenizer,
-        messages[:assistant_index],
-        prompt_ids,
-        source_tokens=len(source_ids),
-        retention_fraction=args.retention_fraction,
-    )
-    if not plan.has_holes or len(plan.intervals) < 2:
+    frozen_decision = None
+    if args.request_replay or args.selection_fixture:
+        if not args.request_replay or not args.selection_fixture:
+            raise ValueError(
+                "frozen replay requires both --request-replay and --selection-fixture"
+            )
+        decisions = load_frozen_agent_decisions(
+            args.request_replay, args.selection_fixture
+        )
+        if args.request_index < 1 or args.request_index > len(decisions):
+            raise ValueError("--request-index is outside the frozen replay")
+        frozen_decision = decisions[args.request_index - 1]
+        geometry = frozen_live_kv_geometry(
+            tokenizer,
+            frozen_decision,
+            full_retention=args.frozen_full_retention,
+        )
+        prompt_ids = list(geometry.prompt_ids)
+        source_ids = list(geometry.source_ids)
+        wire_tail = list(geometry.wire_tail_ids)
+        plan = geometry.plan
+    else:
+        if args.trajectory is None:
+            raise ValueError(
+                "provide --trajectory or the frozen request/selection pair"
+            )
+        trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
+        messages = trajectory["messages"]
+        assistant_indexes = [
+            index
+            for index, message in enumerate(messages)
+            if message.get("role") == "assistant"
+        ][: args.turn]
+        assistant_index = assistant_indexes[-1]
+        prompt_ids, source_ids, wire_tail = split_generation_prompt(
+            tokenizer,
+            messages[:assistant_index],
+        )
+        plan = sparse_causal_plan(
+            tokenizer,
+            messages[:assistant_index],
+            prompt_ids,
+            source_tokens=len(source_ids),
+            retention_fraction=args.retention_fraction,
+        )
+    if (
+        (not plan.has_holes or len(plan.intervals) < 2)
+        and not (frozen_decision and args.frozen_full_retention)
+    ):
         raise RuntimeError("Lifecycle qualification requires a disjoint sparse plan.")
 
     prime_id = "task02-source-owner"
-    pending = runner.prefill_start(prime_id, source_ids, source_ids, [], [], 0)
-    runner.eval_pending(pending)
-    runner.prefill_finalize(pending)
+    _prefill(
+        runner,
+        prime_id,
+        source_ids,
+        step_size=args.source_prefill_step_size,
+    )
     source_caches = runner._req_caches[prime_id]
     canonical = capture_live_native_memory(
         source_caches, LiveKVSelectionPlan.full(len(source_ids))
@@ -342,6 +425,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         candidate.request_id,
         wire_tail,
         max_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
     candidate_cache = runner._req_caches[candidate.request_id][
         runner._cache_layout.first_attention_layer_index
@@ -359,6 +443,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         reference.request_id,
         wire_tail,
         max_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
     reference_selected_fingerprint = _fingerprint(reference.selection.memory)
     reference.finish()
@@ -386,8 +471,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         eviction_error = str(exc)
 
     concurrent_tokens = {
-        survivor.request_id: [_prefill(runner, survivor.request_id, wire_tail)],
-        cancelled.request_id: [_prefill(runner, cancelled.request_id, wire_tail)],
+        survivor.request_id: [
+            _prefill(
+                runner,
+                survivor.request_id,
+                wire_tail,
+                step_size=args.prefill_step_size,
+            )
+        ],
+        cancelled.request_id: [
+            _prefill(
+                runner,
+                cancelled.request_id,
+                wire_tail,
+                step_size=args.prefill_step_size,
+            )
+        ],
     }
     for _ in range(min(2, max(0, args.continuation_tokens - 1))):
         request_ids = [survivor.request_id, cancelled.request_id]
@@ -407,7 +506,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     survivor.finish()
 
     errored = begin("errored")
-    _prefill(runner, errored.request_id, wire_tail)
+    _prefill(
+        runner,
+        errored.request_id,
+        wire_tail,
+        step_size=args.prefill_step_size,
+    )
     native_error = ""
     try:
         runner.decode_batch_start([errored.request_id, "missing-request"])
@@ -446,11 +550,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         restored.request_id,
         wire_tail,
         max_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
     restored.finish()
 
     terminated = begin("terminated-active")
-    _prefill(runner, terminated.request_id, wire_tail)
+    _prefill(
+        runner,
+        terminated.request_id,
+        wire_tail,
+        step_size=args.prefill_step_size,
+    )
     removed = runtime.terminate_session(
         identities["tenant_id"], identities["session_id"]
     )
@@ -572,13 +682,38 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "hardware": args.hardware_label,
         "model": args.model,
         "model_revision": args.revision,
-        "trajectory": str(args.trajectory),
-        "turn": args.turn,
-        "retention_fraction": args.retention_fraction,
+        "trajectory": str(args.trajectory) if args.trajectory else None,
+        "request_replay": str(args.request_replay) if args.request_replay else None,
+        "selection_fixture": (
+            str(args.selection_fixture) if args.selection_fixture else None
+        ),
+        "request_index": (
+            frozen_decision.request_index if frozen_decision else None
+        ),
+        "request_input_sha256": (
+            frozen_decision.request_input_sha256 if frozen_decision else None
+        ),
+        "source_policy": (
+            frozen_decision.source_policy if frozen_decision else None
+        ),
+        "turn": args.turn if frozen_decision is None else None,
+        "retention_fraction": (
+            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            if frozen_decision else args.retention_fraction
+        ),
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
+        "wire_prefill_step_size": args.prefill_step_size,
+        "source_prefill_step_size": args.source_prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
-        "realized_retention_fraction": plan.selected_tokens / len(source_ids),
+        "realized_retention_fraction": (
+            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            if frozen_decision
+            else plan.selected_tokens / max(len(source_ids), 1)
+        ),
+        "historical_kv_retention_fraction": (
+            plan.selected_tokens / max(len(source_ids), 1)
+        ),
         "source_position_base": plan.source_position_base,
         "has_holes": plan.has_holes,
         "materialization_policy": args.materialization_policy,
@@ -691,7 +826,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trajectory", type=Path, required=True)
+    parser.add_argument("--trajectory", type=Path)
+    parser.add_argument("--request-replay", type=Path)
+    parser.add_argument("--selection-fixture", type=Path)
+    parser.add_argument("--request-index", type=int, default=1)
+    parser.add_argument(
+        "--frozen-full-retention",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--provenance", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
@@ -702,6 +845,18 @@ def main() -> None:
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--continuation-tokens", type=int, default=8)
+    parser.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=4,
+        help="Chunk size for the selected request's ordinary wire suffix.",
+    )
+    parser.add_argument(
+        "--source-prefill-step-size",
+        type=int,
+        default=512,
+        help="Chunk size for the one-time dense source-history capture.",
+    )
     parser.add_argument(
         "--materialization-policy",
         choices=("dense_pack", "disjoint_segmented"),

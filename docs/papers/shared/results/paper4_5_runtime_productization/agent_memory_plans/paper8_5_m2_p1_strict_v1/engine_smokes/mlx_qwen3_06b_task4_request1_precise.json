@@ -1,0 +1,220 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-lifecycle.v2",
+  "probe": "mlx_real_model_request_owned_sparse_kv",
+  "engine": "mlx-lm",
+  "model": "/Users/jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-0.6B-4bit/snapshots/73e3e38d981303bc594367cd910ea6eb48349da8",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.12.12",
+  "hardware": "medium-mac-m5-16gb",
+  "materialization_policy": "disjoint_segmented",
+  "segmented_attention_patched_layers": 28,
+  "trajectory": null,
+  "request_replay": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_request_replay.jsonl",
+  "selection_fixture": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_frozen_plan.jsonl",
+  "request_index": 1,
+  "request_input_sha256": "031b1dae2d9d3d8704510c3c7cba2e68fad6d6fb4042d92d5b2ab86fee946d7d",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 0.4526006227655403,
+  "source_tokens": 15978,
+  "wire_suffix_tokens": 1364,
+  "wire_prefill_step_size": 16,
+  "selected_kv_tokens": 6485,
+  "realized_retention_fraction": 0.4526006227655403,
+  "historical_kv_retention_fraction": 0.40587057203655025,
+  "source_position_base": 15978,
+  "has_holes": true,
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 16,
+  "selection_pack_bytes": 0,
+  "selection_materialization_elapsed_ms": 62.628417,
+  "dense_reference_pack_bytes": 743751680,
+  "dense_reference_materialization_elapsed_ms": 618.029042,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 26562560,
+    "active_before_bytes": 7040344076,
+    "active_after_bytes": 7040348168,
+    "active_delta_bytes": 4092,
+    "absolute_peak_bytes": 7040629215,
+    "peak_delta_bytes": 285139,
+    "peak_delta_to_selected_layer_kv_ratio": 0.010734620458269083,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the selected interval views, force every selected key/value array with mx.eval, and compare active and peak bytes with the pre-selection baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over all selected interval key/value views plus one local token, force the output with mx.eval, and compare peak delta against the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 3664989088,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "max_abs_logit_delta_dense_engine_oracle": 1.0,
+  "dense_engine_oracle_token_ids": [
+    151667,
+    198,
+    32313,
+    11
+  ],
+  "candidate_token_ids": [
+    151667,
+    198,
+    32313,
+    11
+  ],
+  "max_abs_logit_delta_after_restore": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": false,
+    "cooperative_cancel_released_exactly_once": true,
+    "error_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "zero_selected_history_reencoding": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 15978,
+    "source_position_base": 15978,
+    "selected_tokens": 6485,
+    "full_retention": false,
+    "has_holes": true,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 1389,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 3506,
+        "end": 5454,
+        "record_id": "message:20:user",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 12830,
+        "end": 14382,
+        "record_id": "message:67:user",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 14382,
+        "end": 14385,
+        "record_id": "message:68:assistant",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14385,
+        "end": 14612,
+        "record_id": "message:69:user",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14612,
+        "end": 14615,
+        "record_id": "message:70:assistant",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14615,
+        "end": 14973,
+        "record_id": "message:71:user",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14973,
+        "end": 14976,
+        "record_id": "message:72:assistant",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 14976,
+        "end": 15388,
+        "record_id": "message:73:user",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 15388,
+        "end": 15391,
+        "record_id": "message:74:assistant",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15391,
+        "end": 15603,
+        "record_id": "message:75:user",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15603,
+        "end": 15606,
+        "record_id": "message:76:assistant",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15606,
+        "end": 15742,
+        "record_id": "message:77:user",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15742,
+        "end": 15745,
+        "record_id": "message:78:assistant",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 15745,
+        "end": 15978,
+        "record_id": "message:79:user",
+        "causal_group_id": "turn:78"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": false,
+  "qualification_blockers": [
+    "dense_engine_oracle_logit_within_tolerance"
+  ]
+}
