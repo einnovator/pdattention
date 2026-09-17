@@ -77,6 +77,8 @@ class SchedulerAliasTelemetry:
     physical_kv_copy_bytes: int
     host_to_device_bytes: int
     selected_history_reencoded_tokens: int
+    materialized_history_encoded_tokens: int
+    materialized_history_copy_bytes: int
 
 
 class VLLMCudaSchedulerPageRegistry:
@@ -93,6 +95,8 @@ class VLLMCudaSchedulerPageRegistry:
         self._alias_commit_events = 0
         self._alias_install_events = 0
         self._alias_release_events = 0
+        self._materialized_history_encoded_tokens = 0
+        self._materialized_history_copy_bytes = 0
 
     def publish_source(
         self,
@@ -172,6 +176,8 @@ class VLLMCudaSchedulerPageRegistry:
         generation: int,
         position_extent: int,
         components: Sequence[tuple[str, int, Sequence[int]]],
+        materialized_history_encoded_tokens: int = 0,
+        materialized_history_copy_bytes: int = 0,
     ) -> int:
         """Pin an ordered zero-copy page sequence drawn from resident sources.
 
@@ -191,6 +197,10 @@ class VLLMCudaSchedulerPageRegistry:
             raise ValueError("A CUDA composite source needs a stable logical key.")
         if key in {str(source_key) for source_key, _, _ in rows}:
             raise ValueError("A CUDA composite cannot replace one of its components.")
+        encoded_tokens = int(materialized_history_encoded_tokens)
+        copied_bytes = int(materialized_history_copy_bytes)
+        if encoded_tokens < 0 or copied_bytes < 0:
+            raise ValueError("CUDA materialization accounting cannot be negative.")
         with self._lock:
             selected: list[Any] = []
             pool = None
@@ -258,6 +268,8 @@ class VLLMCudaSchedulerPageRegistry:
                 block_pool=pool,
             )
             self._source_pin_events += 1
+            self._materialized_history_encoded_tokens += encoded_tokens
+            self._materialized_history_copy_bytes += copied_bytes
             return physical_tokens
 
     def prepare_alias(
@@ -555,6 +567,10 @@ class VLLMCudaSchedulerPageRegistry:
             physical_kv_copy_bytes=0,
             host_to_device_bytes=0,
             selected_history_reencoded_tokens=0,
+            materialized_history_encoded_tokens=(
+                self._materialized_history_encoded_tokens
+            ),
+            materialized_history_copy_bytes=self._materialized_history_copy_bytes,
         )
 
 

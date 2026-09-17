@@ -392,6 +392,31 @@ class PRASparseConnector(PRASemanticConnector):
             logical_key, generation=source_generation
         )
 
+    def publish_scheduler_composite_source(
+        self,
+        logical_key: str,
+        *,
+        source_generation: int,
+        source_position_base: int,
+        components: tuple[tuple[str, int, tuple[int, ...]], ...],
+        materialized_history_encoded_tokens: int = 0,
+        materialized_history_copy_bytes: int = 0,
+    ) -> int:
+        """Publish original-history and receipt pages as one zero-copy source."""
+
+        if not getattr(self, "_scheduler_alias_enabled", False):
+            raise RuntimeError("Scheduler-page aliases are not enabled.")
+        return self._scheduler_alias_registry.publish_composite_source(
+            logical_key,
+            generation=source_generation,
+            position_extent=source_position_base,
+            components=components,
+            materialized_history_encoded_tokens=(
+                materialized_history_encoded_tokens
+            ),
+            materialized_history_copy_bytes=materialized_history_copy_bytes,
+        )
+
     def terminate_scheduler_source(
         self, logical_key: str, *, source_generation: int = 1
     ) -> bool:

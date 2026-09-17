@@ -246,12 +246,18 @@ def test_composite_source_aliases_original_and_receipt_pages_without_copy() -> N
         generation=9,
         position_extent=96,
         components=(("source", 7, (0, 2)), ("receipt", 3, (0,))),
+        materialized_history_encoded_tokens=11,
+        materialized_history_copy_bytes=704,
     )
     assert physical_tokens == 48
     snapshot = registry.snapshot()["sources"]["mixed-history"]
     assert snapshot["source_tokens"] == 48
     assert snapshot["position_extent"] == 96
     assert snapshot["block_ids"] == [0, 2, 10]
+    telemetry = registry.telemetry()
+    assert telemetry.selected_history_reencoded_tokens == 0
+    assert telemetry.materialized_history_encoded_tokens == 11
+    assert telemetry.materialized_history_copy_bytes == 704
 
     selection = SchedulerPageSelection(
         logical_key="mixed-selection",
