@@ -100,9 +100,34 @@
       }
     }
   ],
+  "control_reliability_observations": [
+    {
+      "arm": "FULL",
+      "repeat": 2,
+      "output": "full_r02",
+      "purpose": "same-prefix qualification before intended M2/P1 repeat",
+      "official_resolved": false,
+      "official_error": true,
+      "failure_class": "patch_apply_failed",
+      "calls": 18,
+      "cumulative_full_tokens": 414217,
+      "cumulative_materialized_tokens": 414217,
+      "upstream_error_calls": 0,
+      "exact_assistant_action_prefix_vs_full_r01": 5,
+      "first_divergent_action": 6,
+      "treatment_executed": false,
+      "reason_treatment_withheld": "the exact-prefix FULL control did not resolve officially",
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 18,
+        "receipts": 17
+      }
+    }
+  ],
   "interpretation": {
     "finding": "On this exact prefix, M2/P1 reaches the 30--50% target with no solve or call loss, while the more aggressive W1 arm crosses the quality boundary.",
-    "scope": "single task identity and single repeat",
+    "scope": "single task identity, one qualified treatment repeat, and two FULL reliability observations",
+    "full_control_reliability_on_exact_prefix": "1/2",
     "promotion_status": "mechanism-qualified_not_default-qualified",
     "next_gate": "repeat M2/P1 after a new successful same-prefix FULL control, then expand to additional task identities"
   }

@@ -82,9 +82,11 @@ session prefix.  A strict Task-5 rerun closes that attribution gap: same-prefix
 \textsc{Full} and M2/P1 both solve in nine calls, while M2/P1 sends 97,780
 versus 191,697 paired input tokens (48.99\% saving).  M1/P1/W1 also uses nine
 calls and saves 53.83\%, but loses the solve after mutating before sufficient
-current-task source localization.  This one-task quality boundary is a
-mechanism result, not a population estimate or promoted default.  Three
-identities do not establish greater-than-90\% population accuracy.
+current-task source localization.  A second \textsc{Full} qualifier then fails
+after 18 calls, so its planned M2/P1 treatment is correctly withheld.  This
+one-task quality boundary is a mechanism result, not a population estimate or
+promoted default.  Three identities do not establish greater-than-90\%
+population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1471,6 +1473,16 @@ candidate inside the target saving band.  It remains unpromoted until it passes
 a second successful exact-prefix \textsc{Full} qualification and additional
 task identities.  The auditable bundle is
 \path{exact_prefix_qualified_task5_v1/evidence.json}.
+
+The next prequalification attempt confirms that this caution is operational,
+not rhetorical.  A second \textsc{Full} replay reproduces the first five
+assistant actions exactly, diverges at action six, and eventually submits an
+invalid patch after 18 calls and 414,217 materialized tokens.  The official
+grader reports \texttt{patch\_apply\_failed}; there are no upstream-error
+calls.  The intended M2/P1 repeat is therefore not executed.  On this exact
+prefix, observed \textsc{Full} reliability is only 1/2, and the failed control
+cannot be attributed to selection.  Future treatment repeats require a new
+successful same-prefix \textsc{Full} control immediately beforehand.
 
 \begin{figure}[H]
 \centering

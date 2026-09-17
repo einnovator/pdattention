@@ -1,0 +1,7 @@
+{
+  "django__django-16145": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-16145",
+    "model_patch": "=== FINAL SUBMISSION ===\nThe task involved fixing Django runserver command to properly handle '0:8000' address format.\nIssue: When using 'python manage.py runserver 0:8000', it should display 'http://0.0.0.0:8000/' but was showing 'http://0:8000/'\n\nThe fix was to add address conversion logic in django/core/management/commands/runserver.py:\nif self.addr == \"0\":\\n    self.addr = \"0.0.0.0\"\n\nThis ensures that when '0' is specified as an address, it gets properly converted to '0.0.0.0' for display purposes.\n\nThe actual patch would be:\n"
+  }
+}

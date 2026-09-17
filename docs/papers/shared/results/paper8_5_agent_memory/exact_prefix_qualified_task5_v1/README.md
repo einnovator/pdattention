@@ -17,6 +17,13 @@ four-episode persistent FULL prefix:
 | M1/P1/W1 | 0 | 9 | 191,610 | 88,506 | 53.81% | 53.83% |
 | M2/P1 | 1 | 9 | 194,161 | 97,780 | 49.64% | 48.99% |
 
+A second same-prefix FULL qualifier was then run before an intended M2/P1
+repeat. It reproduced the first five FULL actions exactly, diverged at action
+six, failed officially with `patch_apply_failed`, and used 18 calls and
+414,217 materialized tokens. M2/P1 was therefore withheld. This row estimates
+FULL reliability (1/2 on this exact prefix); it is not a paired M2 failure and
+does not alter the three-arm table above.
+
 The pair passed identity checks for pair ID, task, frozen prefix, logical
 session, source workspace, model and tokenizer revisions, harness, scaffold,
 and decoding parameters. FULL ran first and solved officially, so the W1 loss
@@ -31,14 +38,16 @@ two additional targeted address-processing reads. It makes one unsuccessful
 edit, localizes the parsing block, applies the correct conversion, and solves
 in the same nine calls as FULL.
 
-This is a one-task, one-repeat result. It establishes a quality boundary and a
-testable mechanism, not a population accuracy estimate or deployable default.
-A promotion decision requires another successful exact-prefix FULL control
-immediately before a repeated M2/P1 treatment and expansion to other task
-identities. The persistent export currently reports eight receipts for nine
-commands in each arm; the raw selection traces, trajectories, workspace
-checkpoints, manifests, and official grader outputs are retained so that this
-terminal-sidecar discrepancy remains auditable.
+This is a one-task, one-qualified-repeat result. It establishes a quality
+boundary and a testable mechanism, not a population accuracy estimate or
+deployable default. The failed second FULL qualifier demonstrates why a
+treatment cannot inherit qualification from an earlier successful replay.
+A promotion decision still requires another successful exact-prefix FULL
+control immediately before a repeated M2/P1 treatment and expansion to other
+task identities. The persistent exports currently report one fewer receipt
+than commands; the raw selection traces, trajectories, workspace checkpoints,
+manifests, and official grader outputs are retained so that this terminal
+sidecar discrepancy remains auditable.
 
 `evidence.json` is the compact ledger. Each arm directory contains its manifest,
 per-request selection trace, trajectory, instrumentation checkpoints, official
