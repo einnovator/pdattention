@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import inspect
 import io
 import json
 import platform
@@ -16,12 +17,92 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from pra_hf.hf_live_kv import HFLiveKVRequestCancelled, HFLiveKVRuntime
 from pra_hf.agent_executor import split_generation_prompt
 
-from .run_hf_agent_cache_equivalence import _max_delta, _prefill
+from .run_hf_agent_cache_equivalence import _max_delta
 from .frozen_agent_plan import (
     frozen_live_kv_geometry,
     load_frozen_agent_decisions,
 )
 from .sparse_gate_common import sparse_causal_plan
+
+
+def _last_logit_kwargs(model) -> dict[str, int]:
+    forward = getattr(model, "forward", model)
+    try:
+        parameters = inspect.signature(forward).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if "logits_to_keep" in parameters:
+        return {"logits_to_keep": 1}
+    if "num_logits_to_keep" in parameters:
+        return {"num_logits_to_keep": 1}
+    return {}
+
+
+@torch.inference_mode()
+def _bounded_prefill(model, ids: list[int], device: torch.device, *, step_size: int):
+    from transformers import DynamicCache
+
+    if step_size < 1:
+        raise ValueError("prefill step size must be positive")
+    if not ids:
+        raise ValueError("HF lifecycle prefill requires at least one token")
+    cache = DynamicCache()
+    output = None
+    kwargs = _last_logit_kwargs(model)
+    for start in range(0, len(ids), step_size):
+        step = ids[start : start + step_size]
+        positions = torch.arange(start, start + len(step), device=device)
+        output = model(
+            input_ids=torch.tensor([step], dtype=torch.long, device=device),
+            past_key_values=cache,
+            cache_position=positions,
+            position_ids=positions.unsqueeze(0),
+            use_cache=True,
+            return_dict=True,
+            **kwargs,
+        )
+        cache = output.past_key_values
+    assert output is not None
+    return output, cache
+
+
+@torch.inference_mode()
+def _ordinary_generate(
+    model,
+    prompt_ids: list[int],
+    device: torch.device,
+    *,
+    max_new_tokens: int,
+    prefill_step_size: int,
+) -> tuple[tuple[int, ...], list[torch.Tensor]]:
+    output, cache = _bounded_prefill(
+        model, prompt_ids, device, step_size=prefill_step_size
+    )
+    logits = output.logits
+    generated: list[int] = []
+    step_logits: list[torch.Tensor] = []
+    for step in range(max_new_tokens):
+        current = logits[:, -1, :]
+        step_logits.append(current.detach().float().cpu())
+        token = int(torch.argmax(current, dim=-1).item())
+        generated.append(token)
+        if step + 1 == max_new_tokens:
+            break
+        position = torch.tensor(
+            [len(prompt_ids) + step], dtype=torch.long, device=device
+        )
+        output = model(
+            input_ids=torch.tensor([[token]], dtype=torch.long, device=device),
+            past_key_values=cache,
+            cache_position=position,
+            position_ids=position.unsqueeze(0),
+            use_cache=True,
+            return_dict=True,
+            **_last_logit_kwargs(model),
+        )
+        logits = output.logits
+        cache = output.past_key_values
+    return tuple(generated), step_logits
 
 
 def _cpu_cache(cache):
@@ -137,8 +218,22 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             source_tokens=len(source_ids),
             retention_fraction=args.retention_fraction,
         )
-    source = _prefill(model, source_ids, device)
-    source_cache = source.past_key_values
+    ordinary_full_tokens = None
+    ordinary_full_logits = None
+    if frozen_decision and args.frozen_full_retention:
+        ordinary_full_tokens, ordinary_full_logits = _ordinary_generate(
+            model,
+            prompt_ids,
+            device,
+            max_new_tokens=args.continuation_tokens,
+            prefill_step_size=args.prefill_step_size,
+        )
+    _source_output, source_cache = _bounded_prefill(
+        model,
+        source_ids,
+        device,
+        step_size=args.prefill_step_size,
+    )
     source_fingerprint = _fingerprint_cache(source_cache)
     restored_fingerprints: list[str] = []
 
@@ -258,6 +353,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "offload_rejected_with_one_borrower": "while requests borrow" in one_borrower_offload_error,
         "same_subset_token_exact": candidate_result.token_ids == reference_result.token_ids,
         "same_subset_logit_exact": _max_delta(candidate_logits, reference_logits) == 0.0,
+        "ordinary_full_engine_oracle_token_exact": (
+            ordinary_full_tokens is None
+            or candidate_result.token_ids == ordinary_full_tokens
+        ),
+        "ordinary_full_engine_oracle_logit_within_tolerance": (
+            ordinary_full_logits is None
+            or _max_delta(candidate_logits, ordinary_full_logits)
+            <= args.max_abs_logit_delta
+        ),
         "cooperative_cancel_released_exactly_once": (
             cancellation_observed and cancelled.outcome == "cancelled"
             and cancelled.cancel() is False
@@ -281,7 +385,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.hf-live-kv-lifecycle.v2",
+        "schema_version": "paper4.5.hf-live-kv-lifecycle.v3",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
         "model": args.model,
@@ -311,6 +415,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
+        "prefill_step_size": args.prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
         "realized_retention_fraction": (
             (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
@@ -331,6 +436,16 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "offloaded_payload_type": type(offloaded).__name__,
         "offloaded_payload_bytes": len(offloaded) if isinstance(offloaded, bytes) else None,
         "max_abs_logit_delta_same_subset": _max_delta(candidate_logits, reference_logits),
+        "ordinary_full_engine_oracle_token_ids": (
+            list(ordinary_full_tokens)
+            if ordinary_full_tokens is not None
+            else None
+        ),
+        "max_abs_logit_delta_ordinary_full_engine_oracle": (
+            _max_delta(candidate_logits, ordinary_full_logits)
+            if ordinary_full_logits is not None
+            else None
+        ),
         "max_abs_logit_delta_after_restore": _max_delta(candidate_logits, restored_logits),
         "checks": checks,
         "runtime_snapshot": runtime.snapshot(),
@@ -363,6 +478,13 @@ def main() -> None:
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--continuation-tokens", type=int, default=16)
+    parser.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=256,
+        help="Chunk size for bounded source and ordinary full-prompt prefill.",
+    )
+    parser.add_argument("--max-abs-logit-delta", type=float, default=1e-3)
     parser.add_argument("--device", default="mps")
     parser.add_argument("--dtype", choices=("float32", "float16", "bfloat16"), default="float16")
     parser.add_argument("--local-files-only", action="store_true")
