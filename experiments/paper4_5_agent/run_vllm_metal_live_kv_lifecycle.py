@@ -218,6 +218,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     canonical_fingerprint = _memory_fingerprint(canonical_memory)
     del canonical_memory
 
+    identities = {
+        "source_id": "task02-agent-history",
+        "tenant_id": "paper4.5",
+        "session_id": "task02",
+        "generation": 1,
+    }
+    runtime.register_source(
+        identities["source_id"],
+        source_blocks,
+        source_tokens=page_tokens,
+        tenant_id=identities["tenant_id"],
+        session_id=identities["session_id"],
+        generation=identities["generation"],
+    )
     ordinary_prefix_output = None
     ordinary_prefix_cache_start = None
     if frozen_decision and args.frozen_full_retention:
@@ -237,21 +251,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 int(row["scheduler_cache_start"])
                 for row in ordinary_observations
             )
-
-    identities = {
-        "source_id": "task02-agent-history",
-        "tenant_id": "paper4.5",
-        "session_id": "task02",
-        "generation": 1,
-    }
-    runtime.register_source(
-        identities["source_id"],
-        source_blocks,
-        source_tokens=page_tokens,
-        tenant_id=identities["tenant_id"],
-        session_id=identities["session_id"],
-        generation=identities["generation"],
-    )
     selected_page_indices = runtime.selected_page_indices(plan, bridge.block_size)
     selected_blocks = tuple(source_blocks[index] for index in selected_page_indices)
     selected_kv_tokens = len(selected_blocks) * bridge.block_size
