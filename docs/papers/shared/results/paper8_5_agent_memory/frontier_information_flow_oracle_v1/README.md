@@ -110,6 +110,9 @@ unexplained cross-epoch edges. M1 retires all 44 causal groups from the four
 previous issues and retains one atomic valid-protocol exemplar; M2 also keeps
 the immediately preceding issue whole. Therefore the observed Task 5
 instability is not caused by an accidental graph path between issues.
+The exact prefix and active-episode export consumed by the audit are retained
+as `task5_persistent_prefix_before_episode_05.json` and
+`autonomous_task5_m2_p1_v1_r03/persistent_episode_export.json`.
 
 Across the complete contemporaneous repeat cohort, FULL resolves 2/3 and
 M2+P1 resolves 3/3. The arms use 30 and 31 calls and send 532,986 and 367,617
