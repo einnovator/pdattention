@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import platform
+import subprocess
 import time
 from pathlib import Path
 
@@ -53,6 +54,15 @@ def _fingerprint(memory: MLXNativeMemory) -> str:
     return digest.hexdigest()
 
 
+def _git_revision() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def _chunked_source_prefill(
     model: object,
     cache: object,
@@ -80,6 +90,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     from mlx_lm import load
     from mlx_lm.models.cache import make_prompt_cache
 
+    started = time.perf_counter()
     model, tokenizer = load(args.model)
     use_disjoint = args.materialization_policy == "disjoint_segmented"
     patched_layers = (
@@ -526,7 +537,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v2",
+        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v3",
         "probe": "mlx_real_model_request_owned_sparse_kv",
         "engine": "mlx-lm",
         "model": args.model,
@@ -656,6 +667,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "runtime_snapshot": runtime.snapshot(),
         "selection_plan": plan.to_dict(),
         "engine_request_callback_integration": True,
+        "experiment_revision": _git_revision(),
+        "implementation_files": {
+            path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            for path in (
+                "src/pra_mlx/native.py",
+                "src/pra_mlx/mlx_live_kv.py",
+                "src/pra_mlx/qwen3_segmented.py",
+                "experiments/paper4_5_agent/run_mlx_live_agent_kv_lifecycle.py",
+            )
+        },
+        "elapsed_seconds": time.perf_counter() - started,
         "engine_lifecycle_qualified": all(checks.values()),
         "qualification_blockers": []
         if all(checks.values())
