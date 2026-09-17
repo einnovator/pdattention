@@ -1092,13 +1092,17 @@ def _metal_disjoint_selected_attention_2pass(
         # before the cross-block reduction.  Cast only the final output.
         output_dtypes=(mx.float32, mx.float32, mx.float32),
     )
-    return pass2(
+    output = pass2(
         inputs=(partials, sums, maxs),
         grid=(query_heads * query_tokens * 1024, 1, 1),
         threadgroup=(1024, 1, 1),
         output_shapes=(queries.shape,),
-        output_dtypes=(queries.dtype,),
+        # Metal's bfloat type does not accept an implicit float assignment.
+        # Preserve the FP32 reduction through the kernel and cast at the MLX
+        # boundary, matching the one-pass implementation above.
+        output_dtypes=(mx.float32,),
     )[0]
+    return output.astype(queries.dtype)
 
 
 def _segmented_selected_attention_impl(
