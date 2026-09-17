@@ -271,14 +271,15 @@ def test_composite_source_aliases_original_and_receipt_pages_without_copy() -> N
     pool.touch(installed.blocks[0])
     registry.commit_alias("mixed-request", installed)
 
-    # Component pins can retire independently; composite and request aliases
-    # keep exactly the pages still needed by the mixed request alive.
-    registry.evict_source("source", generation=7)
-    registry.evict_source("receipt", generation=3)
-    assert [page.ref_cnt for page in source_pages] == [2, 0, 2]
-    assert [page.ref_cnt for page in receipt_pages] == [2, 0]
+    # The registry conservatively waits for vLLM's deferred physical request
+    # aliases before retiring component pins.  The composite then keeps exactly
+    # the original and receipt pages needed by later mixed requests alive.
     assert registry.finish_request("mixed-request")
     pool.free_blocks(reversed(installed.blocks[0]))
+    registry.evict_source("source", generation=7)
+    registry.evict_source("receipt", generation=3)
+    assert [page.ref_cnt for page in source_pages] == [1, 0, 1]
+    assert [page.ref_cnt for page in receipt_pages] == [1, 0]
     registry.evict_source("mixed-history", generation=9)
     assert [page.ref_cnt for page in source_pages] == [0, 0, 0]
     assert [page.ref_cnt for page in receipt_pages] == [0, 0]
