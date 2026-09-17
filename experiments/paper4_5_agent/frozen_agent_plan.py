@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, MutableMapping, Sequence
 
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 
@@ -149,6 +149,7 @@ def frozen_live_kv_geometry(
     decision: FrozenAgentDecision,
     *,
     full_retention: bool = False,
+    prefix_ids_cache: MutableMapping[str, tuple[int, ...]] | None = None,
 ) -> FrozenLiveKVGeometry:
     """Split one exact request into resident historical K/V and a wire tail."""
 
@@ -164,7 +165,11 @@ def frozen_live_kv_geometry(
         raise ValueError("frozen plan has no current non-system causal tail")
     active_start = min(active)
     full_spans = causal_message_spans(
-        tokenizer, messages, prompt_ids, source_tokens=len(prompt_ids)
+        tokenizer,
+        messages,
+        prompt_ids,
+        source_tokens=len(prompt_ids),
+        prefix_ids_cache=prefix_ids_cache,
     )
     span_by_index: dict[int, LiveKVInterval] = {}
     for span in full_spans:

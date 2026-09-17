@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
+from typing import MutableMapping
 
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 
@@ -38,6 +41,7 @@ def causal_message_spans(
     prompt_ids: Sequence[int],
     *,
     source_tokens: int,
+    prefix_ids_cache: MutableMapping[str, tuple[int, ...]] | None = None,
 ) -> tuple[LiveKVInterval, ...]:
     """Map complete chat records into the canonical prompt-token frame.
 
@@ -51,7 +55,20 @@ def causal_message_spans(
         raise ValueError("source_tokens must fit the rendered agent prompt.")
     boundaries = [0]
     for index in range(len(messages)):
-        prefix = _ids(tokenizer, messages[: index + 1])
+        prefix_messages = messages[: index + 1]
+        cache_key = hashlib.sha256(json.dumps(
+            prefix_messages,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")).hexdigest()
+        prefix = (
+            list(prefix_ids_cache[cache_key])
+            if prefix_ids_cache is not None and cache_key in prefix_ids_cache
+            else _ids(tokenizer, prefix_messages)
+        )
+        if prefix_ids_cache is not None and cache_key not in prefix_ids_cache:
+            prefix_ids_cache[cache_key] = tuple(prefix)
         boundary = min(source_tokens, _common_prefix(prefix, prompt_ids))
         boundaries.append(max(boundaries[-1], boundary))
     boundaries[-1] = source_tokens

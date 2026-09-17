@@ -49,3 +49,9 @@ request count.  Logical success and token saving remain Paper 8.5 claims.
 Paper 4.5 must replay these fixtures unchanged and report resident-K/V
 realization, re-encoding, copy, temporary bytes, lifecycle behavior, and task
 behavior separately.
+
+The `tokenizer_audits/` subdirectory records the first downstream geometry
+gate. All 22 requests map under the Qwen3-4B tokenizer without restoring an
+excluded record. Mean realized retention is 88.21%, 46.89%, and 49.67% for
+Tasks 3, 4, and 5. This confirms the expected logical opportunity in engine
+tokens but is not yet native-K/V execution evidence.

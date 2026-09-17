@@ -24,9 +24,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         args.request_replay, args.selection_fixture
     )
     rows = []
+    prefix_ids_cache: dict[str, tuple[int, ...]] = {}
     for decision in decisions[: args.requests or None]:
         geometry = frozen_live_kv_geometry(
-            tokenizer, decision, full_retention=args.full_retention
+            tokenizer,
+            decision,
+            full_retention=args.full_retention,
+            prefix_ids_cache=prefix_ids_cache,
         )
         rows.append({
             "request_index": decision.request_index,
