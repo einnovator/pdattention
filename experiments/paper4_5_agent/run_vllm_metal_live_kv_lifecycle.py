@@ -110,6 +110,27 @@ def _page_prefix_plan(
     return LiveKVSelectionPlan.create(page_tokens, intervals)
 
 
+def _complete_source_blocks(
+    observations: list[dict[str, object]], page_count: int
+) -> tuple[int, ...]:
+    """Recover the cumulative page table from chunked-prefill observations."""
+
+    candidates = [
+        tuple(map(int, row["block_ids_by_group"][0]))
+        for row in observations
+        if row.get("block_ids_by_group")
+    ]
+    if not candidates:
+        raise RuntimeError("vLLM-Metal did not expose source prefill pages.")
+    blocks = max(candidates, key=len)
+    if len(blocks) < page_count:
+        raise RuntimeError(
+            "vLLM-Metal chunked prefill exposed an incomplete source page table: "
+            f"observed={len(blocks)}, required={page_count}."
+        )
+    return tuple(blocks[:page_count])
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
     import mlx.core as mx
@@ -209,11 +230,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     observation_start = len(bridge.prefill_page_observations())
     _run(llm, bridge, prime, source_tokens, cache_salt=salt)
     observations = bridge.prefill_page_observations()[observation_start:]
-    fresh = [row for row in observations if row["scheduler_cache_start"] == 0]
-    if not fresh:
-        raise RuntimeError("vLLM-Metal did not expose source prefill pages.")
     page_count = page_tokens // bridge.block_size
-    source_blocks = tuple(fresh[0]["block_ids_by_group"][0][:page_count])
+    source_blocks = _complete_source_blocks(observations, page_count)
     canonical_memory = capture_paged_memory(bridge, source_blocks, page_tokens)
     canonical_fingerprint = _memory_fingerprint(canonical_memory)
     del canonical_memory
