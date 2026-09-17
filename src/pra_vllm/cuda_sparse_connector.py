@@ -399,6 +399,7 @@ class PRASparseConnector(PRASemanticConnector):
         source_generation: int,
         source_position_base: int,
         components: tuple[tuple[str, int, tuple[int, ...]], ...],
+        selected_token_count: int | None = None,
         materialized_history_encoded_tokens: int = 0,
         materialized_history_copy_bytes: int = 0,
     ) -> int:
@@ -411,6 +412,7 @@ class PRASparseConnector(PRASemanticConnector):
             generation=source_generation,
             position_extent=source_position_base,
             components=components,
+            selected_token_count=selected_token_count,
             materialized_history_encoded_tokens=(
                 materialized_history_encoded_tokens
             ),

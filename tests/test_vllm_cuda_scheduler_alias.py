@@ -291,6 +291,70 @@ def test_composite_source_aliases_original_and_receipt_pages_without_copy() -> N
     assert [page.ref_cnt for page in receipt_pages] == [0, 0]
 
 
+def test_partial_receipt_page_keeps_exact_valid_length_in_composite() -> None:
+    registry, pool, source_pages = _published()
+    receipt_page = (_Block(10),)
+    registry.publish_source(
+        "receipt",
+        generation=3,
+        source_tokens=11,
+        blocks_by_group=(receipt_page,),
+        block_sizes=(16,),
+        block_pool=pool,
+        position_extent=80,
+    )
+    pool.free_blocks(reversed(source_pages))
+    pool.free_blocks(reversed(receipt_page))
+
+    valid_tokens = registry.publish_composite_source(
+        "mixed-history",
+        generation=9,
+        position_extent=96,
+        components=(("source", 7, (0, 2)), ("receipt", 3, (0,))),
+        selected_token_count=43,
+        materialized_history_encoded_tokens=11,
+    )
+    assert valid_tokens == 43
+    snapshot = registry.snapshot()["sources"]["mixed-history"]
+    assert snapshot["source_tokens"] == 43
+    assert snapshot["block_ids"] == [0, 2, 10]
+
+    selection = SchedulerPageSelection(
+        logical_key="mixed-selection",
+        source_logical_key="mixed-history",
+        source_generation=9,
+        selected_page_indices=(0, 1, 2),
+        selected_token_count=43,
+        source_position_base=96,
+    )
+    installed = registry.prepare_alias(
+        "mixed-request",
+        selection,
+        prompt_token_count=44,
+        create_kv_cache_blocks=_blocks,
+    )
+    assert installed.blocks[0] == (source_pages[0], source_pages[2], receipt_page[0])
+
+
+def test_partial_alias_must_end_at_sources_terminal_page() -> None:
+    registry, _, _ = _published()
+    selection = SchedulerPageSelection(
+        logical_key="invalid-partial",
+        source_logical_key="source",
+        source_generation=7,
+        selected_page_indices=(0, 1),
+        selected_token_count=25,
+        source_position_base=48,
+    )
+    with pytest.raises(ValueError, match="valid terminal page"):
+        registry.prepare_alias(
+            "invalid-partial",
+            selection,
+            prompt_token_count=26,
+            create_kv_cache_blocks=_blocks,
+        )
+
+
 def test_commit_rejects_a_worker_or_detached_copy() -> None:
     registry, pool, _ = _published()
     registry.prepare_alias(

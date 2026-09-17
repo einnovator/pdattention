@@ -116,9 +116,12 @@ class VLLMCudaSchedulerPageRegistry:
                 "CUDA scheduler aliases currently require one homogeneous KV group."
             )
         block_size = int(block_sizes[0])
-        if source_tokens <= 0 or source_tokens % block_size:
-            raise ValueError("A live CUDA source must end on a complete KV page.")
-        required = source_tokens // block_size
+        if source_tokens <= 0:
+            raise ValueError("A live CUDA source must contain at least one token.")
+        # vLLM owns partially filled terminal pages as ordinary request state.
+        # Receipt materialization needs to preserve that exact valid-token count
+        # rather than padding model-visible history merely to fill a page.
+        required = (int(source_tokens) + block_size - 1) // block_size
         blocks = tuple(blocks_by_group[0][:required])
         if len(blocks) != required:
             raise RuntimeError("Source request does not own all declared KV pages.")
@@ -130,7 +133,7 @@ class VLLMCudaSchedulerPageRegistry:
         if logical_extent < int(source_tokens):
             raise ValueError(
                 "A CUDA source position extent cannot be smaller than its "
-                "physical page width."
+                "valid token count."
             )
 
         key = str(logical_key)
@@ -176,6 +179,7 @@ class VLLMCudaSchedulerPageRegistry:
         generation: int,
         position_extent: int,
         components: Sequence[tuple[str, int, Sequence[int]]],
+        selected_token_count: int | None = None,
         materialized_history_encoded_tokens: int = 0,
         materialized_history_copy_bytes: int = 0,
     ) -> int:
@@ -233,10 +237,19 @@ class VLLMCudaSchedulerPageRegistry:
             if len({id(block) for block in selected}) != len(selected):
                 raise ValueError("A CUDA composite cannot repeat a physical page.")
             assert pool is not None and block_size is not None
-            physical_tokens = len(selected) * block_size
-            if int(position_extent) < physical_tokens:
+            physical_capacity = len(selected) * block_size
+            valid_tokens = (
+                physical_capacity
+                if selected_token_count is None
+                else int(selected_token_count)
+            )
+            if not physical_capacity - block_size < valid_tokens <= physical_capacity:
                 raise ValueError(
-                    "Composite position extent cannot be smaller than its pages."
+                    "A CUDA composite may have only one partially filled terminal page."
+                )
+            if int(position_extent) < valid_tokens:
+                raise ValueError(
+                    "Composite position extent cannot be smaller than its valid tokens."
                 )
             previous = self._sources.get(key)
             if previous is not None:
@@ -248,7 +261,7 @@ class VLLMCudaSchedulerPageRegistry:
                     and not previous.tombstoned
                 )
                 if same:
-                    return physical_tokens
+                    return valid_tokens
                 if previous.borrowers or previous.pending:
                     raise RuntimeError(
                         "Cannot replace a composite source while it is borrowed."
@@ -261,7 +274,7 @@ class VLLMCudaSchedulerPageRegistry:
             pool.touch(selected)
             self._sources[key] = _PinnedSource(
                 generation=int(generation),
-                source_tokens=physical_tokens,
+                source_tokens=valid_tokens,
                 position_extent=int(position_extent),
                 block_size=block_size,
                 blocks=tuple(selected),
@@ -270,7 +283,7 @@ class VLLMCudaSchedulerPageRegistry:
             self._source_pin_events += 1
             self._materialized_history_encoded_tokens += encoded_tokens
             self._materialized_history_copy_bytes += copied_bytes
-            return physical_tokens
+            return valid_tokens
 
     def prepare_alias(
         self,
@@ -301,10 +314,21 @@ class VLLMCudaSchedulerPageRegistry:
                     "Stale sparse CUDA generation: requested "
                     f"{selection.source_generation}, live {source.generation}."
                 )
-            expected_tokens = len(selection.selected_page_indices) * source.block_size
-            if selection.selected_token_count != expected_tokens:
+            selected_capacity = (
+                len(selection.selected_page_indices) * source.block_size
+            )
+            minimum_valid = selected_capacity - source.block_size + 1
+            if not minimum_valid <= selection.selected_token_count <= selected_capacity:
                 raise ValueError(
-                    "Selected CUDA token count must equal complete selected pages."
+                    "Selected CUDA token count must cover all complete selected pages "
+                    "and may end within only the terminal page."
+                )
+            if selection.selected_token_count != selected_capacity and (
+                selection.selected_page_indices[-1] != len(source.blocks) - 1
+                or selection.selected_token_count > source.source_tokens
+            ):
+                raise ValueError(
+                    "A partial CUDA alias must end at the source's valid terminal page."
                 )
             if selection.source_position_base > source.position_extent:
                 raise ValueError("Original position extent exceeds the live source.")
@@ -396,6 +420,11 @@ class VLLMCudaSchedulerPageRegistry:
             if selection.source_position_base != source.source_tokens:
                 raise RuntimeError(
                     "Sparse request position base does not equal canonical source extent."
+                )
+            if source.source_tokens % source.block_size:
+                raise NotImplementedError(
+                    "Extending a shared partial CUDA source requires explicit "
+                    "copy-on-write accounting."
                 )
             count = int(append_complete_pages)
             if count < 0:
