@@ -1,0 +1,13 @@
+diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py
+index 3c39f57e4ddae82d8449be704d6263cb8e0cf2e5..69e68680469a183ae2e5a31b2e0270d98b54344c 100644
+--- a/django/core/management/commands/runserver.py
++++ b/django/core/management/commands/runserver.py
+@@ -106,7 +106,7 @@ class Command(BaseCommand):
+                 elif self.use_ipv6 and not _fqdn:
+                     raise CommandError('"%s" is not a valid IPv6 address.' % self.addr)
+         if not self.addr:
+-            self.addr = self.default_addr_ipv6 if self.use_ipv6 else self.default_addr
++            self.addr = self.default_addr_ipv6 if self.use_ipv6 else (self.addr if self.addr != "0" else "0.0.0.0")
+             self._raw_ipv6 = self.use_ipv6
+         self.run(**options)
+ 

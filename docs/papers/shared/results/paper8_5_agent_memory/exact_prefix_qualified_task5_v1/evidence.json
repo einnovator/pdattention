@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_exact_prefix_qualified_task5",
+  "evidence_class": "autonomous_agent_logical_selection",
+  "repository_revision": "8c8cf6ea9a289e6deee393a711eb578ad370597e",
+  "pair_id": "paper85-exact-prefix-qualified-task5-v1:r01",
+  "instance_id": "django__django-16145",
+  "episode_index": 5,
+  "frozen_prefix": {
+    "sha256": "3dffd88030a654a228545b71f999e7e9bcf14a1154e362ed1fce13a456b9e4ed",
+    "episode_count": 4,
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277",
+      "scikit-learn__scikit-learn-12585",
+      "pytest-dev__pytest-7982"
+    ]
+  },
+  "identity_validation": {
+    "status": "passed",
+    "fields": [
+      "pair_id",
+      "instance_id",
+      "persistent_session.session_id",
+      "persistent_session.prefix.sha256",
+      "persistent_session.prefix.episode_count",
+      "model_revision",
+      "tokenizer_revision",
+      "temperature",
+      "top_p",
+      "seed",
+      "max_calls",
+      "max_completion_tokens",
+      "agent_behavior_sha256",
+      "scaffold_identity_sha256",
+      "workspace_source_identity_sha256"
+    ],
+    "full_control_created_before_treatments": true,
+    "workspace_source_identity_sha256": "7d049ddf94962deb0a7c94fdacf8b96bf8566d56df48eff12bbb0c7a8d6e7cf9",
+    "agent_behavior_sha256": "c7224cfbd814a1ea3b51f7bd096a737c81e1bae673ff23f5e30b38c78187486a",
+    "scaffold_identity_sha256": "fdc45d1310b045814a0bca7fa4c9e0ed42d86142b5b5f6139d204fd4a0546677"
+  },
+  "generation": {
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "arms": [
+    {
+      "arm": "FULL",
+      "output": "full_r01",
+      "official_resolved": true,
+      "calls": 9,
+      "cumulative_full_tokens": 191697,
+      "cumulative_materialized_tokens": 191697,
+      "own_trajectory_saving_fraction": 0.0,
+      "paired_saving_vs_full_fraction": 0.0,
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 9,
+        "receipts": 8
+      }
+    },
+    {
+      "arm": "M1/P1/W1",
+      "output": "w1_r01",
+      "official_resolved": false,
+      "calls": 9,
+      "cumulative_full_tokens": 191610,
+      "cumulative_materialized_tokens": 88506,
+      "own_trajectory_saving_fraction": 0.5380930014091123,
+      "paired_saving_vs_full_fraction": 0.5383026338440351,
+      "failure_attributable_after_successful_same_prefix_full": true,
+      "first_mechanistic_difference": "premature mutation after one broad source-file read; the edit targets the default-address assignment rather than the parsed zero address",
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 9,
+        "receipts": 8
+      }
+    },
+    {
+      "arm": "M2/P1",
+      "output": "m2_p1_r01",
+      "official_resolved": true,
+      "calls": 9,
+      "cumulative_full_tokens": 194161,
+      "cumulative_materialized_tokens": 97780,
+      "own_trajectory_saving_fraction": 0.4963973197501043,
+      "paired_saving_vs_full_fraction": 0.4899242032999995,
+      "success_preserved_after_successful_same_prefix_full": true,
+      "first_mechanistic_difference": "two additional targeted address-processing reads preserve enough current-task localization to recover from an initially ineffective edit",
+      "sidecar_join": {
+        "status": "missing_or_mismatched_receipts",
+        "commands": 9,
+        "receipts": 8
+      }
+    }
+  ],
+  "interpretation": {
+    "finding": "On this exact prefix, M2/P1 reaches the 30--50% target with no solve or call loss, while the more aggressive W1 arm crosses the quality boundary.",
+    "scope": "single task identity and single repeat",
+    "promotion_status": "mechanism-qualified_not_default-qualified",
+    "next_gate": "repeat M2/P1 after a new successful same-prefix FULL control, then expand to additional task identities"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "django__django-16145": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-16145",
+    "model_patch": "diff --git a/django/core/management/commands/runserver.py b/django/core/management/commands/runserver.py\nindex 3c39f57e4d..69e6868046 100644\n--- a/django/core/management/commands/runserver.py\n+++ b/django/core/management/commands/runserver.py\n@@ -106,7 +106,7 @@ class Command(BaseCommand):\n                 elif self.use_ipv6 and not _fqdn:\n                     raise CommandError('\"%s\" is not a valid IPv6 address.' % self.addr)\n         if not self.addr:\n-            self.addr = self.default_addr_ipv6 if self.use_ipv6 else self.default_addr\n+            self.addr = self.default_addr_ipv6 if self.use_ipv6 else (self.addr if self.addr != \"0\" else \"0.0.0.0\")\n             self._raw_ipv6 = self.use_ipv6\n         self.run(**options)\n \n"
+  }
+}

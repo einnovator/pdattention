@@ -76,13 +76,15 @@ conditional on the two \textsc{Full} successes it preserves 2/2 and saves
 28.67\%, just below the 30\% gate.  A sharper boundary-free M1/P1 Task~5
 mechanism repeat resolves 2/2 with an identical executed-action trajectory and
 53.95\% within-trajectory saving; an edge audit finds no unintended link among
-the five issues.  Exploratory transfer resolves Task~3, is unresolved on
-Task~4, and a raw mutation--verification--submission exemplar restores
-Task~4 in 2/2 repeats but is unresolved on Task~5.  Those transfer cells were
-not preceded by a successful \textsc{Full} execution from the candidate's
-exact current session prefix.  They are therefore mechanism diagnostics, not
-attributable heuristic losses, and neither aggressive variant is promoted.
-Three identities do not establish greater-than-90\% population accuracy.
+the five issues.  Exploratory transfer is mixed and was not initially preceded
+by a successful \textsc{Full} execution from each candidate's exact current
+session prefix.  A strict Task-5 rerun closes that attribution gap: same-prefix
+\textsc{Full} and M2/P1 both solve in nine calls, while M2/P1 sends 97,780
+versus 191,697 paired input tokens (48.99\% saving).  M1/P1/W1 also uses nine
+calls and saves 53.83\%, but loses the solve after mutating before sufficient
+current-task source localization.  This one-task quality boundary is a
+mechanism result, not a population estimate or promoted default.  Three
+identities do not establish greater-than-90\% population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1430,6 +1432,45 @@ any interior spine from that epoch survives.  Structural selector/proxy tests
 pass after the repair.  Its first corrected remote retry stalled before any
 model response and is quarantined as infrastructure evidence; it contributes
 neither a failure nor a frontier point.
+
+We subsequently enforce the stricter contract directly: execute a successful
+\textsc{Full} control from the exact frozen four-episode prefix before scoring
+either treatment.  Table~\ref{tab:task5-strict-prefix} reports the first
+qualified comparison.  Every row has the same pair ID, source-workspace hash,
+session and prefix hashes, model/tokenizer revisions, scaffold, and decoding
+parameters; the only intended difference is selection.  Paired saving uses the
+\textsc{Full} control's 191,697 materialized tokens as denominator, whereas
+own-trajectory saving uses each treatment's full-history counterfactual.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Strict exact-prefix Task-5 mechanism comparison.  One official task
+and one repeat; values are point observations, not an accuracy estimate.}
+\label{tab:task5-strict-prefix}
+\begin{tabular}{lrrrrr}
+\toprule
+Policy & Resolved & Calls & Full ctrf. & Materialized & Paired saving \\
+\midrule
+\textsc{Full} & 1 & 9 & 191,697 & 191,697 & 0.00\% \\
+M1/P1/W1 & 0 & 9 & 191,610 & 88,506 & 53.83\% \\
+M2/P1 & 1 & 9 & 194,161 & 97,780 & 48.99\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The result isolates a useful policy boundary.  \textsc{Full} performs several
+targeted reads before one correct mutation.  W1 reads the whole source file and
+then prematurely changes the wrong default-address assignment; later reads do
+not repair that semantic error.  M2/P1 retains enough current-task locality to
+perform two additional targeted address-processing reads.  It recovers from an
+initially ineffective edit, applies the correct parsed-address conversion, and
+solves in the same nine calls as \textsc{Full}.  Thus the prior W1 failure is
+now an attributable selection loss, while M2/P1 is a nondominated single-task
+candidate inside the target saving band.  It remains unpromoted until it passes
+a second successful exact-prefix \textsc{Full} qualification and additional
+task identities.  The auditable bundle is
+\path{exact_prefix_qualified_task5_v1/evidence.json}.
 
 \begin{figure}[H]
 \centering
