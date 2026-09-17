@@ -104,7 +104,10 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
     assert float(mx.max(mx.abs(reference - actual)).item()) <= 2e-3
 
 
-def test_fused_disjoint_two_pass_survives_mostly_future_mask() -> None:
+@pytest.mark.parametrize("query_tokens", [1, 4])
+def test_fused_disjoint_two_pass_survives_mostly_future_mask(
+    query_tokens: int,
+) -> None:
     """Old-position receipts may see only a small prefix of selected K/V."""
 
     mx = pytest.importorskip("mlx.core")
@@ -112,19 +115,26 @@ def test_fused_disjoint_two_pass_survives_mostly_future_mask() -> None:
 
     head_dim = 32
     source_tokens = 4096
-    query = mx.random.normal((1, 4, 1, head_dim)).astype(mx.float16)
+    query = mx.random.normal((1, 4, query_tokens, head_dim)).astype(mx.float16)
     source_k = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
     source_v = mx.random.normal((1, 2, source_tokens, head_dim)).astype(mx.float16)
     intervals = ((0, 2048), (2048, source_tokens))
     memory_k = tuple(source_k[:, :, start:end, :] for start, end in intervals)
     memory_v = tuple(source_v[:, :, start:end, :] for start, end in intervals)
-    local_k = mx.random.normal((1, 2, 1, head_dim)).astype(mx.float16)
-    local_v = mx.random.normal((1, 2, 1, head_dim)).astype(mx.float16)
+    local_k = mx.random.normal((1, 2, query_tokens, head_dim)).astype(mx.float16)
+    local_v = mx.random.normal((1, 2, query_tokens, head_dim)).astype(mx.float16)
+    selected_mask = mx.concatenate(
+        (
+            mx.ones((query_tokens, 16), dtype=mx.bool_),
+            mx.zeros((query_tokens, source_tokens - 16), dtype=mx.bool_),
+        ),
+        axis=1,
+    )
+    local_mask = mx.arange(query_tokens)[None, :] <= mx.arange(query_tokens)[:, None]
     mask = mx.concatenate(
         (
-            mx.ones((1, 16), dtype=mx.bool_),
-            mx.zeros((1, source_tokens - 16), dtype=mx.bool_),
-            mx.ones((1, 1), dtype=mx.bool_),
+            selected_mask,
+            local_mask,
         ),
         axis=1,
     )
