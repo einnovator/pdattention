@@ -21,6 +21,19 @@ class MLXLiveKVRequestCancelled(RuntimeError):
     """Raised after cooperative cancellation releases a request borrow."""
 
 
+def _require_finite_logits(mx, logits, *, phase: str, position_start: int) -> None:
+    """Fail closed at the first non-finite model stage during qualification."""
+
+    if not hasattr(mx, "isfinite") or not hasattr(mx, "all"):
+        return
+    mx.eval(logits)
+    if not bool(mx.all(mx.isfinite(logits)).item()):
+        raise RuntimeError(
+            "MLX positioned live-K/V produced non-finite logits during "
+            f"{phase} at logical position {position_start}."
+        )
+
+
 @dataclass(frozen=True)
 class MLXLiveKVGeneration:
     """Greedy output plus K/V materialization accounting for one request."""
@@ -171,6 +184,12 @@ class MLXLiveKVRequest:
                         self._check_cancelled(cancelled)
                         step = receipt[offset : offset + step_size]
                         logits = model(mx.array([step], dtype=mx.int32), cache=cache)
+                        _require_finite_logits(
+                            mx,
+                            logits,
+                            phase="materialized history",
+                            position_start=position_start + offset,
+                        )
                     materialized_tokens += len(receipt)
                     previous_end = position_end
                 _set_cache_query_start(
@@ -180,6 +199,14 @@ class MLXLiveKVRequest:
                     self._check_cancelled(cancelled)
                     step = values[offset : offset + step_size]
                     logits = model(mx.array([step], dtype=mx.int32), cache=cache)
+                    _require_finite_logits(
+                        mx,
+                        logits,
+                        phase="active wire tail",
+                        position_start=(
+                            self.selection.plan.source_position_base + offset
+                        ),
+                    )
                 if logits is None:
                     raise AssertionError("non-empty wire tail produced no prefill")
                 for step in range(max_new_tokens):
@@ -192,6 +219,16 @@ class MLXLiveKVRequest:
                     if step + 1 == max_new_tokens:
                         break
                     logits = model(mx.array([[token]], dtype=mx.int32), cache=cache)
+                    _require_finite_logits(
+                        mx,
+                        logits,
+                        phase="decode",
+                        position_start=(
+                            self.selection.plan.source_position_base
+                            + len(values)
+                            + step
+                        ),
+                    )
         except MLXLiveKVRequestCancelled:
             self.cancel()
             raise
