@@ -442,6 +442,15 @@ def test_frontier_dag_policy_requires_full_pre_retirement_budget():
         )
 
 
+def test_frontier_dag_policy_rejects_negative_protocol_exemplar_floor():
+    with pytest.raises(ValueError, match="protocol_exemplars cannot be negative"):
+        AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            boundary_mode="boundary_free",
+            frontier_protocol_exemplars=-1,
+        )
+
+
 def test_persistent_prefix_count_must_match_episode_index():
     with pytest.raises(ValueError, match="episode count"):
         transform_autonomous_payload(

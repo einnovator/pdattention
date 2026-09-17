@@ -2,6 +2,7 @@ import json
 import hashlib
 import subprocess
 import tarfile
+from dataclasses import replace
 import pytest
 import experiments.paper8_5_agent_memory.run_frozen_replay as frozen_replay
 
@@ -259,6 +260,41 @@ def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
         set(row.record_ids).isdisjoint(plan.selected_record_ids)
         for row in plan.exclusions
     )
+
+
+def test_frontier_dag_p1_retains_latest_valid_not_latest_malformed_completion():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(5)],
+        workspace_scopes=[f"workspace-{index}" for index in range(5)],
+    )
+    records = []
+    for row in history.records:
+        if row.record_id == "observation-0":
+            row = replace(
+                row,
+                semantic_roles=(*row.semantic_roles, AgentRecordRole.FINALIZATION),
+                metadata={**row.metadata, "protocol_completion_valid": True},
+            )
+        elif row.record_id == "observation-1":
+            row = replace(
+                row,
+                semantic_roles=(*row.semantic_roles, AgentRecordRole.FINALIZATION),
+                metadata={**row.metadata, "protocol_completion_valid": False},
+            )
+        records.append(row)
+    history = CanonicalAgentHistory(tuple(records), history.turns)
+
+    dag = build_frontier_information_flow_dag(
+        history,
+        recent_user_prompts=2,
+        valid_protocol_exemplars=1,
+    )
+    retired = {row.causal_group_id for row in dag.retirement_candidates}
+
+    assert "turn-0" not in retired
+    assert "turn-1" in retired
+    assert "observation-0" in dag.live_ancestor_record_ids
+    assert "observation-1" not in dag.live_ancestor_record_ids
 
 
 def test_recordizer_preserves_action_observation_causal_bundles():

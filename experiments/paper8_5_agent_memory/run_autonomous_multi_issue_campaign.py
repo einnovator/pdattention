@@ -247,6 +247,9 @@ def _episode_command(
         "--frontier-recent-user-prompts", str(
             strategy.get("frontier_recent_user_prompts", 2)
         ),
+        "--frontier-protocol-exemplars", str(
+            strategy.get("frontier_protocol_exemplars", 0)
+        ),
         "--boundary-mode", str(strategy.get("boundary_mode", "explicit")),
         "--temperature", str(generation["temperature"]),
         "--top-p", str(generation["top_p"]),

@@ -43,6 +43,7 @@ class DagEdgeKind(str, Enum):
     INSTRUCTION_CONTROL = "instruction_control"
     DECISION_FLOW = "decision_flow"
     DECLARED_DEPENDENCY = "declared_dependency"
+    PROTOCOL_CONTROL = "protocol_control"
 
 
 class ExclusionClass(str, Enum):
@@ -304,6 +305,7 @@ def build_frontier_information_flow_dag(
     history: CanonicalAgentHistory,
     *,
     recent_user_prompts: int = 2,
+    valid_protocol_exemplars: int = 0,
 ) -> FrontierInformationFlowDag:
     """Build a boundary-free, forward information-flow graph.
 
@@ -320,6 +322,8 @@ def build_frontier_information_flow_dag(
 
     if recent_user_prompts < 1:
         raise ValueError("recent_user_prompts must be positive")
+    if valid_protocol_exemplars < 0:
+        raise ValueError("valid_protocol_exemplars cannot be negative")
     epochs, epoch_for_record = _instruction_epochs(history)
     if not epochs:
         return FrontierInformationFlowDag((), (), (), (), (), ())
@@ -421,6 +425,43 @@ def build_frontier_information_flow_dag(
                         DagEdgeKind.DECLARED_DEPENDENCY,
                     ))
 
+    frontier_epochs = tuple(
+        epoch.epoch_index for epoch in epochs[-recent_user_prompts:]
+    )
+
+    # A valid protocol completion is durable control evidence, not task
+    # content.  Retaining the latest P exemplars prevents a malformed recent
+    # submission from becoming the only behavioral example even when the
+    # system prompt still describes the protocol.  Validity is declared by the
+    # harness adapter from the actual completion envelope; the generic DAG
+    # never parses agent-specific command syntax.
+    if valid_protocol_exemplars:
+        valid_groups: list[tuple[str, str]] = []
+        seen_groups: set[str] = set()
+        for record in sorted(
+            history.records, key=lambda row: row.message_index, reverse=True
+        ):
+            if not bool(record.metadata.get("protocol_completion_valid")):
+                continue
+            if record.causal_group_id in seen_groups:
+                continue
+            seen_groups.add(record.causal_group_id)
+            valid_groups.append((record.causal_group_id, record.record_id))
+            if len(valid_groups) >= valid_protocol_exemplars:
+                break
+        frontier_instructions = tuple(
+            epoch.instruction_record_id for epoch in epochs
+            if epoch.epoch_index in frontier_epochs
+        )
+        for _, source_id in valid_groups:
+            for target_id in frontier_instructions:
+                if source_id != target_id:
+                    edge_rows.append(DagEdge(
+                        source_id,
+                        target_id,
+                        DagEdgeKind.PROTOCOL_CONTROL,
+                    ))
+
     # Deduplicate before reachability so an action+observation pair declaring
     # the same resource does not inflate evidence counts.
     edge_map = {
@@ -428,9 +469,6 @@ def build_frontier_information_flow_dag(
         for row in edge_rows
     }
     edges = tuple(edge_map.values())
-    frontier_epochs = tuple(
-        epoch.epoch_index for epoch in epochs[-recent_user_prompts:]
-    )
     frontier_ids = {
         record_id
         for epoch in epochs
@@ -925,11 +963,15 @@ class FrontierDagRetirementSelector:
         *,
         recent_user_prompts: int = 2,
         allow_heuristic: bool = False,
+        valid_protocol_exemplars: int = 0,
     ) -> None:
         if recent_user_prompts < 1:
             raise ValueError("recent_user_prompts must be positive")
         self.recent_user_prompts = recent_user_prompts
         self.allow_heuristic = allow_heuristic
+        if valid_protocol_exemplars < 0:
+            raise ValueError("valid_protocol_exemplars cannot be negative")
+        self.valid_protocol_exemplars = valid_protocol_exemplars
 
     def select(
         self,
@@ -941,7 +983,9 @@ class FrontierDagRetirementSelector:
     ):
         del query
         dag = build_frontier_information_flow_dag(
-            history, recent_user_prompts=self.recent_user_prompts
+            history,
+            recent_user_prompts=self.recent_user_prompts,
+            valid_protocol_exemplars=self.valid_protocol_exemplars,
         )
         eligible = tuple(
             row for row in dag.retirement_candidates
@@ -982,6 +1026,7 @@ class FrontierDagRetirementSelector:
             policy=(
                 f"frontier_dag_m{self.recent_user_prompts}_"
                 + ("heuristic" if self.allow_heuristic else "certified")
+                + f"_p{self.valid_protocol_exemplars}"
             ),
             selected_record_ids=selected_ids,
             selected_causal_group_ids=selected_groups,

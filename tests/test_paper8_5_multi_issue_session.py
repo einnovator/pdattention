@@ -72,6 +72,10 @@ def test_composer_builds_typed_multi_issue_session_with_unique_identities():
         and row["role"] == "user"
     ]
     assert len(terminal_observations) == 2
+    assert all(
+        row["metadata"]["pra_record"]["metadata"]["protocol_completion_valid"]
+        for row in terminal_observations
+    )
     assert len(history.records) == len(result["messages"])
     assert len({row.record_id for row in history.records}) == len(history.records)
     tasks = [row for row in history.records if row.primary_role.value == "task"]
@@ -84,6 +88,19 @@ def test_composer_builds_typed_multi_issue_session_with_unique_identities():
     assert active_task_content(result["messages"]).endswith("Fix repo__issue-2.")
     assert "repo__issue-2" in _query(result["messages"])
     assert "repo__issue-1" not in _query(result["messages"])
+
+
+def test_composer_marks_malformed_submission_as_invalid_protocol_completion():
+    malformed = _trajectory("repo__issue-1", "cat a.py")
+    malformed["info"]["submission"] = "patch summary without a unified diff"
+    malformed["messages"][-1]["content"] = malformed["info"]["submission"]
+
+    result = compose_multi_issue_session((malformed,))
+    terminal = result["messages"][-1]["metadata"]["pra_record"]
+
+    assert "finalization" in terminal["semantic_roles"]
+    assert terminal["metadata"]["protocol_completion_valid"] is False
+    assert terminal["metadata"]["protocol_completion_kind"] == "git_patch"
 
 
 def test_composer_rejects_duplicate_issue_identity():

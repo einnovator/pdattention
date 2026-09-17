@@ -868,6 +868,7 @@ def run(args: argparse.Namespace) -> Path:
         retire_closed_instructions=args.retire_closed_instructions,
         completed_instruction_epochs=args.completed_instruction_epochs,
         frontier_recent_user_prompts=args.frontier_recent_user_prompts,
+        frontier_protocol_exemplars=args.frontier_protocol_exemplars,
         frontier_allow_heuristic=args.frontier_allow_heuristic,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
@@ -1247,6 +1248,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=2,
         help="Number of latest genuine user-prompt epochs in the live DAG frontier.",
+    )
+    parser.add_argument(
+        "--frontier-protocol-exemplars",
+        type=int,
+        default=0,
+        help=(
+            "Keep this many latest harness-certified valid protocol-completion "
+            "causal groups as control-flow exemplars for frontier DAG selection."
+        ),
     )
     parser.add_argument(
         "--frontier-allow-heuristic",

@@ -153,6 +153,14 @@ def compose_multi_issue_session(
                     if value not in semantic_roles:
                         semantic_roles.append(value)
                 declaration["semantic_roles"] = semantic_roles
+                info = trajectory.get("info") or {}
+                submission = str(info.get("submission") or "")
+                record_metadata["protocol_completion_valid"] = bool(
+                    info.get("exit_status") == "Submitted"
+                    and submission.lstrip().startswith("diff --git ")
+                )
+                record_metadata["protocol_completion_kind"] = "git_patch"
+                declaration["metadata"] = record_metadata
                 metadata["pra_record"] = declaration
                 copied["metadata"] = metadata
             if (
