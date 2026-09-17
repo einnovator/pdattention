@@ -325,7 +325,23 @@ def main() -> None:
     parser.add_argument("--prefix", type=Path)
     parser.add_argument("--append-episode", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--tokenizer")
+    parser.add_argument("--tokenizer-revision", default="unversioned")
     args = parser.parse_args()
+    count_tokens = whitespace_tokens
+    tokenizer_identity = "whitespace_v1_diagnostic"
+    if args.tokenizer:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer,
+            revision=args.tokenizer_revision,
+            local_files_only=Path(args.tokenizer).exists(),
+        )
+        count_tokens = lambda text: len(
+            tokenizer.encode(text, add_special_tokens=False)
+        )
+        tokenizer_identity = f"{args.tokenizer}@{args.tokenizer_revision}"
     sources = []
     trajectories = []
     if args.prefix:
@@ -345,10 +361,13 @@ def main() -> None:
         "claim_scope": (
             "offline structural/oracle alignment and token opportunity; not autonomous quality"
         ),
+        "tokenizer_identity": tokenizer_identity,
         "sources": sources,
-        "synthetic_cases": synthetic_oracle_cases(),
+        "synthetic_cases": synthetic_oracle_cases(count_tokens=count_tokens),
         "real_chain": (
-            analyze_independent_trajectories(trajectories)
+            analyze_independent_trajectories(
+                trajectories, count_tokens=count_tokens
+            )
             if trajectories else None
         ),
     }
