@@ -53,6 +53,27 @@ def _fingerprint(memory: MLXNativeMemory) -> str:
     return digest.hexdigest()
 
 
+def _chunked_source_prefill(
+    model: object,
+    cache: object,
+    source_ids: list[int],
+    *,
+    step_size: int,
+) -> None:
+    """Capture a long source without constructing one quadratic prefill."""
+
+    import mlx.core as mx
+
+    if not source_ids:
+        raise ValueError("MLX lifecycle source prefill requires at least one token.")
+    if step_size <= 0:
+        raise ValueError("source prefill step size must be positive.")
+    for start in range(0, len(source_ids), step_size):
+        chunk = source_ids[start : start + step_size]
+        logits = model(mx.array([chunk], dtype=mx.int32), cache=cache)
+        mx.eval(logits)
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     import mlx.core as mx
     import mlx_lm
@@ -113,8 +134,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
 
     source_cache = make_prompt_cache(model)
-    source_logits = model(mx.array([source_ids], dtype=mx.int32), cache=source_cache)
-    mx.eval(source_logits)
+    _chunked_source_prefill(
+        model,
+        source_cache,
+        source_ids,
+        step_size=args.source_prefill_step_size,
+    )
     canonical = capture_live_native_memory(
         source_cache, LiveKVSelectionPlan.full(len(source_ids))
     ).memory
@@ -504,6 +529,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
         "wire_prefill_step_size": args.prefill_step_size,
+        "source_prefill_step_size": args.source_prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
         "realized_retention_fraction": (
             (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
@@ -619,6 +645,12 @@ def main() -> None:
             "Wire-tail prefill chunk. The fused two-pass Metal consumer requires "
             "GQA groups times query tokens to fit one 32-lane SIMD plane."
         ),
+    )
+    parser.add_argument(
+        "--source-prefill-step-size",
+        type=int,
+        default=512,
+        help="Bounded chunk size for the one-time dense source-history capture.",
     )
     parser.add_argument("--hardware-label", default="unspecified")
     parser.add_argument(
