@@ -156,6 +156,41 @@ def _extend_prefill(
     return token
 
 
+def _prefill_positioned_request(
+    runner,
+    bridge: SGLangMLXNativeBridge,
+    request_id: str,
+    wire_tail: list[int],
+    *,
+    step_size: int,
+    source_position_base: int,
+    materialized_history: tuple[tuple[tuple[int, ...], int], ...] = (),
+) -> int:
+    """Encode compact history spans in their old frame, then the active tail."""
+
+    prior_start = -1
+    for token_ids, position_start in materialized_history:
+        if not token_ids:
+            continue
+        if position_start < prior_start:
+            raise ValueError("Materialized SGLang spans must be source ordered.")
+        if position_start + len(token_ids) > source_position_base:
+            raise ValueError("Materialized SGLang span exceeds the source extent.")
+        bridge.set_query_start(request_id, position_start)
+        if request_id in runner._req_caches:
+            _extend_prefill(
+                runner, request_id, list(token_ids), step_size=step_size
+            )
+        else:
+            _prefill(runner, request_id, list(token_ids), step_size=step_size)
+        prior_start = position_start
+
+    bridge.set_query_start(request_id, source_position_base)
+    if request_id in runner._req_caches:
+        return _extend_prefill(runner, request_id, wire_tail, step_size=step_size)
+    return _prefill(runner, request_id, wire_tail, step_size=step_size)
+
+
 def _generate_with_logits(
     runner,
     request_id: str,
@@ -163,17 +198,29 @@ def _generate_with_logits(
     *,
     max_tokens: int,
     prefill_step_size: int,
+    bridge: SGLangMLXNativeBridge | None = None,
+    source_position_base: int | None = None,
+    materialized_history: tuple[tuple[tuple[int, ...], int], ...] = (),
 ) -> tuple[tuple[int, ...], np.ndarray]:
     if max_tokens < 2:
         raise ValueError("Logit qualification requires at least two generated tokens.")
-    generated = [
-        _prefill(
+    if materialized_history:
+        if bridge is None or source_position_base is None:
+            raise ValueError("Positioned SGLang history requires bridge and source extent.")
+        first_token = _prefill_positioned_request(
             runner,
+            bridge,
             request_id,
             wire_tail,
             step_size=prefill_step_size,
+            source_position_base=source_position_base,
+            materialized_history=materialized_history,
         )
-    ]
+    else:
+        first_token = _prefill(
+            runner, request_id, wire_tail, step_size=prefill_step_size
+        )
+    generated = [first_token]
     token, logits = _decode_with_logits(runner, request_id)
     generated.append(token)
     while len(generated) < max_tokens:
@@ -213,15 +260,27 @@ def _generate(
     *,
     max_tokens: int,
     prefill_step_size: int,
+    bridge: SGLangMLXNativeBridge | None = None,
+    source_position_base: int | None = None,
+    materialized_history: tuple[tuple[tuple[int, ...], int], ...] = (),
 ) -> tuple[int, ...]:
-    generated = [
-        _prefill(
+    if materialized_history:
+        if bridge is None or source_position_base is None:
+            raise ValueError("Positioned SGLang history requires bridge and source extent.")
+        first_token = _prefill_positioned_request(
             runner,
+            bridge,
             request_id,
             wire_tail,
             step_size=prefill_step_size,
+            source_position_base=source_position_base,
+            materialized_history=materialized_history,
         )
-    ]
+    else:
+        first_token = _prefill(
+            runner, request_id, wire_tail, step_size=prefill_step_size
+        )
+    generated = [first_token]
     while len(generated) < max_tokens:
         generated.extend(_decode(runner, [request_id]))
     return tuple(generated)
@@ -274,6 +333,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         source_ids = list(geometry.source_ids)
         wire_tail = list(geometry.wire_tail_ids)
         plan = geometry.plan
+        materialized_history = tuple(
+            (span.token_ids, span.position_start)
+            for span in geometry.materialized_history_spans
+        )
     else:
         if args.trajectory is None:
             raise ValueError(
@@ -298,6 +361,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             source_tokens=len(source_ids),
             retention_fraction=args.retention_fraction,
         )
+        materialized_history = ()
+    materialized_history_tokens = sum(
+        len(token_ids) for token_ids, _position_start in materialized_history
+    )
     if (
         (not plan.has_holes or len(plan.intervals) < 2)
         and not (frozen_decision and args.frozen_full_retention)
@@ -478,6 +545,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     source_keys=layer.keys,
                     source_values=layer.values,
                     intervals=tuple(compact_intervals),
+                    logical_intervals=tuple(
+                        (interval.start, interval.end)
+                        for interval in plan.intervals
+                    ),
                 )
             )
         matched_memory = MLXDisjointNativeMemory(
@@ -501,6 +572,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        bridge=bridge,
+        source_position_base=plan.source_position_base,
+        materialized_history=materialized_history,
     )
     candidate_cache = runner._req_caches[candidate.request_id][
         runner._cache_layout.first_attention_layer_index
@@ -519,6 +593,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        bridge=bridge,
+        source_position_base=plan.source_position_base,
+        materialized_history=materialized_history,
     )
     reference_selected_fingerprint = _fingerprint(reference.selection.memory)
     reference.finish()
@@ -547,19 +624,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     concurrent_tokens = {
         survivor.request_id: [
-            _prefill(
+            _prefill_positioned_request(
                 runner,
+                bridge,
                 survivor.request_id,
                 wire_tail,
                 step_size=args.prefill_step_size,
+                source_position_base=plan.source_position_base,
+                materialized_history=materialized_history,
             )
         ],
         cancelled.request_id: [
-            _prefill(
+            _prefill_positioned_request(
                 runner,
+                bridge,
                 cancelled.request_id,
                 wire_tail,
                 step_size=args.prefill_step_size,
+                source_position_base=plan.source_position_base,
+                materialized_history=materialized_history,
             )
         ],
     }
@@ -581,11 +664,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     survivor.finish()
 
     errored = begin("errored")
-    _prefill(
+    _prefill_positioned_request(
         runner,
+        bridge,
         errored.request_id,
         wire_tail,
         step_size=args.prefill_step_size,
+        source_position_base=plan.source_position_base,
+        materialized_history=materialized_history,
     )
     native_error = ""
     try:
@@ -626,15 +712,21 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         wire_tail,
         max_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
+        bridge=bridge,
+        source_position_base=plan.source_position_base,
+        materialized_history=materialized_history,
     )
     restored.finish()
 
     terminated = begin("terminated-active")
-    _prefill(
+    _prefill_positioned_request(
         runner,
+        bridge,
         terminated.request_id,
         wire_tail,
         step_size=args.prefill_step_size,
+        source_position_base=plan.source_position_base,
+        materialized_history=materialized_history,
     )
     removed = runtime.terminate_session(
         identities["tenant_id"], identities["session_id"]
@@ -723,11 +815,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "terminated" in tombstone_error
         ),
         "original_positions_preserved": (
-            reference_offsets["position_base"] == plan.source_position_base
+            reference_offsets["position_base"] + materialized_history_tokens
+            == plan.source_position_base
             and reference_offsets["attention_rope"]
-            == plan.source_position_base + reference_offsets["scheduler_local"]
+            == plan.source_position_base
+            + reference_offsets["scheduler_local"]
+            - materialized_history_tokens
         ),
-        "zero_selected_history_reencoding": (
+        "selected_history_reencoding_equals_explicit_materialization": (
             candidate.selection.selected_text_reencoded_tokens == 0
             and reference.selection.selected_text_reencoded_tokens == 0
             and survivor.selection.selected_text_reencoded_tokens == 0
@@ -782,7 +877,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "turn": args.turn if frozen_decision is None else None,
         "retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + materialized_history_tokens
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision else args.retention_fraction
         ),
         "source_tokens": len(source_ids),
@@ -790,8 +889,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "wire_prefill_step_size": args.prefill_step_size,
         "source_prefill_step_size": args.source_prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
+        "materialized_history_tokens": materialized_history_tokens,
         "realized_retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + materialized_history_tokens
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision
             else plan.selected_tokens / max(len(source_ids), 1)
         ),
@@ -858,7 +962,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         },
         "required_runtime_fix": None,
         "selected_text_reencoded_tokens": (
-            candidate.selection.selected_text_reencoded_tokens
+            materialized_history_tokens
         ),
         "candidate_token_ids": list(candidate_tokens),
         "reference_token_ids": list(reference_tokens),

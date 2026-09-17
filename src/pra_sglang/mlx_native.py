@@ -193,7 +193,21 @@ class SGLangSelectedKVCache:
             local = create_causal_mask(
                 n, self.offset, window_size=min(window_size, self.offset + n)
             )
-        selected = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
+        intervals = (
+            self.memory.causal_intervals
+            if isinstance(self.memory, MLXDisjointLayerKV)
+            else ()
+        )
+        if intervals:
+            key_positions = mx.concatenate(
+                tuple(mx.arange(start, end) for start, end in intervals)
+            )
+            query_positions = mx.arange(self.rope_offset, self.rope_offset + n)
+            selected = mx.expand_dims(query_positions, 1) >= mx.expand_dims(
+                key_positions, 0
+            )
+        else:
+            selected = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
         return mx.concatenate((selected, local), axis=1)
 
 
@@ -461,6 +475,7 @@ class SGLangMLXNativeBridge:
         self._release_callbacks: dict[str, Callable[[str, str], None]] = {}
         self._terminal_outcomes: dict[str, str] = {}
         self._source_owner_pins: dict[str, set[str]] = {}
+        self._query_starts: dict[str, int] = {}
         self._lifecycle_lock = RLock()
         self.isolation = EnginePRAIsolationGuard()
         self._active_req: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -587,6 +602,7 @@ class SGLangMLXNativeBridge:
             raise ValueError(f"Unknown SGLang request outcome {outcome!r}.")
         with self._lifecycle_lock:
             request = self._requests.pop(identifier, None)
+            self._query_starts.pop(identifier, None)
             callback = self._release_callbacks.pop(identifier, None)
             self._terminal_outcomes.pop(identifier, None)
             if request is None:
@@ -635,6 +651,45 @@ class SGLangMLXNativeBridge:
                 del self._source_owner_pins[owner]
             return True
 
+    def set_query_start(self, req_id: str, position_start: int) -> None:
+        """Position the next request-local prefill span in source coordinates.
+
+        Compact receipts are new tokens, but they stand in for records at old
+        logical positions.  SGLang's scheduler continues to count only compact
+        request-local tokens; this method changes the RoPE frame without
+        pretending those tokens are a contiguous source prefix.
+        """
+
+        identifier = str(req_id)
+        start = int(position_start)
+        if start < 0:
+            raise ValueError("SGLang query position start cannot be negative.")
+        with self._lifecycle_lock:
+            if identifier not in self._requests:
+                raise KeyError(f"SGLang PRA request {identifier!r} is not active.")
+            caches = getattr(self.runner, "_req_caches", {}).get(identifier)
+            if caches is not None:
+                selected = [
+                    cache
+                    for cache in caches
+                    if isinstance(cache, SGLangSelectedKVCache)
+                ]
+                if selected and len(selected) != len(
+                    self.runner._cache_layout.attention_layer_indices
+                ):
+                    raise RuntimeError(
+                        "SGLang PRA cache list is only partially wrapped."
+                    )
+                for cache in selected:
+                    base = start - cache.offset
+                    if base < 0:
+                        raise ValueError(
+                            "SGLang positioned materialization overlaps prior "
+                            "request-local tokens."
+                        )
+                    cache.position_base = base
+            self._query_starts[identifier] = start
+
     def _wrap_cache(self, req_id: str, caches: list[object]) -> list[object]:
         request = self._requests.get(req_id)
         if request is None:
@@ -648,12 +703,17 @@ class SGLangMLXNativeBridge:
         if view is not None and not view.attached:
             self.isolation.attach_once(req_id, request.logical_keys)
         memory = request.memory
+        query_start = getattr(self, "_query_starts", {}).get(req_id)
         return [
             (
                 SGLangSelectedKVCache(
                     cache,
                     memory.layers[index],
-                    position_base=request.source_position_base,
+                    position_base=(
+                        request.source_position_base
+                        if query_start is None
+                        else query_start - int(cache.offset)
+                    ),
                 )
                 if index in self.runner._cache_layout.attention_layer_indices
                 else cache
@@ -783,6 +843,8 @@ class SGLangMLXNativeBridge:
             "live_prefix_kv_subset": True,
             "source_positions_preserved": True,
             "zero_selected_text_reencoding": True,
+            "positioned_materialized_history": True,
+            "explicit_materialized_history_reencoding_reported": True,
             "disjoint_selection_requires_pack_copy": False,
             "disjoint_attention_runtime_qualification_required": True,
             "physical_kv_copy_reported": True,

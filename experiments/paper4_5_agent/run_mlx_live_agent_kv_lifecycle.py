@@ -309,6 +309,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     source_keys=layer.keys,
                     source_values=layer.values,
                     intervals=tuple(compact_intervals),
+                    logical_intervals=tuple(
+                        (interval.start, interval.end)
+                        for interval in plan.intervals
+                    ),
                 )
             )
         reference.selection = MLXResidentKVSelection(

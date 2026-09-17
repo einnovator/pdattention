@@ -8,12 +8,18 @@ import pytest
 
 from pra_hf.live_history import LiveKVSelectionPlan
 from pra_mlx.mlx_live_kv import MLXLiveKVRequestCancelled, MLXLiveKVRuntime
-from pra_mlx.native import MLXNativeLayerKV, MLXNativeMemory
+from pra_mlx.native import (
+    MLXDisjointLayerKV,
+    MLXDisjointSelectedKVCache,
+    MLXNativeLayerKV,
+    MLXNativeMemory,
+)
 
 
 class _FakeMX(ModuleType):
     int32 = np.int32
     float32 = np.float32
+    bool_ = np.bool_
 
     @staticmethod
     def array(value, dtype=None):
@@ -22,6 +28,18 @@ class _FakeMX(ModuleType):
     @staticmethod
     def concatenate(values, axis=0):
         return np.concatenate(values, axis=axis)
+
+    @staticmethod
+    def arange(*args):
+        return np.arange(*args)
+
+    @staticmethod
+    def expand_dims(value, axis):
+        return np.expand_dims(value, axis)
+
+    @staticmethod
+    def ones(shape, dtype=None):
+        return np.ones(shape, dtype=dtype)
 
     @staticmethod
     def eval(*_values):
@@ -65,16 +83,22 @@ def fake_mlx(monkeypatch):
     mlx_lm = ModuleType("mlx_lm")
     models = ModuleType("mlx_lm.models")
     cache = ModuleType("mlx_lm.models.cache")
+    base = ModuleType("mlx_lm.models.base")
     cache.make_prompt_cache = lambda model, max_kv_size=None: [
         _FakeLocalCache() for _ in model.layers
     ]
+    base.create_causal_mask = lambda n, offset, **_kwargs: np.arange(
+        offset + n
+    )[None, :] <= np.arange(offset, offset + n)[:, None]
     models.cache = cache
+    models.base = base
     mlx_lm.models = models
     monkeypatch.setitem(sys.modules, "mlx", mlx)
     monkeypatch.setitem(sys.modules, "mlx.core", core)
     monkeypatch.setitem(sys.modules, "mlx_lm", mlx_lm)
     monkeypatch.setitem(sys.modules, "mlx_lm.models", models)
     monkeypatch.setitem(sys.modules, "mlx_lm.models.cache", cache)
+    monkeypatch.setitem(sys.modules, "mlx_lm.models.base", base)
     return core
 
 
@@ -278,3 +302,46 @@ def test_mlx_disjoint_request_materializes_original_position_history(fake_mlx) -
     assert result.selected_kv_tokens == 4
     assert result.selected_text_reencoded_tokens == 2
     assert result.materialization_policy == "disjoint_segmented"
+
+
+def test_mlx_disjoint_mask_hides_selected_future_from_old_receipt(fake_mlx) -> None:
+    keys = np.arange(8, dtype=np.float32).reshape(1, 1, 4, 2)
+    memory = MLXDisjointLayerKV(
+        (
+            MLXNativeLayerKV(keys[:, :, :2], keys[:, :, :2] + 10),
+            MLXNativeLayerKV(keys[:, :, 2:], keys[:, :, 2:] + 10),
+        ),
+        intervals=((0, 2), (4, 6)),
+    )
+    cache = MLXDisjointSelectedKVCache(
+        _FakeLocalCache(), memory, position_base=2
+    )
+
+    old_receipt_mask = cache.make_mask(1)
+    assert old_receipt_mask.tolist() == [[True, True, False, False, True]]
+
+    cache.position_base = 6
+    active_tail_mask = cache.make_mask(1)
+    assert active_tail_mask.tolist() == [[True, True, True, True, True]]
+
+
+def test_mlx_disjoint_oracle_separates_physical_and_logical_intervals(
+    fake_mlx,
+) -> None:
+    keys = np.arange(8, dtype=np.float32).reshape(1, 1, 4, 2)
+    memory = MLXDisjointLayerKV(
+        (
+            MLXNativeLayerKV(keys[:, :, :2], keys[:, :, :2] + 10),
+            MLXNativeLayerKV(keys[:, :, 2:], keys[:, :, 2:] + 10),
+        ),
+        source_keys=keys,
+        source_values=keys + 10,
+        intervals=((0, 2), (2, 4)),
+        logical_intervals=((0, 2), (8, 10)),
+    )
+    cache = MLXDisjointSelectedKVCache(
+        _FakeLocalCache(), memory, position_base=4
+    )
+
+    mask = cache.make_mask(1)
+    assert mask.tolist() == [[True, True, False, False, True]]

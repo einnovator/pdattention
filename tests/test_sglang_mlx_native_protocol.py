@@ -105,11 +105,26 @@ def _memory(tokens: int = 6) -> MLXNativeMemory:
 def _fake_mlx(monkeypatch) -> None:
     core = types.ModuleType("mlx.core")
     core.concatenate = np.concatenate
+    core.arange = np.arange
+    core.expand_dims = np.expand_dims
+    core.ones = np.ones
+    core.bool_ = np.bool_
     core.eval = lambda *_values: None
     package = types.ModuleType("mlx")
     package.core = core
+    mlx_lm = types.ModuleType("mlx_lm")
+    models = types.ModuleType("mlx_lm.models")
+    base = types.ModuleType("mlx_lm.models.base")
+    base.create_causal_mask = lambda n, offset, **_kwargs: np.arange(
+        offset + n
+    )[None, :] <= np.arange(offset, offset + n)[:, None]
+    models.base = base
+    mlx_lm.models = models
     monkeypatch.setitem(sys.modules, "mlx", package)
     monkeypatch.setitem(sys.modules, "mlx.core", core)
+    monkeypatch.setitem(sys.modules, "mlx_lm", mlx_lm)
+    monkeypatch.setitem(sys.modules, "mlx_lm.models", models)
+    monkeypatch.setitem(sys.modules, "mlx_lm.models.base", base)
 
 
 def test_sglang_cache_keeps_scheduler_and_rope_offsets_separate() -> None:
@@ -134,6 +149,48 @@ def test_sglang_cache_reset_preserves_immutable_memory() -> None:
     assert cache.offset == 0
     assert cache.rope_offset == 31
     assert cache.memory is memory
+
+
+def test_sglang_disjoint_mask_hides_selected_future_from_old_receipt(
+    monkeypatch,
+) -> None:
+    _fake_mlx(monkeypatch)
+    keys = np.arange(4, dtype=np.float32).reshape(1, 1, 4, 1)
+    memory = MLXDisjointLayerKV(
+        (
+            MLXNativeLayerKV(keys[:, :, :2], keys[:, :, :2] + 10),
+            MLXNativeLayerKV(keys[:, :, 2:], keys[:, :, 2:] + 10),
+        ),
+        intervals=((0, 2), (4, 6)),
+    )
+    local = _LocalCache()
+    local.offset = 0
+    cache = SGLangSelectedKVCache(local, memory, position_base=2)
+
+    assert cache.make_mask(1).tolist() == [[True, True, False, False, True]]
+
+    cache.position_base = 6
+    assert cache.make_mask(1).tolist() == [[True, True, True, True, True]]
+
+
+def test_sglang_bridge_repositions_compact_history_without_scheduler_padding(
+    monkeypatch,
+) -> None:
+    runner, bridge = _bridge(monkeypatch)
+    bridge.register("request", _memory(), source_position_base=6)
+
+    bridge.set_query_start("request", 2)
+    runner.prefill_start("request", [1], [1], [], [], 0)
+    cache = runner._req_caches["request"][0]
+    assert isinstance(cache, SGLangSelectedKVCache)
+    assert cache.offset == 0
+    assert cache.rope_offset == 2
+
+    cache.local_cache.offset = 2
+    bridge.set_query_start("request", 6)
+    assert cache.offset == 2
+    assert cache.position_base == 4
+    assert cache.rope_offset == 6
 
 
 def test_sglang_pool_release_strips_selected_memory_wrapper() -> None:

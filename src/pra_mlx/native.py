@@ -79,6 +79,7 @@ class MLXDisjointLayerKV:
     source_keys: object | None = None
     source_values: object | None = None
     intervals: tuple[tuple[int, int], ...] = ()
+    logical_intervals: tuple[tuple[int, int], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.segments:
@@ -93,6 +94,23 @@ class MLXDisjointLayerKV:
                 "Source-backed disjoint MLX K/V requires both parents and one "
                 "interval per segment."
             )
+        if self.logical_intervals and len(self.logical_intervals) != len(
+            self.segments
+        ):
+            raise ValueError(
+                "Disjoint MLX K/V requires one logical interval per segment."
+            )
+
+    @property
+    def causal_intervals(self) -> tuple[tuple[int, int], ...]:
+        """Original logical positions used for causal visibility.
+
+        A copied identical-subset oracle can store segments in compact physical
+        ranges while preserving their original positions here.  Source-backed
+        zero-copy selections use the same ranges for both purposes.
+        """
+
+        return self.logical_intervals or self.intervals
 
     @property
     def tokens(self) -> int:
@@ -367,16 +385,7 @@ class MLXSelectedKVCache:
             local = create_causal_mask(n, self.local_offset, window_size=local_window)
         else:
             local = create_causal_mask(n, self.local_offset)
-        if self.memory.intervals:
-            key_positions = mx.concatenate(
-                tuple(mx.arange(start, end) for start, end in self.memory.intervals)
-            )
-            query_positions = mx.arange(self.offset, self.offset + n)
-            memory = mx.expand_dims(query_positions, 1) >= mx.expand_dims(
-                key_positions, 0
-            )
-        else:
-            memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
+        memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
         return mx.concatenate((memory, local), axis=1)
 
 
@@ -494,7 +503,17 @@ class MLXDisjointSelectedKVCache:
             local = create_causal_mask(n, self.local_offset, window_size=local_window)
         else:
             local = create_causal_mask(n, self.local_offset)
-        memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
+        intervals = self.memory.causal_intervals
+        if intervals:
+            key_positions = mx.concatenate(
+                tuple(mx.arange(start, end) for start, end in intervals)
+            )
+            query_positions = mx.arange(self.offset, self.offset + n)
+            memory = mx.expand_dims(query_positions, 1) >= mx.expand_dims(
+                key_positions, 0
+            )
+        else:
+            memory = mx.ones((n, self.memory_tokens), dtype=mx.bool_)
         return mx.concatenate((memory, local), axis=1)
 
 
