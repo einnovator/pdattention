@@ -57,6 +57,7 @@ class SchedulerPageSelection:
 class _PinnedSource:
     generation: int
     source_tokens: int
+    position_extent: int
     block_size: int
     blocks: tuple[Any, ...]
     block_pool: Any
@@ -102,6 +103,7 @@ class VLLMCudaSchedulerPageRegistry:
         blocks_by_group: Sequence[Sequence[Any]],
         block_sizes: Sequence[int],
         block_pool: Any,
+        position_extent: int | None = None,
     ) -> None:
         """Pin a completed request's pages before scheduler request teardown."""
 
@@ -118,6 +120,14 @@ class VLLMCudaSchedulerPageRegistry:
             raise RuntimeError("Source request does not own all declared KV pages.")
         if any(getattr(block, "is_null", False) for block in blocks):
             raise RuntimeError("Null/sliding-window pages cannot back a PRA source.")
+        logical_extent = (
+            int(source_tokens) if position_extent is None else int(position_extent)
+        )
+        if logical_extent < int(source_tokens):
+            raise ValueError(
+                "A CUDA source position extent cannot be smaller than its "
+                "physical page width."
+            )
 
         key = str(logical_key)
         with self._lock:
@@ -127,6 +137,7 @@ class VLLMCudaSchedulerPageRegistry:
                     previous.generation == int(generation)
                     and tuple(id(block) for block in previous.blocks)
                     == tuple(id(block) for block in blocks)
+                    and previous.position_extent == logical_extent
                     and not previous.tombstoned
                 )
                 if same:
@@ -147,11 +158,107 @@ class VLLMCudaSchedulerPageRegistry:
             self._sources[key] = _PinnedSource(
                 generation=int(generation),
                 source_tokens=int(source_tokens),
+                position_extent=logical_extent,
                 block_size=block_size,
                 blocks=blocks,
                 block_pool=block_pool,
             )
             self._source_pin_events += 1
+
+    def publish_composite_source(
+        self,
+        logical_key: str,
+        *,
+        generation: int,
+        position_extent: int,
+        components: Sequence[tuple[str, int, Sequence[int]]],
+    ) -> int:
+        """Pin an ordered zero-copy page sequence drawn from resident sources.
+
+        Receipt-aware agent memory is hybrid: unchanged records remain pages of
+        the full-history source, while compact closure receipts are newly
+        encoded into their own resident pages.  The final request must borrow
+        both without packing or copying either.  ``position_extent`` is the
+        original logical history extent and is intentionally independent of the
+        compact number of physical pages in the composite.
+        """
+
+        rows = tuple(components)
+        if not rows:
+            raise ValueError("A CUDA composite source needs at least one component.")
+        key = str(logical_key)
+        if not key:
+            raise ValueError("A CUDA composite source needs a stable logical key.")
+        if key in {str(source_key) for source_key, _, _ in rows}:
+            raise ValueError("A CUDA composite cannot replace one of its components.")
+        with self._lock:
+            selected: list[Any] = []
+            pool = None
+            block_size = None
+            for source_key, source_generation, page_indices in rows:
+                source = self._require_generation(
+                    str(source_key), int(source_generation)
+                )
+                if source.tombstoned:
+                    raise RuntimeError(
+                        "A terminated CUDA source cannot enter a composite."
+                    )
+                if pool is None:
+                    pool = source.block_pool
+                    block_size = source.block_size
+                elif source.block_pool is not pool or source.block_size != block_size:
+                    raise NotImplementedError(
+                        "CUDA composites require one homogeneous block pool."
+                    )
+                indices = tuple(map(int, page_indices))
+                if not indices:
+                    raise ValueError("A CUDA composite component cannot be empty.")
+                if tuple(sorted(indices)) != indices or len(set(indices)) != len(indices):
+                    raise ValueError(
+                        "Composite source pages must be unique and causally ordered."
+                    )
+                if indices[0] < 0 or indices[-1] >= len(source.blocks):
+                    raise ValueError("Composite CUDA page is outside its source.")
+                selected.extend(source.blocks[index] for index in indices)
+            if len({id(block) for block in selected}) != len(selected):
+                raise ValueError("A CUDA composite cannot repeat a physical page.")
+            assert pool is not None and block_size is not None
+            physical_tokens = len(selected) * block_size
+            if int(position_extent) < physical_tokens:
+                raise ValueError(
+                    "Composite position extent cannot be smaller than its pages."
+                )
+            previous = self._sources.get(key)
+            if previous is not None:
+                same = (
+                    previous.generation == int(generation)
+                    and previous.position_extent == int(position_extent)
+                    and tuple(id(block) for block in previous.blocks)
+                    == tuple(id(block) for block in selected)
+                    and not previous.tombstoned
+                )
+                if same:
+                    return physical_tokens
+                if previous.borrowers or previous.pending:
+                    raise RuntimeError(
+                        "Cannot replace a composite source while it is borrowed."
+                    )
+                if not self._only_source_pin_remains(previous):
+                    raise RuntimeError(
+                        "Cannot replace a composite with scheduler/in-flight aliases."
+                    )
+                self._drop_source_locked(key, previous)
+            pool.touch(selected)
+            self._sources[key] = _PinnedSource(
+                generation=int(generation),
+                source_tokens=physical_tokens,
+                position_extent=int(position_extent),
+                block_size=block_size,
+                blocks=tuple(selected),
+                block_pool=pool,
+            )
+            self._source_pin_events += 1
+            return physical_tokens
 
     def prepare_alias(
         self,
@@ -187,7 +294,7 @@ class VLLMCudaSchedulerPageRegistry:
                 raise ValueError(
                     "Selected CUDA token count must equal complete selected pages."
                 )
-            if selection.source_position_base > source.source_tokens:
+            if selection.source_position_base > source.position_extent:
                 raise ValueError("Original position extent exceeds the live source.")
             if selection.selected_page_indices[-1] >= len(source.blocks):
                 raise ValueError("Selected CUDA page is outside the live source.")
@@ -300,6 +407,7 @@ class VLLMCudaSchedulerPageRegistry:
                 blocks_by_group=(combined,),
                 block_sizes=(source.block_size,),
                 block_pool=source.block_pool,
+                position_extent=selection.source_position_base + count * source.block_size,
             )
             return tokens
 
@@ -423,6 +531,7 @@ class VLLMCudaSchedulerPageRegistry:
                     key: {
                         "generation": source.generation,
                         "source_tokens": source.source_tokens,
+                        "position_extent": source.position_extent,
                         "block_ids": [int(block.block_id) for block in source.blocks],
                         "borrowers": sorted(source.borrowers),
                         "pending": sorted(source.pending),

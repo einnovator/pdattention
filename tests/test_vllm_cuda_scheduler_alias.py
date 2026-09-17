@@ -225,6 +225,65 @@ def test_compact_selected_length_and_original_position_extent_are_independent() 
         )
 
 
+def test_composite_source_aliases_original_and_receipt_pages_without_copy() -> None:
+    registry, pool, source_pages = _published()
+    receipt_pages = (_Block(10), _Block(11))
+    registry.publish_source(
+        "receipt",
+        generation=3,
+        source_tokens=32,
+        blocks_by_group=(receipt_pages,),
+        block_sizes=(16,),
+        block_pool=pool,
+        position_extent=80,
+    )
+    # Producer ownership drains; only the two registry pins remain.
+    pool.free_blocks(reversed(source_pages))
+    pool.free_blocks(reversed(receipt_pages))
+
+    physical_tokens = registry.publish_composite_source(
+        "mixed-history",
+        generation=9,
+        position_extent=96,
+        components=(("source", 7, (0, 2)), ("receipt", 3, (0,))),
+    )
+    assert physical_tokens == 48
+    snapshot = registry.snapshot()["sources"]["mixed-history"]
+    assert snapshot["source_tokens"] == 48
+    assert snapshot["position_extent"] == 96
+    assert snapshot["block_ids"] == [0, 2, 10]
+
+    selection = SchedulerPageSelection(
+        logical_key="mixed-selection",
+        source_logical_key="mixed-history",
+        source_generation=9,
+        selected_page_indices=(0, 1, 2),
+        selected_token_count=48,
+        source_position_base=96,
+    )
+    installed = registry.prepare_alias(
+        "mixed-request",
+        selection,
+        prompt_token_count=49,
+        create_kv_cache_blocks=_blocks,
+    )
+    assert installed.blocks[0] == (source_pages[0], source_pages[2], receipt_pages[0])
+    pool.touch(installed.blocks[0])
+    registry.commit_alias("mixed-request", installed)
+
+    # Component pins can retire independently; composite and request aliases
+    # keep exactly the pages still needed by the mixed request alive.
+    registry.evict_source("source", generation=7)
+    registry.evict_source("receipt", generation=3)
+    assert [page.ref_cnt for page in source_pages] == [2, 0, 2]
+    assert [page.ref_cnt for page in receipt_pages] == [2, 0]
+    assert registry.finish_request("mixed-request")
+    pool.free_blocks(reversed(installed.blocks[0]))
+    registry.evict_source("mixed-history", generation=9)
+    assert [page.ref_cnt for page in source_pages] == [0, 0, 0]
+    assert [page.ref_cnt for page in receipt_pages] == [0, 0]
+
+
 def test_commit_rejects_a_worker_or_detached_copy() -> None:
     registry, pool, _ = _published()
     registry.prepare_alias(
