@@ -1,4 +1,4 @@
-# MLX frozen-plan request smokes
+# Frozen-plan request smokes
 
 These rows exercise exact Paper 8.5 M2/P1 request and selection fixtures on
 `mlx-community/Qwen3-0.6B-4bit`, MLX-LM 0.31.3, and the 16 GB M5 host. They
@@ -22,6 +22,8 @@ offload, restoration, and termination checks.
 | `sglang_qwen3_06b_task4_request5_step1.json` | 47.92% | 1 | 0.000 same-consumer | exact | qualified reduced-history lifecycle row |
 | `sglang_qwen3_06b_task4_request5_full_step1_v3.json` | 100.00% | 1 | 0.000 same-consumer; 0.9365 fresh-prefill comparator | exact | superseded: comparator changed cache-consumption mode |
 | `sglang_qwen3_06b_task4_request5_full_step1_v4.json` | 100.00% | 1 | 0.000 same-consumer and resident-prefix oracle | exact | qualified full-retention control |
+| `vllm_metal_qwen3_06b_task4_request5_full_v2.json` | 100.00% | 131-token suffix | same subset and ordinary prefix-cache token exact | exact | qualified full-retention lifecycle row |
+| `vllm_metal_qwen3_06b_task4_request5_m2p1_v2.json` | 48.03% total; 47.66% source pages | 131-token suffix | same-subset token exact | exact | qualified reduced-history lifecycle row |
 
 The paired request-5 rows isolate the cause of the earlier strict negatives.
 With a 16-token wire-prefill chunk, MLX dispatches the dense reference through
@@ -69,3 +71,19 @@ tokens, re-encodes and packs zero selected-history bytes, and clears every
 Radix lifecycle check. SGLang-MLX is therefore request-level qualified at 100%
 for this frozen request. This still does not establish autonomous task-level
 parity or runtime benefit.
+
+The vLLM-Metal rows use matched vLLM 0.29.0/vLLM-Metal 0.29.0 packages and
+the pinned engine source revision `7390805822b2d7a208b09d55bd07b7572f727e20`
+on the 48 GB M4 Pro.  The full control reuses all 18,096 complete source-page
+tokens, and the ordinary prefix-cache arm independently reports an 18,096-token
+prefix hit; both arms emit token IDs `[151667, 198]`.  The M2/P1 row aliases
+8,624 source-page tokens and keeps the same 131-token request suffix, for
+48.03% total visible retention and 47.66% page retention.  Page alignment adds
+only 21 tokens relative to the exact logical intervals.  Both rows re-encode
+zero selected-history tokens, attach existing pages without copying, and add
+zero active bytes for two concurrent aliases.  The two lifecycle
+materialization events in each artifact belong exclusively to the explicit
+lossless offload/restore exercise; request attachment records zero physical
+copy events.  Both rows clear the lifecycle matrix.  These remain single-
+request correctness and accounting checks, not full frozen-trajectory or
+autonomous task qualifications.
