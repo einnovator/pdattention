@@ -654,7 +654,9 @@ def disjoint_segmented_selected_attention(
 
 
 _DISJOINT_METAL_KERNELS: dict[float, object] = {}
-_DISJOINT_METAL_2PASS_KERNELS: dict[tuple[float, int], tuple[object, object]] = {}
+_DISJOINT_METAL_2PASS_KERNELS: dict[
+    tuple[float, int, str], tuple[object, object]
+] = {}
 
 
 def _native_mlx_vector_blocks(
@@ -920,7 +922,17 @@ def _metal_disjoint_selected_attention_2pass(
     if blocks <= 0 or blocks % 32:
         raise ValueError("Two-pass Metal attention requires 32-aligned blocks.")
 
-    kernel_key = (float(scale), int(blocks))
+    if queries.dtype == mx.bfloat16:
+        storage_type = "bfloat16_t"
+    elif queries.dtype == mx.float16:
+        storage_type = "half"
+    elif queries.dtype == mx.float32:
+        storage_type = "float"
+    else:
+        raise ValueError(
+            "Two-pass Metal attention supports float32, float16, and bfloat16."
+        )
+    kernel_key = (float(scale), int(blocks), storage_type)
     kernels = _DISJOINT_METAL_2PASS_KERNELS.get(kernel_key)
     if kernels is None:
         pass1_source = f"""
@@ -982,8 +994,8 @@ def _metal_disjoint_selected_attention_2pass(
         }}
         score = simd_sum(score);
         float next_max = metal::max(max_score, score);
-        float prior_scale = metal::precise::exp(max_score - next_max);
-        float weight = metal::precise::exp(score - next_max);
+        float prior_scale = metal::fast::exp(max_score - next_max);
+        float weight = metal::fast::exp(score - next_max);
         max_score = next_max;
         sum_exp_score = sum_exp_score * prior_scale + weight;
         for (uint j = 0; j < per_thread; ++j) {{
@@ -1006,7 +1018,7 @@ def _metal_disjoint_selected_attention_2pass(
     }}
     uint partial_base = stat_index * head_dim + lane * per_thread;
     for (uint j = 0; j < per_thread; ++j) {{
-        partials[partial_base + j] = ov[j];
+        partials[partial_base + j] = static_cast<{storage_type}>(ov[j]);
     }}
 """
         pass2_source = f"""
@@ -1028,13 +1040,13 @@ def _metal_disjoint_selected_attention_2pass(
     max_score = simd_max(max_score);
     for (uint b = 0; b < block_count / 32; ++b) {{
         uint index = stats_base + lane + 32 * b;
-        float factor = metal::precise::exp(maxs[index] - max_score);
+        float factor = metal::fast::exp(maxs[index] - max_score);
         sum_exp_score += factor * sums[index];
     }}
     sum_exp_score = simd_sum(sum_exp_score);
     for (uint b = 0; b < block_count / 32; ++b) {{
         uint block = simdgroup + 32 * b;
-        float factor = metal::precise::exp(maxs[stats_base + block] - max_score);
+        float factor = metal::fast::exp(maxs[stats_base + block] - max_score);
         uint partial_base = (stats_base + block) * head_dim
             + lane * per_thread;
         for (uint j = 0; j < per_thread; ++j) {{
@@ -1048,7 +1060,9 @@ def _metal_disjoint_selected_attention_2pass(
         float value = simd_sum(outputs[simdgroup * 32 + lane]);
         value = sum_exp_score == 0.0f ? value : value / sum_exp_score;
         threadgroup_barrier(mem_flags::mem_threadgroup);
-        if (lane == 0) {{ out[output_base + j] = value; }}
+        if (lane == 0) {{
+            out[output_base + j] = static_cast<{storage_type}>(value);
+        }}
     }}
 """
         pass1 = mx.fast.metal_kernel(
@@ -1086,23 +1100,18 @@ def _metal_disjoint_selected_attention_2pass(
         grid=(kv_heads * 32, groups, query_tokens * blocks),
         threadgroup=(32, groups, query_tokens),
         output_shapes=(partial_shape, stat_shape, stat_shape),
-        # The pass-one recurrence is deliberately FP32.  Keeping its partial
-        # vector in the query dtype made BF16 models emit an illegal Metal
-        # assignment (float -> bfloat16_t) and would also discard precision
-        # before the cross-block reduction.  Cast only the final output.
-        output_dtypes=(mx.float32, mx.float32, mx.float32),
+        # MLX's native vector-SDPA rounds pass-one partials to the model dtype.
+        # The generated kernel uses an explicit cast because custom Metal
+        # kernels do not accept the implicit float -> bfloat assignment.
+        output_dtypes=(queries.dtype, mx.float32, mx.float32),
     )
-    output = pass2(
+    return pass2(
         inputs=(partials, sums, maxs),
         grid=(query_heads * query_tokens * 1024, 1, 1),
         threadgroup=(1024, 1, 1),
         output_shapes=(queries.shape,),
-        # Metal's bfloat type does not accept an implicit float assignment.
-        # Preserve the FP32 reduction through the kernel and cast at the MLX
-        # boundary, matching the one-pass implementation above.
-        output_dtypes=(mx.float32,),
+        output_dtypes=(queries.dtype,),
     )[0]
-    return output.astype(queries.dtype)
 
 
 def _segmented_selected_attention_impl(
