@@ -64,9 +64,11 @@ recall and exposes up to 39.30\% final-snapshot opportunity, but remains an
 offline result until autonomous quality and cumulative work are measured.  A
 protocol-aware $M=2$/P1 repair then preserves 3/3 distinct paired
 \textsc{Full} successes, uses 25 calls versus 25, and sends 280,858 versus
-474,697 cumulative input tokens (40.83\% saving).  This clears the initial
-three-identity gate, but is not evidence that population accuracy exceeds
-90\% and is not yet a production default.
+474,697 cumulative input tokens (40.83\% saving).  A contemporaneous Task~3
+repeat preserves success and 13-versus-13 calls but saves only 9.96\%, exposing
+large backend trajectory variance and failing the repeated 30--50\% saving
+gate.  No profile is promoted, and three identities do not establish
+greater-than-90\% population accuracy.
 \end{abstract}
 
 \iffalse
@@ -1069,6 +1071,16 @@ Task~3 is individually inefficient even though the three-task policy clears
 the saving and call constraints.  Three task identities remain insufficient
 to estimate population accuracy or promote a production default.
 
+The predeclared repeat prevents that pilot from being promoted.  Task~3
+$M=2$/P1 again resolves, but takes 13 calls and sends 179,380 tokens.  Its
+contemporaneous \textsc{Full} control also resolves in 13 calls and sends
+199,232 tokens, so the valid paired saving is 9.96\%.  Comparing instead with
+the historical six-call \textsc{Full} row would incorrectly report a 102.67\%
+cost increase.  The first two candidate request inputs are byte-identical to
+the earlier repaired run; generation diverges on request~2.  Thus the repeat
+passes quality and call preservation, fails the saving target, and confirms
+that temperature zero and a fixed seed do not remove backend variance.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1089,7 +1101,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 \midrule
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
-Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Initial 3/3, 40.83\% gate passes; Easy-14 confirmation required. \\
+Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Initial 3/3, 40.83\%; Task-3 repeat saves 9.96\%, so promotion remains blocked. \\
 Agent-Economy & DAG $M=2$/P1 + structured frontier & last 2 prompts + valid protocol & Unexecuted extension; cannot inherit Balanced's quality result. \\
 \bottomrule
 \end{tabular}
@@ -1106,7 +1118,9 @@ hit nor a latency claim.
 The context-qualified campaign covers one ordered sequence and one model
 family.  Temperature zero does not guarantee endpoint repeatability, and clean
 workspaces isolate conversation memory from persistent repository state.
-Easy-14 is a mechanism cohort, not a population estimate.  Safe retirement
+Easy-14 is a mechanism cohort, not a population estimate.  The failed saving
+repeat shows that one favorable three-task aggregate is not a stable frontier.
+Safe retirement
 must preserve causal and closure semantics, efficiency must be measured over
 the realized trajectory, and three positive identities cannot establish
 greater-than-90\% population accuracy or select a production default.  A
@@ -1168,6 +1182,14 @@ is 3/3 resolutions, 25 versus 25 calls, and 280,858 versus 474,697 tokens
 (40.83\% paired saving).  Complete evidence is under
 \path{frontier_information_flow_oracle_v1}; the aggregate ledger is
 \path{autonomous_m2_p1_three_task_gate.json}.
+
+The Task~3 repeat provides the required variance control.  M2/P1 and
+contemporaneous \textsc{Full} both resolve in 13 calls, sending 179,380 and
+199,232 tokens respectively (9.96\% saving).  The historical \textsc{Full}
+trajectory used six calls and 88,510 tokens, demonstrating why it is an invalid
+denominator for this repeat.  The exact paired ledger is
+\path{autonomous_m2_p1_task3_repeat_pair.json}.  This repeat preserves quality
+but fails the saving gate, so the policy does not yet advance to Easy-14.
 
 \section{Context-Qualified Easy-14 Confirmation Ledger}
 
@@ -3259,9 +3281,11 @@ The frozen profile screen identifies E0+M1/V1/P1 at 39.81\% opportunity and
 R1/M1/V1/P1 at 37.43\%, but their first autonomous pilots both fail with the
 same incorrect patch.  Coarse semantic role floors therefore do not substitute
 for an information-flow test.  The later recent-frontier DAG $M=2$/P1 policy
-supersedes these candidates: it preserves 3/3 paired successes with 40.83\%
-aggregate saving and no call increase, qualifying Easy-14 confirmation but not
-yet transfer as a Paper~4.5 production default.  The
+supersedes these candidates in the initial screen: it preserves 3/3 paired
+successes with 40.83\% aggregate saving and no call increase.  Its first
+contemporaneous Task-3 repeat preserves success and calls but saves only
+9.96\%, failing the repeated saving gate.  It therefore does not yet qualify
+Easy-14 expansion or transfer as a Paper~4.5 production default.  The
 one-to-fourteen-issue campaign continues to treat active-only retirement as session
 hygiene unless it beats deliberate fresh sessions on related or dependent
 sequences. Held-out sequences, additional models, and additional harnesses
