@@ -171,6 +171,21 @@ def _request_messages(
     return messages, len(messages) - current_visible_count
 
 
+def _assistant_content(
+    trajectory: Mapping[str, Any], assistant_ordinal: int,
+) -> str:
+    messages = trajectory.get("messages")
+    if not isinstance(messages, list):
+        raise ValueError("current trajectory has no messages")
+    seen = 0
+    for message in messages:
+        if isinstance(message, Mapping) and message.get("role") == "assistant":
+            seen += 1
+            if seen == assistant_ordinal:
+                return str(message.get("content", ""))
+    raise ValueError(f"trajectory has no assistant decision {assistant_ordinal}")
+
+
 def export_fixture(
     *,
     persistent_prefix: Path,
@@ -178,6 +193,12 @@ def export_fixture(
     request_selection: Path,
     output: Path,
     segment_tokens: int = 256,
+    request_replay_output: Path | None = None,
+    model: str | None = None,
+    temperature: float = 0.0,
+    top_p: float = 1.0,
+    seed: int = 0,
+    max_completion_tokens: int = 1024,
 ) -> dict[str, Any]:
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
@@ -192,12 +213,15 @@ def export_fixture(
     ]
     if not trace_rows:
         raise ValueError("request selection trace is empty")
+    if request_replay_output is not None and not model:
+        raise ValueError("request replay export requires a model identity")
     session_ids = {str(row.get("session_id") or "") for row in trace_rows}
     if len(session_ids) != 1 or not next(iter(session_ids)):
         raise ValueError("request trace has ambiguous session identity")
     session_id = next(iter(session_ids))
 
     fixture_rows: list[dict[str, Any]] = []
+    replay_rows: list[dict[str, Any]] = []
     for ordinal, trace in enumerate(trace_rows, 1):
         if int(trace.get("request_index", -1)) != ordinal:
             raise ValueError("request trace is not a contiguous one-based sequence")
@@ -253,13 +277,42 @@ def export_fixture(
                 for resource_id, text in resources
             ],
         })
+        if request_replay_output is not None:
+            expected_content = _assistant_content(current, ordinal)
+            replay_rows.append({
+                "schema_version": 1,
+                "contract": "paper8.5-frozen-agent-request-replay-v1",
+                "request_index": ordinal,
+                "request_input_sha256": trace["request_input_sha256"],
+                "session_id": session_id,
+                "logical_payload": {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": float(temperature),
+                    "top_p": float(top_p),
+                    "seed": int(seed),
+                    "stream": False,
+                    "max_tokens": int(max_completion_tokens),
+                    "session_id": session_id,
+                },
+                "expected_assistant_content": expected_content,
+                "expected_assistant_content_sha256": _content_digest(
+                    expected_content
+                ),
+            })
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in fixture_rows),
         encoding="utf-8",
     )
-    return {
+    if request_replay_output is not None:
+        request_replay_output.parent.mkdir(parents=True, exist_ok=True)
+        request_replay_output.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in replay_rows),
+            encoding="utf-8",
+        )
+    result = {
         "schema_version": 1,
         "contract": "paper8.5-to-paper4.5-frozen-plan-export-v1",
         "prefix_sha256": prefix_identity["sha256"],
@@ -270,6 +323,18 @@ def export_fixture(
         "segment_tokens": segment_tokens,
         "source_policy": fixture_rows[0]["source_policy"],
     }
+    if request_replay_output is not None:
+        result.update({
+            "request_replay_sha256": hashlib.sha256(
+                request_replay_output.read_bytes()
+            ).hexdigest(),
+            "model": model,
+            "temperature": float(temperature),
+            "top_p": float(top_p),
+            "seed": int(seed),
+            "max_completion_tokens": int(max_completion_tokens),
+        })
+    return result
 
 
 def main() -> None:
@@ -279,6 +344,12 @@ def main() -> None:
     parser.add_argument("--request-selection", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--request-replay-output", type=Path)
+    parser.add_argument("--model")
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--segment-tokens", type=int, default=256)
     args = parser.parse_args()
     result = export_fixture(
@@ -287,6 +358,12 @@ def main() -> None:
         request_selection=args.request_selection,
         output=args.output,
         segment_tokens=args.segment_tokens,
+        request_replay_output=args.request_replay_output,
+        model=args.model,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        seed=args.seed,
+        max_completion_tokens=args.max_completion_tokens,
     )
     if args.manifest:
         args.manifest.parent.mkdir(parents=True, exist_ok=True)

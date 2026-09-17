@@ -35,14 +35,17 @@ The current-episode mandatory floor is exported explicitly so a downstream
 engine harness cannot pull the preceding issue's final turn back into a new
 issue.
 
-| Task | Requests | Frozen fixture | SHA-256 |
+| Task | Requests | Frozen fixture SHA-256 | Frozen request replay SHA-256 |
 |---|---:|---|---|
-| 3 | 7 | `paper4_5_task3_frozen_plan.jsonl` | `04c9fbad18b9a98648da86edecf8a88fe40dc915a1e58e75154ab472dcd2f1e5` |
-| 4 | 6 | `paper4_5_task4_frozen_plan.jsonl` | `b1f0b05f3266d2d3cf2dd18c3d308da90898aedd9d4b7909b3a6f4e80d8bf777` |
-| 5 | 9 | `paper4_5_task5_frozen_plan.jsonl` | `e292c5e255a17d4b77f354f09a73cedbae2e9172d965872811f537d0cf9dfc82` |
+| 3 | 7 | `04c9fbad18b9a98648da86edecf8a88fe40dc915a1e58e75154ab472dcd2f1e5` | `ff3f0983ec2d4a8b086ab5631eb8fc331fdef8f03073bd0b5f70887bac3e2ff2` |
+| 4 | 6 | `b1f0b05f3266d2d3cf2dd18c3d308da90898aedd9d4b7909b3a6f4e80d8bf777` | `12f42421cdbb925e82335753fe89f98fba453bdc646e1ed5909b7a199bd06be9` |
+| 5 | 9 | `e292c5e255a17d4b77f354f09a73cedbae2e9172d965872811f537d0cf9dfc82` | `86de3ea93f477940f8f041bf6bf378cd7a80ce93e69932b68f8a957957a2941d` |
 
-The adjacent manifests bind each fixture to the prefix, trajectory, selection
-trace, segmentation rule, source policy, and request count.  Logical success
-and token saving remain Paper 8.5 claims.  Paper 4.5 must replay these fixtures
-unchanged and report resident-K/V realization, re-encoding, copy, temporary
-bytes, lifecycle behavior, and task behavior separately.
+Each `paper4_5_task*_request_replay.jsonl` file contains the exact full logical
+messages, frozen generation settings, and recorded assistant response for the
+same decisions.  The adjacent manifests bind both files to the prefix,
+trajectory, selection trace, segmentation rule, source policy, model, and
+request count.  Logical success and token saving remain Paper 8.5 claims.
+Paper 4.5 must replay these fixtures unchanged and report resident-K/V
+realization, re-encoding, copy, temporary bytes, lifecycle behavior, and task
+behavior separately.

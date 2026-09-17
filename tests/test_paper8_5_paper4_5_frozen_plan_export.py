@@ -71,6 +71,7 @@ def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> N
     trajectory = tmp_path / "trajectory.json"
     selection = tmp_path / "selection.jsonl"
     output = tmp_path / "fixture.jsonl"
+    replay = tmp_path / "requests.jsonl"
     prefix.write_text(json.dumps(prior), encoding="utf-8")
     trajectory.write_text(json.dumps(current), encoding="utf-8")
     selection.write_text(json.dumps(trace) + "\n", encoding="utf-8")
@@ -80,6 +81,8 @@ def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> N
         trajectory=trajectory,
         request_selection=selection,
         output=output,
+        request_replay_output=replay,
+        model="model",
     )
 
     row = json.loads(output.read_text(encoding="utf-8"))
@@ -91,3 +94,14 @@ def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> N
     assert row["selected_resource_digest"] == _selection_digest([
         ("m1-0-user", "old task")
     ])
+    replay_row = json.loads(replay.read_text(encoding="utf-8"))
+    assert replay_row["request_input_sha256"] == trace["request_input_sha256"]
+    assert replay_row["logical_payload"]["messages"] == request
+    assert replay_row["logical_payload"]["model"] == "model"
+    assert replay_row["expected_assistant_content"] == "new action"
+    assert replay_row["expected_assistant_content_sha256"] == _content_digest(
+        "new action"
+    )
+    assert manifest["request_replay_sha256"] == hashlib.sha256(
+        replay.read_bytes()
+    ).hexdigest()
