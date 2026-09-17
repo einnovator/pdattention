@@ -231,6 +231,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         source_ids = list(geometry.source_ids)
         wire_tail = list(geometry.wire_tail_ids)
         plan = geometry.plan
+        materialized_history = tuple(
+            (span.token_ids, span.position_start)
+            for span in geometry.materialized_history_spans
+        )
     else:
         if args.trajectory is None:
             raise ValueError(
@@ -254,6 +258,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             source_tokens=len(source_ids),
             retention_fraction=args.retention_fraction,
         )
+        materialized_history = ()
     ordinary_full_tokens = None
     ordinary_full_logits = None
     if frozen_decision and args.frozen_full_retention:
@@ -318,7 +323,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         two_borrower_offload_error = ""
 
     candidate_result = candidate.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        materialized_history=materialized_history,
     )
     one_borrower = runtime.registry.view(identities["source_id"]).active_request_ids
     try:
@@ -328,7 +336,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     else:
         one_borrower_offload_error = ""
     reference_result = reference.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        materialized_history=materialized_history,
     )
 
     cancelled = begin("cancelled")
@@ -338,6 +349,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             wire_tail,
             max_new_tokens=args.continuation_tokens,
             cancelled=lambda: True,
+            materialized_history=materialized_history,
         )
     except HFLiveKVRequestCancelled:
         cancellation_observed = True
@@ -357,7 +369,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     restored_view = runtime.registry.view(identities["source_id"])
     restored_source_fingerprint = restored_fingerprints[-1]
     restored_result = restored.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        materialized_history=materialized_history,
     )
 
     active_at_termination = begin("terminated-active")
@@ -416,8 +431,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "termination_removed_source": removed == 1 and runtime.registry.view(identities["source_id"]) is None,
         "termination_tombstone_rejected_recreation": "terminated" in tombstone_error,
         "original_positions_preserved": candidate_result.source_position_base == len(source_ids),
-        "zero_selected_history_reencoding": all(
-            row.selected_text_reencoded_tokens == 0
+        "selected_history_reencoding_equals_explicit_materialization": all(
+            row.selected_text_reencoded_tokens
+            == sum(len(tokens) for tokens, _position in materialized_history)
             for row in (candidate_result, reference_result, restored_result)
         ),
     }
@@ -447,15 +463,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "turn": args.turn if frozen_decision is None else None,
         "retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + sum(len(tokens) for tokens, _position in materialized_history)
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision else args.retention_fraction
         ),
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
         "prefill_step_size": args.prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
+        "materialized_history_tokens": sum(
+            len(tokens) for tokens, _position in materialized_history
+        ),
         "realized_retention_fraction": (
-            (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
+            (
+                plan.selected_tokens
+                + sum(len(tokens) for tokens, _position in materialized_history)
+                + len(wire_tail)
+            ) / max(len(prompt_ids), 1)
             if frozen_decision
             else plan.selected_tokens / max(len(source_ids), 1)
         ),

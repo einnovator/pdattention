@@ -21,6 +21,15 @@ from .sparse_gate_common import causal_message_spans
 
 
 @dataclass(frozen=True)
+class FrozenMaterializedMessage:
+    record_id: str
+    message_index: int
+    role: str
+    content: str
+    content_sha256: str
+
+
+@dataclass(frozen=True)
 class FrozenAgentDecision:
     request_index: int
     request_input_sha256: str
@@ -31,6 +40,7 @@ class FrozenAgentDecision:
     mandatory_message_indices: tuple[int, ...]
     source_policy: str
     source_plan_digest: str
+    materialized_message_replacements: tuple[FrozenMaterializedMessage, ...]
 
 
 @dataclass(frozen=True)
@@ -41,14 +51,29 @@ class FrozenLiveKVGeometry:
     plan: LiveKVSelectionPlan
     selected_message_indices: tuple[int, ...]
     mandatory_message_indices: tuple[int, ...]
+    materialized_history_spans: tuple["FrozenMaterializedSpan", ...] = ()
 
     @property
     def realized_retention_fraction(self) -> float:
         if not self.prompt_ids:
             return 1.0
-        return (self.plan.selected_tokens + len(self.wire_tail_ids)) / len(
+        materialized = sum(len(span.token_ids) for span in self.materialized_history_spans)
+        return (self.plan.selected_tokens + materialized + len(self.wire_tail_ids)) / len(
             self.prompt_ids
         )
+
+
+@dataclass(frozen=True)
+class FrozenMaterializedSpan:
+    record_id: str
+    message_index: int
+    role: str
+    token_ids: tuple[int, ...]
+    position_start: int
+
+    @property
+    def position_end(self) -> int:
+        return self.position_start + len(self.token_ids)
 
 
 def _content_sha256(value: str) -> str:
@@ -128,6 +153,47 @@ def load_frozen_agent_decisions(
             raise ValueError(f"request {ordinal} has no frozen mandatory floor")
         if not set(mandatory).issubset(selected):
             raise ValueError(f"request {ordinal} omits mandatory selected state")
+        raw_replacements = plan_row.get("materialized_message_replacements", [])
+        if not isinstance(raw_replacements, list):
+            raise ValueError(f"request {ordinal} materialized replacements are not a list")
+        replacements: list[FrozenMaterializedMessage] = []
+        resource_text_by_index: dict[int, str] = {}
+        for resource in plan_row.get("resources", ()):
+            if not isinstance(resource, Mapping):
+                continue
+            resource_id = str(resource.get("resource_id", ""))
+            prefix = resource_id.split("-", 1)[0]
+            if not prefix.startswith("m") or not prefix[1:].isdigit():
+                continue
+            index = int(prefix[1:])
+            resource_text_by_index[index] = (
+                resource_text_by_index.get(index, "") + str(resource.get("text", ""))
+            )
+        for replacement in raw_replacements:
+            if not isinstance(replacement, Mapping):
+                raise ValueError(f"request {ordinal} has a malformed replacement")
+            index = int(replacement.get("message_index", -1))
+            record_id = str(replacement.get("record_id", ""))
+            role = str(replacement.get("role", ""))
+            content = str(replacement.get("content", ""))
+            content_sha256 = str(replacement.get("content_sha256", ""))
+            if record_id != f"record-{index:06d}":
+                raise ValueError(f"request {ordinal} replacement identity mismatch")
+            if index not in selected or index in mandatory:
+                raise ValueError(f"request {ordinal} replacement is not selected history")
+            if role != str(messages[index].get("role", "")):
+                raise ValueError(f"request {ordinal} replacement role mismatch")
+            if _content_sha256(content) != content_sha256:
+                raise ValueError(f"request {ordinal} replacement content hash mismatch")
+            if resource_text_by_index.get(index) != content:
+                raise ValueError(f"request {ordinal} replacement resource mismatch")
+            replacements.append(FrozenMaterializedMessage(
+                record_id=record_id,
+                message_index=index,
+                role=role,
+                content=content,
+                content_sha256=content_sha256,
+            ))
         decisions.append(FrozenAgentDecision(
             request_index=ordinal,
             request_input_sha256=request_digest,
@@ -138,6 +204,7 @@ def load_frozen_agent_decisions(
             mandatory_message_indices=mandatory,
             source_policy=str(plan_entry.source_policy or ""),
             source_plan_digest=str(plan_entry.source_plan_digest or ""),
+            materialized_message_replacements=tuple(replacements),
         ))
     if set(plan_by_digest) != {row.request_input_sha256 for row in decisions}:
         raise ValueError("request replay and selection fixture have different cohorts")
@@ -193,12 +260,19 @@ def frozen_live_kv_geometry(
     source_spans = tuple(
         span for span in full_spans if span.end <= source_tokens
     )
+    source_span_by_index = {
+        int(str(span.record_id).split(":", 2)[1]): span for span in source_spans
+    }
+    replacement_indices = {
+        replacement.message_index
+        for replacement in decision.materialized_message_replacements
+    }
     selected_source_indices = (
         set(range(active_start))
         if full_retention
         else {
             index for index in decision.selected_message_indices
-            if index < active_start
+            if index < active_start and index not in replacement_indices
         }
     )
     intervals = tuple(
@@ -210,6 +284,50 @@ def frozen_live_kv_geometry(
         intervals,
         source_position_base=source_tokens,
     )
+    materialized_spans: list[FrozenMaterializedSpan] = []
+    if not full_retention:
+        for replacement in decision.materialized_message_replacements:
+            source_span = source_span_by_index.get(replacement.message_index)
+            if source_span is None:
+                raise ValueError("materialized replacement is outside historical source")
+            variant = [dict(message) for message in messages]
+            variant[replacement.message_index]["content"] = replacement.content
+            variant_prompt_ids = _render_prompt(tokenizer, variant)
+            variant_spans = causal_message_spans(
+                tokenizer,
+                variant,
+                variant_prompt_ids,
+                source_tokens=len(variant_prompt_ids),
+                prefix_ids_cache=prefix_ids_cache,
+            )
+            variant_span = next(
+                (
+                    span for span in variant_spans
+                    if str(span.record_id).startswith(
+                        f"message:{replacement.message_index}:"
+                    )
+                ),
+                None,
+            )
+            if variant_span is None:
+                raise ValueError("chat template did not expose replacement span")
+            token_ids = tuple(
+                int(value)
+                for value in variant_prompt_ids[variant_span.start:variant_span.end]
+            )
+            if not token_ids:
+                raise ValueError("materialized replacement produced no tokens")
+            if len(token_ids) > source_span.tokens:
+                raise ValueError(
+                    "materialized replacement exceeds its original logical position span"
+                )
+            materialized_spans.append(FrozenMaterializedSpan(
+                record_id=replacement.record_id,
+                message_index=replacement.message_index,
+                role=replacement.role,
+                token_ids=token_ids,
+                position_start=source_span.start,
+            ))
     return FrozenLiveKVGeometry(
         prompt_ids=tuple(prompt_ids),
         source_ids=tuple(prompt_ids[:source_tokens]),
@@ -217,4 +335,5 @@ def frozen_live_kv_geometry(
         plan=plan,
         selected_message_indices=decision.selected_message_indices,
         mandatory_message_indices=decision.mandatory_message_indices,
+        materialized_history_spans=tuple(materialized_spans),
     )

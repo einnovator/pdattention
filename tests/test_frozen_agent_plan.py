@@ -126,3 +126,31 @@ def test_strict_paper85_request_and_plan_bundles_join_exactly() -> None:
             row.source_policy == "frontier_dag_m2_heuristic_p1"
             for row in decisions
         )
+
+
+def test_materialized_receipt_fixture_exposes_mixed_kv_spans() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1"
+    )
+    decisions = load_frozen_agent_decisions(
+        root / "request_replay.jsonl", root / "frozen_plan.jsonl"
+    )
+    assert len(decisions) == 9
+    assert decisions[-1].materialized_message_replacements
+
+    geometry = frozen_live_kv_geometry(CharacterTemplate(), decisions[-1])
+    assert geometry.materialized_history_spans
+    replacement_indices = {
+        row.message_index for row in decisions[-1].materialized_message_replacements
+    }
+    selected_resident_indices = {
+        int(str(interval.record_id).split(":", 2)[1])
+        for interval in geometry.plan.intervals
+    }
+    assert replacement_indices.isdisjoint(selected_resident_indices)
+    assert all(
+        row.position_end <= geometry.plan.source_position_base
+        for row in geometry.materialized_history_spans
+    )

@@ -446,6 +446,32 @@ def test_hf_request_borrow_spans_real_decode_and_finishes_exactly_once() -> None
     }
 
 
+def test_hf_request_materializes_positioned_history_before_wire_tail() -> None:
+    torch = pytest.importorskip("torch")
+    runtime = _hf_runtime(torch)
+    runtime.register_source(
+        "source", _hf_cache(torch), tenant_id="tenant", session_id="session",
+        generation=1,
+    )
+    request = _begin_hf_request(runtime, "materialized")
+    model = _DeterministicHFModel(torch)
+
+    result = request.generate(
+        model,
+        [5, 6],
+        max_new_tokens=1,
+        materialized_history=(([9, 10], 2),),
+    )
+
+    assert [row["position_ids"] for row in model.calls] == [
+        [[2, 3]],
+        [[6, 7]],
+    ]
+    assert result.selected_kv_tokens == 4
+    assert result.selected_text_reencoded_tokens == 2
+    assert request.outcome == "finished"
+
+
 def test_hf_request_cancellation_and_model_error_release_exactly_once() -> None:
     torch = pytest.importorskip("torch")
     runtime = _hf_runtime(torch)

@@ -7,7 +7,7 @@ import inspect
 from dataclasses import dataclass, field
 from types import MethodType
 from threading import RLock
-from typing import Callable, Generic, Iterable, TypeVar
+from typing import Callable, Generic, Iterable, Sequence, TypeVar
 
 from .live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 
@@ -132,6 +132,7 @@ class HFLiveKVRequest(Generic[T]):
         *,
         max_new_tokens: int,
         cancelled: Callable[[], bool] | None = None,
+        materialized_history: Sequence[tuple[Sequence[int], int]] = (),
     ) -> HFLiveKVGeneration:
         """Run greedy HF decode at the source's original position extent.
 
@@ -164,12 +165,33 @@ class HFLiveKVRequest(Generic[T]):
                 device = ids.device
             ids = ids.to(device=device, dtype=torch.long)
             position_base = self.selection.plan.source_position_base
-            positions = torch.arange(
+            active_positions = torch.arange(
                 position_base,
                 position_base + int(ids.shape[1]),
                 dtype=torch.long,
                 device=device,
             )
+            positioned_segments: list[tuple[object, object]] = []
+            prior_end = -1
+            materialized_tokens = 0
+            for token_values, position_start_value in materialized_history:
+                token_list = [int(value) for value in token_values]
+                position_start = int(position_start_value)
+                if not token_list:
+                    raise ValueError("Materialized HF history spans cannot be empty.")
+                if position_start < prior_end:
+                    raise ValueError("Materialized HF history spans must be ordered and disjoint.")
+                position_end = position_start + len(token_list)
+                if position_end > position_base:
+                    raise ValueError("Materialized HF history must precede the active wire tail.")
+                segment_ids = torch.tensor([token_list], dtype=torch.long, device=device)
+                segment_positions = torch.arange(
+                    position_start, position_end, dtype=torch.long, device=device
+                )
+                positioned_segments.append((segment_ids, segment_positions))
+                prior_end = position_end
+                materialized_tokens += len(token_list)
+            positioned_segments.append((ids, active_positions))
             generated: list[int] = []
             logits_trace: list[object] = []
             cache = self.selection.cache
@@ -188,16 +210,23 @@ class HFLiveKVRequest(Generic[T]):
             if hasattr(model, "modules"):
                 enable_qwen_sparse_live_kv(model)
             with torch.inference_mode():
-                output = model(
-                    input_ids=ids,
-                    past_key_values=cache,
-                    position_ids=positions.unsqueeze(0),
-                    cache_position=positions,
-                    use_cache=True,
-                    return_dict=True,
-                )
+                output = None
+                for segment_ids, positions in positioned_segments:
+                    if cancelled is not None and cancelled():
+                        raise HFLiveKVRequestCancelled(
+                            f"HF live-K/V request {self.request_id!r} was cancelled."
+                        )
+                    output = model(
+                        input_ids=segment_ids,
+                        past_key_values=cache,
+                        position_ids=positions.unsqueeze(0),
+                        cache_position=positions,
+                        use_cache=True,
+                        return_dict=True,
+                    )
+                    cache = output.past_key_values
+            assert output is not None
             logits = output.logits
-            cache = output.past_key_values
             for step in range(max_new_tokens):
                 if cancelled is not None and cancelled():
                     raise HFLiveKVRequestCancelled(
@@ -239,7 +268,7 @@ class HFLiveKVRequest(Generic[T]):
             tuple(logits_trace),
             position_base,
             self.selection.plan.selected_tokens,
-            self.selection.selected_text_reencoded_tokens,
+            self.selection.selected_text_reencoded_tokens + materialized_tokens,
             bool(
                 self.selection.physical_kv_copy
                 or self.selection.transient_kv_copy_bytes > 0
@@ -559,18 +588,24 @@ def segmented_qwen_attention(
     if not rows:
         raise ValueError("Sparse attention requires at least the current query K/V segment.")
 
-    if query.is_cuda and source_keys is not None and source_values is not None:
-        source_count = len(source_intervals)
-        tail_rows = rows[source_count:]
-        if source_count <= 0 or len(rows) < source_count or not tail_rows:
-            raise ValueError(
-                "Fused HF attention requires source intervals and request-local K/V."
-            )
+    source_count = len(source_intervals)
+    tail_rows = rows[source_count:]
+    tail_is_contiguous = bool(tail_rows)
+    if tail_rows:
         expected_position = tail_rows[0].position_start
         for row in tail_rows:
             if row.position_start != expected_position:
-                raise ValueError("Fused HF request-local K/V positions must be contiguous.")
+                tail_is_contiguous = False
+                break
             expected_position = row.position_end
+    if (
+        query.is_cuda
+        and source_keys is not None
+        and source_values is not None
+        and source_count > 0
+        and len(rows) >= source_count
+        and tail_is_contiguous
+    ):
         if len(tail_rows) == 1:
             local_keys = tail_rows[0].keys
             local_values = tail_rows[0].values
