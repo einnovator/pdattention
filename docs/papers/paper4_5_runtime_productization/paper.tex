@@ -3522,16 +3522,24 @@ task-accuracy evidence.
 This M2/P1 row is an \emph{earlier-policy mechanism control}, not the current
 Paper~8.5 agent-policy result.  In particular, it contains no model-visible
 compact closure receipts and its approximately 52\% saving must not be carried
-forward as E2+F1C evidence.  The first receipt-aware E2+F1C execution fixes
-request~9 of the successful Scikit trajectory.  On HF/CUDA it selects
-17,978 resident original-position K/V tokens from a 29,067-token source,
-encodes 664 compact-receipt tokens at their original logical positions, and
-appends the 305-token active suffix.  Charging those receipts gives 35.87\%
+forward as E2+F1C evidence.  The first receipt-aware E2+F1C executions fix
+request~9 of the successful Scikit trajectory.  HF/CUDA, direct MLX, and
+SGLang-MLX all
+select 17,978 resident original-position K/V tokens from a 29,067-token source,
+encode 664 compact-receipt tokens at their original logical positions, and
+append the 305-token active suffix.  Charging those receipts gives 35.87\%
 history saving and 35.49\% total-visible-token saving (38.15\% resident-only
 K/V omission), with zero selected-K/V copy, exact same-subset logits and next
-token, and a passing lifecycle gate.  This remains a single request-level
-mechanism result.  The receipt-aware MLX, SGLang, and vLLM rows are pending and
-the older M2/P1 rows are not proxies for them.
+token, and passing lifecycle gates.  MLX and SGLang limit the first-layer
+disjoint-attention peak to 172,499 bytes, 0.234\% of the 73,637,888-byte
+selected-layer K/V extent.  The SGLang row further verifies genuine
+offload: the source owner is removed without returning its cache to the
+engine's reusable pool, and restore recovers the exact selected K/V.  These
+remain request-level mechanism results, not autonomous agent solves.  vLLM
+still requires causally positioned receipt-page construction.  Its 16-token
+page geometry would select 18,016 tokens, 38 above the logical plan, predicting
+35.73\% history and 35.36\% total-visible saving after receipts; these are not
+yet measured values.  The older M2/P1 rows are not proxies for them.
 
 The first real MLX frozen-plan check now qualifies one Task~4 request at both
 full and reduced retention on Qwen3-0.6B-4bit.  The reduced row retains

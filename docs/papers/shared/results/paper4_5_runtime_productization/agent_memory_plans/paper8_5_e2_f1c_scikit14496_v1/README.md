@@ -29,12 +29,21 @@ Do not substitute the older M2/P1 cross-engine rows for this fixture. Those
 rows remain mechanism controls for an earlier policy and do not include the
 model-visible compact closure receipts used by E2+F1C.
 
-The receipt-aware HF/CUDA request-9 run is recorded in
-`hf_qwen3_06b_request9_mixed_v1.json`. It selects 17,978 resident original-K/V
-tokens from a 29,067-token source, explicitly encodes 664 receipt tokens at
-their original logical positions, and appends a 305-token active suffix. After
-charging the receipts, history saving is 35.87% and total-visible-token saving
-is 35.49%; resident-only K/V omission is 38.15%. The same-subset token and
-logits are exact, selected-K/V copy is zero, and the lifecycle gate passes.
-This is one request-level result. MLX, SGLang and vLLM remain pending on this
-exact receipt-aware fixture.
+The receipt-aware HF/CUDA, direct-MLX, and SGLang-MLX request-9 runs are
+recorded in `hf_qwen3_06b_request9_mixed_v1.json`,
+`mlx_qwen3_06b_request9_mixed_final_v1.json`, and
+`sglang_qwen3_06b_request9_mixed_true_offload_v1.json`. All three select the same
+17,978 resident original-K/V tokens from a 29,067-token source, explicitly
+encode 664 receipt tokens at their original logical positions, and append a
+305-token active suffix. After charging the receipts, history saving is 35.87%
+and total-visible-token saving is 35.49%; resident-only K/V omission is 38.15%.
+All have exact same-subset logits and next tokens, zero selected-K/V copy, and
+passing lifecycle gates. MLX and SGLang limit the first-layer disjoint-attention
+peak to 172,499 bytes, 0.234% of the 73,637,888-byte selected-layer K/V extent.
+The SGLang row additionally verifies that offload
+removes the source owner without returning its cache to SGLang's reusable pool,
+then restores the exact selected K/V. These are request-level mechanism results,
+not autonomous task-accuracy results. vLLM still requires causally positioned
+receipt-page construction. Its 16-token page geometry would select 18,016
+tokens (38 tokens above the logical plan), predicting 35.73% history and 35.36%
+total-visible saving after receipts; those values are not yet measured evidence.
