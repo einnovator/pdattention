@@ -217,6 +217,7 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
     spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
     benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
     spec["strategies"][1]["completed_instruction_epochs"] = 2
+    spec["strategies"][1]["frontier_workflow_exemplars"] = 1
     cells = campaign_cells(spec)
     treatment = next(
         row for row in cells
@@ -249,6 +250,7 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
     )
 
     assert command[command.index("--completed-instruction-epochs") + 1] == "2"
+    assert command[command.index("--frontier-workflow-exemplars") + 1] == "1"
     assert command[command.index("--docker-pull-timeout-seconds") + 1] == "900"
 
 

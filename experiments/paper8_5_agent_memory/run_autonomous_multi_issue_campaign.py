@@ -288,6 +288,9 @@ def _episode_command(
         "--frontier-protocol-exemplars", str(
             strategy.get("frontier_protocol_exemplars", 0)
         ),
+        "--frontier-workflow-exemplars", str(
+            strategy.get("frontier_workflow_exemplars", 0)
+        ),
         "--boundary-mode", str(strategy.get("boundary_mode", "explicit")),
         "--temperature", str(generation["temperature"]),
         "--top-p", str(generation["top_p"]),
