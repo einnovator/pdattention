@@ -40,6 +40,25 @@ not cumulative autonomous input. The result establishes logical opportunity
 and oracle alignment only. It does **not** establish unchanged task accuracy,
 calls-to-solution, or end-to-end token saving.
 
+## Autonomous paired pilots
+
+The first paired-FULL-success pilot is Task 5 (`django__django-16145`). FULL
+and recent-frontier DAG `M=2` both resolve officially in 12 calls. The DAG run
+materializes 137,055 cumulative input tokens versus 264,204 for FULL: 48.13%
+paired saving with zero call increase. The runs diverge at the first assistant
+action and submit different resolving patches, so this is endpoint-quality
+preservation, not exact trajectory parity. It is one task identity and cannot
+select a default policy without repetition and additional paired successes.
+
+The Task 6 pilot is an efficiency rejection. Both arms fail official grading,
+while DAG `M=2` takes 15 calls versus five and materializes 77.91% more paired
+input despite pruning 41.19% relative to its own trajectory counterfactual.
+This demonstrates why per-request pruning must not be reported as end-to-end
+saving when the policy changes the trajectory.
+
+Complete trajectories, manifests, and official outcomes are in
+`autonomous_task5_m2_v1/` and `autonomous_task6_m2_v1/`.
+
 ## Implementation correction discovered by this screen
 
 The first audit reached only 16–18% oracle recall because the mini-swe-agent

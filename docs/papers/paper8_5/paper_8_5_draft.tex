@@ -61,7 +61,10 @@ defines the frontier by the last two or three ordinary user prompts and retires
 only older causal groups with no information-flow path into that frontier.  It
 matches the independent-workspace oracle at 100\% token-weighted precision and
 recall and exposes up to 39.30\% final-snapshot opportunity, but remains an
-offline result until autonomous quality and cumulative work are measured.
+offline result until autonomous quality and cumulative work are measured.  In
+the first paired-\textsc{Full}-success autonomous pilot, the $M=2$ DAG policy
+also resolves, uses the same 12 calls, and saves 48.13\% paired input.  This is
+a qualifying one-task mechanism point, not an accuracy estimate or default.
 \end{abstract}
 
 \iffalse
@@ -1026,6 +1029,16 @@ official grading, so the row says nothing about accuracy; it does show that
 through trajectory inflation.  The next quality test therefore uses a paired
 \textsc{Full}-success task rather than averaging this failed control.
 
+That paired-success test supplies the first positive point.  On Task~5,
+historical persistent \textsc{Full} and DAG $M=2$ both resolve officially in
+12 calls.  The DAG treatment sends 137,055 message-content tokens versus
+264,204 for \textsc{Full}, a 48.13\% paired saving with no call increase.  It
+diverges at the first action and produces a different resolving patch, so this
+is not exact-trajectory parity; it is the intended quality--work endpoint.
+One identity is insufficient to estimate accuracy, and promotion still
+requires repetition plus at least two additional paired \textsc{Full}
+successes.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1096,6 +1109,16 @@ confidence and make the certified gate fail closed rather than inventing a
 proof of irrelevance.  Full candidates, source hashes, simplification costs,
 and oracle errors are stored in
 \path{frontier_information_flow_oracle_v1/evidence.json}.
+
+Two autonomous forks then test cumulative behavior.  Task~6 is an efficiency
+rejection: both treatment and historical \textsc{Full} fail, while $M=2$ adds
+ten calls and sends 77.91\% more paired input despite 41.19\% own-trajectory
+pruning.  Task~5 is the paired-success positive: both arms resolve in 12 calls,
+and $M=2$ saves 48.13\% paired input.  Treatment and \textsc{Full} diverge at
+the first command and submit different resolving patches.  Their complete
+metrics, manifests, and trajectories are stored under
+\path{frontier_information_flow_oracle_v1/autonomous_task5_m2_v1} and
+\path{frontier_information_flow_oracle_v1/autonomous_task6_m2_v1}.
 
 \section{Context-Qualified Easy-14 Confirmation Ledger}
 
