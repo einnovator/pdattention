@@ -26,12 +26,14 @@ def _generate(
     llm: LLM,
     token_ids: list[int],
     command: SparseCudaConnectorCommand | CudaConnectorCommand,
+    *,
+    max_tokens: int = 1,
 ) -> tuple[list[int], float]:
     torch.cuda.synchronize()
     started = time.perf_counter()
     rows = llm.generate(
         {"prompt_token_ids": token_ids, "cache_salt": command.cache_salt()},
-        SamplingParams(temperature=0, max_tokens=1, ignore_eos=True),
+        SamplingParams(temperature=0, max_tokens=int(max_tokens), ignore_eos=True),
         use_tqdm=False,
     )
     torch.cuda.synchronize()
