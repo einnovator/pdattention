@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from experiments.paper4_5_agent.context_treatment import (
+    _selection_digest,
+    _selection_input_digest,
+)
+from experiments.paper4_5_agent.frozen_agent_plan import (
+    frozen_live_kv_geometry,
+    load_frozen_agent_decisions,
+)
+
+
+class CharacterTemplate:
+    @staticmethod
+    def _render(messages, add_generation_prompt: bool) -> str:
+        text = "".join(
+            f"<{row['role']}>{row['content']}</{row['role']}>"
+            for row in messages
+        )
+        return text + ("<assistant>" if add_generation_prompt else "")
+
+    def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
+        rendered = self._render(messages, add_generation_prompt)
+        return [ord(char) for char in rendered] if tokenize else rendered
+
+    @staticmethod
+    def encode(rendered, *, add_special_tokens):
+        assert not add_special_tokens
+        return [ord(char) for char in rendered]
+
+
+def _write_pair(tmp_path: Path) -> tuple[Path, Path]:
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "old observation"},
+        {"role": "user", "content": "current task"},
+    ]
+    request_digest = _selection_input_digest(messages)
+    resources = [("m1-0-user", "old task")]
+    plan = {
+        "request_index": 1,
+        "request_input_sha256": request_digest,
+        "selected_message_indices": [0, 1, 4],
+        "mandatory_message_indices": [0, 4],
+        "selected_resource_digest": _selection_digest(resources),
+        "source_policy": "frontier_dag_m2_heuristic_p1",
+        "source_plan_digest": "plan",
+        "resources": [
+            {"resource_id": resource_id, "text": text}
+            for resource_id, text in resources
+        ],
+    }
+    response = "THOUGHT: act"
+    replay = {
+        "request_index": 1,
+        "request_input_sha256": request_digest,
+        "session_id": "session",
+        "logical_payload": {"model": "model", "messages": messages},
+        "expected_assistant_content": response,
+        "expected_assistant_content_sha256": hashlib.sha256(
+            response.encode()
+        ).hexdigest(),
+    }
+    plan_path = tmp_path / "plan.jsonl"
+    replay_path = tmp_path / "replay.jsonl"
+    plan_path.write_text(json.dumps(plan) + "\n", encoding="utf-8")
+    replay_path.write_text(json.dumps(replay) + "\n", encoding="utf-8")
+    return replay_path, plan_path
+
+
+def test_frozen_plan_maps_exact_records_and_current_tail(tmp_path: Path) -> None:
+    replay, plan = _write_pair(tmp_path)
+    decision = load_frozen_agent_decisions(replay, plan)[0]
+    geometry = frozen_live_kv_geometry(CharacterTemplate(), decision)
+
+    assert geometry.selected_message_indices == (0, 1, 4)
+    assert geometry.mandatory_message_indices == (0, 4)
+    assert [interval.record_id for interval in geometry.plan.intervals] == [
+        "message:0:system",
+        "message:1:user",
+    ]
+    assert geometry.plan.has_holes
+    assert "<user>current task</user><assistant>" == "".join(
+        chr(token) for token in geometry.wire_tail_ids
+    )
+    assert geometry.realized_retention_fraction < 1.0
+
+    full = frozen_live_kv_geometry(
+        CharacterTemplate(), decision, full_retention=True
+    )
+    assert not full.plan.has_holes
+    assert full.plan.selected_tokens == len(full.source_ids)
+
+
+def test_frozen_plan_rejects_excluded_message_inside_wire_tail(tmp_path: Path) -> None:
+    replay, plan = _write_pair(tmp_path)
+    row = json.loads(plan.read_text(encoding="utf-8"))
+    row["selected_message_indices"] = [0, 1]
+    plan.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="mandatory selected state"):
+        load_frozen_agent_decisions(replay, plan)
+
+
+def test_strict_paper85_request_and_plan_bundles_join_exactly() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_m2_p1_strict_v1"
+    )
+    for task, expected in ((3, 7), (4, 6), (5, 9)):
+        decisions = load_frozen_agent_decisions(
+            root / f"paper4_5_task{task}_request_replay.jsonl",
+            root / f"paper4_5_task{task}_frozen_plan.jsonl",
+        )
+        assert len(decisions) == expected
+        assert all(
+            row.source_policy == "frontier_dag_m2_heuristic_p1"
+            for row in decisions
+        )
