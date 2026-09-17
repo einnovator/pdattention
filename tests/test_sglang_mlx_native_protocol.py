@@ -558,6 +558,7 @@ def test_sglang_offload_releases_engine_owner_and_restores_without_it(
     payload = runtime.offload_source("history")
     assert payload[0] == "offloaded"
     assert "source-owner" not in runner._req_caches
+    assert runner.pool_releases == []
     assert runtime.registry.view("history").tier == "offloaded"
 
     restored = runtime.begin_request(

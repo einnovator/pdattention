@@ -651,6 +651,42 @@ class SGLangMLXNativeBridge:
                 del self._source_owner_pins[owner]
             return True
 
+    def evict_source_owner(self, owner_req_id: str) -> bool:
+        """Remove an idle source request without retaining its K/V in the pool.
+
+        SGLang's ordinary request teardown deliberately returns its preallocated
+        K/V buffers to ``_cache_pool``.  That is useful for request throughput,
+        but it is not an offload: the full Metal allocation and its old bytes
+        remain resident.  A PRA tier transition uses this stricter path after
+        the registry has durably serialized the canonical source.
+        """
+
+        owner = str(owner_req_id)
+        with self._lifecycle_lock:
+            borrowers = tuple(sorted(self._source_owner_pins.get(owner, ())))
+            if borrowers:
+                raise RuntimeError(
+                    "Cannot evict a SGLang source owner while live-K/V requests "
+                    f"borrow it: {borrowers!r}."
+                )
+            caches = getattr(self.runner, "_req_caches", {}).pop(owner, None)
+            if caches is None:
+                return False
+            # Mirror the non-cache-pool state cleanup in MlxModelRunner's pinned
+            # remove_request implementation, intentionally omitting Radix sync
+            # and _release_cache so the large local buffers become reclaimable.
+            for name in (
+                "_req_token_ids",
+                "_req_sampling",
+                "_req_pool_idx",
+                "_req_synced_offset",
+            ):
+                mapping = getattr(self.runner, name, None)
+                if mapping is not None:
+                    mapping.pop(owner, None)
+            self.unregister(owner, outcome="finished")
+            return True
+
     def set_query_start(self, req_id: str, position_start: int) -> None:
         """Position the next request-local prefill span in source coordinates.
 
@@ -850,6 +886,7 @@ class SGLangMLXNativeBridge:
             "physical_kv_copy_reported": True,
             "native_remove_request_terminal_hook": True,
             "source_owner_pin_guard": True,
+            "source_owner_pool_bypass_on_offload": True,
             "request_activation_callback": "MlxModelRunner.prefill_start",
             "selected_cache_callbacks": (
                 "MlxModelRunner._acquire_cache",
@@ -1116,7 +1153,7 @@ class SGLangMLXLiveKVRuntime:
                 owner = owner_row[0]
                 runner_requests = getattr(self.bridge.runner, "_req_caches", None)
                 if runner_requests is None or owner in runner_requests:
-                    self.bridge.runner.remove_request(owner)
+                    self.bridge.evict_source_owner(owner)
             return payload
 
     evict_source = offload_source
@@ -1142,7 +1179,7 @@ class SGLangMLXLiveKVRuntime:
             runner_requests = getattr(self.bridge.runner, "_req_caches", None)
             for source_id, owner in matching:
                 if runner_requests is None or owner in runner_requests:
-                    self.bridge.runner.remove_request(owner)
+                    self.bridge.evict_source_owner(owner)
                 self._source_owners.pop(source_id, None)
             return removed
 
