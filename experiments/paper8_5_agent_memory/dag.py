@@ -44,6 +44,7 @@ class DagEdgeKind(str, Enum):
     DECISION_FLOW = "decision_flow"
     DECLARED_DEPENDENCY = "declared_dependency"
     PROTOCOL_CONTROL = "protocol_control"
+    WORKFLOW_CONTROL = "workflow_control"
 
 
 class ExclusionClass(str, Enum):
@@ -306,6 +307,7 @@ def build_frontier_information_flow_dag(
     *,
     recent_user_prompts: int = 2,
     valid_protocol_exemplars: int = 0,
+    valid_workflow_exemplars: int = 0,
 ) -> FrontierInformationFlowDag:
     """Build a boundary-free, forward information-flow graph.
 
@@ -324,6 +326,8 @@ def build_frontier_information_flow_dag(
         raise ValueError("recent_user_prompts must be positive")
     if valid_protocol_exemplars < 0:
         raise ValueError("valid_protocol_exemplars cannot be negative")
+    if valid_workflow_exemplars < 0:
+        raise ValueError("valid_workflow_exemplars cannot be negative")
     epochs, epoch_for_record = _instruction_epochs(history)
     if not epochs:
         return FrontierInformationFlowDag((), (), (), (), (), ())
@@ -443,8 +447,8 @@ def build_frontier_information_flow_dag(
     # system prompt still describes the protocol.  Validity is declared by the
     # harness adapter from the actual completion envelope; the generic DAG
     # never parses agent-specific command syntax.
-    protocol_barrier_ids: set[str] = set()
-    if valid_protocol_exemplars:
+    control_barrier_ids: set[str] = set()
+    if valid_protocol_exemplars or valid_workflow_exemplars:
         valid_groups: list[tuple[str, str]] = []
         seen_groups: set[str] = set()
         for record in sorted(
@@ -456,14 +460,16 @@ def build_frontier_information_flow_dag(
                 continue
             seen_groups.add(record.causal_group_id)
             valid_groups.append((record.causal_group_id, record.record_id))
-            if len(valid_groups) >= valid_protocol_exemplars:
+            if len(valid_groups) >= max(
+                valid_protocol_exemplars, valid_workflow_exemplars
+            ):
                 break
         frontier_instructions = tuple(
             epoch.instruction_record_id for epoch in epochs
             if epoch.epoch_index in frontier_epochs
         )
-        for _, source_id in valid_groups:
-            protocol_barrier_ids.add(source_id)
+        for _, source_id in valid_groups[:valid_protocol_exemplars]:
+            control_barrier_ids.add(source_id)
             for target_id in frontier_instructions:
                 if source_id != target_id:
                     edge_rows.append(DagEdge(
@@ -471,6 +477,57 @@ def build_frontier_information_flow_dag(
                         target_id,
                         DagEdgeKind.PROTOCOL_CONTROL,
                     ))
+
+        # An aggressive one-prompt frontier may retain a valid submission
+        # example yet still lose the workflow fact that a mutation must occur
+        # before verification and submission.  W exemplars therefore pin a
+        # minimal successful mutation -> verification -> completion spine from
+        # the latest harness-certified epoch.  Evidence comes from generic
+        # observation metadata: an actual changed-resource receipt, followed
+        # by a successful observation of that post-mutation resource.  No task
+        # ID, command name, or repository-specific rule is consulted.
+        for _, protocol_id in valid_groups[:valid_workflow_exemplars]:
+            protocol_epoch = epoch_for_record.get(protocol_id)
+            if protocol_epoch is None:
+                continue
+            protocol_index = records[protocol_id].message_index
+            mutation_rows = [
+                records[record_id]
+                for record_id in epochs[protocol_epoch].record_ids
+                if records[record_id].message_index < protocol_index
+                and records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+                and records[record_id].return_code == 0
+                and bool(records[record_id].metadata.get("changed_resource_ids"))
+            ]
+            if not mutation_rows:
+                continue
+            mutation = mutation_rows[-1]
+            changed = {
+                str(value)
+                for value in mutation.metadata.get("changed_resource_ids", ())
+            }
+            verification_rows = [
+                records[record_id]
+                for record_id in epochs[protocol_epoch].record_ids
+                if mutation.message_index < records[record_id].message_index < protocol_index
+                and records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+                and records[record_id].return_code == 0
+                and changed.intersection(_record_resources(records[record_id]))
+                and not records[record_id].metadata.get("changed_resource_ids")
+            ]
+            workflow_sources = [mutation]
+            if verification_rows:
+                workflow_sources.append(verification_rows[-1])
+            workflow_sources.append(records[protocol_id])
+            for source in workflow_sources:
+                control_barrier_ids.add(source.record_id)
+                for target_id in frontier_instructions:
+                    if source.record_id != target_id:
+                        edge_rows.append(DagEdge(
+                            source.record_id,
+                            target_id,
+                            DagEdgeKind.WORKFLOW_CONTROL,
+                        ))
 
     # Deduplicate before reachability so an action+observation pair declaring
     # the same resource does not inflate evidence counts.
@@ -496,7 +553,7 @@ def build_frontier_information_flow_dag(
         # Its own causal predecessors are task-specific work, not protocol
         # dependencies, so liveness must not flood backward through the whole
         # completed instruction epoch.
-        if target in protocol_barrier_ids:
+        if target in control_barrier_ids:
             continue
         for source in incoming.get(target, ()):
             if source not in live:
@@ -980,6 +1037,7 @@ class FrontierDagRetirementSelector:
         recent_user_prompts: int = 2,
         allow_heuristic: bool = False,
         valid_protocol_exemplars: int = 0,
+        valid_workflow_exemplars: int = 0,
     ) -> None:
         if recent_user_prompts < 1:
             raise ValueError("recent_user_prompts must be positive")
@@ -988,6 +1046,9 @@ class FrontierDagRetirementSelector:
         if valid_protocol_exemplars < 0:
             raise ValueError("valid_protocol_exemplars cannot be negative")
         self.valid_protocol_exemplars = valid_protocol_exemplars
+        if valid_workflow_exemplars < 0:
+            raise ValueError("valid_workflow_exemplars cannot be negative")
+        self.valid_workflow_exemplars = valid_workflow_exemplars
 
     def select(
         self,
@@ -1002,6 +1063,7 @@ class FrontierDagRetirementSelector:
             history,
             recent_user_prompts=self.recent_user_prompts,
             valid_protocol_exemplars=self.valid_protocol_exemplars,
+            valid_workflow_exemplars=self.valid_workflow_exemplars,
         )
         eligible = tuple(
             row for row in dag.retirement_candidates
@@ -1043,6 +1105,10 @@ class FrontierDagRetirementSelector:
                 f"frontier_dag_m{self.recent_user_prompts}_"
                 + ("heuristic" if self.allow_heuristic else "certified")
                 + f"_p{self.valid_protocol_exemplars}"
+                + (
+                    f"_w{self.valid_workflow_exemplars}"
+                    if self.valid_workflow_exemplars else ""
+                )
             ),
             selected_record_ids=selected_ids,
             selected_causal_group_ids=selected_groups,

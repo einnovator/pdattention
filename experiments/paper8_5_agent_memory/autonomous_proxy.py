@@ -313,6 +313,7 @@ class AutonomousSelectionConfig:
     completed_instruction_epochs: int = 0
     frontier_recent_user_prompts: int = 2
     frontier_protocol_exemplars: int = 0
+    frontier_workflow_exemplars: int = 0
     frontier_allow_heuristic: bool = False
     keep_completed_task_statements: bool = True
     boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
@@ -360,6 +361,8 @@ class AutonomousSelectionConfig:
             raise ValueError("frontier_recent_user_prompts must be positive")
         if self.frontier_protocol_exemplars < 0:
             raise ValueError("frontier_protocol_exemplars cannot be negative")
+        if self.frontier_workflow_exemplars < 0:
+            raise ValueError("frontier_workflow_exemplars cannot be negative")
         if self.policy == "frontier_dag_retirement" and self.budget_fraction != 1.0:
             raise ValueError(
                 "frontier_dag_retirement is a reachability policy and requires "
@@ -463,6 +466,7 @@ class AutonomousSelectionConfig:
                 recent_user_prompts=self.frontier_recent_user_prompts,
                 allow_heuristic=self.frontier_allow_heuristic,
                 valid_protocol_exemplars=self.frontier_protocol_exemplars,
+                valid_workflow_exemplars=self.frontier_workflow_exemplars,
             )
         if self.policy == "head_tail_recency":
             return HeadMiddleTailSelector(HeadMiddleTailConfig(
@@ -869,6 +873,7 @@ def transform_autonomous_payload(
         "compact_completed_finalizations": config.compact_completed_finalizations,
         "retire_closed_instructions": config.retire_closed_instructions,
         "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
+        "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
         "prior_finalization_receipt_count": len(compact_finalization_group_ids),
         "prior_finalization_receipt_tokens": sum(
             row.materialized_tokens for row in compact_finalization_rows

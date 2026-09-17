@@ -869,6 +869,7 @@ def run(args: argparse.Namespace) -> Path:
         completed_instruction_epochs=args.completed_instruction_epochs,
         frontier_recent_user_prompts=args.frontier_recent_user_prompts,
         frontier_protocol_exemplars=args.frontier_protocol_exemplars,
+        frontier_workflow_exemplars=args.frontier_workflow_exemplars,
         frontier_allow_heuristic=args.frontier_allow_heuristic,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
@@ -1256,6 +1257,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Keep this many latest harness-certified valid protocol-completion "
             "causal groups as control-flow exemplars for frontier DAG selection."
+        ),
+    )
+    parser.add_argument(
+        "--frontier-workflow-exemplars",
+        type=int,
+        default=0,
+        help=(
+            "Keep this many latest harness-certified mutation, verification, "
+            "and completion workflow spines as atomic control exemplars."
         ),
     )
     parser.add_argument(
