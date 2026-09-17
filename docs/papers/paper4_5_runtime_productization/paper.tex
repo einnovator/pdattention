@@ -3519,6 +3519,20 @@ cancellation, stale-generation, offload/restore, and termination checks on an
 RTX CUDA host.  These are request-level mechanism results, not autonomous
 task-accuracy evidence.
 
+This M2/P1 row is an \emph{earlier-policy mechanism control}, not the current
+Paper~8.5 agent-policy result.  In particular, it contains no model-visible
+compact closure receipts and its approximately 52\% saving must not be carried
+forward as E2+F1C evidence.  The first receipt-aware E2+F1C execution fixes
+request~9 of the successful Scikit trajectory.  On HF/CUDA it selects
+17,978 resident original-position K/V tokens from a 29,067-token source,
+encodes 664 compact-receipt tokens at their original logical positions, and
+appends the 305-token active suffix.  Charging those receipts gives 35.87\%
+history saving and 35.49\% total-visible-token saving (38.15\% resident-only
+K/V omission), with zero selected-K/V copy, exact same-subset logits and next
+token, and a passing lifecycle gate.  This remains a single request-level
+mechanism result.  The receipt-aware MLX, SGLang, and vLLM rows are pending and
+the older M2/P1 rows are not proxies for them.
+
 The first real MLX frozen-plan check now qualifies one Task~4 request at both
 full and reduced retention on Qwen3-0.6B-4bit.  The reduced row retains
 8,617/18,110 historical K/V tokens across 23 disjoint original-position

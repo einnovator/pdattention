@@ -22,3 +22,19 @@ claims. Paper 4.5 must independently report same-subset exactness, selected
 history re-encoding, K/V-copy bytes, consumer temporaries, and lifecycle
 correctness for each engine. No request-level engine smoke is an autonomous
 task-accuracy result.
+
+## Current engine evidence
+
+Do not substitute the older M2/P1 cross-engine rows for this fixture. Those
+rows remain mechanism controls for an earlier policy and do not include the
+model-visible compact closure receipts used by E2+F1C.
+
+The receipt-aware HF/CUDA request-9 run is recorded in
+`hf_qwen3_06b_request9_mixed_v1.json`. It selects 17,978 resident original-K/V
+tokens from a 29,067-token source, explicitly encodes 664 receipt tokens at
+their original logical positions, and appends a 305-token active suffix. After
+charging the receipts, history saving is 35.87% and total-visible-token saving
+is 35.49%; resident-only K/V omission is 38.15%. The same-subset token and
+logits are exact, selected-K/V copy is zero, and the lifecycle gate passes.
+This is one request-level result. MLX, SGLang and vLLM remain pending on this
+exact receipt-aware fixture.
