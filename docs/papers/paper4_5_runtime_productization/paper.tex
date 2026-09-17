@@ -3547,19 +3547,20 @@ therefore compared different prefill-kernel dispatches, not PRA-100 against
 the no-PRA prefix-cache baseline.  These are request-level results; they do
 not yet establish autonomous task parity or runtime benefit.
 
-vLLM-Metal 0.29.0 now clears the corresponding Task~4 request on the 48~GB
-M4 Pro.  At 100\%, PRA aliases all 18,096 complete source-page tokens and the
-independent ordinary prefix-cache control reports an 18,096-token prefix hit;
-both arms emit the same two tokens.  Under the frozen M2/P1 plan, vLLM aliases
-8,624 source-page tokens, retains the same 131-token request suffix, and
-realizes 48.03\% total visible retention (47.66\% of source pages).  Complete-
-page alignment adds only 21 tokens relative to the logical intervals.  Both
-rows re-encode zero selected-history tokens, attach existing pages without a
-physical K/V copy, and add zero active bytes when two requests borrow the
+vLLM-Metal 0.29.0 now clears all six frozen Task~4 requests on the 48~GB M4
+Pro.  Every PRA-100 request matches an independent ordinary prefix-cache
+control with a complete source-prefix hit.  Every M2/P1 request matches its
+identical-subset reference.  Weighted total visible retention is 47.04\%, or
+52.96\% logical saving; per-request retention ranges from 45.38\% to 48.48\%.
+Complete-page alignment adds 126 tokens in total, exactly 21 per request.
+Both six-request cells re-encode zero selected-history tokens, use zero
+selection-pack bytes, and attach existing pages without a physical K/V copy.
+The lifecycle rows also add zero active bytes when two requests borrow the
 source concurrently.  The separately reported offload/restore exercise does
 copy K/V across the residency boundary and is not counted as request reuse.
-Both rows clear the declared lifecycle checks.  As above, this is one frozen
-request, not yet a complete trajectory or autonomous-task result.
+This is a complete frozen request sequence, but not yet an autonomous Task~4
+solve; it establishes engine realization of the policy rather than policy
+accuracy.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp

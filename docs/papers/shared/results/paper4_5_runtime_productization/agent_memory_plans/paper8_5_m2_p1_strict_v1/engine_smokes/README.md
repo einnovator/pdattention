@@ -87,3 +87,15 @@ lossless offload/restore exercise; request attachment records zero physical
 copy events.  Both rows clear the lifecycle matrix.  These remain single-
 request correctness and accounting checks, not full frozen-trajectory or
 autonomous task qualifications.
+
+The subsequent hash-bound Task 4 sequence closes the request-coverage gap.
+All six PRA-100 requests match independent ordinary prefix-cache controls and
+all six M2/P1 requests match their identical-subset references.  Across the
+reduced sequence, weighted total visible retention is 47.04% (52.96% logical
+saving); per-request retention rises from 45.38% to 48.48%.  Complete-page
+rounding adds 126 tokens in total, exactly 21 per request.  Both six-request
+cells report zero selected-history re-encoding, zero selection-pack bytes, and
+zero request-attachment K/V copies.  The immutable request artifacts and
+strict reductions are under `../engine_sequences/vllm_metal_task4_full_v3/`
+and `../engine_sequences/vllm_metal_task4_m2p1_v3/`.  Their declared claim
+boundary remains a frozen request sequence, not an autonomous task solve.
