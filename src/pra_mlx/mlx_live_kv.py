@@ -120,6 +120,7 @@ class MLXLiveKVRequest:
         cancelled: Callable[[], bool] | None = None,
         prefill_step_size: int | None = None,
         materialized_history: Sequence[tuple[Sequence[int], int]] = (),
+        fused_disjoint_attention: bool = True,
     ) -> MLXLiveKVGeneration:
         """Decode from selected live K/V without evaluating selected text.
 
@@ -148,6 +149,7 @@ class MLXLiveKVRequest:
                 self.selection.memory,
                 segmented=self.segmented,
                 query_position_base=self.selection.plan.source_position_base,
+                fused_disjoint_attention=fused_disjoint_attention,
             )
             if materialized_history and not self.disjoint_selection:
                 raise ValueError(

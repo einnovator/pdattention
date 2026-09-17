@@ -243,9 +243,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             probe_local_keys,
             probe_local_values,
             scale=float(attention.scale),
-            source_keys=first_layer.source_keys,
-            source_values=first_layer.source_values,
-            source_intervals=first_layer.intervals,
+            source_keys=(
+                first_layer.source_keys if args.fused_disjoint_attention else None
+            ),
+            source_values=(
+                first_layer.source_values if args.fused_disjoint_attention else None
+            ),
+            source_intervals=(
+                first_layer.intervals if args.fused_disjoint_attention else ()
+            ),
         )
         mx.eval(probe_output)
         attention_active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
@@ -338,6 +344,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
         materialized_history=materialized_history,
+        fused_disjoint_attention=args.fused_disjoint_attention,
     )
     one_borrower = runtime.registry.view(identities["source_id"]).active_request_ids
     try:
@@ -352,6 +359,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
         materialized_history=materialized_history,
+        fused_disjoint_attention=args.fused_disjoint_attention,
     )
     # A second oracle consumes the same packed selected K/V through mlx-lm's
     # ordinary dense attention.  The first reference isolates interval
@@ -368,6 +376,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
         materialized_history=materialized_history,
+        fused_disjoint_attention=args.fused_disjoint_attention,
     )
 
     cancelled = begin("cancelled")
@@ -379,6 +388,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             cancelled=lambda: True,
             prefill_step_size=args.prefill_step_size,
             materialized_history=materialized_history,
+            fused_disjoint_attention=args.fused_disjoint_attention,
         )
     except MLXLiveKVRequestCancelled:
         cancellation_observed = True
@@ -411,6 +421,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         max_new_tokens=args.continuation_tokens,
         prefill_step_size=args.prefill_step_size,
         materialized_history=materialized_history,
+        fused_disjoint_attention=args.fused_disjoint_attention,
     )
 
     active_at_termination = begin("terminated-active")
@@ -523,6 +534,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "python_version": platform.python_version(),
         "hardware": args.hardware_label,
         "materialization_policy": args.materialization_policy,
+        "fused_disjoint_attention": args.fused_disjoint_attention,
         "segmented_attention_patched_layers": patched_layers,
         "trajectory": str(args.trajectory) if args.trajectory else None,
         "request_replay": str(args.request_replay) if args.request_replay else None,
@@ -586,7 +598,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             else "measured_explicit_interval_pack"
         ),
         "consumer_implementation": (
-            "fused_interval_addressed_metal" if use_disjoint else "mlx_lm_dense"
+            (
+                "fused_interval_addressed_metal"
+                if args.fused_disjoint_attention
+                else "portable_disjoint_segmented"
+            )
+            if use_disjoint
+            else "mlx_lm_dense"
         ),
         "reference_condition": (
             "packed-value oracle with identical segment boundaries, original "
@@ -685,6 +703,11 @@ def main() -> None:
         "--materialization-policy",
         choices=("dense_pack", "disjoint_segmented"),
         default="dense_pack",
+    )
+    parser.add_argument(
+        "--fused-disjoint-attention",
+        action=argparse.BooleanOptionalAction,
+        default=True,
     )
     parser.add_argument("--max-abs-logit-delta", type=float, default=5e-3)
     args = parser.parse_args()
