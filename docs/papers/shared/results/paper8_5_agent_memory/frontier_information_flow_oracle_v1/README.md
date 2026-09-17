@@ -42,13 +42,27 @@ calls-to-solution, or end-to-end token saving.
 
 ## Autonomous paired pilots
 
-The first paired-FULL-success pilot is Task 5 (`django__django-16145`). FULL
-and recent-frontier DAG `M=2` both resolve officially in 12 calls. The DAG run
-materializes 137,055 cumulative input tokens versus 264,204 for FULL: 48.13%
-paired saving with zero call increase. The runs diverge at the first assistant
-action and submit different resolving patches, so this is endpoint-quality
-preservation, not exact trajectory parity. It is one task identity and cannot
-select a default policy without repetition and additional paired successes.
+The first paired-FULL-success pilot is Task 5 (`django__django-16145`). Two
+recent-frontier DAG `M=2` executions both resolve officially in 12 calls and
+save 48.13% and 47.55% paired input (47.84% mean). These are repeated
+executions of one identity, not two independent accuracy observations.
+
+Task 3 then exposes a precise missing dependency. Two M2 executions make the
+correct source edit but submit prose instead of a unified diff and fail
+officially. M2 retains the immediately preceding malformed submission example
+from failed Task 2 while retiring the older valid example from Task 1. The P1
+repair adds a generic protocol-control edge to the latest harness-certified
+valid completion. It is a reachability barrier: its causal bundle remains
+visible without pulling the entire completed task back into context. The
+repaired Task 3 resolves officially in seven calls. It is individually
+inefficient (-4.64% paired saving), but repairs the protocol failure.
+
+The unchanged M2+P1 policy then resolves Task 4 in six calls with 59.28%
+paired saving and Task 5 in 12 calls with 47.55% saving. Across the three
+distinct paired-FULL-success identities, it preserves 3/3 resolutions, uses
+25 calls versus 25, and materializes 280,858 versus 474,697 cumulative input
+tokens: 40.83% paired saving. This passes the initial three-identity gate; it
+is not an estimate that population accuracy exceeds 90%.
 
 The Task 6 pilot is an efficiency rejection. Both arms fail official grading,
 while DAG `M=2` takes 15 calls versus five and materializes 77.91% more paired
@@ -56,8 +70,12 @@ input despite pruning 41.19% relative to its own trajectory counterfactual.
 This demonstrates why per-request pruning must not be reported as end-to-end
 saving when the policy changes the trajectory.
 
-Complete trajectories, manifests, and official outcomes are in
-`autonomous_task5_m2_v1/` and `autonomous_task6_m2_v1/`.
+`autonomous_m2_p1_three_task_gate.json` is the frozen aggregate. Complete
+trajectories, manifests, and official outcomes are in the adjacent
+`autonomous_task*_m2*` directories. One concurrent Task-5 execution diverged
+after several byte-identical selected prompts and caused the grader to exceed
+the campaign ceiling; it is retained under `quarantine_task5_m2_p1_v1/` and
+excluded from the aggregate rather than silently retried away.
 
 ## Implementation correction discovered by this screen
 
