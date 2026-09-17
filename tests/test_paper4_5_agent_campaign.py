@@ -2541,6 +2541,59 @@ def test_paper8_5_frontier_plan_uses_common_frozen_engine_contract() -> None:
     assert trace.selected_segments == len(frozen)
 
 
+def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old task"},
+            {"role": "assistant", "content": "old final action"},
+            {"role": "user", "content": "old final result"},
+            {"role": "user", "content": "current task"},
+        ]
+    }
+    frozen = [("m1-0-user", "old task")]
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0,
+        frozen_selection=frozen,
+        frozen_mandatory_indices=[0, 4],
+        agent_history_selection_policy=PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+    )
+
+    assert transformed["messages"] == [payload["messages"][0], payload["messages"][4]]
+    assert [row["resource_id"] for row in transformed["pra"]["resources"]] == [
+        "m1-0-user"
+    ]
+    assert transformed["pra"]["metadata"]["mandatory_message_indices"] == [0, 4]
+
+
+def test_paper8_5_strict_fixture_bundle_loads_exact_requests() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_m2_p1_strict_v1"
+    )
+    expected_requests = {3: 7, 4: 6, 5: 9}
+
+    for task, request_count in expected_requests.items():
+        fixture = _load_selection_fixture(
+            root / f"paper4_5_task{task}_frozen_plan.jsonl"
+        )
+        assert len(fixture) == request_count
+        assert all(
+            entry.source_policy == "frontier_dag_m2_heuristic_p1"
+            for entry in fixture.values()
+        )
+        assert all(entry.source_plan_digest for entry in fixture.values())
+        assert all(
+            entry.mandatory_message_indices is not None
+            and 0 in entry.mandatory_message_indices
+            for entry in fixture.values()
+        )
+
+
 def test_selection_fixture_rejects_modified_content(tmp_path: Path) -> None:
     fixture = tmp_path / "selection.jsonl"
     fixture.write_text(json.dumps({

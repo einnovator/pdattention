@@ -45,6 +45,16 @@ class FrozenReplayDivergence(RuntimeError):
     """The paired trajectory no longer has a recorded exact request."""
 
 
+@dataclass(frozen=True)
+class FrozenSelectionFixture:
+    """One externally selected logical plan bound to an exact full request."""
+
+    resources: tuple[tuple[str, str], ...]
+    mandatory_message_indices: tuple[int, ...] | None = None
+    source_policy: str | None = None
+    source_plan_digest: str | None = None
+
+
 CONSUMPTION_POLICIES = (
     "standard",
     "verification-guard-v1",
@@ -149,6 +159,7 @@ def transform_chat_payload(
     preserve_action_observation_pairs: bool | None = None,
     causal_bundle_round_up: bool | None = None,
     frozen_selection: Sequence[tuple[str, str]] | None = None,
+    frozen_mandatory_indices: Sequence[int] | None = None,
     agent_history_selection_policy: str = "task-aware-v1",
     count_tokens: Callable[[str], int] | None = None,
     tokenizer_identity: str = "whitespace_v1",
@@ -232,6 +243,8 @@ def transform_chat_payload(
             "fixture; Paper 4.5 measures engine realization and must not "
             "reimplement or reroute the logical policy"
         )
+    if frozen_mandatory_indices is not None and frozen_selection is None:
+        raise ValueError("frozen mandatory indices require a frozen selection")
     transformed = dict(payload)
     messages = [dict(row) for row in payload.get("messages", ())]
     if not messages:
@@ -246,7 +259,39 @@ def transform_chat_payload(
             0, logical_tokens, 0, 0, None, 0.0,
         )
 
-    mandatory_indices = _mandatory_indices(messages)
+    if frozen_mandatory_indices is None:
+        mandatory_indices = _mandatory_indices(messages)
+    else:
+        if len(set(frozen_mandatory_indices)) != len(frozen_mandatory_indices):
+            raise ValueError("frozen mandatory indices contain duplicates")
+        invalid_mandatory = [
+            index for index in frozen_mandatory_indices
+            if index < 0 or index >= len(messages)
+        ]
+        if invalid_mandatory:
+            raise ValueError(
+                "frozen mandatory indices are outside the exact request: "
+                + ", ".join(str(index) for index in invalid_mandatory)
+            )
+        mandatory_indices = set(frozen_mandatory_indices)
+        system_indices = {
+            index for index, row in enumerate(messages)
+            if row.get("role") == "system"
+        }
+        latest_non_system = next(
+            (
+                index for index in range(len(messages) - 1, -1, -1)
+                if messages[index].get("role") != "system"
+            ),
+            None,
+        )
+        required_inline = set(system_indices)
+        if latest_non_system is not None:
+            required_inline.add(latest_non_system)
+        if not required_inline.issubset(mandatory_indices):
+            raise ValueError(
+                "frozen mandatory indices omit system or current request state"
+            )
     task_indices = _pinned_task_indices(messages, mandatory_indices)
     if agent_history_selection_policy in FROZEN_AGENT_MEMORY_POLICIES:
         progress_indices = set()
@@ -1580,8 +1625,8 @@ class TreatmentProxy:
                 self._request_index += 1
                 request_index = self._request_index
             input_digest = _selection_input_digest(payload.get("messages", ()))
-            frozen = self._frozen_selections.get(input_digest)
-            if self.selection_replay_path is not None and frozen is None:
+            frozen_entry = self._frozen_selections.get(input_digest)
+            if self.selection_replay_path is not None and frozen_entry is None:
                 self._record_interaction_event({
                     "event": "frozen_replay_divergence",
                     "request_index": request_index,
@@ -1597,9 +1642,17 @@ class TreatmentProxy:
                     "frozen selection replay has no exact request match for "
                     f"{input_digest}; the paired trajectories have diverged"
                 )
+            frozen = (
+                list(frozen_entry.resources) if frozen_entry is not None else None
+            )
+            frozen_mandatory_indices = (
+                frozen_entry.mandatory_message_indices
+                if frozen_entry is not None else None
+            )
             payload, trace = transform_chat_payload(
                 payload, mode=self.mode, budget_fraction=self.budget_fraction,
                 request_index=request_index, frozen_selection=frozen,
+                frozen_mandatory_indices=frozen_mandatory_indices,
                 segment_tokens=effective_retention.large_record_chunk_tokens,
                 recent_completed_turns=effective_retention.recent_completed_turns,
                 recent_records_per_turn=effective_retention.recent_records_per_turn,
@@ -1935,14 +1988,14 @@ def _response_execution_metrics(body: bytes) -> dict[str, Any]:
     }
 
 
-def _load_selection_fixture(path: Path | None) -> dict[str, list[tuple[str, str]]]:
+def _load_selection_fixture(path: Path | None) -> dict[str, FrozenSelectionFixture]:
     """Load a direct-run fixture and reject ambiguous duplicate request identities."""
 
     if path is None:
         return {}
     if not path.is_file():
         raise FileNotFoundError(f"selection replay fixture does not exist: {path}")
-    selections: dict[str, list[tuple[str, str]]] = {}
+    selections: dict[str, FrozenSelectionFixture] = {}
     digests: dict[str, str | None] = {}
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
@@ -1959,10 +2012,36 @@ def _load_selection_fixture(path: Path | None) -> dict[str, list[tuple[str, str]
             raise ValueError(
                 f"selection fixture line {line_number} failed its content digest"
             )
+        mandatory = row.get("mandatory_message_indices")
+        if mandatory is not None:
+            if not isinstance(mandatory, list) or not all(
+                isinstance(index, int) for index in mandatory
+            ):
+                raise ValueError(
+                    f"selection fixture line {line_number} has invalid mandatory indices"
+                )
+            mandatory_indices = tuple(mandatory)
+        else:
+            mandatory_indices = None
+        entry = FrozenSelectionFixture(
+            resources=tuple(resources),
+            mandatory_message_indices=mandatory_indices,
+            source_policy=(
+                str(row["source_policy"]) if row.get("source_policy") else None
+            ),
+            source_plan_digest=(
+                str(row["source_plan_digest"])
+                if row.get("source_plan_digest") else None
+            ),
+        )
         if request_digest in selections and digests[request_digest] != selection_digest:
             raise ValueError(
                 f"selection fixture has conflicting rows for request {request_digest}"
             )
-        selections[request_digest] = resources
+        if request_digest in selections and selections[request_digest] != entry:
+            raise ValueError(
+                f"selection fixture has conflicting plan metadata for request {request_digest}"
+            )
+        selections[request_digest] = entry
         digests[request_digest] = selection_digest
     return selections
