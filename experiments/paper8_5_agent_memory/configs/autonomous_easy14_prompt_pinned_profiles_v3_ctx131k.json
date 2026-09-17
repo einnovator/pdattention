@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-autonomous-easy14-prompt-pinned-profiles-ctx131k-v3",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "runtime_qualification": {
+    "active_state_path": "/api/ps",
+    "minimum_active_context_tokens": 131072,
+    "cold_reset_between_trials": true,
+    "warmup": "one temperature-zero Reply OK. request capped at two tokens",
+    "reason": "match model cache-consumption state between policy arms and fail closed before a persistent control can exceed active context"
+  },
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "maximum_aggregate_call_delta": 0,
+    "claim": "paired failure-aware cumulative message-input-token saving with no observed official-resolution loss and no aggregate call increase"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 1,
+    "tail_turns": 1,
+    "search_delay_turns": 0,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 1,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "easy14-independent-clean-workspaces-a",
+      "sequence_stratum": "independent_cross_workspace",
+      "instance_ids": [
+        "django__django-15277",
+        "django__django-15368",
+        "scikit-learn__scikit-learn-13135",
+        "django__django-15741",
+        "pytest-dev__pytest-7982",
+        "django__django-16145",
+        "django__django-14089",
+        "sphinx-doc__sphinx-8721",
+        "scikit-learn__scikit-learn-14496",
+        "sympy__sympy-23534",
+        "scikit-learn__scikit-learn-12585",
+        "psf__requests-2317",
+        "sympy__sympy-16886",
+        "django__django-12741"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "S01_persistent_full_cold",
+      "strategy_config_id": "easy14_control_ctx131k_v3",
+      "session_mode": "persistent",
+      "policy": "full",
+      "boundary_mode": "boundary_free",
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S09_prompt_pinned_e2_f1c",
+      "strategy_config_id": "balanced_keep_two_prior_epochs_close_older_ctx131k_v3",
+      "session_mode": "persistent",
+      "policy": "persistent_instruction_epoch_retirement",
+      "boundary_mode": "boundary_free",
+      "keep_completed_task_statements": true,
+      "retire_closed_instructions": false,
+      "completed_instruction_epochs": 2,
+      "completed_recent_turns": 0,
+      "completed_mutation_turns": 0,
+      "completed_verification_turns": 0,
+      "completed_protocol_turns": 0,
+      "completed_finalization_turns": 1,
+      "compact_completed_finalizations": true,
+      "share_full_first_episode": true,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S09_prompt_pinned_e3_f1c",
+      "strategy_config_id": "quality_keep_three_prior_epochs_close_older_ctx131k_v3",
+      "session_mode": "persistent",
+      "policy": "persistent_instruction_epoch_retirement",
+      "boundary_mode": "boundary_free",
+      "keep_completed_task_statements": true,
+      "retire_closed_instructions": false,
+      "completed_instruction_epochs": 3,
+      "completed_recent_turns": 0,
+      "completed_mutation_turns": 0,
+      "completed_verification_turns": 0,
+      "completed_protocol_turns": 0,
+      "completed_finalization_turns": 1,
+      "compact_completed_finalizations": true,
+      "share_full_first_episode": true,
+      "repeats": 1
+    },
+    {
+      "strategy_id": "S09_prompt_pinned_e1_f1c",
+      "strategy_config_id": "economy_keep_one_prior_epoch_close_older_ctx131k_v3",
+      "session_mode": "persistent",
+      "policy": "persistent_instruction_epoch_retirement",
+      "boundary_mode": "boundary_free",
+      "keep_completed_task_statements": true,
+      "retire_closed_instructions": false,
+      "completed_instruction_epochs": 1,
+      "completed_recent_turns": 0,
+      "completed_mutation_turns": 0,
+      "completed_verification_turns": 0,
+      "completed_protocol_turns": 0,
+      "completed_finalization_turns": 1,
+      "compact_completed_finalizations": true,
+      "share_full_first_episode": true,
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "status": "predeclared prompt-pinned discovery campaign",
+    "execution_order": [
+      "S01_persistent_full_cold",
+      "S09_prompt_pinned_e2_f1c",
+      "S09_prompt_pinned_e3_f1c",
+      "S09_prompt_pinned_e1_f1c"
+    ],
+    "balanced_gate": "run all 14 only after a repeat-qualified held-out result; require no lost paired FULL success and no aggregate call increase",
+    "quality_gate": "use E3 only when E2 loses a paired FULL success or exceeds the target saving interval",
+    "economy_gate": "use E1 only after E2 preserves every paired FULL success through the first five scored tasks; stop after the first lost paired FULL success",
+    "promotion_gate": "a profile requires all 14 tasks, no lost paired FULL success, no aggregate call increase, and an interleaved repeat of the selected winner",
+    "guardrail": "the policy receives no evaluator task ID, episode boundary, success flag, repository label, or workspace identity; every genuine user prompt remains selected"
+  },
+  "workspace_semantics": {
+    "conversation": "one continuous ordinary-role transcript without explicit task-boundary metadata",
+    "workspaces": "clean official SWE-bench workspace per issue",
+    "instruction_detection": "inferred only from genuine user-message provenance",
+    "retirement": "all genuine user prompts remain visible; older assistant-tool interaction retires only after terminal evidence, with one compact model-visible closure receipt per retired instruction",
+    "not_claimed": "safe retirement for related or dependent instructions sharing a mutable workspace"
+  }
+}

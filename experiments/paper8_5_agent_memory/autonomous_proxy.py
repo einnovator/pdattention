@@ -474,6 +474,9 @@ class AutonomousSelectionConfig:
                     prior_finalization_turns=self.completed_finalization_turns,
                     prior_full_epochs=self.completed_instruction_epochs,
                     retire_closed_instructions=self.retire_closed_instructions,
+                    keep_completed_task_statements=(
+                        self.keep_completed_task_statements
+                    ),
                 )
             )
         if self.policy == "frontier_dag_retirement":
@@ -768,7 +771,10 @@ def transform_autonomous_payload(
                 "instruction_floor": "newest_user_instruction",
                 "prior_instruction_retirement": "terminal_epoch_atomic",
             }
-            if config.retire_closed_instructions else
+            if (
+                config.retire_closed_instructions
+                and not config.keep_completed_task_statements
+            ) else
             {"instruction_floor": "all_user_instructions"}
         ),
     )
@@ -819,7 +825,10 @@ def transform_autonomous_payload(
             raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
     selected_ids = set(plan.selected_record_ids)
     immutable_ids = set(immutable_instruction_record_ids(history))
-    if config.retire_closed_instructions:
+    if (
+        config.retire_closed_instructions
+        and not config.keep_completed_task_statements
+    ):
         genuine_instructions = [
             row.record_id for row in history.records
             if row.has_role(AgentRecordRole.TASK)
@@ -891,6 +900,7 @@ def transform_autonomous_payload(
         "materialized_retention_fraction": materialized.materialized_retention_fraction,
         "compact_completed_finalizations": config.compact_completed_finalizations,
         "retire_closed_instructions": config.retire_closed_instructions,
+        "keep_completed_task_statements": config.keep_completed_task_statements,
         "frontier_protocol_exemplars": config.frontier_protocol_exemplars,
         "frontier_workflow_exemplars": config.frontier_workflow_exemplars,
         "prior_finalization_receipt_count": len(compact_finalization_group_ids),

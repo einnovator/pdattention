@@ -340,6 +340,7 @@ def test_instruction_epoch_atomic_retirement_drops_only_terminally_closed_prompt
     selected = PersistentInstructionEpochRetirementSelector(
         PersistentInstructionEpochRetirementConfig(
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
         )
     ).select(
         history=history,
@@ -374,6 +375,7 @@ def test_atomic_retirement_wraps_retained_spine_in_natural_epoch_envelope():
         PersistentInstructionEpochRetirementConfig(
             prior_recent_turns=1,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
         )
     ).select(
         history=history,
@@ -408,6 +410,7 @@ def test_atomic_retirement_keeps_instruction_for_full_prior_epoch_exemplar():
         PersistentInstructionEpochRetirementConfig(
             prior_full_epochs=1,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
         )
     ).select(
         history=history,

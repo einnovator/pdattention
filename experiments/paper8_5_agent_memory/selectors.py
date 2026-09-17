@@ -495,6 +495,10 @@ class PersistentInstructionEpochRetirementConfig:
     prior_finalization_turns: int = 0
     prior_full_epochs: int = 0
     retire_closed_instructions: bool = False
+    # User instructions are a semantic floor by default. Closed-instruction
+    # retirement may remove their interaction detail, but it may remove the
+    # instruction itself only in an explicit research ablation.
+    keep_completed_task_statements: bool = True
 
     def __post_init__(self) -> None:
         if min(
@@ -570,7 +574,10 @@ class PersistentInstructionEpochRetirementSelector:
                 closed_epochs.add(epoch)
 
         selected_ids = set(immutable_instruction_record_ids(history))
-        if self.config.retire_closed_instructions:
+        if (
+            self.config.retire_closed_instructions
+            and not self.config.keep_completed_task_statements
+        ):
             # Epochs deliberately retained whole remain genuine in-context
             # exemplars, so their instruction must remain paired with their
             # interaction.  Atomic retirement applies only to older closed

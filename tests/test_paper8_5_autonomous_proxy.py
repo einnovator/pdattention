@@ -409,6 +409,7 @@ def test_atomic_closed_epoch_retirement_keeps_only_active_instruction_and_protoc
             completed_protocol_turns=0,
             completed_finalization_turns=0,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
         ),
         prior_episodes=(_completed_episode(),),
     )
@@ -422,6 +423,37 @@ def test_atomic_closed_epoch_retirement_keeps_only_active_instruction_and_protoc
     assert result.trace["wire_plan"]["decision_metadata"] == {
         "instruction_floor": "newest_user_instruction",
         "prior_instruction_retirement": "terminal_epoch_atomic",
+    }
+
+
+def test_closed_epoch_retirement_honors_all_user_instruction_floor():
+    result = transform_autonomous_payload(
+        _payload(),
+        AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            boundary_mode="boundary_free",
+            expected_model="locked-model",
+            task_id="repo__current-2",
+            session_id="session-locked",
+            episode_index=2,
+            completed_recent_turns=0,
+            completed_mutation_turns=0,
+            completed_verification_turns=0,
+            completed_protocol_turns=0,
+            completed_finalization_turns=0,
+            retire_closed_instructions=True,
+            keep_completed_task_statements=True,
+        ),
+        prior_episodes=(_completed_episode(),),
+    )
+
+    visible = "\n".join(row["content"] for row in result.payload["messages"])
+    assert "Fix repo__old-1." in visible
+    assert "old evidence" not in visible
+    assert "Fix the issue." in visible
+    assert result.trace["keep_completed_task_statements"] is True
+    assert result.trace["wire_plan"]["decision_metadata"] == {
+        "instruction_floor": "all_user_instructions",
     }
 
 

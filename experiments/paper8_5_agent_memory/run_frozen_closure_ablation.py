@@ -107,6 +107,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed_instruction_epochs=0,
             completed_finalization_turns=0,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
             **common,
         ),
         "E1_ATOMIC": AutonomousSelectionConfig(
@@ -114,6 +115,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed_instruction_epochs=1,
             completed_finalization_turns=0,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
             **common,
         ),
         "E2_ATOMIC": AutonomousSelectionConfig(
@@ -121,6 +123,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed_instruction_epochs=2,
             completed_finalization_turns=0,
             retire_closed_instructions=True,
+            keep_completed_task_statements=False,
             **common,
         ),
         "E2": AutonomousSelectionConfig(
