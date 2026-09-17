@@ -16,6 +16,7 @@ import pytest
 from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
+    join_instrumentation_sidecars,
     transform_autonomous_payload,
 )
 from experiments.paper8_5_agent_memory.run_autonomous_swebench import (
@@ -1113,6 +1114,73 @@ def test_sidecar_join_enables_guarded_h2_without_leaking_extra(tmp_path):
     )
     assert all("extra" not in row for row in result.payload["messages"])
     assert payload["messages"] == messages
+
+
+def test_sidecar_join_accepts_intercepted_terminal_submission(tmp_path):
+    command = "cat foo.py"
+    submission = (
+        "git diff -- foo.py > patch.txt && "
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt"
+    )
+    messages = [
+        {"role": "system", "content": "Use bash."},
+        {"role": "user", "content": "Fix foo.py."},
+        {
+            "role": "assistant",
+            "content": f"```mswea_bash_command\n{command}\n```",
+        },
+        {
+            "role": "user",
+            "content": "<returncode>0</returncode>\n<output>source</output>",
+        },
+        {
+            "role": "assistant",
+            "content": f"```mswea_bash_command\n{submission}\n```",
+        },
+        {"role": "exit", "content": "diff --git a/foo.py b/foo.py\n"},
+    ]
+    _write_receipt(tmp_path, 0, command, {
+        "return_code": 0,
+        "output_complete": True,
+        "resource_version_fingerprints": {"foo.py": "v1"},
+    })
+
+    enriched, audit = join_instrumentation_sidecars(messages, tmp_path)
+
+    assert audit == {
+        "status": "exact_terminal_submission",
+        "commands": 2,
+        "receipts": 1,
+        "joined": 1,
+    }
+    assert enriched[3]["extra"]["return_code"] == 0
+    assert "extra" not in enriched[5]
+
+
+def test_sidecar_join_does_not_forgive_nonterminal_missing_receipt(tmp_path):
+    messages = [
+        {"role": "system", "content": "Use bash."},
+        {"role": "user", "content": "Fix foo.py."},
+        {
+            "role": "assistant",
+            "content": "```mswea_bash_command\ncat foo.py\n```",
+        },
+        {"role": "user", "content": "<returncode>0</returncode>"},
+        {
+            "role": "assistant",
+            "content": "```mswea_bash_command\necho not-a-submission\n```",
+        },
+        {"role": "exit", "content": "done"},
+    ]
+    _write_receipt(tmp_path, 0, "cat foo.py", {
+        "return_code": 0,
+        "output_complete": True,
+    })
+
+    _, audit = join_instrumentation_sidecars(messages, tmp_path)
+
+    assert audit["status"] == "missing_or_mismatched_receipts"
+    assert audit["joined"] == 0
 
 
 def test_progress_spine_v4_keeps_action_and_receipts_superseded_observation(tmp_path):

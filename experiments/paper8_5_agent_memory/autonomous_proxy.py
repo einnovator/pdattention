@@ -209,8 +209,19 @@ def join_instrumentation_sidecars(
         }
     receipts.sort(key=lambda row: int(row.get("step", -1)))
     steps = [row.get("step") for row in receipts]
+    terminal_submission_without_receipt = False
+    if len(assistant_rows) == len(receipts) + 1:
+        terminal_index, terminal_command = assistant_rows[-1]
+        terminal_submission_without_receipt = (
+            terminal_index + 1 < len(copied)
+            and copied[terminal_index + 1].get("role") == "exit"
+            and "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in terminal_command
+        )
     if (
-        len(receipts) != len(assistant_rows)
+        (
+            len(receipts) != len(assistant_rows)
+            and not terminal_submission_without_receipt
+        )
         or steps != list(range(len(receipts)))
         or any(
             row.get("command_sha256") != hashlib.sha256(command.encode()).hexdigest()
@@ -267,7 +278,11 @@ def join_instrumentation_sidecars(
             }
         copied[observation_index]["extra"] = {**dict(existing or {}), **metadata}
     return copied, {
-        "status": "exact",
+        "status": (
+            "exact_terminal_submission"
+            if terminal_submission_without_receipt
+            else "exact"
+        ),
         "commands": len(assistant_rows),
         "receipts": len(receipts),
         "joined": len(pending),
@@ -592,7 +607,11 @@ def transform_autonomous_payload(
     history = recordization.history
     full_tokens = sum(count_tokens(row.content) for row in history.records)
     budget_tokens = max(1, math.ceil(full_tokens * config.budget_fraction))
-    sidecar_exact = sidecar_join["status"] in {"exact", "empty_exact"}
+    sidecar_exact = sidecar_join["status"] in {
+        "exact",
+        "empty_exact",
+        "exact_terminal_submission",
+    }
     sidecar_dependent = bool(
         config.policy in {
             *AUTONOMOUS_DAG_POLICIES,
