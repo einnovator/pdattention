@@ -867,6 +867,8 @@ def run(args: argparse.Namespace) -> Path:
         compact_completed_finalizations=args.compact_completed_finalizations,
         retire_closed_instructions=args.retire_closed_instructions,
         completed_instruction_epochs=args.completed_instruction_epochs,
+        frontier_recent_user_prompts=args.frontier_recent_user_prompts,
+        frontier_allow_heuristic=args.frontier_allow_heuristic,
         keep_completed_task_statements=args.keep_completed_task_statements,
         boundary_mode=args.boundary_mode,
         require_exact_sidecars=args.require_exact_sidecars,
@@ -1238,6 +1240,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Keep this many immediately preceding genuine-user instruction "
             "epochs whole under instruction-epoch retirement."
+        ),
+    )
+    parser.add_argument(
+        "--frontier-recent-user-prompts",
+        type=int,
+        default=2,
+        help="Number of latest genuine user-prompt epochs in the live DAG frontier.",
+    )
+    parser.add_argument(
+        "--frontier-allow-heuristic",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Allow no-path retirement without a complete workspace/effect proof. "
+            "Disabled by default; historical-chain experiments must opt in."
         ),
     )
     parser.add_argument(

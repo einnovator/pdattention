@@ -36,7 +36,7 @@ from .matched_token_tail import (
     matched_token_tail_full_floor_record_ids,
     materialize_matched_token_tail,
 )
-from .dag import DagCertifiedExclusionSelector
+from .dag import DagCertifiedExclusionSelector, FrontierDagRetirementSelector
 from .model import AgentMemoryBudget, AgentMemoryPlan, AgentRecordRole
 from .negative_selection import (
     BashOperation,
@@ -84,6 +84,7 @@ AUTONOMOUS_EPISODE_POLICIES = (
     "persistent_active_episode",
     "persistent_global_retirement",
     "persistent_instruction_epoch_retirement",
+    "frontier_dag_retirement",
 )
 AUTONOMOUS_DAG_POLICIES = (
     "dag_certified_exclusion",
@@ -310,6 +311,8 @@ class AutonomousSelectionConfig:
     compact_completed_finalizations: bool = False
     retire_closed_instructions: bool = False
     completed_instruction_epochs: int = 0
+    frontier_recent_user_prompts: int = 2
+    frontier_allow_heuristic: bool = False
     keep_completed_task_statements: bool = True
     boundary_mode: BoundaryMode = BoundaryMode.EXPLICIT
     require_exact_sidecars: bool = True
@@ -336,6 +339,7 @@ class AutonomousSelectionConfig:
             self.policy in {
                 "persistent_global_retirement",
                 "persistent_instruction_epoch_retirement",
+                "frontier_dag_retirement",
             }
             and self.boundary_mode is not BoundaryMode.BOUNDARY_FREE
         ):
@@ -351,6 +355,13 @@ class AutonomousSelectionConfig:
             self.completed_instruction_epochs,
         )):
             raise ValueError("completed-episode turn floors cannot be negative")
+        if self.frontier_recent_user_prompts < 1:
+            raise ValueError("frontier_recent_user_prompts must be positive")
+        if self.policy == "frontier_dag_retirement" and self.budget_fraction != 1.0:
+            raise ValueError(
+                "frontier_dag_retirement is a reachability policy and requires "
+                "a 100% pre-retirement budget"
+            )
         if self.max_completion_tokens is not None and self.max_completion_tokens < 1:
             raise ValueError("max_completion_tokens must be positive")
         if self.policy == "full" and self.materialization_mode != MaterializationMode.WHOLE_RECORD:
@@ -443,6 +454,11 @@ class AutonomousSelectionConfig:
                     prior_full_epochs=self.completed_instruction_epochs,
                     retire_closed_instructions=self.retire_closed_instructions,
                 )
+            )
+        if self.policy == "frontier_dag_retirement":
+            return FrontierDagRetirementSelector(
+                recent_user_prompts=self.frontier_recent_user_prompts,
+                allow_heuristic=self.frontier_allow_heuristic,
             )
         if self.policy == "head_tail_recency":
             return HeadMiddleTailSelector(HeadMiddleTailConfig(
@@ -570,7 +586,11 @@ def transform_autonomous_payload(
     budget_tokens = max(1, math.ceil(full_tokens * config.budget_fraction))
     sidecar_exact = sidecar_join["status"] in {"exact", "empty_exact"}
     sidecar_dependent = bool(
-        config.policy in {*AUTONOMOUS_DAG_POLICIES, *NEGATIVE_POLICY_RULES}
+        config.policy in {
+            *AUTONOMOUS_DAG_POLICIES,
+            *NEGATIVE_POLICY_RULES,
+            "frontier_dag_retirement",
+        }
     )
     selection_abstained = bool(
         sidecar_dependent and config.require_exact_sidecars and not sidecar_exact

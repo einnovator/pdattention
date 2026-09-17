@@ -151,6 +151,7 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
             strategy.get("policy") in {
                 "persistent_global_retirement",
                 "persistent_instruction_epoch_retirement",
+                "frontier_dag_retirement",
             }
             and boundary_mode != "boundary_free"
         ):
@@ -243,6 +244,9 @@ def _episode_command(
         "--completed-instruction-epochs", str(
             strategy.get("completed_instruction_epochs", 0)
         ),
+        "--frontier-recent-user-prompts", str(
+            strategy.get("frontier_recent_user_prompts", 2)
+        ),
         "--boundary-mode", str(strategy.get("boundary_mode", "explicit")),
         "--temperature", str(generation["temperature"]),
         "--top-p", str(generation["top_p"]),
@@ -254,6 +258,8 @@ def _episode_command(
             args, "docker_pull_timeout_seconds", 900
         )),
     ]
+    if strategy.get("frontier_allow_heuristic", False):
+        command.append("--frontier-allow-heuristic")
     upstream_qualification_path = getattr(args, "upstream_qualification_path", None)
     if upstream_qualification_path:
         command.extend((

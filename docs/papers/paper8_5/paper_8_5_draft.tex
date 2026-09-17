@@ -56,7 +56,12 @@ paired token work.  No policy therefore meets the 30--50\%, zero-loss,
 no-call-increase target, and no production default is promoted.  Agent-memory
 policy and engine reuse remain separate contracts: this paper selects logical
 evidence; Paper~4.5 measures whether engines realize the identical plan without
-re-encoding or copying K/V.
+re-encoding or copying K/V.  A new offline six-issue mechanism screen instead
+defines the frontier by the last two or three ordinary user prompts and retires
+only older causal groups with no information-flow path into that frontier.  It
+matches the independent-workspace oracle at 100\% token-weighted precision and
+recall and exposes up to 32.95\% final-snapshot opportunity, but remains an
+offline result until autonomous quality and cumulative work are measured.
 \end{abstract}
 
 \iffalse
@@ -974,6 +979,44 @@ requires the complete fourteen-task sequence, no lost selection-active
 winner.  This design prevents raw token saving, early termination, or endpoint
 variance from being mistaken for deployable utility.
 
+The next policy revision replaces fixed epoch retirement with a forward
+information-flow test.  Every genuine user message starts an instruction
+epoch, the last $M$ prompts define a live frontier, and an older causal group is
+eligible only when no path through instruction control, action--observation,
+next-decision, resource, or declared-dependency edges reaches the frontier.
+User prompts themselves remain immutable.  In a frozen six-issue
+independent-workspace chain, the rule matches the evaluator-only exclusion
+oracle exactly for $M\in\{2,3\}$ (Table~\ref{tab:frontier-dag-oracle}).  A
+constructed dependent chain shows why reachability matters: blind age-based
+retirement has 75\% token-weighted precision because it drops an old shared-file
+lineage, whereas the DAG retains that lineage and reaches 100\% precision and
+recall.  This is a structural gate, not an accuracy result.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Offline recent-frontier DAG opportunity on one final frozen six-issue
+history snapshot (14,184 whitespace tokens).  Historical traces lack the new
+workspace-lineage field, so no-path decisions are heuristic.}
+\label{tab:frontier-dag-oracle}
+\begin{tabular}{lrrrr}
+\toprule
+Frontier & Oracle P/R & Whole group & Result only & Parameters+result \\
+\midrule
+Last 2 user prompts & 100/100\% & 32.95\% & 12.41\% & 27.72\% \\
+Last 3 user prompts & 100/100\% & 29.84\% & 11.35\% & 25.36\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The three realization columns answer different questions.  Whole-group
+retirement gives the largest saving and preserves chat validity by removing a
+complete action--observation pair.  Result-only retirement retains the action
+and return-code envelope but removes payload detail.  The most aggressive
+stub also removes old tool parameters while preserving role alternation.  A
+future autonomous factorial must compare all three against the same
+\textsc{Full} executions; none is promoted from this offline screen.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1019,6 +1062,31 @@ necessary before any profile is promoted.
 
 \clearpage
 \appendix
+
+\section{Recent-Frontier Information-Flow DAG}
+
+The DAG is temporal and therefore acyclic.  ``No loop'' is implemented as no
+directed path from an older record to any record in the last $M$ instruction
+epochs.  Same-path edges are keyed first by a generic
+\texttt{workspace\_lineage\_id}.  The mini-swe-agent harness derives this opaque
+identity from the live container, not from an evaluator issue ID.  Older traces
+without it use a stable environment fingerprint as a weaker namespace and are
+labelled heuristic.  Cwd alone is never a namespace because independent
+containers commonly reuse \texttt{/testbed}.
+
+The first real-chain reduction found a concrete adapter bug: repeated agent
+instructions containing \texttt{patch.txt}, \texttt{pyproject.toml}, and other
+examples were parsed as task resources, creating false cross-issue edges and
+only 16--18\% oracle recall.  Task-resource extraction now uses only the actual
+\texttt{<pr\_description>} envelope.  After correction, heuristic no-path
+retirement reaches 100\% token-weighted precision and recall for both $M=2$
+and $M=3$ on the known independent chain.  Constructed cases separately test
+distinct resources, a genuine old-to-current shared resource, the same path in
+different declared workspaces, and unknown effects.  Unknown effects downgrade
+confidence and make the certified gate fail closed rather than inventing a
+proof of irrelevance.  Full candidates, source hashes, simplification costs,
+and oracle errors are stored in
+\path{frontier_information_flow_oracle_v1/evidence.json}.
 
 \section{Context-Qualified Easy-14 Confirmation Ledger}
 

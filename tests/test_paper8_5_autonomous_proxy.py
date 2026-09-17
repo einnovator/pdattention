@@ -429,6 +429,17 @@ def test_boundary_free_global_policy_rejects_explicit_composition():
         AutonomousSelectionConfig(policy="persistent_global_retirement")
     with pytest.raises(ValueError, match="requires boundary_free"):
         AutonomousSelectionConfig(policy="persistent_instruction_epoch_retirement")
+    with pytest.raises(ValueError, match="requires boundary_free"):
+        AutonomousSelectionConfig(policy="frontier_dag_retirement")
+
+
+def test_frontier_dag_policy_requires_full_pre_retirement_budget():
+    with pytest.raises(ValueError, match="100% pre-retirement budget"):
+        AutonomousSelectionConfig(
+            policy="frontier_dag_retirement",
+            boundary_mode="boundary_free",
+            budget_fraction=0.9,
+        )
 
 
 def test_persistent_prefix_count_must_match_episode_index():

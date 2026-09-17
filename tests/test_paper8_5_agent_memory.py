@@ -7,14 +7,20 @@ import experiments.paper8_5_agent_memory.run_frozen_replay as frozen_replay
 
 from experiments.paper8_5_agent_memory import (
     AgentMemoryBudget,
+    AgentRecord,
     BashOperation,
     DagCertifiedExclusionSelector,
     ExclusionClass,
     AgentRecordRole,
+    AgentTurn,
+    CanonicalAgentHistory,
     FullHistorySelector,
     HeadMiddleTailConfig,
     HeadMiddleTailSelector,
     MaterializationMode,
+    FrontierRetirementConfidence,
+    FrontierDagRetirementSelector,
+    FrontierSimplificationMode,
     MatchedTokenTailConfig,
     MiddleSelectionStrategy,
     NegativeHeuristicSelector,
@@ -23,6 +29,7 @@ from experiments.paper8_5_agent_memory import (
     NegativeSelectionConfig,
     ToolObservationMaterializer,
     build_resource_effect_dag,
+    build_frontier_information_flow_dag,
     build_negative_exclusions,
     classify_bash_operation,
     exclude_certified_groups,
@@ -33,6 +40,7 @@ from experiments.paper8_5_agent_memory import (
     reacquired_excluded_resources,
     realize_negative_receipts,
     serialize_materialized_messages,
+    simplify_disconnected_frontier,
     validate_minisweagent_chat,
 )
 from experiments.paper8_5_agent_memory.observation_instrumentation import (
@@ -81,6 +89,176 @@ def _messages(turns: int = 5):
             },
         ))
     return rows
+
+
+def _information_flow_chain(
+    resources,
+    *,
+    workspace_scopes=None,
+):
+    records = [AgentRecord(
+        "system", "system", "system", 0, "system", "agent protocol",
+        AgentRecordRole.SYSTEM, (AgentRecordRole.SYSTEM,),
+    )]
+    turns = []
+    message_index = 1
+    scopes = workspace_scopes or [None] * len(resources)
+    for epoch, (resource, scope) in enumerate(zip(resources, scopes)):
+        instruction_id = f"instruction-{epoch}"
+        instruction_role = (
+            AgentRecordRole.TASK if epoch == 0 else AgentRecordRole.USER_INPUT
+        )
+        metadata = {"workspace_lineage_id": scope} if scope else {}
+        records.append(AgentRecord(
+            instruction_id,
+            instruction_id,
+            instruction_id,
+            message_index,
+            "user",
+            f"Work on {resource}",
+            instruction_role,
+            (instruction_role,),
+            resource_ids=(resource,),
+            metadata=metadata,
+        ))
+        message_index += 1
+        group = f"turn-{epoch}"
+        action_id = f"action-{epoch}"
+        observation_id = f"observation-{epoch}"
+        records.extend((
+            AgentRecord(
+                action_id,
+                group,
+                group,
+                message_index,
+                "assistant",
+                "THOUGHT inspect relevant state then decide carefully " * 8
+                + f"\n```mswea_bash_command\ncat {resource}\n```",
+                AgentRecordRole.ASSISTANT_ACTION,
+                (AgentRecordRole.ASSISTANT_ACTION,),
+                command=f"cat {resource}",
+                resource_ids=(resource,),
+                metadata={**metadata, "operation_kind": "read"},
+            ),
+            AgentRecord(
+                observation_id,
+                group,
+                group,
+                message_index + 1,
+                "user",
+                "<returncode>0</returncode>\n<output>" + "evidence " * 40 + "</output>",
+                AgentRecordRole.TOOL_OBSERVATION,
+                (AgentRecordRole.TOOL_OBSERVATION,),
+                command=f"cat {resource}",
+                return_code=0,
+                resource_ids=(resource,),
+                metadata={**metadata, "operation_kind": "read", "output_complete": True},
+            ),
+        ))
+        turns.append(AgentTurn(group, group, (action_id, observation_id), message_index, True))
+        message_index += 2
+    return CanonicalAgentHistory(tuple(records), tuple(turns))
+
+
+def test_frontier_dag_retires_only_old_disconnected_epochs():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+
+    assert dag.frontier_epoch_indices == (4, 5)
+    assert {row.epoch_index for row in dag.retirement_candidates} == {0, 1, 2, 3}
+    assert all(
+        row.confidence == FrontierRetirementConfidence.CERTIFIED
+        for row in dag.retirement_candidates
+    )
+    retired = {row.causal_group_id for row in dag.retirement_candidates}
+    assert retired == {"turn-0", "turn-1", "turn-2", "turn-3"}
+
+
+def test_frontier_dag_preserves_old_resource_lineage_reaching_live_prompt():
+    history = _information_flow_chain([
+        "src/shared.py",
+        "src/task_1.py",
+        "src/task_2.py",
+        "src/task_3.py",
+        "src/task_4.py",
+        "src/shared.py",
+    ])
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+
+    retired = {row.causal_group_id for row in dag.retirement_candidates}
+    assert "turn-0" not in retired
+    assert retired == {"turn-1", "turn-2", "turn-3"}
+    assert {"action-0", "observation-0"}.issubset(dag.live_ancestor_record_ids)
+
+
+def test_frontier_dag_does_not_alias_same_path_across_declared_workspaces():
+    history = _information_flow_chain(
+        ["src/common.py"] * 4,
+        workspace_scopes=[f"workspace-{index}" for index in range(4)],
+    )
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+
+    assert {row.causal_group_id for row in dag.retirement_candidates} == {
+        "turn-0", "turn-1"
+    }
+
+
+def test_frontier_simplification_preserves_prompts_and_orders_ablation_savings():
+    history = _information_flow_chain([f"src/task_{index}.py" for index in range(6)])
+    dag = build_frontier_information_flow_dag(history, recent_user_prompts=2)
+    plans = {
+        mode: simplify_disconnected_frontier(
+            history,
+            dag,
+            mode=mode,
+            count_tokens=whitespace_tokens,
+        )
+        for mode in FrontierSimplificationMode
+    }
+    instruction_ids = {
+        row.record_id for row in history.records
+        if row.has_role(AgentRecordRole.TASK)
+        or row.has_role(AgentRecordRole.USER_INPUT)
+    }
+    assert all(
+        instruction_ids.issubset(plan.selected_record_ids)
+        for plan in plans.values()
+    )
+    assert (
+        plans[FrontierSimplificationMode.WHOLE_CAUSAL_GROUP].saving_fraction
+        > plans[FrontierSimplificationMode.ACTION_PARAMETERS_AND_OBSERVATION].saving_fraction
+        > plans[FrontierSimplificationMode.OBSERVATION_PAYLOAD].saving_fraction
+        > 0
+    )
+
+
+def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
+    history = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+    full_tokens = sum(whitespace_tokens(row.content) for row in history.records)
+    plan = FrontierDagRetirementSelector(
+        recent_user_prompts=2,
+        allow_heuristic=False,
+    ).select(
+        history=history,
+        query="",
+        budget=AgentMemoryBudget(max_tokens=full_tokens),
+        count_tokens=whitespace_tokens,
+    )
+
+    assert {row.causal_group_id for row in plan.exclusions} == {
+        "turn-0", "turn-1", "turn-2", "turn-3"
+    }
+    assert all(row.rule_id == "FRONTIER_NO_PATH_M2_V1" for row in plan.exclusions)
+    assert all(
+        set(row.record_ids).isdisjoint(plan.selected_record_ids)
+        for row in plan.exclusions
+    )
 
 
 def test_recordizer_preserves_action_observation_causal_bundles():

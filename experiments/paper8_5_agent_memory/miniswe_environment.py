@@ -49,6 +49,11 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             "forward_env": self.config.forward_env,
             "interpreter": self.config.interpreter,
         })
+        # Opaque, generic resource namespace.  It identifies a live workspace
+        # lineage without exposing an evaluator task/issue ID to the policy.
+        self._workspace_lineage_id = hashlib.sha256(
+            f"{self.container_id or 'unknown'}|{self.config.image}".encode()
+        ).hexdigest()
 
     def serialize(self) -> dict:
         serialized = super().serialize()
@@ -57,6 +62,7 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             "paper8_5_instrumentation": {
                 "schema_version": 1,
                 "environment_fingerprint": self._environment_fingerprint,
+                "workspace_lineage_id": self._workspace_lineage_id,
                 "checkpoint_directory": (
                     str(self._instrumentation_directory)
                     if self._instrumentation_directory else None
@@ -86,6 +92,7 @@ class InstrumentedDockerEnvironment(DockerEnvironment):
             pre_state=pre_state,
             post_state=post_state,
             environment_fingerprint=self._environment_fingerprint,
+            workspace_lineage_id=self._workspace_lineage_id,
             visible_output_limit=self.config.visible_output_limit,
         )
         metadata.update({

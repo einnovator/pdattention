@@ -15,6 +15,7 @@ from typing import Callable, Mapping
 
 from .model import (
     AgentMemoryExclusion,
+    AgentMemoryPlan,
     AgentRecord,
     AgentRecordRole,
     AgentTurn,
@@ -39,6 +40,9 @@ class DagEdgeKind(str, Enum):
     RESOURCE_FLOW = "resource_flow"
     INVALIDATES_STATE = "invalidates_state"
     SUPERSEDES_CURRENT_STATE = "supersedes_current_state"
+    INSTRUCTION_CONTROL = "instruction_control"
+    DECISION_FLOW = "decision_flow"
+    DECLARED_DEPENDENCY = "declared_dependency"
 
 
 class ExclusionClass(str, Enum):
@@ -91,6 +95,77 @@ class AgentHistoryDag:
         )
 
 
+class FrontierRetirementConfidence(str, Enum):
+    """Strength of a no-path retirement decision.
+
+    ``CERTIFIED`` requires an application- or runtime-provided workspace
+    lineage.  ``HEURISTIC`` means that the visible resource/effect graph has no
+    path, but incomplete Bash semantics or an unscoped workspace prevents a
+    proof.  The distinction is intentional: absence of an inferred edge is
+    not evidence that an edge cannot exist.
+    """
+
+    CERTIFIED = "certified_disconnected"
+    HEURISTIC = "heuristic_disconnected"
+
+
+class FrontierSimplificationMode(str, Enum):
+    """Model-visible realization for a disconnected causal group."""
+
+    WHOLE_CAUSAL_GROUP = "whole_causal_group"
+    OBSERVATION_PAYLOAD = "observation_payload"
+    ACTION_PARAMETERS_AND_OBSERVATION = "action_parameters_and_observation"
+
+
+@dataclass(frozen=True)
+class InstructionEpoch:
+    epoch_index: int
+    instruction_record_id: str
+    record_ids: tuple[str, ...]
+    causal_group_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FrontierRetirementCandidate:
+    causal_group_id: str
+    epoch_index: int
+    record_ids: tuple[str, ...]
+    confidence: FrontierRetirementConfidence
+    resource_ids: tuple[str, ...]
+    unknown_effect: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class FrontierInformationFlowDag:
+    """Forward information-flow DAG rooted at genuine user instructions."""
+
+    epochs: tuple[InstructionEpoch, ...]
+    edges: tuple[DagEdge, ...]
+    frontier_epoch_indices: tuple[int, ...]
+    frontier_record_ids: tuple[str, ...]
+    live_ancestor_record_ids: tuple[str, ...]
+    retirement_candidates: tuple[FrontierRetirementCandidate, ...]
+
+
+@dataclass(frozen=True)
+class FrontierSimplificationPlan:
+    mode: FrontierSimplificationMode
+    selected_record_ids: tuple[str, ...]
+    record_replacements: tuple[tuple[str, str], ...]
+    retired_causal_group_ids: tuple[str, ...]
+    full_tokens: int
+    materialized_tokens: int
+
+    @property
+    def saving_fraction(self) -> float:
+        return (
+            0.0
+            if self.full_tokens == 0
+            else 1.0 - self.materialized_tokens / self.full_tokens
+        )
+
+
 class MiniSweBashSemanticsProvider:
     """Special support for mini-swe-agent's single generic Bash tool.
 
@@ -140,6 +215,364 @@ class CompositeToolSemanticsProvider:
     ) -> ToolEffectAnalysis:
         declared = self.declared.analyze(action, observations)
         return declared if not declared.unknown_barrier else self.bash.analyze(action, observations)
+
+
+_INSTRUCTION_ROLES = (AgentRecordRole.TASK, AgentRecordRole.USER_INPUT)
+
+
+def _workspace_lineage(record: AgentRecord) -> str | None:
+    """Return only an explicit workspace identity, never cwd or image identity.
+
+    A cwd such as ``/testbed`` and an environment/image fingerprint commonly
+    recur in independent containers.  Treating either as a workspace lineage
+    silently creates false cross-task resource dependencies.
+    """
+
+    for key in ("workspace_lineage_id", "workspace_scope", "resource_scope_id"):
+        value = record.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _environment_scope(record: AgentRecord) -> str | None:
+    value = record.metadata.get("environment_fingerprint")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _instruction_epochs(
+    history: CanonicalAgentHistory,
+) -> tuple[tuple[InstructionEpoch, ...], dict[str, int]]:
+    ordered = sorted(history.records, key=lambda row: row.message_index)
+    epoch_rows: list[dict[str, object]] = []
+    epoch_for_record: dict[str, int] = {}
+    active: dict[str, object] | None = None
+    for record in ordered:
+        if any(record.has_role(role) for role in _INSTRUCTION_ROLES):
+            active = {
+                "instruction": record.record_id,
+                "records": [],
+                "groups": [],
+            }
+            epoch_rows.append(active)
+        if active is None:
+            continue
+        epoch_index = len(epoch_rows) - 1
+        epoch_for_record[record.record_id] = epoch_index
+        cast_records = active["records"]
+        assert isinstance(cast_records, list)
+        cast_records.append(record.record_id)
+        if record.causal_group_id not in active["groups"]:
+            cast_groups = active["groups"]
+            assert isinstance(cast_groups, list)
+            cast_groups.append(record.causal_group_id)
+    return tuple(
+        InstructionEpoch(
+            index,
+            str(row["instruction"]),
+            tuple(str(value) for value in row["records"]),
+            tuple(str(value) for value in row["groups"]),
+        )
+        for index, row in enumerate(epoch_rows)
+    ), epoch_for_record
+
+
+def _record_resources(record: AgentRecord) -> tuple[str, ...]:
+    declared = record.metadata.get("dependency_resource_ids")
+    dependencies = (
+        tuple(str(value) for value in declared)
+        if isinstance(declared, (list, tuple))
+        else ()
+    )
+    discovered = record.metadata.get("discovered_resource_ids")
+    discoveries = (
+        tuple(str(value) for value in discovered)
+        if isinstance(discovered, (list, tuple))
+        else ()
+    )
+    return tuple(dict.fromkeys((*record.resource_ids, *dependencies, *discoveries)))
+
+
+def _has_unknown_effect(record: AgentRecord) -> bool:
+    if not record.has_role(AgentRecordRole.ASSISTANT_ACTION):
+        return False
+    operation = str(record.metadata.get("operation_kind") or "").lower()
+    return operation in {"", "other", "unknown"}
+
+
+def build_frontier_information_flow_dag(
+    history: CanonicalAgentHistory,
+    *,
+    recent_user_prompts: int = 2,
+) -> FrontierInformationFlowDag:
+    """Build a boundary-free, forward information-flow graph.
+
+    Every TASK/USER_INPUT record starts an instruction epoch.  The most recent
+    ``M`` epochs form the live frontier.  Older causal groups become retirement
+    candidates only when no directed path reaches that frontier.  The selector
+    never receives evaluator task IDs or source-episode boundaries.
+
+    Edges encode (1) instruction control within an epoch, (2) action/result and
+    next-decision flow, (3) same-resource flow across epochs, and (4) explicit
+    record dependencies supplied by a generic harness.  Unknown tool semantics
+    lower confidence; they do not invent a proof of irrelevance.
+    """
+
+    if recent_user_prompts < 1:
+        raise ValueError("recent_user_prompts must be positive")
+    epochs, epoch_for_record = _instruction_epochs(history)
+    if not epochs:
+        return FrontierInformationFlowDag((), (), (), (), (), ())
+    records = history.record_by_id
+    edge_rows: list[DagEdge] = []
+    epoch_lineages: dict[int, str] = {}
+    epoch_environments: dict[int, str] = {}
+    for epoch in epochs:
+        lineages = {
+            value
+            for record_id in epoch.record_ids
+            if (value := _workspace_lineage(records[record_id])) is not None
+        }
+        if len(lineages) == 1:
+            epoch_lineages[epoch.epoch_index] = next(iter(lineages))
+        values = {
+            value
+            for record_id in epoch.record_ids
+            if (value := _environment_scope(records[record_id])) is not None
+        }
+        # An environment fingerprint is weaker than a workspace lineage, but
+        # when stable within one instruction epoch it prevents obviously
+        # unrelated containers/images from aliasing on /testbed or patch.txt.
+        if len(values) == 1:
+            epoch_environments[epoch.epoch_index] = next(iter(values))
+
+    # Intra-epoch decision spine.  It deliberately stops at a new genuine user
+    # prompt: task boundaries are inferred from visible protocol, never from an
+    # evaluator's issue ID.
+    for epoch in epochs:
+        prior = epoch.instruction_record_id
+        for turn in history.turns:
+            turn_ids = tuple(
+                record_id for record_id in turn.record_ids
+                if epoch_for_record.get(record_id) == epoch.epoch_index
+            )
+            if not turn_ids:
+                continue
+            action = next((
+                record_id for record_id in turn_ids
+                if records[record_id].has_role(AgentRecordRole.ASSISTANT_ACTION)
+            ), None)
+            if action is None:
+                continue
+            edge_rows.append(DagEdge(
+                prior,
+                action,
+                DagEdgeKind.INSTRUCTION_CONTROL
+                if prior == epoch.instruction_record_id
+                else DagEdgeKind.DECISION_FLOW,
+            ))
+            observations = tuple(
+                record_id for record_id in turn_ids
+                if records[record_id].has_role(AgentRecordRole.TOOL_OBSERVATION)
+            )
+            for observation in observations:
+                edge_rows.append(DagEdge(
+                    action, observation, DagEdgeKind.CAUSAL_RESULT
+                ))
+            prior = observations[-1] if observations else action
+
+    # Resource flow prefers a real lineage declaration.  A stable per-epoch
+    # environment fingerprint is a weaker heuristic scope.  When neither is
+    # available, use a shared unknown scope: same-path reuse remains a possible
+    # dependency, but distinct paths can still be disconnected.
+    last_resource_record: dict[tuple[str, str], str] = {}
+    for record in sorted(history.records, key=lambda row: row.message_index):
+        epoch_index = epoch_for_record.get(record.record_id)
+        lineage = _workspace_lineage(record) or (
+            epoch_lineages.get(epoch_index) if epoch_index is not None else None
+        )
+        environment = _environment_scope(record) or (
+            epoch_environments.get(epoch_index) if epoch_index is not None else None
+        )
+        scope = (
+            f"workspace:{lineage}" if lineage is not None
+            else f"environment:{environment}" if environment is not None
+            else "workspace:unknown"
+        )
+        for resource in _record_resources(record):
+            key = (scope, resource)
+            predecessor = last_resource_record.get(key)
+            if predecessor is not None and predecessor != record.record_id:
+                edge_rows.append(DagEdge(
+                    predecessor,
+                    record.record_id,
+                    DagEdgeKind.RESOURCE_FLOW,
+                    resource,
+                ))
+            last_resource_record[key] = record.record_id
+        dependencies = record.metadata.get("dependency_record_ids")
+        if isinstance(dependencies, (list, tuple)):
+            for predecessor in dependencies:
+                predecessor = str(predecessor)
+                if predecessor in records and predecessor != record.record_id:
+                    edge_rows.append(DagEdge(
+                        predecessor,
+                        record.record_id,
+                        DagEdgeKind.DECLARED_DEPENDENCY,
+                    ))
+
+    # Deduplicate before reachability so an action+observation pair declaring
+    # the same resource does not inflate evidence counts.
+    edge_map = {
+        (row.source_id, row.target_id, row.kind, row.resource_id): row
+        for row in edge_rows
+    }
+    edges = tuple(edge_map.values())
+    frontier_epochs = tuple(
+        epoch.epoch_index for epoch in epochs[-recent_user_prompts:]
+    )
+    frontier_ids = {
+        record_id
+        for epoch in epochs
+        if epoch.epoch_index in frontier_epochs
+        for record_id in epoch.record_ids
+    }
+    incoming: dict[str, set[str]] = {}
+    for edge in edges:
+        incoming.setdefault(edge.target_id, set()).add(edge.source_id)
+    live = set(frontier_ids)
+    pending = list(frontier_ids)
+    while pending:
+        target = pending.pop()
+        for source in incoming.get(target, ()):
+            if source not in live:
+                live.add(source)
+                pending.append(source)
+
+    candidates: list[FrontierRetirementCandidate] = []
+    turn_by_group = {turn.causal_group_id: turn for turn in history.turns}
+    for epoch in epochs:
+        if epoch.epoch_index in frontier_epochs:
+            continue
+        for group_id in epoch.causal_group_ids:
+            turn = turn_by_group.get(group_id)
+            if turn is None:
+                # Instruction/system records are immutable and never candidates.
+                continue
+            group_ids = tuple(
+                record_id for record_id in turn.record_ids
+                if epoch_for_record.get(record_id) == epoch.epoch_index
+            )
+            if not group_ids or any(record_id in live for record_id in group_ids):
+                continue
+            rows = tuple(records[record_id] for record_id in group_ids)
+            lineages = {
+                value for row in rows
+                if (value := _workspace_lineage(row)) is not None
+            }
+            if not lineages and epoch.epoch_index in epoch_lineages:
+                lineages.add(epoch_lineages[epoch.epoch_index])
+            explicit_lineage = len(lineages) == 1
+            unknown = any(_has_unknown_effect(row) for row in rows)
+            confidence = (
+                FrontierRetirementConfidence.CERTIFIED
+                if explicit_lineage and not unknown
+                else FrontierRetirementConfidence.HEURISTIC
+            )
+            resources = tuple(dict.fromkeys(
+                resource for row in rows for resource in _record_resources(row)
+            ))
+            candidates.append(FrontierRetirementCandidate(
+                group_id,
+                epoch.epoch_index,
+                group_ids,
+                confidence,
+                resources,
+                unknown,
+                (
+                    "no directed information-flow path reaches any record in "
+                    f"the last {recent_user_prompts} user-instruction epochs"
+                ),
+            ))
+
+    return FrontierInformationFlowDag(
+        epochs,
+        edges,
+        frontier_epochs,
+        tuple(sorted(frontier_ids, key=lambda value: records[value].message_index)),
+        tuple(sorted(live, key=lambda value: records[value].message_index)),
+        tuple(candidates),
+    )
+
+
+_ACTION_PARAMETERS_OMITTED = (
+    "[PRA memory] Prior tool action completed; parameters omitted."
+)
+
+
+def simplify_disconnected_frontier(
+    history: CanonicalAgentHistory,
+    dag: FrontierInformationFlowDag,
+    *,
+    mode: FrontierSimplificationMode | str,
+    count_tokens: Callable[[str], int],
+    allow_heuristic: bool = True,
+) -> FrontierSimplificationPlan:
+    """Realize disconnected groups while preserving every user instruction.
+
+    Whole-group retirement is protocol-safe.  Payload/parameter modes retain
+    role alternation using compact ordinary-text stubs and are explicit causal
+    ablations.  A replacement is accepted only when it is smaller than its
+    source; otherwise the source remains byte-identical.
+    """
+
+    selected_mode = FrontierSimplificationMode(mode)
+    records = history.record_by_id
+    eligible = tuple(
+        candidate for candidate in dag.retirement_candidates
+        if allow_heuristic
+        or candidate.confidence == FrontierRetirementConfidence.CERTIFIED
+    )
+    eligible_groups = {row.causal_group_id for row in eligible}
+    selected: list[str] = []
+    replacements: dict[str, str] = {}
+    for record in sorted(history.records, key=lambda row: row.message_index):
+        retired = record.causal_group_id in eligible_groups
+        if retired and selected_mode == FrontierSimplificationMode.WHOLE_CAUSAL_GROUP:
+            continue
+        selected.append(record.record_id)
+        if not retired:
+            continue
+        replacement: str | None = None
+        if record.has_role(AgentRecordRole.TOOL_OBSERVATION):
+            return_code = record.return_code if record.return_code is not None else "unknown"
+            replacement = (
+                f"<returncode>{return_code}</returncode>\n"
+                "<output>[PRA memory] prior tool result omitted; "
+                "no live dependency</output>"
+            )
+        elif (
+            selected_mode
+            == FrontierSimplificationMode.ACTION_PARAMETERS_AND_OBSERVATION
+            and record.has_role(AgentRecordRole.ASSISTANT_ACTION)
+        ):
+            replacement = _ACTION_PARAMETERS_OMITTED
+        if replacement is not None and count_tokens(replacement) < count_tokens(record.content):
+            replacements[record.record_id] = replacement
+
+    full_tokens = sum(count_tokens(row.content) for row in history.records)
+    materialized_tokens = sum(
+        count_tokens(replacements.get(record_id, records[record_id].content))
+        for record_id in selected
+    )
+    return FrontierSimplificationPlan(
+        selected_mode,
+        tuple(selected),
+        tuple(replacements.items()),
+        tuple(row.causal_group_id for row in eligible),
+        full_tokens,
+        materialized_tokens,
+    )
 
 
 def _turn_records(
@@ -475,4 +908,97 @@ class DagCertifiedExclusionSelector:
             policy=policy,
             full_history_tokens=original_tokens,
             exclusions=tuple(exclusions),
+        )
+
+
+class FrontierDagRetirementSelector:
+    """Autonomous whole-group policy backed by recent-frontier reachability.
+
+    This selector intentionally implements only the protocol-safe whole causal
+    group realization.  Observation-only and action-parameter stubs remain
+    separate materialization ablations and must not be conflated with logical
+    group selection.
+    """
+
+    def __init__(
+        self,
+        *,
+        recent_user_prompts: int = 2,
+        allow_heuristic: bool = False,
+    ) -> None:
+        if recent_user_prompts < 1:
+            raise ValueError("recent_user_prompts must be positive")
+        self.recent_user_prompts = recent_user_prompts
+        self.allow_heuristic = allow_heuristic
+
+    def select(
+        self,
+        *,
+        history: CanonicalAgentHistory,
+        query: str,
+        budget: object,
+        count_tokens: Callable[[str], int],
+    ):
+        del query
+        dag = build_frontier_information_flow_dag(
+            history, recent_user_prompts=self.recent_user_prompts
+        )
+        eligible = tuple(
+            row for row in dag.retirement_candidates
+            if self.allow_heuristic
+            or row.confidence == FrontierRetirementConfidence.CERTIFIED
+        )
+        excluded_groups = {row.causal_group_id for row in eligible}
+        selected_records = tuple(
+            row for row in sorted(history.records, key=lambda value: value.message_index)
+            if row.causal_group_id not in excluded_groups
+        )
+        selected_ids = tuple(row.record_id for row in selected_records)
+        selected_groups = tuple(dict.fromkeys(
+            row.causal_group_id for row in selected_records
+        ))
+        full_tokens = sum(count_tokens(row.content) for row in history.records)
+        selected_tokens = sum(count_tokens(row.content) for row in selected_records)
+        requested = int(getattr(budget, "max_tokens", full_tokens))
+        exclusions = tuple(AgentMemoryExclusion(
+            causal_group_id=row.causal_group_id,
+            record_ids=row.record_ids,
+            rule_id=f"FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1",
+            classification=row.confidence.value,
+            reason=row.reason,
+            resource_ids=row.resource_ids,
+            witness_record_ids=dag.frontier_record_ids,
+            tombstone=(
+                f"INACTIVE group={row.causal_group_id} "
+                f"rule=FRONTIER_NO_PATH_M{self.recent_user_prompts}_V1 "
+                f"confidence={row.confidence.value}"
+            ),
+            excluded_tokens=sum(
+                count_tokens(history.record_by_id[record_id].content)
+                for record_id in row.record_ids
+            ),
+        ) for row in eligible)
+        return AgentMemoryPlan(
+            policy=(
+                f"frontier_dag_m{self.recent_user_prompts}_"
+                + ("heuristic" if self.allow_heuristic else "certified")
+            ),
+            selected_record_ids=selected_ids,
+            selected_causal_group_ids=selected_groups,
+            selection_reasons=tuple(
+                (record_id, "recent_frontier_or_live_ancestor")
+                for record_id in selected_ids
+            ),
+            full_history_tokens=full_tokens,
+            selected_tokens=selected_tokens,
+            requested_budget_tokens=requested,
+            mandatory_tokens=selected_tokens,
+            mandatory_overflow_tokens=max(0, selected_tokens - requested),
+            head_turns=0,
+            tail_turns=len(dag.frontier_epoch_indices),
+            middle_candidate_turns=len(history.turns),
+            middle_selected_turns=sum(
+                turn.causal_group_id not in excluded_groups for turn in history.turns
+            ),
+            exclusions=exclusions,
         )

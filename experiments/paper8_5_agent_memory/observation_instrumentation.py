@@ -29,6 +29,7 @@ def build_bash_observation_metadata(
     pre_state: Mapping[str, Any],
     post_state: Mapping[str, Any],
     environment_fingerprint: str,
+    workspace_lineage_id: str | None = None,
     visible_output_limit: int = 10_000,
 ) -> dict[str, Any]:
     """Describe one Bash result without claiming more than tracing establishes."""
@@ -92,6 +93,7 @@ def build_bash_observation_metadata(
         "return_code": return_code,
         "raw_output_sha256": hashlib.sha256(raw_output.encode()).hexdigest(),
         "environment_fingerprint": environment_fingerprint,
+        "workspace_lineage_id": workspace_lineage_id,
         "resource_version_fingerprints": pre_versions,
         "post_resource_version_fingerprints": post_versions,
         "workspace_version_fingerprint": workspace_pre,

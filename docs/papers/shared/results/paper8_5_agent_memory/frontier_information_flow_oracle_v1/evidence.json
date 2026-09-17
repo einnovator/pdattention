@@ -1,0 +1,2644 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_recent_frontier_information_flow_oracle",
+  "claim_scope": "offline structural/oracle alignment and token opportunity; not autonomous quality",
+  "sources": [
+    {
+      "path": "D:\\tmp\\paper85-dag-flow\\prefix6.json",
+      "sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283"
+    },
+    {
+      "path": "D:\\tmp\\paper85-dag-flow\\episode6.json",
+      "sha256": "059bd873b2527c4179adcc7b9d39d4ef1a27695312617afa4e037f69f547635b"
+    }
+  ],
+  "synthetic_cases": [
+    {
+      "case": "independent_distinct_resources_unscoped",
+      "result": {
+        "recent_user_prompts": 2,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          4,
+          5
+        ],
+        "edge_count": 24,
+        "candidate_count": 4,
+        "unknown_effect_candidate_count": 0,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 0,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 0,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 4,
+            "token_weighted_precision": 0.0,
+            "token_weighted_recall": 0.0,
+            "false_positive_groups": [],
+            "false_negative_groups": [
+              "turn-0",
+              "turn-1",
+              "turn-2",
+              "turn-3"
+            ]
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 160,
+            "saving_fraction": 0.6363636363636364,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 312,
+            "saving_fraction": 0.2909090909090909,
+            "replacement_count": 4
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 232,
+            "saving_fraction": 0.4727272727272728,
+            "replacement_count": 8
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-0",
+            "epoch_index": 0,
+            "record_ids": [
+              "action-0",
+              "observation-0"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/task_0.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-1",
+            "epoch_index": 1,
+            "record_ids": [
+              "action-1",
+              "observation-1"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/task_1.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-2",
+            "epoch_index": 2,
+            "record_ids": [
+              "action-2",
+              "observation-2"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/task_2.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-3",
+            "epoch_index": 3,
+            "record_ids": [
+              "action-3",
+              "observation-3"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/task_3.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          }
+        ]
+      }
+    },
+    {
+      "case": "old_resource_reaches_current_task",
+      "result": {
+        "recent_user_prompts": 2,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          4,
+          5
+        ],
+        "edge_count": 25,
+        "candidate_count": 3,
+        "unknown_effect_candidate_count": 0,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 4,
+            "oracle_group_count": 3,
+            "true_positive_group_count": 3,
+            "false_positive_group_count": 1,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 0.75,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [
+              "turn-0"
+            ],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 0,
+            "oracle_group_count": 3,
+            "true_positive_group_count": 0,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 3,
+            "token_weighted_precision": 0.0,
+            "token_weighted_recall": 0.0,
+            "false_positive_groups": [],
+            "false_negative_groups": [
+              "turn-1",
+              "turn-2",
+              "turn-3"
+            ]
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 3,
+            "oracle_group_count": 3,
+            "true_positive_group_count": 3,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 230,
+            "saving_fraction": 0.4772727272727273,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 344,
+            "saving_fraction": 0.21818181818181814,
+            "replacement_count": 3
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 440,
+            "materialized_tokens": 440,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 284,
+            "saving_fraction": 0.3545454545454545,
+            "replacement_count": 6
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-1",
+            "epoch_index": 1,
+            "record_ids": [
+              "action-1",
+              "observation-1"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/a.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-2",
+            "epoch_index": 2,
+            "record_ids": [
+              "action-2",
+              "observation-2"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/b.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-3",
+            "epoch_index": 3,
+            "record_ids": [
+              "action-3",
+              "observation-3"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/c.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          }
+        ]
+      }
+    },
+    {
+      "case": "same_path_distinct_declared_workspaces",
+      "result": {
+        "recent_user_prompts": 2,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          4,
+          5
+        ],
+        "edge_count": 24,
+        "candidate_count": 4,
+        "unknown_effect_candidate_count": 0,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 160,
+            "saving_fraction": 0.6363636363636364,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 160,
+            "saving_fraction": 0.6363636363636364,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 312,
+            "saving_fraction": 0.2909090909090909,
+            "replacement_count": 4
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 312,
+            "saving_fraction": 0.2909090909090909,
+            "replacement_count": 4
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 232,
+            "saving_fraction": 0.4727272727272728,
+            "replacement_count": 8
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 232,
+            "saving_fraction": 0.4727272727272728,
+            "replacement_count": 8
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-0",
+            "epoch_index": 0,
+            "record_ids": [
+              "action-0",
+              "observation-0"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/common.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-1",
+            "epoch_index": 1,
+            "record_ids": [
+              "action-1",
+              "observation-1"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/common.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-2",
+            "epoch_index": 2,
+            "record_ids": [
+              "action-2",
+              "observation-2"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/common.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-3",
+            "epoch_index": 3,
+            "record_ids": [
+              "action-3",
+              "observation-3"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/common.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          }
+        ]
+      }
+    },
+    {
+      "case": "unknown_effect_lowers_confidence",
+      "result": {
+        "recent_user_prompts": 2,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          4,
+          5
+        ],
+        "edge_count": 24,
+        "candidate_count": 4,
+        "unknown_effect_candidate_count": 1,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 3,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 3,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 1,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 0.75,
+            "false_positive_groups": [],
+            "false_negative_groups": [
+              "turn-1"
+            ]
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 4,
+            "oracle_group_count": 4,
+            "true_positive_group_count": 4,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 230,
+            "saving_fraction": 0.4772727272727273,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 160,
+            "saving_fraction": 0.6363636363636364,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 344,
+            "saving_fraction": 0.21818181818181814,
+            "replacement_count": 3
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 312,
+            "saving_fraction": 0.2909090909090909,
+            "replacement_count": 4
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 3,
+            "full_tokens": 440,
+            "materialized_tokens": 284,
+            "saving_fraction": 0.3545454545454545,
+            "replacement_count": 6
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 4,
+            "full_tokens": 440,
+            "materialized_tokens": 232,
+            "saving_fraction": 0.4727272727272728,
+            "replacement_count": 8
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-0",
+            "epoch_index": 0,
+            "record_ids": [
+              "action-0",
+              "observation-0"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/task_0.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-1",
+            "epoch_index": 1,
+            "record_ids": [
+              "action-1",
+              "observation-1"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "src/task_1.py"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-2",
+            "epoch_index": 2,
+            "record_ids": [
+              "action-2",
+              "observation-2"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/task_2.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-3",
+            "epoch_index": 3,
+            "record_ids": [
+              "action-3",
+              "observation-3"
+            ],
+            "confidence": "certified_disconnected",
+            "resource_ids": [
+              "src/task_3.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          }
+        ]
+      }
+    }
+  ],
+  "real_chain": {
+    "case": "real_independent_cross_workspace_chain",
+    "issue_count": 6,
+    "instance_ids": [
+      "sympy__sympy-16886",
+      "django__django-15277",
+      "scikit-learn__scikit-learn-12585",
+      "pytest-dev__pytest-7982",
+      "django__django-16145",
+      "scikit-learn__scikit-learn-13135"
+    ],
+    "selector_visibility": "boundary-free model transcript; evaluator episode ledger used only for scoring",
+    "results": [
+      {
+        "recent_user_prompts": 2,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          4,
+          5
+        ],
+        "edge_count": 507,
+        "candidate_count": 45,
+        "unknown_effect_candidate_count": 5,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 45,
+            "oracle_group_count": 45,
+            "true_positive_group_count": 45,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 0,
+            "oracle_group_count": 45,
+            "true_positive_group_count": 0,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 45,
+            "token_weighted_precision": 0.0,
+            "token_weighted_recall": 0.0,
+            "false_positive_groups": [],
+            "false_negative_groups": [
+              "turn-000000",
+              "turn-000001",
+              "turn-000002",
+              "turn-000003",
+              "turn-000004",
+              "turn-000005",
+              "turn-000006",
+              "turn-000007",
+              "turn-000008",
+              "turn-000009",
+              "turn-000010",
+              "turn-000011",
+              "turn-000012",
+              "turn-000013",
+              "turn-000014",
+              "turn-000015",
+              "turn-000016",
+              "turn-000017",
+              "turn-000018",
+              "turn-000019",
+              "turn-000020",
+              "turn-000021",
+              "turn-000022",
+              "turn-000023",
+              "turn-000024",
+              "turn-000025",
+              "turn-000026",
+              "turn-000027",
+              "turn-000028",
+              "turn-000029",
+              "turn-000030",
+              "turn-000031",
+              "turn-000032",
+              "turn-000033",
+              "turn-000034",
+              "turn-000035",
+              "turn-000036",
+              "turn-000037",
+              "turn-000038",
+              "turn-000039",
+              "turn-000040",
+              "turn-000041",
+              "turn-000042",
+              "turn-000043",
+              "turn-000044"
+            ]
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 45,
+            "oracle_group_count": 45,
+            "true_positive_group_count": 45,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 45,
+            "full_tokens": 14184,
+            "materialized_tokens": 9511,
+            "saving_fraction": 0.3294557247602933,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 45,
+            "full_tokens": 14184,
+            "materialized_tokens": 12424,
+            "saving_fraction": 0.1240834743372814,
+            "replacement_count": 32
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 45,
+            "full_tokens": 14184,
+            "materialized_tokens": 10252,
+            "saving_fraction": 0.27721376198533554,
+            "replacement_count": 77
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-000000",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000002",
+              "record-000003"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "simpy.crypto.crypto",
+              "search:51b5a6a7de08",
+              "/testbed/sympy/crypto/crypto.py",
+              "/testbed/sympy/crypto/__init__.py",
+              "/testbed/sympy/crypto/tests/test_crypto.py",
+              "/testbed/sympy/crypto/tests/__init__.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000001",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000004",
+              "record-000005"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000002",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000006",
+              "record-000007"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "--.-",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-",
+              ".-.-.-",
+              "--..--",
+              "-.-.-",
+              "..--",
+              "-....-",
+              "..--.-",
+              "-.--.-",
+              "-...-",
+              ".-.-",
+              ".--.-",
+              "...-..-",
+              "-.-.--",
+              "morse_char.items"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000003",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000008",
+              "record-000009"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000004",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000010",
+              "record-000011"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-",
+              ".-.-.-",
+              "--..--",
+              "-.-.-",
+              "..--",
+              "-....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000005",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000012",
+              "record-000013"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "..---",
+              "...--",
+              "....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000006",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000014",
+              "record-000015"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000007",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000016",
+              "record-000017"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sys.path.insert",
+              "sympy.crypto.crypto",
+              "morse_char.get",
+              "/testbed/sympy/__init__.py",
+              "/docs.sympy.org/latest/install.html"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000008",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000018",
+              "record-000019"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "patch.txt",
+              "a/sympy/crypto/crypto.py",
+              "b/sympy/crypto/crypto.py",
+              "ca552191c..0c556b6ef",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000009",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000021",
+              "record-000022"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "Value._resolve_output_field",
+              "CharField.__init__",
+              "search:d0c800aac9f0",
+              "/testbed/django/middleware/gzip.py",
+              "/testbed/django/middleware/csrf.py",
+              "/testbed/django/middleware/locale.py",
+              "/testbed/django/middleware/clickjacking.py",
+              "/testbed/django/middleware/__init__.py",
+              "/testbed/django/middleware/common.py",
+              "/testbed/django/middleware/http.py",
+              "/testbed/django/middleware/security.py",
+              "/testbed/django/middleware/cache.py",
+              "/testbed/django/conf/global_settings.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000010",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000023",
+              "record-000024"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "CharField.__init__",
+              "Value._resolve_output_field",
+              "search:ca34867e4368",
+              "/testbed/django/db/models/fields/__init__.py",
+              "/testbed/django/forms/fields.py",
+              "/testbed/tests/forms_tests/field_tests/test_charfield.py",
+              "/testbed/tests/postgres_tests/models.py",
+              "/testbed/tests/inspectdb/models.py",
+              "/testbed/tests/invalid_models_tests/test_ordinary_fields.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000011",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000025",
+              "record-000026"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000012",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000027",
+              "record-000028"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "kwargs.get",
+              "self._check_db_collation",
+              "self._check_max_length_attribute"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000013",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000029",
+              "record-000030"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "django.utils.text",
+              "django.utils.translation",
+              "forms.URLField",
+              "kwargs.setdefault",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.has_default",
+              "self.default",
+              "checks.Error",
+              "fields.E170",
+              "self.editable",
+              "connection.ops.binary_placeholder_sql"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000014",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000031",
+              "record-000032"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "1013s/self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "self.validators.append",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000015",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000033",
+              "record-000034"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000016",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000035",
+              "record-000036"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000017",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000037",
+              "record-000038"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000018",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000039",
+              "record-000040"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..7c80ca7b35",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000019",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000041",
+              "record-000042"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "django.utils.text",
+              "django.utils.translation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000020",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000043",
+              "record-000044"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append",
+              "self.db_collation",
+              "self.max_length",
+              "validators.MaxLengthValidator",
+              "kwargs.get",
+              "self._check_db_collation",
+              "self._check_max_length_attribute",
+              "checks.Error",
+              "kwargs.setdefault",
+              "self._check_str_default_value",
+              "self.has_default",
+              "self.default",
+              "fields.E170"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000021",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000045",
+              "record-000046"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get",
+              "self._check_db_collation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000022",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000047",
+              "record-000048"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "tself.validators.append",
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000023",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000049",
+              "record-000050"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000024",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000051",
+              "record-000052"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "tself.validators.append",
+              "validators.MaxLengthValidator",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000025",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000053",
+              "record-000054"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000026",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000055",
+              "record-000056"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "django.utils.text",
+              "django.utils.translation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000027",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000057",
+              "record-000058"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..f359dee70f",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000028",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000059",
+              "record-000060"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "CharField.__init__",
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "patch.txt",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..f359dee70f",
+              "self.db_collation",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000029",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000061",
+              "record-000062"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000030",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000063",
+              "record-000064"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sympy/crypto/crypto.py",
+              "django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000031",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000065",
+              "record-000066"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sympy/crypto/crypto.py",
+              "django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000032",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000068",
+              "record-000069"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "base.py",
+              "/testbed/sklearn/base.py",
+              "/testbed/sklearn/metrics/base.py",
+              "/testbed/sklearn/svm/base.py",
+              "/testbed/sklearn/ensemble/base.py",
+              "/testbed/sklearn/linear_model/base.py",
+              "/testbed/sklearn/datasets/base.py",
+              "/testbed/sklearn/decomposition/base.py",
+              "/testbed/sklearn/mixture/base.py",
+              "/testbed/sklearn/feature_selection/base.py",
+              "/testbed/sklearn/preprocessing/base.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000033",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000070",
+              "record-000071"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "base.py",
+              "copy.deepcopy",
+              "estimator.__class__",
+              "estimator.get_params",
+              "six.iteritems",
+              "new_object.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000034",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000072",
+              "record-000073"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "copy.deepcopy",
+              "estimator.__class__",
+              "estimator.get_params",
+              "six.iteritems",
+              "new_object.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000035",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000074",
+              "record-000075"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "estimator.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000036",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000076",
+              "record-000077"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "copy.deepcopy"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000037",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000078",
+              "record-000079"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "patch.txt",
+              "a/sklearn/base.py",
+              "b/sklearn/base.py",
+              "56ffb18bf..34998270c",
+              "copy.deepcopy"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000038",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000081",
+              "record-000082"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "search:a7bfae23d93c",
+              "/testbed/src/pytest/__init__.py",
+              "/testbed/src/pytest/__main__.py",
+              "/testbed/src/pytest/collect.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000039",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000083",
+              "record-000084"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000040",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000085",
+              "record-000086"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py",
+              "pathlib.py",
+              "os.scandir",
+              "entry.name",
+              "entry.is_dir",
+              "entry.path",
+              "os.path.abspath"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000041",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000087",
+              "record-000088"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py",
+              "os.DirEntry",
+              "os.scandir",
+              "entry.name",
+              "entry.is_dir",
+              "entry.path",
+              "os.path.abspath",
+              "Path.resolve",
+              "Path.absolute"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000042",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000089",
+              "record-000090"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py",
+              "entry.is_dir"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000043",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000091",
+              "record-000092"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py",
+              "entry.is_dir"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000044",
+            "epoch_index": 3,
+            "record_ids": [
+              "record-000093",
+              "record-000094"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/src/_pytest/pathlib.py",
+              "patch.txt",
+              "a/src/_pytest/pathlib.py",
+              "b/src/_pytest/pathlib.py",
+              "f0bdb1481..64c7fec6f",
+              "os.scandir",
+              "entry.name",
+              "entry.is_dir",
+              "entry.path"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 2 user-instruction epochs"
+          }
+        ]
+      },
+      {
+        "recent_user_prompts": 3,
+        "instruction_epoch_count": 6,
+        "frontier_epoch_indices": [
+          3,
+          4,
+          5
+        ],
+        "edge_count": 507,
+        "candidate_count": 38,
+        "unknown_effect_candidate_count": 5,
+        "comparisons": [
+          {
+            "rule": "recent_epoch_only_no_dag",
+            "predicted_group_count": 38,
+            "oracle_group_count": 38,
+            "true_positive_group_count": 38,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          },
+          {
+            "rule": "dag_no_path_certified_only",
+            "predicted_group_count": 0,
+            "oracle_group_count": 38,
+            "true_positive_group_count": 0,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 38,
+            "token_weighted_precision": 0.0,
+            "token_weighted_recall": 0.0,
+            "false_positive_groups": [],
+            "false_negative_groups": [
+              "turn-000000",
+              "turn-000001",
+              "turn-000002",
+              "turn-000003",
+              "turn-000004",
+              "turn-000005",
+              "turn-000006",
+              "turn-000007",
+              "turn-000008",
+              "turn-000009",
+              "turn-000010",
+              "turn-000011",
+              "turn-000012",
+              "turn-000013",
+              "turn-000014",
+              "turn-000015",
+              "turn-000016",
+              "turn-000017",
+              "turn-000018",
+              "turn-000019",
+              "turn-000020",
+              "turn-000021",
+              "turn-000022",
+              "turn-000023",
+              "turn-000024",
+              "turn-000025",
+              "turn-000026",
+              "turn-000027",
+              "turn-000028",
+              "turn-000029",
+              "turn-000030",
+              "turn-000031",
+              "turn-000032",
+              "turn-000033",
+              "turn-000034",
+              "turn-000035",
+              "turn-000036",
+              "turn-000037"
+            ]
+          },
+          {
+            "rule": "dag_no_path_heuristic_allowed",
+            "predicted_group_count": 38,
+            "oracle_group_count": 38,
+            "true_positive_group_count": 38,
+            "false_positive_group_count": 0,
+            "false_negative_group_count": 0,
+            "token_weighted_precision": 1.0,
+            "token_weighted_recall": 1.0,
+            "false_positive_groups": [],
+            "false_negative_groups": []
+          }
+        ],
+        "simplifications": [
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "whole_causal_group",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 38,
+            "full_tokens": 14184,
+            "materialized_tokens": 9952,
+            "saving_fraction": 0.29836435420191765,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "observation_payload",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 38,
+            "full_tokens": 14184,
+            "materialized_tokens": 12574,
+            "saving_fraction": 0.1135081782289904,
+            "replacement_count": 29
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "certified_only",
+            "retired_group_count": 0,
+            "full_tokens": 14184,
+            "materialized_tokens": 14184,
+            "saving_fraction": 0.0,
+            "replacement_count": 0
+          },
+          {
+            "mode": "action_parameters_and_observation",
+            "confidence_gate": "heuristic_allowed",
+            "retired_group_count": 38,
+            "full_tokens": 14184,
+            "materialized_tokens": 10587,
+            "saving_fraction": 0.25359560067681897,
+            "replacement_count": 67
+          }
+        ],
+        "candidates": [
+          {
+            "causal_group_id": "turn-000000",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000002",
+              "record-000003"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "simpy.crypto.crypto",
+              "search:51b5a6a7de08",
+              "/testbed/sympy/crypto/crypto.py",
+              "/testbed/sympy/crypto/__init__.py",
+              "/testbed/sympy/crypto/tests/test_crypto.py",
+              "/testbed/sympy/crypto/tests/__init__.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000001",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000004",
+              "record-000005"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000002",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000006",
+              "record-000007"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "--.-",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-",
+              ".-.-.-",
+              "--..--",
+              "-.-.-",
+              "..--",
+              "-....-",
+              "..--.-",
+              "-.--.-",
+              "-...-",
+              ".-.-",
+              ".--.-",
+              "...-..-",
+              "-.-.--",
+              "morse_char.items"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000003",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000008",
+              "record-000009"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000004",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000010",
+              "record-000011"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-",
+              ".-.-.-",
+              "--..--",
+              "-.-.-",
+              "..--",
+              "-....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000005",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000012",
+              "record-000013"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "..---",
+              "...--",
+              "....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000006",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000014",
+              "record-000015"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000007",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000016",
+              "record-000017"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sys.path.insert",
+              "sympy.crypto.crypto",
+              "morse_char.get",
+              "/testbed/sympy/__init__.py",
+              "/docs.sympy.org/latest/install.html"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000008",
+            "epoch_index": 0,
+            "record_ids": [
+              "record-000018",
+              "record-000019"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sympy/crypto/crypto.py",
+              "patch.txt",
+              "a/sympy/crypto/crypto.py",
+              "b/sympy/crypto/crypto.py",
+              "ca552191c..0c556b6ef",
+              "..-",
+              "...-",
+              "-..-",
+              "-.--",
+              "..---",
+              "...--",
+              "....-"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000009",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000021",
+              "record-000022"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "Value._resolve_output_field",
+              "CharField.__init__",
+              "search:d0c800aac9f0",
+              "/testbed/django/middleware/gzip.py",
+              "/testbed/django/middleware/csrf.py",
+              "/testbed/django/middleware/locale.py",
+              "/testbed/django/middleware/clickjacking.py",
+              "/testbed/django/middleware/__init__.py",
+              "/testbed/django/middleware/common.py",
+              "/testbed/django/middleware/http.py",
+              "/testbed/django/middleware/security.py",
+              "/testbed/django/middleware/cache.py",
+              "/testbed/django/conf/global_settings.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000010",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000023",
+              "record-000024"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "CharField.__init__",
+              "Value._resolve_output_field",
+              "search:ca34867e4368",
+              "/testbed/django/db/models/fields/__init__.py",
+              "/testbed/django/forms/fields.py",
+              "/testbed/tests/forms_tests/field_tests/test_charfield.py",
+              "/testbed/tests/postgres_tests/models.py",
+              "/testbed/tests/inspectdb/models.py",
+              "/testbed/tests/invalid_models_tests/test_ordinary_fields.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000011",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000025",
+              "record-000026"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000012",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000027",
+              "record-000028"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "kwargs.get",
+              "self._check_db_collation",
+              "self._check_max_length_attribute"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000013",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000029",
+              "record-000030"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "django.utils.text",
+              "django.utils.translation",
+              "forms.URLField",
+              "kwargs.setdefault",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.has_default",
+              "self.default",
+              "checks.Error",
+              "fields.E170",
+              "self.editable",
+              "connection.ops.binary_placeholder_sql"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000014",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000031",
+              "record-000032"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "1013s/self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "self.validators.append",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000015",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000033",
+              "record-000034"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000016",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000035",
+              "record-000036"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000017",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000037",
+              "record-000038"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000018",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000039",
+              "record-000040"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..7c80ca7b35",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000019",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000041",
+              "record-000042"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "django.utils.text",
+              "django.utils.translation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000020",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000043",
+              "record-000044"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append",
+              "self.db_collation",
+              "self.max_length",
+              "validators.MaxLengthValidator",
+              "kwargs.get",
+              "self._check_db_collation",
+              "self._check_max_length_attribute",
+              "checks.Error",
+              "kwargs.setdefault",
+              "self._check_str_default_value",
+              "self.has_default",
+              "self.default",
+              "fields.E170"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000021",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000045",
+              "record-000046"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get",
+              "self._check_db_collation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000022",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000047",
+              "record-000048"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "tself.validators.append",
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000023",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000049",
+              "record-000050"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000024",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000051",
+              "record-000052"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "self.max_length",
+              "tself.validators.append",
+              "validators.MaxLengthValidator",
+              "/testbed/django/db/models/fields/__init__.py"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000025",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000053",
+              "record-000054"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000026",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000055",
+              "record-000056"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "django.utils.text",
+              "django.utils.translation"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000027",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000057",
+              "record-000058"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..f359dee70f",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000028",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000059",
+              "record-000060"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "CharField.__init__",
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length",
+              "patch.txt",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "f30b523346..f359dee70f",
+              "self.db_collation",
+              "kwargs.get"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000029",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000061",
+              "record-000062"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/django/db/models/fields/__init__.py",
+              "self.max_length",
+              "self.validators.append",
+              "validators.MaxLengthValidator"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000030",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000063",
+              "record-000064"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sympy/crypto/crypto.py",
+              "django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000031",
+            "epoch_index": 1,
+            "record_ids": [
+              "record-000065",
+              "record-000066"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "sympy/crypto/crypto.py",
+              "django/db/models/fields/__init__.py",
+              "CharField.__init__",
+              "a/django/db/models/fields/__init__.py",
+              "b/django/db/models/fields/__init__.py",
+              "self.db_collation",
+              "self.validators.append",
+              "validators.MaxLengthValidator",
+              "self.max_length"
+            ],
+            "unknown_effect": true,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000032",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000068",
+              "record-000069"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "base.py",
+              "/testbed/sklearn/base.py",
+              "/testbed/sklearn/metrics/base.py",
+              "/testbed/sklearn/svm/base.py",
+              "/testbed/sklearn/ensemble/base.py",
+              "/testbed/sklearn/linear_model/base.py",
+              "/testbed/sklearn/datasets/base.py",
+              "/testbed/sklearn/decomposition/base.py",
+              "/testbed/sklearn/mixture/base.py",
+              "/testbed/sklearn/feature_selection/base.py",
+              "/testbed/sklearn/preprocessing/base.py"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000033",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000070",
+              "record-000071"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "base.py",
+              "copy.deepcopy",
+              "estimator.__class__",
+              "estimator.get_params",
+              "six.iteritems",
+              "new_object.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000034",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000072",
+              "record-000073"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "copy.deepcopy",
+              "estimator.__class__",
+              "estimator.get_params",
+              "six.iteritems",
+              "new_object.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000035",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000074",
+              "record-000075"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "estimator.get_params"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000036",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000076",
+              "record-000077"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "copy.deepcopy"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          },
+          {
+            "causal_group_id": "turn-000037",
+            "epoch_index": 2,
+            "record_ids": [
+              "record-000078",
+              "record-000079"
+            ],
+            "confidence": "heuristic_disconnected",
+            "resource_ids": [
+              "/testbed/sklearn/base.py",
+              "patch.txt",
+              "a/sklearn/base.py",
+              "b/sklearn/base.py",
+              "56ffb18bf..34998270c",
+              "copy.deepcopy"
+            ],
+            "unknown_effect": false,
+            "reason": "no directed information-flow path reaches any record in the last 3 user-instruction epochs"
+          }
+        ]
+      }
+    ]
+  }
+}

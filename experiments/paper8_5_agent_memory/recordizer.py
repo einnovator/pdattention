@@ -37,6 +37,14 @@ _VERIFICATION_COMMAND = re.compile(
     r"ruff|mypy|npm\s+test|cargo\s+test)\b"
 )
 _FINAL_COMMAND = re.compile(r"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT")
+_PR_DESCRIPTION = re.compile(
+    r"<pr_description>\s*(.*?)\s*</pr_description>", re.DOTALL | re.IGNORECASE
+)
+_TASK_RESOURCE_EXTENSIONS = {
+    ".c", ".cc", ".cpp", ".cs", ".css", ".go", ".h", ".hpp", ".html",
+    ".java", ".js", ".json", ".jsx", ".md", ".php", ".py", ".rb", ".rs",
+    ".rst", ".sh", ".sql", ".toml", ".ts", ".tsx", ".txt", ".yaml", ".yml",
+}
 
 
 def _content(message: Mapping[str, Any]) -> str:
@@ -58,6 +66,30 @@ def _return_code(content: str, message: Mapping[str, Any]) -> int | None:
         return int(extra["returncode"])
     match = _RETURN_CODE.search(content)
     return int(match.group(1)) if match else None
+
+
+def _task_resource_ids(content: str) -> tuple[str, ...]:
+    """Extract task-local paths without treating agent instructions as state.
+
+    mini-swe-agent wraps the actual issue in ``<pr_description>`` and appends a
+    long, repeated operating protocol containing example names such as
+    ``patch.txt`` and ``pyproject.toml``.  Those examples are not task resource
+    dependencies.  The adapter exposes only path-like values from the issue
+    envelope; generic PRA code consumes the resulting typed metadata.
+    """
+
+    match = _PR_DESCRIPTION.search(content)
+    task_text = match.group(1) if match else content
+    values = []
+    for value in extract_resource_ids(None, task_text):
+        normalized = value.lower().split("?", 1)[0].split("#", 1)[0]
+        suffix = "." + normalized.rsplit(".", 1)[-1] if "." in normalized else ""
+        if "/" not in normalized and "\\" not in value and suffix not in _TASK_RESOURCE_EXTENSIONS:
+            continue
+        if normalized.startswith(("http://", "https://")):
+            continue
+        values.append(value)
+    return tuple(dict.fromkeys(values))
 
 
 def _assistant_roles(command: str | None, content: str) -> tuple[AgentRecordRole, ...]:
@@ -126,7 +158,7 @@ def recordize_minisweagent_messages(
             records.append(AgentRecord(
                 record_id, "task", "task", index, role, content,
                 AgentRecordRole.TASK, (AgentRecordRole.TASK,),
-                resource_ids=extract_resource_ids(None, content),
+                resource_ids=_task_resource_ids(content),
             ))
             continue
 
@@ -207,6 +239,7 @@ def recordize_minisweagent_messages(
                 "observation_for_command": last_command,
                 "cwd": extra.get("cwd"),
                 "environment_fingerprint": extra.get("environment_fingerprint"),
+                "workspace_lineage_id": extra.get("workspace_lineage_id"),
                 "resource_version_fingerprints": extra.get(
                     "resource_version_fingerprints"
                 ),
