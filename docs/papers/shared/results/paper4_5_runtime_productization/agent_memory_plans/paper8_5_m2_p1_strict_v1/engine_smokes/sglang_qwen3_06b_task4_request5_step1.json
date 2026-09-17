@@ -1,0 +1,315 @@
+{
+  "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v2",
+  "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
+  "engine": "sglang-mlx",
+  "engine_version": "0.0.0.dev1+gef20fab38.d20260828",
+  "engine_revision": "ef20fab38a03490e2cdf1b7377145ca3a3f2bfc5",
+  "mlx_version": "0.32.2",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.11.15",
+  "hardware": "medium-mac-m5-16gb",
+  "model": "/Users/jorge.simao/.cache/huggingface/hub/models--mlx-community--Qwen3-0.6B-4bit/snapshots/73e3e38d981303bc594367cd910ea6eb48349da8",
+  "model_revision": "73e3e38d981303bc594367cd910ea6eb48349da8",
+  "trajectory": null,
+  "request_replay": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_request_replay.jsonl",
+  "selection_fixture": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_strict_v1/paper4_5_task4_frozen_plan.jsonl",
+  "request_index": 5,
+  "request_input_sha256": "76bcf6513342f1421bc92ec92b543e5b743e506c567ff36b6634f983071a2573",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 0.4791792395896198,
+  "source_tokens": 18110,
+  "wire_suffix_tokens": 117,
+  "wire_prefill_step_size": 1,
+  "source_prefill_step_size": 512,
+  "selected_kv_tokens": 8617,
+  "realized_retention_fraction": 0.4791792395896198,
+  "historical_kv_retention_fraction": 0.47581446714522363,
+  "source_position_base": 18110,
+  "has_holes": true,
+  "materialization_policy": "disjoint_segmented",
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 23,
+  "selection_pack_bytes": 0,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "selection_materialization_elapsed_ms": 9.34025,
+  "dense_reference_pack_bytes": 988266496,
+  "dense_reference_materialization_elapsed_ms": 240.688875,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 35295232,
+    "active_before_bytes": 4227704894,
+    "active_after_bytes": 4227713016,
+    "active_delta_bytes": 8122,
+    "absolute_peak_bytes": 4227862705,
+    "peak_delta_bytes": 157811,
+    "peak_delta_to_selected_layer_kv_ratio": 0.004471170496910178,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the SGLang request's selected interval views, force every selected key/value array with mx.eval, and compare active/peak bytes to the baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over every selected SGLang interval plus one local token, force the output with mx.eval, and compare peak delta with the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "candidate_token_ids": [
+    151667,
+    198
+  ],
+  "reference_token_ids": [
+    151667,
+    198
+  ],
+  "survivor_token_ids": [
+    151667,
+    198
+  ],
+  "restored_token_ids": [
+    151667,
+    198
+  ],
+  "source_kv_sha256": "2e97da27ba06b918391aae962727c3fd104e5be2a06f6d9c6c115c9c9abdbef7",
+  "selected_kv_sha256": "5e9c69ce7e24b1ec6094abb47355834a56b257f8ef22387fef3af1341afdc5d6",
+  "dense_reference_selected_kv_sha256": "5e9c69ce7e24b1ec6094abb47355834a56b257f8ef22387fef3af1341afdc5d6",
+  "restored_selected_kv_sha256": "5e9c69ce7e24b1ec6094abb47355834a56b257f8ef22387fef3af1341afdc5d6",
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "offloaded_payload_type": "tuple",
+  "offloaded_payload_bytes": 4154018768,
+  "offloaded_payload_sha256": "2775b3a32a027f7dc852193c01db4a78e720d7d7bbdcf43396ecd38df8dcea59",
+  "native_error": "KeyError: 'missing-request'",
+  "request_offsets": {
+    "scheduler_local": 118,
+    "attention_rope": 18228,
+    "position_base": 18110
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    },
+    "physical_kv_copy_policy": "dense_interval_pack_or_unqualified_disjoint_views",
+    "selected_text_reencoded_tokens": 0
+  },
+  "bridge_capabilities": {
+    "integration_level": "E2",
+    "native_kv": true,
+    "radix_prefix_identity_separate": true,
+    "radix_prefix_and_native_same_request": true,
+    "hicache_external_namespace": false,
+    "shared_storage_lifecycle": false,
+    "live_prefix_kv_capture": true,
+    "live_prefix_kv_subset": true,
+    "source_positions_preserved": true,
+    "zero_selected_text_reencoding": true,
+    "disjoint_selection_requires_pack_copy": false,
+    "disjoint_attention_runtime_qualification_required": true,
+    "physical_kv_copy_reported": true,
+    "native_remove_request_terminal_hook": true,
+    "source_owner_pin_guard": true,
+    "request_activation_callback": "MlxModelRunner.prefill_start",
+    "selected_cache_callbacks": [
+      "MlxModelRunner._acquire_cache",
+      "MlxModelRunner._cache_with_pool_backed_attention"
+    ],
+    "request_teardown_callback": "MlxModelRunner.remove_request",
+    "radix_pool_release_strips_selected_memory": true,
+    "hicache_metrics": null,
+    "patched_layers": 28
+  },
+  "selection_plan": {
+    "source_tokens": 18110,
+    "source_position_base": 18110,
+    "selected_tokens": 8617,
+    "full_retention": false,
+    "has_holes": true,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 1389,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 3506,
+        "end": 5454,
+        "record_id": "message:20:user",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 12830,
+        "end": 14382,
+        "record_id": "message:67:user",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 14382,
+        "end": 14385,
+        "record_id": "message:68:assistant",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14385,
+        "end": 14612,
+        "record_id": "message:69:user",
+        "causal_group_id": "turn:68"
+      },
+      {
+        "start": 14612,
+        "end": 14615,
+        "record_id": "message:70:assistant",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14615,
+        "end": 14973,
+        "record_id": "message:71:user",
+        "causal_group_id": "turn:70"
+      },
+      {
+        "start": 14973,
+        "end": 14976,
+        "record_id": "message:72:assistant",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 14976,
+        "end": 15388,
+        "record_id": "message:73:user",
+        "causal_group_id": "turn:72"
+      },
+      {
+        "start": 15388,
+        "end": 15391,
+        "record_id": "message:74:assistant",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15391,
+        "end": 15603,
+        "record_id": "message:75:user",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 15603,
+        "end": 15606,
+        "record_id": "message:76:assistant",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15606,
+        "end": 15742,
+        "record_id": "message:77:user",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 15742,
+        "end": 15745,
+        "record_id": "message:78:assistant",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 15745,
+        "end": 15978,
+        "record_id": "message:79:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 15978,
+        "end": 17339,
+        "record_id": "message:80:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 17339,
+        "end": 17342,
+        "record_id": "message:81:assistant",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17342,
+        "end": 17503,
+        "record_id": "message:82:user",
+        "causal_group_id": "turn:81"
+      },
+      {
+        "start": 17503,
+        "end": 17506,
+        "record_id": "message:83:assistant",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17506,
+        "end": 17727,
+        "record_id": "message:84:user",
+        "causal_group_id": "turn:83"
+      },
+      {
+        "start": 17727,
+        "end": 17730,
+        "record_id": "message:85:assistant",
+        "causal_group_id": "turn:85"
+      },
+      {
+        "start": 17730,
+        "end": 18110,
+        "record_id": "message:86:user",
+        "causal_group_id": "turn:85"
+      }
+    ]
+  },
+  "checks": {
+    "radix_cache_enabled": true,
+    "two_concurrent_borrowers": true,
+    "source_owner_removal_rejected_while_borrowed": true,
+    "offload_rejected_while_borrowed": true,
+    "eviction_rejected_while_borrowed": true,
+    "native_batched_decode_executed": true,
+    "normal_finish_released_exactly_once": true,
+    "cancel_released_exactly_once": true,
+    "error_callback_released_exactly_once": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "concurrent_survivor_token_exact": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_selected_kv_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "zero_selected_history_reencoding": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "radix_pool_ownership_isolated": true
+  },
+  "experiment_revision": "79b9b819328a3329dce8646be3a77181fd889973",
+  "implementation_files": {
+    "src/pra_sglang/mlx_native.py": "9a96788f6729fc1f7e019cebf2fff3d6d8c7e7f530407d058bb9f52a7e1e1358",
+    "src/pra_sglang/native_executor.py": "de1bbe7d6f93126180b14d9d83d6b280556fa1daaf1f3e74c05e7318bdbcbac9",
+    "experiments/paper4_5_agent/run_sglang_live_agent_kv_lifecycle.py": "6359c005ce18a8bef97e9a47c4490161a1e3b725bdefd4d51270f2b0d2ce0300"
+  },
+  "provenance_artifact": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/sglang_provenance_cbf190e2.json",
+  "provenance_artifact_sha256": "e4d01a7f501036d695cfaaa86fa49dd84ccd730a46e792b96ca7c11e6c4b31c0",
+  "elapsed_seconds": 218.51422450000246,
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": []
+}

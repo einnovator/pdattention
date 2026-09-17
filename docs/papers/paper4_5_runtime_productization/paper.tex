@@ -3533,6 +3533,19 @@ dense and sparse paths use a compatible vector reduction and yields zero
 delta.  We therefore retain step one as a correctness mode and make no speed
 claim; a matching fused multi-token consumer remains required for economics.
 
+SGLang-MLX clears the same reduced Task~4 request as a request-level lifecycle
+row at 47.92\% retention: same-consumer logit delta, selected-history
+re-encoding, and interval-pack copy are all zero, and the 157,811-byte
+first-layer peak delta is 0.45\% of selected-layer K/V.  A stronger 100\%
+control, however, rejects the engine for no-PRA parity.  The full-retention
+candidate and an independently prefetched ordinary SGLang request emit the
+same two tokens, but their maximum logit delta is 0.9365 rather than at most
+0.005.  The custom interval consumer is still invoked for a full contiguous
+plan, so same-consumer exactness does not imply ordinary-engine exactness.
+SGLang is therefore unqualified for the frozen M2/P1 100\% gate until full
+retention bypasses to the ordinary resident-prefix path; the tolerance is not
+relaxed.
+
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
 458681e1 with Qwen3-Coder-30B Q4 on task 01

@@ -19,6 +19,8 @@ offload, restoration, and termination checks.
 | `mlx_qwen3_06b_task4_request5_step1.json` | 47.92% | 1 | 0.000 | exact | qualified |
 | `mlx_qwen3_06b_task4_request5_full_step1.json` | 100.00% | 1 | 0.000 | exact | qualified full-retention control |
 | `mlx_qwen3_06b_task5_request9_step1.json` | 52.35% | 1 | 0.000 | exact | qualified on a second task identity |
+| `sglang_qwen3_06b_task4_request5_step1.json` | 47.92% | 1 | 0.000 same-consumer | exact | qualified reduced-history lifecycle row |
+| `sglang_qwen3_06b_task4_request5_full_step1_v3.json` | 100.00% | 1 | 0.000 same-consumer; 0.9365 ordinary engine | exact | strict negative against no-PRA SGLang |
 
 The paired request-5 rows isolate the cause of the earlier strict negatives.
 With a 16-token wire-prefill chunk, MLX dispatches the dense reference through
@@ -47,3 +49,18 @@ segments at 88.82% total visible retention. Its first-layer peak delta is
 153,916 bytes, 0.27% of the 57,974,784-byte selected-layer K/V extent. Thus
 the strict reduced-history smoke now covers one request from each of the three
 frozen policy tasks, while only Task 4 has the matched full-retention control.
+
+SGLang-MLX consumes the same Task 4 reduced plan with identical geometry. It
+is same-consumer logit exact, re-encodes and packs zero selected-history bytes,
+and clears the Radix ownership/lifecycle matrix. Its first-layer consumer peak
+delta is 157,811 bytes, 0.45% of selected-layer K/V.
+
+The stronger SGLang full-retention row adds an independent ordinary full-prompt
+engine oracle. The candidate and ordinary engine produce the same two tokens,
+but their maximum logit delta is 0.9365, above the frozen 0.005 threshold.
+Same-consumer delta remains zero and all other gates pass. SGLang is therefore
+not qualified for the 100% no-PRA parity claim on this request. The diagnosed
+boundary is that even a full, contiguous plan is routed through the custom
+interval consumer instead of bypassing to SGLang's ordinary resident-prefix
+consumer. The required product fix is a full-retention passthrough/alias path;
+loosening the numerical tolerance would not establish semantic no-op behavior.
