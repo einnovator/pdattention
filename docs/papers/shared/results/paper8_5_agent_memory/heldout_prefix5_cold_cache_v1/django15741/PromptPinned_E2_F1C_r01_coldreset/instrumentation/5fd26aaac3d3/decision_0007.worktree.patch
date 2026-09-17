@@ -1,0 +1,15 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84da32f4ce28f997a9a97c6be29af23c..25cddc389a73cb5c471de61b380a8310cfd0a656 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -98,6 +98,10 @@ def get_format_modules(lang=None):
+ 
+ 
+ def get_format(format_type, lang=None, use_l10n=None):
++    from django.utils.functional import Promise
++    # Handle lazy format_type objects (e.g., from _())
++    if isinstance(format_type, Promise):
++        format_type = str(format_type)
+     """
+     For a specific format type, return the format for the current
+     language (locale). Default to the format in the settings.

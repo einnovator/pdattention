@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_heldout_prefix5_cold_cache",
+  "created_at": "2026-09-17",
+  "repository_revision": "c2e18877",
+  "instance_id": "django__django-15741",
+  "persistent_prefix": {
+    "path": "prefix_before_episode_06.json",
+    "episodes": 5,
+    "sha256": "c95cbae606a68e30f776849df0dc09c84caa09430479d45fda30b4cdf1442283"
+  },
+  "model": {
+    "id": "qwen3-coder:30b",
+    "revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "trial_start_contract": {
+    "model_unloaded_before_each_qualified_trial": true,
+    "warmup": "Reply OK.; two completion tokens",
+    "warmup_cached_prompt_tokens": 0,
+    "within_trial_cache_persists": true
+  },
+  "qualified_full": {
+    "runs": [
+      "django15741/FULL_r01",
+      "django15741/FULL_r04_coldreset_retry01"
+    ],
+    "official_resolved": [true, true],
+    "calls": [13, 13],
+    "cumulative_input_tokens": [361680, 361680],
+    "cumulative_completion_tokens": [1320, 1320],
+    "exact_action_sequence_match": true,
+    "exact_assistant_content_sequence_match": true,
+    "action_sequence_sha256": "902205f6432a6029f92fda9e19f500933fa9a9c6e6c462717371170dc76aafc2",
+    "assistant_content_sequence_sha256": "ff7fe6bea1bbb1d3e785694507d86ee417b2f5c18743ae832877f0b72c56af6b"
+  },
+  "cache_state_control": {
+    "run": "django15741/FULL_r02",
+    "cold_reset_before_trial": false,
+    "official_resolved": false,
+    "calls": 9,
+    "first_divergence_request": 4,
+    "interpretation": "A cache-reused FULL trial diverged and failed while two cold-matched FULL trials reproduced exactly. Trial-start model cache state is therefore a controlled experimental factor, not ignorable temperature-zero noise."
+  },
+  "quarantined_control": {
+    "run": "django15741/FULL_r03_coldreset",
+    "reason": "transport failure before request 7",
+    "scored": false,
+    "matched_qualified_full_through_completed_requests": 6
+  },
+  "m2_p1_negative": {
+    "run": "django15741/M2_P1_r01_coldreset",
+    "official_resolved": false,
+    "calls": 21,
+    "call_delta_vs_full": 8,
+    "cumulative_full_counterfactual_tokens": 605816,
+    "cumulative_materialized_tokens": 356651,
+    "own_trajectory_materialized_saving_fraction": 0.41128824593605984,
+    "paired_input_saving_fraction": 0.01390455651404554,
+    "failure_aware_paired_saving_fraction": 0.0,
+    "first_action_diverged": true,
+    "failure_mechanism": "The altered trajectory repeatedly inspected and destructively line-edited the target, deleting core get_format logic before submission. Per-request compression did not survive trajectory-cost and official-quality accounting."
+  },
+  "prompt_pinned_e2_f1c": {
+    "policy": "persistent_instruction_epoch_retirement",
+    "policy_contract": "keep every genuine user prompt; keep the two immediately preceding completed instruction epochs whole; retain one finalization turn for each older closed epoch and materialize it as a compact closure receipt; keep the active epoch whole",
+    "runs": [
+      "django15741/PromptPinned_E2_F1C_r01_coldreset",
+      "django15741/PromptPinned_E2_F1C_r02_coldreset"
+    ],
+    "official_resolved": [true, true],
+    "calls": [8, 8],
+    "call_delta_vs_full": [-5, -5],
+    "cumulative_full_counterfactual_tokens": [210787, 210787],
+    "cumulative_selected_tokens": [134635, 134635],
+    "cumulative_materialized_tokens": [125643, 125643],
+    "cumulative_completion_tokens": [684, 684],
+    "own_trajectory_logical_saving_fraction": 0.3612746516625788,
+    "own_trajectory_materialized_saving_fraction": 0.4039338289363196,
+    "paired_input_saving_fraction": 0.6526128069011281,
+    "paired_input_plus_completion_saving_fraction": 0.6519917355371901,
+    "failure_aware_paired_saving_fraction": 0.6526128069011281,
+    "first_request": {
+      "full_tokens": 25251,
+      "selected_tokens": 15732,
+      "materialized_tokens": 14608,
+      "materialized_saving_fraction": 0.4214882578907766,
+      "older_closure_receipts": 3,
+      "receipt_tokens": 66,
+      "receipt_token_saving": 1124,
+      "all_genuine_user_prompts_retained": true
+    },
+    "first_action_diverged_from_full": true,
+    "repeat_exactness": {
+      "selected_message_sequence_match": true,
+      "assistant_action_sequence_match": true,
+      "assistant_content_sequence_match": true,
+      "submitted_patch_match": true,
+      "selected_message_sequence_sha256": "9fc45b541bd40ddde67736686b994f7c0c5256e7665ee9b939c066fe5f7d34e1",
+      "assistant_action_sequence_sha256": "1a7c8d53404365010122961cb77f77c10024535e13fad213ea5694292f72367d",
+      "assistant_content_sequence_sha256": "3b807ee509f68f85e52f8be15613333f75f4809aeeff0a37ca730fc14c872c91",
+      "submitted_patch_sha256": "2df416ce63cfc1053710c8ca9d9126d34695456ecccf29f6b92e93cd9cb22636"
+    }
+  },
+  "claim_boundary": "This is a repeat-qualified held-out task point, not a population accuracy estimate or a Paper 4.5 engine/KV result. Cross-task qualification must precede profile promotion. Timing is excluded because the Big Mac was under unrelated indexing/security load."
+}

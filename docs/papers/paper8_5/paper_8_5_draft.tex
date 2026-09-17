@@ -95,6 +95,16 @@ own full-history counterfactual.  This meets the selector-only 30--50\% target
 as a three-task promotion candidate, not a greater-than-90\% population
 accuracy estimate or production default.  Task~6 is excluded rather than
 charged to selection after two same-prefix \textsc{Full} controls both fail.
+Finally, a held-out sixth episode exposes trial-start model-cache state as an
+experimental factor: two cold-reset \textsc{Full} executions reproduce the
+same 13-call action and content trajectories exactly, whereas a warm-cache
+\textsc{Full} execution diverges and fails.  After fixing a selector bug that
+silently ignored the all-user-prompt floor, prompt-pinned E2+F1C resolves the
+held-out task in 2/2 exact cold repeats, uses eight rather than 13 calls, and
+materializes 125,643 rather than 361,680 input tokens.  It removes 40.39\% of
+its own full-history counterfactual and 65.26\% relative to the paired
+\textsc{Full} trajectory.  This is one repeat-qualified identity, not a
+population accuracy estimate.
 \end{abstract}
 
 \iffalse
@@ -1146,6 +1156,62 @@ M2/P1 preserves 2/2, uses 19 versus 20 calls, and saves 28.67\% (229,047 versus
 321,088 tokens).  The latter is the promotion estimate and narrowly misses the
 predeclared 30\% floor; the former remains separate reliability evidence.
 
+\subsection{Cold-state held-out prompt-pinned qualification}
+
+A held-out sixth episode, \texttt{django\_\_django-15741}, starts from a frozen
+five-episode prefix.  Every qualified trial explicitly unloads the model and
+then sends the same two-token warm-up before the episode begins.  Two
+\textsc{Full} executions resolve in 13 calls and reproduce the complete action
+and assistant-content sequences exactly.  By contrast, a \textsc{Full} trial
+started with a prior live Ollama cache diverges at request four and fails in
+nine calls.  A further cold trial matches the qualified trajectory through six
+requests but is quarantined after a transport failure.  Trial-start cache state
+is therefore controlled rather than pooled with temperature-zero variance.
+
+This audit also found an implementation error: the public
+\texttt{keep\_completed\_task\_statements} setting was not propagated into the
+instruction-epoch selector, so an ostensibly prompt-pinned atomic arm could
+remove genuine old user prompts.  Commit \texttt{c2e18877} fixes the propagation,
+makes prompt retirement explicit opt-in behavior, and adds a regression test.
+Earlier prompt-dropping atomic rows remain useful ablations but do not implement
+the intended agent-memory invariant.
+
+The corrected E2+F1C arm preserves every genuine user prompt, the active epoch,
+and the two immediately preceding completed epochs.  For each older completed
+epoch, it retains one finalization turn and materializes that evidence as a
+compact closure receipt.  It uses only observable message and tool semantics;
+no evaluator task ID or explicit task-boundary annotation is supplied.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Cold-state held-out qualification.  ``Own save'' compares each
+candidate with full replay of its own realized trajectory; ``paired save''
+compares materialized input with the cold \textsc{Full} trajectory.}
+\label{tab:heldout-cold-prompt-pinned}
+\begin{tabular}{lrrrrr}
+\toprule
+Arm & Official & Calls & Input tokens & Own save & Paired / failure-aware \\
+\midrule
+Cold \textsc{Full} (repeat 1) & 1/1 & 13 & 361,680 & 0\% & 0\% / 0\% \\
+Cold \textsc{Full} (repeat 2) & 1/1 & 13 & 361,680 & 0\% & 0\% / 0\% \\
+M2/P1 & 0/1 & 21 & 356,651 & 41.13\% & 1.39\% / 0\% \\
+Prompt-pinned E2+F1C (repeat 1) & 1/1 & 8 & 125,643 & 40.39\% & 65.26\% / 65.26\% \\
+Prompt-pinned E2+F1C (repeat 2) & 1/1 & 8 & 125,643 & 40.39\% & 65.26\% / 65.26\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+M2/P1 shows why per-request retention is not the endpoint: eight additional
+calls erase almost all paired saving and the submitted patch fails.  E2+F1C is
+repeat-exact internally---including selected-message sequence, actions,
+assistant content, and submitted patch---but its first action differs from
+\textsc{Full}; no exact cross-policy trajectory claim is made below 100\%
+retention.  The result places E2+F1C on the target frontier for this identity,
+but additional cold-matched task identities are required before promotion.  The
+auditable bundle is
+\path{shared/results/paper8_5_agent_memory/heldout_prefix5_cold_cache_v1}.
+
 \section{Deployable Logical Profiles}
 
 The profile names describe constraints, not preselected winners.  Their frozen
@@ -1167,6 +1233,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
+Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Held-out cold repeats preserve 2/2, save 40.39\% within trajectory, and use 8 vs 13 calls. One identity only; expand before transfer. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1192,6 +1259,13 @@ same-prefix task identities and repeats, cross-model and cross-agent transfer,
 and dependent same-workspace tasks remain necessary.  Task~6 supplies a second
 guardrail: both exact-prefix \textsc{Full} controls fail, so no treatment is run
 or scored on that identity.
+The held-out cold-cache experiment adds a distinct positive mechanism result:
+prompt-pinned E2+F1C repeats exactly, preserves 2/2 official resolutions, saves
+40.39\% within its realized trajectory, and uses five fewer calls than
+\textsc{Full}.  It also shows why cache-state matching and enforcement of the
+all-user-prompt floor are experimental prerequisites.  Because this result is
+still one task identity, it remains a candidate profile pending cross-task
+qualification and must not yet be transferred as a Paper~4.5 default.
 
 \clearpage
 \appendix

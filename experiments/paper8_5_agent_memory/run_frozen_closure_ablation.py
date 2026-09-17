@@ -132,6 +132,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             completed_finalization_turns=0,
             **common,
         ),
+        "E2_F1C": AutonomousSelectionConfig(
+            policy="persistent_instruction_epoch_retirement",
+            completed_instruction_epochs=2,
+            completed_finalization_turns=1,
+            compact_completed_finalizations=True,
+            keep_completed_task_statements=True,
+            retire_closed_instructions=False,
+            **common,
+        ),
     }
     payload = {
         "model": args.model,
@@ -277,7 +286,7 @@ def main() -> None:
         action="append",
         choices=(
             "FULL", "E0", "E0_F1", "E0_F1C", "E0_ATOMIC",
-            "E1_ATOMIC", "E2_ATOMIC", "E2",
+            "E1_ATOMIC", "E2_ATOMIC", "E2", "E2_F1C",
         ),
         help="Run only the named arm; repeat to select multiple arms.",
     )

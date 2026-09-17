@@ -1,0 +1,27 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84da32f4ce28f997a9a97c6be29af23c..a9c366664080f4565d741671e21d2ca2af338d75 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -98,6 +98,10 @@ def get_format_modules(lang=None):
+ 
+ 
+ def get_format(format_type, lang=None, use_l10n=None):
++    # Handle lazy format_type by converting to string
++    from django.utils.functional import Promise
++    if isinstance(format_type, Promise):
++        format_type = str(format_type)
+     """
+     For a specific format type, return the format for the current
+     language (locale). Default to the format in the settings.
+@@ -122,11 +126,6 @@ def get_format(format_type, lang=None, use_l10n=None):
+     # The requested format_type has not been cached yet. Try to find it in any
+     # of the format_modules for the given lang if l10n is enabled. If it's not
+     # there or if l10n is disabled, fall back to the project settings.
+-    val = None
+-    if use_l10n:
+-        for module in get_format_modules(lang):
+-            val = getattr(module, format_type, None)
+-            if val is not None:
+                 break
+     if val is None:
+         if format_type not in FORMAT_SETTINGS:

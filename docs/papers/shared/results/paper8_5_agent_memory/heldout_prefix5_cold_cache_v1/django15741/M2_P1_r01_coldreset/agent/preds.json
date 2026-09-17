@@ -1,0 +1,7 @@
+{
+  "django__django-15741": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-15741",
+    "model_patch": "diff --git a/django/utils/formats.py b/django/utils/formats.py\nindex 3f38322d84..a9c3666640 100644\n--- a/django/utils/formats.py\n+++ b/django/utils/formats.py\n@@ -98,6 +98,10 @@ def get_format_modules(lang=None):\n \n \n def get_format(format_type, lang=None, use_l10n=None):\n+    # Handle lazy format_type by converting to string\n+    from django.utils.functional import Promise\n+    if isinstance(format_type, Promise):\n+        format_type = str(format_type)\n     \"\"\"\n     For a specific format type, return the format for the current\n     language (locale). Default to the format in the settings.\n@@ -122,11 +126,6 @@ def get_format(format_type, lang=None, use_l10n=None):\n     # The requested format_type has not been cached yet. Try to find it in any\n     # of the format_modules for the given lang if l10n is enabled. If it's not\n     # there or if l10n is disabled, fall back to the project settings.\n-    val = None\n-    if use_l10n:\n-        for module in get_format_modules(lang):\n-            val = getattr(module, format_type, None)\n-            if val is not None:\n                 break\n     if val is None:\n         if format_type not in FORMAT_SETTINGS:\n"
+  }
+}

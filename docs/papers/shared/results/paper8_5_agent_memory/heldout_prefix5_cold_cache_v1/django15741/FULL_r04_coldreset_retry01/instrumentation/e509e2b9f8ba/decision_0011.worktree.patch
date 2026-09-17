@@ -1,0 +1,24 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84da32f4ce28f997a9a97c6be29af23c..bd43b8e7b35c050cc34a54af22b9c43cc6edde83 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -7,7 +7,7 @@ from importlib import import_module
+ 
+ from django.conf import settings
+ from django.utils import dateformat, numberformat
+-from django.utils.functional import lazy
++from django.utils.functional import lazy, Promise
+ from django.utils.translation import check_for_language, get_language, to_locale
+ 
+ # format_cache is a mapping from (format_type, lang) to the format string.
+@@ -113,6 +113,10 @@ def get_format(format_type, lang=None, use_l10n=None):
+             use_l10n = settings.USE_L10N
+     if use_l10n and lang is None:
+         lang = get_language()
++    # Handle lazy objects by converting them to strings
++    from django.utils.functional import Promise
++    if isinstance(format_type, Promise):
++        format_type = str(format_type)
+     cache_key = (format_type, lang)
+     try:
+         return _format_cache[cache_key]

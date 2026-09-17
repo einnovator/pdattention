@@ -1,0 +1,17 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84da32f4ce28f997a9a97c6be29af23c..d907c1e55900729c8cbb906c29d236afa131d46f 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -123,6 +123,12 @@ def get_format(format_type, lang=None, use_l10n=None):
+     # of the format_modules for the given lang if l10n is enabled. If it's not
+     # there or if l10n is disabled, fall back to the project settings.
+     val = None
++    # Handle lazy format_type by converting to string
++    if hasattr(format_type, "__class__") and hasattr(format_type.__class__, "_setup"):
++        # This is likely a lazy object, convert to string
++        format_type_str = str(format_type)
++    else:
++        format_type_str = format_type
+     if use_l10n:
+         for module in get_format_modules(lang):
+             val = getattr(module, format_type, None)
