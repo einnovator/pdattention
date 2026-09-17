@@ -20,7 +20,8 @@ offload, restoration, and termination checks.
 | `mlx_qwen3_06b_task4_request5_full_step1.json` | 100.00% | 1 | 0.000 | exact | qualified full-retention control |
 | `mlx_qwen3_06b_task5_request9_step1.json` | 52.35% | 1 | 0.000 | exact | qualified on a second task identity |
 | `sglang_qwen3_06b_task4_request5_step1.json` | 47.92% | 1 | 0.000 same-consumer | exact | qualified reduced-history lifecycle row |
-| `sglang_qwen3_06b_task4_request5_full_step1_v3.json` | 100.00% | 1 | 0.000 same-consumer; 0.9365 ordinary engine | exact | strict negative against no-PRA SGLang |
+| `sglang_qwen3_06b_task4_request5_full_step1_v3.json` | 100.00% | 1 | 0.000 same-consumer; 0.9365 fresh-prefill comparator | exact | superseded: comparator changed cache-consumption mode |
+| `sglang_qwen3_06b_task4_request5_full_step1_v4.json` | 100.00% | 1 | 0.000 same-consumer and resident-prefix oracle | exact | qualified full-retention control |
 
 The paired request-5 rows isolate the cause of the earlier strict negatives.
 With a 16-token wire-prefill chunk, MLX dispatches the dense reference through
@@ -55,12 +56,16 @@ is same-consumer logit exact, re-encodes and packs zero selected-history bytes,
 and clears the Radix ownership/lifecycle matrix. Its first-layer consumer peak
 delta is 157,811 bytes, 0.45% of selected-layer K/V.
 
-The stronger SGLang full-retention row adds an independent ordinary full-prompt
-engine oracle. The candidate and ordinary engine produce the same two tokens,
-but their maximum logit delta is 0.9365, above the frozen 0.005 threshold.
-Same-consumer delta remains zero and all other gates pass. SGLang is therefore
-not qualified for the 100% no-PRA parity claim on this request. The diagnosed
-boundary is that even a full, contiguous plan is routed through the custom
-interval consumer instead of bypassing to SGLang's ordinary resident-prefix
-consumer. The required product fix is a full-retention passthrough/alias path;
-loosening the numerical tolerance would not establish semantic no-op behavior.
+The first stronger SGLang full-retention row compared PRA resident-prefix reuse
+with an ordinary request that freshly prefetched the whole prompt. It produced
+the same two tokens but a 0.9365 maximum logit delta. That row is preserved as
+a superseded comparator failure: it changed cache-consumption mode and thereby
+reintroduced the multi-token prefill-kernel confound already found in MLX.
+
+The v4 control constructs an independent ordinary resident source cache and
+then appends the identical 117-token wire tail. Against that matched no-PRA
+prefix-cache baseline, PRA-100 has zero maximum logit delta, emits the same two
+tokens, re-encodes and packs zero selected-history bytes, and clears every
+Radix lifecycle check. SGLang-MLX is therefore request-level qualified at 100%
+for this frozen request. This still does not establish autonomous task-level
+parity or runtime benefit.

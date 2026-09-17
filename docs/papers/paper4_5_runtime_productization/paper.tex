@@ -3536,15 +3536,16 @@ claim; a matching fused multi-token consumer remains required for economics.
 SGLang-MLX clears the same reduced Task~4 request as a request-level lifecycle
 row at 47.92\% retention: same-consumer logit delta, selected-history
 re-encoding, and interval-pack copy are all zero, and the 157,811-byte
-first-layer peak delta is 0.45\% of selected-layer K/V.  A stronger 100\%
-control, however, rejects the engine for no-PRA parity.  The full-retention
-candidate and an independently prefetched ordinary SGLang request emit the
-same two tokens, but their maximum logit delta is 0.9365 rather than at most
-0.005.  The custom interval consumer is still invoked for a full contiguous
-plan, so same-consumer exactness does not imply ordinary-engine exactness.
-SGLang is therefore unqualified for the frozen M2/P1 100\% gate until full
-retention bypasses to the ordinary resident-prefix path; the tolerance is not
-relaxed.
+first-layer peak delta is 0.45\% of selected-layer K/V.  Its corrected 100\%
+control also passes against an independent ordinary resident-prefix cache:
+both arms append the same 117-token tail, emit the same two tokens, and have
+zero maximum logit delta, while PRA-100 re-encodes and packs zero selected-
+history bytes and clears every lifecycle check.  An earlier fresh-whole-prompt
+comparator produced the same tokens but a 0.9365 logit delta.  That row is
+retained as superseded evidence because it changed cache-consumption mode and
+therefore compared different prefill-kernel dispatches, not PRA-100 against
+the no-PRA prefix-cache baseline.  These are request-level results; they do
+not yet establish autonomous task parity or runtime benefit.
 
 The current campaign freezes one end-to-end task per qualified engine before
 any Easy-14 expansion.  The first completed engine row is llama.cpp
