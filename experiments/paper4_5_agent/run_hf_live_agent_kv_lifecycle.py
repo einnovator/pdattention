@@ -39,19 +39,28 @@ def _last_logit_kwargs(model) -> dict[str, int]:
 
 
 @torch.inference_mode()
-def _bounded_prefill(model, ids: list[int], device: torch.device, *, step_size: int):
-    from transformers import DynamicCache
-
+def _bounded_extend(
+    model,
+    cache,
+    ids: list[int],
+    device: torch.device,
+    *,
+    start_position: int,
+    step_size: int,
+):
     if step_size < 1:
         raise ValueError("prefill step size must be positive")
     if not ids:
-        raise ValueError("HF lifecycle prefill requires at least one token")
-    cache = DynamicCache()
+        raise ValueError("HF lifecycle cache extension requires at least one token")
     output = None
     kwargs = _last_logit_kwargs(model)
-    for start in range(0, len(ids), step_size):
-        step = ids[start : start + step_size]
-        positions = torch.arange(start, start + len(step), device=device)
+    for offset in range(0, len(ids), step_size):
+        step = ids[offset : offset + step_size]
+        positions = torch.arange(
+            start_position + offset,
+            start_position + offset + len(step),
+            device=device,
+        )
         output = model(
             input_ids=torch.tensor([step], dtype=torch.long, device=device),
             past_key_values=cache,
@@ -67,16 +76,41 @@ def _bounded_prefill(model, ids: list[int], device: torch.device, *, step_size: 
 
 
 @torch.inference_mode()
+def _bounded_prefill(model, ids: list[int], device: torch.device, *, step_size: int):
+    from transformers import DynamicCache
+
+    if not ids:
+        raise ValueError("HF lifecycle prefill requires at least one token")
+    return _bounded_extend(
+        model,
+        DynamicCache(),
+        ids,
+        device,
+        start_position=0,
+        step_size=step_size,
+    )
+
+
+@torch.inference_mode()
 def _ordinary_generate(
     model,
-    prompt_ids: list[int],
+    source_ids: list[int],
+    wire_tail: list[int],
     device: torch.device,
     *,
     max_new_tokens: int,
     prefill_step_size: int,
 ) -> tuple[tuple[int, ...], list[torch.Tensor]]:
-    output, cache = _bounded_prefill(
-        model, prompt_ids, device, step_size=prefill_step_size
+    _source_output, cache = _bounded_prefill(
+        model, source_ids, device, step_size=prefill_step_size
+    )
+    output, cache = _bounded_extend(
+        model,
+        cache,
+        wire_tail,
+        device,
+        start_position=len(source_ids),
+        step_size=prefill_step_size,
     )
     logits = output.logits
     generated: list[int] = []
@@ -89,7 +123,9 @@ def _ordinary_generate(
         if step + 1 == max_new_tokens:
             break
         position = torch.tensor(
-            [len(prompt_ids) + step], dtype=torch.long, device=device
+            [len(source_ids) + len(wire_tail) + step],
+            dtype=torch.long,
+            device=device,
         )
         output = model(
             input_ids=torch.tensor([[token]], dtype=torch.long, device=device),
@@ -223,7 +259,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if frozen_decision and args.frozen_full_retention:
         ordinary_full_tokens, ordinary_full_logits = _ordinary_generate(
             model,
-            prompt_ids,
+            source_ids,
+            wire_tail,
             device,
             max_new_tokens=args.continuation_tokens,
             prefill_step_size=args.prefill_step_size,
@@ -385,7 +422,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.hf-live-kv-lifecycle.v3",
+        "schema_version": "paper4.5.hf-live-kv-lifecycle.v4",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
         "model": args.model,
@@ -438,6 +475,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "max_abs_logit_delta_same_subset": _max_delta(candidate_logits, reference_logits),
         "ordinary_full_engine_oracle_token_ids": (
             list(ordinary_full_tokens)
+            if ordinary_full_tokens is not None
+            else None
+        ),
+        "ordinary_full_engine_oracle_mode": (
+            "independent_resident_prefix_then_wire_tail"
             if ordinary_full_tokens is not None
             else None
         ),
