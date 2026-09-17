@@ -105,6 +105,7 @@ class MLXLiveKVRequest:
         *,
         max_new_tokens: int,
         cancelled: Callable[[], bool] | None = None,
+        prefill_step_size: int | None = None,
     ) -> MLXLiveKVGeneration:
         """Decode from selected live K/V without evaluating selected text.
 
@@ -124,6 +125,8 @@ class MLXLiveKVRequest:
                 raise ValueError(
                     "MLX live-K/V generation requires one non-empty wire tail."
                 )
+            if prefill_step_size is not None and prefill_step_size <= 0:
+                raise ValueError("prefill_step_size must be positive when set.")
             import mlx.core as mx
 
             cache = make_native_prompt_cache(
@@ -140,8 +143,14 @@ class MLXLiveKVRequest:
         logits_trace: list[object] = []
         try:
             with self.runtime._model_runner_lock:
-                self._check_cancelled(cancelled)
-                logits = model(mx.array([values], dtype=mx.int32), cache=cache)
+                step_size = prefill_step_size or len(values)
+                logits = None
+                for offset in range(0, len(values), step_size):
+                    self._check_cancelled(cancelled)
+                    step = values[offset : offset + step_size]
+                    logits = model(mx.array([step], dtype=mx.int32), cache=cache)
+                if logits is None:
+                    raise AssertionError("non-empty wire tail produced no prefill")
                 for step in range(max_new_tokens):
                     self._check_cancelled(cancelled)
                     current = logits[0, -1].astype(mx.float32)

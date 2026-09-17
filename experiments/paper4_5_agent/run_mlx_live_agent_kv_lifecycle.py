@@ -299,7 +299,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         two_borrower_offload_error = ""
 
     candidate_result = candidate.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
     one_borrower = runtime.registry.view(identities["source_id"]).active_request_ids
     try:
@@ -309,7 +312,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     else:
         one_borrower_offload_error = ""
     reference_result = reference.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
     # A second oracle consumes the same packed selected K/V through mlx-lm's
     # ordinary dense attention.  The first reference isolates interval
@@ -319,7 +325,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "engine-oracle", segmented=False, disjoint_selection=False
     )
     engine_oracle_result = engine_oracle.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
 
     cancelled = begin("cancelled")
@@ -329,6 +338,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             wire_tail,
             max_new_tokens=args.continuation_tokens,
             cancelled=lambda: True,
+            prefill_step_size=args.prefill_step_size,
         )
     except MLXLiveKVRequestCancelled:
         cancellation_observed = True
@@ -356,7 +366,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     restored_view = runtime.registry.view(identities["source_id"])
     restored_source_fingerprint = restored_fingerprints[-1]
     restored_result = restored.generate(
-        model, wire_tail, max_new_tokens=args.continuation_tokens
+        model,
+        wire_tail,
+        max_new_tokens=args.continuation_tokens,
+        prefill_step_size=args.prefill_step_size,
     )
 
     active_at_termination = begin("terminated-active")
@@ -490,6 +503,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
         "source_tokens": len(source_ids),
         "wire_suffix_tokens": len(wire_tail),
+        "wire_prefill_step_size": args.prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
         "realized_retention_fraction": (
             (plan.selected_tokens + len(wire_tail)) / max(len(prompt_ids), 1)
@@ -597,6 +611,15 @@ def main() -> None:
     parser.add_argument("--retention-fraction", type=float, default=0.9)
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--continuation-tokens", type=int, default=16)
+    parser.add_argument(
+        "--prefill-step-size",
+        type=int,
+        default=4,
+        help=(
+            "Wire-tail prefill chunk. The fused two-pass Metal consumer requires "
+            "GQA groups times query tokens to fit one 32-lane SIMD plane."
+        ),
+    )
     parser.add_argument("--hardware-label", default="unspecified")
     parser.add_argument(
         "--materialization-policy",
