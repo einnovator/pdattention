@@ -19,9 +19,13 @@ from experiments.paper4_5_agent.run_vllm_live_agent_kv_gate import (
     _distribution_provenance,
     _qualify_packaged_runtime,
 )
+from experiments.paper4_5_agent.frozen_agent_plan import (
+    frozen_live_kv_geometry,
+    load_frozen_agent_decisions,
+)
 from experiments.paper4_5_agent.sparse_gate_common import sparse_causal_plan
 from experiments.paper6_vllm.run_matched_e0_e2 import _run
-from pra_hf.live_history import LiveKVSelectionPlan
+from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 
 
 def _memory_fingerprint(memory) -> str:
@@ -73,6 +77,39 @@ def _drain_aborted_engine(llm, *, max_steps: int = 8) -> int:
     return steps
 
 
+def _page_prefix_plan(
+    plan: LiveKVSelectionPlan,
+    page_tokens: int,
+    *,
+    full_retention: bool,
+) -> LiveKVSelectionPlan:
+    """Project an exact token plan onto the page-resident source prefix.
+
+    The non-page-aligned remainder stays on the ordinary wire. Page expansion
+    is performed later by the engine and reported as realized page retention.
+    """
+
+    if page_tokens < 1 or page_tokens > plan.source_tokens:
+        raise ValueError("page prefix must be inside the frozen source")
+    if full_retention:
+        return LiveKVSelectionPlan.full(page_tokens)
+    intervals = []
+    for interval in plan.intervals:
+        start = min(interval.start, page_tokens)
+        end = min(interval.end, page_tokens)
+        if end <= start:
+            continue
+        intervals.append(
+            LiveKVInterval(
+                start,
+                end,
+                interval.record_id,
+                interval.causal_group_id,
+            )
+        )
+    return LiveKVSelectionPlan.create(page_tokens, intervals)
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     os.environ.setdefault("VLLM_ENABLE_V1_MULTIPROCESSING", "0")
     import mlx.core as mx
@@ -110,28 +147,62 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     block_pool = engine_core.scheduler.kv_cache_manager.block_pool
     runtime = VLLMMetalLiveKVRuntime(bridge, block_pool)
     tokenizer = llm.get_tokenizer()
-    trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
-    prompts = _assistant_prompts(tokenizer, trajectory, args.turn)
-    messages = trajectory["messages"]
-    assistant_indexes = [
-        index
-        for index, message in enumerate(messages)
-        if message.get("role") == "assistant"
-    ][: args.turn]
-    assistant_index = assistant_indexes[-1]
-    prompt = prompts[-1]
-    page_tokens = (len(prompt) // bridge.block_size) * bridge.block_size
+    frozen_decision = None
+    frozen_geometry = None
+    if args.request_replay or args.selection_fixture:
+        if not args.request_replay or not args.selection_fixture:
+            raise ValueError(
+                "frozen replay requires both --request-replay and --selection-fixture"
+            )
+        decisions = load_frozen_agent_decisions(
+            args.request_replay, args.selection_fixture
+        )
+        if args.request_index < 1 or args.request_index > len(decisions):
+            raise ValueError("--request-index is outside the frozen replay")
+        frozen_decision = decisions[args.request_index - 1]
+        frozen_geometry = frozen_live_kv_geometry(
+            tokenizer,
+            frozen_decision,
+            full_retention=args.frozen_full_retention,
+        )
+        prompt = list(frozen_geometry.prompt_ids)
+        page_tokens = (
+            len(frozen_geometry.source_ids) // bridge.block_size
+        ) * bridge.block_size
+    else:
+        if args.trajectory is None:
+            raise ValueError(
+                "provide --trajectory or the frozen request/selection pair"
+            )
+        trajectory = json.loads(args.trajectory.read_text(encoding="utf-8"))
+        prompts = _assistant_prompts(tokenizer, trajectory, args.turn)
+        messages = trajectory["messages"]
+        assistant_indexes = [
+            index
+            for index, message in enumerate(messages)
+            if message.get("role") == "assistant"
+        ][: args.turn]
+        assistant_index = assistant_indexes[-1]
+        prompt = prompts[-1]
+        page_tokens = (len(prompt) // bridge.block_size) * bridge.block_size
     if page_tokens == 0 or page_tokens == len(prompt):
         raise RuntimeError("Agent prompt did not provide a page source plus suffix.")
     source_tokens = prompt[:page_tokens]
     suffix = prompt[page_tokens:]
-    plan = sparse_causal_plan(
-        tokenizer,
-        messages[:assistant_index],
-        prompt,
-        source_tokens=page_tokens,
-        retention_fraction=args.retention_fraction,
-    )
+    if frozen_geometry is not None:
+        plan = _page_prefix_plan(
+            frozen_geometry.plan,
+            page_tokens,
+            full_retention=args.frozen_full_retention,
+        )
+    else:
+        plan = sparse_causal_plan(
+            tokenizer,
+            messages[:assistant_index],
+            prompt,
+            source_tokens=page_tokens,
+            retention_fraction=args.retention_fraction,
+        )
     sampling = SamplingParams(temperature=0, max_tokens=args.continuation_tokens)
     prime = SamplingParams(temperature=0, max_tokens=1)
     salt = "paper45-vllm-metal-lifecycle-task02-source"
@@ -146,6 +217,26 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     canonical_memory = capture_paged_memory(bridge, source_blocks, page_tokens)
     canonical_fingerprint = _memory_fingerprint(canonical_memory)
     del canonical_memory
+
+    ordinary_prefix_output = None
+    ordinary_prefix_cache_start = None
+    if frozen_decision and args.frozen_full_retention:
+        ordinary_observation_start = len(bridge.prefill_page_observations())
+        _ordinary_id, ordinary_prefix_output, _ordinary_timing = _run(
+            llm,
+            bridge,
+            sampling,
+            prompt,
+            cache_salt=salt,
+        )
+        ordinary_observations = bridge.prefill_page_observations()[
+            ordinary_observation_start:
+        ]
+        if ordinary_observations:
+            ordinary_prefix_cache_start = max(
+                int(row["scheduler_cache_start"])
+                for row in ordinary_observations
+            )
 
     identities = {
         "source_id": "task02-agent-history",
@@ -318,10 +409,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     reference_tokens = _token_ids(reference_output)
     control_tokens = _token_ids(control_output)
     restored_tokens = _token_ids(restored_output)
+    ordinary_prefix_tokens = (
+        _token_ids(ordinary_prefix_output)
+        if ordinary_prefix_output is not None
+        else None
+    )
     checks = {
         "exact_packaged_runtime": exact_packaged_runtime,
         "sparse_disjoint_pages": (
-            plan.has_holes and len(selected_page_indices) < len(source_blocks)
+            plan.full_retention
+            if frozen_decision and args.frozen_full_retention
+            else plan.has_holes and len(selected_page_indices) < len(source_blocks)
         ),
         "original_positions_preserved": plan.source_position_base == page_tokens,
         "selected_pages_alias_original_source_ids": (
@@ -343,6 +441,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "while requests borrow" in two_borrower_offload_error
         ),
         "same_subset_token_exact": candidate_tokens == reference_tokens,
+        "ordinary_full_prefix_cache_hit": (
+            ordinary_prefix_tokens is None
+            or (
+                ordinary_prefix_cache_start is not None
+                and ordinary_prefix_cache_start >= page_tokens
+            )
+        ),
+        "ordinary_full_engine_token_exact": (
+            ordinary_prefix_tokens is None
+            or candidate_tokens == ordinary_prefix_tokens
+        ),
         "normal_finish_released_exactly_once": (
             candidate.outcome == "finished"
             and candidate.finish() is False
@@ -390,7 +499,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "termination_tombstone_rejected_recreation": "terminated" in tombstone_error,
     }
     result = {
-        "schema_version": "paper4.5.vllm-metal-live-kv-lifecycle.v1",
+        "schema_version": "paper4.5.vllm-metal-live-kv-lifecycle.v2",
         "probe": "vllm_metal_real_request_owned_sparse_kv",
         "engine": "vllm-metal",
         "engine_version": getattr(vllm, "__version__", "unknown"),
@@ -406,13 +515,33 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "python_version": platform.python_version(),
         "hardware": args.hardware_label,
         "model": args.model,
-        "trajectory": str(args.trajectory),
-        "turn": args.turn,
-        "retention_fraction": args.retention_fraction,
+        "trajectory": str(args.trajectory) if args.trajectory else None,
+        "request_replay": str(args.request_replay) if args.request_replay else None,
+        "selection_fixture": (
+            str(args.selection_fixture) if args.selection_fixture else None
+        ),
+        "request_index": (
+            frozen_decision.request_index if frozen_decision else None
+        ),
+        "request_input_sha256": (
+            frozen_decision.request_input_sha256 if frozen_decision else None
+        ),
+        "source_policy": (
+            frozen_decision.source_policy if frozen_decision else None
+        ),
+        "turn": args.turn if frozen_decision is None else None,
+        "retention_fraction": (
+            (selected_kv_tokens + len(suffix)) / max(len(prompt), 1)
+            if frozen_decision else args.retention_fraction
+        ),
         "source_tokens": page_tokens,
         "wire_suffix_tokens": len(suffix),
         "selected_kv_tokens": selected_kv_tokens,
         "realized_page_retention_fraction": selected_kv_tokens / page_tokens,
+        "realized_total_retention_fraction": (
+            (selected_kv_tokens + len(suffix)) / max(len(prompt), 1)
+        ),
+        "page_rounding_added_tokens": selected_kv_tokens - plan.selected_tokens,
         "source_position_base": plan.source_position_base,
         "has_holes": plan.has_holes,
         "selected_page_indices": list(selected_page_indices),
@@ -439,6 +568,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "restored_source_fingerprint": restored_fingerprint,
         "candidate_token_ids": candidate_tokens,
         "reference_token_ids": reference_tokens,
+        "ordinary_full_engine_token_ids": ordinary_prefix_tokens,
+        "ordinary_full_engine_oracle_mode": (
+            "independent_vllm_prefix_cache_then_full_prompt"
+            if ordinary_prefix_tokens is not None
+            else None
+        ),
+        "ordinary_full_prefix_cache_start": ordinary_prefix_cache_start,
         "pre_restore_single_request_token_ids": control_tokens,
         "restored_token_ids": restored_tokens,
         "selection_plan": plan.to_dict(),
@@ -460,7 +596,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trajectory", type=Path, required=True)
+    parser.add_argument("--trajectory", type=Path)
+    parser.add_argument("--request-replay", type=Path)
+    parser.add_argument("--selection-fixture", type=Path)
+    parser.add_argument("--request-index", type=int, default=1)
+    parser.add_argument(
+        "--frozen-full-retention",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="mlx-community/Qwen3-0.6B-4bit")
     parser.add_argument("--turn", type=int, default=4)
