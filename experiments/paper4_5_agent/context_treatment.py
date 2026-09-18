@@ -80,12 +80,15 @@ AGENT_HISTORY_SELECTION_POLICIES = (
     "task-aware-v1",
     "paper8.5-matched-causal-token-tail-v1",
     "paper8.5-frontier-dag-m2-p1-v1",
+    "paper8.5-prompt-pinned-e2-f1c-v1",
 )
 MATCHED_CAUSAL_TOKEN_TAIL_POLICY = AGENT_HISTORY_SELECTION_POLICIES[1]
 PAPER8_5_FRONTIER_DAG_M2_P1_POLICY = AGENT_HISTORY_SELECTION_POLICIES[2]
+PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY = AGENT_HISTORY_SELECTION_POLICIES[3]
 FROZEN_AGENT_MEMORY_POLICIES = frozenset({
     MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
     PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+    PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
 })
 FROZEN_AGENT_MEMORY_PLAN_CONTRACT = "frozen-agent-memory-plan-v1"
 
@@ -251,11 +254,15 @@ def transform_chat_payload(
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
     if (
-        agent_history_selection_policy == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+        agent_history_selection_policy in {
+            PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+            PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
+        }
         and frozen_selection is None
     ):
         raise ValueError(
-            "Paper 8.5 frontier-DAG M2/P1 requires an exact frozen selection "
+            f"Paper 8.5 policy {agent_history_selection_policy!r} requires an "
+            "exact frozen selection "
             "fixture; Paper 4.5 measures engine realization and must not "
             "reimplement or reroute the logical policy"
         )
@@ -444,17 +451,16 @@ def transform_chat_payload(
             else sum(exact_count(text) for _, text in selected_texts)
         )
         selected_digest = _selection_digest(selected_texts)
-        selection_materialization = (
-            "whole-causal-records-v1"
-            if agent_history_selection_policy
-            == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
-            else (
-                "paper8.5-frozen-record-aligned-segments-v1"
-                if agent_history_selection_policy
-                == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
-                else "record-aligned-segments-v1"
+        if agent_history_selection_policy == MATCHED_CAUSAL_TOKEN_TAIL_POLICY:
+            selection_materialization = "whole-causal-records-v1"
+        elif agent_history_selection_policy == PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY:
+            selection_materialization = (
+                "paper8.5-prompt-pinned-records-plus-closure-receipts-v1"
             )
-        )
+        elif agent_history_selection_policy == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY:
+            selection_materialization = "paper8.5-frozen-record-aligned-segments-v1"
+        else:
+            selection_materialization = "record-aligned-segments-v1"
         agent_memory_plan_digest = hashlib.sha256(json.dumps(
             {
                 "contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
@@ -553,13 +559,18 @@ def transform_chat_payload(
                     if agent_history_selection_policy
                     == MATCHED_CAUSAL_TOKEN_TAIL_POLICY
                     else (
-                        "paper8.5_frontier_dag_m2_p1_frozen_v1"
+                        "paper8.5_prompt_pinned_e2_f1c_frozen_v1"
                         if agent_history_selection_policy
-                        == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+                        == PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY
                         else (
-                            "causal_bundle_round_up_v1"
-                            if policy.causal_bundle_round_up
-                            else "causal_bundle_hard_cap_v1"
+                            "paper8.5_frontier_dag_m2_p1_frozen_v1"
+                            if agent_history_selection_policy
+                            == PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
+                            else (
+                                "causal_bundle_round_up_v1"
+                                if policy.causal_bundle_round_up
+                                else "causal_bundle_hard_cap_v1"
+                            )
                         )
                     )
                 ),

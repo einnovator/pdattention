@@ -58,6 +58,7 @@ from experiments.paper4_5_agent.context_treatment import (
     FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
     MATCHED_CAUSAL_TOKEN_TAIL_POLICY,
     PAPER8_5_FRONTIER_DAG_M2_P1_POLICY,
+    PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
     TreatmentProxy,
     _load_selection_fixture,
     _selection_digest,
@@ -2633,6 +2634,62 @@ def test_paper8_5_frontier_plan_uses_common_frozen_engine_contract() -> None:
         PAPER8_5_FRONTIER_DAG_M2_P1_POLICY
     )
     assert trace.selected_segments == len(frozen)
+
+
+def test_paper8_5_e2_f1c_has_distinct_frozen_engine_contract_identity() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old task"},
+            {"role": "assistant", "content": "[PRA memory] Prior instruction completed."},
+            {"role": "user", "content": "current task"},
+        ]
+    }
+    frozen = [
+        ("m1-0-user", "old task"),
+        ("m2-0-assistant", "[PRA memory] Prior instruction completed."),
+    ]
+
+    transformed, _ = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0,
+        frozen_selection=frozen,
+        frozen_mandatory_indices=[0, 3],
+        agent_history_selection_policy=PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
+    )
+
+    metadata = transformed["pra"]["metadata"]
+    assert metadata["selection_contract"] == FROZEN_AGENT_MEMORY_PLAN_CONTRACT
+    assert metadata["agent_history_selection_policy"] == (
+        PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY
+    )
+    assert metadata["selection_budget_policy"] == (
+        "paper8.5_prompt_pinned_e2_f1c_frozen_v1"
+    )
+    assert metadata["selection_materialization"] == (
+        "paper8.5-prompt-pinned-records-plus-closure-receipts-v1"
+    )
+    assert transformed["pra"]["pra_policy"]["profile"] == (
+        PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY
+    )
+
+
+def test_paper8_5_e2_f1c_requires_exact_external_selection() -> None:
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "task"},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="requires an exact frozen selection"):
+        transform_chat_payload(
+            payload,
+            mode=ContextTreatment.DIRECT_NATIVE_PRA,
+            budget_fraction=1.0,
+            agent_history_selection_policy=PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
+        )
 
 
 def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:
