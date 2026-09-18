@@ -689,7 +689,7 @@ def test_compact_receipt_is_positioned_and_accounted_separately(fake_mlx) -> Non
     assert trace["selected_history_reencoded_tokens"] == 0
     assert trace["same_subset_gate_passed"] is True
     assert trace["same_subset_reference_kind"] == (
-        "eager_disjoint_original_position"
+        "packed_original_position_mlx_prompt_cache"
     )
     assert trace["effective_attention_prompt_tokens"] == (
         trace["selected_kv_tokens"]

@@ -898,16 +898,14 @@ class MLXAgentHistoryExecutor:
                 )
             if not plan.full_retention and self.require_same_subset_reference:
                 # A positioned compact record must not attend selected source
-                # K/V that originally followed it.  A physically packed
-                # sequential reference loses those original causal
-                # coordinates and therefore is not a valid same-subset
-                # reference for receipts.  Keep the independent eager
-                # segmented consumer in that case; requests without
-                # positioned materialization retain the packed mlx-lm
-                # reference used by the original qualification gate.
+                # K/V that originally followed it.  Preserve those original
+                # causal coordinates in an independently packed identical-
+                # subset reference consumed by MLX's native dense attention.
+                # Requests without positioned materialization retain the
+                # ordinary packed reference used by the original gate.
                 positioned_reference = bool(materialized)
                 same_subset_reference_kind = (
-                    "eager_disjoint_original_position"
+                    "packed_original_position_mlx_prompt_cache"
                     if positioned_reference
                     else "packed_mlx_prompt_cache"
                 )
@@ -918,15 +916,19 @@ class MLXAgentHistoryExecutor:
                     tenant_id=request.tenant_id,
                     session_id=state.session_id,
                     expected_generation=state.generation,
-                    segmented=positioned_reference,
-                    disjoint_selection=positioned_reference,
+                    segmented=False,
+                    disjoint_selection=False,
                 )
                 reference_cache = make_native_prompt_cache(
                     self.model,
                     reference.selection.memory,
-                    segmented=positioned_reference,
-                    fused_disjoint_attention=False,
+                    segmented=False,
                     query_position_base=plan.source_position_base,
+                    causal_intervals=(
+                        tuple((row.start, row.end) for row in plan.intervals)
+                        if positioned_reference
+                        else ()
+                    ),
                 )
                 for row in materialized:
                     _set_cache_query_start(reference_cache, row.position_start)

@@ -397,6 +397,64 @@ class MLXSelectedKVCache:
         return mx.concatenate((memory, local), axis=1)
 
 
+class MLXPositionedSelectedKVCache(MLXSelectedKVCache):
+    """Packed identical-subset oracle retaining original causal coordinates.
+
+    The selected K/V is deliberately packed for an independent native MLX
+    attention reference.  ``causal_intervals`` maps those compact rows back to
+    their original logical positions so an old-position compact record cannot
+    attend selected history from its future.
+    """
+
+    def __init__(
+        self,
+        local_cache: object,
+        memory: MLXNativeLayerKV,
+        position_base: int,
+        causal_intervals: Sequence[tuple[int, int]],
+    ) -> None:
+        super().__init__(local_cache, memory, position_base)
+        self.causal_intervals = tuple(
+            (int(start), int(end)) for start, end in causal_intervals
+        )
+        if not self.causal_intervals or any(
+            start < 0 or end <= start for start, end in self.causal_intervals
+        ):
+            raise ValueError(
+                "Positioned packed MLX K/V requires non-empty causal intervals."
+            )
+        if sum(end - start for start, end in self.causal_intervals) != (
+            self.memory_tokens
+        ):
+            raise ValueError(
+                "Positioned packed MLX causal intervals disagree with K/V width."
+            )
+
+    def make_mask(
+        self,
+        n: int,
+        return_array: bool = False,
+        window_size: int | None = None,
+        **_: object,
+    ):
+        import mlx.core as mx
+        from mlx_lm.models.base import create_causal_mask
+
+        if window_size is not None:
+            local_window = min(window_size, self.local_offset + n)
+            local = create_causal_mask(n, self.local_offset, window_size=local_window)
+        else:
+            local = create_causal_mask(n, self.local_offset)
+        key_positions = mx.concatenate(tuple(
+            mx.arange(start, end) for start, end in self.causal_intervals
+        ))
+        query_positions = mx.arange(self.offset, self.offset + n)
+        memory = mx.expand_dims(query_positions, 1) >= mx.expand_dims(
+            key_positions, 0
+        )
+        return mx.concatenate((memory, local), axis=1)
+
+
 class MLXSegmentedSelectedKVCache(MLXSelectedKVCache):
     """Selected-memory cache that keeps memory and local K/V physically separate.
 
@@ -1736,6 +1794,7 @@ def make_native_prompt_cache(
     segmented: bool = False,
     fused_disjoint_attention: bool = True,
     query_position_base: int | None = None,
+    causal_intervals: Sequence[tuple[int, int]] = (),
 ):
     """Create request-local sequential caches backed by immutable selected K/V.
 
@@ -1762,10 +1821,18 @@ def make_native_prompt_cache(
     if isinstance(memory, MLXDisjointNativeMemory):
         if not segmented:
             raise ValueError("Disjoint MLX memory requires segmented=True.")
+        if causal_intervals:
+            raise ValueError(
+                "Disjoint MLX memory already carries its causal intervals."
+            )
         selected_cache_type = MLXDisjointSelectedKVCache
     else:
         selected_cache_type = (
-            MLXSegmentedSelectedKVCache if segmented else MLXSelectedKVCache
+            MLXSegmentedSelectedKVCache
+            if segmented
+            else MLXPositionedSelectedKVCache
+            if causal_intervals
+            else MLXSelectedKVCache
         )
     position_base = resolve_query_position_base(
         memory.source_tokens, query_position_base
@@ -1781,6 +1848,15 @@ def make_native_prompt_cache(
                     layer,
                     position_base,
                     fused_disjoint_attention=fused_disjoint_attention,
+                )
+            )
+        elif selected_cache_type is MLXPositionedSelectedKVCache:
+            result.append(
+                selected_cache_type(
+                    cache,
+                    layer,
+                    position_base,
+                    causal_intervals,
                 )
             )
         else:
