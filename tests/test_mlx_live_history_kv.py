@@ -13,6 +13,7 @@ from pra_mlx.native import (
     MLXDisjointSelectedKVCache,
     MLXNativeLayerKV,
     MLXNativeMemory,
+    MLXSelectedKVCache,
 )
 
 
@@ -323,6 +324,20 @@ def test_mlx_disjoint_mask_hides_selected_future_from_old_receipt(fake_mlx) -> N
     cache.position_base = 6
     active_tail_mask = cache.make_mask(1)
     assert active_tail_mask.tolist() == [[True, True, True, True, True]]
+
+
+def test_mlx_dense_selected_cache_uses_native_mask_dispatch(fake_mlx) -> None:
+    keys = np.arange(8, dtype=np.float32).reshape(1, 1, 4, 2)
+    cache = MLXSelectedKVCache(
+        _FakeLocalCache(),
+        MLXNativeLayerKV(keys, keys + 10),
+        position_base=4,
+    )
+
+    assert cache.make_mask(1) is None
+    assert cache.make_mask(3) == "causal"
+    explicit = cache.make_mask(3, return_array=True)
+    assert explicit.shape == (3, 7)
 
 
 def test_mlx_disjoint_oracle_separates_physical_and_logical_intervals(

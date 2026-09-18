@@ -377,6 +377,14 @@ class MLXSelectedKVCache:
         window_size: int | None = None,
         **_: object,
     ):
+        # Match mlx-lm's ordinary KVCache dispatch whenever the selected
+        # history is represented as one dense prefix.  Returning an explicit
+        # Boolean mask here is mathematically equivalent, but it selects a
+        # different Metal attention kernel and can produce large logit drift
+        # relative to fresh prefill for quantized models.
+        if window_size is None and not return_array:
+            return None if n == 1 else "causal"
+
         import mlx.core as mx
         from mlx_lm.models.base import create_causal_mask
 
