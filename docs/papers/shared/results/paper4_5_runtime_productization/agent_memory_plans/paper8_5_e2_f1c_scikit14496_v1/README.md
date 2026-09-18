@@ -23,11 +23,27 @@ history re-encoding, K/V-copy bytes, consumer temporaries, and lifecycle
 correctness for each engine. No request-level engine smoke is an autonomous
 task-accuracy result.
 
-## Current engine evidence
+## Current autonomous evidence
+
+The only fresh post-fix autonomous row is
+`autonomous_llamacpp_qwen3coder30b_postfix_v1`. Two FULL controls and PRA-100
+all solve in eight calls with exact request, response, and action hashes.
+Native E2+F1C also solves in eight calls, saves 39.88% of cumulative
+materialized message-content tokens, and omits 40.23% of weighted steady-state
+resident K/V. Selected-history re-encoding and K/V-copy bytes are both zero.
+This is a single-task, single-engine result. Fresh autonomous HF, MLX, SGLang,
+and vLLM runs are pending.
+
+## Quarantined pre-final request-level evidence
 
 Do not substitute the older M2/P1 cross-engine rows for this fixture. Those
 rows remain mechanism controls for an earlier policy and do not include the
 model-visible compact closure receipts used by E2+F1C.
+
+The engine files below were captured before the final autonomous source-
+bootstrap contract and later engine corrections. They remain reproducibility
+artifacts but are not current cross-engine savings or agent-accuracy evidence;
+each engine must rerun the frozen FULL, PRA-100, and E2+F1C sequence.
 
 The receipt-aware HF/CUDA, direct-MLX, and SGLang-MLX request-9 runs are
 recorded in `hf_qwen3_06b_request9_mixed_v1.json`,
