@@ -464,6 +464,21 @@ class MLXAgentHistoryExecutor:
         mx.eval(logits)
         return logits
 
+    def _materialized_prefill_step(self) -> int:
+        """Stay on MLX's vector-SDPA path for positioned compact records."""
+
+        args = getattr(self.model, "args", None)
+        query_heads = int(getattr(args, "num_attention_heads", 0) or 0)
+        kv_heads = int(getattr(args, "num_key_value_heads", 0) or 0)
+        group_limit = 8
+        if query_heads > 0 and kv_heads > 0 and query_heads % kv_heads == 0:
+            group_limit = max(1, 32 // (query_heads // kv_heads))
+        # MLX routes query widths above eight to its full-attention kernel.
+        # The interval-addressed consumer mirrors vector SDPA, so both the
+        # candidate and packed oracle intentionally prefill receipts in the
+        # same vector-sized chunks.
+        return max(1, min(self.prefill_step_size, 8, group_limit))
+
     def _prefill(self, token_ids: Sequence[int], cache: Sequence[object]) -> int:
         """Populate cache in bounded chunks without running the prompt LM head.
 
@@ -865,16 +880,27 @@ class MLXAgentHistoryExecutor:
         calls = 0
         materialized_calls = 0
         materialized_tokens = sum(row.tokens for row in materialized)
+        materialized_prefill_step = self._materialized_prefill_step()
         outcome = "error"
         updated_memory: MLXNativeMemory | None = None
         graft_metrics: MLXKVGraftMetrics | None = None
         try:
             self._set_segmented_attention(use_segmented)
             for row in materialized:
-                _set_cache_query_start(candidate_cache, row.position_start)
-                self._evaluate(row.token_ids, candidate_cache)
-                calls += 1
-                materialized_calls += 1
+                for offset in range(
+                    0, row.tokens, materialized_prefill_step
+                ):
+                    _set_cache_query_start(
+                        candidate_cache, row.position_start + offset
+                    )
+                    self._evaluate(
+                        row.token_ids[
+                            offset : offset + materialized_prefill_step
+                        ],
+                        candidate_cache,
+                    )
+                    calls += 1
+                    materialized_calls += 1
             _set_cache_query_start(candidate_cache, plan.source_position_base)
             logits = self._evaluate(wire, candidate_cache)
             calls += 1
@@ -931,8 +957,18 @@ class MLXAgentHistoryExecutor:
                     ),
                 )
                 for row in materialized:
-                    _set_cache_query_start(reference_cache, row.position_start)
-                    self._evaluate(row.token_ids, reference_cache)
+                    for offset in range(
+                        0, row.tokens, materialized_prefill_step
+                    ):
+                        _set_cache_query_start(
+                            reference_cache, row.position_start + offset
+                        )
+                        self._evaluate(
+                            row.token_ids[
+                                offset : offset + materialized_prefill_step
+                            ],
+                            reference_cache,
+                        )
                 _set_cache_query_start(reference_cache, plan.source_position_base)
                 reference_logits = self._evaluate(wire, reference_cache)
                 reference_pack_bytes = (
@@ -1075,6 +1111,7 @@ class MLXAgentHistoryExecutor:
             "selected_kv_tokens": plan.selected_tokens,
             "materialized_history_encoded_tokens": materialized_tokens,
             "materialized_history_model_calls": materialized_calls,
+            "materialized_history_prefill_step": materialized_prefill_step,
             "wire_tokens": len(wire),
             "logical_prompt_tokens": len(prompt),
             "effective_attention_prompt_tokens": (

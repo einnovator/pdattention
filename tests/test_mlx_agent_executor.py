@@ -685,7 +685,8 @@ def test_compact_receipt_is_positioned_and_accounted_separately(fake_mlx) -> Non
     assert result.text == "A"
     assert trace["full_retention"] is False
     assert trace["materialized_history_encoded_tokens"] > 0
-    assert trace["materialized_history_model_calls"] == 1
+    assert trace["materialized_history_model_calls"] >= 1
+    assert trace["materialized_history_prefill_step"] <= 8
     assert trace["selected_history_reencoded_tokens"] == 0
     assert trace["same_subset_gate_passed"] is True
     assert trace["same_subset_reference_kind"] == (
