@@ -1886,6 +1886,100 @@ def test_live_record_plan_selects_resident_kv_without_omitted_text_prefill() -> 
     assert result.raw["pra"]["selected_text_reencoded_tokens"] == 0
 
 
+def test_live_record_plan_encodes_compact_receipt_at_original_position() -> None:
+    calls = []
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+
+        @staticmethod
+        def _render_chat(messages, request, *, generate):
+            del request, generate
+            return "".join(str(message["content"]) for message in messages)
+
+        @staticmethod
+        def _request_json(path, body=None):
+            assert path == "/tokenize"
+            return {"tokens": [ord(char) for char in body["content"]]}
+
+        @staticmethod
+        def generate_live_prefix(request, *, prompt_suffix, plan, request_slot):
+            calls.append((tuple(prompt_suffix), plan, request_slot))
+            return PRAEngineResult(
+                "answer",
+                {
+                    "tokens": [ord("Z")],
+                    "pra": {
+                        "kv_source": "live_prefix_capture",
+                        "selected_kv_tokens": plan.selected_tokens,
+                        "materialized_history_encoded_tokens": plan.materialized_tokens,
+                        "selected_text_reencoded_tokens": 0,
+                        "commit_succeeded": True,
+                    },
+                },
+                (),
+            )
+
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=Native()), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    adapter._live_session_tokens["session"] = tuple(map(ord, "STAOB"))
+    logical = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "T"},
+        {"role": "assistant", "content": "A"},
+        {"role": "user", "content": "O"},
+        {"role": "assistant", "content": "B"},
+        {"role": "user", "content": "C"},
+    ]
+
+    def resource(index, role, text):
+        return PRAWireResource(
+            resource_id=f"m{index}-0-{role}",
+            uri=f"pra://agent-trajectory/m{index}-0-{role}",
+            text=text,
+            metadata={
+                "message_index": index,
+                "segment_index": 0,
+                "role": role,
+                "parent_record_id": f"m{index}",
+                "causal_group_id": f"record:m{index}",
+            },
+        )
+
+    replacement = "X"
+    request = PRAWireRequest(
+        model="model",
+        messages=(logical[0], logical[4], logical[5]),
+        resources=(resource(1, "user", "T"), resource(2, "assistant", replacement)),
+        session_id="session",
+        metadata={
+            "mandatory_message_indices": [0, 4, 5],
+            "materialized_message_replacements": [{
+                "record_id": "record-000002",
+                "message_index": 2,
+                "role": "assistant",
+                "content": replacement,
+                "content_sha256": hashlib.sha256(replacement.encode()).hexdigest(),
+            }],
+        },
+    )
+
+    result = adapter._generate_from_live_records(request, 1, logical)
+
+    suffix, plan, destination = calls[0]
+    assert suffix == (ord("C"),)
+    assert destination == 0
+    assert [(row.start, row.end) for row in plan.ranges] == [(0, 1), (1, 2), (4, 5)]
+    assert len(plan.materialized_history) == 1
+    assert plan.materialized_history[0].position_start == 2
+    assert plan.materialized_history[0].token_ids == (ord("X"),)
+    assert result.raw["pra"]["materialized_history_encoded_tokens"] == 1
+    assert result.raw["pra"]["realized_retention_fraction"] == pytest.approx(0.8)
+
+
 def test_full_live_record_selection_continues_canonical_prefix_without_slot_handoff() -> None:
     continued = []
 
@@ -2592,6 +2686,25 @@ def test_paper8_5_strict_fixture_bundle_loads_exact_requests() -> None:
             and 0 in entry.mandatory_message_indices
             for entry in fixture.values()
         )
+
+
+def test_paper8_5_receipt_fixture_preserves_materialized_replacements() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1"
+    )
+    fixture = _load_selection_fixture(root / "frozen_plan.jsonl")
+    request_nine = list(fixture.values())[-1]
+
+    assert len(request_nine.materialized_message_replacements) == 6
+    assert {
+        row.message_index for row in request_nine.materialized_message_replacements
+    } == {18, 19, 65, 66, 78, 79}
+    assert all(
+        row.content.startswith("[PRA memory]")
+        for row in request_nine.materialized_message_replacements
+    )
 
 
 def test_selection_fixture_rejects_modified_content(tmp_path: Path) -> None:

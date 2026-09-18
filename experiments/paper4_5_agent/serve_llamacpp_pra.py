@@ -1222,6 +1222,7 @@ class HybridLlamaCppAdapter:
         from pra_llamacpp import (
             LlamaCppLivePrefixPlan,
             LlamaCppLivePrefixRange,
+            LlamaCppPositionedHistorySpan,
         )
 
         native = self.native_adapter.native_executor
@@ -1243,6 +1244,63 @@ class HybridLlamaCppAdapter:
             int(resource.metadata["message_index"])
             for resource in request.resources
         })
+        raw_replacements = request.metadata.get(
+            "materialized_message_replacements", ()
+        )
+        if not isinstance(raw_replacements, (list, tuple)):
+            raise ValueError("materialized message replacements must be a list")
+        replacement_indices: set[int] = set()
+        materialized_history: list[Any] = []
+        resource_text_by_index: dict[int, str] = {}
+        for resource in request.resources:
+            index = int(resource.metadata["message_index"])
+            resource_text_by_index[index] = (
+                resource_text_by_index.get(index, "") + str(resource.text or "")
+            )
+        for raw_replacement in raw_replacements:
+            if not isinstance(raw_replacement, Mapping):
+                raise ValueError("materialized message replacement is malformed")
+            index = int(raw_replacement.get("message_index", -1))
+            content = str(raw_replacement.get("content", ""))
+            role = str(raw_replacement.get("role", ""))
+            record_id = str(raw_replacement.get("record_id", ""))
+            digest = str(raw_replacement.get("content_sha256", ""))
+            if (
+                index in replacement_indices
+                or index < 0
+                or index >= len(logical_messages)
+                or index not in selected_indices
+                or record_id != f"record-{index:06d}"
+                or role != str(logical_messages[index].get("role", ""))
+                or self._content_sha256({"content": content}) != digest
+                or resource_text_by_index.get(index) != content
+            ):
+                raise ValueError(
+                    f"materialized message replacement m{index} failed identity validation"
+                )
+            original_start = 0 if index == 0 else boundaries[index - 1]
+            original_end = min(boundaries[index], common)
+            if original_end <= original_start:
+                raise ValueError("materialized replacement is outside the live source")
+            variant = [dict(message) for message in logical_messages]
+            variant[index]["content"] = content
+            variant_tokens = self._full_logical_tokens(request, variant)
+            variant_boundaries = self._message_token_boundaries(
+                request, variant, variant_tokens,
+            )
+            variant_start = 0 if index == 0 else variant_boundaries[index - 1]
+            variant_end = variant_boundaries[index]
+            token_ids = tuple(variant_tokens[variant_start:variant_end])
+            if not token_ids or len(token_ids) > original_end - original_start:
+                raise ValueError(
+                    f"materialized replacement m{index} exceeds its original span"
+                )
+            materialized_history.append(LlamaCppPositionedHistorySpan(
+                record_id=record_id,
+                position_start=original_start,
+                token_ids=token_ids,
+            ))
+            replacement_indices.add(index)
         mandatory = [int(index) for index in request.metadata["mandatory_message_indices"]]
         system_indices = [
             index for index, message in enumerate(logical_messages)
@@ -1255,7 +1313,10 @@ class HybridLlamaCppAdapter:
         active_start = min(active_non_system) if active_non_system else len(logical_messages)
 
         ranges: list[Any] = []
-        for index in [*system_indices, *selected_indices]:
+        for index in [
+            *system_indices,
+            *(index for index in selected_indices if index not in replacement_indices),
+        ]:
             start = 0 if index == 0 else boundaries[index - 1]
             end = min(boundaries[index], common)
             if end <= start:
@@ -1306,6 +1367,7 @@ class HybridLlamaCppAdapter:
             source_slot=source,
             source_tokens=common,
             ranges=tuple(ranges),
+            materialized_history=tuple(materialized_history),
             commit_to_source=True,
         )
         if plan.selected_tokens == common:
@@ -1375,6 +1437,7 @@ class HybridLlamaCppAdapter:
         pra = dict(raw.get("pra") or {})
         pra.update({
             "selected_kv_tokens": plan.selected_tokens,
+            "materialized_history_encoded_tokens": plan.materialized_tokens,
             "selected_text_reencoded_tokens": 0,
             "selected_history_reencoded_tokens": 0,
             "physical_kv_copy": False,
@@ -1383,7 +1446,9 @@ class HybridLlamaCppAdapter:
             "canonical_suffix_graft_d2d_bytes": 0,
             "host_to_device_bytes": 0,
             "full_retention": False,
-            "realized_retention_fraction": plan.selected_tokens / max(common, 1),
+            "realized_retention_fraction": (
+                plan.selected_tokens + plan.materialized_tokens
+            ) / max(common, 1),
         })
         raw["pra"] = pra
         raw.update(

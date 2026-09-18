@@ -46,6 +46,20 @@ class FrozenReplayDivergence(RuntimeError):
 
 
 @dataclass(frozen=True)
+class FrozenMaterializedReplacement:
+    """One compact record body fixed by an external logical policy."""
+
+    record_id: str
+    message_index: int
+    role: str
+    content: str
+    content_sha256: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class FrozenSelectionFixture:
     """One externally selected logical plan bound to an exact full request."""
 
@@ -53,6 +67,7 @@ class FrozenSelectionFixture:
     mandatory_message_indices: tuple[int, ...] | None = None
     source_policy: str | None = None
     source_plan_digest: str | None = None
+    materialized_message_replacements: tuple[FrozenMaterializedReplacement, ...] = ()
 
 
 CONSUMPTION_POLICIES = (
@@ -160,6 +175,7 @@ def transform_chat_payload(
     causal_bundle_round_up: bool | None = None,
     frozen_selection: Sequence[tuple[str, str]] | None = None,
     frozen_mandatory_indices: Sequence[int] | None = None,
+    frozen_materialized_replacements: Sequence[FrozenMaterializedReplacement] = (),
     agent_history_selection_policy: str = "task-aware-v1",
     count_tokens: Callable[[str], int] | None = None,
     tokenizer_identity: str = "whitespace_v1",
@@ -245,6 +261,8 @@ def transform_chat_payload(
         )
     if frozen_mandatory_indices is not None and frozen_selection is None:
         raise ValueError("frozen mandatory indices require a frozen selection")
+    if frozen_materialized_replacements and frozen_selection is None:
+        raise ValueError("frozen materialized replacements require a frozen selection")
     transformed = dict(payload)
     messages = [dict(row) for row in payload.get("messages", ())]
     if not messages:
@@ -445,6 +463,9 @@ def transform_chat_payload(
                 "budget_fraction": float(budget_fraction),
                 "materialization": selection_materialization,
                 "mandatory_message_indices": sorted(mandatory_indices),
+                "materialized_message_replacements": [
+                    row.to_dict() for row in frozen_materialized_replacements
+                ],
                 "selected_resource_digest": selected_digest,
             },
             sort_keys=True,
@@ -571,6 +592,9 @@ def transform_chat_payload(
                     for index, message in enumerate(messages)
                 ],
                 "mandatory_message_indices": sorted(mandatory_indices),
+                "materialized_message_replacements": [
+                    row.to_dict() for row in frozen_materialized_replacements
+                ],
                 "pinned_task_segments": [
                     segment_id for segment_id, _ in _segments(
                         messages, sorted(task_indices), segment_tokens,
@@ -1649,10 +1673,15 @@ class TreatmentProxy:
                 frozen_entry.mandatory_message_indices
                 if frozen_entry is not None else None
             )
+            frozen_materialized_replacements = (
+                frozen_entry.materialized_message_replacements
+                if frozen_entry is not None else ()
+            )
             payload, trace = transform_chat_payload(
                 payload, mode=self.mode, budget_fraction=self.budget_fraction,
                 request_index=request_index, frozen_selection=frozen,
                 frozen_mandatory_indices=frozen_mandatory_indices,
+                frozen_materialized_replacements=frozen_materialized_replacements,
                 segment_tokens=effective_retention.large_record_chunk_tokens,
                 recent_completed_turns=effective_retention.recent_completed_turns,
                 recent_records_per_turn=effective_retention.recent_records_per_turn,
@@ -2023,6 +2052,43 @@ def _load_selection_fixture(path: Path | None) -> dict[str, FrozenSelectionFixtu
             mandatory_indices = tuple(mandatory)
         else:
             mandatory_indices = None
+        resource_text_by_index: dict[int, str] = {}
+        for resource_id, text in resources:
+            prefix = resource_id.split("-", 1)[0]
+            if prefix.startswith("m") and prefix[1:].isdigit():
+                index = int(prefix[1:])
+                resource_text_by_index[index] = (
+                    resource_text_by_index.get(index, "") + text
+                )
+        replacements: list[FrozenMaterializedReplacement] = []
+        replacement_indices: set[int] = set()
+        for replacement in row.get("materialized_message_replacements", ()):
+            if not isinstance(replacement, Mapping):
+                raise ValueError(
+                    f"selection fixture line {line_number} has a malformed replacement"
+                )
+            index = int(replacement.get("message_index", -1))
+            value = FrozenMaterializedReplacement(
+                record_id=str(replacement.get("record_id", "")),
+                message_index=index,
+                role=str(replacement.get("role", "")),
+                content=str(replacement.get("content", "")),
+                content_sha256=str(replacement.get("content_sha256", "")),
+            )
+            if index in replacement_indices or value.record_id != f"record-{index:06d}":
+                raise ValueError(
+                    f"selection fixture line {line_number} has an invalid replacement identity"
+                )
+            if hashlib.sha256(value.content.encode("utf-8")).hexdigest() != value.content_sha256:
+                raise ValueError(
+                    f"selection fixture line {line_number} failed a replacement content digest"
+                )
+            if resource_text_by_index.get(index) != value.content:
+                raise ValueError(
+                    f"selection fixture line {line_number} replacement is not its selected resource"
+                )
+            replacement_indices.add(index)
+            replacements.append(value)
         entry = FrozenSelectionFixture(
             resources=tuple(resources),
             mandatory_message_indices=mandatory_indices,
@@ -2033,6 +2099,7 @@ def _load_selection_fixture(path: Path | None) -> dict[str, FrozenSelectionFixtu
                 str(row["source_plan_digest"])
                 if row.get("source_plan_digest") else None
             ),
+            materialized_message_replacements=tuple(replacements),
         )
         if request_digest in selections and digests[request_digest] != selection_digest:
             raise ValueError(
