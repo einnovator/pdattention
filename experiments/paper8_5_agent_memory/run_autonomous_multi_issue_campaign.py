@@ -130,6 +130,23 @@ def _requires_same_prefix_full_control(cell: Mapping[str, Any]) -> bool:
     )
 
 
+def _unresolved_same_prefix_full_action(cell: Mapping[str, Any]) -> str:
+    """Return the predeclared missingness action for an unresolved FULL arm.
+
+    ``stop`` is the historical fail-closed behavior.  ``carry_full_episode``
+    withholds the treatment for this episode, appends the exact completed FULL
+    trajectory to the candidate session, and permits the next predeclared
+    identity to qualify from that shared prefix.  It never turns an unresolved
+    FULL task into a selector success or failure.
+    """
+
+    return str(
+        (cell.get("strategy") or {}).get(
+            "unresolved_same_prefix_full_action", "stop"
+        )
+    )
+
+
 def _same_prefix_full_cell(cell: Mapping[str, Any]) -> dict[str, Any]:
     """Build a logical FULL arm without inheriting treatment materialization."""
 
@@ -224,6 +241,20 @@ def validate_spec(spec: Mapping[str, Any], benchmark: Mapping[str, Any]) -> None
             default=0,
         ):
             raise ValueError("shared FULL prefix exceeds a registered sequence")
+        unresolved_action = str(
+            strategy.get("unresolved_same_prefix_full_action", "stop")
+        )
+        if unresolved_action not in {"stop", "carry_full_episode"}:
+            raise ValueError(
+                f"{strategy_id}: invalid unresolved same-prefix FULL action"
+            )
+        if unresolved_action == "carry_full_episode" and not (
+            mode == "persistent" and strategy.get("policy") != "full"
+        ):
+            raise ValueError(
+                "carrying an unresolved FULL episode requires a persistent "
+                "treatment cell"
+            )
 
 
 def campaign_cells(spec: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -1091,20 +1122,62 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 if not args.dry_run and same_prefix_full_control["status"] != "qualified":
                     control_status = str(same_prefix_full_control["status"])
+                    carry_unresolved_full = bool(
+                        control_status == "full_control_unresolved"
+                        and _unresolved_same_prefix_full_action(cell)
+                        == "carry_full_episode"
+                    )
                     row["episodes"][episode_id] = {
                         "instance_id": instance_id,
                         "status": (
-                            "unqualified_session_interference"
+                            "complete_full_fallback"
+                            if carry_unresolved_full
+                            else "unqualified_session_interference"
                             if control_status == "full_control_unresolved"
                             else control_status
                         ),
-                        "output": str(base_episode_output),
+                        "output": (
+                            str(same_prefix_full_control["output"])
+                            if carry_unresolved_full else str(base_episode_output)
+                        ),
                         "prefix": str(prefix_path) if use_prefix else None,
                         "command": None,
                         "same_prefix_full_control": same_prefix_full_control,
                         "heuristic_launched": False,
                         "heuristic_attribution_admissible": False,
+                        "policy_withheld": carry_unresolved_full,
+                        "carried_full_episode": carry_unresolved_full,
                     }
+                    if carry_unresolved_full:
+                        control_output = Path(str(same_prefix_full_control["output"]))
+                        control_completed = _completed_result(control_output)
+                        control_export = (
+                            control_output / "persistent_episode_export.json"
+                        )
+                        if control_completed is None or not control_export.is_file():
+                            row["episodes"][episode_id]["status"] = (
+                                "infrastructure_error"
+                            )
+                            row["episodes"][episode_id]["reason"] = (
+                                "unresolved FULL fallback lacks a complete result "
+                                "or persistent episode export"
+                            )
+                            infrastructure_error = True
+                            halt_campaign = True
+                            _write(state_path, state)
+                            break
+                        carried_result = {
+                            **control_completed,
+                            "policy_intervention": False,
+                            "policy_withheld": True,
+                            "carried_full_episode": True,
+                            "same_prefix_full_resolved": False,
+                        }
+                        row["episodes"][episode_id].update(carried_result)
+                        episode_results.append(carried_result)
+                        prefix_episodes.append(_read(control_export))
+                        _write(state_path, state)
+                        continue
                     if control_status == "paused_upstream_unhealthy":
                         row["status"] = "paused_upstream_unhealthy"
                         upstream_paused = True

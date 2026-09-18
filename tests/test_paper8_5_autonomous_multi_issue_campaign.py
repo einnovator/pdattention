@@ -18,6 +18,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_multi_issue_campaign impor
     _requires_same_prefix_full_control,
     _same_prefix_full_cell,
     _shared_control_prefix_count,
+    _unresolved_same_prefix_full_action,
     _validate_same_prefix_full_qualification,
     _validate_sequence_pairing_identity,
     campaign_cells,
@@ -211,6 +212,36 @@ def test_same_prefix_qualification_rejects_a_different_prefix(tmp_path):
         _validate_same_prefix_full_qualification(
             candidate_episode=episode, candidate_manifest=candidate
         )
+
+
+def test_unresolved_full_missingness_action_is_explicit_and_fail_closed():
+    cell = {
+        "session_mode": "persistent",
+        "policy": "frontier_dag_retirement",
+        "strategy": {},
+    }
+    assert _unresolved_same_prefix_full_action(cell) == "stop"
+    cell["strategy"]["unresolved_same_prefix_full_action"] = (
+        "carry_full_episode"
+    )
+    assert _unresolved_same_prefix_full_action(cell) == "carry_full_episode"
+
+
+def test_carry_full_missingness_rule_requires_persistent_treatment():
+    spec = json.loads(INSTRUCTION_EPOCH_N3_SPEC.read_text(encoding="utf-8"))
+    benchmark = json.loads(BENCHMARK.read_text(encoding="utf-8"))
+    treatment = spec["strategies"][1]
+    treatment["unresolved_same_prefix_full_action"] = "carry_full_episode"
+    validate_spec(spec, benchmark)
+
+    treatment["policy"] = "full"
+    with pytest.raises(ValueError, match="persistent treatment cell"):
+        validate_spec(spec, benchmark)
+
+    treatment["policy"] = "persistent_instruction_epoch_retirement"
+    treatment["unresolved_same_prefix_full_action"] = "invent_success"
+    with pytest.raises(ValueError, match="invalid unresolved"):
+        validate_spec(spec, benchmark)
 
 
 def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
