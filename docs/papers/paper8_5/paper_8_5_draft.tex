@@ -284,17 +284,40 @@ assistant command and its observation into unrelated messages.
 
 \begin{figure}[H]
 \centering
-\setlength{\fboxsep}{6pt}
-\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{State}\\current bytes, workspace facts}}
+\setlength{\fboxsep}{5pt}
+\fbox{\parbox[c][.65cm][c]{.20\linewidth}{\centering assistant action}}
+$\longrightarrow$
+\fbox{\parbox[c][.65cm][c]{.20\linewidth}{\centering tool observation}}
+$\longrightarrow$
+\fbox{\parbox[c][.65cm][c]{.20\linewidth}{\centering causal record}}
+
+\vspace{4pt}
+\fbox{\parbox[c][.92cm][c]{.19\linewidth}{\centering\textbf{State}\\current bytes}}
 \hfill
-\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Provenance}\\resource, command, origin}}
+\fbox{\parbox[c][.92cm][c]{.19\linewidth}{\centering\textbf{Provenance}\\resource, origin}}
 \hfill
-\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Control}\\intent, completion, status}}
+\fbox{\parbox[c][.92cm][c]{.19\linewidth}{\centering\textbf{Control}\\status, closure}}
 \hfill
-\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Evidence}\\diagnostics, rationale, clues}}
-\caption{One causal record contains components with different useful
-lifetimes.  Superseding state does not prove that its provenance, control, or
-semantic evidence can be deleted.}
+\fbox{\parbox[c][.92cm][c]{.19\linewidth}{\centering\textbf{Evidence}\\diagnostic, clue}}
+
+\vspace{4pt}
+\begin{minipage}{.46\linewidth}
+\centering
+\textbf{Whole-record deletion}\\
+newer state $\Rightarrow$ delete all four components\\
+\emph{unsafe negative baseline}
+\end{minipage}
+\hfill
+\begin{minipage}{.49\linewidth}
+\centering
+\textbf{Component/epoch-aware retirement}\\
+retire state only after supersession; keep reachable provenance,
+control, and evidence on their own lifetimes
+\end{minipage}
+\caption{A causal record is not one disposable semantic unit.  Whole-record
+deletion conflates state authority with future trajectory utility; structured
+retirement preserves parent identity while assigning component-specific
+lifetimes.}
 \label{fig:record-decomposition}
 \end{figure}
 
@@ -388,8 +411,8 @@ Policy & Main rule \\
 \midrule
 Full & Preserve the complete canonical history; correctness and trajectory-cost control. \\
 Matched Recency & Retain the newest records at a matched model-visible budget. \\
-Whole-record retirement & Remove causally complete records judged operationally superseded; mechanistic negative baseline. \\
-Structured boundary-free & Preserve current prompts and a recent progress/protocol frontier, then retire unreachable older causal groups.  Recent Frontier denotes M2/P1; Prompt Pinned denotes E2+F1C. \\
+Recent Frontier & Preserve genuine prompts plus the frozen M2/P1 recent progress/protocol frontier; retire older unreachable causal groups. \\
+Prompt Pinned & Preserve every genuine prompt and the frozen E2+F1C instruction-epoch floors; compact closure receipts make this a transformed-context candidate. \\
 \bottomrule
 \end{tabular}
 \caption{Main policy families. Symbolic implementation names are secondary to
@@ -520,26 +543,6 @@ Recent Frontier applies recent, mutation, verification, and protocol floors
 over a continuous session without requiring an explicit task-boundary signal.
 The strict same-prefix Task~3--5 cohort is the strongest current paired point.
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{lrrrrr}
-\toprule
-Task & Resolved F/P & Calls F/P & Input F/P & Own save & Paired save \\
-\midrule
-3 & 1/1 & 7/7 & 103,713/92,434 & 11.52\% & 10.88\% \\
-4 & 1/1 & 14/6 & 260,662/49,667 & 52.56\% & 80.95\% \\
-5 & 1/1 & 9/9 & 191,697/97,780 & 49.64\% & 48.99\% \\
-\midrule
-Aggregate & 3/3 & 30/22 & 556,072/239,881 & 40.53\% & 56.86\% \\
-\bottomrule
-\end{tabular}
-\caption{Recent Frontier (M2/P1) strict paired discovery cohort.  F/P denotes
-Full/policy.  The paired aggregate includes Task~4's shorter trajectory; own
-saving is the selector-focused estimate.}
-\label{tab:editorial-recent-frontier}
-\end{table}
-
 The cohort preserves all three qualified paired successes and reduces aggregate
 calls, but savings range from 11.52\% to 52.56\% within trajectory.  It is a
 promotion candidate, not evidence of greater-than-90\% population preservation
@@ -552,37 +555,59 @@ epoch, the two most recent completed epochs, and compact closure evidence for
 older completed epochs.  Cold exact-prefix execution removes a cache-state
 confound and yields one task-clustered observation per identity.
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{lrrrrr}
-\toprule
-Identity & Resolved F/P & Calls F/P & Input F/P & Own save & Paired save \\
-\midrule
-Django-15741 & 1/1 & 13/8 & 361,680/125,643 & 40.39\% & 65.26\% \\
-Django-15368 & 1/1 & 12/16 & 318,595/260,578 & 39.52\% & 18.21\% \\
-Scikit-learn-14496 & 1/1 & 9/9 & 244,411/152,801 & 38.53\% & 37.48\% \\
-\midrule
-Aggregate & 3/3 & 34/33 & 924,686/539,022 & 39.45\% & 41.71\% \\
-\bottomrule
-\end{tabular}
-\caption{Prompt Pinned (E2+F1C) cold exact-prefix discovery gate.  Three
-identities qualify replication, not a population accuracy estimate.}
-\label{tab:editorial-prompt-pinned}
-\end{table}
-
 Prompt Pinned is conceptually distinct from Recent Frontier and reaches the
 30--50\% target band on this small cohort.  Its closure receipts are
 model-visible post-cache transformations in the current transfer experiments;
 selection-only E2 must be qualified separately before recommending a strict
 native-PRA default.
 
+\subsection{Task-clustered headline comparison}
+
+Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
+separate.  Matched Recency contains six executions over three identities and
+is shown as a negative control; its historical schema lacks three immutable
+pairing digests and is not pooled with the exact-prefix cohorts.  The frozen
+eight-identity confirmation set had no completed admissible rows at manuscript
+cutoff, so the table reports that coordinate as open rather than extrapolating
+from 3/3.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{p{.145\linewidth}p{.095\linewidth}p{.08\linewidth}p{.10\linewidth}p{.09\linewidth}p{.15\linewidth}p{.115\linewidth}Y}
+\toprule
+Policy & Cohort & IDs & Resolved F/P & Calls F/P & Input F/P & Save own/paired & Status \\
+\midrule
+Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted & 6.35\%/n.a. & two losses; incomplete legacy identity \\
+Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
+Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
+Recent Frontier M2/P1 & held-out & 0/8 & --- & --- & --- & --- & open \\
+Prompt Pinned E2+F1C & held-out & 0/8 & --- & --- & --- & --- & open \\
+\bottomrule
+\end{tabularx}
+\caption{Task-clustered policy ledger at cutoff.  F/P denotes Full/policy.
+Discovery and held-out confirmation are never aggregated; repeated runs expose
+instability but do not increase the identity denominator.}
+\label{tab:editorial-headline-policies}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.80\linewidth]{../shared/results/paper8_5_agent_memory/v2_trajectory_economics/trajectory_economics.pdf}
+\caption{Own-trajectory omission versus paired workload saving.  Marker area is
+proportional to policy calls; filled circles preserve the paired official solve
+and the cross marks the failed Recent-Frontier diagnostic.  High omission can
+collapse after trajectory inflation.}
+\label{fig:trajectory-economics}
+\end{figure}
+
 \section{Profile Implications}
 
-The evidence supports a staged profile vocabulary, not one universally best
-selector.  Profiles differ in how much uncertainty they tolerate and in which
-evidence floors they preserve.  Table~\ref{tab:profile-implications} separates
-what can be deployed conservatively from what remains a research treatment.
+The evidence supports a staged candidate vocabulary, not one universally best
+selector.  Candidates differ in how much uncertainty they tolerate and in
+which evidence floors they preserve.  Table~\ref{tab:profile-implications}
+separates frozen discovery points from controls and unqualified treatments.
 
 \begin{table}[H]
 \centering
@@ -1839,7 +1864,7 @@ remain quarantined until fresh \textsc{Full}, PRA-100, and reduced-policy
 autonomous runs complete under the final receipt-position and lifecycle
 contract.
 
-\section{Deployable Logical Profiles}
+\section{Frozen Logical Policy Candidates}
 
 The profile names describe constraints, not preselected winners.  Their frozen
 logical plan is serialized identically for every runtime:
@@ -2358,7 +2383,7 @@ gross/net saving, calls, recovery, and uncertainty. \\
 \end{tabular}
 \end{table}
 
-\subsection{From a frontier to deployable profiles}
+\subsection{From a frontier to confirmation candidates}
 
 The curve is the product interface, not merely a paper visualization.  A
 developer needs official resolution, calls-to-solution, divergence, and
