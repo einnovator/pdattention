@@ -3775,11 +3775,37 @@ selection, omitted records, and retokenization as causes and localizes the
 difference to numerical sensitivity between fresh full prefill and incremental
 prefix-cache continuation.  Consequently this row qualifies official success,
 call count, final patch, and zero-copy/no-re-encoding mechanics, but not the
-strict fresh-prefill exact-action-trajectory gate.  PRA-90 remains withheld
-until PRA-100 matches a no-selection live-prefix control, or a predeclared
-numerical-equivalence criterion replaces byte-exact actions.  The auditable
+strict fresh-prefill exact-action-trajectory gate.
+
+A second, selection-neutral live-prefix control resolves that ambiguity.  It
+uses the same incremental consumer as PRA-100 while retaining every record.
+All seven request-input digests, assistant-content digests, and command digests
+match PRA-100 exactly; it also resolves 1/1 in seven calls and submits the same
+patch.  Thus the matched-consumption gate is positive even though the
+fresh-prefill gate remains negative.  Reduced-policy execution is permitted;
+its outcome must be attributed to selection only against this matched control,
+not against the numerically different fresh-prefill trajectory.  The auditable
 bundle is
 \path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_scikit14496_qwen3coder30b_postfix_v1}.
+
+The admitted E2+F1C arm then executes the frozen reduced policy through the
+same native consumer.  It resolves 1/1 and submits the same byte-identical
+patch, while all 14 post-bootstrap requests report zero selected-history
+re-encoding, zero selected-K/V copy, and zero host-to-device transfer.  Across
+its realized 15-call trajectory it saves 35.07\% of selected message-content
+tokens, 39.21\% after compact closure materialization, and 37.21\% of exposed
+source K/V tokens.  This is an accuracy-preserving point but fails the
+efficiency gate: the matched full-history control needs seven calls, commands
+first diverge at request four, and the reduced arm's 39.11\% within-trajectory
+input-plus-completion saving becomes a 33.10\% paired workload increase after
+charging the extra calls.  The earlier call-eight Metal OOM does not recur over
+all 15 requests after preventing evaluator-forced realization of source-backed
+K/V slices and clearing request-local MLX graph/cache state at teardown; this
+combined intervention does not identify either change as the sole cause.
+However, steady-state consumer peak remains roughly 3.0--3.4\,GiB, so neither
+latency nor low-temporary-memory qualification follows.  Oracle add-back at
+request four, rather than Easy-14 expansion, is the next policy experiment.
+
 No corresponding post-fix autonomous HF row exists yet; older HF request and
 agent rows cannot be pooled with these results.
 
@@ -4942,11 +4968,17 @@ re-encode zero selected-history tokens and copy zero selected K/V bytes.  The
 post-fix SGLang-MLX \textsc{Full}/PRA-100 pair also preserves 1/1 resolution,
 seven calls, and a byte-identical patch with zero selected-history
 re-encoding/copy, but first diverges at action three despite identical input
-token IDs.  It therefore remains negative under the strict fresh-prefill
-trajectory gate and its reduced-policy arm is withheld.  Fresh end-to-end
-\textsc{Full}, PRA-100, and frozen-policy execution remains required for HF;
-SGLang requires a matched live-prefix control before policy execution, and the
-older request-level figures are not substituted.
+token IDs.  Its selection-neutral live-prefix control then matches PRA-100 on
+all seven request inputs, responses, and commands and submits the same patch,
+so the matched-consumption gate passes and reduced-policy execution is now
+admissible.  The resulting E2+F1C run also resolves 1/1 with the identical
+patch and zero selected-history re-encoding/copy, but uses 15 rather than seven
+calls.  Its 39.21\% materialized-token saving therefore becomes a 33.10\%
+paired input-plus-completion workload increase; it is retained as a valid
+policy-quality negative, not promoted as a default.  Fresh end-to-end
+\textsc{Full}, PRA-100, and frozen-policy
+execution remains required for HF; older request-level figures are not
+substituted.
 The generic MLX M1 add-back is rejected: although it resolves, its 14 calls
 produce $-3.12$\% paired selected-K/V saving and expose an unrelated
 artifact-writing turn as a false mutation exemplar.

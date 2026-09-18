@@ -13,6 +13,7 @@ tokenizer revision, mini-swe-agent 2.4.6, and the official SWE-bench grader.
 | ordinary fresh-prefill FULL | 1.0 | 7 | reference patch | 563.03 s |
 | native live-K/V PRA-100 | 1.0 | 7 | byte-identical | 279.48 s |
 | selection-neutral live-prefix FULL | 1.0 | 7 | byte-identical | 134.61 s |
+| native E2+F1C reduced history | 1.0 | 15 | byte-identical | 888.94 s |
 
 The corrected PRA-100 path reports zero selected-history re-encoding, zero
 selected-history K/V copy, zero host-to-device bytes, and zero canonical
@@ -45,6 +46,34 @@ fresh-prefill trajectory gate remains negative, but the matched-consumption
 PRA-100 gate is positive.  PRA-90/E2+F1C is now allowed as a selection-quality
 experiment.  Wall times remain single-run provenance, not a speed claim.
 
+## Reduced-policy result
+
+The first non-quarantined E2+F1C execution completes all 15 requests and
+passes the official grader.  Relative to its own uncompressed 15-call
+trajectory it saves 35.07% of selected message-content tokens, 39.21% after
+compact closure materialization, and 37.21% of source K/V token exposure.
+All 14 reuse calls report zero selected-history re-encoding, zero selected-K/V
+copy, and zero host-to-device transfer.  The final patch is byte-identical to
+FULL.
+
+This is an accuracy-preserving point, not an efficiency-qualified default:
+the matched live-prefix control resolves in seven calls, whereas E2+F1C takes
+15.  Commands match through request three and first diverge at request four.
+The reduced trajectory repeatedly rereads and rewrites the same target before
+converging.  Consequently its 39.11% within-trajectory
+input-plus-completion saving becomes a 33.10% paired workload increase after
+charging the 114% call increase relative to the matched control.  The next policy step
+is an oracle add-back at request four, followed by a stricter current-task
+progress spine; expanding the Easy-14 matrix would be premature.
+
+The run also closes the call-8 Metal-OOM blocker.  Source-backed disjoint cache
+state no longer asks SGLang's evaluator to realize every lazy K/V slice, and
+request teardown now drops graph roots and clears allocator-cache bytes before
+retained-memory measurement.  The combined intervention is not ablated, but
+the 15-call run shows no accumulating OOM.  It
+still exposes a roughly 3.0--3.4 GiB steady-state consumer peak, so the result
+does not yet qualify a low-temporary-memory or latency claim.
+
 ## Files
 
 - `full/`: ordinary FULL manifest, trace, metrics, official result and patch.
@@ -53,4 +82,6 @@ experiment.  Wall times remain single-run provenance, not a speed claim.
   control used for the matched-consumption gate.
 - `live_replay_diagnostic/`: stopped three-request diagnostic with live-versus-
   replay token identity counters; it is not an official task result.
+- `e2f1c/`: completed reduced-history run manifest, per-request selection and
+  engine telemetry, trajectory, prediction, metrics and official result.
 - `comparison.json`: compact paired reduction.
