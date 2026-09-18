@@ -4,6 +4,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tabularx}
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage{placeins}
@@ -13,114 +14,47 @@
 \usepackage{microtype}
 \usepackage{multirow}
 
-\title{Agent Memory Selection under Bounded Context\\
-\large Which History Records Matter for Software-Engineering Agents?}
+\title{Agent Memory Selection under Bounded Context:\\
+\large State, Provenance, and Trajectory Economics}
 \author{Jorge Sim\~ao}
 \date{Draft --- September 2026}
 
 \newcommand{\pra}{\textsc{PRA}}
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Language-model coding agents accumulate task instructions, shell actions,
-observations, edits, and verification state.  This paper asks which logical
-history records can be retired without relying on any particular inference
-engine.  We introduce typed records and causal action--observation bundles,
-separate record selection from within-record materialization, and evaluate
-fresh and persistent mini-swe-agent sessions on SWE-bench Verified.  The
-primary endpoints are official resolution, failure-aware cumulative input-token
-saving, calls to solution, and first behavioral divergence.
+Long-running coding agents accumulate instructions, actions, observations,
+edits, and verification state.  We study which logical records can be omitted
+independently of any inference engine.  A record is decomposed into state,
+provenance, control, and semantic evidence; these components need not share a
+lifetime.  This distinction explains a central negative result: operationally
+superseded state is not necessarily behaviorally irrelevant.  Whole-record
+semantic retirement can remove localization or workflow evidence, cause
+reacquisition, and fail where matched recency succeeds.
 
-Simple semantic deletion is unsafe.  Old task prompts become harmful orphaned
-instructions when their completion evidence is removed, and per-request token
-retention can look favorable while extra calls increase total work.  Our
-boundary-free repair infers instruction epochs only from ordinary user-message
-provenance and retires a terminally closed old instruction together with its
-causal interaction.  In a context-qualified 131,072-token Easy-14 campaign,
-persistent \textsc{Full} resolves 10/14 tasks in 207 calls and sends 8.90
-million cumulative message-content tokens; its largest request is 85,801
-tokens.  The balanced two-epoch candidate is stopped after five tasks: it
-resolves 2/5 versus \textsc{Full}'s 4/5, losing two paired successes through
-invalid submitted patches.  Its 28.22\% raw paired saving therefore receives
-zero failure-aware credit.  Moreover, two pre-intervention repeats with
-byte-identical full materialization already change call counts, demonstrating
-that temperature zero and a fixed seed do not ensure trajectory repeatability.
-An exact saved-prefix Task-5 diagnosis then compares two executions per policy.
-Three-epoch E3 matches \textsc{Full}'s 1/2 resolution and saves 16.62\% paired
-input with one extra aggregate call; E2 also resolves 1/2 and removes 41.94\%
-of its own counterfactual history, but trajectory inflation more than doubles
-paired token work.  Those instruction-epoch policies therefore fail the
-30--50\%, zero-loss, no-call-increase target.  Agent-memory
-policy and engine reuse remain separate contracts: this paper selects logical
-evidence; Paper~4.5 measures whether engines realize the identical plan without
-re-encoding or copying K/V.  A new offline six-issue mechanism screen instead
-defines the frontier by the last two or three ordinary user prompts and retires
-only older causal groups with no information-flow path into that frontier.  It
-matches the independent-workspace oracle at 100\% token-weighted precision and
-recall and exposes up to 39.30\% final-snapshot opportunity, but remains an
-offline result until autonomous quality and cumulative work are measured.  A
-protocol-aware $M=2$/P1 repair then preserves 3/3 distinct paired
-\textsc{Full} successes, uses 25 calls versus 25, and sends 280,858 versus
-474,697 cumulative input tokens (40.83\% saving).  A contemporaneous Task~3
-repeat preserves success and 13-versus-13 calls but saves only 9.96\%, exposing
-large backend trajectory variance and failing the repeated 30--50\% saving
-gate; Task~4 instead repeats at 59.24\% saving and one fewer call.  This
-heterogeneity blocks a universal default.  On Task~5 the contemporaneous
-\textsc{Full} repeat fails while M2/P1 resolves, so it is unconditional
-reliability evidence rather than a preservation point.  Across the repeat
-cohort M2/P1 resolves 3/3 versus 2/3 and descriptively reduces input 31.03\%;
-conditional on the two \textsc{Full} successes it preserves 2/2 and saves
-28.67\%, just below the 30\% gate.  A sharper boundary-free M1/P1 Task~5
-mechanism repeat resolves 2/2 with an identical executed-action trajectory and
-53.95\% within-trajectory saving; an edge audit finds no unintended link among
-the five issues.  Exploratory transfer is mixed and was not initially preceded
-by a successful \textsc{Full} execution from each candidate's exact current
-session prefix.  A strict Task-5 rerun closes that attribution gap: same-prefix
-\textsc{Full} and M2/P1 both solve in nine calls, while M2/P1 sends 97,780
-versus 191,697 paired input tokens (48.99\% saving).  M1/P1/W1 also uses nine
-calls and saves 53.83\%, but loses the solve after mutating before sufficient
-current-task source localization.  Two further \textsc{Full} qualifiers then
-fail in the same 18-call trajectory, so both planned M2/P1 treatments are
-correctly withheld.  A second strict pair on Task~4 resolves in both arms;
-M2/P1 sends 49,667 tokens in six calls versus 260,662 in fourteen for
-\textsc{Full}.  Its 80.95\% paired reduction includes a favorable trajectory
-effect; the selector removes 52.56\% within the candidate trajectory.  A third
-strict pair on Task~3 preserves the solve and seven-call trajectory while
-saving 11.52\% within trajectory.  Across these three exact-prefix pairs,
-M2/P1 preserves 3/3 solves, uses 22 versus 30 calls, and removes 40.53\% of its
-own full-history counterfactual.  This meets the selector-only 30--50\% target
-as a three-task promotion candidate, not a greater-than-90\% population
-accuracy estimate or production default.  Task~6 is excluded rather than
-charged to selection after two same-prefix \textsc{Full} controls both fail.
-Finally, a held-out sixth episode exposes trial-start model-cache state as an
-experimental factor: two cold-reset \textsc{Full} executions reproduce the
-same 13-call action and content trajectories exactly, whereas a warm-cache
-\textsc{Full} execution diverges and fails.  After fixing a selector bug that
-silently ignored the all-user-prompt floor, prompt-pinned E2+F1C resolves the
-held-out task in 2/2 exact cold repeats, uses eight rather than 13 calls, and
-materializes 125,643 rather than 361,680 input tokens.  It removes 40.39\% of
-its own full-history counterfactual and 65.26\% relative to the paired
-\textsc{Full} trajectory.  Two further cold, identity-matched tasks preserve
-both paired \textsc{Full} successes.  Across one task-clustered observation
-from each of three identities, E2+F1C resolves 3/3 versus 3/3, uses 33 versus
-34 calls, and materializes 539,022 versus 924,686 input tokens (41.71\%
-paired saving; 39.45\% against its own full-history counterfactual).  This
-passes the three-identity discovery gate, not a population accuracy estimate.
-Hybrid native-transfer diagnostics then omit 40.23\% of steady-state original
-historical K/V on llama.cpp and 40.04\% on MLX.  These E2+F1C rows are not pure
-resident-subset executions: F1C replaces retired records with newly encoded
-model-visible closure receipts (1,056 tokens in the MLX run; the llama.cpp
-autonomous bundle did not separately aggregate this counter).  llama.cpp
-preserves the eight-call count; MLX preserves the solve but uses twelve rather
-than nine calls, reducing its paired K/V-workload saving to 15.23\%.  Logical
-omission, transformed-context encoding, and realized workload economics are
-therefore separate outcomes even after original-K/V selection is correct.
-A generic prior-mutation add-back is rejected: it still solves but rises to
-14 calls and makes selected-K/V work 3.12\% greater than PRA-100 because its
-``mutation'' is an unrelated prior-task patch artifact rather than live evidence.
+We evaluate typed, causal record policies with mini-swe-agent on SWE-bench
+Verified using restored workspaces, exact-prefix controls, repeated full-history
+qualification, and official resolution as the primary endpoint.  We report
+candidate-trajectory counterfactual saving separately from paired full-history
+saving because extra calls and recovery can erase nominal per-request gains.
+A boundary-free Recent Frontier policy preserves all three qualified paired
+successes in a three-task discovery cohort, uses 22 versus 30 calls, and omits
+40.53\% of its own full-history counterfactual.  A conceptually different
+Prompt Pinned policy preserves 3/3 cold exact-prefix identities, uses 33 versus
+34 calls, and saves 39.45\% within trajectory and 41.71\% against paired
+full-history executions.  These are promotion-candidate mechanism results, not
+population accuracy estimates or production defaults.  Other arms remove about
+40--55\% per request yet increase cumulative work after trajectory inflation.
+
+The results support two conclusions: state authority and trajectory utility are
+different quantities, and context reduction is not an efficiency result until
+the full realized trajectory is counted.  We freeze logical plans for transfer;
+Paper~4.5 separately evaluates native K/V realization.  Post-cache compact
+receipts are classified as transformed context, not resident-cache reuse.
 \end{abstract}
 
 \iffalse
@@ -283,38 +217,496 @@ This minimizes hidden harness state and makes memory intervention easy to audit.
 \paragraph{Research questions.}
 We ask:
 \begin{enumerate}[leftmargin=*]
-    \item What accuracy--saving frontier does simple matched recency establish,
-    and how much additional removable-history headroom does an offline oracle
-    reveal?
-    \item At matched model-visible tokens, does typed payload retirement that
-    preserves provenance/control outperform whole-record semantic retirement
-    and simple recency?
-    \item When bounded memory changes behavior, how much cost appears as direct
-    reacquisition, trajectory inflation, submission failure, or loss of a
-    resolving workspace state?
-    \item As one session grows from one to fourteen issues, which episode-retirement,
-    selection, and materialization strategies preserve sequence-level quality,
-    and do any retain useful cross-issue state more efficiently than a fresh
-    session reset?
+    \item How much agent history can be omitted while preserving official task
+    resolution on paired, repeat-qualified executions?
+    \item Which parts of historical state remain behaviorally useful after
+    operational supersession, and what does that imply for record granularity?
+    \item When logical context shrinks, does total trajectory work also shrink
+    after reacquisition, extra calls, and submission behavior are counted?
 \end{enumerate}
 
-\paragraph{Contributions planned.}
-We target five contributions:
+\paragraph{Contributions.}
+This paper contributes:
 \begin{enumerate}[leftmargin=*]
     \item An engine-independent typed record model that separates state,
     provenance, control, and semantic-evidence utility.
-    \item A matched-budget factorial over full history, recency, whole-record
-    retirement, and payload-only retirement with provenance stubs.
-    \item A two-stage evaluation combining frozen-trajectory counterfactuals
-    and oracle headroom with repeat-qualified autonomous SWE-bench runs.
-    \item Agent-specific efficiency endpoints that separate solution and
-    submission reliability and charge direct reacquisition and trajectory
-    inflation.
-    \item A multi-issue session frontier that reports every promoted strategy,
-    configuration, and composition against both persistent-full and
-    fresh-per-issue controls, with uncertainty clustered by ordered issue
-    sequence.
+    \item A fail-closed evaluation contract combining oracle counterfactuals,
+    matched recency, exact-prefix controls, and repeat-qualified autonomous
+    SWE-bench runs.
+    \item Evidence that operational supersession does not imply behavioral
+    irrelevance, making whole-record semantic retirement an unsafe default.
+    \item Two promotion-candidate boundary-free policies and trajectory-level
+    efficiency endpoints that charge reacquisition and additional calls.
 \end{enumerate}
+
+\section{Problem Formulation}
+
+At decision $t$, the canonical logical history is
+\[
+H_t=[r_1,\ldots,r_n], \qquad S_t=\pi(H_t,Q_t,B),
+\]
+where $Q_t$ is the live query and workspace state, $B$ is a logical budget,
+and $S_t$ is the selected plan.  The key unit is not an undifferentiated token
+window.  We represent a record as
+\[
+r=(s,p,c,e),
+\]
+where $s$ is authoritative world or resource state, $p$ is provenance, $c$ is
+workflow/control state, and $e$ is semantic evidence that can remain useful to
+reasoning.  These components can expire at different times.  In particular,
+\[
+\boxed{\text{state superseded}\;\not\Rightarrow\;\text{memory useless}.}
+\]
+A newer file view can supersede older bytes as state while the earlier search,
+localization, failed attempt, or verification remains useful provenance or
+control evidence.  This distinction motivates causal bundles and payload-level
+retirement rather than blind deletion of complete turns.
+
+We keep four accounting objects separate:
+\begin{description}[leftmargin=!,labelwidth=3.4cm]
+\item[Logical history.] Every canonical agent record produced so far.
+\item[Selected history.] Existing records or spans admitted by $\pi$.
+\item[Realized trajectory.] All calls, actions, reacquisition, recovery, and
+completion tokens caused by the treatment.
+\item[Engine realization.] The physical text or K/V mechanism used to consume
+the frozen logical plan; this is outside the primary policy experiment.
+\end{description}
+
+\subsection{Causal units and component lifetimes}
+
+The record decomposition is operational rather than merely descriptive.  A
+tool observation can stop being the authoritative copy of a file while its
+resource identity still establishes provenance, its return code still closes a
+control branch, and a diagnostic line still supplies semantic evidence.  A
+selector therefore assigns retention at component or span granularity and
+keeps the causal identity of the parent record.  It must not silently turn an
+assistant command and its observation into unrelated messages.
+
+\begin{figure}[H]
+\centering
+\setlength{\fboxsep}{6pt}
+\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{State}\\current bytes, workspace facts}}
+\hfill
+\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Provenance}\\resource, command, origin}}
+\hfill
+\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Control}\\intent, completion, status}}
+\hfill
+\fbox{\parbox[c][1.05cm][c]{.19\linewidth}{\centering\textbf{Evidence}\\diagnostics, rationale, clues}}
+\caption{One causal record contains components with different useful
+lifetimes.  Superseding state does not prove that its provenance, control, or
+semantic evidence can be deleted.}
+\label{fig:record-decomposition}
+\end{figure}
+
+Short records remain intact.  Oversized observations are subdivided only at
+natural boundaries---files, diff hunks, test cases, stack frames, or lines---and
+each child keeps a stable parent and causal-group identifier.  The current
+incomplete turn, genuine user prompts, recent mutation state, and submission or
+verification state are control floors rather than ordinary retrieval
+candidates.  These rules make the plan independent of mini-swe-agent's textual
+format even though Bash command semantics provide the first concrete tool
+ontology.
+
+\section{Evaluation Contract}
+
+The evaluation uses mini-swe-agent's ordinary Bash interaction on SWE-bench
+Verified with Qwen3-Coder-30B, temperature zero, restored repository snapshots,
+and hash-bound history plans.  Each treatment is admitted only after a successful
+full-history execution from the identical saved prefix.  Cold-cache qualification
+is used when endpoint state changes behavior; repeated full-history controls
+measure residual trajectory instability.  A timeout- or transport-contaminated
+execution is quarantined rather than counted.
+
+The outcome hierarchy is explicit.  \emph{Solution-state success} means that
+the terminal workspace contains a resolving patch.  \emph{Submission success}
+means that the agent emitted the required valid benchmark payload.
+\emph{Official resolution} is the primary endpoint.  Auxiliary workspace grades
+diagnose reasoning versus protocol failure but never replace official resolution.
+No treatment is credited when its paired full-history qualifier fails.
+
+\subsection{Paired execution protocol}
+
+Every autonomous comparison begins from one immutable prefix and workspace
+snapshot.  Full first determines whether that model/task/host cell is eligible;
+the treatment then consumes the same prefix with only the memory plan changed.
+The evaluator preserves both trajectories rather than retrying a legitimate
+submission failure away.  Infrastructure faults are quarantined with a reason
+code and never pooled with model or policy outcomes.
+
+\begin{figure}[H]
+\centering
+\small
+\fbox{\parbox[c][.78cm][c]{.18\linewidth}{\centering immutable prefix\\+ workspace}}
+$\longrightarrow$
+\fbox{\parbox[c][.78cm][c]{.17\linewidth}{\centering FULL\\qualification}}
+$\longrightarrow$
+\fbox{\parbox[c][.78cm][c]{.19\linewidth}{\centering frozen policy\\plan}}
+$\longrightarrow$
+\fbox{\parbox[c][.78cm][c]{.22\linewidth}{\centering paired outcome\\+ trajectory cost}}
+\caption{Fail-closed paired protocol.  A failed Full cell cannot be used to
+claim either policy failure or saving.}
+\label{fig:paired-protocol}
+\end{figure}
+
+The statistical unit is the task identity, not an individual execution row.
+Repeated runs estimate within-task instability; they do not manufacture extra
+independent samples.  Cohorts with different tasks, prefixes, models, or cache
+conditions are reported separately.  This prevents overlapping campaigns from
+being pooled into an apparently larger accuracy estimate.
+
+Let $M_t$ be selected model-visible input and let $F_t^{\mathrm{cand}}$ be the
+full-history counterfactual along the candidate's own realized trajectory.  We
+report
+\[
+S_{\mathrm{own}}=1-\frac{\sum_tM_t}{\sum_tF_t^{\mathrm{cand}}},
+\qquad
+S_{\mathrm{paired}}=1-
+\frac{\sum_tM_t^{\mathrm{cand}}}{\sum_tM_t^{\mathrm{Full}}}.
+\]
+The first isolates selector omission; the second includes changed call count
+and trajectory.  Recovery cost is
+\[
+C_{\mathrm{recovery}}=C_{\mathrm{reacquire}}+
+C_{\mathrm{trajectory\ inflation}},
+\]
+where reacquisition counts repeated reads, searches, and tests, while trajectory
+inflation counts additional model calls/actions.  We also report first action
+divergence and failure-aware saving, which assigns no efficiency credit to a
+treatment that loses a paired success.
+
+\section{Policy Families}
+
+The main comparison uses four public policy families; implementation ladders
+and rejected parameterizations are retained in the audit appendix.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{.18\linewidth}p{.72\linewidth}}
+\toprule
+Policy & Main rule \\
+\midrule
+Full & Preserve the complete canonical history; correctness and trajectory-cost control. \\
+Matched Recency & Retain the newest records at a matched model-visible budget. \\
+Whole-record retirement & Remove causally complete records judged operationally superseded; mechanistic negative baseline. \\
+Structured boundary-free & Preserve current prompts and a recent progress/protocol frontier, then retire unreachable older causal groups.  Recent Frontier denotes M2/P1; Prompt Pinned denotes E2+F1C. \\
+\bottomrule
+\end{tabular}
+\caption{Main policy families. Symbolic implementation names are secondary to
+the semantic distinction.}
+\label{tab:editorial-policy-families}
+\end{table}
+
+Selection-only plans retain or omit existing records and are directly
+transferable to resident-K/V selection.  Ingest-time transforms compact a tool
+result before its first model evaluation.  Post-cache transforms replace an
+already evaluated record with new receipt or summary text; they require new
+model evaluation and are never classified as native cache reuse.
+
+\subsection{Boundary-free dependency retirement}
+
+The structured policies do not receive an explicit ``new task'' marker.  They
+operate over a continuous session and infer whether old causal groups remain
+reachable from recent prompts, resource versions, mutations, verification, and
+submission state.  A completed group can be retired only when no retained node
+depends on its output and a newer authoritative resource version exists where
+state is involved.  Absence of a dependency is used as a candidate signal, not
+as proof that the record's evidence is useless.
+
+This distinction is especially important across multiple independent issues in
+one developer session.  File and workspace identities usually separate the
+issues, so old tool payloads should become unreachable as the session grows;
+user prompts remain pinned.  For related or dependent issues the graph instead
+keeps cross-issue edges through shared resources, mutations, or explicit
+references.  The policy therefore approaches high asymptotic omission only for
+independent completed work, without requiring the application to announce task
+boundaries.
+
+\subsection{Retention lifecycle by evidence role}
+
+The public policies differ less in their scoring function than in the evidence
+they refuse to discard.  Table~\ref{tab:evidence-lifecycle} states the intended
+lifecycle without binding it to one agent protocol.  ``Retire'' means omit the
+payload from future model input while preserving stable identity and audit
+metadata; it never means delete the underlying workspace artifact.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.16\linewidth}p{.30\linewidth}p{.25\linewidth}Y}
+\toprule
+Role & Examples & Candidate retirement condition & Mandatory floor \\
+\midrule
+State & source view, directory listing, generated file & newer authoritative version and no reachable dependent & current mutation and unresolved error state \\
+Provenance & search path, command parameters, resource origin & resource identity remains recoverable from retained graph & task prompts and active resource bindings \\
+Control & hypothesis, next action, return code, submission state & branch is closed and closure is represented & incomplete turn, latest verification, pending submission \\
+Evidence & diagnostic, failed test, explanatory source fragment & bounded oracle or policy evidence that removal does not trigger recovery & recent decision spine and explicit user constraints \\
+\bottomrule
+\end{tabularx}
+\caption{Evidence lifecycles used by structured policies.  The conditions are
+conservative candidate rules, not proofs of behavioral irrelevance.}
+\label{tab:evidence-lifecycle}
+\end{table}
+
+Recent Frontier implements these floors directly: keep recent completed causal
+groups, recent mutations, recent verification, and protocol state, then retire
+older unreachable groups.  Prompt Pinned uses instruction epochs: genuine user
+prompts remain visible, recent epochs remain complete, and older completed
+epochs may retain closure evidence.  The latter currently mixes selection and
+post-cache materialization, which is why its logical result cannot be promoted
+unchanged as a strict native-K/V profile.
+
+The resulting deployment interpretation is deliberately modest.  A
+conservative profile can use Full or a large Recent Frontier and primarily
+guard against unbounded session growth.  A balanced profile may use the
+repeat-qualified Recent Frontier parameters.  Prompt Pinned is an experimental
+high-saving profile until selection-only closure evidence and broader
+task/model replication pass.  None of these labels overrides the paired
+success and workload gates.
+
+\section{Results}
+
+\subsection{Operational supersession is not behavioral irrelevance}
+
+The early semantic-retirement experiments reject a tempting assumption: a read
+or search result does not become useless merely because a newer operation
+supersedes its bytes.  Whole-record retirement changes the first eligible
+action, increases rereading/recovery, and can lose the official submission.
+Matched recency is not a strong final policy---across three same-host identities
+Full resolves 5/6 executions and Matched Recency 4/6 while saving only 6.35\%
+of pooled treatment-history tokens---but it is an important control because it
+can preserve behavioral evidence that the semantic deletion rule discards.
+The result is
+\[
+\boxed{\text{state authority and trajectory utility are different quantities}.}
+\]
+
+The offline leave-one-bundle-out oracle finds 24.5--38.2\% removable-history
+headroom on three successful trajectories, but safe removals are non-additive
+and non-monotone.  This supports structured selection while ruling out a simple
+``delete everything superseded'' rule.
+
+\subsection{Trajectory economics dominate request-level retention}
+
+Per-request saving can reverse after the model reacts to missing context.  In
+one six-issue persistent session, aggressive instruction-epoch retirement
+omits 55.34\% against its own trajectory and resolves 6/6 versus Full's 5/6,
+but expands from 60 to 114 calls.  Against the paired Full denominator it uses
+43.87\% more input.  Other arms similarly spend their nominal saving on source
+reacquisition, edit recovery, or repeated verification.  Therefore
+\[
+\boxed{\text{logical omission}\;\not\Rightarrow\;\text{workload saving}.}
+\]
+
+The structural opportunity does grow with session length, but it is only an
+upper bound.  Figure~\ref{fig:editorial-instruction-epoch-scaling} contrasts the
+equal-size opportunity with observed input saving through three accumulated
+issues.  Extrapolated dashed and dotted curves are not accuracy results; the
+observed points show why persistent-session accounting is needed before native
+K/V experiments.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.88\linewidth]{../shared/results/paper8_5_agent_memory/instruction_epoch_oracle_n3_clean_full_v1/instruction_epoch_scaling.png}
+\caption{Instruction-epoch opportunity and observed saving as independent
+issues accumulate in one session.  Lines beyond $N=3$ are structural
+equal-size opportunities, not autonomous quality measurements.}
+\label{fig:editorial-instruction-epoch-scaling}
+\end{figure}
+
+\subsection{Recent Frontier discovery cohort}
+
+Recent Frontier applies recent, mutation, verification, and protocol floors
+over a continuous session without requiring an explicit task-boundary signal.
+The strict same-prefix Task~3--5 cohort is the strongest current paired point.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Task & Resolved F/P & Calls F/P & Input F/P & Own save & Paired save \\
+\midrule
+3 & 1/1 & 7/7 & 103,713/92,434 & 11.52\% & 10.88\% \\
+4 & 1/1 & 14/6 & 260,662/49,667 & 52.56\% & 80.95\% \\
+5 & 1/1 & 9/9 & 191,697/97,780 & 49.64\% & 48.99\% \\
+\midrule
+Aggregate & 3/3 & 30/22 & 556,072/239,881 & 40.53\% & 56.86\% \\
+\bottomrule
+\end{tabular}
+\caption{Recent Frontier (M2/P1) strict paired discovery cohort.  F/P denotes
+Full/policy.  The paired aggregate includes Task~4's shorter trajectory; own
+saving is the selector-focused estimate.}
+\label{tab:editorial-recent-frontier}
+\end{table}
+
+The cohort preserves all three qualified paired successes and reduces aggregate
+calls, but savings range from 11.52\% to 52.56\% within trajectory.  It is a
+promotion candidate, not evidence of greater-than-90\% population preservation
+or a universal default.
+
+\subsection{Prompt Pinned discovery cohort}
+
+Prompt Pinned preserves every genuine user prompt, the active instruction
+epoch, the two most recent completed epochs, and compact closure evidence for
+older completed epochs.  Cold exact-prefix execution removes a cache-state
+confound and yields one task-clustered observation per identity.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Identity & Resolved F/P & Calls F/P & Input F/P & Own save & Paired save \\
+\midrule
+Django-15741 & 1/1 & 13/8 & 361,680/125,643 & 40.39\% & 65.26\% \\
+Django-15368 & 1/1 & 12/16 & 318,595/260,578 & 39.52\% & 18.21\% \\
+Scikit-learn-14496 & 1/1 & 9/9 & 244,411/152,801 & 38.53\% & 37.48\% \\
+\midrule
+Aggregate & 3/3 & 34/33 & 924,686/539,022 & 39.45\% & 41.71\% \\
+\bottomrule
+\end{tabular}
+\caption{Prompt Pinned (E2+F1C) cold exact-prefix discovery gate.  Three
+identities qualify replication, not a population accuracy estimate.}
+\label{tab:editorial-prompt-pinned}
+\end{table}
+
+Prompt Pinned is conceptually distinct from Recent Frontier and reaches the
+30--50\% target band on this small cohort.  Its closure receipts are
+model-visible post-cache transformations in the current transfer experiments;
+selection-only E2 must be qualified separately before recommending a strict
+native-PRA default.
+
+\section{Profile Implications}
+
+The evidence supports a staged profile vocabulary, not one universally best
+selector.  Profiles differ in how much uncertainty they tolerate and in which
+evidence floors they preserve.  Table~\ref{tab:profile-implications} separates
+what can be deployed conservatively from what remains a research treatment.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.16\linewidth}p{.24\linewidth}p{.28\linewidth}Y}
+\toprule
+Profile & Logical policy & Non-negotiable state & Current evidence \\
+\midrule
+Exact & Full history & all canonical records & control and repeatability baseline \\
+Conservative & wide Recent Frontier & prompts, current turn, recent mutation/verification/protocol spine & bounds session growth; parameters require workload gate \\
+Balanced & repeat-qualified Recent Frontier (M2/P1) & same floors with bounded older causal groups & 3/3 paired discovery identities; 40.53\% own saving \\
+Experimental economy & Prompt Pinned (E2+F1C) & all prompts, active/recent epochs, closure evidence & 3/3 cold identities; hybrid receipts prevent strict native promotion \\
+\bottomrule
+\end{tabularx}
+\caption{Evidence-based profile interpretation.  Names express operating
+intent; they do not convert discovery cohorts into population guarantees.}
+\label{tab:profile-implications}
+\end{table}
+
+Promotion requires a larger held-out task cohort, repeat runs clustered by task,
+another model family, and another agent harness.  The same selector must also be
+tested in both one-task-per-session and persistent multi-task modes.  A policy
+that helps only after explicit task segmentation is not a general session-memory
+policy; a policy that retains all prior independent issues cannot deliver the
+asymptotic benefit that motivates native addressable K/V.
+
+The practical default-selection rule is correspondingly simple: prefer the
+least aggressive profile that meets the application's memory bound, and fall
+back toward Full when dependency evidence, protocol state, or model behavior is
+uncertain.  Savings are accepted only when official resolution is preserved on
+the paired eligible cohort and aggregate calls do not increase.  This rule
+turns the paper's negative results into an operational guardrail rather than a
+claim that all semantic selection is unsafe.
+
+\section{Frozen Runtime Handoff}
+
+Paper~8.5 freezes record identities, spans, original positions, replacements,
+and a plan digest.  It does not infer engine performance from logical tokens.
+The current transfer rows are compact diagnostics:
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{p{.12\linewidth}ccccp{.20\linewidth}Y}
+\toprule
+Consumer & Solved & $\Delta$ calls & K/V omitted & Workload effect & Qualification note \\
+\midrule
+llama.cpp & yes & 0 & 40.23\% & calls preserved & Receipt encoding was not separately aggregated; hybrid, not strict native. \\
+MLX & yes & +3 & 40.04\% & 15.23\% saving & 1,056 closure tokens are newly encoded. \\
+SGLang-MLX & yes & +8 & 37.21\% & 33.10\% increase & 1,344 closure tokens are newly encoded. \\
+\bottomrule
+\end{tabularx}
+\caption{Frozen Prompt Pinned handoff.  Logical omission survives, but workload
+economics depend on the realized trajectory.}
+\label{tab:editorial-runtime-handoff}
+\end{table}
+
+The engine details---same-subset correctness, K/V copying, positions,
+temporaries, and lifecycle---belong to Paper~4.5.  For this paper the lesson is
+that equal logical plans can produce different trajectories and that post-cache
+receipts must be charged as transformed context rather than native reuse.
+
+\section{Discussion and Limitations}
+
+\paragraph{What the positive points establish.}
+Recent Frontier and Prompt Pinned are two independently motivated mechanisms
+that cross the intended 30--50\% logical-saving band on small qualified
+cohorts while preserving their paired successes.  They show that useful agent
+history is not synonymous with a blind suffix and that substantial removable
+history can exist without an explicit task-boundary signal.  They do not yet
+estimate population accuracy, establish a production default, or show that the
+same parameters transfer unchanged across agents and models.
+
+\paragraph{What the negative points establish.}
+Whole-record semantic deletion fails for a deeper reason than an unfortunate
+threshold: current-world authority and reasoning utility have different
+lifetimes.  Likewise, a low per-request retention ratio can be economically
+negative when it causes recovery.  These observations constrain future policy
+design: use negative selection conservatively, retain protocol and mutation
+floors, and promote policies on paired cumulative work rather than on nominal
+token omission.
+
+\paragraph{Oracle scope.}
+Leave-one-bundle-out and bounded subset search answer whether headroom exists
+on a frozen successful trajectory.  They cannot predict the new trajectory
+created by omission, and independent removability does not imply joint
+removability.  Oracle results are therefore hypothesis generators and add-back
+diagnostics, not deployable policies or accuracy estimates.
+
+\paragraph{External validity.}
+The autonomous evidence uses mini-swe-agent, a Bash tool surface, a small number
+of SWE-bench Verified identities, and primarily Qwen3-Coder-30B.  Bash is useful
+because file reads, writes, searches, tests, and return codes can be typed from
+commands and observations, but future work must reproduce the findings with
+explicitly typed tools, another open agent, another model family, longer
+dependent sessions, and task-clustered confidence intervals.
+
+\paragraph{Runtime boundary.}
+Logical omission says which existing records a model should see.  It does not
+say whether an engine re-encodes text, copies K/V, preserves original
+positions, or creates large temporaries.  Post-cache receipts also introduce
+new tokens and must be charged.  Paper~4.5 receives the frozen plan and owns
+those physical and numerical gates.
+
+\section{Conclusion}
+
+Agent history is not a bag of tokens and not merely a snapshot of current world
+state.  Provenance, control, and semantic evidence can outlive the state they
+helped create.  Whole-record deletion is consequently an unreliable abstraction.
+Structured boundary-free policies expose meaningful removable-history
+opportunity on repeat-qualified SWE-bench tasks, but the current cohorts are
+small and heterogeneous.  The defensible endpoint is trajectory economics:
+official resolution, reacquisition, calls, and cumulative work, not a nominal
+retention percentage.  Logical policy and physical runtime realization remain
+separate contracts.
+
+\clearpage
+\appendix
+\section{Detailed Methods and Evidence Ledger}
+
+The remainder preserves the full policy-development chronology, rejected
+variants, oracle grids, infrastructure quarantines, and artifact paths for
+auditability.  These details are not additional main-paper claims.
 
 \section{Background and Motivation}
 
@@ -1527,8 +1919,6 @@ $-3.12$\% paired selected-K/V saving; receipt and resource linkage, not a
 command-level mutation label, is required before any such exemplar is kept.
 
 \clearpage
-\appendix
-
 \section{Recent-Frontier Information-Flow DAG}
 
 The DAG is temporal and therefore acyclic.  ``No loop'' is implemented as no
