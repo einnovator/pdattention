@@ -58,6 +58,28 @@ def _selection_config(manifest: Mapping[str, Any]) -> AutonomousSelectionConfig:
     return AutonomousSelectionConfig(**selection)
 
 
+def _full_control_config(
+    candidate_config: AutonomousSelectionConfig,
+) -> AutonomousSelectionConfig:
+    """Return a semantically neutral FULL control for any candidate policy.
+
+    Candidate-only lifecycle options must be disabled while changing the
+    policy.  Leaving either option enabled can make the cloned configuration
+    invalid, or worse, make a purported FULL control retire history.
+    """
+
+    return replace(
+        candidate_config,
+        policy="full",
+        budget_fraction=1.0,
+        materialization_mode=MaterializationMode.WHOLE_RECORD,
+        negative_realization=NegativeRealizationMode.DROP,
+        negative_fallback="none",
+        compact_completed_finalizations=False,
+        retire_closed_instructions=False,
+    )
+
+
 def _completed_epoch_addback_batches(
     *,
     composed: Mapping[str, Any],
@@ -233,14 +255,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     if candidate.trace["request_input_sha256"] != target["request_input_sha256"]:
         raise AssertionError("reconstructed full request does not match candidate trace")
-    full_config = replace(
-        candidate_config,
-        policy="full",
-        budget_fraction=1.0,
-        materialization_mode=MaterializationMode.WHOLE_RECORD,
-        negative_realization=NegativeRealizationMode.DROP,
-        negative_fallback="none",
-    )
+    full_config = _full_control_config(candidate_config)
     full = transform_autonomous_payload(
         frozen_payload,
         full_config,

@@ -2,7 +2,37 @@ from types import SimpleNamespace
 
 from experiments.paper8_5_agent_memory.run_persistent_first_divergence_oracle import (
     _completed_epoch_addback_batches,
+    _full_control_config,
 )
+from experiments.paper8_5_agent_memory.autonomous_proxy import (
+    AutonomousSelectionConfig,
+)
+from experiments.paper8_5_agent_memory.materialization import MaterializationMode
+from experiments.paper8_5_agent_memory.multi_issue_session import BoundaryMode
+from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
+
+
+def test_full_control_clone_disables_candidate_only_retirement_options():
+    candidate = AutonomousSelectionConfig(
+        policy="persistent_instruction_epoch_retirement",
+        boundary_mode=BoundaryMode.BOUNDARY_FREE,
+        completed_finalization_turns=1,
+        compact_completed_finalizations=True,
+        retire_closed_instructions=True,
+        materialization_mode=MaterializationMode.TOOL_STRUCTURED_EVIDENCE,
+        negative_realization=NegativeRealizationMode.DROP,
+        negative_fallback="none",
+    )
+
+    control = _full_control_config(candidate)
+
+    assert control.policy == "full"
+    assert control.budget_fraction == 1.0
+    assert control.materialization_mode is MaterializationMode.WHOLE_RECORD
+    assert control.negative_realization is NegativeRealizationMode.DROP
+    assert control.negative_fallback == "none"
+    assert control.compact_completed_finalizations is False
+    assert control.retire_closed_instructions is False
 
 
 def test_completed_epoch_batches_cover_each_exclusion_once():
