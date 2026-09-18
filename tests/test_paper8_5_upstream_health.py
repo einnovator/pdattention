@@ -56,6 +56,7 @@ def test_ollama_cold_start_unloads_then_warms_same_consumer() -> None:
     )
 
     assert result["healthy"] is True
+    assert result["successful_attempt"] == 1
     assert calls[0][0] == "http://engine.test:11435/api/generate"
     assert calls[0][1]["keep_alive"] == 0
     assert calls[1][0] == "http://engine.test:11435/v1/chat/completions"

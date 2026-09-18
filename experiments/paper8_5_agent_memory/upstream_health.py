@@ -18,6 +18,7 @@ def _chat_url(base_url: str) -> str:
 
 def normalize_ollama_cold_start(
     *, base_url: str, model: str, timeout_seconds: float = 180.0,
+    connect_attempts: int = 1, connect_retry_seconds: float = 1.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> dict[str, Any]:
     """Unload and deterministically warm one Ollama model before a trial.
@@ -47,6 +48,8 @@ def normalize_ollama_cold_start(
         "stream": False,
         "max_tokens": 8,
     }).encode("utf-8")
+    if connect_attempts < 1 or connect_retry_seconds < 0:
+        raise ValueError("cold-start retry configuration is invalid")
     receipt: dict[str, Any] = {
         "schema_version": 1,
         "mode": "ollama_keep_alive_zero_then_openai_warmup",
@@ -54,41 +57,58 @@ def normalize_ollama_cold_start(
         "unload_endpoint": f"{root}/api/generate",
         "warmup_endpoint": _chat_url(base_url),
         "healthy": False,
+        "attempts": [],
     }
-    try:
-        started = monotonic()
-        request = urllib.request.Request(
-            receipt["unload_endpoint"], data=unload_payload,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with opener(request, timeout=timeout_seconds) as response:
-            response.read()
-            unload_status = int(getattr(response, "status", 200))
-        receipt["unload"] = {
-            "status": unload_status,
-            "latency_seconds": monotonic() - started,
-        }
-        if unload_status >= 400:
-            raise OSError(f"Ollama unload returned HTTP {unload_status}")
+    for attempt_index in range(1, connect_attempts + 1):
+        attempt: dict[str, Any] = {"attempt": attempt_index, "healthy": False}
+        try:
+            started = monotonic()
+            request = urllib.request.Request(
+                receipt["unload_endpoint"], data=unload_payload,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with opener(request, timeout=timeout_seconds) as response:
+                response.read()
+                unload_status = int(getattr(response, "status", 200))
+            attempt["unload"] = {
+                "status": unload_status,
+                "latency_seconds": monotonic() - started,
+            }
+            if unload_status >= 400:
+                raise OSError(f"Ollama unload returned HTTP {unload_status}")
 
-        started = monotonic()
-        request = urllib.request.Request(
-            receipt["warmup_endpoint"], data=warmup_payload,
-            headers={"Content-Type": "application/json"}, method="POST",
+            started = monotonic()
+            request = urllib.request.Request(
+                receipt["warmup_endpoint"], data=warmup_payload,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with opener(request, timeout=timeout_seconds) as response:
+                warmup_status = int(getattr(response, "status", 200))
+                body = json.loads(response.read().decode("utf-8"))
+            content = str(body["choices"][0]["message"]["content"]).strip()
+            attempt["warmup"] = {
+                "status": warmup_status,
+                "latency_seconds": monotonic() - started,
+                "response_exact": content == "OK",
+            }
+            attempt["healthy"] = warmup_status < 400 and content == "OK"
+            receipt["attempts"].append(attempt)
+            if attempt["healthy"]:
+                receipt["healthy"] = True
+                receipt["successful_attempt"] = attempt_index
+                break
+        except Exception as error:
+            attempt["error_type"] = type(error).__name__
+            attempt["error_detail"] = str(error)
+            receipt["attempts"].append(attempt)
+        if attempt_index < connect_attempts:
+            sleep(connect_retry_seconds)
+    if not receipt["healthy"] and receipt["attempts"]:
+        final = receipt["attempts"][-1]
+        receipt["error_type"] = final.get("error_type", "NormalizationError")
+        receipt["error_detail"] = final.get(
+            "error_detail", "cold-start warmup did not return exact OK"
         )
-        with opener(request, timeout=timeout_seconds) as response:
-            warmup_status = int(getattr(response, "status", 200))
-            body = json.loads(response.read().decode("utf-8"))
-        content = str(body["choices"][0]["message"]["content"]).strip()
-        receipt["warmup"] = {
-            "status": warmup_status,
-            "latency_seconds": monotonic() - started,
-            "response_exact": content == "OK",
-        }
-        receipt["healthy"] = warmup_status < 400 and content == "OK"
-    except Exception as error:
-        receipt["error_type"] = type(error).__name__
-        receipt["error_detail"] = str(error)
     return receipt
 
 

@@ -40,6 +40,8 @@ def _normalize_trial_start(
         base_url=args.upstream_base_url,
         model=str(spec["served_model"]),
         timeout_seconds=args.health_timeout_seconds,
+        connect_attempts=getattr(args, "upstream_connect_attempts", 1),
+        connect_retry_seconds=getattr(args, "upstream_connect_retry_seconds", 1.0),
     )
 
 
