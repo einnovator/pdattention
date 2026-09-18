@@ -173,6 +173,14 @@ def main() -> None:
     parser.add_argument("--wire-tail-tokens", type=int, default=32)
     parser.add_argument("--max-abs-logit-delta", type=float, default=0.005)
     parser.add_argument(
+        "--require-full-retention-reference",
+        action="store_true",
+        help=(
+            "Qualification-only: compare every PRA-100 output token and logit "
+            "step with a fresh-prefill reference consuming the same prompt."
+        ),
+    )
+    parser.add_argument(
         "--agent-history-qualified",
         action="store_true",
         help=(
@@ -229,6 +237,7 @@ def main() -> None:
         chat_template_profile=args.chat_template_profile,
         chat_template_digest=template_digest,
         max_abs_logit_delta=args.max_abs_logit_delta,
+        require_full_retention_reference=args.require_full_retention_reference,
         agent_history_qualified=args.agent_history_qualified,
         fused_disjoint_attention=args.fused_disjoint_attention,
     )

@@ -194,6 +194,7 @@ class MLXAgentHistoryExecutor:
         chat_template_digest: str | None = None,
         max_abs_logit_delta: float = 0.005,
         require_same_subset_reference: bool = True,
+        require_full_retention_reference: bool = False,
         agent_history_qualified: bool = False,
         prefill_step_size: int = 2048,
         fused_disjoint_attention: bool = True,
@@ -217,6 +218,9 @@ class MLXAgentHistoryExecutor:
         self.chat_template_digest = observed
         self.max_abs_logit_delta = float(max_abs_logit_delta)
         self.require_same_subset_reference = bool(require_same_subset_reference)
+        self.require_full_retention_reference = bool(
+            require_full_retention_reference
+        )
         self.agent_history_qualified = bool(agent_history_qualified)
         self.prefill_step_size = int(prefill_step_size)
         self.fused_disjoint_attention = bool(fused_disjoint_attention)
@@ -255,6 +259,9 @@ class MLXAgentHistoryExecutor:
             "prefix_cache_enabled": False,
             "same_subset_reference_required": self.require_same_subset_reference,
             "same_subset_max_abs_logit_delta": self.max_abs_logit_delta,
+            "full_retention_fresh_prefill_reference_required": (
+                self.require_full_retention_reference
+            ),
             # Selection-time interval packing is zero in the disjoint path.
             # MLX slice aliasing and attention temporaries remain measured,
             # rather than being promoted to a blanket zero-copy claim.
@@ -685,6 +692,11 @@ class MLXAgentHistoryExecutor:
         reference = None
         reference_pack_bytes = 0
         logit_delta: float | None = None
+        full_reference_cache: Sequence[object] | None = None
+        full_reference_logits: object | None = None
+        full_reference_max_delta: float | None = None
+        full_reference_compared_tokens = 0
+        full_reference_calls = 0
         generated: list[int] = []
         terminal: int | None = None
         calls = 0
@@ -695,6 +707,19 @@ class MLXAgentHistoryExecutor:
             self._set_segmented_attention(use_segmented)
             logits = self._evaluate(wire, candidate_cache)
             calls += 1
+            if plan.full_retention and self.require_full_retention_reference:
+                # Qualification-only control: reconstruct the same complete
+                # prompt through the ordinary fresh-prefill path and advance
+                # it beside resident K/V for every decoded token.  This is
+                # intentionally expensive and is never counted as reuse.
+                full_reference_cache = self._new_cache()
+                full_reference_calls += self._prefill(
+                    prompt[:-1], full_reference_cache
+                )
+                full_reference_logits = self._evaluate(
+                    prompt[-1:], full_reference_cache
+                )
+                full_reference_calls += 1
             if not plan.full_retention and self.require_same_subset_reference:
                 reference = self.runtime.begin_request(
                     request_id + "-same-subset-reference",
@@ -733,6 +758,31 @@ class MLXAgentHistoryExecutor:
             eos = self._eos_ids()
             while len(generated) < request.resolved_max_new_tokens:
                 token = int(mx.argmax(logits[0, -1]).item())
+                if full_reference_logits is not None:
+                    reference_token = int(
+                        mx.argmax(full_reference_logits[0, -1]).item()
+                    )
+                    step_delta = _max_abs_delta(
+                        logits[0, -1], full_reference_logits[0, -1]
+                    )
+                    full_reference_max_delta = max(
+                        full_reference_max_delta or 0.0, step_delta
+                    )
+                    output_index = full_reference_compared_tokens
+                    full_reference_compared_tokens += 1
+                    if (
+                        reference_token != token
+                        or step_delta > self.max_abs_logit_delta
+                    ):
+                        raise RuntimeError(
+                            "MLX full-retention fresh-prefill correctness gate "
+                            "failed: "
+                            f"output_token_index={output_index}, "
+                            f"resident_token={token}, "
+                            f"fresh_token={reference_token}, "
+                            f"max_abs_logit_delta={step_delta:.9g}, "
+                            f"limit={self.max_abs_logit_delta:.9g}."
+                        )
                 if token in eos:
                     terminal = token
                     logits = self._evaluate([token], candidate_cache)
@@ -741,6 +791,11 @@ class MLXAgentHistoryExecutor:
                 generated.append(token)
                 logits = self._evaluate([token], candidate_cache)
                 calls += 1
+                if full_reference_cache is not None:
+                    full_reference_logits = self._evaluate(
+                        [token], full_reference_cache
+                    )
+                    full_reference_calls += 1
                 if len(generated) >= request.resolved_max_new_tokens:
                     break
 
@@ -901,6 +956,30 @@ class MLXAgentHistoryExecutor:
             "same_subset_gate_passed": (
                 None if plan.full_retention else logit_delta is not None
                 and logit_delta <= self.max_abs_logit_delta
+            ),
+            "full_retention_fresh_prefill_reference_required": (
+                bool(self.require_full_retention_reference)
+                and plan.full_retention
+            ),
+            "full_retention_fresh_prefill_compared_tokens": (
+                full_reference_compared_tokens
+                if plan.full_retention and self.require_full_retention_reference
+                else None
+            ),
+            "full_retention_fresh_prefill_model_calls": (
+                full_reference_calls
+                if plan.full_retention and self.require_full_retention_reference
+                else None
+            ),
+            "full_retention_fresh_prefill_max_abs_logit_delta": (
+                full_reference_max_delta
+                if plan.full_retention and self.require_full_retention_reference
+                else None
+            ),
+            "full_retention_fresh_prefill_gate_passed": (
+                True
+                if plan.full_retention and self.require_full_retention_reference
+                else None
             ),
             "source_position_base": plan.source_position_base,
             "selection_plan": plan.to_dict(),

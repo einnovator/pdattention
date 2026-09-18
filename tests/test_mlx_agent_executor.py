@@ -508,6 +508,36 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert executor.runtime.registry.view(source_id) is None
 
 
+def test_pra100_can_compare_every_token_with_fresh_prefill(fake_mlx) -> None:
+    executor = MLXAgentHistoryExecutor(
+        _Model(),
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_abs_logit_delta=0.005,
+        require_full_retention_reference=True,
+    )
+
+    result = executor.generate(_request((
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )))
+
+    trace = result.trace[0]
+    assert result.text == "A"
+    assert trace["full_retention"] is True
+    assert trace["full_retention_fresh_prefill_reference_required"] is True
+    # One generated token plus the terminal token are both checked.
+    assert trace["full_retention_fresh_prefill_compared_tokens"] == 2
+    assert trace["full_retention_fresh_prefill_model_calls"] > 0
+    assert trace["full_retention_fresh_prefill_max_abs_logit_delta"] == 0.0
+    assert trace["full_retention_fresh_prefill_gate_passed"] is True
+    assert executor.capabilities()[
+        "full_retention_fresh_prefill_reference_required"
+    ] is True
+
+
 def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_mlx) -> None:
     executor = _executor()
     logical = (
