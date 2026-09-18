@@ -754,6 +754,21 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         ),
         "cumulative_total_kv_copy_bytes": sum_reported("total_kv_copy_bytes"),
         "cumulative_host_to_device_bytes": sum_reported("host_to_device_bytes"),
+        "source_bootstrap_calls": sum(
+            bool(value) for value in reported_values("source_bootstrap")
+        ),
+        "source_bootstrap_coverage_calls": len(
+            reported_values("source_bootstrap")
+        ),
+        "cumulative_source_bootstrap_tokens": sum_reported(
+            "source_bootstrap_tokens"
+        ),
+        "cumulative_source_bootstrap_cached_tokens": sum_reported(
+            "source_bootstrap_cached_tokens"
+        ),
+        "cumulative_source_bootstrap_evaluated_tokens": sum_reported(
+            "source_bootstrap_evaluated_tokens"
+        ),
         "cumulative_consumer_temporary_bytes": sum_reported(
             "consumer_temporary_bytes"
         ),

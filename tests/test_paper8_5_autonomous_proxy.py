@@ -1892,6 +1892,10 @@ def test_summary_aggregates_native_engine_metrics_without_imputing_missing_value
                 "physical_kv_copy_bytes": 0,
                 "total_kv_copy_bytes": 0,
                 "host_to_device_bytes": 0,
+                "source_bootstrap": True,
+                "source_bootstrap_tokens": 100,
+                "source_bootstrap_cached_tokens": 0,
+                "source_bootstrap_evaluated_tokens": 100,
                 "consumer_temporary_bytes": 128,
                 "consumer_temporary_peak_bytes": 96,
             },
@@ -1946,5 +1950,10 @@ def test_summary_aggregates_native_engine_metrics_without_imputing_missing_value
     assert summary["cumulative_physical_kv_copy_bytes"] == 0
     assert summary["cumulative_total_kv_copy_bytes"] == 16
     assert summary["cumulative_host_to_device_bytes"] == 0
+    assert summary["source_bootstrap_calls"] == 1
+    assert summary["source_bootstrap_coverage_calls"] == 1
+    assert summary["cumulative_source_bootstrap_tokens"] == 100
+    assert summary["cumulative_source_bootstrap_cached_tokens"] == 0
+    assert summary["cumulative_source_bootstrap_evaluated_tokens"] == 100
     assert summary["cumulative_consumer_temporary_bytes"] == 384
     assert summary["maximum_consumer_temporary_peak_bytes"] == 192
