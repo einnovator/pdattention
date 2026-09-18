@@ -853,6 +853,7 @@ class MLXAgentHistoryExecutor:
         started = time.perf_counter()
         reference = None
         reference_pack_bytes = 0
+        same_subset_reference_kind: str | None = None
         logit_delta: float | None = None
         full_reference_cache: Sequence[object] | None = None
         full_reference_logits: object | None = None
@@ -896,6 +897,20 @@ class MLXAgentHistoryExecutor:
                     "reduced-history plan."
                 )
             if not plan.full_retention and self.require_same_subset_reference:
+                # A positioned compact record must not attend selected source
+                # K/V that originally followed it.  A physically packed
+                # sequential reference loses those original causal
+                # coordinates and therefore is not a valid same-subset
+                # reference for receipts.  Keep the independent eager
+                # segmented consumer in that case; requests without
+                # positioned materialization retain the packed mlx-lm
+                # reference used by the original qualification gate.
+                positioned_reference = bool(materialized)
+                same_subset_reference_kind = (
+                    "eager_disjoint_original_position"
+                    if positioned_reference
+                    else "packed_mlx_prompt_cache"
+                )
                 reference = self.runtime.begin_request(
                     request_id + "-same-subset-reference",
                     state.source_id,
@@ -903,13 +918,14 @@ class MLXAgentHistoryExecutor:
                     tenant_id=request.tenant_id,
                     session_id=state.session_id,
                     expected_generation=state.generation,
-                    segmented=False,
-                    disjoint_selection=False,
+                    segmented=positioned_reference,
+                    disjoint_selection=positioned_reference,
                 )
                 reference_cache = make_native_prompt_cache(
                     self.model,
                     reference.selection.memory,
-                    segmented=False,
+                    segmented=positioned_reference,
+                    fused_disjoint_attention=False,
                     query_position_base=plan.source_position_base,
                 )
                 for row in materialized:
@@ -1140,6 +1156,7 @@ class MLXAgentHistoryExecutor:
                 bool(self.require_same_subset_reference) and not plan.full_retention
             ),
             "same_subset_reference_pack_bytes": reference_pack_bytes,
+            "same_subset_reference_kind": same_subset_reference_kind,
             "same_subset_max_abs_logit_delta": logit_delta,
             "same_subset_gate_limit": self.max_abs_logit_delta,
             "fused_disjoint_attention": self.fused_disjoint_attention,
