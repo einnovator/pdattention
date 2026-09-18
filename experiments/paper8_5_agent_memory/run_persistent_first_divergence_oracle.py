@@ -142,9 +142,12 @@ def _causal_group_addback_batches(
     history,
     exclusions: Sequence[Any],
     addback_epoch: int | None = None,
+    causal_group_ids: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """Build one-group add-backs, optionally within one source epoch only."""
 
+    if addback_epoch is not None and causal_group_ids:
+        raise ValueError("source-epoch and explicit causal-group filters are exclusive")
     eligible_groups: set[str] | None = None
     if addback_epoch is not None:
         matching = [
@@ -162,6 +165,15 @@ def _causal_group_addback_batches(
                 "retired source epoch"
             )
         eligible_groups = set(matching[0]["causal_group_ids"])
+    elif causal_group_ids:
+        available = {row.causal_group_id for row in exclusions}
+        eligible_groups = set(causal_group_ids)
+        missing = eligible_groups - available
+        if missing:
+            raise ValueError(
+                "explicit add-back causal groups are not retired: "
+                + ", ".join(sorted(missing))
+            )
 
     return [
         {
@@ -342,8 +354,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
     if args.addback_mode == "completed_epoch":
-        if args.addback_epoch is not None:
-            raise ValueError("--addback-epoch requires --addback-mode causal_group")
+        if args.addback_epoch is not None or args.addback_causal_group:
+            raise ValueError(
+                "add-back filters require --addback-mode causal_group"
+            )
         addback_batches = _completed_epoch_addback_batches(
             composed=composed,
             history=history,
@@ -355,6 +369,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             history=history,
             exclusions=exclusions,
             addback_epoch=args.addback_epoch,
+            causal_group_ids=args.addback_causal_group,
         )
     for index, batch in enumerate(addback_batches, 1):
         transformed = transform_autonomous_payload(
@@ -404,6 +419,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "excluded_group_count": len(exclusions),
         "addback_mode": args.addback_mode,
         "addback_epoch_filter": args.addback_epoch,
+        "addback_causal_group_filter": list(args.addback_causal_group),
         "addback_batch_count": len(addback_batches),
         "addback_batches": addback_batches,
         "control_repeats": args.control_repeats,
@@ -443,6 +459,15 @@ def main() -> None:
         help=(
             "with causal_group mode, test only retired groups from this "
             "evaluator-hidden source epoch"
+        ),
+    )
+    parser.add_argument(
+        "--addback-causal-group",
+        action="append",
+        default=[],
+        help=(
+            "with causal_group mode, test only this retired causal group; "
+            "repeat the option to test several named groups"
         ),
     )
     parser.add_argument("--timeout-seconds", type=float, default=600.0)

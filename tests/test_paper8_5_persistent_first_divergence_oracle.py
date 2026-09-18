@@ -143,3 +143,37 @@ def test_causal_group_batches_can_be_limited_to_one_source_epoch():
             "excluded_tokens": 13,
         }
     ]
+
+
+def test_causal_group_batches_can_target_explicit_groups():
+    composed = {
+        "episodes": [{"episode_index": 1, "model_visible_messages": 4}]
+    }
+    history = SimpleNamespace(records=[
+        SimpleNamespace(record_id=f"record-{index:06d}") for index in range(4)
+    ])
+    exclusions = [
+        SimpleNamespace(
+            causal_group_id="turn-000000",
+            record_ids=("record-000000", "record-000001"),
+            excluded_tokens=11,
+        ),
+        SimpleNamespace(
+            causal_group_id="turn-000001",
+            record_ids=("record-000002", "record-000003"),
+            excluded_tokens=13,
+        ),
+    ]
+
+    assert _causal_group_addback_batches(
+        composed=composed,
+        history=history,
+        exclusions=exclusions,
+        causal_group_ids=("turn-000001",),
+    ) == [
+        {
+            "epoch_index": None,
+            "causal_group_ids": ("turn-000001",),
+            "excluded_tokens": 13,
+        }
+    ]
