@@ -66,6 +66,14 @@ charging the 114% call increase relative to the matched control.  The next polic
 is an oracle add-back at request four, followed by a stricter current-task
 progress spine; expanding the Easy-14 matrix would be premature.
 
+The deterministic request-4 audit in
+`e2f1c/request4_structural_audit.json` confirms that the task statement and all
+three completed active-task turns were retained.  Only detail from the three
+oldest completed episodes was removed, and their principal resources are
+disjoint from the active `sklearn/cluster/optics_.py` file.  The remaining
+add-back question is therefore cross-task workflow-exemplar sensitivity versus
+consumer-path sensitivity, not an undersized active-task floor.
+
 The run also closes the call-8 Metal-OOM blocker.  Source-backed disjoint cache
 state no longer asks SGLang's evaluator to realize every lazy K/V slice, and
 request teardown now drops graph roots and clears allocator-cache bytes before
