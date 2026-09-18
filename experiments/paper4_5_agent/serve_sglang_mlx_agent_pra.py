@@ -12,11 +12,19 @@ import argparse
 import json
 import traceback
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Mapping
 
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 from pra_hf.live_history import LiveKVSessionTerminatedError
+
+
+# MLX command streams are thread-affine.  A ThreadingHTTPServer can process
+# successive turns of one resident session on different OS threads, leaving
+# lazy arrays tied to a stream that does not exist in the next request thread.
+# The executor already serializes model access; keep HTTP dispatch on the same
+# thread that constructed the runner as well.
+DIRECT_SERVER_CLASS = HTTPServer
 
 
 def _install_transformers_config_registration_compatibility() -> None:
@@ -318,7 +326,7 @@ def main() -> None:
         native_executor=executor,
     )
     try:
-        ThreadingHTTPServer(
+        DIRECT_SERVER_CLASS(
             (args.host, args.port), _direct_handler(adapter, served_model)
         ).serve_forever()
     finally:

@@ -12,6 +12,7 @@ from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.deployment import PRAEngineResult
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from experiments.paper4_5_agent.serve_sglang_mlx_agent_pra import (
+    DIRECT_SERVER_CLASS,
     _completion,
     _install_transformers_config_registration_compatibility,
 )
@@ -38,6 +39,12 @@ from pra_sglang.agent_executor import (
 from pra_sglang.adapter import SGLangEngineAdapter
 from pra_sglang.mlx_native import _qwen_projections
 from pra_hf.gateway import PRAGateway
+
+
+def test_sglang_mlx_http_dispatch_is_single_threaded_for_stream_affinity() -> None:
+    from http.server import HTTPServer
+
+    assert DIRECT_SERVER_CLASS is HTTPServer
 
 
 def test_sglang_transformers_duplicate_config_registration_is_compatible(
