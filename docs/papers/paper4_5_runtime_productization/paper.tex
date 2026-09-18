@@ -53,11 +53,15 @@ memory independently. The post-fix engine gates establish the mechanism; the
 remaining question is whether corrected execution preserves agent behavior and
 improves workload economics across engines.
 On the first autonomous six-episode identity, corrected llama.cpp and MLX both
-omit approximately 40\% of steady-state historical K/V without re-encoding or
-copying selected history.  llama.cpp preserves the eight-call solution, whereas
-MLX preserves the solve but adds three calls and realizes only 15.23\% paired
-K/V-workload saving.  Engine correctness and workload utility are therefore
-separate gates.  A generic prior-mutation add-back is rejected: it resolves in
+omit approximately 40\% of steady-state original historical K/V without
+re-encoding or copying the retained original intervals.  The transferred
+E2+F1C treatment is nevertheless hybrid rather than strict native PRA: it also
+creates model-visible closure receipts after the source cache exists (1,056
+newly encoded tokens in the MLX run; the llama.cpp bundle lacks a separately
+aggregated receipt-encoding counter).  llama.cpp preserves the eight-call
+solution, whereas MLX preserves the solve but adds three calls and realizes only
+15.23\% paired K/V-workload saving.  Engine correctness, transformed-context
+work, and workload utility are therefore separate gates.  A generic prior-mutation add-back is rejected: it resolves in
 14 calls but drives selected-K/V work 3.12\% above PRA-100 by retaining an
 unrelated prior-task patch artifact.
 \end{abstract}
@@ -1477,6 +1481,13 @@ prefix-cache reuse. & Exact source block/storage identities plus independent
 counters for K/V copy, host--device transfer, re-encoded tokens, transient
 attention bytes, and offload/restore traffic. \\
 \addlinespace
+Post-cache compaction mistaken for reuse & Any row that replaces an already-
+cached record with newly written summary, tombstone, or receipt tokens while
+reporting only that retained original K/V was not re-encoded. & Strict native
+PRA selects original resident K/V only.  Ingest-time compaction is a separate
+admission policy; post-cache replacements are charged as transformed-context
+prefill and cannot qualify the resident-subset gate. \\
+\addlinespace
 Cross-consumer comparator & Sparse-versus-packed rows that changed both K/V
 storage and the attention reduction implementation.  The earlier HF 0.029785,
 MLX 1.0, and SGLang 1.109375 final-logit deltas confound selection with
@@ -1501,6 +1512,23 @@ claim, not the historical artifact: demoted rows remain available for debugging
 and causal comparison.}
 \label{tab:superseded-agent-evidence}
 \end{table}
+
+\paragraph{Strict resident-subset invariant.}
+After the one-time source bootstrap, a strict native request may evaluate only
+genuinely new history delta, the current request suffix, and generated tokens.
+It must satisfy
+\[
+R_{\mathrm{orig}}=R_{\mathrm{synthetic}}=R_{\mathrm{partial}}=0,
+\qquad C_{\mathrm{selectedKV}}=0,
+\]
+where the three $R$ terms count re-evaluated retained-original history,
+newly encoded post-cache replacements, and repeated uncached old-history tails.
+The copy term counts physical movement used to pack selected K/V.  Source
+bootstrap, new-delta encoding, and canonical-suffix lifecycle traffic are
+reported independently and never hidden inside these zeros.  A result is
+\emph{hybrid native plus transformed context} rather than strict native PRA if
+any post-cache replacement token is evaluated, even when
+$R_{\mathrm{orig}}=C_{\mathrm{selectedKV}}=0$.
 
 This quarantine also governs earlier quantitative runtime sections in this
 report. Their artifacts are retained to document the development path, but a
@@ -1640,10 +1668,13 @@ defaults.  Paper~4.5 independently measures whether logical omission becomes
 resident K/V omission. \\
 Coding-agent utility frontier & A fresh post-fix llama.cpp/Qwen3-Coder-30B
 gate has two hash-identical eight-call \textsc{Full} controls; PRA-100 matches
-all requests, responses, and actions exactly.  Native E2+F1C preserves the
+all requests, responses, and actions exactly.  Hybrid E2+F1C preserves the
 official solve and eight-call count while saving 39.88\% materialized tokens
-and omitting 40.23\% weighted steady-state K/V, with zero history re-encoding
-or K/V copy. & This is one task on one engine.  Earlier llama.cpp, HF, MLX,
+and omitting 40.23\% weighted steady-state original K/V, with zero retained-
+original re-encoding or selected-K/V copy. & E2+F1C contains post-cache closure
+receipts and is therefore hybrid transformed-context evidence, not a strict
+resident-subset result; its receipt-encoding total is absent from this llama.cpp
+bundle.  This is also one task on one engine.  Earlier llama.cpp, HF, MLX,
 SGLang, and vLLM agent rows predate the final bootstrap and policy-transfer
 contract and remain superseded diagnostics.  Fresh autonomous HF, MLX, SGLang,
 and vLLM rows and broader tasks are pending. \\
@@ -3672,8 +3703,11 @@ materializes 128,380 versus 213,524 message-content tokens, a 39.88\%
 reduction.  Across the seven post-bootstrap requests, weighted resident-K/V
 omission is 40.23\%: 113,643 selected K/V tokens versus an estimated 190,141
 under full retention.  The 0.35-point difference from logical saving is due to
-chat-template and mandatory-current-state accounting, not hidden re-prefill.
-Selected-history re-encoding and K/V-copy bytes both remain zero.  The first
+chat-template and mandatory-current-state accounting.  Retained-original-history
+re-encoding and selected-K/V-copy bytes both remain zero, but the bundle does
+not separately aggregate the model evaluation used for its compact closure
+receipts.  The arm is therefore hybrid native plus transformed context and does
+not pass the strict resident-subset invariant.  The first
 two actions match \textsc{Full}; request three begins a different successful
 path, and same-index actions reconverge on requests five through eight.
 Completion tokens rise from 748 to 825.  The reduced arm therefore preserves
@@ -3682,17 +3716,20 @@ the official solve and call count without claiming an identical trajectory.
 \begin{table}[H]
 \centering
 \small
-\caption{Post-fix autonomous llama.cpp transfer gate.  Steady-state K/V saving
-excludes the one common full-source bootstrap; all-call saving includes it.
-Consumer temporary allocation is not exposed by this endpoint.}
-\begin{tabular}{lrrrrrr}
+\caption{Post-fix autonomous llama.cpp hybrid-transfer diagnostic.  Steady-state
+K/V saving excludes the one common full-source bootstrap; all-call saving
+includes it.  ``Orig. re-enc.'' covers retained original records only.  The
+E2+F1C receipt-encoding total was not separately aggregated, so that row cannot
+qualify strict resident-subset execution. Consumer temporary allocation is not
+exposed by this endpoint.}
+\begin{tabular}{lrrrrrrr}
 \toprule
-Condition & Solved & Calls & Materialized save & Steady K/V save & Re-encoded & K/V copy \\
+Condition & Solved & Calls & Mat. save & K/V save & Orig. re-enc. & Synthetic enc. & K/V copy \\
 \midrule
-Plain \textsc{Full} repeat 1 & 1/1 & 8 & 0\% & 0\% & n/a & n/a \\
-Plain \textsc{Full} repeat 2 & 1/1 & 8 & 0\% & 0\% & n/a & n/a \\
-PRA-100 & 1/1 & 8 & 0\% & 0\% & 0 & 0 B \\
-Native E2+F1C & 1/1 & 8 & 39.88\% & 40.23\% & 0 & 0 B \\
+Plain \textsc{Full} repeat 1 & 1/1 & 8 & 0\% & 0\% & n/a & n/a & n/a \\
+Plain \textsc{Full} repeat 2 & 1/1 & 8 & 0\% & 0\% & n/a & n/a & n/a \\
+PRA-100 & 1/1 & 8 & 0\% & 0\% & 0 & 0 & 0 B \\
+Hybrid E2+F1C & 1/1 & 8 & 39.88\% & 40.23\% & 0 & unreported & 0 B \\
 \bottomrule
 \end{tabular}
 \label{tab:agent-e2e-llamacpp-postfix}
@@ -3703,15 +3740,20 @@ bootstrap.  Consumer temporary bytes remain unmeasured, not zero.  The
 auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1/autonomous_llamacpp_qwen3coder30b_postfix_v1}.
 
-The first corrected direct-MLX transfer uses the same task and frozen
+The first corrected direct-MLX hybrid transfer uses the same task and frozen
 five-episode prefix with Qwen3-Coder-30B-A3B-Instruct 4-bit.  PRA-100 resolves
 in nine calls.  E2+F1C resolves in twelve calls; all eleven post-bootstrap
 sparse requests pass the positioned same-subset gate with maximum logit delta
-0.0.  Selected-history re-encoding and selected-K/V copy are both zero.  The
+0.0.  Retained-original-history re-encoding and selected-K/V copy are both zero.  The
 sparse calls expose 302,031 full source K/V tokens and consume 180,052 selected
 resident tokens plus 1,056 encoded closure-receipt tokens, giving 40.04\%
 steady-state omission.  Charging the 26,367-token source bootstrap gives
 36.82\% all-call omission.
+
+Those 1,056 closure-receipt tokens are post-cache transformed context.  They
+are correctly charged in workload accounting, but their evaluation disqualifies
+this arm from strict resident-subset execution despite zero retained-original
+re-encoding and zero selected-K/V copy.
 
 The extra calls materially change the economic result.  Against the nine-call
 PRA-100 control, E2+F1C saves 19.33\% of materialized message-content input,
@@ -3790,8 +3832,11 @@ bundle is
 
 The admitted E2+F1C arm then executes the frozen reduced policy through the
 same native consumer.  It resolves 1/1 and submits the same byte-identical
-patch, while all 14 post-bootstrap requests report zero selected-history
-re-encoding, zero selected-K/V copy, and zero host-to-device transfer.  Across
+patch, while all 14 post-bootstrap requests report zero retained-original-
+history re-encoding, zero selected-K/V copy, and zero host-to-device transfer.
+Each request nevertheless evaluates 96 compact closure tokens at old logical
+positions: 1,344 post-cache transformed-context tokens in total.  This makes the
+arm a hybrid diagnostic, not strict resident-subset PRA.  Across
 its realized 15-call trajectory it saves 35.07\% of selected message-content
 tokens, 39.21\% after compact closure materialization, and 37.21\% of exposed
 source K/V tokens.  This is an accuracy-preserving point but fails the
@@ -4969,20 +5014,23 @@ task accuracy or the cross-engine quality--saving frontier.  Current autonomous
 evidence is limited to one identity per corrected llama.cpp, MLX, vLLM, and
 SGLang-MLX path, with different gate outcomes.  The
 llama.cpp row has two repeat-exact \textsc{Full} controls and an exact PRA-100
-control that each solve in eight calls; E2+F1C also solves in eight calls with
+control that each solve in eight calls; hybrid E2+F1C also solves in eight calls with
 39.88\% materialized-token saving and 40.23\% steady-state K/V omission.  The
 MLX row resolves in two exact cold E2+F1C repeats of twelve calls, versus nine
 calls under PRA-100, with 40.04\% steady-state omission but only 15.23\% paired
-K/V-workload saving.  Both engines
-re-encode zero selected-history tokens and copy zero selected K/V bytes.  The
+K/V-workload saving.  Both engines re-encode zero retained-original-history
+tokens and copy zero selected K/V bytes, but both E2+F1C arms contain post-cache
+closure receipts and therefore do not qualify strict resident-subset execution.
+The
 post-fix SGLang-MLX \textsc{Full}/PRA-100 pair also preserves 1/1 resolution,
 seven calls, and a byte-identical patch with zero selected-history
 re-encoding/copy, but first diverges at action three despite identical input
 token IDs.  Its selection-neutral live-prefix control then matches PRA-100 on
 all seven request inputs, responses, and commands and submits the same patch,
 so the matched-consumption gate passes and reduced-policy execution is now
-admissible.  The resulting E2+F1C run also resolves 1/1 with the identical
-patch and zero selected-history re-encoding/copy, but uses 15 rather than seven
+admissible.  The resulting hybrid E2+F1C run also resolves 1/1 with the identical
+patch and zero retained-original-history re-encoding/copy, but evaluates 1,344
+closure-receipt tokens and uses 15 rather than seven
 calls.  Its 39.21\% materialized-token saving therefore becomes a 33.10\%
 paired input-plus-completion workload increase; it is retained as a valid
 policy-quality negative, not promoted as a default.  Fresh end-to-end
