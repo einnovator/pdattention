@@ -26,12 +26,13 @@ from pra_hf.agent_executor import (
     _common_prefix,
     _render,
     enforce_retention_floor,
+    positioned_materialized_history,
     selected_record_plan,
 )
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 from pra_hf.live_history import LiveKVInterval
 
-from .mlx_live_kv import MLXLiveKVRuntime
+from .mlx_live_kv import MLXLiveKVRuntime, _set_cache_query_start
 from .native import (
     MLXNativeLayerKV,
     MLXNativeMemory,
@@ -558,6 +559,7 @@ class MLXAgentHistoryExecutor:
         request_caches: Sequence[object],
         *,
         expected_local_tokens: int,
+        ignored_leading_local_tokens: int = 0,
     ) -> tuple[MLXNativeMemory, MLXKVGraftMetrics]:
         """Append local K/V and account for MLX concatenate materialization."""
 
@@ -573,11 +575,17 @@ class MLXAgentHistoryExecutor:
             local_tokens = int(keys.shape[2])
             if local_tokens != int(values.shape[2]):
                 raise RuntimeError("MLX request-local K/V lengths disagree.")
-            if local_tokens != expected_local_tokens:
+            expected_total = (
+                int(ignored_leading_local_tokens) + int(expected_local_tokens)
+            )
+            if local_tokens != expected_total:
                 raise RuntimeError(
                     "MLX local K/V length disagrees with the committed token suffix: "
-                    f"cache={local_tokens}, expected={expected_local_tokens}."
+                    f"cache={local_tokens}, expected={expected_total}."
                 )
+            if ignored_leading_local_tokens:
+                keys = keys[:, :, int(ignored_leading_local_tokens) :, :]
+                values = values[:, :, int(ignored_leading_local_tokens) :, :]
             suffix_bytes += _array_bytes(keys) + _array_bytes(values)
             layers.append(MLXNativeLayerKV(
                 mx.concatenate((prior.keys, keys), axis=2),
@@ -766,12 +774,24 @@ class MLXAgentHistoryExecutor:
         effective_requested = requested
         mandatory = tuple(map(int, request.metadata.get("mandatory_message_indices", ())))
         selected = self._selected_message_indices(request) if live_projection else ()
+        materialized = ()
         if source_bootstrap:
             # Import the canonical session through the same dense numerical
             # path as an ordinary FULL first turn. Sparse selection starts on
             # the next request after the complete source K/V is resident.
             effective_requested = 1.0
             selected = tuple(range(len(messages)))
+        elif live_projection:
+            materialized = positioned_materialized_history(
+                self.tokenizer,
+                request,
+                messages,
+                prompt,
+                source_tokens=len(source),
+                chat_template_kwargs=template_kwargs,
+            )
+            replaced = {row.message_index for row in materialized}
+            selected = tuple(index for index in selected if index not in replaced)
         plan = selected_record_plan(
             self.tokenizer,
             messages,
@@ -842,11 +862,19 @@ class MLXAgentHistoryExecutor:
         generated: list[int] = []
         terminal: int | None = None
         calls = 0
+        materialized_calls = 0
+        materialized_tokens = sum(row.tokens for row in materialized)
         outcome = "error"
         updated_memory: MLXNativeMemory | None = None
         graft_metrics: MLXKVGraftMetrics | None = None
         try:
             self._set_segmented_attention(use_segmented)
+            for row in materialized:
+                _set_cache_query_start(candidate_cache, row.position_start)
+                self._evaluate(row.token_ids, candidate_cache)
+                calls += 1
+                materialized_calls += 1
+            _set_cache_query_start(candidate_cache, plan.source_position_base)
             logits = self._evaluate(wire, candidate_cache)
             calls += 1
             if plan.full_retention and self.require_full_retention_reference:
@@ -884,6 +912,10 @@ class MLXAgentHistoryExecutor:
                     segmented=False,
                     query_position_base=plan.source_position_base,
                 )
+                for row in materialized:
+                    _set_cache_query_start(reference_cache, row.position_start)
+                    self._evaluate(row.token_ids, reference_cache)
+                _set_cache_query_start(reference_cache, plan.source_position_base)
                 reference_logits = self._evaluate(wire, reference_cache)
                 reference_pack_bytes = (
                     reference.selection.memory.nbytes
@@ -954,6 +986,7 @@ class MLXAgentHistoryExecutor:
                 state.canonical_memory,
                 candidate_cache,
                 expected_local_tokens=committed,
+                ignored_leading_local_tokens=materialized_tokens,
             )
             outcome = "finished"
         finally:
@@ -1022,22 +1055,26 @@ class MLXAgentHistoryExecutor:
             "native_kv_used": not source_bootstrap,
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
+            "materialized_history_encoded_tokens": materialized_tokens,
+            "materialized_history_model_calls": materialized_calls,
             "wire_tokens": len(wire),
             "logical_prompt_tokens": len(prompt),
-            "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
+            "effective_attention_prompt_tokens": (
+                plan.selected_tokens + materialized_tokens + len(wire)
+            ),
             "completion_tokens": len(generated),
             "output_token_ids": list(generated),
             "terminal_token_id": terminal,
             "requested_retention_fraction": requested,
             "effective_requested_retention_fraction": effective_requested,
             "realized_retention_fraction": (
-                plan.selected_tokens / max(len(source), 1)
+                (plan.selected_tokens + materialized_tokens) / max(len(source), 1)
             ),
             "realized_historical_kv_retention_fraction": (
-                plan.selected_tokens / max(len(source), 1)
+                (plan.selected_tokens + materialized_tokens) / max(len(source), 1)
             ),
             "engine_reported_history_kv_retention_fraction": (
-                plan.selected_tokens / max(len(source), 1)
+                (plan.selected_tokens + materialized_tokens) / max(len(source), 1)
             ),
             "full_retention": bool(plan.full_retention),
             "source_bootstrap": source_bootstrap,

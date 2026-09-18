@@ -17,6 +17,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Iterable, Mapping, Sequence
 
 from .deployment import PRAEngineResult, PRAWireRequest
@@ -258,18 +259,67 @@ class AgentHistoryLedger:
                 item.get("content_sha256", "")
             ):
                 raise RuntimeError("Resident message content disagrees with the manifest.")
-        # Bodies are witnesses for cache-resident spans.  Never pass them to
-        # the tokenizer; validation is against the in-memory logical ledger.
+        raw_replacements = request.metadata.get(
+            "materialized_message_replacements", ()
+        )
+        if not isinstance(raw_replacements, (list, tuple)):
+            raise ValueError("Materialized message replacements must be a list.")
+        replacement_by_index: dict[int, dict[str, Any]] = {}
+        record_coordinates = request.metadata.get("record_message_indices", {})
+        if not isinstance(record_coordinates, Mapping):
+            raise ValueError("Live-history record coordinates must be an object.")
+        for raw in raw_replacements:
+            if not isinstance(raw, Mapping):
+                raise ValueError("Materialized message replacement is malformed.")
+            index = int(raw.get("message_index", -1))
+            content = str(raw.get("content", ""))
+            role = str(raw.get("role", ""))
+            record_id = str(raw.get("record_id", ""))
+            if index in replacement_by_index or index < 0 or index >= len(complete):
+                raise ValueError("Materialized message replacement index is invalid.")
+            coordinate = record_coordinates.get(record_id)
+            if coordinate is not None and int(coordinate) != index:
+                raise RuntimeError(
+                    "Materialized message replacement record identity disagrees "
+                    "with its logical coordinate."
+                )
+            if role != str(complete[index].get("role", "")):
+                raise RuntimeError(
+                    "Materialized message replacement role disagrees with history."
+                )
+            if not content or _digest_text(content) != str(
+                raw.get("content_sha256", "")
+            ):
+                raise RuntimeError(
+                    "Materialized message replacement content digest is invalid."
+                )
+            replacement_by_index[index] = dict(raw)
+
+        # Bodies are witnesses for cache-resident spans or explicitly declared
+        # positioned replacements.  Never use an undeclared body to recreate
+        # omitted history.
+        resource_text_by_index: dict[int, str] = {}
         for resource in request.resources:
             index = resource.metadata.get("message_index")
             if index is None:
                 continue
             index = int(index)
-            if index >= len(complete) or str(resource.text or "") not in str(
+            if index >= len(complete):
+                raise RuntimeError(
+                    f"Selected resource {resource.resource_id!r} is not a resident record span."
+                )
+            text = str(resource.text or "")
+            resource_text_by_index[index] = resource_text_by_index.get(index, "") + text
+            if index not in replacement_by_index and text not in str(
                 complete[index].get("content", "")
             ):
                 raise RuntimeError(
                     f"Selected resource {resource.resource_id!r} is not a resident record span."
+                )
+        for index, replacement in replacement_by_index.items():
+            if resource_text_by_index.get(index) != str(replacement["content"]):
+                raise RuntimeError(
+                    f"Materialized message replacement m{index} has no exact resource body."
                 )
         self.messages = complete
         return tuple(dict(row) for row in complete)
@@ -321,6 +371,107 @@ def causal_message_spans(
     return tuple(spans)
 
 
+@dataclass(frozen=True)
+class PositionedMaterializedHistory:
+    """One model-visible compact record evaluated at its original position."""
+
+    message_index: int
+    record_id: str
+    position_start: int
+    token_ids: tuple[int, ...]
+
+    @property
+    def tokens(self) -> int:
+        return len(self.token_ids)
+
+
+def positioned_materialized_history(
+    tokenizer: object,
+    request: PRAWireRequest,
+    messages: Sequence[Mapping[str, Any]],
+    prompt_ids: Sequence[int],
+    *,
+    source_tokens: int,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[PositionedMaterializedHistory, ...]:
+    """Validate and tokenize declared compact records without touching source K/V.
+
+    A compact receipt is new model-visible state, not a cache hit.  It is
+    evaluated once per request at the start position of the original record
+    and accounted separately from selected-history re-encoding.
+    """
+
+    raw_rows = request.metadata.get("materialized_message_replacements", ())
+    if not isinstance(raw_rows, (list, tuple)):
+        raise ValueError("Materialized message replacements must be a list.")
+    if not raw_rows:
+        return ()
+    original_spans = {
+        int(span.record_id.split(":", 2)[1]): span
+        for span in causal_message_spans(
+            tokenizer,
+            messages,
+            prompt_ids,
+            source_tokens=source_tokens,
+            chat_template_kwargs=chat_template_kwargs,
+        )
+    }
+    selected = set(HFAgentHistoryExecutor._selected_message_indices(request))
+    positioned: list[PositionedMaterializedHistory] = []
+    seen: set[int] = set()
+    for raw in raw_rows:
+        if not isinstance(raw, Mapping):
+            raise ValueError("Materialized message replacement is malformed.")
+        index = int(raw.get("message_index", -1))
+        content = str(raw.get("content", ""))
+        record_id = str(raw.get("record_id", ""))
+        if index in seen or index not in selected or index not in original_spans:
+            raise ValueError(
+                f"Materialized message replacement m{index} is not selected resident history."
+            )
+        variant = [dict(message) for message in messages]
+        variant[index]["content"] = content
+        variant_source = _render(
+            tokenizer,
+            variant,
+            generation_prompt=False,
+            chat_template_kwargs=chat_template_kwargs,
+        )
+        variant_spans = {
+            int(span.record_id.split(":", 2)[1]): span
+            for span in causal_message_spans(
+                tokenizer,
+                variant,
+                variant_source,
+                source_tokens=len(variant_source),
+                chat_template_kwargs=chat_template_kwargs,
+            )
+        }
+        variant_span = variant_spans.get(index)
+        original_span = original_spans[index]
+        if variant_span is None:
+            raise RuntimeError(
+                f"Materialized message replacement m{index} has no template span."
+            )
+        token_ids = tuple(map(int, variant_source[variant_span.start:variant_span.end]))
+        if not token_ids or len(token_ids) > original_span.tokens:
+            raise ValueError(
+                f"Materialized message replacement m{index} exceeds its original span."
+            )
+        positioned.append(PositionedMaterializedHistory(
+            message_index=index,
+            record_id=record_id,
+            position_start=original_span.start,
+            token_ids=token_ids,
+        ))
+        seen.add(index)
+    positioned.sort(key=lambda row: (row.position_start, row.message_index))
+    for left, right in zip(positioned, positioned[1:]):
+        if right.position_start < left.position_start + left.tokens:
+            raise ValueError("Materialized message replacements overlap.")
+    return tuple(positioned)
+
+
 def selected_record_plan(
     tokenizer: object,
     messages: Sequence[Mapping[str, Any]],
@@ -337,8 +488,6 @@ def selected_record_plan(
     fraction = float(retention_fraction)
     if not 0 < fraction <= 1:
         raise ValueError("retention_fraction must be in (0, 1].")
-    if fraction == 1:
-        return LiveKVSelectionPlan.full(source_tokens)
     keep = set(map(int, mandatory_message_indices)) | set(map(int, selected_message_indices))
     invalid = sorted(index for index in keep if index < 0 or index >= len(messages))
     if invalid:
@@ -357,6 +506,8 @@ def selected_record_plan(
             chat_template_kwargs=chat_template_kwargs,
         )
     )
+    if fraction == 1 and keep == set(range(len(messages))):
+        return LiveKVSelectionPlan.full(source_tokens)
     if any(span.start < 0 or span.end > source_tokens for span in spans):
         raise RuntimeError("Resident message spans exceed the canonical K/V source.")
     chosen = tuple(
@@ -488,6 +639,8 @@ class _HFDecodeResult:
     calls: int
     canonical_suffix_d2d_bytes: int = 0
     canonical_reallocation_d2d_bytes: int = 0
+    materialized_history_encoded_tokens: int = 0
+    materialized_history_model_calls: int = 0
 
 
 @dataclass
@@ -795,6 +948,7 @@ class HFAgentHistoryExecutor:
         *,
         start: int,
         max_tokens: int,
+        materialized_history: Sequence[PositionedMaterializedHistory] = (),
     ) -> _HFDecodeResult:
         import torch
 
@@ -817,6 +971,15 @@ class HFAgentHistoryExecutor:
         values = list(map(int, wire))
         if not values:
             raise ValueError("HF generation wire must contain at least one token.")
+        materialized_tokens = 0
+        materialized_calls = 0
+        for row in materialized_history:
+            outputs, cache = advance(
+                cache, row.token_ids, row.position_start
+            )
+            calls += 1
+            materialized_calls += 1
+            materialized_tokens += row.tokens
         outputs = None
         for offset in range(0, len(values), self.prefill_step_size):
             step = values[offset : offset + self.prefill_step_size]
@@ -850,6 +1013,8 @@ class HFAgentHistoryExecutor:
             calls,
             suffix_copy,
             reallocation_copy,
+            materialized_tokens,
+            materialized_calls,
         )
 
     def _graft_sparse_tail(
@@ -858,6 +1023,7 @@ class HFAgentHistoryExecutor:
         sparse: HFSparseDynamicCache,
         *,
         source_tokens: int,
+        ignored_leading_local_tokens: int = 0,
     ) -> HFKVGraftMetrics:
         import torch
 
@@ -868,7 +1034,27 @@ class HFAgentHistoryExecutor:
         for layer_index, (owner_layer, sparse_layer) in enumerate(
             zip(getattr(canonical, "layers", ()), sparse.layers)
         ):
-            rows = tuple(sparse_layer.tail_segments)
+            rows = []
+            remaining = int(ignored_leading_local_tokens)
+            for row in sparse_layer.tail_segments:
+                width = int(row.tokens)
+                if remaining >= width:
+                    remaining -= width
+                    continue
+                if remaining:
+                    rows.append(SimpleNamespace(
+                        keys=row.keys[..., remaining:, :],
+                        values=row.values[..., remaining:, :],
+                        tokens=width - remaining,
+                    ))
+                    remaining = 0
+                else:
+                    rows.append(row)
+            if remaining:
+                raise RuntimeError(
+                    "HF materialized-history prefix exceeds request-local K/V."
+                )
+            rows = tuple(rows)
             count = sum(row.tokens for row in rows)
             if local_tokens is None:
                 local_tokens = count
@@ -946,6 +1132,7 @@ class HFAgentHistoryExecutor:
         effective_requested = requested
         mandatory = tuple(map(int, request.metadata.get("mandatory_message_indices", ())))
         selected = self._selected_message_indices(request) if live_projection else ()
+        materialized_history: tuple[PositionedMaterializedHistory, ...] = ()
         if source_bootstrap:
             # Import the canonical session through the same complete-history
             # path used by FULL. Sparse selection starts only after that
@@ -953,6 +1140,23 @@ class HFAgentHistoryExecutor:
             # from a partially imported transcript.
             effective_requested = 1.0
             selected = tuple(range(len(messages)))
+        elif live_projection:
+            materialized_history = positioned_materialized_history(
+                self.tokenizer,
+                request,
+                messages,
+                prompt,
+                source_tokens=len(source),
+                chat_template_kwargs=template_kwargs,
+            )
+            replaced_message_indices = {
+                row.message_index for row in materialized_history
+            }
+            selected = tuple(
+                message_index
+                for message_index in selected
+                if message_index not in replaced_message_indices
+            )
         plan = selected_record_plan(
             self.tokenizer,
             messages,
@@ -1033,6 +1237,7 @@ class HFAgentHistoryExecutor:
                     wire,
                     start=plan.source_position_base,
                     max_tokens=request.resolved_max_new_tokens,
+                    materialized_history=materialized_history,
                 )
                 generated, terminal, calls = (
                     decoded.generated,
@@ -1047,6 +1252,9 @@ class HFAgentHistoryExecutor:
                     state.canonical_cache,
                     selected_cache,
                     source_tokens=len(source),
+                    ignored_leading_local_tokens=(
+                        decoded.materialized_history_encoded_tokens
+                    ),
                 )
                 expected = len(wire) + len(generated) + int(terminal is not None)
                 if graft.local_tokens != expected:
@@ -1084,16 +1292,32 @@ class HFAgentHistoryExecutor:
             "consumption_mode": mode,
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
+            "materialized_history_encoded_tokens": (
+                decoded.materialized_history_encoded_tokens
+            ),
+            "materialized_history_model_calls": (
+                decoded.materialized_history_model_calls
+            ),
             "wire_tokens": len(wire),
             "logical_prompt_tokens": len(prompt),
-            "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
+            "effective_attention_prompt_tokens": (
+                plan.selected_tokens
+                + decoded.materialized_history_encoded_tokens
+                + len(wire)
+            ),
             "completion_tokens": len(generated),
             "requested_retention_fraction": requested,
             "effective_requested_retention_fraction": effective_requested,
-            "realized_retention_fraction": plan.selected_tokens / max(len(source), 1),
+            "realized_retention_fraction": (
+                plan.selected_tokens
+                + decoded.materialized_history_encoded_tokens
+            )
+            / max(len(source), 1),
             "engine_reported_history_kv_retention_fraction": (
-                plan.selected_tokens / max(len(source), 1)
-            ),
+                plan.selected_tokens
+                + decoded.materialized_history_encoded_tokens
+            )
+            / max(len(source), 1),
             "full_retention": bool(plan.full_retention),
             "source_bootstrap": source_bootstrap,
             "source_bootstrap_tokens": len(prompt) if source_bootstrap else None,

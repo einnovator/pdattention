@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import sys
+from dataclasses import replace
 from types import ModuleType
 
 import numpy as np
 import pytest
 
-from pra_hf.deployment import PRAWireRequest
+from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from pra_mlx.agent_executor import MLXAgentHistoryExecutor, enforce_retention_floor
 
@@ -640,6 +641,62 @@ def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_m
     assert second_trace["source_bootstrap"] is False
     assert second_trace["native_kv_used"] is True
     assert second_trace["selected_history_reencoded_tokens"] == 0
+
+
+def test_compact_receipt_is_positioned_and_accounted_separately(fake_mlx) -> None:
+    executor = _executor()
+    initial = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    executor.generate(_request(initial))
+    logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "observation"},
+    )
+    receipt = "R"
+    resource = PRAWireResource(
+        resource_id="receipt",
+        uri="pra://history/receipt",
+        text=receipt,
+        metadata={"message_index": 2},
+    )
+    request = _request(
+        logical,
+        request_messages=(logical[0], logical[1], logical[3]),
+        retention=1.0,
+        request_id="receipt",
+        selection_contract="frozen-agent-memory-plan-v1",
+    )
+    request = replace(request, resources=(resource,), metadata={
+        **request.metadata,
+        "record_message_indices": {"record-000002": 2},
+        "materialized_message_replacements": [{
+            "record_id": "record-000002",
+            "message_index": 2,
+            "role": "assistant",
+            "content": receipt,
+            "content_sha256": hashlib.sha256(receipt.encode()).hexdigest(),
+        }],
+    })
+
+    result = executor.generate(request)
+    trace = result.trace[0]
+
+    assert result.text == "A"
+    assert trace["full_retention"] is False
+    assert trace["materialized_history_encoded_tokens"] > 0
+    assert trace["materialized_history_model_calls"] == 1
+    assert trace["selected_history_reencoded_tokens"] == 0
+    assert trace["same_subset_gate_passed"] is True
+    assert trace["effective_attention_prompt_tokens"] == (
+        trace["selected_kv_tokens"]
+        + trace["materialized_history_encoded_tokens"]
+        + trace["wire_tokens"]
+    )
+
+    state = executor._sessions["session"]
+    assert len(state.canonical_tokens) == state.canonical_memory.source_tokens
+    assert state.ledger.messages[-1] == {"role": "assistant", "content": "A"}
 
 
 def test_generated_tokens_remain_resident_when_decode_encode_is_not_identity(fake_mlx) -> None:

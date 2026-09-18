@@ -272,6 +272,55 @@ def test_ledger_imports_full_logical_history_once_before_sparse_selection() -> N
         ledger.reconcile(request)
 
 
+def test_ledger_accepts_only_declared_exact_materialized_replacement() -> None:
+    logical = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "large finalization"},
+        {"role": "user", "content": "current task"},
+    )
+    receipt = "[PRA memory] completed"
+    resource = PRAWireResource(
+        resource_id="receipt",
+        uri="pra://history/receipt",
+        text=receipt,
+        metadata={"message_index": 2},
+    )
+    metadata = {
+        "history_projection": "live-agent-kv-v1",
+        "logical_message_manifest": _manifest(logical),
+        "mandatory_message_indices": [0, 3],
+        "source_bootstrap_contract": "full-logical-history-once-v1",
+        "source_bootstrap_logical_messages": list(logical),
+        "record_message_indices": {"record-000002": 2},
+        "materialized_message_replacements": [{
+            "record_id": "record-000002",
+            "message_index": 2,
+            "role": "assistant",
+            "content": receipt,
+            "content_sha256": hashlib.sha256(receipt.encode()).hexdigest(),
+        }],
+    }
+
+    assert AgentHistoryLedger().reconcile(PRAWireRequest(
+        model="m",
+        messages=(logical[0], logical[-1]),
+        resources=(resource,),
+        metadata=metadata,
+    )) == logical
+    bad = dict(metadata)
+    bad["materialized_message_replacements"] = [dict(
+        metadata["materialized_message_replacements"][0], content="different"
+    )]
+    with pytest.raises(RuntimeError, match="content digest"):
+        AgentHistoryLedger().reconcile(PRAWireRequest(
+            model="m",
+            messages=(logical[0], logical[-1]),
+            resources=(resource,),
+            metadata=bad,
+        ))
+
+
 def test_ledger_rejects_incomplete_or_unknown_source_bootstrap() -> None:
     logical = ({"role": "user", "content": "task"},)
     metadata = {
@@ -317,6 +366,32 @@ def test_record_plan_preserves_full_source_extent_and_original_positions() -> No
     assert tuple(plan.intervals) == tuple(
         row for row in spans if row.record_id.startswith(("message:0:", "message:1:", "message:2:"))
     )
+
+
+def test_frozen_exclusion_at_one_hundred_percent_remains_sparse() -> None:
+    tokenizer = _Tokenizer()
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "current task"},
+    )
+    prompt = tokenizer.apply_chat_template(
+        messages, tokenize=True, add_generation_prompt=True
+    )
+    source = len(prompt) - len("<assistant>")
+    plan = selected_record_plan(
+        tokenizer,
+        messages,
+        prompt,
+        source_tokens=source,
+        retention_fraction=1.0,
+        mandatory_message_indices=(0, 3),
+        selected_message_indices=(1,),
+    )
+
+    assert plan.full_retention is False
+    assert plan.selected_tokens < source
 
 
 def test_record_plan_rounds_up_with_authoritative_engine_tokenizer() -> None:
