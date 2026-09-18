@@ -19,7 +19,7 @@
 \input{../shared/results/paper4_5_runtime/agent_transport_model_backed/generated_agent_transport_model_results.tex}
 
 \title{From Sparse Selection to Physical Savings:\\
-A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
+ A Runtime Contract for Persistent Native Memory}
 \author{PRA Research Program}
 \date{September 2026}
 
@@ -27,43 +27,36 @@ A Unified Runtime and Measurement Contract for Progressive Retrieval Attention}
 \maketitle
 
 \begin{abstract}
-We ask how Progressive Retrieval Attention (PRA) can become a portable runtime
-abstraction without confusing a small logical selection with a systems-level
-saving. We organize deployment into three depths: Selected Context serializes
-chosen evidence as visible text (E0); Native Memory supplies selected
-model-native key/value state outside the visible prompt (E2); and Native
-Serving gives the engine scheduler direct ownership of placement and reuse
-(E3). The implementation unifies authenticated resources, typed records,
-tasks, sessions, routing, physical materialization, storage lifecycle, engine
-capability negotiation, and evidence receipts behind one runtime and gateway.
-The contract keeps ordinary prefix K/V distinct from query-addressed PRA state
-and falls back to E0 when a deeper capability is unavailable.
+Logical context sparsity is only an opportunity bound.  A runtime may select a
+small history while rebuilding K/V, copying selected tensors, changing source
+positions, transferring bytes, constructing K/V-sized temporaries, or inducing
+additional model calls.  We define a vector-valued realization contract for
+persistent native memory that qualifies semantic same-subset correctness,
+original-position consumption, resident-state reuse, physical movement,
+lifecycle, and end-to-end workload economics independently.
 
-Agent-history qualification subsequently exposed cache reconstruction,
-original-position, physical-copy accounting, consumer-transient, and lifecycle
-defects absent from the earlier bundle benchmark. We therefore quarantine all
-pre-gate engine-dependent headline measurements: ten canonical runtime rows,
-ten bundle headline rows, and their 24 raw artifacts remain historical
-diagnostics but do not support current exactness or economic claims. Structural
-bundle metadata and selection/router-only evidence remain valid. Replacement
-measurements must identify the corrected
-\EngineContract{} contract, PRA commit, and
-engine-gate commit and must report re-encoding, K/V copy, and consumer temporary
-memory independently. The post-fix engine gates establish the mechanism; the
-remaining question is whether corrected execution preserves agent behavior and
-improves workload economics across engines.
-On the first autonomous six-episode identity, corrected llama.cpp and MLX both
-omit approximately 40\% of steady-state original historical K/V without
-re-encoding or copying the retained original intervals.  The transferred
-E2+F1C treatment is nevertheless hybrid rather than strict native PRA: it also
-creates model-visible closure receipts after the source cache exists (1,056
-newly encoded tokens in the MLX run; the llama.cpp bundle lacks a separately
-aggregated receipt-encoding counter).  llama.cpp preserves the eight-call
-solution, whereas MLX preserves the solve but adds three calls and realizes only
-15.23\% paired K/V-workload saving.  Engine correctness, transformed-context
-work, and workload utility are therefore separate gates.  A generic prior-mutation add-back is rejected: it resolves in
-14 calls but drives selected-K/V work 3.12\% above PRA-100 by retaining an
-unrelated prior-task patch artifact.
+The corrected implementations realize disjoint resident K/V through native
+views or scheduler-owned pages in bounded HF, MLX, SGLang, llama.cpp,
+vLLM-Metal, and vLLM-CUDA scopes.  Matched-consumer probes report zero retained-
+history re-encoding and zero selected-K/V packing while separately exposing
+host/device transfer, offload, and bounded attention scratch.  The correction
+ledger shows why these fields cannot be collapsed into ``zero-copy'': earlier
+paths reconstructed caches, used compact rather than original positions,
+performed hidden casts or copies, and created K/V-sized temporaries.
+
+With frozen RAG selections on Qwen3-4B MLX, cold native execution is 3.2\%
+slower than selected text, but warm repeated selection reduces mean TTFT from
+2.640 to 0.166 seconds and total latency from 3.031 to 0.638 seconds.  Ordinary
+exact prefix-cache reuse remains a required baseline; PRA's distinct advantage
+is changing or detached addressable evidence.  A frozen coding-agent plan omits
+about 40\% of original resident history on multiple engines, yet its economic
+outcome ranges from preserved call count to reduced benefit or net workload
+loss as the trajectory changes.  Receipt-bearing transfers are explicitly
+hybrid transformed-context evidence, not strict resident-subset reuse.
+
+The resulting measurement contract establishes two boundaries: logical
+selection does not imply physical saving, and physical omission does not imply
+end-to-end workload saving.
 \end{abstract}
 
 \section{Introduction}
@@ -97,38 +90,25 @@ and durable user/session resolution. We retain these responsibilities and place 
 above them.  This is integration by contract rather than by collapsing distinct
 policies.
 
-The report is organized around four falsifiable claims:
+The paper is organized around four independent gates:
 
 \begin{itemize}[leftmargin=*]
-\item \textbf{Correct live-history semantics.}  PRA must fork from the same
-resident state as the ordinary request.  Reconstructing or re-prefilling a
-transcript is a different treatment and cannot establish cache reuse.
-\item \textbf{Engine portability contract.}  Same-subset exactness, original-
-position sparse selection, absence of physical K/V copy, and lifecycle safety
-are independent gates.  Passing one never implies the others.
-\item \textbf{Agent retention semantics.}  Agent state is a typed causal graph,
-not an undifferentiated token stream.  Task statements, action--observation
-pairs, source evidence, mutations, progress, and verification require stable
-record identities and explicit retention floors.
-\item \textbf{Coding-agent utility frontier.}  Only official task outcomes can
-admit context savings.  The locked comparison is No PRA versus PRA at 100\%,
-90\%, and conditionally 75\%, crossed with adaptor on/off while reporting
-success, calls, selected tokens, realized retention, K/V reuse, copy, and time.
+\item \textbf{Semantic gate.} The engine must consume the same selected state
+as an identical-subset reference from the same resident source.
+\item \textbf{Position gate.} Sparse records retain original source positions;
+compact selected width is never substituted for the source position base.
+\item \textbf{Physical mechanism gate.} Re-encoding, selected-K/V copy,
+host--device transfer, consumer temporaries, ownership, and lifecycle are
+reported independently.
+\item \textbf{Workload gate.} TTFT, total latency, calls, completion work, and
+task outcome determine whether physical omission becomes an economic saving.
 \end{itemize}
 
-The companion Paper~8.5 owns the engine-independent agent-memory question:
-record exclusion and selection policies, oracle add-back analysis, and logical
-task efficiency under ordinary text replay.  Paper~4.5 does not select a policy
-winner from those screens.  Its newest strict exact-prefix cohort promotes
-M2/P1 as a research candidate: Tasks~3--5 resolve 3/3, candidate-own logical
-saving is 40.53\%, and calls fall from 30 to 22.  The paired total-work saving
-is 56.86\%, but it includes the shorter Task~4 trajectory and is not the
-selector-only estimate.  Three task identities, endpoint instability, and the
-absence of native-engine replay preclude a production-default or greater-than-
-90\% accuracy claim.  Paper~4.5 therefore imports the exact hash-bound plans
-and asks whether each engine preserves live-K/V semantics, lifecycle safety,
-task behavior, and measurable resource use.  Full history remains the
-correctness control.
+The companion Paper~8.5 owns engine-independent agent-memory discovery,
+including record exclusion, causal policy, oracle add-back, and logical task
+efficiency.  Paper~4.5 imports a frozen, hash-bound \texttt{AgentMemoryPlan}; it
+does not tune or promote the selector.  Full history and 100\% retention remain
+correctness controls before any reduced plan is interpreted.
 
 More precisely, Paper~8.5 decides which logical records or observation spans
 remain visible.  Paper~4.5 consumes a frozen, hashable
@@ -143,6 +123,444 @@ test those claims.  They are not additional evidence categories.  In
 particular, this paper treats correction of an overstated result as evidence
 about the measurement contract: cache identity, residence, source position,
 physical copy, and realized retention must be observed independently.
+
+\begin{figure}[H]
+\centering
+\small
+\fbox{\parbox[c][.9cm][c]{.18\linewidth}{\centering frozen logical\\selection plan}}
+$\longrightarrow$
+\fbox{\parbox[c][.9cm][c]{.18\linewidth}{\centering native\\materializer}}
+$\longrightarrow$
+\fbox{\parbox[c][.9cm][c]{.18\linewidth}{\centering engine\\consumer}}
+$\longrightarrow$
+\fbox{\parbox[c][.9cm][c]{.20\linewidth}{\centering mechanism +\\workload receipt}}
+\caption{Paper boundary.  Policy chooses stable records and spans; the runtime
+must realize that frozen plan and expose the physical work actually performed.}
+\label{fig:runtime-boundary}
+\end{figure}
+
+\section{Accounting Model}
+
+For $L$ decoder layers, $T$ source tokens, $H_{kv}$ physical K/V heads, head
+width $D$, and $b$ bytes per scalar, complete detail storage is
+\[
+B_{\mathrm{detail}}=2|L_{KV}|H_{kv}TDb.
+\]
+If request-time selection admits $S$ tokens to $|L_C|$ consuming layers, the
+active payload opportunity is
+\[
+B_{\mathrm{active}}=2|L_C|H_{kv}SDb.
+\]
+The ratio $B_{\mathrm{active}}/B_{\mathrm{detail}}$ is not peak HBM or runtime.
+Weights, local K/V, allocator state, routing indices, transfer staging, score
+buffers, and temporary packing remain outside it.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.28\linewidth}Y}
+\toprule
+Quantity & Interpretation \\
+\midrule
+Full/selected logical tokens & Policy opportunity before engine realization. \\
+Visible prompt tokens & Text actually submitted through the ordinary prompt path. \\
+Resident/selected source K/V & Canonical stored extent and the intervals read by this request. \\
+Original-history re-encoding & Old selected tokens evaluated through the model again. \\
+Synthetic-history encoding & Post-cache summaries, tombstones, or receipts evaluated as new tokens. \\
+Partial-old-history encoding & Previously seen but uncached tails evaluated again, for example an incomplete page. \\
+Selected-K/V copy and H2D & Explicit packing/copy and residency transfer, reported separately. \\
+Consumer temporary bytes & Peak request-local score, reduction, concatenation, and allocator state. \\
+Workload & Requests, TTFT, total latency, completion tokens, peak memory, and task outcome. \\
+\bottomrule
+\end{tabularx}
+\caption{Independent accounting quantities.  No single ``reuse'' or
+``zero-copy'' label substitutes for these fields.}
+\label{tab:editorial-accounting}
+\end{table}
+
+Evidence is reported in four classes.  A \emph{semantic gate} verifies that the
+selected state produces the intended same-subset result.  A \emph{mechanism
+gate} observes positions, historical evaluation, copying, and ownership.  A
+\emph{physical-efficiency gate} measures resident bytes, transfer, temporaries,
+and peak memory.  A \emph{workload gate} measures requests, TTFT, total latency,
+completion work, and task outcome.  An engine can pass the first two and still
+fail the latter two; the vector must not be collapsed into ``PRA supported.''
+
+The accounting receipt is request-scoped and stage-labelled.  Bytes copied to
+bootstrap a canonical source are different from bytes copied for every
+selection.  Similarly, one-time ingest encoding is different from re-encoding
+already resident history.  Peak allocation is reported separately from
+cumulative traffic, because a small reusable scratch buffer and a newly packed
+K/V tensor can have similar peaks but radically different repeated-request
+costs.
+
+\section{Native Realization Contract}
+
+The core contract is \EngineContract{}.  A request identifies the exact source
+cache, runtime/model/tokenizer revision, stable selected records and spans,
+original logical positions, session and tenant scope, and a plan digest.  A
+same-subset comparator consumes identical K/V values at identical positions.
+Ownership remains with the canonical source while requests borrow intervals;
+finish, cancellation, error, eviction, offload/restore, termination, and stale
+generation rejection are independently tested.
+
+Qualification is vector-valued:
+\[
+G=(S,P,C,L,E),
+\]
+where $S$ is same-state semantic correctness, $P$ is original-position sparse
+correctness, $C$ is copy/re-encoding behavior, $L$ is lifecycle correctness,
+and $E$ is end-to-end workload qualification.  Passing one coordinate does not
+promote another.
+
+After one source bootstrap, strict resident-subset execution permits only
+genuinely new history delta, the current suffix, and generated tokens.  It
+requires
+\[
+R_{\mathrm{orig}}=R_{\mathrm{synthetic}}=R_{\mathrm{partial}}=0,
+\qquad C_{\mathrm{selectedKV}}=0.
+\]
+Ingest-time compaction may create reusable K/V before source admission.
+Replacing already resident records with new receipt text is instead a hybrid
+transformed-context treatment and cannot qualify this invariant.
+
+\subsection{Position and composition semantics}
+
+The plan carries source/original positions, while an implementation may also
+have chunk-local and request-packed coordinates.  These are not interchangeable.
+For rotary models, a cached key associated with logical position $p$ contains
+the corresponding rotation (schematically $K_{\mathrm{post}}(p)=R_p
+K_{\mathrm{pre}}$).  Relabelling an already rotated key or compacting disjoint
+records into positions $0,\ldots,S-1$ changes the attention state.  The
+same-subset comparator therefore uses the identical selected K/V and original
+positions; it does not compare sparse original-position execution with a newly
+packed text prompt and call any difference an implementation bug.
+
+Composition is separately declared.  Independently encoding chunks at local
+positions can be a valid alternative representation, but it is a different
+treatment from globally encoding the concatenated document.  The engine must
+name which representation it consumes and qualify quality under that
+representation rather than infer equivalence from token identity.
+
+\subsection{Ownership and lifecycle}
+
+The canonical source owns resident K/V; requests borrow immutable intervals or
+pages.  A lifecycle gate covers concurrent session isolation, cancellation,
+normal termination, stale-fork rejection, eviction, offload/restore, and final
+cleanup.  Releasing one borrower must not free state still referenced by
+another, while eviction must either wait for borrowers or move through a
+generation-checked handoff.  These tests are mechanism evidence, not throughput
+benchmarks, but they are required before an aliasing implementation can be
+called reusable.
+
+Paper~8.5 supplies the following frozen handoff:
+\begin{verbatim}
+AgentMemoryPlan
+  selected stable record IDs and spans
+  original logical positions
+  materialization/compaction stage
+  source and plan digests
+\end{verbatim}
+The engine realizes this plan; it does not infer task semantics or retune the
+policy.
+
+\section{Runtime Architecture}
+
+The contract is implemented by a narrow set of components.  The application or
+Paper~8.5 policy emits a logical plan; a resource registry resolves stable
+identities to a canonical source generation; a materializer validates spans and
+positions; an engine adapter creates non-owning views or scheduler aliases; a
+lifecycle manager owns eviction and restoration; and telemetry records the
+work performed.  Tool schemas, generic gateway UX, and policy tuning are not
+part of this core path.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.20\linewidth}p{.33\linewidth}Y}
+\toprule
+Component & Authority & Required receipt \\
+\midrule
+Selection plan & stable record IDs, spans, positions, digest & selected logical extent and materialization stage \\
+Resource registry & tenant/session/model/source generation & exact source-cache identity and residency state \\
+Materializer & interval validation and consumer descriptor & rejected spans, old/synthetic/partial encoding counts \\
+Engine adapter & attention consumer and native alias geometry & K/V copy, transfer, temporary, and position mode \\
+Lifecycle manager & borrow, release, eviction, restore, cleanup & ownership generation and terminal-state outcome \\
+Workload harness & prefix/full controls and task execution & TTFT, latency, calls, completion work, peak, and quality \\
+\bottomrule
+\end{tabularx}
+\caption{Minimal architecture supporting the native realization contract.}
+\label{tab:runtime-architecture}
+\end{table}
+
+A plan digest binds policy output to runtime evidence.  If an adapter changes
+the selected intervals, compacts positions, inserts receipt text, or falls back
+to prompt replay, it must emit a distinct realization digest and accounting
+class.  This makes silent degradation observable and permits the same frozen
+logical treatment to be compared across engines.
+
+The ordinary prefix cache remains available beside addressable resources.
+Local request deltas should continue through the engine's normal incremental
+path; persistent source records remain separately addressable.  PRA is useful
+when the next request needs a disjoint or changing subset that cannot be
+represented as one unchanged prefix.  It should not replace an exact-prefix hit
+with a more expensive sparse path.
+
+\section{Corrected Engine Matrix}
+
+\begin{table}[H]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{p{.085\linewidth}p{.145\linewidth}p{.10\linewidth}cccY}
+\toprule
+Engine & Native form & Positions & No re-enc. & No K/V copy & Lifecycle & Present boundary \\
+\midrule
+HF & Canonical cache plus fused intervals & Original & yes & yes & pass & Qwen/CUDA, batch 1; no general latency claim. \\
+MLX & Canonical interval-addressed arrays & Original & yes & yes & pass & Direct MLX; batch, topology, and head-dimension limits. \\
+SGLang-MLX & Live source owner plus interval consumer & Original & yes & yes & pass & Selected rows evaluated independently; mixed cache protocols rejected. \\
+llama.cpp & Resident slot and stable sequence ranges & Original & yes & yes & pass & Endpoint temporary allocation remains incompletely exposed. \\
+vLLM-Metal & Resident page borrowing & Original pages & yes & yes & 24/24 & Bounded release package and page geometry. \\
+vLLM CUDA & Scheduler-owned page aliases & Original pages & yes & yes & bounded pass & In-process V1, complete pages, one homogeneous K/V group; partial pages and multiprocess remain open. \\
+\bottomrule
+\end{tabularx}
+\caption{Current corrected mechanism scope. ``Yes'' is limited to the declared
+geometry and matched-consumer gate; it is not a general serving-speed claim.}
+\label{tab:editorial-engine-matrix}
+\end{table}
+
+The primary correction ledger is consolidated in Appendix~A.  Earlier rows that
+reconstructed caches, used compact selected positions, performed hidden
+casts/copies, or created K/V-sized temporaries remain debugging evidence only.
+
+\section{Results}
+
+\subsection{Warm repeated selection produces a real native-memory benefit}
+
+The cleanest realization experiment freezes 50 Qwen3-4B MLX RAG selections at
+2K context.  Selected text and native memory match every output and quality
+metric.  Cold native execution costs 3.121 versus 3.024 seconds, a 3.2\%
+regression from native encoding.  Once the identical selection is resident,
+mean TTFT falls from 2.640 to 0.166 seconds and total latency from 3.031 to
+0.638 seconds; throughput rises from 10.56 to 50.21 tokens/s.  At 4K, cold
+native is 3.3\% slower while warm total latency is 0.799 versus 6.121 seconds.
+Qwen3-8B repeats the pattern: 1.8\% cold regression, then an 82.1\% warm total-
+latency reduction.  These are repeated-selection results on one M4 host, not
+general serving speedups.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Model / context & Cold selected & Cold native & Warm selected & Warm native \\
+\midrule
+Qwen3-4B / 2K total (s) & 3.024 & 3.121 & 3.031 & 0.638 \\
+Qwen3-4B / 2K TTFT (s) & --- & --- & 2.640 & 0.166 \\
+Qwen3-4B / 4K total (s) & --- & $+3.3\%$ & 6.121 & 0.799 \\
+Qwen3-8B / 2K total & --- & $+1.8\%$ & baseline & $-82.1\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Repeated-selection realization summary.  Dashes indicate that the
+main claim uses the reported relative effect rather than reconstructing an
+unreported absolute cell.}
+\label{tab:warm-native-summary}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=.83\linewidth]{../shared/results/paper4_5_runtime_productization/rag/powered_qwen3_4b_mlx_4bit_n20_2k_50/plots/realization_ttft.pdf}
+\caption{Qwen3-4B, 2K, 50-query mechanism cohort.  Cold native realization has
+no material TTFT advantage; warm residence removes repeated selected-text
+prefill.  Values are host- and cohort-specific.}
+\label{fig:warm-native-ttft}
+\end{figure}
+
+\subsection{Exact prefix caching is a necessary baseline}
+
+Warm native memory must not be compared only with fresh text prefill.  The
+required ladder is fresh selected text, exact text-prefix hit, persistent native
+selection, and changing-selection partial native reuse.  An autonomous
+llama.cpp control illustrates the strength of the baseline: at 100\% retention,
+ordinary live-prefix continuation matches cold-prefill behavior while reducing
+single-task wall time by 27.85$\times$.  This is a prefix-cache result, not a PRA
+speedup.  PRA's distinct systems opportunity begins when selected evidence is
+detached, disjoint, or changes across requests.
+
+\subsection{Changing selection changes composition semantics}
+
+Persistent-corpus MLX reuses independently encoded 256-token chunks across 50
+changing questions.  It reuses 22.0\% of chunk lookups and reduces cumulative
+request time by 12.8\%, but official score changes from 0.440 to 0.380.  The
+cause is representational: chunk-local post-RoPE positions differ from the
+single global position sequence of packed text.  This is not cache corruption.
+It establishes
+\[
+\boxed{\text{same selected evidence}\;\not\Rightarrow\;
+\text{same hidden-state semantics}.}
+\]
+Original, chunk-local, and request-packed positions are therefore explicit
+contract fields rather than implementation details.
+
+\subsection{The numerical consumer path is part of the treatment}
+
+On the corrected SGLang coding-agent control, fresh full prefill and live-prefix
+PRA-100 receive identical input token IDs, resolve the same task in seven calls,
+and submit a byte-identical patch, yet their assistant actions first diverge at
+request three.  A selection-neutral live-prefix control then matches PRA-100 on
+all seven requests, responses, and commands.  Thus
+\[
+\boxed{\text{same token IDs}\;\not\Rightarrow\;
+\text{same numerical consumer path}.}
+\]
+Reduced-policy comparisons must use a matched consumer; fresh-prefill identity
+cannot be silently required of an incremental path.
+
+\subsection{Frozen agent-plan transfer separates omission from economics}
+
+Paper~8.5 supplies one Prompt Pinned plan on Scikit-learn-14496.  The current
+transfers are hybrid because they create model-visible closure receipts after
+the source cache exists; they qualify original-K/V selection but not the strict
+resident-subset invariant.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.13\linewidth}rrrrY}
+\toprule
+Consumer & Solved & Calls vs control & Original-K/V omission & Synthetic encoding & Workload outcome \\
+\midrule
+llama.cpp & 1/1 & 8 vs 8 & 40.23\% & unreported & Solve and call count preserved; strict gate withheld. \\
+MLX & 1/1 & 12 vs 9 & 40.04\% & 1,056 tokens & Only 15.23\% paired selected-K/V-plus-receipt saving. \\
+SGLang-MLX & 1/1 & 15 vs 7 & 37.21\% & 1,344 tokens & 33.10\% paired input-plus-completion workload increase. \\
+\bottomrule
+\end{tabularx}
+\caption{Frozen policy transfer.  Similar original-K/V omission yields positive,
+reduced, or negative trajectory economics.}
+\label{tab:editorial-agent-transfer}
+\end{table}
+
+These rows establish the second systems boundary:
+\[
+\boxed{\text{physical omission}\;\not\Rightarrow\;
+\text{end-to-end workload saving}.}
+\]
+Selection-only reruns with zero synthetic history are required before the plan
+can enter the strict native class.
+
+\section{Prefix Cache and PRA Are Complementary}
+
+Exact prefix caching is the correct default when the next request extends one
+unchanged token prefix.  It preserves the engine's native consumer path and can
+reuse all prefix K/V with minimal planning.  PRA addresses a different shape:
+the request needs a changing, detached, or disjoint subset of already resident
+records.  A runtime should choose between the two using observable request
+geometry, not route every request through sparse selection.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\linewidth}{p{.22\linewidth}p{.22\linewidth}p{.22\linewidth}Y}
+\toprule
+Request shape & Preferred path & Required baseline & Main risk \\
+\midrule
+unchanged prefix plus suffix & exact prefix cache & live-prefix continuation & replacing a near-perfect hit with planning/copy overhead \\
+same frozen detached evidence & persistent native selection & warm selected-text and prefix hit where representable & residence cost and consumer temporaries \\
+changing disjoint records & partial native PRA & fresh selected text plus matched consumer & position/composition mismatch and churn \\
+post-cache summary or receipt & hybrid transformed context & selected K/V plus charged synthetic encoding & describing new text as cache reuse \\
+uncached or partial source tail & mixed/fallback path & explicit partial-history accounting & hiding old-token evaluation in a nominal hit \\
+\bottomrule
+\end{tabularx}
+\caption{Dispatch rule and comparator ladder by request geometry.}
+\label{tab:prefix-pra-dispatch}
+\end{table}
+
+This division also clarifies the value proposition.  PRA does not need to beat
+prefix caching on unchanged prefixes; it must outperform rebuilding or copying
+the selected state when ordinary prefix identity no longer applies.  The
+telemetry receipt therefore records exact-prefix reused tokens and addressable
+resident intervals separately.  A combined runtime can keep the local agent
+delta on the prefix path while borrowing older resource intervals through PRA,
+without re-encoding either class.
+
+\section{Qualification and Promotion Procedure}
+
+Qualification proceeds from semantics to workload; later measurements cannot
+repair an earlier failure.  First, a deterministic bounded geometry compares
+native sparse execution against a same-subset reference with identical K/V and
+positions.  Second, instrumented counters require zero original-history
+evaluation and separately expose synthetic or partial-history work, selected
+K/V copies, transfers, and consumer temporaries.  Third, lifecycle tests cover
+concurrent borrowers and every terminal path.  Fourth, cold, warm, and
+changing-selection cohorts measure physical and latency effects against both
+fresh prefill and exact prefix caching.  Finally, an autonomous workload
+consumes a frozen policy plan without engine-specific retuning.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.16\linewidth}p{.30\linewidth}Y}
+\toprule
+Gate & Required comparator & Promotion evidence \\
+\midrule
+Semantic & identical selected K/V and original positions & bounded output/logit agreement under declared dtype and consumer path \\
+Mechanism & instrumented resident source & zero old-history evaluation; copy, transfer, temporary, and lifecycle fields reported \\
+Physical & cold/warm/changing selection & resident and request-local bytes plus peak and cumulative traffic \\
+Workload & prefix cache and fresh prefill & task outcome, requests, TTFT, latency, completion work, and paired cumulative cost \\
+\bottomrule
+\end{tabularx}
+\caption{Promotion ladder.  A row is not inferred from success in a later row.}
+\label{tab:promotion-ladder}
+\end{table}
+
+This ordering prevents three common category errors.  Matching output alone
+does not prove that historical K/V was reused.  Zero selected-K/V copy does not
+prove low temporary memory or low transfer.  A fast request does not prove an
+end-to-end saving if the model takes more requests to solve the task.
+
+\section{Scope and Remaining Gates}
+
+The corrected adapters establish bounded mechanisms, not universal engine
+support.  HF remains qualified only for declared Qwen/CUDA batch-one geometry;
+MLX and SGLang retain batch, topology, and head-dimension restrictions;
+llama.cpp still lacks complete endpoint temporary-allocation visibility; and
+vLLM CUDA remains limited to in-process V1, complete pages, and a homogeneous
+K/V group.  Partial pages, hybrid groups, multiprocess scheduling, broader
+models, and production concurrency require separate gates.
+
+The warm RAG result is a repeated-selection mechanism cohort on one Apple host.
+It demonstrates that correct residence can remove repeated prefill, but it does
+not establish portable serving speedups.  The changing-selection experiment
+also shows why globally packed text cannot be treated as the universal semantic
+reference for independently encoded chunks.
+
+The current agent transfer is one frozen task-plan identity and is hybrid
+because closure receipts are encoded after caching.  Its value is diagnostic:
+similar original-K/V omission leads to preserved, reduced, or negative workload
+benefit across consumers.  The strict next experiment removes synthetic
+history, holds the selected records fixed, and repeats the paired autonomous
+gate with task-clustered replication.
+
+\section{Conclusion}
+
+Sparse logical selection is an opportunity bound, not a systems result.  Native
+reuse requires source identity, original positions, same-subset correctness,
+zero hidden historical evaluation, scoped K/V movement, bounded consumer state,
+and safe ownership.  Correct persistent native memory can deliver large warm
+repeated-selection gains, while exact prefix caching remains a formidable
+baseline.  Changing selections introduce composition semantics that ordinary
+prefix reuse does not solve.  Finally, an agent can react to physically correct
+omission by taking more calls, erasing or reversing the saving.  The runtime
+contract therefore ends at vector-valued evidence, not a single reuse flag.
+
+\clearpage
+\appendix
+\section{Superseded Measurements and Detailed Runtime Report}
+
+The remainder preserves the full architecture, transport, product-surface,
+historical measurement, qualification, and artifact narrative for auditability.
+It is supporting detail rather than an expansion of the main claims.
 
 \section{PRA Runtime Abstraction}
 
@@ -5056,7 +5474,6 @@ conclusion is conservative: cache locality, physical residency, and context
 lifecycle deserve attention before kernel novelty, and every future speed
 claim must match semantics while accounting for the whole request.
 
-\appendix
 \section{Reimplementation Guide}
 
 The stable public entry points live in \texttt{src/pra\_hf/runtime.py}.  A
