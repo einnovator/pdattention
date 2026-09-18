@@ -164,6 +164,37 @@ def _direct_handler(adapter: object, model: str):
                     "message": str(error),
                 })
             except Exception as error:  # noqa: BLE001 - diagnostic boundary
+                request_value = locals().get("request")
+                metadata = (
+                    dict(request_value.metadata)
+                    if isinstance(request_value, PRAWireRequest)
+                    else {}
+                )
+                manifest = metadata.get("logical_message_manifest")
+                bootstrap = metadata.get("source_bootstrap_logical_messages")
+                print(json.dumps({
+                    "event": "sglang_agent_request_failure",
+                    "request_id": (
+                        request_value.request_id
+                        if isinstance(request_value, PRAWireRequest)
+                        else None
+                    ),
+                    "session_id": (
+                        request_value.session_id
+                        if isinstance(request_value, PRAWireRequest)
+                        else None
+                    ),
+                    "metadata_keys": sorted(metadata),
+                    "logical_manifest_messages": (
+                        len(manifest) if isinstance(manifest, list) else None
+                    ),
+                    "source_bootstrap_contract": metadata.get(
+                        "source_bootstrap_contract"
+                    ),
+                    "source_bootstrap_messages": (
+                        len(bootstrap) if isinstance(bootstrap, list) else None
+                    ),
+                }, sort_keys=True), flush=True)
                 traceback.print_exc()
                 self._json(500, {
                     "error": "engine_internal_error",
