@@ -177,7 +177,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Qualification-only: compare every PRA-100 output token and logit "
-            "step with a fresh-prefill reference consuming the same prompt."
+            "step with a live native prefix-cache reference."
         ),
     )
     parser.add_argument(

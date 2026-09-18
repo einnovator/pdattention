@@ -173,6 +173,7 @@ class _Session:
     canonical_text: str = ""
     message_spans: dict[int, LiveKVInterval] = field(default_factory=dict)
     canonical_memory: MLXNativeMemory | None = None
+    full_reference_cache: Sequence[object] | None = None
     generation: int = 0
     calls: int = 0
     selected_history_reencoded_tokens: int = 0
@@ -259,7 +260,7 @@ class MLXAgentHistoryExecutor:
             "prefix_cache_enabled": False,
             "same_subset_reference_required": self.require_same_subset_reference,
             "same_subset_max_abs_logit_delta": self.max_abs_logit_delta,
-            "full_retention_fresh_prefill_reference_required": (
+            "full_retention_prefix_cache_reference_required": (
                 self.require_full_retention_reference
             ),
             # Selection-time interval packing is zero in the disjoint path.
@@ -607,6 +608,12 @@ class MLXAgentHistoryExecutor:
                 source, cache, tuple(state.message_spans.values())
             )
             state.canonical_memory = self._capture(cache, len(source))
+            if self.require_full_retention_reference:
+                # Keep the original mlx-lm cache as the zero-selection
+                # prefix-cache control.  PRA borrows an immutable view of the
+                # same source K/V; subsequent request-local tokens advance the
+                # two consumers independently.
+                state.full_reference_cache = cache
             state.canonical_tokens = list(source)
             return len(source), 0, None
 
@@ -637,6 +644,19 @@ class MLXAgentHistoryExecutor:
         updated, metrics = self._graft(
             state.canonical_memory, caches, expected_local_tokens=len(delta)
         )
+        if state.full_reference_cache is not None:
+            reference_offset = int(state.full_reference_cache[0].offset)
+            if reference_offset != common:
+                raise RuntimeError(
+                    "MLX prefix-cache reference lost canonical alignment: "
+                    f"offset={reference_offset}, expected={common}."
+                )
+            self._prefill_record_aligned(
+                source,
+                state.full_reference_cache,
+                tuple(state.message_spans.values()),
+                start=common,
+            )
         state.canonical_memory = updated
         state.canonical_tokens = list(source)
         state.total_kv_copy_bytes += metrics.total_kv_copy_bytes
@@ -830,20 +850,23 @@ class MLXAgentHistoryExecutor:
             logits = self._evaluate(wire, candidate_cache)
             calls += 1
             if plan.full_retention and self.require_full_retention_reference:
-                # Qualification-only control: reconstruct the same complete
-                # prompt through the ordinary fresh-prefill path and advance
-                # it beside resident K/V for every decoded token.  This is
-                # intentionally expensive and is never counted as reuse.
-                full_reference_cache = self._new_cache()
-                full_reference_calls += self._prefill_record_aligned(
-                    source,
-                    full_reference_cache,
-                    tuple(state.message_spans.values()),
-                )
+                # Qualification-only control: advance a standard mlx-lm
+                # prefix cache built from the identical record-aligned source
+                # beside resident PRA K/V for every decoded token.
+                full_reference_cache = state.full_reference_cache
+                if full_reference_cache is None:
+                    raise RuntimeError(
+                        "MLX full-retention prefix-cache reference is missing."
+                    )
                 full_reference_logits = self._evaluate(
                     wire, full_reference_cache
                 )
                 full_reference_calls += 1
+            elif self.require_full_retention_reference:
+                raise RuntimeError(
+                    "MLX full-retention reference mode cannot execute a "
+                    "reduced-history plan."
+                )
             if not plan.full_retention and self.require_same_subset_reference:
                 reference = self.runtime.begin_request(
                     request_id + "-same-subset-reference",
@@ -899,7 +922,7 @@ class MLXAgentHistoryExecutor:
                         or step_delta > self.max_abs_logit_delta
                     ):
                         raise RuntimeError(
-                            "MLX full-retention fresh-prefill correctness gate "
+                            "MLX full-retention prefix-cache correctness gate "
                             "failed: "
                             f"output_token_index={output_index}, "
                             f"resident_token={token}, "
@@ -911,6 +934,9 @@ class MLXAgentHistoryExecutor:
                     terminal = token
                     logits = self._evaluate([token], candidate_cache)
                     calls += 1
+                    if full_reference_cache is not None:
+                        self._evaluate([token], full_reference_cache)
+                        full_reference_calls += 1
                     break
                 generated.append(token)
                 logits = self._evaluate([token], candidate_cache)
@@ -945,6 +971,14 @@ class MLXAgentHistoryExecutor:
         state.canonical_tokens = [*source, *wire, *generated]
         if terminal is not None:
             state.canonical_tokens.append(terminal)
+        if state.full_reference_cache is not None:
+            reference_offset = int(state.full_reference_cache[0].offset)
+            if reference_offset != len(state.canonical_tokens):
+                raise RuntimeError(
+                    "MLX prefix-cache reference ended at the wrong token: "
+                    f"offset={reference_offset}, "
+                    f"expected={len(state.canonical_tokens)}."
+                )
         text = str(self.tokenizer.decode(generated, skip_special_tokens=True))
         assistant_index = len(messages)
         state.message_spans[assistant_index] = LiveKVInterval(
@@ -1081,26 +1115,31 @@ class MLXAgentHistoryExecutor:
                 None if plan.full_retention else logit_delta is not None
                 and logit_delta <= self.max_abs_logit_delta
             ),
-            "full_retention_fresh_prefill_reference_required": (
+            "full_retention_prefix_cache_reference_required": (
                 bool(self.require_full_retention_reference)
                 and plan.full_retention
             ),
-            "full_retention_fresh_prefill_compared_tokens": (
+            "full_retention_prefix_cache_reference_kind": (
+                "live_mlx_prefix_cache"
+                if plan.full_retention and self.require_full_retention_reference
+                else None
+            ),
+            "full_retention_prefix_cache_compared_tokens": (
                 full_reference_compared_tokens
                 if plan.full_retention and self.require_full_retention_reference
                 else None
             ),
-            "full_retention_fresh_prefill_model_calls": (
+            "full_retention_prefix_cache_model_calls": (
                 full_reference_calls
                 if plan.full_retention and self.require_full_retention_reference
                 else None
             ),
-            "full_retention_fresh_prefill_max_abs_logit_delta": (
+            "full_retention_prefix_cache_max_abs_logit_delta": (
                 full_reference_max_delta
                 if plan.full_retention and self.require_full_retention_reference
                 else None
             ),
-            "full_retention_fresh_prefill_gate_passed": (
+            "full_retention_prefix_cache_gate_passed": (
                 True
                 if plan.full_retention and self.require_full_retention_reference
                 else None

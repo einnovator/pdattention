@@ -553,7 +553,7 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert executor.runtime.registry.view(source_id) is None
 
 
-def test_pra100_can_compare_every_token_with_fresh_prefill(fake_mlx) -> None:
+def test_pra100_can_compare_every_token_with_live_prefix_cache(fake_mlx) -> None:
     executor = MLXAgentHistoryExecutor(
         _Model(),
         _Tokenizer(),
@@ -572,15 +572,30 @@ def test_pra100_can_compare_every_token_with_fresh_prefill(fake_mlx) -> None:
     trace = result.trace[0]
     assert result.text == "A"
     assert trace["full_retention"] is True
-    assert trace["full_retention_fresh_prefill_reference_required"] is True
+    assert trace["full_retention_prefix_cache_reference_required"] is True
+    assert trace["full_retention_prefix_cache_reference_kind"] == (
+        "live_mlx_prefix_cache"
+    )
     # One generated token plus the terminal token are both checked.
-    assert trace["full_retention_fresh_prefill_compared_tokens"] == 2
-    assert trace["full_retention_fresh_prefill_model_calls"] > 0
-    assert trace["full_retention_fresh_prefill_max_abs_logit_delta"] == 0.0
-    assert trace["full_retention_fresh_prefill_gate_passed"] is True
+    assert trace["full_retention_prefix_cache_compared_tokens"] == 2
+    assert trace["full_retention_prefix_cache_model_calls"] > 0
+    assert trace["full_retention_prefix_cache_max_abs_logit_delta"] == 0.0
+    assert trace["full_retention_prefix_cache_gate_passed"] is True
     assert executor.capabilities()[
-        "full_retention_fresh_prefill_reference_required"
+        "full_retention_prefix_cache_reference_required"
     ] is True
+
+    logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "observation"},
+    )
+    second = executor.generate(_request(logical, request_id="r2"))
+    second_trace = second.trace[0]
+    assert second.text == "A"
+    assert second_trace["full_retention_prefix_cache_gate_passed"] is True
+    assert second_trace["full_retention_prefix_cache_max_abs_logit_delta"] == 0.0
+    assert executor._sessions["session"].full_reference_cache[0].offset == len(
+        executor._sessions["session"].canonical_tokens
+    )
 
 
 def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_mlx) -> None:
