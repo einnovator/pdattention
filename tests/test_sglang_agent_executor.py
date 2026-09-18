@@ -26,6 +26,7 @@ from pra_sglang.agent_executor import (
     _live_kv_copy_metrics,
     _repetition_token_ids,
     _selected_sampler_prompt,
+    _source_replay_diagnostics,
     _token_digest,
     causal_message_spans,
     configure_append_stable_template,
@@ -685,6 +686,22 @@ def test_selected_sampler_prompt_matches_full_and_sparse_visible_context() -> No
     sparse_prompt = _selected_sampler_prompt(source, wire, sparse)
     assert sparse_prompt == same_subset
     assert _token_digest(sparse_prompt) == _token_digest(same_subset)
+
+
+def test_source_replay_diagnostics_locate_non_roundtripping_suffix() -> None:
+    exact = _source_replay_diagnostics([1, 2, 3], [1, 2, 3])
+    assert exact["live_source_matches_fresh_retokenization"] is True
+    assert exact["live_fresh_common_prefix_tokens"] == 3
+    assert exact["live_suffix_tokens_after_first_mismatch"] == 0
+
+    changed = _source_replay_diagnostics([1, 2, 30, 31], [1, 2, 99])
+    assert changed["live_source_matches_fresh_retokenization"] is False
+    assert changed["live_fresh_common_prefix_tokens"] == 2
+    assert changed["live_suffix_tokens_after_first_mismatch"] == 2
+    assert changed["fresh_suffix_tokens_after_first_mismatch"] == 1
+    assert changed["live_source_token_sha256"] != (
+        changed["fresh_retokenized_source_token_sha256"]
+    )
 
 
 def test_adapter_exposes_frozen_effective_stop_token_contract() -> None:

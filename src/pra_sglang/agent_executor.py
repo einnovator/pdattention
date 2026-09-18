@@ -137,6 +137,26 @@ def _token_digest(token_ids: Sequence[int]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _source_replay_diagnostics(
+    live_source: Sequence[int], fresh_source: Sequence[int]
+) -> dict[str, object]:
+    """Describe where live sampled-token history differs from text replay."""
+
+    live = list(map(int, live_source))
+    fresh = list(map(int, fresh_source))
+    common = _common_prefix(live, fresh)
+    return {
+        "live_source_matches_fresh_retokenization": live == fresh,
+        "live_source_tokens": len(live),
+        "fresh_retokenized_source_tokens": len(fresh),
+        "live_fresh_common_prefix_tokens": common,
+        "live_suffix_tokens_after_first_mismatch": len(live) - common,
+        "fresh_suffix_tokens_after_first_mismatch": len(fresh) - common,
+        "live_source_token_sha256": _token_digest(live),
+        "fresh_retokenized_source_token_sha256": _token_digest(fresh),
+    }
+
+
 def _execution_plan(plan: LiveKVSelectionPlan) -> LiveKVSelectionPlan:
     """Collapse complete record coverage to one direct canonical K/V view."""
 
@@ -1178,6 +1198,13 @@ class SGLangMLXAgentHistoryExecutor:
             canonical_tokens=state.canonical_tokens,
             chat_template_kwargs=template_kwargs,
         )
+        fresh_source = _render(
+            self.tokenizer,
+            messages,
+            generation_prompt=False,
+            chat_template_kwargs=template_kwargs,
+        )
+        source_replay = _source_replay_diagnostics(source, fresh_source)
         source_bootstrap = bool(
             state.calls == 0
             and request.metadata.get("source_bootstrap_contract")
@@ -1449,6 +1476,7 @@ class SGLangMLXAgentHistoryExecutor:
             "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
             "completion_tokens": len(generated),
             "sampler_prompt_sha256": _token_digest(sampler_prompt),
+            **source_replay,
             "elapsed_seconds": elapsed,
             "chat_template_profile": self.chat_template_profile,
             "chat_template_digest": self.chat_template_digest,
