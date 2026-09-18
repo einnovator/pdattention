@@ -574,9 +574,11 @@ Table~\ref{tab:editorial-headline-policies} keeps discovery and confirmation
 separate.  Matched Recency contains six executions over three identities and
 is shown as a negative control; its historical schema lacks three immutable
 pairing digests and is not pooled with the exact-prefix cohorts.  The frozen
-eight-identity confirmation set had no completed admissible rows at manuscript
-cutoff, so the table reports that coordinate as open rather than extrapolating
-from 3/3.
+eight-identity confirmation has now attempted its first identity.  Its cold,
+same-prefix \textsc{Full} control passes runtime qualification but fails the
+official task, so the fail-closed runner launches no policy arm.  The row is
+baseline-reliability evidence and leaves the eligible policy denominator at
+zero; it is not converted into a selection loss or retried until favorable.
 
 \begin{table}[H]
 \centering
@@ -589,13 +591,15 @@ Policy & Cohort & IDs & Resolved F/P & Calls F/P & Input F/P & Save own/paired &
 Matched Recency & development & 3 (6 runs) & 5/6; 4/6 & 154/113 & not admitted & 6.35\%/n.a. & two losses; incomplete legacy identity \\
 Recent Frontier M2/P1 & development & 3 & 3/3 & 30/22 & 556,072/239,881 & 40.53/56.86\% & calls decrease \\
 Prompt Pinned E2+F1C & development & 3 & 3/3 & 34/33 & 924,686/539,022 & 39.45/41.71\% & transformed receipts \\
-Recent Frontier M2/P1 & held-out & 0/8 & --- & --- & --- & --- & open \\
-Prompt Pinned E2+F1C & held-out & 0/8 & --- & --- & --- & --- & open \\
+Recent Frontier M2/P1 & held-out & 0/8 (1 tried) & 0/1; --- & 14/--- & 97,604/--- & --- & Full failed; policy withheld \\
+Prompt Pinned E2+F1C & held-out & 0/8 (1 tried) & 0/1; --- & 14/--- & 97,604/--- & --- & Full failed; policy withheld \\
 \bottomrule
 \end{tabularx}
 \caption{Task-clustered policy ledger at cutoff.  F/P denotes Full/policy.
 Discovery and held-out confirmation are never aggregated; repeated runs expose
-instability but do not increase the identity denominator.}
+instability but do not increase the identity denominator.  The two held-out
+rows share one failed \textsc{Full} qualification attempt; they are not two
+independent executions.}
 \label{tab:editorial-headline-policies}
 \end{table}
 
