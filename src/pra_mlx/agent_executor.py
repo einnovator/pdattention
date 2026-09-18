@@ -401,6 +401,46 @@ class MLXAgentHistoryExecutor:
                 "Incremental MLX message spans disagree with canonical source tokens."
             )
 
+    def _fresh_message_spans(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        source: Sequence[int],
+        *,
+        chat_template_kwargs: Mapping[str, Any],
+    ) -> tuple[LiveKVInterval, ...]:
+        """Resolve immutable record spans for a fresh full-history prefill.
+
+        MLX kernels may take slightly different numerical paths for different
+        query batch shapes.  Splitting at stable message boundaries makes a
+        fresh replay and an append-only resident session evaluate every closed
+        record with the same batch partition.
+        """
+
+        spans: list[LiveKVInterval] = []
+        prior_end = 0
+        for index in range(len(messages)):
+            boundary_text = _render_text(
+                self.tokenizer,
+                messages[: index + 1],
+                generation_prompt=False,
+                chat_template_kwargs=chat_template_kwargs,
+            )
+            boundary = len(_encode_text(self.tokenizer, boundary_text))
+            if boundary < prior_end:
+                raise RuntimeError("Chat-template message boundary moved backwards.")
+            spans.append(LiveKVInterval(
+                prior_end,
+                boundary,
+                record_id=f"message:{index}:{messages[index].get('role', 'unknown')}",
+                causal_group_id=self._causal_group(messages, index),
+            ))
+            prior_end = boundary
+        if prior_end != len(source):
+            raise RuntimeError(
+                "Fresh MLX message spans disagree with canonical source tokens."
+            )
+        return tuple(spans)
+
     def _new_cache(self):
         from mlx_lm.models.cache import make_prompt_cache
 
@@ -456,6 +496,41 @@ class MLXAgentHistoryExecutor:
             if callable(clear):
                 clear()
             calls += 1
+        return calls
+
+    def _prefill_record_aligned(
+        self,
+        token_ids: Sequence[int],
+        cache: Sequence[object],
+        spans: Sequence[LiveKVInterval],
+        *,
+        start: int = 0,
+    ) -> int:
+        """Prefill closed records with append-stable batching.
+
+        Chunking restarts at every logical record.  A later record therefore
+        cannot change the query shape used to compute K/V for an earlier one.
+        Gaps are retained fail-closed as their own segment rather than dropped.
+        """
+
+        values = list(map(int, token_ids))
+        cursor = int(start)
+        if cursor < 0 or cursor > len(values):
+            raise ValueError("Record-aligned prefill start is outside the source.")
+        calls = 0
+        for span in sorted(spans, key=lambda row: (row.start, row.end)):
+            if span.end <= cursor:
+                continue
+            if span.start > cursor:
+                calls += self._prefill(values[cursor:span.start], cache)
+                cursor = span.start
+            begin = max(cursor, span.start)
+            end = min(int(span.end), len(values))
+            if end > begin:
+                calls += self._prefill(values[begin:end], cache)
+                cursor = end
+        if cursor < len(values):
+            calls += self._prefill(values[cursor:], cache)
         return calls
 
     def _capture(self, cache: Sequence[object], tokens: int) -> MLXNativeMemory:
@@ -528,7 +603,9 @@ class MLXAgentHistoryExecutor:
         self._set_segmented_attention(False)
         if state.canonical_memory is None:
             cache = self._new_cache()
-            self._prefill(source, cache)
+            self._prefill_record_aligned(
+                source, cache, tuple(state.message_spans.values())
+            )
             state.canonical_memory = self._capture(cache, len(source))
             state.canonical_tokens = list(source)
             return len(source), 0, None
@@ -551,7 +628,12 @@ class MLXAgentHistoryExecutor:
             segmented=False,
             query_position_base=len(state.canonical_tokens),
         )
-        self._prefill(delta, caches)
+        self._prefill_record_aligned(
+            source,
+            caches,
+            tuple(state.message_spans.values()),
+            start=common,
+        )
         updated, metrics = self._graft(
             state.canonical_memory, caches, expected_local_tokens=len(delta)
         )
@@ -574,6 +656,46 @@ class MLXAgentHistoryExecutor:
             token = int(__import__("mlx.core", fromlist=["argmax"]).argmax(
                 logits[0, -1]
             ).item())
+            if token in eos:
+                break
+            generated.append(token)
+            if len(generated) >= max_tokens:
+                break
+            logits = self._evaluate([token], cache)
+            calls += 1
+        text = str(self.tokenizer.decode(generated, skip_special_tokens=True))
+        return text, generated, time.perf_counter() - started, calls
+
+    def _ordinary_generate_record_aligned(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        chat_template_kwargs: Mapping[str, Any],
+        max_tokens: int,
+    ) -> tuple[str, list[int], float, int]:
+        """Fresh FULL control using the same immutable record partition."""
+
+        import mlx.core as mx
+
+        prompt, source, wire, _ = _incremental_generation_prompt(
+            self.tokenizer,
+            messages,
+            canonical_text="",
+            canonical_tokens=(),
+            chat_template_kwargs=chat_template_kwargs,
+        )
+        spans = self._fresh_message_spans(
+            messages, source, chat_template_kwargs=chat_template_kwargs
+        )
+        started = time.perf_counter()
+        cache = self._new_cache()
+        calls = self._prefill_record_aligned(source, cache, spans)
+        logits = self._evaluate(wire, cache)
+        calls += 1
+        generated: list[int] = []
+        eos = self._eos_ids()
+        while len(generated) < max_tokens:
+            token = int(mx.argmax(logits[0, -1]).item())
             if token in eos:
                 break
             generated.append(token)
@@ -713,11 +835,13 @@ class MLXAgentHistoryExecutor:
                 # it beside resident K/V for every decoded token.  This is
                 # intentionally expensive and is never counted as reuse.
                 full_reference_cache = self._new_cache()
-                full_reference_calls += self._prefill(
-                    prompt[:-1], full_reference_cache
+                full_reference_calls += self._prefill_record_aligned(
+                    source,
+                    full_reference_cache,
+                    tuple(state.message_spans.values()),
                 )
                 full_reference_logits = self._evaluate(
-                    prompt[-1:], full_reference_cache
+                    wire, full_reference_cache
                 )
                 full_reference_calls += 1
             if not plan.full_retention and self.require_same_subset_reference:
@@ -1014,14 +1138,19 @@ class MLXAgentHistoryExecutor:
                 or bool(request.resources)
             )
             if not native:
+                template_kwargs = self._template_kwargs(request)
                 prompt = _render(
                     self.tokenizer,
                     request.messages,
                     generation_prompt=True,
-                    chat_template_kwargs=self._template_kwargs(request),
+                    chat_template_kwargs=template_kwargs,
                 )
-                text, generated, elapsed, calls = self._ordinary_generate(
-                    prompt, request.resolved_max_new_tokens
+                text, generated, elapsed, calls = (
+                    self._ordinary_generate_record_aligned(
+                        request.messages,
+                        chat_template_kwargs=template_kwargs,
+                        max_tokens=request.resolved_max_new_tokens,
+                    )
                 )
                 return PRAEngineResult(
                     text=text,

@@ -391,6 +391,51 @@ def test_plain_prefill_is_chunked_and_only_materializes_last_token_logits(fake_m
     )
 
 
+def test_plain_and_resident_prefill_use_stable_record_partitions(fake_mlx) -> None:
+    initial = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    plain_model = _ModelWithNativeBackbone()
+    plain = MLXAgentHistoryExecutor(
+        plain_model,
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        prefill_step_size=64,
+    )
+    resident_model = _ModelWithNativeBackbone()
+    resident = MLXAgentHistoryExecutor(
+        resident_model,
+        _Tokenizer(),
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        prefill_step_size=64,
+    )
+
+    plain.generate(PRAWireRequest(
+        model="fake", messages=initial, max_new_tokens=2
+    ))
+    resident.generate(_request(initial))
+    assert resident_model.model.call_widths == plain_model.model.call_widths
+
+    logical = (*initial, {"role": "assistant", "content": "A"}, {
+        "role": "user", "content": "observation",
+    })
+    plain_model.model.call_widths.clear()
+    resident_model.model.call_widths.clear()
+    plain.generate(PRAWireRequest(
+        model="fake", messages=logical, max_new_tokens=2
+    ))
+    resident.generate(_request(logical, request_id="r2"))
+    assert resident_model.model.call_widths
+    assert resident_model.model.call_widths == plain_model.model.call_widths[
+        -len(resident_model.model.call_widths):
+    ]
+
+
 def test_plain_prefill_falls_back_for_model_without_native_backbone(fake_mlx) -> None:
     model = _Model()
     executor = MLXAgentHistoryExecutor(
