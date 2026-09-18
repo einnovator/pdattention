@@ -19,12 +19,28 @@ from typing import Any, Mapping, Sequence
 
 from .run_autonomous_curve_campaign import _completed_result, _retry_path
 from .run_autonomous_swebench import load_locked_task
-from .upstream_health import probe_generation_health
+from .upstream_health import normalize_ollama_cold_start, probe_generation_health
 
 
 TARGET_SAVING_MIN = 0.30
 TARGET_SAVING_MAX = 0.50
 MAX_SEQUENCE_ISSUES = 20
+
+
+def _normalize_trial_start(
+    *, spec: Mapping[str, Any], args: argparse.Namespace,
+) -> dict[str, Any] | None:
+    contract = dict(spec.get("runtime_qualification") or {})
+    if not contract.get("cold_reset_between_trials"):
+        return None
+    mode = str(contract.get("cold_reset_mode") or "ollama_keep_alive_zero")
+    if mode != "ollama_keep_alive_zero":
+        raise ValueError(f"unsupported cold reset mode: {mode}")
+    return normalize_ollama_cold_start(
+        base_url=args.upstream_base_url,
+        model=str(spec["served_model"]),
+        timeout_seconds=args.health_timeout_seconds,
+    )
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -429,6 +445,14 @@ def _run_same_prefix_full_control(
         return record
     if completed is None:
         runtime_qualification = dict(spec.get("runtime_qualification") or {})
+        normalization = _normalize_trial_start(spec=spec, args=args)
+        record["trial_start_normalization"] = normalization
+        if normalization is not None and not normalization["healthy"]:
+            record.update({
+                "status": "paused_upstream_unhealthy",
+                "reason": "cold trial-start normalization failed",
+            })
+            return record
         health = probe_generation_health(
             base_url=args.upstream_base_url,
             model=str(spec["served_model"]),
@@ -1181,6 +1205,16 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
                     )
                     infrastructure_error = True
                     _write(state_path, state)
+                    break
+                normalization = _normalize_trial_start(spec=spec, args=args)
+                row["episodes"][episode_id]["trial_start_normalization"] = normalization
+                if normalization is not None and not normalization["healthy"]:
+                    row["episodes"][episode_id]["status"] = "paused_upstream_unhealthy"
+                    row["episodes"][episode_id]["reason"] = (
+                        "cold trial-start normalization failed"
+                    )
+                    _write(state_path, state)
+                    infrastructure_error = True
                     break
                 health = probe_generation_health(
                     base_url=args.upstream_base_url,

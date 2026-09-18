@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from experiments.paper8_5_agent_memory.upstream_health import (
+    normalize_ollama_cold_start,
     probe_generation_health,
 )
 
@@ -16,6 +19,47 @@ class _Response:
 
     def read(self) -> bytes:
         return b'{"choices":[{"message":{"content":"OK"}}]}'
+
+
+def test_ollama_cold_start_unloads_then_warms_same_consumer() -> None:
+    calls = []
+
+    class Response:
+        status = 200
+
+        def __init__(self, body: bytes):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return self.body
+
+    responses = [
+        Response(b'{"done":true}'),
+        Response(b'{"choices":[{"message":{"content":"OK"}}]}'),
+    ]
+
+    def opener(request, *, timeout):
+        calls.append((request.full_url, json.loads(request.data), timeout))
+        return responses.pop(0)
+
+    result = normalize_ollama_cold_start(
+        base_url="http://engine.test:11435/v1",
+        model="locked-model",
+        timeout_seconds=7,
+        opener=opener,
+    )
+
+    assert result["healthy"] is True
+    assert calls[0][0] == "http://engine.test:11435/api/generate"
+    assert calls[0][1]["keep_alive"] == 0
+    assert calls[1][0] == "http://engine.test:11435/v1/chat/completions"
+    assert calls[1][1]["seed"] == 0
 
 
 def test_generation_health_requires_all_exact_probes() -> None:

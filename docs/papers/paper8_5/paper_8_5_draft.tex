@@ -340,6 +340,13 @@ is used when endpoint state changes behavior; repeated full-history controls
 measure residual trajectory instability.  A timeout- or transport-contaminated
 execution is quarantined rather than counted.
 
+For the frozen confirmation campaign, ``cold'' is executable rather than a
+label: before every Full and candidate trial the runner sends Ollama
+\texttt{keep\_alive=0}, performs the same temperature-zero OpenAI-path warmup,
+then verifies the active model and 131,072-token context.  The unload, warmup,
+latencies, and context check are persisted in the trial receipt; failure pauses
+the cell before a benchmark action is taken.
+
 The outcome hierarchy is explicit.  \emph{Solution-state success} means that
 the terminal workspace contains a resolving patch.  \emph{Submission success}
 means that the agent emitted the required valid benchmark payload.

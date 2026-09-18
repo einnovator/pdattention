@@ -16,6 +16,82 @@ def _chat_url(base_url: str) -> str:
     return f"{root}/chat/completions" if root.endswith("/v1") else f"{root}/v1/chat/completions"
 
 
+def normalize_ollama_cold_start(
+    *, base_url: str, model: str, timeout_seconds: float = 180.0,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> dict[str, Any]:
+    """Unload and deterministically warm one Ollama model before a trial.
+
+    Ollama's OpenAI-compatible endpoint does not expose ``keep_alive=0``.
+    The native endpoint is therefore used only for the explicit unload; the
+    warmup uses the same OpenAI consumer path as the scored trial.  Any failure
+    is returned as a fail-closed receipt rather than silently continuing with
+    unknown cache state.
+    """
+
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[:-3]
+    unload_payload = json.dumps({
+        "model": model,
+        "prompt": "",
+        "stream": False,
+        "keep_alive": 0,
+    }).encode("utf-8")
+    warmup_payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": "Reply with exactly OK."}],
+        "temperature": 0,
+        "top_p": 1,
+        "seed": 0,
+        "stream": False,
+        "max_tokens": 8,
+    }).encode("utf-8")
+    receipt: dict[str, Any] = {
+        "schema_version": 1,
+        "mode": "ollama_keep_alive_zero_then_openai_warmup",
+        "model": model,
+        "unload_endpoint": f"{root}/api/generate",
+        "warmup_endpoint": _chat_url(base_url),
+        "healthy": False,
+    }
+    try:
+        started = monotonic()
+        request = urllib.request.Request(
+            receipt["unload_endpoint"], data=unload_payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with opener(request, timeout=timeout_seconds) as response:
+            response.read()
+            unload_status = int(getattr(response, "status", 200))
+        receipt["unload"] = {
+            "status": unload_status,
+            "latency_seconds": monotonic() - started,
+        }
+        if unload_status >= 400:
+            raise OSError(f"Ollama unload returned HTTP {unload_status}")
+
+        started = monotonic()
+        request = urllib.request.Request(
+            receipt["warmup_endpoint"], data=warmup_payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with opener(request, timeout=timeout_seconds) as response:
+            warmup_status = int(getattr(response, "status", 200))
+            body = json.loads(response.read().decode("utf-8"))
+        content = str(body["choices"][0]["message"]["content"]).strip()
+        receipt["warmup"] = {
+            "status": warmup_status,
+            "latency_seconds": monotonic() - started,
+            "response_exact": content == "OK",
+        }
+        receipt["healthy"] = warmup_status < 400 and content == "OK"
+    except Exception as error:
+        receipt["error_type"] = type(error).__name__
+        receipt["error_detail"] = str(error)
+    return receipt
+
+
 def probe_generation_health(
     *, base_url: str, model: str, count: int = 3,
     latency_ceiling_seconds: float = 60.0, timeout_seconds: float = 90.0,
