@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from experiments.paper8_5_agent_memory import run_persistent_first_divergence_oracle as oracle
 from experiments.paper8_5_agent_memory.run_persistent_first_divergence_oracle import (
     _causal_group_addback_batches,
     _completed_epoch_addback_batches,
@@ -11,6 +12,38 @@ from experiments.paper8_5_agent_memory.autonomous_proxy import (
 from experiments.paper8_5_agent_memory.materialization import MaterializationMode
 from experiments.paper8_5_agent_memory.multi_issue_session import BoundaryMode
 from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizationMode
+
+
+def test_generation_row_preserves_content_and_finish_reason(monkeypatch):
+    monkeypatch.setattr(
+        oracle,
+        "_post",
+        lambda endpoint, payload, timeout: {
+            "choices": [{
+                "message": {"content": "analysis without a command"},
+                "finish_reason": "length",
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        },
+    )
+    transformation = SimpleNamespace(
+        payload={"messages": []},
+        trace={"selected_messages_sha256": "selected", "oracle_addback": None},
+        plan=SimpleNamespace(selected_tokens=10),
+        materialized_tokens=10,
+    )
+
+    row = oracle._generation_row(
+        arm="candidate",
+        repeat=1,
+        transformation=transformation,
+        endpoint="http://unused",
+        timeout=1,
+    )
+
+    assert row["response_content"] == "analysis without a command"
+    assert row["finish_reason"] == "length"
+    assert row["action_valid"] is False
 
 
 def test_full_control_clone_disables_candidate_only_retirement_options():

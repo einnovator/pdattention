@@ -257,6 +257,8 @@ def _generation_row(
         "materialized_tokens": transformation.materialized_tokens,
         "oracle_addback": transformation.trace.get("oracle_addback"),
         "response_content_sha256": hashlib.sha256(content.encode()).hexdigest(),
+        "response_content": content,
+        "finish_reason": response["choices"][0].get("finish_reason"),
         "action_valid": len(commands) == 1,
         "command": commands[0].strip() if len(commands) == 1 else None,
         "command_sha256": (
