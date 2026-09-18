@@ -2708,17 +2708,23 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
         "schema_version": 1,
         "policy": "persistent_instruction_epoch_retirement",
         "selected_record_ids": [
-            "record-000000",
-            "record-000001",
-            "record-000002",
-            "record-000003",
+            "mini/system",
+            "mini/task",
+            "mini/action",
+            "mini/current",
         ],
-        "record_replacements": {"record-000002": receipt},
+        "record_replacements": {"mini/action": receipt},
     }
 
     transformed, trace = transform_wire_agent_memory_plan_payload(
         payload,
         wire_plan=wire_plan,
+        record_message_indices={
+            "mini/system": 0,
+            "mini/task": 1,
+            "mini/action": 2,
+            "mini/current": 3,
+        },
         mandatory_message_indices=[0, 3],
         session_id="persistent-session",
     )
@@ -2734,9 +2740,7 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
     assert metadata["logical_message_manifest"][2]["content_sha256"] == hashlib.sha256(
         b"large completed response"
     ).hexdigest()
-    assert metadata["materialized_message_replacements"][0]["record_id"] == (
-        "record-000002"
-    )
+    assert metadata["materialized_message_replacements"][0]["record_id"] == "mini/action"
     assert len(metadata["source_wire_plan_digest"]) == 64
 
 
