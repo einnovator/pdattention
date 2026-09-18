@@ -954,7 +954,34 @@ def _metal_disjoint_selected_attention_2pass(
     if head_dim % 32:
         raise ValueError("Two-pass Metal attention requires a 32-aligned head dimension.")
     if groups * query_tokens > 32:
-        raise ValueError("Two-pass Metal attention exceeds one SIMD group plane.")
+        # MLX's vector SDPA launch maps one grouped-query/query-token plane
+        # onto at most 32 SIMD groups.  Positioned compact records can contain
+        # more query tokens than fit in one plane even though every query row
+        # is independent.  Preserve the native two-pass reduction for each
+        # row by tiling only the query axis; the complete selected and local
+        # K/V, including the original causal mask, remains visible to every
+        # tile.  This avoids falling back to the numerically different
+        # single-pass kernel and introduces no selected-K/V materialization.
+        max_query_tokens = 32 // groups
+        if max_query_tokens <= 0:
+            raise ValueError(
+                "Two-pass Metal attention cannot map one grouped query to a SIMD plane."
+            )
+        outputs = tuple(
+            _metal_disjoint_selected_attention_2pass(
+                queries[:, :, start : start + max_query_tokens, :],
+                source_keys,
+                source_values,
+                interval_array,
+                local_keys,
+                local_values,
+                scale=scale,
+                mask=mask[start : start + max_query_tokens, :],
+                blocks=blocks,
+            )
+            for start in range(0, query_tokens, max_query_tokens)
+        )
+        return mx.concatenate(outputs, axis=2)
     if blocks <= 0 or blocks % 32:
         raise ValueError("Two-pass Metal attention requires 32-aligned blocks.")
 

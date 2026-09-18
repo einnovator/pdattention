@@ -104,7 +104,7 @@ def test_disjoint_segmented_attention_matches_one_dense_reference() -> None:
     assert float(mx.max(mx.abs(reference - actual)).item()) <= 2e-3
 
 
-@pytest.mark.parametrize("query_tokens", [1, 4])
+@pytest.mark.parametrize("query_tokens", [1, 4, 20])
 def test_fused_disjoint_two_pass_survives_mostly_future_mask(
     query_tokens: int,
 ) -> None:
