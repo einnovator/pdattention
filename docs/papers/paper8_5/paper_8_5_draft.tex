@@ -114,6 +114,9 @@ on llama.cpp and 40.04\% on MLX.  llama.cpp preserves the eight-call count;
 MLX preserves the solve but uses twelve rather than nine calls, reducing its
 paired K/V-workload saving to 15.23\%.  Logical omission and realized workload
 economics are therefore separate outcomes even after engine correctness passes.
+A generic prior-mutation add-back is rejected: it still solves but rises to
+14 calls and makes selected-K/V work 3.12\% greater than PRA-100 because its
+``mutation'' is an unrelated prior-task patch artifact rather than live evidence.
 \end{abstract}
 
 \iffalse
@@ -1313,6 +1316,22 @@ to justify one targeted prior-mutation-exemplar treatment, but that treatment
 must be evaluated separately rather than credited in advance.  The bundle is
 \path{shared/results/paper8_5_agent_memory/native_engine_transfer/mlx_qwen3coder30b_scikit14496_v1}.
 
+That predeclared generic M1 treatment is negative.  It adds one unrelated
+Django causal group, resolves in 14 calls, and materializes 238,527 tokens.
+This is a 37.29\% reduction against its own longer full-history
+counterfactual, but only 0.17\% against PRA-100 input and 0.05\% after
+completion tokens.  Selected-K/V work is 3.12\% greater than PRA-100 and
+22.26\% greater than E2+F1C.  All 13 sparse requests remain exact at logit
+delta 0.0 with no selected-history re-encoding or copy, isolating the loss to
+selection-induced behavior.  The admitted prior group is a Django
+``final verification'' that redirects a diff to \texttt{patch.txt}; its
+receipt reports only that disposable artifact changed and its displayed
+source diff is malformed.  Command-level write classification is therefore
+not sufficient for a mutation floor.  Mutation exemplars must be
+receipt-qualified, reject disposable submission artifacts, and have a
+resource/DAG path to the live frontier.  Generic prior M1 is stopped rather
+than swept further.
+
 Earlier HF, SGLang, and vLLM request-level rows, and pre-correction MLX rows,
 remain quarantined until fresh \textsc{Full}, PRA-100, and reduced-policy
 autonomous runs complete under the final receipt-position and lifecycle
@@ -1339,7 +1358,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
-Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Corrected llama.cpp preserves 1/1; MLX preserves 2/2 exact cold repeats. They realize 40.23\% and 40.04\% steady-state K/V omission with zero selected-history re-encoding/copy. MLX adds three calls and retains only 15.23\% paired K/V-workload saving. Expand identities; not yet a default. \\
+Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Corrected llama.cpp preserves 1/1; MLX preserves 2/2 exact cold repeats. They realize 40.23\% and 40.04\% steady-state K/V omission with zero selected-history re-encoding/copy. MLX adds three calls and retains only 15.23\% paired K/V-workload saving. Generic M1 is rejected (14 calls and $-3.12$\% paired selected-K/V saving). Expand identities; not yet a default. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1382,7 +1401,10 @@ re-encoding or copy in two exact cold repeats, but its three extra calls reduce
 paired K/V-workload saving to 15.23\%.  This closes the
 logical-to-physical mechanism gap on one identity in two runtimes while
 exposing a repeatable logical-to-behavioral gap. Fresh post-fix autonomous HF,
-SGLang, and vLLM evidence, plus more task identities, are still required.
+SGLang, and vLLM evidence, plus more task identities, are still required.  A
+generic prior-mutation add-back worsens the MLX trajectory to 14 calls and
+$-3.12$\% paired selected-K/V saving; receipt and resource linkage, not a
+command-level mutation label, is required before any such exemplar is kept.
 
 \clearpage
 \appendix
