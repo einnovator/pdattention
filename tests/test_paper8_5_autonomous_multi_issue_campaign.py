@@ -494,6 +494,10 @@ def test_dry_run_can_select_one_registered_strategy_configuration(tmp_path):
         qualifier_command[qualifier_command.index("--persistent-prefix") + 1]
         == episodes[1]["prefix"]
     )
+    assert (
+        qualifier_command[qualifier_command.index("--session-id") + 1]
+        == command[command.index("--session-id") + 1]
+    )
     assert episodes[1]["heuristic_attribution_admissible"] is False
 
 

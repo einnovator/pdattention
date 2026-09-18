@@ -459,7 +459,11 @@ def _run_same_prefix_full_control(
         episode_number=episode_number,
         output=qualification_output,
         prefix=prefix,
-        session_id=f"{session_id}:same-prefix-full",
+        # The control consumes the candidate's exact persistent prefix and is
+        # therefore the same logical session.  The run/cell identity already
+        # distinguishes the control artifact; changing the session ID here
+        # makes episode 2+ prefixes invalid and breaks exact-prefix pairing.
+        session_id=session_id,
         args=args,
     )
     record: dict[str, Any] = {
