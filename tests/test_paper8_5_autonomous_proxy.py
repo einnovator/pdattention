@@ -1438,10 +1438,11 @@ def test_sidecar_sequence_mismatch_fails_closed(tmp_path):
 
 
 class _Upstream:
-    def __init__(self) -> None:
+    def __init__(self, statuses=None) -> None:
         self.requests: list[dict] = []
         self.client_ports: list[int] = []
         self.qualification_requests = 0
+        self.statuses = list(statuses or ())
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -1474,7 +1475,8 @@ class _Upstream:
                         }
                     }],
                 }).encode()
-                self.send_response(200)
+                status = outer.statuses.pop(0) if outer.statuses else 200
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(response)))
                 self.end_headers()
@@ -1596,6 +1598,40 @@ def test_proxy_delivers_exact_wire_plan_to_native_builder(tmp_path):
             "selected_history_kv_copy_bytes": 0,
         }
         assert proxy.health()["kv_metrics_available"] is True
+        assert proxy.health()["successful_request_count"] == 1
+    finally:
+        proxy.close()
+        upstream.close()
+
+
+def test_native_builder_sequence_advances_only_after_success(tmp_path):
+    upstream = _Upstream(statuses=[500, 200, 200])
+    trace = tmp_path / "trace.jsonl"
+    builder_indexes = []
+
+    def native_builder(payload, **kwargs):
+        builder_indexes.append(kwargs["request_index"])
+        return dict(payload)
+
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=3,
+            task_id="task-1", session_id="session-1",
+        ),
+        trace_path=trace,
+        native_request_builder=native_builder,
+    )
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", _payload())[0] == 500
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert builder_indexes == [1, 1, 2]
+        rows = [json.loads(line) for line in trace.read_text().splitlines()]
+        assert [row["request_index"] for row in rows] == [1, 2, 3]
+        assert [row["native_request_index"] for row in rows] == [1, 1, 2]
+        assert proxy.health()["successful_request_count"] == 2
     finally:
         proxy.close()
         upstream.close()

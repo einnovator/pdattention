@@ -1092,6 +1092,7 @@ class AutonomousSelectionProxy:
         self._upstream_io_lock = threading.Lock()
         self._persistent_upstream: http.client.HTTPConnection | None = None
         self._request_count = 0
+        self._successful_request_count = 0
         self._pending_reacquisition_count = 0
         self._pending_reacquisition_resources: tuple[str, ...] = ()
         self._upstream_failure = threading.Event()
@@ -1167,6 +1168,7 @@ class AutonomousSelectionProxy:
             "engine_state_owned": False,
             "kv_metrics_available": self.native_request_builder is not None,
             "request_count": self._request_count,
+            "successful_request_count": self._successful_request_count,
             "max_calls": self.config.max_calls,
             "upstream_failed": self._upstream_failure.is_set(),
         }
@@ -1313,6 +1315,7 @@ class AutonomousSelectionProxy:
         body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
         transformation: AutonomousTransformation | None = None
         request_index: int | None = None
+        native_request_index: int | None = None
         if handler.command == "POST" and urlparse(handler.path).path == "/v1/chat/completions":
             payload = json.loads(body.decode("utf-8"))
             self._validate_generation(payload)
@@ -1323,6 +1326,12 @@ class AutonomousSelectionProxy:
                     )
                 self._request_count += 1
                 request_index = self._request_count
+                # Native bootstrap and turn sequencing belong to successful
+                # logical generations, not raw HTTP attempts.  LiteLLM may
+                # retry a request after selection, transport, or engine
+                # failure; every such attempt must retain the same native
+                # sequence index until an upstream completion succeeds.
+                native_request_index = self._successful_request_count + 1
             transformation = transform_autonomous_payload(
                 payload,
                 self.config,
@@ -1341,7 +1350,7 @@ class AutonomousSelectionProxy:
                         transformation.mandatory_message_indices
                     ),
                     session_id=(self.config.session_id or self.config.task_id),
-                    request_index=request_index,
+                    request_index=native_request_index,
                     count_tokens=self.count_tokens,
                     tokenizer_identity=self.config.tokenizer_identity,
                 )
@@ -1428,6 +1437,16 @@ class AutonomousSelectionProxy:
                 })
             raise
 
+        if transformation is not None and 200 <= int(status) < 300:
+            with self._lock:
+                expected = self._successful_request_count + 1
+                if native_request_index != expected:
+                    raise RuntimeError(
+                        "Native agent request sequencing observed concurrent "
+                        "out-of-order completions."
+                    )
+                self._successful_request_count = expected
+
         if transformation is not None:
             raw_messages = payload.get("messages") or ()
             with self._lock:
@@ -1457,6 +1476,7 @@ class AutonomousSelectionProxy:
             trace = {
                 **transformation.trace,
                 "request_index": request_index,
+                "native_request_index": native_request_index,
                 "generation": {
                     "model": transformation.payload.get("model"),
                     "temperature": transformation.payload.get("temperature"),
