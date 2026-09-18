@@ -332,6 +332,7 @@ def selected_record_plan(
     selected_message_indices: Sequence[int],
     chat_template_kwargs: Mapping[str, Any] | None = None,
     round_up_to_retention_floor: bool = False,
+    resident_spans: Sequence[LiveKVInterval] | None = None,
 ) -> LiveKVSelectionPlan:
     fraction = float(retention_fraction)
     if not 0 < fraction <= 1:
@@ -345,13 +346,19 @@ def selected_record_plan(
             "Selected or mandatory record indices lie outside resident history: "
             + ", ".join(map(str, invalid))
         )
-    spans = causal_message_spans(
-        tokenizer,
-        messages,
-        prompt_ids,
-        source_tokens=source_tokens,
-        chat_template_kwargs=chat_template_kwargs,
+    spans = (
+        tuple(resident_spans)
+        if resident_spans is not None
+        else causal_message_spans(
+            tokenizer,
+            messages,
+            prompt_ids,
+            source_tokens=source_tokens,
+            chat_template_kwargs=chat_template_kwargs,
+        )
     )
+    if any(span.start < 0 or span.end > source_tokens for span in spans):
+        raise RuntimeError("Resident message spans exceed the canonical K/V source.")
     chosen = tuple(
         span for span in spans if int(span.record_id.split(":", 2)[1]) in keep
     )

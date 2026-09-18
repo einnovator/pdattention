@@ -27,9 +27,9 @@ from pra_hf.agent_executor import (
     _render,
     enforce_retention_floor,
     selected_record_plan,
-    split_generation_prompt,
 )
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
+from pra_hf.live_history import LiveKVInterval
 
 from .mlx_live_kv import MLXLiveKVRuntime
 from .native import (
@@ -64,6 +64,91 @@ def _max_abs_delta(left: object, right: object) -> float:
     return float(item() if callable(item) else delta)
 
 
+def _render_text(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    generation_prompt: bool,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> str:
+    rendered = tokenizer.apply_chat_template(
+        [dict(row) for row in messages],
+        tokenize=False,
+        add_generation_prompt=generation_prompt,
+        **dict(chat_template_kwargs or {}),
+    )
+    if not isinstance(rendered, str):
+        raise RuntimeError("MLX live history requires a textual chat-template rendering.")
+    return rendered
+
+
+def _encode_text(tokenizer: object, text: str) -> list[int]:
+    encoded = tokenizer.encode(text, add_special_tokens=False)
+    if hasattr(encoded, "tolist"):
+        encoded = encoded.tolist()
+    if encoded and isinstance(encoded[0], list):
+        encoded = encoded[0]
+    return list(map(int, encoded))
+
+
+def _decode_exact(tokenizer: object, token_ids: Sequence[int]) -> str:
+    kwargs = {
+        "skip_special_tokens": False,
+        "clean_up_tokenization_spaces": False,
+    }
+    try:
+        return str(tokenizer.decode(list(map(int, token_ids)), **kwargs))
+    except TypeError:
+        kwargs.pop("clean_up_tokenization_spaces")
+        return str(tokenizer.decode(list(map(int, token_ids)), **kwargs))
+
+
+def _incremental_generation_prompt(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    canonical_text: str,
+    canonical_tokens: Sequence[int],
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[list[int], list[int], list[int], str]:
+    """Extend live generated tokens from text without re-tokenizing them.
+
+    Decode followed by encode is not an identity for every tokenizer.  A live
+    cache owns the token IDs actually sampled by the model, so later requests
+    append only the template text following that exact decoded prefix.
+    """
+
+    source_text = _render_text(
+        tokenizer,
+        messages,
+        generation_prompt=False,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    prompt_text = _render_text(
+        tokenizer,
+        messages,
+        generation_prompt=True,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    if not prompt_text.startswith(source_text):
+        raise RuntimeError("The chat template generation prompt rewrites completed text.")
+    wire = _encode_text(tokenizer, prompt_text[len(source_text) :])
+    if not wire:
+        raise RuntimeError("The chat template produced no generation-prompt suffix.")
+    if canonical_text:
+        if not source_text.startswith(canonical_text):
+            raise RuntimeError(
+                "The append-stable template rewrote resident logical history text."
+            )
+        source = [
+            *map(int, canonical_tokens),
+            *_encode_text(tokenizer, source_text[len(canonical_text) :]),
+        ]
+    else:
+        source = _encode_text(tokenizer, source_text)
+    return [*source, *wire], source, wire, source_text
+
+
 @dataclass(frozen=True)
 class MLXKVGraftMetrics:
     local_tokens: int
@@ -85,6 +170,8 @@ class _Session:
     source_id: str
     ledger: AgentHistoryLedger = field(default_factory=AgentHistoryLedger)
     canonical_tokens: list[int] = field(default_factory=list)
+    canonical_text: str = ""
+    message_spans: dict[int, LiveKVInterval] = field(default_factory=dict)
     canonical_memory: MLXNativeMemory | None = None
     generation: int = 0
     calls: int = 0
@@ -254,6 +341,58 @@ class MLXAgentHistoryExecutor:
             for row in request.resources
             if row.metadata.get("message_index") is not None
         }))
+
+    @staticmethod
+    def _causal_group(
+        messages: Sequence[Mapping[str, Any]], index: int
+    ) -> str:
+        if index <= 1:
+            return "preamble"
+        for prior in range(index, -1, -1):
+            if str(messages[prior].get("role", "")) == "assistant":
+                return f"turn:{prior}"
+        return "preamble"
+
+    def _update_message_spans(
+        self,
+        state: _Session,
+        messages: Sequence[Mapping[str, Any]],
+        source: Sequence[int],
+        *,
+        source_text: str,
+        chat_template_kwargs: Mapping[str, Any],
+    ) -> None:
+        existing = len(state.message_spans)
+        if existing > len(messages):
+            raise RuntimeError("Logical history truncated resident message spans.")
+        prior_end = max(
+            (span.end for span in state.message_spans.values()), default=0
+        )
+        base_text = state.canonical_text if existing else ""
+        base_tokens = len(state.canonical_tokens) if existing else 0
+        for index in range(existing, len(messages)):
+            boundary_text = _render_text(
+                self.tokenizer,
+                messages[: index + 1],
+                generation_prompt=False,
+                chat_template_kwargs=chat_template_kwargs,
+            )
+            if not boundary_text.startswith(base_text):
+                raise RuntimeError("Chat template rewrote resident message text.")
+            boundary = base_tokens + len(
+                _encode_text(self.tokenizer, boundary_text[len(base_text) :])
+            )
+            state.message_spans[index] = LiveKVInterval(
+                prior_end,
+                boundary,
+                record_id=f"message:{index}:{messages[index].get('role', 'unknown')}",
+                causal_group_id=self._causal_group(messages, index),
+            )
+            prior_end = boundary
+        if prior_end != len(source) or not source_text:
+            raise RuntimeError(
+                "Incremental MLX message spans disagree with canonical source tokens."
+            )
 
     def _new_cache(self):
         from mlx_lm.models.cache import make_prompt_cache
@@ -448,12 +587,22 @@ class MLXAgentHistoryExecutor:
             raise ValueError("Live agent-history PRA requires a complete logical message manifest.")
         messages = state.ledger.reconcile(request)
         template_kwargs = self._template_kwargs(request)
-        prompt, source, wire = split_generation_prompt(
+        prompt, source, wire, source_text = _incremental_generation_prompt(
             self.tokenizer,
             messages,
+            canonical_text=state.canonical_text,
+            canonical_tokens=state.canonical_tokens,
+            chat_template_kwargs=template_kwargs,
+        )
+        self._update_message_spans(
+            state,
+            messages,
+            source,
+            source_text=source_text,
             chat_template_kwargs=template_kwargs,
         )
         newly_encoded, reencoded, extension_graft = self._ensure_source(state, source)
+        state.canonical_text = source_text
         assert state.canonical_memory is not None
 
         source_bootstrap = bool(
@@ -487,6 +636,7 @@ class MLXAgentHistoryExecutor:
                 request.metadata.get("selection_budget_policy")
                 == "causal_bundle_round_up_v1"
             ),
+            resident_spans=tuple(state.message_spans.values()),
         )
         contract = request.metadata.get("selection_contract")
         enforce_retention_floor(
@@ -616,6 +766,17 @@ class MLXAgentHistoryExecutor:
         state.canonical_tokens = [*source, *wire, *generated]
         if terminal is not None:
             state.canonical_tokens.append(terminal)
+        text = str(self.tokenizer.decode(generated, skip_special_tokens=True))
+        assistant_index = len(messages)
+        state.message_spans[assistant_index] = LiveKVInterval(
+            len(source),
+            len(state.canonical_tokens),
+            record_id=f"message:{assistant_index}:assistant",
+            causal_group_id=f"turn:{assistant_index}",
+        )
+        state.canonical_text = _decode_exact(
+            self.tokenizer, state.canonical_tokens
+        )
         state.generation += 1
         self.runtime.register_source(
             state.source_id,
@@ -627,7 +788,6 @@ class MLXAgentHistoryExecutor:
         state.selected_history_reencoded_tokens += reencoded
         state.total_kv_copy_bytes += graft_metrics.total_kv_copy_bytes
         state.calls += 1
-        text = str(self.tokenizer.decode(generated, skip_special_tokens=True))
         state.ledger.append_assistant(text)
 
         active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
@@ -653,6 +813,8 @@ class MLXAgentHistoryExecutor:
             "logical_prompt_tokens": len(prompt),
             "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
             "completion_tokens": len(generated),
+            "output_token_ids": list(generated),
+            "terminal_token_id": terminal,
             "requested_retention_fraction": requested,
             "effective_requested_retention_fraction": effective_requested,
             "realized_retention_fraction": (

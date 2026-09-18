@@ -81,30 +81,110 @@ class _Tokenizer:
     eos_token_id = 0
     chat_template = "fake-append-stable-template"
 
+    _MARKERS = {
+        "system": "\ue010",
+        "user": "\ue020",
+        "assistant": "\ue090",
+        "end": "\ue000",
+    }
+    _MARKER_TOKENS = {
+        "\ue010": 10,
+        "\ue020": 20,
+        "\ue090": 90,
+        "\ue000": 0,
+    }
+
     @staticmethod
     def _content(value: str):
         if value == "A":
             return [3]
-        return [30 + (ord(char) % 50) for char in value]
+        return [100 + ord(char) for char in value]
+
+    def encode(self, value, *, add_special_tokens=False):
+        assert not add_special_tokens
+        result = []
+        for char in value:
+            marker = self._MARKER_TOKENS.get(char)
+            if marker is not None:
+                result.append(marker)
+            else:
+                result.extend(self._content(char))
+        return result
 
     def apply_chat_template(self, messages, *, tokenize, add_generation_prompt, **_):
-        result = []
+        text = ""
         for row in messages:
             role = row["role"]
             if role == "assistant":
-                result.extend([90, *self._content(row.get("content", "")), 0])
+                text += (
+                    self._MARKERS["assistant"]
+                    + row.get("content", "")
+                    + self._MARKERS["end"]
+                )
             else:
-                result.extend([
-                    10 if role == "system" else 20,
-                    *self._content(row.get("content", "")),
-                ])
+                text += self._MARKERS["system" if role == "system" else "user"]
+                text += row.get("content", "")
         if add_generation_prompt:
-            result.append(90)
-        return result
+            text += self._MARKERS["assistant"]
+        return self.encode(text, add_special_tokens=False) if tokenize else text
 
-    def decode(self, token_ids, *, skip_special_tokens):
-        assert skip_special_tokens
-        return "".join("A" if int(token) == 3 else "?" for token in token_ids)
+    def decode(
+        self,
+        token_ids,
+        *,
+        skip_special_tokens,
+        clean_up_tokenization_spaces=False,
+    ):
+        assert not clean_up_tokenization_spaces
+        reverse = {value: key for key, value in self._MARKER_TOKENS.items()}
+        result = []
+        for value in map(int, token_ids):
+            if value in reverse:
+                if not skip_special_tokens:
+                    result.append(reverse[value])
+            elif value == 3:
+                result.append("A")
+            elif value >= 100:
+                result.append(chr(value - 100))
+            else:
+                result.append("?")
+        return "".join(result)
+
+
+class _NonRoundTripTokenizer(_Tokenizer):
+    @staticmethod
+    def _content(value: str):
+        if value == "A":
+            return [4, 5]
+        return [100 + ord(char) for char in value]
+
+    def decode(
+        self,
+        token_ids,
+        *,
+        skip_special_tokens,
+        clean_up_tokenization_spaces=False,
+    ):
+        values = list(map(int, token_ids))
+        result = []
+        index = 0
+        reverse = {value: key for key, value in self._MARKER_TOKENS.items()}
+        while index < len(values):
+            value = values[index]
+            if value in reverse:
+                if not skip_special_tokens:
+                    result.append(reverse[value])
+            elif value == 3:
+                result.append("A")
+            elif value == 4 and index + 1 < len(values) and values[index + 1] == 5:
+                result.append("A")
+                index += 1
+            elif value >= 100:
+                result.append(chr(value - 100))
+            else:
+                result.append("?")
+            index += 1
+        return "".join(result)
 
 
 class _Model:
@@ -265,6 +345,17 @@ def test_frozen_agent_memory_plan_may_underfill_nominal_fraction() -> None:
         100,
         (LiveKVInterval(0, 87, record_id="selected", causal_group_id="turn:1"),),
         source_position_base=100,
+    )
+
+
+def _executor_with_tokenizer(tokenizer):
+    return MLXAgentHistoryExecutor(
+        _Model(),
+        tokenizer,
+        model_id="fake",
+        model_revision="pinned",
+        wire_tail_tokens=1,
+        max_abs_logit_delta=0.005,
     )
 
     enforce_retention_floor(
@@ -459,6 +550,40 @@ def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_m
     assert second_trace["source_bootstrap"] is False
     assert second_trace["native_kv_used"] is True
     assert second_trace["selected_history_reencoded_tokens"] == 0
+
+
+def test_generated_tokens_remain_resident_when_decode_encode_is_not_identity(fake_mlx) -> None:
+    executor = _executor_with_tokenizer(_NonRoundTripTokenizer())
+    initial = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    first = executor.generate(_request(initial))
+    assert first.text == "A"
+
+    second_logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "observation"},
+    )
+    second = executor.generate(_request(second_logical, request_id="r2"))
+    assert second.text == "A"
+    assert second.trace[0]["full_retention"] is True
+    assert second.trace[0]["selected_history_reencoded_tokens"] == 0
+
+    third_logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "next"},
+    )
+    third = executor.generate(_request(
+        third_logical,
+        request_messages=(third_logical[0], third_logical[1], third_logical[-1]),
+        retention=0.5,
+        request_id="r3",
+        selection_contract="arbitrary-subset-mechanism-probe",
+    ))
+    assert third.text == "A"
+    assert third.trace[0]["full_retention"] is False
+    assert third.trace[0]["selected_history_reencoded_tokens"] == 0
+    spans = executor._sessions["session"].message_spans
+    assert tuple(spans) == tuple(range(len(executor._sessions["session"].ledger.messages)))
 
 
 def test_causal_round_up_uses_authoritative_mlx_token_spans(
