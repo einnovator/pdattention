@@ -1367,13 +1367,30 @@ first diverge at request three.  A stopped diagnostic verifies that live source
 token IDs and fresh text retokenization are identical through that request.
 The difference is therefore not a logical selector error; it is numerical
 sensitivity between fresh full prefill and incremental prefix-cache
-continuation.  Paper~8.5 consequently does not score this as a reduced-policy
-result, and PRA-90 remains withheld.  Paper~4.5 must first compare PRA-100 with
-a matched no-selection live-prefix control.  This reinforces the division of
+continuation.  A subsequent selection-neutral live-prefix control uses that
+same incremental consumer while retaining every record.  It matches PRA-100
+on all seven request inputs, assistant responses, and commands, resolves 1/1
+in seven calls, and submits the same patch.  The matched-consumption gate is
+therefore positive even though fresh-prefill action identity is not.  This
+reinforces the division of
 responsibility: this paper estimates policy quality from frozen logical
 records, while engine papers qualify each consumption path independently.  The
 compact audit is in
 \path{shared/results/paper8_5_agent_memory/native_engine_transfer/sglang_qwen3coder30b_scikit14496_postfix_v1}.
+
+Executing E2+F1C through that admitted native consumer produces a valid but
+dominated point.  It preserves the official solve and submits the same
+byte-identical patch, with zero selected-history re-encoding or selected-K/V
+copy on all 14 reuse requests.  Over its realized 15-call trajectory it saves
+35.07\% of selected message-content tokens, 39.21\% after compact closure
+materialization, and 37.21\% of source K/V exposure.  The matched full-history
+consumer, however, solves in seven calls.  Commands agree through request
+three and first diverge at request four; charging the eight extra calls turns
+39.11\% within-trajectory input-plus-completion saving into a 33.10\% paired
+workload increase.  The result therefore preserves accuracy but fails the
+no-call-increase and paired-saving gates.  It is evidence that a policy can
+hit the target retention band and still lose economically, and motivates a
+request-four oracle add-back before any broader task expansion.
 
 Earlier HF request-level rows and pre-correction MLX, SGLang, and vLLM rows
 remain quarantined until fresh \textsc{Full}, PRA-100, and reduced-policy
@@ -1446,8 +1463,12 @@ logical-to-physical mechanism gap on one identity in two runtimes while
 exposing a repeatable logical-to-behavioral gap.  Post-fix SGLang adds a 1/1,
 seven-call, byte-identical-patch PRA-100 result with zero selected-history
 re-encoding/copy, but not fresh-prefill trajectory identity: action three
-diverges despite identical input token IDs.  Its reduced-policy arm is
-therefore withheld pending a matched live-prefix control.  Fresh post-fix
+diverges despite identical input token IDs.  Its selection-neutral live-prefix
+control matches PRA-100 exactly over all seven requests, so reduced-policy
+execution is admissible against that matched consumer.  The admitted E2+F1C
+arm resolves with the identical patch and 39.21\% materialized saving, but its
+15 versus seven calls yield a 33.10\% paired workload increase.  It is a
+policy-quality negative, not a default profile.  Fresh post-fix
 autonomous HF evidence, plus more task identities, is still required.  A
 generic prior-mutation add-back worsens the MLX trajectory to 14 calls and
 $-3.12$\% paired selected-K/V saving; receipt and resource linkage, not a

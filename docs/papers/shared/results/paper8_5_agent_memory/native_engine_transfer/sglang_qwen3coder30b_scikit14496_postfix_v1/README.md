@@ -16,9 +16,20 @@ and fresh text retokenization are identical through request 3. The residual is
 therefore a consumption/numerical-path effect between fresh full prefill and
 incremental prefix-cache continuation, not selection or omitted history.
 
-Paper 8.5 does not score this as a reduced-policy result. PRA-90 remains
-withheld until Paper 4.5 runs a matched no-selection live-prefix control (or
-predeclares a defensible numerical-equivalence criterion). Full traces are in
-the Paper 4.5 engine-gate bundle; `comparison.json` preserves the compact
-cross-paper facts and gate decision.
+The matched no-selection live-prefix control subsequently matches PRA-100 on
+all seven request inputs, responses and commands, resolves 1/1, and submits
+the same patch.  That matched-consumption gate permits a reduced-policy run
+without attributing fresh-prefill numerical sensitivity to selection.
 
+The resulting E2+F1C arm also resolves 1/1 and submits the byte-identical
+patch.  It saves 35.07% of selected message-content tokens, 39.21% after
+compact closure materialization, and 37.21% of source K/V exposure over its
+own 15-call trajectory.  It is nevertheless a valid policy-quality negative:
+the matched FULL control needs seven calls, divergence begins at request four,
+and the 39.11% within-trajectory input-plus-completion saving becomes a 33.10%
+paired workload increase once those extra calls are charged.  E2+F1C is not a
+default-profile candidate on this evidence.  Its next experiment is a
+request-four oracle add-back and stronger current-task progress spine.
+
+Full traces are in the Paper 4.5 engine-gate bundle.  This directory keeps the
+compact comparison plus the E2+F1C metrics, official result and prediction.
