@@ -59,3 +59,19 @@ released. Receipt construction is a correctness path rather than a runtime
 claim: it performs 76.15 MB D2H capture, 239.93 MB host packing, 240.27 MB H2D
 reload, and 12.85 MB receipt-page copy-on-write. The adjacent
 `vllm_cuda_receipt_capture_smoke_v1.json` is the smaller primitive smoke.
+
+The receipt-aware llama.cpp/Metal request-9 run is recorded in
+`llamacpp_qwen3_14b_request9_mixed_v1.json`.  It uses the same frozen Qwen3
+token geometry with a Qwen3-14B-Q4_K_M consumer, retains the same 17,978
+original-position K/V tokens, encodes the same 664 receipt tokens, and appends
+the same 305-token suffix.  It therefore realizes 35.87% history saving after
+receipts, 35.49% total-visible saving, and 38.15% resident-original-K/V
+omission.  Two executions after request-slot cleanup both emit
+`[151667, 198]`; selected history is neither re-encoded nor physically copied,
+and source/request cleanup passes.  Qualification required two additional
+engine corrections: causal interleaving of resident-range attachment with
+old-position receipt evaluation, and forward sparse-position advancement over
+omitted gaps.  The latter continues to reject overlap, reversal, and
+non-contiguous positions within one input batch.  The heavily interrupted host
+run is mechanism evidence only; its timing fields are not used for a runtime
+claim.
