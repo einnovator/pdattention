@@ -612,17 +612,32 @@ def _lost_paired_full_successes(
 ) -> list[str]:
     """Return completed issue IDs lost relative to the paired FULL control."""
 
-    control_id = _control_cell_id(cell, state_cells)
-    control = state_cells.get(control_id) or {}
+    control: Mapping[str, Any] | None = None
+    try:
+        control_id = _control_cell_id(cell, state_cells)
+        control = state_cells.get(control_id) or {}
+    except ValueError:
+        # Exact-prefix campaigns qualify each treatment episode in place and
+        # need no separate persistent-FULL cell.  Their baseline is embedded
+        # in the candidate episode and must drive the same quality gate.
+        if not any(
+            (episode.get("same_prefix_full_control") or {}).get("required")
+            for episode in (row.get("episodes") or {}).values()
+        ):
+            raise
     losses: list[str] = []
     observed = set(observed_episode_ids) if observed_episode_ids is not None else None
     for episode_id, candidate in (row.get("episodes") or {}).items():
         if observed is not None and episode_id not in observed:
             continue
-        baseline = (control.get("episodes") or {}).get(episode_id) or {}
+        baseline = (
+            (control.get("episodes") or {}).get(episode_id) or {}
+            if control is not None
+            else candidate.get("same_prefix_full_control") or {}
+        )
         if (
             candidate.get("status") == "complete"
-            and baseline.get("status") == "complete"
+            and baseline.get("status") in {"complete", "qualified"}
             and baseline.get("official_resolved") is True
             and candidate.get("official_resolved") is False
             and int(candidate.get("cumulative_materialized_tokens") or 0)

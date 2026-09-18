@@ -638,6 +638,40 @@ def test_predeclared_stop_does_not_charge_a_full_equivalent_repeat():
     ) == []
 
 
+def test_predeclared_stop_uses_embedded_same_prefix_full_control():
+    cell = {"sequence_id": "sequence", "repeat": 1}
+    row = {"episodes": {
+        "e1": {
+            "status": "complete",
+            "official_resolved": False,
+            "instance_id": "lost",
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 70,
+            "same_prefix_full_control": {
+                "required": True,
+                "status": "qualified",
+                "official_resolved": True,
+            },
+        },
+        "e2": {
+            "status": "complete",
+            "official_resolved": False,
+            "instance_id": "baseline-failed",
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 100,
+            "same_prefix_full_control": {
+                "required": True,
+                "status": "full_control_unresolved",
+                "official_resolved": False,
+            },
+        },
+    }}
+
+    assert _lost_paired_full_successes(
+        cell=cell, row=row, state_cells={}
+    ) == ["lost"]
+
+
 def test_stopped_prefix_summary_is_failure_aware_and_not_a_complete_cohort():
     rows = [
         {"official_resolved": True, "calls": 2,
