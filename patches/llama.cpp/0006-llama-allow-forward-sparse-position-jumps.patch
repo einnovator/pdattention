@@ -1,0 +1,61 @@
+From e529e60ca3a92551ecd48d5a90604b9a45c402de Mon Sep 17 00:00:00 2001
+From: Jorge Simao <jsimao71@gmail.com>
+Date: Fri, 18 Sep 2026 01:18:59 +0100
+Subject: [PATCH] llama: allow forward sparse position jumps
+
+---
+ src/llama-batch.cpp        | 8 ++++++--
+ tests/test-batch-alloc.cpp | 4 ++--
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/llama-batch.cpp b/src/llama-batch.cpp
+index 2b98a552f..d2e6c1cf2 100644
+--- a/src/llama-batch.cpp
++++ b/src/llama-batch.cpp
+@@ -297,7 +297,11 @@ bool llama_batch_allocr::init(
+             if (p0 >= 0) {
+                 bool ok = true;
+ 
+-                if (seq_pos_min(s) != p0 + 1) {
++                // Explicit positions may jump forward when a caller is
++                // extending a sparse causal sequence. This is required for
++                // resident K/V subsets that preserve original RoPE
++                // coordinates while omitted positions remain absent.
++                if (seq_pos_min(s) <= p0) {
+                     ok = false;
+                 }
+ 
+@@ -306,7 +310,7 @@ bool llama_batch_allocr::init(
+                             "%s: the tokens of sequence %d in the input batch have inconsistent sequence positions:\n"
+                             " - the last position stored in the memory module of the context (i.e. the KV cache) for sequence %d is X = %d\n"
+                             " - the tokens for sequence %d in the input batch have a starting position of Y = %d\n"
+-                            " it is required that the sequence positions remain consecutive: Y = X + 1\n",
++                            " it is required that sequence positions advance: Y > X\n",
+                             __func__, s, s, p0, s, seq_pos_min(s));
+ 
+                     return false;
+diff --git a/tests/test-batch-alloc.cpp b/tests/test-batch-alloc.cpp
+index 66d29d6f5..2fd239127 100644
+--- a/tests/test-batch-alloc.cpp
++++ b/tests/test-batch-alloc.cpp
+@@ -207,7 +207,7 @@ static void test_init(testing & t) {
+         t.assert_equal(12, ba.seq_pos_max(0));
+     });
+ 
+-    t.test("pos_continuity_with_memory", [&](testing & t) {
++    t.test("pos_advancement_with_memory", [&](testing & t) {
+         mock_memory mem;
+         mem.ranges[0] = {0, 9};
+ 
+@@ -223,7 +223,7 @@ static void test_init(testing & t) {
+             batch_builder bb;
+             bb.add(11, {0}, false);
+             bb.add(12, {0}, true);
+-            t.assert_true("gap after memory is rejected", !ba.init(bb.make(), vocab, &mem, bb.n_embd, 4, false));
++            t.assert_true("forward gap after memory is accepted", ba.init(bb.make(), vocab, &mem, bb.n_embd, 4, false));
+         }
+         {
+             batch_builder bb;
+-- 
+2.42.0.windows.2
+

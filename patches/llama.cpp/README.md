@@ -18,6 +18,9 @@ These patches apply in order to upstream llama.cpp revision
 5. `0005-server-interleave-PRA-receipts-with-resident-ranges.patch` attaches
    disjoint resident ranges and evaluates old-position receipts in causal order,
    rather than attaching the final resident tail before an earlier receipt.
+6. `0006-llama-allow-forward-sparse-position-jumps.patch` permits an explicitly
+   positioned token batch to advance across an omitted position gap while still
+   rejecting overlap, reversal, and non-contiguous positions within the batch.
 
 Apply and build:
 
@@ -28,6 +31,7 @@ git am /path/to/patches/llama.cpp/0002-*.patch
 git am /path/to/patches/llama.cpp/0003-*.patch
 git am /path/to/patches/llama.cpp/0004-*.patch
 git am /path/to/patches/llama.cpp/0005-*.patch
+git am /path/to/patches/llama.cpp/0006-*.patch
 cmake -B build -DGGML_METAL=ON -DLLAMA_BUILD_SERVER=ON
 cmake --build build --target llama-server -j
 ```
