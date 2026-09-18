@@ -28,6 +28,7 @@ population accuracy estimate.
 | PRA-100 | 1/1 | 9 | 238,938 | 689 | 0 | 0 B |
 | E2+F1C | 1/1 | 12 | 192,762 | 883 | 0 | 0 B |
 | E2+F1C cold repeat | 1/1 | 12 | 192,762 | 883 | 0 | 0 B |
+| E2+F1C + generic prior M1 | 1/1 | 14 | 238,527 | 989 | 0 | 0 B |
 
 All eleven post-bootstrap E2+F1C requests pass the same-subset gate with
 maximum absolute logit delta exactly 0.0. The sparse requests expose 302,031
@@ -58,6 +59,25 @@ retiring detail from earlier instruction epochs. The exact cold repeat makes
 the call penalty stable enough to justify one targeted prior-mutation-exemplar
 treatment; broad policy sweeping remains unwarranted.
 
+The predeclared generic prior-mutation add-back is a negative result. It adds
+one unrelated Django causal group (513 message-content tokens on the first
+request), still resolves, but expands the trajectory to 14 calls. It saves
+37.29% against its own longer full-history counterfactual yet only 0.17%
+against PRA-100 materialized input; after completion tokens the paired saving
+is 0.05%. Selected-K/V work is 3.12% higher than PRA-100 and 22.26% higher
+than E2+F1C. All 13 sparse requests remain same-subset exact at delta 0.0,
+with zero selected-history re-encoding and zero selected-history K/V copy, so
+the failure is policy/behavioral rather than an engine error.
+
+The add-back itself explains the failure mode. Its selected prior turn is an
+unrelated Django ``final verification'' whose shell command redirects a diff
+to `patch.txt`; the authoritative receipt reports only `patch.txt` changed,
+and the displayed source diff is malformed. A command-level ``write'' label
+is therefore insufficient evidence for a reusable mutation exemplar. Future
+mutation floors must be receipt-qualified, exclude disposable submission
+artifacts, and require a resource/DAG link to the live frontier. The generic
+M1 treatment is rejected rather than expanded.
+
 The immutable traces were emitted before a shell-classifier correction: a
 diagnostic redirect such as `find ... 2>/dev/null` was labeled as a write.
 That label was not consumed by E2+F1C, so official outcomes, selected record
@@ -75,8 +95,12 @@ eager disjoint reference with unsuitable numerical drift (delta 0.703125),
 and a positioned oracle whose full/vector dispatch differed from the candidate
 (delta 0.53125). Runtime revision `4451c522` aligns candidate and oracle
 receipt prefill with MLX vector SDPA and is the first qualifying revision.
+The first post-classifier M1 attempt is also quarantined: it reused a resident
+engine session ID, correctly failed source-bootstrap replacement, and produced
+no assistant action. The admitted M1 run follows a cold engine restart and has
+14/14 successful upstream responses.
 
-`e2f1c/`, `e2f1c_repeat2/`, and `pra100/` contain immutable manifests,
+`e2f1c/`, `e2f1c_repeat2/`, `m1_prior_mutation/`, and `pra100/` contain immutable manifests,
 request-level selection and engine metrics, official grader results,
 persistent-episode exports, and the complete mini-swe-agent trajectories.
 `summary.json` is the reduced comparison.

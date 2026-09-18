@@ -57,7 +57,9 @@ omit approximately 40\% of steady-state historical K/V without re-encoding or
 copying selected history.  llama.cpp preserves the eight-call solution, whereas
 MLX preserves the solve but adds three calls and realizes only 15.23\% paired
 K/V-workload saving.  Engine correctness and workload utility are therefore
-separate gates.
+separate gates.  A generic prior-mutation add-back is rejected: it resolves in
+14 calls but drives selected-K/V work 3.12\% above PRA-100 by retaining an
+unrelated prior-task patch artifact.
 \end{abstract}
 
 \section{Introduction}
@@ -3726,6 +3728,18 @@ A second cold execution reproduces all twelve request inputs, assistant
 contents, shell commands, token totals, and zero-delta same-subset gates
 exactly.  The three-call penalty is therefore repeatable on this identity.
 
+A targeted diagnostic then enables one generic prior-mutation turn.  It still
+resolves, but expands to 14 calls and materializes 238,527 tokens.  This saves
+37.29\% against the treatment's own longer full-history counterfactual but only
+0.17\% against PRA-100 message input; selected-K/V work is 3.12\% greater than
+PRA-100 and 22.26\% greater than E2+F1C.  All 13 sparse requests remain exact
+at logit delta 0.0 with zero selected-history re-encoding or copy.  The added
+group is an unrelated Django finalization whose receipt reports only a
+\texttt{patch.txt} write and whose displayed source diff is malformed.  This
+rejects command-level generic mutation floors: a future floor must require an
+authoritative source/workspace mutation receipt and a resource/DAG path to the
+live frontier.
+
 No corresponding post-fix autonomous HF, SGLang, or vLLM row exists yet;
 their older request and agent rows cannot be pooled with these results.
 
@@ -4886,6 +4900,9 @@ K/V-workload saving.  Both engines
 re-encode zero selected-history tokens and copy zero selected K/V bytes.  Fresh
 end-to-end \textsc{Full}, PRA-100, and frozen-policy executions remain required
 for HF, SGLang, and vLLM; their older request-level figures are not substituted.
+The generic MLX M1 add-back is rejected: although it resolves, its 14 calls
+produce $-3.12$\% paired selected-K/V saving and expose an unrelated
+artifact-writing turn as a false mutation exemplar.
 Easy-14
 native expansion remains locked until every target engine passes that sequence
 and the reduced-history policy independently passes Paper~8.5's logical-quality
