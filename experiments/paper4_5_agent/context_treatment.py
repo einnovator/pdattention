@@ -832,6 +832,7 @@ def transform_wire_agent_memory_plan_payload(
         "source_wire_plan_digest": source_wire_plan_digest,
         "realized_retention_fraction": realized_retention,
         "history_projection": "live-agent-kv-v1",
+        "agent_memory_request_index": int(request_index),
         "selection_complete": set(selected_indices) == set(range(len(messages))),
         "logical_message_manifest": [
             {

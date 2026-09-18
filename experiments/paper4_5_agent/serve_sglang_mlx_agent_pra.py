@@ -191,6 +191,9 @@ def _direct_handler(adapter: object, model: str):
                     "source_bootstrap_contract": metadata.get(
                         "source_bootstrap_contract"
                     ),
+                    "agent_memory_request_index": metadata.get(
+                        "agent_memory_request_index"
+                    ),
                     "source_bootstrap_messages": (
                         len(bootstrap) if isinstance(bootstrap, list) else None
                     ),
