@@ -607,6 +607,20 @@ task-clustered identity.}
 \label{tab:editorial-headline-policies}
 \end{table}
 
+A separately frozen baseline-conditional continuation avoids discarding the
+rest of a persistent sequence when \textsc{Full} fails.  It withholds the
+policy for that identity, carries the exact completed \textsc{Full} episode
+into the ordinary session, and qualifies the next identity from that shared
+prefix.  Across its first three held-out identities, \textsc{Full} resolves
+1/3; Recent Frontier is therefore eligible only on the middle identity and
+resolves it in the same 21 calls.  Both arms materialize 265,272 cumulative
+input tokens and all 21 assistant-command, assistant-content, and selected-
+message digest tuples match.  The 0\% saving is expected: M2 retains the two
+most recent user prompts, so a two-task session has no older instruction epoch
+to retire.  This is exact abstention and session-carry evidence, not yet an
+accuracy--saving point.  The fourth identity paused before launch on an
+upstream cold-normalization failure and is not scored.
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=.80\linewidth]{../shared/results/paper8_5_agent_memory/v2_trajectory_economics/trajectory_economics.pdf}
