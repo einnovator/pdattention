@@ -3756,8 +3756,32 @@ diagnostic is released under the MLX bundle's
 \path{first_divergence_oracle} subdirectory and is excluded from utility and
 speed claims.
 
-No corresponding post-fix autonomous HF, SGLang, or vLLM row exists yet;
-their older request and agent rows cannot be pooled with these results.
+A post-fix autonomous SGLang-MLX row now separates mechanism correctness from
+fresh-prefill trajectory identity.  On Scikit-learn-14496 with
+Qwen3-Coder-30B-A3B-Instruct 4-bit, ordinary fresh-prefill \textsc{Full} and
+native live-K/V PRA-100 both resolve 1/1, use seven calls, retain the same
+operation class on every aligned call, and submit a byte-identical patch.  The
+PRA arm bootstraps 26,370 source tokens once, then records six native-reuse
+calls with zero selected-history re-encoding, selected-K/V copy, host-to-device
+bytes, or suffix-graft bytes.  Replacing the former second-full-cache and
+suffix-graft path reduces its measured steady-state consumer temporary peak
+from roughly 3.2--3.6\,GB per call (and a call-7 Metal OOM) to at most
+41,559,048 bytes; the distinct bootstrap peak is 5,439,660,158 bytes.
+
+The two arms nevertheless first diverge at action three.  A stopped
+three-request diagnostic verifies exact equality between the live source token
+IDs and fresh text retokenization through that divergence.  This excludes
+selection, omitted records, and retokenization as causes and localizes the
+difference to numerical sensitivity between fresh full prefill and incremental
+prefix-cache continuation.  Consequently this row qualifies official success,
+call count, final patch, and zero-copy/no-re-encoding mechanics, but not the
+strict fresh-prefill exact-action-trajectory gate.  PRA-90 remains withheld
+until PRA-100 matches a no-selection live-prefix control, or a predeclared
+numerical-equivalence criterion replaces byte-exact actions.  The auditable
+bundle is
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_scikit14496_qwen3coder30b_postfix_v1}.
+No corresponding post-fix autonomous HF row exists yet; older HF request and
+agent rows cannot be pooled with these results.
 
 Earlier task-02--04 utility rows predate this cross-engine freeze and remain
 diagnostic evidence for retention-policy design; they do not authorize an
@@ -4906,16 +4930,23 @@ for discovering cache-reconstruction, position-base, retention-floor, and
 physical-copy defects, but they were executed before the final corrected engine
 and policy-transfer contract.  Consequently none estimates current autonomous
 task accuracy or the cross-engine quality--saving frontier.  Current autonomous
-evidence is limited to one identity on corrected llama.cpp and MLX.  The
+evidence is limited to one identity per corrected llama.cpp, MLX, vLLM, and
+SGLang-MLX path, with different gate outcomes.  The
 llama.cpp row has two repeat-exact \textsc{Full} controls and an exact PRA-100
 control that each solve in eight calls; E2+F1C also solves in eight calls with
 39.88\% materialized-token saving and 40.23\% steady-state K/V omission.  The
 MLX row resolves in two exact cold E2+F1C repeats of twelve calls, versus nine
 calls under PRA-100, with 40.04\% steady-state omission but only 15.23\% paired
 K/V-workload saving.  Both engines
-re-encode zero selected-history tokens and copy zero selected K/V bytes.  Fresh
-end-to-end \textsc{Full}, PRA-100, and frozen-policy executions remain required
-for HF, SGLang, and vLLM; their older request-level figures are not substituted.
+re-encode zero selected-history tokens and copy zero selected K/V bytes.  The
+post-fix SGLang-MLX \textsc{Full}/PRA-100 pair also preserves 1/1 resolution,
+seven calls, and a byte-identical patch with zero selected-history
+re-encoding/copy, but first diverges at action three despite identical input
+token IDs.  It therefore remains negative under the strict fresh-prefill
+trajectory gate and its reduced-policy arm is withheld.  Fresh end-to-end
+\textsc{Full}, PRA-100, and frozen-policy execution remains required for HF;
+SGLang requires a matched live-prefix control before policy execution, and the
+older request-level figures are not substituted.
 The generic MLX M1 add-back is rejected: although it resolves, its 14 calls
 produce $-3.12$\% paired selected-K/V saving and expose an unrelated
 artifact-writing turn as a false mutation exemplar.
