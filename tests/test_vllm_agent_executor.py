@@ -116,6 +116,7 @@ def _request(
     retention=1.0,
     resources=(),
     selection_contract=None,
+    source_bootstrap=False,
 ):
     metadata = {
         "history_projection": "live-agent-kv-v1",
@@ -125,6 +126,11 @@ def _request(
     }
     if selection_contract is not None:
         metadata["selection_contract"] = selection_contract
+    if source_bootstrap:
+        metadata.update({
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": list(messages),
+        })
     return PRAWireRequest(
         model="tiny",
         messages=tuple(messages[index] for index in mandatory),
@@ -175,6 +181,49 @@ def test_stateful_bridge_stores_then_loads_only_suffix_with_exact_commands() -> 
     ]
     assert second.raw["usage"]["completion_tokens"] == 1
     assert driver.evictions
+
+
+def test_initial_vllm_store_imports_full_history_before_sparse_selection() -> None:
+    driver = _Driver()
+    executor = VLLMCudaAgentHistoryExecutor(
+        driver,
+        _Tokenizer(),
+        model_id="tiny",
+        chat_template_digest=hashlib.sha256(b"stable").hexdigest(),
+    )
+    logical = (
+        {"role": "system", "content": "rules-long-enough"},
+        {"role": "user", "content": "old-task-long-enough"},
+        {"role": "assistant", "content": "old-action-long-enough"},
+        {"role": "user", "content": "current-long-enough"},
+    )
+    first = executor.generate(_request(
+        logical,
+        (0, 3),
+        retention=0.5,
+        source_bootstrap=True,
+    ))
+    trace = first.trace[0]
+
+    assert trace["consumption_mode"] == "initial_store"
+    assert trace["source_bootstrap"] is True
+    assert trace["selection_deferred_until_source_resident"] is True
+    assert trace["native_kv_used"] is False
+    assert trace["full_retention"] is True
+    assert tuple(executor._sessions["s"].ledger.messages[:-1]) == logical
+
+    next_logical = tuple(executor._sessions["s"].ledger.messages) + (
+        {"role": "user", "content": "next-result"},
+    )
+    second = executor.generate(_request(
+        next_logical,
+        (0, 1, len(next_logical) - 1),
+        retention=0.9,
+        selection_contract="arbitrary-subset-mechanism-probe",
+    ))
+    assert second.trace[0]["source_bootstrap"] is False
+    assert second.trace[0]["native_kv_used"] is True
+    assert second.trace[0]["selected_history_reencoded_tokens"] == 0
 
 
 def test_plain_control_bypasses_scheduler_aliases_and_reports_usage() -> None:

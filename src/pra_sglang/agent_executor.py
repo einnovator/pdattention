@@ -443,6 +443,25 @@ class AgentHistoryLedger:
         if len(mandatory) != len(request.messages):
             raise ValueError("Mandatory message indices do not match wire messages.")
         values: list[dict[str, Any] | None] = [None] * len(rows)
+        bootstrap_contract = request.metadata.get("source_bootstrap_contract")
+        bootstrap = request.metadata.get("source_bootstrap_logical_messages")
+        if bootstrap_contract is not None or bootstrap is not None:
+            if bootstrap_contract != "full-logical-history-once-v1":
+                raise ValueError("Unsupported live-history source bootstrap contract.")
+            if self.messages:
+                raise ValueError(
+                    "Live-history source bootstrap cannot replace resident state."
+                )
+            if not isinstance(bootstrap, list) or not all(
+                isinstance(message, Mapping) for message in bootstrap
+            ):
+                raise ValueError("Live-history source bootstrap must be a message list.")
+            if len(bootstrap) != len(rows):
+                raise ValueError(
+                    "Live-history source bootstrap does not match the manifest length."
+                )
+            for index, message in enumerate(bootstrap):
+                values[index] = dict(message)
         for index, prior in enumerate(self.messages[: len(values)]):
             values[index] = dict(prior)
         for index, message in zip(mandatory, request.messages):
@@ -1037,6 +1056,11 @@ class SGLangMLXAgentHistoryExecutor:
         )
         newly_encoded, reencoded = self._ensure_owner(state, source)
 
+        source_bootstrap = bool(
+            state.calls == 0
+            and request.metadata.get("source_bootstrap_contract")
+            == "full-logical-history-once-v1"
+        )
         requested = float(
             request.metadata.get(
                 "target_retention_fraction",
@@ -1052,12 +1076,16 @@ class SGLangMLXAgentHistoryExecutor:
         selected_indices = (
             self._selected_message_indices(request) if live_projection else ()
         )
+        effective_requested = requested
+        if source_bootstrap:
+            effective_requested = 1.0
+            selected_indices = tuple(range(len(messages)))
         plan = selected_record_plan(
             self.tokenizer,
             messages,
             prompt,
             source_tokens=len(source),
-            retention_fraction=requested,
+            retention_fraction=effective_requested,
             mandatory_message_indices=mandatory,
             selected_message_indices=selected_indices,
             chat_template_kwargs=template_kwargs,
@@ -1069,7 +1097,7 @@ class SGLangMLXAgentHistoryExecutor:
         selection_contract = request.metadata.get("selection_contract")
         enforce_retention_floor(
             plan,
-            requested,
+            effective_requested,
             selection_contract=(
                 None if selection_contract is None else str(selection_contract)
             ),
@@ -1197,7 +1225,7 @@ class SGLangMLXAgentHistoryExecutor:
         trace = {
             "stage": "native_attach",
             "engine": "sglang-mlx",
-            "native_kv_used": True,
+            "native_kv_used": not source_bootstrap,
             "native_attached_resources": [
                 resource.resource_id for resource in request.resources
             ],
@@ -1205,11 +1233,19 @@ class SGLangMLXAgentHistoryExecutor:
             "selected_kv_tokens": copy_metrics["selected_kv_tokens"],
             "wire_tokens": len(wire),
             "requested_retention_fraction": requested,
+            "effective_requested_retention_fraction": effective_requested,
             "realized_retention_fraction": plan.selected_tokens / max(len(source), 1),
             "engine_reported_history_kv_retention_fraction": (
                 plan.selected_tokens / max(len(source), 1)
             ),
             "full_retention": bool(plan.full_retention),
+            "source_bootstrap": source_bootstrap,
+            "source_bootstrap_tokens": len(prompt) if source_bootstrap else None,
+            "source_bootstrap_cached_tokens": 0 if source_bootstrap else None,
+            "source_bootstrap_evaluated_tokens": (
+                len(prompt) if source_bootstrap else None
+            ),
+            "selection_deferred_until_source_resident": source_bootstrap,
             "selection_contract": selection_contract or "minimum-retention-floor",
             "pra_100_semantic_noop": bool(plan.full_retention),
             "exact_trajectory_eligible": bool(plan.full_retention),

@@ -247,6 +247,51 @@ def test_ledger_restores_history_but_never_tokenizes_selected_resource() -> None
     assert tokenizer.values == []
 
 
+def test_ledger_imports_full_logical_history_once_before_sparse_selection() -> None:
+    logical = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "current observation"},
+    )
+    request = PRAWireRequest(
+        model="m",
+        messages=(logical[0], logical[-1]),
+        metadata={
+            "history_projection": "live-agent-kv-v1",
+            "logical_message_manifest": _manifest(logical),
+            "mandatory_message_indices": [0, 3],
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": list(logical),
+        },
+    )
+    ledger = AgentHistoryLedger()
+
+    assert ledger.reconcile(request) == logical
+    with pytest.raises(ValueError, match="cannot replace resident state"):
+        ledger.reconcile(request)
+
+
+def test_ledger_rejects_incomplete_or_unknown_source_bootstrap() -> None:
+    logical = ({"role": "user", "content": "task"},)
+    metadata = {
+        "history_projection": "live-agent-kv-v1",
+        "logical_message_manifest": _manifest(logical),
+        "mandatory_message_indices": [0],
+        "source_bootstrap_contract": "unknown",
+        "source_bootstrap_logical_messages": list(logical),
+    }
+    request = PRAWireRequest(model="m", messages=logical, metadata=metadata)
+    with pytest.raises(ValueError, match="Unsupported live-history"):
+        AgentHistoryLedger().reconcile(request)
+
+    metadata["source_bootstrap_contract"] = "full-logical-history-once-v1"
+    metadata["source_bootstrap_logical_messages"] = []
+    request = PRAWireRequest(model="m", messages=logical, metadata=metadata)
+    with pytest.raises(ValueError, match="manifest length"):
+        AgentHistoryLedger().reconcile(request)
+
+
 def test_record_plan_preserves_full_source_extent_and_original_positions() -> None:
     tokenizer = _Tokenizer()
     messages = (

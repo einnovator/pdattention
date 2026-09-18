@@ -229,6 +229,31 @@ def test_ledger_recovers_prior_assistant_without_tokenizing_resource_text() -> N
     assert ledger.reconcile(request) == logical
 
 
+def test_sglang_ledger_imports_full_logical_history_once() -> None:
+    logical = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "current observation"},
+    )
+    request = PRAWireRequest(
+        model="m",
+        messages=(logical[0], logical[-1]),
+        metadata={
+            "history_projection": "live-agent-kv-v1",
+            "logical_message_manifest": _manifest(logical),
+            "mandatory_message_indices": [0, 3],
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": list(logical),
+        },
+    )
+    ledger = AgentHistoryLedger()
+
+    assert ledger.reconcile(request) == logical
+    with pytest.raises(ValueError, match="cannot replace resident state"):
+        ledger.reconcile(request)
+
+
 def test_ledger_rejects_stale_or_mutated_resident_history() -> None:
     ledger = AgentHistoryLedger([{"role": "system", "content": "old"}])
     request = PRAWireRequest(

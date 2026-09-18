@@ -203,10 +203,31 @@ def _executor(model=None):
     )
 
 
-def _request(messages, *, request_messages=None, retention=1.0, request_id="r1"):
+def _request(
+    messages,
+    *,
+    request_messages=None,
+    retention=1.0,
+    request_id="r1",
+    source_bootstrap=False,
+    selection_contract=None,
+):
     rows = tuple(messages)
     sent = tuple(request_messages or rows)
     mandatory = [rows.index(row) for row in sent]
+    metadata = {
+        "history_projection": "live-agent-kv-v1",
+        "logical_message_manifest": _manifest(rows),
+        "mandatory_message_indices": mandatory,
+        "target_retention_fraction": retention,
+    }
+    if source_bootstrap:
+        metadata.update({
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": list(rows),
+        })
+    if selection_contract is not None:
+        metadata["selection_contract"] = selection_contract
     return PRAWireRequest(
         model="fake",
         messages=sent,
@@ -214,12 +235,7 @@ def _request(messages, *, request_messages=None, retention=1.0, request_id="r1")
         tenant_id="tenant",
         session_id="session",
         max_new_tokens=2,
-        metadata={
-            "history_projection": "live-agent-kv-v1",
-            "logical_message_manifest": _manifest(rows),
-            "mandatory_message_indices": mandatory,
-            "target_retention_fraction": retention,
-        },
+        metadata=metadata,
     )
 
 
@@ -399,6 +415,50 @@ def test_pra100_then_pra90_reuses_history_and_separates_copy_metrics(fake_mlx) -
     assert executor.runtime.registry.view(source_id) is not None
     executor.close_session("session")
     assert executor.runtime.registry.view(source_id) is None
+
+
+def test_source_bootstrap_defers_selection_until_full_history_is_resident(fake_mlx) -> None:
+    executor = _executor()
+    logical = (
+        {"role": "system", "content": "S" * 40},
+        {"role": "user", "content": "U" * 40},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "O" * 40},
+    )
+    first = executor.generate(_request(
+        logical,
+        request_messages=(logical[0], logical[-1]),
+        retention=0.5,
+        source_bootstrap=True,
+    ))
+    first_trace = first.trace[0]
+
+    assert tuple(executor._sessions["session"].ledger.messages[:-1]) == logical
+    assert first_trace["source_bootstrap"] is True
+    assert first_trace["selection_deferred_until_source_resident"] is True
+    assert first_trace["native_kv_used"] is False
+    assert first_trace["full_retention"] is True
+    assert first_trace["requested_retention_fraction"] == 0.5
+    assert first_trace["effective_requested_retention_fraction"] == 1.0
+    assert first_trace["source_bootstrap_evaluated_tokens"] == first_trace[
+        "logical_prompt_tokens"
+    ]
+    assert first_trace["selected_history_reencoded_tokens"] == 0
+
+    next_logical = tuple(executor._sessions["session"].ledger.messages) + (
+        {"role": "user", "content": "N" * 40},
+    )
+    second = executor.generate(_request(
+        next_logical,
+        request_messages=(next_logical[0], next_logical[1], next_logical[-1]),
+        retention=0.9,
+        request_id="r2",
+        selection_contract="arbitrary-subset-mechanism-probe",
+    ))
+    second_trace = second.trace[0]
+    assert second_trace["source_bootstrap"] is False
+    assert second_trace["native_kv_used"] is True
+    assert second_trace["selected_history_reencoded_tokens"] == 0
 
 
 def test_causal_round_up_uses_authoritative_mlx_token_spans(

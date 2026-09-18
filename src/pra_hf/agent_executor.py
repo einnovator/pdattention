@@ -219,6 +219,25 @@ class AgentHistoryLedger:
         if len(mandatory) != len(request.messages):
             raise ValueError("Mandatory message indices do not match wire messages.")
         values: list[dict[str, Any] | None] = [None] * len(rows)
+        bootstrap_contract = request.metadata.get("source_bootstrap_contract")
+        bootstrap = request.metadata.get("source_bootstrap_logical_messages")
+        if bootstrap_contract is not None or bootstrap is not None:
+            if bootstrap_contract != "full-logical-history-once-v1":
+                raise ValueError("Unsupported live-history source bootstrap contract.")
+            if self.messages:
+                raise ValueError(
+                    "Live-history source bootstrap cannot replace resident state."
+                )
+            if not isinstance(bootstrap, list) or not all(
+                isinstance(message, Mapping) for message in bootstrap
+            ):
+                raise ValueError("Live-history source bootstrap must be a message list.")
+            if len(bootstrap) != len(rows):
+                raise ValueError(
+                    "Live-history source bootstrap does not match the manifest length."
+                )
+            for index, message in enumerate(bootstrap):
+                values[index] = dict(message)
         for index, prior in enumerate(self.messages[: len(values)]):
             values[index] = dict(prior)
         for index, message in zip(mandatory, request.messages):
@@ -906,20 +925,33 @@ class HFAgentHistoryExecutor:
             len(prompt), request.resolved_max_new_tokens
         )
         newly_encoded, reencoded, owner_copy = self._ensure_owner(state, source)
+        source_bootstrap = bool(
+            state.calls == 0
+            and request.metadata.get("source_bootstrap_contract")
+            == "full-logical-history-once-v1"
+        )
         requested = float(
             request.metadata.get(
                 "target_retention_fraction",
                 request.metadata.get("budget_fraction", 1.0),
             )
         )
+        effective_requested = requested
         mandatory = tuple(map(int, request.metadata.get("mandatory_message_indices", ())))
         selected = self._selected_message_indices(request) if live_projection else ()
+        if source_bootstrap:
+            # Import the canonical session through the same complete-history
+            # path used by FULL. Sparse selection starts only after that
+            # source is resident, so the first visible action is not selected
+            # from a partially imported transcript.
+            effective_requested = 1.0
+            selected = tuple(range(len(messages)))
         plan = selected_record_plan(
             self.tokenizer,
             messages,
             prompt,
             source_tokens=len(source),
-            retention_fraction=requested,
+            retention_fraction=effective_requested,
             mandatory_message_indices=mandatory,
             selected_message_indices=selected,
             chat_template_kwargs=template_kwargs,
@@ -931,7 +963,7 @@ class HFAgentHistoryExecutor:
         selection_contract = request.metadata.get("selection_contract")
         enforce_retention_floor(
             plan,
-            requested,
+            effective_requested,
             selection_contract=(
                 None if selection_contract is None else str(selection_contract)
             ),
@@ -1041,7 +1073,7 @@ class HFAgentHistoryExecutor:
         trace = {
             "stage": "native_attach",
             "engine": "huggingface",
-            "native_kv_used": True,
+            "native_kv_used": not source_bootstrap,
             "consumption_mode": mode,
             "source_tokens": len(source),
             "selected_kv_tokens": plan.selected_tokens,
@@ -1050,11 +1082,19 @@ class HFAgentHistoryExecutor:
             "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
             "completion_tokens": len(generated),
             "requested_retention_fraction": requested,
+            "effective_requested_retention_fraction": effective_requested,
             "realized_retention_fraction": plan.selected_tokens / max(len(source), 1),
             "engine_reported_history_kv_retention_fraction": (
                 plan.selected_tokens / max(len(source), 1)
             ),
             "full_retention": bool(plan.full_retention),
+            "source_bootstrap": source_bootstrap,
+            "source_bootstrap_tokens": len(prompt) if source_bootstrap else None,
+            "source_bootstrap_cached_tokens": 0 if source_bootstrap else None,
+            "source_bootstrap_evaluated_tokens": (
+                len(prompt) if source_bootstrap else None
+            ),
+            "selection_deferred_until_source_resident": source_bootstrap,
             "selection_contract": selection_contract or "minimum-retention-floor",
             "selected_history_reencoded_tokens": reencoded,
             "new_history_encoded_tokens": newly_encoded,

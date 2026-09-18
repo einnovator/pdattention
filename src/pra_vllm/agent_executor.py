@@ -653,6 +653,11 @@ class VLLMCudaAgentHistoryExecutor:
                 raise ValueError("Request chat template digest does not match the engine.")
             state = self._session(request)
             messages = state.ledger.reconcile(request)
+            source_bootstrap = bool(
+                state.calls == 0
+                and request.metadata.get("source_bootstrap_contract")
+                == "full-logical-history-once-v1"
+            )
             prior_history_tokens = len(state.history_tokens)
             prompt_text, prompt = self._incremental_prompt(state, messages)
             new_request_tokens = len(prompt) - prior_history_tokens
@@ -811,7 +816,7 @@ class VLLMCudaAgentHistoryExecutor:
             trace = {
                 "stage": "vllm_scheduler_agent_alias",
                 "engine": "vllm-cuda",
-                "native_kv_used": True,
+                "native_kv_used": not source_bootstrap,
                 "consumption_mode": mode,
                 "source_logical_key": state.source_key,
                 "source_generation": state.generation,
@@ -826,6 +831,9 @@ class VLLMCudaAgentHistoryExecutor:
                 "retention_rounded_up": retention_rounded_up,
                 "selected_kv_tokens": selected_tokens,
                 "requested_retention_fraction": requested,
+                "effective_requested_retention_fraction": (
+                    1.0 if source_bootstrap else requested
+                ),
                 "realized_retention_fraction": selected_tokens
                 / max(command.source_position_base, 1),
                 "realized_historical_kv_retention": selected_tokens
@@ -835,6 +843,15 @@ class VLLMCudaAgentHistoryExecutor:
                 "full_retention": bool(
                     selected_tokens == command.source_position_base
                 ),
+                "source_bootstrap": source_bootstrap,
+                "source_bootstrap_tokens": (
+                    len(prompt) if source_bootstrap else None
+                ),
+                "source_bootstrap_cached_tokens": 0 if source_bootstrap else None,
+                "source_bootstrap_evaluated_tokens": (
+                    len(prompt) if source_bootstrap else None
+                ),
+                "selection_deferred_until_source_resident": source_bootstrap,
                 "selection_contract": request.metadata.get(
                     "selection_contract", "minimum-retention-floor"
                 ),
