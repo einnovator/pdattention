@@ -10,6 +10,11 @@ These patches apply in order to upstream llama.cpp revision
 2. `0002-server-pra-support-live-prefix-rollback.patch` adds exact common-prefix
    rollback for parser-rejected agent actions before a replacement suffix is
    attached.
+3. `0003-server-pra-pin-restored-agent-slots.patch` restores source ownership when
+   a saved live agent slot is reloaded.
+4. `0004-server-encode-PRA-receipts-at-original-positions.patch` evaluates compact
+   materialized-history receipts once at their original causal positions while
+   retaining selected source K/V by zero-copy sequence membership.
 
 Apply and build:
 
@@ -17,6 +22,8 @@ Apply and build:
 git checkout 458681e1d5d4a29a1463c4732e03226cf384b997
 git am /path/to/patches/llama.cpp/0001-*.patch
 git am /path/to/patches/llama.cpp/0002-*.patch
+git am /path/to/patches/llama.cpp/0003-*.patch
+git am /path/to/patches/llama.cpp/0004-*.patch
 cmake -B build -DGGML_METAL=ON -DLLAMA_BUILD_SERVER=ON
 cmake --build build --target llama-server -j
 ```

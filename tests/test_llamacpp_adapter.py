@@ -5,6 +5,7 @@ from pra_llamacpp import (
     LlamaCppEngineAdapter,
     LlamaCppLivePrefixPlan,
     LlamaCppLivePrefixRange,
+    LlamaCppPositionedHistorySpan,
     LlamaCppNativeServerExecutor,
     LlamaCppRuntimeProvider,
 )
@@ -111,6 +112,7 @@ class FakeNativeServerExecutor(LlamaCppNativeServerExecutor):
                 "protocol": "pra.llama.cpp/v1",
                 "native_sequence_attach": True,
                 "live_prefix_kv_subset": True,
+                "positioned_materialized_history": True,
             }
         if path == "/apply-template":
             return {"prompt": "<|im_start|>user\nquestion<|im_end|>\n<|im_start|>assistant\n"}
@@ -136,6 +138,10 @@ class FakeNativeServerExecutor(LlamaCppNativeServerExecutor):
                     "selected_kv_tokens": selected,
                     "reused_kv_tokens": selected,
                     "selected_text_reencoded_tokens": 0,
+                    "materialized_history_encoded_tokens": sum(
+                        len(row["token_ids"])
+                        for row in payload.get("pra_materialized_history", ())
+                    ),
                     "commit_succeeded": payload["pra_commit_to_source"],
                     "physical_kv_copy": False,
                 },
@@ -246,6 +252,9 @@ def test_live_prefix_executor_sends_multiple_ranges_and_rejects_reencoding() -> 
             LlamaCppLivePrefixRange("task", "task", "task", 0, 4),
             LlamaCppLivePrefixRange("recent", "recent", "turn:2", 12, 16),
         ),
+        materialized_history=(
+            LlamaCppPositionedHistorySpan("closure", 8, (41, 42)),
+        ),
     )
 
     result = executor.generate_live_prefix(
@@ -258,6 +267,29 @@ def test_live_prefix_executor_sends_multiple_ranges_and_rejects_reencoding() -> 
         if payload and payload.get("pra_source_slot") == 0
     )
     assert len(call["pra_selected_ranges"]) == 2
+    assert call["pra_materialized_history"] == [{
+        "record_id": "closure",
+        "position_start": 8,
+        "token_ids": [41, 42],
+    }]
     assert call["prompt"] == [99, 100]
     assert result.trace[0]["selected_kv_tokens"] == 8
     assert result.trace[0]["selected_text_reencoded_tokens"] == 0
+    assert result.trace[0]["materialized_history_encoded_tokens"] == 2
+
+
+def test_live_prefix_plan_rejects_receipt_overlap_with_resident_kv() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="must not overlap selected"):
+        LlamaCppLivePrefixPlan(
+            source_slot=0,
+            source_tokens=16,
+            ranges=(
+                LlamaCppLivePrefixRange("task", "task", "task", 0, 4),
+                LlamaCppLivePrefixRange("recent", "recent", "turn:2", 12, 16),
+            ),
+            materialized_history=(
+                LlamaCppPositionedHistorySpan("bad", 3, (41, 42)),
+            ),
+        )

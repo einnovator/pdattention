@@ -1,0 +1,238 @@
+From 52f98259800253c5874f6d09a494b541ac97cef4 Mon Sep 17 00:00:00 2001
+From: Jorge Simao <jsimao71@gmail.com>
+Date: Fri, 18 Sep 2026 00:44:58 +0100
+Subject: [PATCH] server: encode PRA receipts at original positions
+
+---
+ tools/server/server-context.cpp | 87 +++++++++++++++++++++++++++++++--
+ tools/server/server-task.cpp    |  1 +
+ tools/server/server-task.h      | 11 +++++
+ 3 files changed, 96 insertions(+), 3 deletions(-)
+
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 5149f27b5..0f9b63f01 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -301,6 +301,7 @@ struct server_slot {
+     // Pinned PRA resources remain idle but are unavailable to ordinary LRU
+     // scheduling and unified-cache idle eviction until explicitly erased.
+     bool pra_resource_pinned = false;
++    size_t pra_materialized_history_cursor = 0;
+ 
+     bool prompt_save(server_prompt_cache & prompt_cache) const {
+         if (prompt.tokens.size() == 0) {
+@@ -402,6 +403,7 @@ struct server_slot {
+         n_accepted_per_pos.clear();
+ 
+         n_predict_max = -1;
++        pra_materialized_history_cursor = 0;
+ 
+         llama_set_sampler(ctx_tgt, id, nullptr);
+ 
+@@ -1825,6 +1827,31 @@ private:
+                 previous_end = range.end;
+                 selected_tokens += range.end - range.start;
+             }
++            auto positioned = task.pra_materialized_history;
++            std::sort(positioned.begin(), positioned.end(), [](const auto & left, const auto & right) {
++                return left.position < right.position;
++            });
++            llama_pos previous_position = -1;
++            for (const auto & item : positioned) {
++                if (item.token == LLAMA_TOKEN_NULL || item.position < 0 ||
++                        item.position >= source.prompt.n_tokens()) {
++                    send_error(task, "PRA materialized-history token is outside the live source prefix", ERROR_TYPE_INVALID_REQUEST);
++                    return false;
++                }
++                if (item.position <= previous_position) {
++                    send_error(task, "PRA materialized-history positions must be strictly increasing", ERROR_TYPE_INVALID_REQUEST);
++                    return false;
++                }
++                const bool overlaps_selected = std::any_of(ranges.begin(), ranges.end(), [&](const auto & range) {
++                    return range.start <= item.position && item.position < range.end;
++                });
++                if (overlaps_selected) {
++                    send_error(task, "PRA materialized history overlaps selected resident K/V", ERROR_TYPE_INVALID_REQUEST);
++                    return false;
++                }
++                previous_position = item.position;
++            }
++            task.pra_materialized_history = std::move(positioned);
+             for (const auto & range : ranges) {
+                 registered.emplace(range.record_id, range);
+             }
+@@ -2034,6 +2061,8 @@ private:
+         // the per-request limit takes priority over the global one
+         slot.n_predict_max = task.params.n_predict != -1 ? task.params.n_predict : params_base.n_predict;
+ 
++        slot.pra_materialized_history_cursor = 0;
++
+         slot.task = std::make_unique<const server_task>(std::move(task));
+ 
+         if (slot.task->pra_pin_resource) {
+@@ -2384,6 +2413,7 @@ private:
+         res->pra_source_tokens     = slot.task->pra_source_tokens;
+         res->pra_selected_records  = (int32_t) slot.task->pra_selected_ranges.size();
+         res->pra_selected_text_reencoded_tokens = 0;
++        res->pra_materialized_history_encoded_tokens = (int32_t) slot.task->pra_materialized_history.size();
+         res->pra_committed_tokens = pra_committed_tokens;
+         res->pra_boundary_tokens_pending = pra_boundary_tokens_pending;
+         res->pra_commit_succeeded = pra_commit_succeeded;
+@@ -3788,8 +3818,27 @@ private:
+                     const auto & spans = slot.task->params.message_spans;
+                     const auto last_user_pos = spans.last_user_message_pos();
+ 
++                    // Encode compact receipts at their original logical
++                    // positions before appending the ordinary suffix. The
++                    // selected source ranges already share this sequence by
++                    // membership, so receipt attention sees the same sparse
++                    // causal prefix without re-evaluating selected history.
++                    const auto positioned_start = slot.pra_materialized_history_cursor;
++                    while (slot.pra_materialized_history_cursor < slot.task->pra_materialized_history.size() &&
++                            batch.size() < n_batch) {
++                        const auto & item = slot.task->pra_materialized_history[slot.pra_materialized_history_cursor++];
++                        add_ok &= batch.add(slot.id,
++                            item.token,
++                            /* pos       = */ item.position,
++                            /* output    = */ false,
++                            /* is_prompt = */ true);
++                    }
++                    const auto n_positioned_tokens_cur =
++                        slot.pra_materialized_history_cursor - positioned_start;
++
+                     // add prompt tokens for processing in the current batch
+-                    while (slot.prompt.n_tokens() < slot.task->n_tokens() && batch.size() < n_batch) {
++                    while (slot.pra_materialized_history_cursor == slot.task->pra_materialized_history.size() &&
++                            slot.prompt.n_tokens() < slot.task->n_tokens() && batch.size() < n_batch) {
+                         // get next token to process
+                         llama_token cur_tok = input_tokens[slot.prompt.n_tokens()];
+                         if (cur_tok == LLAMA_TOKEN_NULL) {
+@@ -3849,7 +3898,9 @@ private:
+                     // the number of tokens added to the batch for the current slot
+                     const auto n_tokens_cur = batch.size() - n_tokens_prev;
+ 
+-                    const auto n_tokens_start = slot.prompt.n_tokens() - n_tokens_cur;
++                    const auto n_ordinary_tokens_cur = n_tokens_cur - n_positioned_tokens_cur;
++
++                    const auto n_tokens_start = slot.prompt.n_tokens() - n_ordinary_tokens_cur;
+ 
+                     const bool near_prompt_end = slot.task->n_tokens() < slot.prompt.n_tokens() + n_ubatch;
+ 
+@@ -3857,7 +3908,8 @@ private:
+                     const bool is_last_user_message = n_tokens_start == last_user_pos;
+ 
+                     // entire prompt has been processed
+-                    if (slot.prompt.n_tokens() == slot.task->n_tokens()) {
++                    if (slot.pra_materialized_history_cursor == slot.task->pra_materialized_history.size() &&
++                            slot.prompt.n_tokens() == slot.task->n_tokens()) {
+                         slot.state = SLOT_STATE_DONE_PROMPT;
+ 
+                         GGML_ASSERT(batch.size() > 0);
+@@ -3877,6 +3929,10 @@ private:
+                         }
+                     }
+ 
++                    if (n_positioned_tokens_cur > 0) {
++                        do_checkpoint = false;
++                    }
++
+                     const auto pos_min = llama_memory_seq_pos_min(llama_get_memory(ctx_tgt), slot.id);
+                     const auto pos_max = llama_memory_seq_pos_max(llama_get_memory(ctx_tgt), slot.id);
+ 
+@@ -4609,6 +4665,29 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
+                     json_value(value, "end", 0),
+                 });
+             }
++            const json pra_materialized = json_value(data, "pra_materialized_history", json::array());
++            if (!pra_materialized.is_array()) {
++                throw std::runtime_error("pra_materialized_history must be an array");
++            }
++            for (const auto & span : pra_materialized) {
++                if (!span.is_object()) {
++                    throw std::runtime_error("each PRA materialized-history span must be an object");
++                }
++                const llama_pos start = json_value(span, "position_start", -1);
++                const json tokens = json_value(span, "token_ids", json::array());
++                if (start < 0 || !tokens.is_array() || tokens.empty()) {
++                    throw std::runtime_error("PRA materialized-history spans require a position and token IDs");
++                }
++                for (size_t offset = 0; offset < tokens.size(); ++offset) {
++                    if (!tokens[offset].is_number_integer()) {
++                        throw std::runtime_error("PRA materialized-history token IDs must be integers");
++                    }
++                    task.pra_materialized_history.push_back(server_pra_positioned_token {
++                        tokens[offset].get<llama_token>(),
++                        start + (llama_pos) offset,
++                    });
++                }
++            }
+             if (task.pra_source_slot >= 0 && task.pra_resource_slot >= 0) {
+                 throw std::runtime_error("choose live-prefix ranges or a detached PRA resource, not both");
+             }
+@@ -5128,6 +5207,8 @@ void server_routes::init_routes() {
+             {"detached_resource_request_field", "pra_resource_slot"},
+             {"live_prefix_source_field", "pra_source_slot"},
+             {"live_prefix_ranges_field", "pra_selected_ranges"},
++            {"positioned_materialized_history_field", "pra_materialized_history"},
++            {"positioned_materialized_history", params.kv_unified},
+             {"resource_release_endpoint", "/pra/resources/{id_slot}"},
+         });
+         return res;
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 0045998d9..2475ce60d 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -377,6 +377,7 @@ json server_task_result_cmpl_final::to_json_non_oaicompat() {
+             {"selected_kv_tokens", pra_native_tokens},
+             {"reused_kv_tokens", pra_native_tokens},
+             {"selected_text_reencoded_tokens", pra_selected_text_reencoded_tokens},
++            {"materialized_history_encoded_tokens", pra_materialized_history_encoded_tokens},
+             {"committed_tokens", pra_committed_tokens},
+             {"boundary_tokens_pending", pra_boundary_tokens_pending},
+             {"commit_succeeded", pra_commit_succeeded},
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index eb82bb976..0544a8574 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -141,6 +141,11 @@ struct server_pra_kv_range {
+     llama_pos end   = 0;
+ };
+ 
++struct server_pra_positioned_token {
++    llama_token token    = LLAMA_TOKEN_NULL;
++    llama_pos   position = 0;
++};
++
+ struct server_task {
+     int id = -1; // to be filled by server_queue
+ 
+@@ -176,6 +181,10 @@ struct server_task {
+     int32_t pra_source_prefix_tokens = -1;
+     bool    pra_commit_to_source = false;
+     std::vector<server_pra_kv_range> pra_selected_ranges;
++    // Compact receipts are evaluated once at their original logical
++    // positions. They are not selected source text and therefore are
++    // accounted separately from the zero-reencode K/V ranges above.
++    std::vector<server_pra_positioned_token> pra_materialized_history;
+ 
+     // only used by CLI, this allow tokenizing CLI inputs on server side
+     // we need this because mtmd_context and vocab are not accessible outside of server_context
+@@ -267,6 +276,7 @@ struct server_task {
+         copy.pra_source_prefix_tokens = pra_source_prefix_tokens;
+         copy.pra_commit_to_source = pra_commit_to_source;
+         copy.pra_selected_ranges = pra_selected_ranges;
++        copy.pra_materialized_history = pra_materialized_history;
+ 
+         // use different sampling seed for each child
+         // note: https://github.com/ggml-org/llama.cpp/pull/18700#discussion_r2675115723
+@@ -371,6 +381,7 @@ struct server_task_result_cmpl_final : server_task_result {
+     int32_t pra_source_tokens = 0;
+     int32_t pra_selected_records = 0;
+     int32_t pra_selected_text_reencoded_tokens = 0;
++    int32_t pra_materialized_history_encoded_tokens = 0;
+     int32_t pra_committed_tokens = 0;
+     int32_t pra_boundary_tokens_pending = 0;
+     bool    pra_commit_succeeded = false;
+-- 
+2.42.0.windows.2
+

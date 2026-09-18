@@ -67,16 +67,43 @@ class LlamaCppLivePrefixRange:
 
 
 @dataclass(frozen=True)
+class LlamaCppPositionedHistorySpan:
+    """New compact history encoded at its original logical positions."""
+
+    record_id: str
+    position_start: int
+    token_ids: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "token_ids", tuple(int(token) for token in self.token_ids))
+        if not self.record_id or self.position_start < 0 or not self.token_ids:
+            raise ValueError("Positioned history requires an ID, position, and tokens.")
+
+    @property
+    def position_end(self) -> int:
+        return self.position_start + len(self.token_ids)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id,
+            "position_start": self.position_start,
+            "token_ids": list(self.token_ids),
+        }
+
+
+@dataclass(frozen=True)
 class LlamaCppLivePrefixPlan:
     """Validated zero-reencode selection from one live llama.cpp prefix."""
 
     source_slot: int
     source_tokens: int
     ranges: tuple[LlamaCppLivePrefixRange, ...]
+    materialized_history: tuple[LlamaCppPositionedHistorySpan, ...] = ()
     commit_to_source: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "ranges", tuple(self.ranges))
+        object.__setattr__(self, "materialized_history", tuple(self.materialized_history))
         if self.source_slot < 0 or self.source_tokens <= 0 or not self.ranges:
             raise ValueError("A live-prefix plan requires a source slot, tokens, and ranges.")
         cursor = -1
@@ -91,6 +118,19 @@ class LlamaCppLivePrefixPlan:
         # active/recent tail; fail here instead of surfacing a decode-time 500.
         if max(span.end for span in self.ranges) != self.source_tokens:
             raise ValueError("Live-prefix selection must retain the source tail.")
+        prior_end = -1
+        for span in sorted(
+            self.materialized_history,
+            key=lambda row: (row.position_start, row.position_end),
+        ):
+            if span.position_end > self.source_tokens or span.position_start < prior_end:
+                raise ValueError("Positioned history must be nonoverlapping and within its source.")
+            if any(
+                selected.start < span.position_end and span.position_start < selected.end
+                for selected in self.ranges
+            ):
+                raise ValueError("Positioned history must not overlap selected resident K/V.")
+            prior_end = span.position_end
 
     @property
     def selected_tokens(self) -> int:
@@ -104,6 +144,10 @@ class LlamaCppLivePrefixPlan:
                 return False
             cursor = span.end
         return cursor == self.source_tokens
+
+    @property
+    def materialized_tokens(self) -> int:
+        return sum(len(span.token_ids) for span in self.materialized_history)
 
 
 class LlamaCppSlotClient:
@@ -315,6 +359,12 @@ class LlamaCppNativeServerExecutor:
 
         if not bool(self._capabilities.get("live_prefix_kv_subset", False)):
             raise RuntimeError("llama-server does not expose live-prefix K/V selection.")
+        if plan.materialized_history and not bool(
+            self._capabilities.get("positioned_materialized_history", False)
+        ):
+            raise RuntimeError(
+                "llama-server does not expose positioned materialized history."
+            )
         slot = self.request_slot if request_slot is None else int(request_slot)
         if slot == plan.source_slot:
             raise ValueError("PRA source and request slots must differ.")
@@ -327,6 +377,9 @@ class LlamaCppNativeServerExecutor:
                     "pra_source_slot": plan.source_slot,
                     "pra_source_prefix_tokens": plan.source_tokens,
                     "pra_selected_ranges": [span.to_dict() for span in plan.ranges],
+                    "pra_materialized_history": [
+                        span.to_dict() for span in plan.materialized_history
+                    ],
                     "pra_commit_to_source": plan.commit_to_source,
                     "n_predict": request.resolved_max_new_tokens,
                     "cache_prompt": True,
@@ -351,6 +404,8 @@ class LlamaCppNativeServerExecutor:
             raise RuntimeError("llama-server re-encoded selected live-prefix text.")
         if int(pra.get("selected_kv_tokens", -1)) != plan.selected_tokens:
             raise RuntimeError("llama-server selected-token telemetry does not match the plan.")
+        if int(pra.get("materialized_history_encoded_tokens", -1)) != plan.materialized_tokens:
+            raise RuntimeError("llama-server materialized-history telemetry does not match the plan.")
         if plan.commit_to_source and not bool(pra.get("commit_succeeded", False)):
             raise RuntimeError("llama-server did not commit newly evaluated live state.")
         return PRAEngineResult(
@@ -365,6 +420,7 @@ class LlamaCppNativeServerExecutor:
                     "source_tokens": plan.source_tokens,
                     "selected_kv_tokens": plan.selected_tokens,
                     "selected_text_reencoded_tokens": 0,
+                    "materialized_history_encoded_tokens": plan.materialized_tokens,
                     "full_retention": plan.full_retention,
                     "physical_kv_copy": False,
                 },
