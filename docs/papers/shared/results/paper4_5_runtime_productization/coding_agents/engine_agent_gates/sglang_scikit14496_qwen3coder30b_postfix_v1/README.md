@@ -12,6 +12,7 @@ tokenizer revision, mini-swe-agent 2.4.6, and the official SWE-bench grader.
 |---|---:|---:|---|---:|
 | ordinary fresh-prefill FULL | 1.0 | 7 | reference patch | 563.03 s |
 | native live-K/V PRA-100 | 1.0 | 7 | byte-identical | 279.48 s |
+| selection-neutral live-prefix FULL | 1.0 | 7 | byte-identical | 134.61 s |
 
 The corrected PRA-100 path reports zero selected-history re-encoding, zero
 selected-history K/V copy, zero host-to-device bytes, and zero canonical
@@ -36,16 +37,20 @@ difference is therefore consumption/numerical path sensitivity between fresh
 full prefill and incremental prefix-cache continuation, not selection,
 retokenization, or omitted history.
 
-This result qualifies task success and the zero-copy/no-re-encoding mechanics,
-but it does **not** satisfy the stricter fresh-prefill exact-action-trajectory
-gate. PRA-90/E2+F1C remains blocked pending a matched live-prefix control or a
-predeclared numerical-equivalence criterion.
+The matched selection-neutral live-prefix control resolves the ambiguity.  It
+uses the same incremental consumer without excluding any record.  All seven
+request-input digests, assistant-content digests, and command digests match
+PRA-100 exactly; the submitted patch is also byte-identical.  Thus the
+fresh-prefill trajectory gate remains negative, but the matched-consumption
+PRA-100 gate is positive.  PRA-90/E2+F1C is now allowed as a selection-quality
+experiment.  Wall times remain single-run provenance, not a speed claim.
 
 ## Files
 
 - `full/`: ordinary FULL manifest, trace, metrics, official result and patch.
 - `pra100/`: corrected native PRA-100 artifacts.
+- `live_prefix_control/`: repeat-exact, selection-neutral incremental-cache
+  control used for the matched-consumption gate.
 - `live_replay_diagnostic/`: stopped three-request diagnostic with live-versus-
   replay token identity counters; it is not an official task result.
 - `comparison.json`: compact paired reduction.
-

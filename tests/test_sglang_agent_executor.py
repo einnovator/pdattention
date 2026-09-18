@@ -405,6 +405,55 @@ def test_sglang_ledger_imports_full_logical_history_once() -> None:
         ledger.reconcile(request)
 
 
+def test_sglang_ledger_accepts_only_declared_exact_materialized_replacement() -> None:
+    logical = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "large finalization"},
+        {"role": "user", "content": "current task"},
+    )
+    receipt = "[PRA memory] completed"
+    resource = PRAWireResource(
+        resource_id="receipt",
+        uri="pra://history/receipt",
+        text=receipt,
+        metadata={"message_index": 2},
+    )
+    metadata = {
+        "history_projection": "live-agent-kv-v1",
+        "logical_message_manifest": _manifest(logical),
+        "mandatory_message_indices": [0, 3],
+        "source_bootstrap_contract": "full-logical-history-once-v1",
+        "source_bootstrap_logical_messages": list(logical),
+        "record_message_indices": {"record-000002": 2},
+        "materialized_message_replacements": [{
+            "record_id": "record-000002",
+            "message_index": 2,
+            "role": "assistant",
+            "content": receipt,
+            "content_sha256": hashlib.sha256(receipt.encode()).hexdigest(),
+        }],
+    }
+
+    assert AgentHistoryLedger().reconcile(PRAWireRequest(
+        model="m",
+        messages=(logical[0], logical[-1]),
+        resources=(resource,),
+        metadata=metadata,
+    )) == logical
+    bad = dict(metadata)
+    bad["materialized_message_replacements"] = [dict(
+        metadata["materialized_message_replacements"][0], content="different"
+    )]
+    with pytest.raises(RuntimeError, match="content digest"):
+        AgentHistoryLedger().reconcile(PRAWireRequest(
+            model="m",
+            messages=(logical[0], logical[-1]),
+            resources=(resource,),
+            metadata=bad,
+        ))
+
+
 def test_ledger_rejects_stale_or_mutated_resident_history() -> None:
     ledger = AgentHistoryLedger([{"role": "system", "content": "old"}])
     request = PRAWireRequest(
@@ -484,6 +533,32 @@ def test_full_retention_is_one_original_position_interval() -> None:
     # At 100%, record routing is a semantic no-op: the native request receives
     # exactly the same source-position extent as the ordinary dense prompt.
     assert plan == plan.full(plan.source_tokens)
+
+
+def test_nominal_full_budget_with_replacement_excludes_original_record() -> None:
+    tokenizer = _Tokenizer()
+    messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "large completion"},
+        {"role": "user", "content": "next"},
+    )
+    prompt = tokenizer.apply_chat_template(
+        messages, tokenize=True, add_generation_prompt=True
+    )
+    source_tokens = len(prompt) - len("<assistant>")
+    plan = selected_record_plan(
+        tokenizer,
+        messages,
+        prompt,
+        source_tokens=source_tokens,
+        retention_fraction=1.0,
+        mandatory_message_indices=(0, 1, 3),
+        selected_message_indices=(),
+    )
+
+    assert plan.full_retention is False
+    assert all("message:2:" not in row.record_id for row in plan.intervals)
 
 
 def test_declared_retention_floor_rejects_underfilled_record_selection() -> None:
@@ -686,6 +761,127 @@ def test_selected_sampler_prompt_matches_full_and_sparse_visible_context() -> No
     sparse_prompt = _selected_sampler_prompt(source, wire, sparse)
     assert sparse_prompt == same_subset
     assert _token_digest(sparse_prompt) == _token_digest(same_subset)
+
+
+def test_selected_sampler_prompt_interleaves_positioned_receipt() -> None:
+    source = [10, 11, 12, 13, 14, 15]
+    wire = [20]
+    sparse = LiveKVSelectionPlan.create(
+        len(source),
+        (
+            LiveKVInterval(0, 2, record_id="a"),
+            LiveKVInterval(4, 6, record_id="b"),
+        ),
+        source_position_base=len(source),
+    )
+    receipt = SimpleNamespace(position_start=2, token_ids=(90, 91), tokens=2)
+
+    assert _selected_sampler_prompt(
+        source,
+        wire,
+        sparse,
+        materialized_history=(receipt,),
+    ) == [10, 11, 90, 91, 14, 15, 20]
+
+
+def test_positioned_sparse_start_repositions_receipts_and_restores_history() -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = []
+            self._req_token_ids = {}
+            self._active = False
+
+        def has_request(self, request_id):
+            return self._active
+
+        def prefill_start(
+            self, request_id, new_tokens, full_tokens, prefix, slots, pool,
+            *, needs_logits,
+        ):
+            self.calls.append(("prefill", list(new_tokens), needs_logits))
+            return SimpleNamespace(kind="prefill", req_id=request_id, tokens=list(new_tokens))
+
+        def prefill_finalize(self, pending):
+            self._active = True
+            self._req_token_ids[pending.req_id] = [*pending.tokens, 0]
+            return 0
+
+        def extend_start(self, request_id, tokens, slots, *, needs_logits):
+            self.calls.append(("extend", list(tokens), needs_logits))
+            return SimpleNamespace(kind="extend", req_id=request_id, tokens=list(tokens))
+
+        def extend_finalize(self, pending):
+            prior = self._req_token_ids[pending.req_id]
+            prior.pop()
+            prior.extend(pending.tokens)
+            prior.append(77)
+            return 77
+
+        def eval_pending(self, pending):
+            self.calls.append(("eval", pending.kind))
+
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    executor.runner = Runner()
+    executor.prefill_step_size = 8
+    positions = []
+    executor.bridge = SimpleNamespace(
+        set_query_start=lambda request_id, start: positions.append(
+            (request_id, start)
+        )
+    )
+    receipts = (
+        SimpleNamespace(position_start=2, token_ids=(90, 91), tokens=2),
+        SimpleNamespace(position_start=8, token_ids=(92,), tokens=1),
+    )
+    sampler = [10, 11, 90, 91, 14, 15, 92, 20]
+
+    token, calls = executor._start_positioned_sparse_generation(
+        "request",
+        materialized_history=receipts,
+        wire=(20,),
+        sampler_prompt=sampler,
+        source_position_base=12,
+    )
+
+    assert (token, calls) == (77, 2)
+    assert positions == [("request", 2), ("request", 8), ("request", 12)]
+    assert executor.runner.calls == [
+        ("prefill", [90, 91], False),
+        ("eval", "prefill"),
+        ("extend", [92], False),
+        ("eval", "extend"),
+        ("extend", [20], True),
+        ("eval", "extend"),
+    ]
+    assert executor.runner._req_token_ids["request"] == [*sampler, 77]
+
+
+def test_graft_skips_positioned_receipt_kv() -> None:
+    class Cache:
+        def __init__(self, values):
+            self.keys = np.asarray(values, dtype=np.float32).reshape(1, 1, -1, 1)
+            self.values = (self.keys + 100).copy()
+            self.offset = len(values)
+
+    owner = Cache([1, 2, 0, 0, 0, 0])
+    owner.offset = 2
+    local = Cache([90, 91, 20, 21])
+    wrapped = SimpleNamespace(local_cache=local)
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+
+    grafted, copied = executor._graft_local_kv(
+        (owner,),
+        (wrapped,),
+        source_tokens=2,
+        expected_local_tokens=2,
+        ignored_leading_local_tokens=2,
+    )
+
+    assert grafted == 2
+    assert copied == 16
+    assert owner.offset == 4
+    assert owner.keys.reshape(-1)[:4].tolist() == [1, 2, 20, 21]
+    assert owner.values.reshape(-1)[:4].tolist() == [101, 102, 120, 121]
 
 
 def test_source_replay_diagnostics_locate_non_roundtripping_suffix() -> None:

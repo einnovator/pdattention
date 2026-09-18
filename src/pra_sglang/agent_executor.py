@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Sequence
 
+from pra_hf.agent_executor import positioned_materialized_history
 from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 from pra_hf.engine_memory import LogicalPRABlockStore
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
@@ -164,18 +165,47 @@ def _execution_plan(plan: LiveKVSelectionPlan) -> LiveKVSelectionPlan:
 
 
 def _selected_sampler_prompt(
-    source: Sequence[int], wire: Sequence[int], plan: LiveKVSelectionPlan
+    source: Sequence[int],
+    wire: Sequence[int],
+    plan: LiveKVSelectionPlan,
+    *,
+    materialized_history: Sequence[object] = (),
 ) -> list[int]:
-    """Build logical sampler history without materializing selected K/V."""
+    """Build logical sampler history without materializing selected K/V.
 
+    Positioned compact records are request-local model inputs rather than
+    resident source hits.  Interleave their token ids with selected source
+    intervals in original-position order so repetition penalties observe the
+    same logical history that attention consumes.
+    """
+
+    events: list[tuple[int, int, Sequence[int]]] = [
+        (
+            int(interval.start),
+            0,
+            source[interval.start:interval.end],
+        )
+        for interval in plan.intervals
+    ]
+    events.extend(
+        (
+            int(getattr(row, "position_start")),
+            1,
+            tuple(map(int, getattr(row, "token_ids"))),
+        )
+        for row in materialized_history
+    )
     selected = [
         int(token_id)
-        for interval in sorted(plan.intervals, key=lambda row: row.start)
-        for token_id in source[interval.start:interval.end]
+        for _, _, token_ids in sorted(events, key=lambda row: (row[0], row[1]))
+        for token_id in token_ids
     ]
-    if len(selected) != plan.selected_tokens:
+    materialized_tokens = sum(
+        len(tuple(getattr(row, "token_ids"))) for row in materialized_history
+    )
+    if len(selected) != plan.selected_tokens + materialized_tokens:
         raise RuntimeError(
-            "Sampler history disagrees with selected K/V token extent."
+            "Sampler history disagrees with selected K/V and materialized-token extent."
         )
     return selected + list(map(int, wire))
 
@@ -589,18 +619,67 @@ class AgentHistoryLedger:
             if _digest_text(content) != str(item.get("content_sha256", "")):
                 raise RuntimeError("Resident message content disagrees with the manifest.")
 
-        # Selected resource bodies are validation witnesses only.  They are
-        # never tokenized by this executor.
+        raw_replacements = request.metadata.get(
+            "materialized_message_replacements", ()
+        )
+        if not isinstance(raw_replacements, (list, tuple)):
+            raise ValueError("Materialized message replacements must be a list.")
+        replacement_by_index: dict[int, dict[str, Any]] = {}
+        record_coordinates = request.metadata.get("record_message_indices", {})
+        if not isinstance(record_coordinates, Mapping):
+            raise ValueError("Live-history record coordinates must be an object.")
+        for raw in raw_replacements:
+            if not isinstance(raw, Mapping):
+                raise ValueError("Materialized message replacement is malformed.")
+            index = int(raw.get("message_index", -1))
+            content = str(raw.get("content", ""))
+            role = str(raw.get("role", ""))
+            record_id = str(raw.get("record_id", ""))
+            if index in replacement_by_index or index < 0 or index >= len(complete):
+                raise ValueError("Materialized message replacement index is invalid.")
+            coordinate = record_coordinates.get(record_id)
+            if coordinate is not None and int(coordinate) != index:
+                raise RuntimeError(
+                    "Materialized message replacement record identity disagrees "
+                    "with its logical coordinate."
+                )
+            if role != str(complete[index].get("role", "")):
+                raise RuntimeError(
+                    "Materialized message replacement role disagrees with history."
+                )
+            if not content or _digest_text(content) != str(
+                raw.get("content_sha256", "")
+            ):
+                raise RuntimeError(
+                    "Materialized message replacement content digest is invalid."
+                )
+            replacement_by_index[index] = dict(raw)
+
+        # Bodies are witnesses for cache-resident spans or explicitly declared
+        # positioned replacements. Undeclared text must never recreate omitted
+        # history through the native boundary.
+        resource_text_by_index: dict[int, str] = {}
         for resource in request.resources:
             index = resource.metadata.get("message_index")
             if index is None:
                 continue
             index = int(index)
-            if index >= len(complete) or str(resource.text or "") not in str(
+            if index >= len(complete):
+                raise RuntimeError(
+                    f"Selected resource {resource.resource_id!r} is not a resident record span."
+                )
+            text = str(resource.text or "")
+            resource_text_by_index[index] = resource_text_by_index.get(index, "") + text
+            if index not in replacement_by_index and text not in str(
                 complete[index].get("content", "")
             ):
                 raise RuntimeError(
                     f"Selected resource {resource.resource_id!r} is not a resident record span."
+                )
+        for index, replacement in replacement_by_index.items():
+            if resource_text_by_index.get(index) != str(replacement["content"]):
+                raise RuntimeError(
+                    f"Materialized message replacement m{index} has no exact resource body."
                 )
         self.messages = complete
         return tuple(dict(row) for row in complete)
@@ -672,12 +751,14 @@ def selected_record_plan(
     fraction = float(retention_fraction)
     if not 0 < fraction <= 1:
         raise ValueError("retention_fraction must be in (0, 1].")
-    if fraction == 1:
+    keep = set(map(int, mandatory_message_indices)) | set(
+        map(int, selected_message_indices)
+    )
+    if fraction == 1 and keep == set(range(len(messages))):
         return LiveKVSelectionPlan.full(source_tokens)
     invalid = sorted(
         index
-        for index in set(map(int, mandatory_message_indices))
-        | set(map(int, selected_message_indices))
+        for index in keep
         if index < 0 or index >= len(messages)
     )
     if invalid:
@@ -685,9 +766,6 @@ def selected_record_plan(
             "Selected or mandatory record indices lie outside resident history: "
             + ", ".join(map(str, invalid))
         )
-    keep = set(map(int, mandatory_message_indices)) | set(
-        map(int, selected_message_indices)
-    )
     spans = causal_message_spans(
         tokenizer,
         messages,
@@ -1067,6 +1145,71 @@ class SGLangMLXAgentHistoryExecutor:
         self._eval(pending)
         return int(self.runner.prefill_finalize(pending)), len(wire)
 
+    def _start_positioned_sparse_generation(
+        self,
+        request_id: str,
+        *,
+        materialized_history: Sequence[object],
+        wire: Sequence[int],
+        sampler_prompt: Sequence[int],
+        source_position_base: int,
+    ) -> tuple[int, int]:
+        """Evaluate compact records at old positions, then start generation.
+
+        The selected original K/V remains borrowed from the canonical source.
+        Compact receipts are genuinely new request-local tokens and therefore
+        pass through the model exactly once.  Scheduler token bookkeeping is
+        restored to the logical selected history before decoding so it cannot
+        confuse physical request-local order with the repetition context.
+        """
+
+        rows = tuple(materialized_history)
+        if not rows:
+            raise ValueError("Positioned sparse generation requires materialized history.")
+        step = max(1, min(self.prefill_step_size, 8))
+        calls = 0
+        for row in rows:
+            tokens = tuple(map(int, getattr(row, "token_ids")))
+            start = int(getattr(row, "position_start"))
+            for offset in range(0, len(tokens), step):
+                chunk = list(tokens[offset : offset + step])
+                self.bridge.set_query_start(request_id, start + offset)
+                if self.runner.has_request(request_id):
+                    pending = self.runner.extend_start(
+                        request_id, chunk, [], needs_logits=False
+                    )
+                    self._eval(pending)
+                    self.runner.extend_finalize(pending)
+                else:
+                    pending = self.runner.prefill_start(
+                        request_id,
+                        chunk,
+                        chunk,
+                        [],
+                        [],
+                        0,
+                        needs_logits=False,
+                    )
+                    self._eval(pending)
+                    self.runner.prefill_finalize(pending)
+                calls += 1
+
+        self.bridge.set_query_start(request_id, int(source_position_base))
+        # extend_start consults this history while selecting its output token.
+        # Its finalize method assumes the final element is a stale prediction;
+        # restore the authoritative logical history immediately afterward.
+        self.runner._req_token_ids[request_id] = list(map(int, sampler_prompt))
+        pending = self.runner.extend_start(
+            request_id, list(map(int, wire)), [], needs_logits=True
+        )
+        self._eval(pending)
+        token = int(self.runner.extend_finalize(pending))
+        self.runner._req_token_ids[request_id] = [
+            *map(int, sampler_prompt),
+            token,
+        ]
+        return token, calls
+
     def _ensure_owner(
         self, state: _Session, source: list[int]
     ) -> tuple[int, int]:
@@ -1131,6 +1274,8 @@ class SGLangMLXAgentHistoryExecutor:
         selected_caches: Sequence[object],
         *,
         source_tokens: int,
+        expected_local_tokens: int | None = None,
+        ignored_leading_local_tokens: int = 0,
     ) -> tuple[int, int]:
         """Append request-local K/V to the canonical preallocated cache."""
 
@@ -1145,21 +1290,34 @@ class SGLangMLXAgentHistoryExecutor:
                 local_tokens = count
             elif count != local_tokens:
                 raise RuntimeError("SGLang request-local cache lengths disagree.")
-            end = source_tokens + count
+            committed = count - int(ignored_leading_local_tokens)
+            if committed < 0:
+                raise RuntimeError("SGLang compact-history prefix exceeds local K/V.")
+            if (
+                expected_local_tokens is not None
+                and committed != int(expected_local_tokens)
+            ):
+                raise RuntimeError(
+                    "SGLang local K/V length disagrees with the committed token suffix: "
+                    f"cache={count}, compact={ignored_leading_local_tokens}, "
+                    f"expected={expected_local_tokens}."
+                )
+            end = source_tokens + committed
             grow = getattr(owner, "_grow", None)
             if end > int(getattr(owner, "max_seq_len", end)):
                 if grow is None:
                     raise RuntimeError("Canonical cache cannot grow for K/V graft.")
                 grow(end)
-            keys = local.keys[:, :, :count, :]
-            values = local.values[:, :, :count, :]
+            begin = int(ignored_leading_local_tokens)
+            keys = local.keys[:, :, begin:count, :]
+            values = local.values[:, :, begin:count, :]
             owner.keys[:, :, source_tokens:end, :] = keys
             owner.values[:, :, source_tokens:end, :] = values
             owner.offset = end
             copied += int(keys.nbytes + values.nbytes)
         if local_tokens is None:
             raise RuntimeError("No attention cache was available for canonical K/V graft.")
-        return local_tokens, copied
+        return local_tokens - int(ignored_leading_local_tokens), copied
 
     def _native_generate(
         self, request: PRAWireRequest, state: _Session
@@ -1229,10 +1387,24 @@ class SGLangMLXAgentHistoryExecutor:
         selected_indices = (
             self._selected_message_indices(request) if live_projection else ()
         )
+        materialized = ()
         effective_requested = requested
         if source_bootstrap:
             effective_requested = 1.0
             selected_indices = tuple(range(len(messages)))
+        elif live_projection:
+            materialized = positioned_materialized_history(
+                self.tokenizer,
+                request,
+                messages,
+                prompt,
+                source_tokens=len(source),
+                chat_template_kwargs=template_kwargs,
+            )
+            replaced = {row.message_index for row in materialized}
+            selected_indices = tuple(
+                index for index in selected_indices if index not in replaced
+            )
         plan = selected_record_plan(
             self.tokenizer,
             messages,
@@ -1262,7 +1434,12 @@ class SGLangMLXAgentHistoryExecutor:
             # rounded-up PRA-90 request) through segmented attention.
             plan = _execution_plan(plan)
         repetition_penalty, repeat_last_n = self._repetition_settings(request)
-        sampler_prompt = _selected_sampler_prompt(source, wire, plan)
+        sampler_prompt = _selected_sampler_prompt(
+            source,
+            wire,
+            plan,
+            materialized_history=materialized,
+        )
 
         state.generation += 1
         direct_owner = bool(plan.full_retention)
@@ -1306,17 +1483,28 @@ class SGLangMLXAgentHistoryExecutor:
             repeat_last_n=repeat_last_n,
         )
         try:
-            token, start_encoded = self._start_native_generation(
-                native_id,
-                prompt=prompt,
-                wire=wire,
-                sampler_prompt=sampler_prompt,
-                source_bootstrap=source_bootstrap,
-                direct_owner=direct_owner,
-            )
+            if materialized:
+                token, materialized_calls = self._start_positioned_sparse_generation(
+                    native_id,
+                    materialized_history=materialized,
+                    wire=wire,
+                    sampler_prompt=sampler_prompt,
+                    source_position_base=plan.source_position_base,
+                )
+                start_encoded = len(wire)
+            else:
+                token, start_encoded = self._start_native_generation(
+                    native_id,
+                    prompt=prompt,
+                    wire=wire,
+                    sampler_prompt=sampler_prompt,
+                    source_bootstrap=source_bootstrap,
+                    direct_owner=direct_owner,
+                )
+                materialized_calls = 0
             if source_bootstrap:
                 newly_encoded = start_encoded
-            evaluations += 1
+            evaluations += materialized_calls + 1
             eos = self._eos_ids()
             max_tokens = request.resolved_max_new_tokens
             while len(generated) < max_tokens:
@@ -1345,6 +1533,10 @@ class SGLangMLXAgentHistoryExecutor:
                     self.runner._req_caches[state.owner_request_id],
                     self.runner._req_caches[native_id],
                     source_tokens=len(source),
+                    expected_local_tokens=expected_local,
+                    ignored_leading_local_tokens=sum(
+                        row.tokens for row in materialized
+                    ),
                 )
                 if local_tokens != expected_local:
                     raise RuntimeError(
@@ -1423,6 +1615,13 @@ class SGLangMLXAgentHistoryExecutor:
             ),
             "selected_history_reencoded_tokens": reencoded,
             "new_history_encoded_tokens": newly_encoded,
+            "materialized_history_encoded_tokens": sum(
+                row.tokens for row in materialized
+            ),
+            "materialized_history_model_calls": materialized_calls,
+            "materialized_history_prefill_step": (
+                max(1, min(self.prefill_step_size, 8)) if materialized else 0
+            ),
             "physical_kv_copy": copy_metrics["physical_kv_copy"],
             "selected_interval_copy_bytes": copy_metrics[
                 "selected_interval_copy_bytes"
@@ -1473,7 +1672,11 @@ class SGLangMLXAgentHistoryExecutor:
             "sampler_prompt_selected_history_tokens": plan.selected_tokens,
             "sampler_prompt_wire_tokens": len(wire),
             "logical_prompt_tokens": len(prompt),
-            "effective_attention_prompt_tokens": plan.selected_tokens + len(wire),
+            "effective_attention_prompt_tokens": (
+                plan.selected_tokens
+                + sum(row.tokens for row in materialized)
+                + len(wire)
+            ),
             "completion_tokens": len(generated),
             "sampler_prompt_sha256": _token_digest(sampler_prompt),
             **source_replay,

@@ -1,9 +1,14 @@
 """Reduce one frozen mini-swe-agent task into the Paper 4.5 100% -> 90% gate.
 
 The reducer deliberately keeps task outcome, action parity, retention, K/V
-transport, and consumer allocation separate.  A PRA-90 result is admissible
-only after the matching plain and PRA-100 runs both solve and their ordered
-assistant action trajectories are byte-exact after removing provider metadata.
+transport, and consumer allocation separate.  By default, a PRA-90 result is
+admissible only after the matching plain and PRA-100 runs both solve and their
+ordered assistant action trajectories are byte-exact after removing provider
+metadata.  Engines whose incremental live-prefix arithmetic is not trajectory
+identical to fresh full prefill may additionally supply a selection-neutral
+live-prefix control.  In that design, exactness is required between the two
+matched live-prefix consumers; the fresh-prefill difference remains reported
+as a separate consumption-path result.
 """
 
 from __future__ import annotations
@@ -231,49 +236,77 @@ def _run_summary(run_dir: Path | None, instance_id: str) -> dict[str, Any] | Non
 def summarize(
     *, engine: str, instance_id: str, plain_dir: Path,
     pra100_dir: Path | None, pra90_dir: Path | None,
+    live_prefix_control_dir: Path | None = None,
 ) -> dict[str, Any]:
     plain = _run_summary(plain_dir, instance_id)
+    live_prefix_control = _run_summary(live_prefix_control_dir, instance_id)
     pra100 = _run_summary(pra100_dir, instance_id)
     pra90 = _run_summary(pra90_dir, instance_id)
 
     plain_complete = bool(plain and plain.get("status") == "complete")
+    live_control_complete = bool(
+        live_prefix_control and live_prefix_control.get("status") == "complete"
+    )
     pra100_complete = bool(pra100 and pra100.get("status") == "complete")
-    exact_100 = bool(
+    fresh_exact_100 = bool(
         plain_complete
         and pra100_complete
         and plain["action_trajectory_sha256"] == pra100["action_trajectory_sha256"]
     )
-    exact_patch_100 = bool(
+    fresh_exact_patch_100 = bool(
         plain_complete
         and pra100_complete
         and plain["patch_sha256"] == pra100["patch_sha256"]
     )
-    plain_runtime_identity = (
-        plain.get("engine_runtime_identity") if plain else None
+    parity_reference = (
+        live_prefix_control if live_prefix_control_dir is not None else plain
+    )
+    parity_reference_complete = (
+        live_control_complete if live_prefix_control_dir is not None else plain_complete
+    )
+    parity_reference_kind = (
+        "selection_neutral_live_prefix"
+        if live_prefix_control_dir is not None else "fresh_prefill"
+    )
+    exact_100 = bool(
+        parity_reference_complete
+        and pra100_complete
+        and parity_reference["action_trajectory_sha256"]
+        == pra100["action_trajectory_sha256"]
+    )
+    exact_patch_100 = bool(
+        parity_reference_complete
+        and pra100_complete
+        and parity_reference["patch_sha256"] == pra100["patch_sha256"]
+    )
+    reference_runtime_identity = (
+        parity_reference.get("engine_runtime_identity") if parity_reference else None
     )
     pra100_runtime_identity = (
         pra100.get("engine_runtime_identity") if pra100 else None
     )
     runtime_identity_100_match = (
         None
-        if plain_runtime_identity is None and pra100_runtime_identity is None
+        if reference_runtime_identity is None and pra100_runtime_identity is None
         else bool(
-            plain_complete
+            parity_reference_complete
             and pra100_complete
-            and plain_runtime_identity
-            and plain_runtime_identity == pra100_runtime_identity
+            and reference_runtime_identity
+            and reference_runtime_identity == pra100_runtime_identity
         )
     )
-    plain_template_digest = plain.get("chat_template_digest") if plain else None
+    reference_template_digest = (
+        parity_reference.get("chat_template_digest") if parity_reference else None
+    )
     pra100_template_digest = pra100.get("chat_template_digest") if pra100 else None
     template_digest_100_match = (
         None
-        if plain_template_digest is None and pra100_template_digest is None
+        if reference_template_digest is None and pra100_template_digest is None
         else bool(
-            plain_complete
+            parity_reference_complete
             and pra100_complete
-            and plain_template_digest
-            and plain_template_digest == pra100_template_digest
+            and reference_template_digest
+            and reference_template_digest == pra100_template_digest
         )
     )
     parity_100 = bool(
@@ -281,19 +314,27 @@ def summarize(
         and exact_patch_100
         and runtime_identity_100_match is not False
         and template_digest_100_match is not False
-        and plain.get("task_success") is True
+        and parity_reference.get("task_success") is True
         and pra100.get("task_success") is True
     )
     pra90_complete = bool(pra90 and pra90.get("status") == "complete")
     first_90_divergence = (
         _first_action_divergence(
-            plain["action_trajectory"], pra90["action_trajectory"]
+            parity_reference["action_trajectory"], pra90["action_trajectory"]
         )
-        if plain_complete and pra90_complete else None
+        if parity_reference_complete and pra90_complete else None
     )
 
     if plain_complete and plain.get("task_success") is not True:
         classification = "inadmissible_model_task_pair"
+    elif (
+        live_prefix_control_dir is not None
+        and live_control_complete
+        and live_prefix_control.get("task_success") is not True
+    ):
+        classification = "inadmissible_live_prefix_control"
+    elif live_prefix_control_dir is not None and not live_control_complete:
+        classification = "pending_live_prefix_control"
     elif pra100_complete and not parity_100:
         classification = "implementation_bug_at_100_percent"
     elif parity_100 and not pra90_complete:
@@ -313,6 +354,7 @@ def summarize(
         "instance_id": instance_id,
         "temperature": 0,
         "plain": plain,
+        "selection_neutral_live_prefix_control": live_prefix_control,
         "pra_100": pra100,
         "pra_90": pra90,
         "gates": {
@@ -322,8 +364,19 @@ def summarize(
             "pra_100_task_success": (
                 pra100.get("task_success") if pra100_complete else None
             ),
+            "pra_100_parity_reference": parity_reference_kind,
             "pra_100_exact_action_trajectory": exact_100 if pra100_complete else None,
+            "pra_100_exact_action_trajectory_vs_fresh_prefill": (
+                fresh_exact_100 if pra100_complete else None
+            ),
+            "pra_100_exact_action_trajectory_vs_live_prefix_control": (
+                exact_100
+                if live_prefix_control_dir is not None and pra100_complete else None
+            ),
             "pra_100_exact_patch": exact_patch_100 if pra100_complete else None,
+            "pra_100_exact_patch_vs_fresh_prefill": (
+                fresh_exact_patch_100 if pra100_complete else None
+            ),
             "pra_100_engine_runtime_identity_match": (
                 runtime_identity_100_match if pra100_complete else None
             ),
@@ -351,8 +404,10 @@ def summarize(
         },
         "classification": classification,
         "claim_boundary": (
-            "A 100% divergence is an implementation failure. A 90% divergence is "
-            "a selection/retention-quality result only after the 100% gate passes."
+            "A 100% divergence from the matched consumption-path control is an "
+            "implementation failure. Fresh-prefill versus incremental-live-prefix "
+            "divergence is reported separately. A 90% divergence is a selection/"
+            "retention-quality result only after the matched 100% gate passes."
         ),
     }
 
@@ -362,6 +417,14 @@ def main() -> None:
     parser.add_argument("--engine", required=True)
     parser.add_argument("--instance-id", required=True)
     parser.add_argument("--plain-dir", type=Path, required=True)
+    parser.add_argument(
+        "--live-prefix-control-dir",
+        type=Path,
+        help=(
+            "Optional selection-neutral 100% run using the same incremental "
+            "live-prefix consumer as PRA-100."
+        ),
+    )
     parser.add_argument("--pra-100-dir", type=Path)
     parser.add_argument("--pra-90-dir", type=Path)
     parser.add_argument("--output", type=Path, required=True)
@@ -370,6 +433,7 @@ def main() -> None:
         engine=args.engine,
         instance_id=args.instance_id,
         plain_dir=args.plain_dir,
+        live_prefix_control_dir=args.live_prefix_control_dir,
         pra100_dir=args.pra_100_dir,
         pra90_dir=args.pra_90_dir,
     )

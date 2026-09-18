@@ -90,6 +90,70 @@ def test_100_percent_divergence_is_an_implementation_bug(tmp_path: Path) -> None
     assert result["gates"]["pra_90_execution_allowed"] is False
 
 
+def test_matched_live_prefix_control_separates_consumption_path(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    live_control = tmp_path / "live-control"
+    pra100 = tmp_path / "pra100"
+    _run(
+        plain, mode="no-pra", resolved=True,
+        commands=["ls", "fresh-prefill-edit"], retention=1.0,
+    )
+    _run(
+        live_control, mode="live-prefix-full", resolved=True,
+        commands=["ls", "incremental-edit"], retention=1.0,
+    )
+    _run(
+        pra100, mode="direct-native-pra", resolved=True,
+        commands=["ls", "incremental-edit"], retention=1.0,
+    )
+
+    result = summarize(
+        engine="test", instance_id=INSTANCE,
+        plain_dir=plain, live_prefix_control_dir=live_control,
+        pra100_dir=pra100, pra90_dir=None,
+    )
+
+    assert result["classification"] == "qualified_for_90_percent_execution"
+    assert result["gates"]["pra_100_parity_reference"] == (
+        "selection_neutral_live_prefix"
+    )
+    assert result["gates"]["pra_100_exact_action_trajectory"] is True
+    assert result["gates"][
+        "pra_100_exact_action_trajectory_vs_fresh_prefill"
+    ] is False
+    assert result["gates"][
+        "pra_100_exact_action_trajectory_vs_live_prefix_control"
+    ] is True
+    assert result["gates"]["pra_90_execution_allowed"] is True
+
+
+def test_matched_live_prefix_divergence_remains_an_implementation_bug(
+    tmp_path: Path,
+) -> None:
+    plain = tmp_path / "plain"
+    live_control = tmp_path / "live-control"
+    pra100 = tmp_path / "pra100"
+    _run(plain, mode="no-pra", resolved=True, commands=["ls"], retention=1.0)
+    _run(
+        live_control, mode="live-prefix-full", resolved=True,
+        commands=["ls", "control-edit"], retention=1.0,
+    )
+    _run(
+        pra100, mode="direct-native-pra", resolved=True,
+        commands=["ls", "different-edit"], retention=1.0,
+    )
+
+    result = summarize(
+        engine="test", instance_id=INSTANCE,
+        plain_dir=plain, live_prefix_control_dir=live_control,
+        pra100_dir=pra100, pra90_dir=None,
+    )
+
+    assert result["classification"] == "implementation_bug_at_100_percent"
+    assert result["gates"]["pra_100_behavioral_parity"] is False
+    assert result["gates"]["pra_90_execution_allowed"] is False
+
+
 def test_100_percent_rejects_chat_template_digest_mismatch(tmp_path: Path) -> None:
     plain, pra100 = tmp_path / "plain", tmp_path / "pra100"
     _run(
