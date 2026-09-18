@@ -109,11 +109,15 @@ from each of three identities, E2+F1C resolves 3/3 versus 3/3, uses 33 versus
 34 calls, and materializes 539,022 versus 924,686 input tokens (41.71\%
 paired saving; 39.45\% against its own full-history counterfactual).  This
 passes the three-identity discovery gate, not a population accuracy estimate.
-Corrected native transfers then omit 40.23\% of steady-state historical K/V
-on llama.cpp and 40.04\% on MLX.  llama.cpp preserves the eight-call count;
-MLX preserves the solve but uses twelve rather than nine calls, reducing its
-paired K/V-workload saving to 15.23\%.  Logical omission and realized workload
-economics are therefore separate outcomes even after engine correctness passes.
+Hybrid native-transfer diagnostics then omit 40.23\% of steady-state original
+historical K/V on llama.cpp and 40.04\% on MLX.  These E2+F1C rows are not pure
+resident-subset executions: F1C replaces retired records with newly encoded
+model-visible closure receipts (1,056 tokens in the MLX run; the llama.cpp
+autonomous bundle did not separately aggregate this counter).  llama.cpp
+preserves the eight-call count; MLX preserves the solve but uses twelve rather
+than nine calls, reducing its paired K/V-workload saving to 15.23\%.  Logical
+omission, transformed-context encoding, and realized workload economics are
+therefore separate outcomes even after original-K/V selection is correct.
 A generic prior-mutation add-back is rejected: it still solves but rises to
 14 calls and makes selected-K/V work 3.12\% greater than PRA-100 because its
 ``mutation'' is an unrelated prior-task patch artifact rather than live evidence.
@@ -260,7 +264,9 @@ S_t = \pi(H_t,Q_t,B),
 \]
 where $Q_t$ is the active task/state and $B$ is a context budget. The selected
 plan $S_t$ is then serialized to an ordinary model request. No native K/V
-mechanism is required for the main experiments.
+mechanism is required for the main experiments.  This serialization is an
+experimental consumer, not proof that an already-resident K/V cache can realize
+every transformation without new model evaluation.
 
 This separation is deliberate. Prior PRA work studies retrieval, native-memory
 materialization, cross-document composition, and engine-specific K/V reuse.
@@ -681,11 +687,16 @@ plan.
 
 When the policy returns to Paper~4.5, the PRA engine validates and physically
 realizes selected logical identities; it does not infer application-specific
-semantics. Paper~8.5 freezes model-visible selected IDs and replacement bytes.
-Paper~4.5 then measures cache hits, K/V movement, re-encoding, latency, memory,
-and lifecycle on those same plans. Result compaction and tool disclosure are
-promoted independently from shadow, so later gateway capabilities do not
-silently invalidate unchanged history-policy evidence.
+semantics. Paper~8.5 freezes selected IDs, replacement bytes, and a transfer-
+admissibility label.  A selection-only plan is directly admissible to strict
+native PRA.  A replacement created before initial cache admission is admissible
+only as ingest-time compaction.  A replacement created after the source K/V
+already exists is a transformed-context plan: Paper~4.5 must charge its model
+evaluation and must not call it resident-subset reuse. Paper~4.5 then measures
+cache hits, K/V movement, re-encoding, latency, memory, and lifecycle on those
+same plans. Result compaction and tool disclosure are promoted independently
+from shadow, so later gateway capabilities do not silently invalidate unchanged
+history-policy evidence.
 
 \subsection{Oracle}
 
@@ -724,6 +735,23 @@ provenance, but it is a materialization/compression treatment rather than pure
 exclusion and its stub tokens count against the realized budget. This cleanly
 separates binary HOT$\rightarrow$WARM retirement from
 HOT$\rightarrow$STUB presentation.
+
+For transfer we classify every treatment by when model-visible bytes are
+created:
+\begin{description}[leftmargin=!,labelwidth=3.4cm]
+    \item[Selection-only.] Existing records are retained or omitted; the plan
+    can be realized solely by selecting original resident K/V.
+    \item[Ingest-time transform.] A tool result is compacted before its first
+    model evaluation.  The compact form may subsequently acquire and reuse its
+    own resident K/V, but it is not a transformation of existing K/V.
+    \item[Post-cache transform.] Existing records are replaced with newly
+    written summaries, tombstones, or receipts.  This requires new model
+    evaluation and is not strict native PRA, even when every retained original
+    record is reused without copying.
+\end{description}
+Accordingly, a compact receipt can improve logical task behavior while being
+inadmissible to the strict resident-subset engine profile.  DAG evidence used
+only by the selector remains out of band and adds no model tokens.
 
 \section{Experimental Design}
 
@@ -1260,7 +1288,7 @@ do not estimate greater-than-90\% population preservation.  Their bundles are
 \path{heldout_prefix5_django15368_cold_v1} and
 \path{heldout_prefix5_scikit14496_cold_v1}.
 
-\subsection{Post-fix native-K/V transfer gate}
+\subsection{Post-fix hybrid native-K/V transfer diagnostic}
 
 We transfer the frozen E2+F1C plan for Scikit-learn-14496 into the corrected
 Paper~4.5 llama.cpp resident-cache path.  This is a mechanism-transfer test,
@@ -1273,12 +1301,15 @@ zero selected-history re-encoding and zero physical or total K/V-copy bytes.
 Thus a 100\% mismatch would remain an engine bug, while behavior below 100\%
 can be attributed to deliberate selection.
 
-The native E2+F1C arm also resolves in eight calls.  It materializes 128,380
+The hybrid native-plus-receipt E2+F1C arm also resolves in eight calls.  It materializes 128,380
 versus 213,524 message-content tokens, a 39.88\% reduction.  Over the seven
 post-bootstrap sparse requests, weighted resident-K/V omission is 40.23\%
 (113,643 selected versus 190,141 estimated full K/V tokens), within 0.35
-percentage points of the logical estimate.  It re-encodes zero selected
-history tokens and copies zero K/V bytes.  The first two actions match
+percentage points of the logical estimate.  It re-encodes zero retained
+original-history tokens and copies zero selected K/V bytes.  However, the
+autonomous bundle does not expose a separate closure-receipt encoding total, so
+this row cannot qualify the stricter ``no historical model evaluation'' gate.
+The first two actions match
 \textsc{Full}; request three begins a different successful trajectory, and
 same-index actions reconverge for requests five through eight.  Completion
 tokens rise from 748 to 825, so task success and equal call count do not imply
@@ -1295,11 +1326,15 @@ model family, tokenizer, temperature, and logical E2+F1C contract with the
 Qwen3-Coder-30B-A3B-Instruct 4-bit MLX checkpoint.  PRA-100 resolves in nine
 calls.  E2+F1C resolves in twelve calls and every one of its eleven
 post-bootstrap sparse requests passes a positioned same-subset oracle with
-maximum logit delta 0.0.  Selected history is neither re-encoded nor copied.
+maximum logit delta 0.0.  Retained original history is neither re-encoded nor copied.
 The sparse requests expose 302,031 full source K/V tokens and consume 180,052
 selected resident tokens plus 1,056 encoded closure-receipt tokens, giving
 40.04\% steady-state omission.  Charging the common source bootstrap lowers
 all-call omission to 36.82\%.
+
+The 1,056 receipt tokens are post-cache transformations, not native reuse.
+This row therefore qualifies original-position selection and hybrid workload
+accounting, but it is excluded from the strict resident-subset engine class.
 
 The policy opportunity survives the second engine, but the workload saving
 does not transfer unchanged.  E2+F1C materializes 192,762 message-content
@@ -1380,8 +1415,10 @@ compact audit is in
 
 Executing E2+F1C through that admitted native consumer produces a valid but
 dominated point.  It preserves the official solve and submits the same
-byte-identical patch, with zero selected-history re-encoding or selected-K/V
-copy on all 14 reuse requests.  Over its realized 15-call trajectory it saves
+byte-identical patch, with zero retained-original-history re-encoding or
+selected-K/V copy on all 14 reuse requests.  Those requests nevertheless encode
+96 compact closure tokens each, 1,344 post-cache transformation tokens in
+total.  Over its realized 15-call trajectory it saves
 35.07\% of selected message-content tokens, 39.21\% after compact closure
 materialization, and 37.21\% of source K/V exposure.  The matched full-history
 consumer, however, solves in seven calls.  Commands agree through request
@@ -1431,7 +1468,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
-Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Corrected llama.cpp preserves 1/1; MLX preserves 2/2 exact cold repeats. They realize 40.23\% and 40.04\% steady-state K/V omission with zero selected-history re-encoding/copy. MLX adds three calls and retains only 15.23\% paired K/V-workload saving. Generic M1 is rejected (14 calls and $-3.12$\% paired selected-K/V saving). Expand identities; not yet a default. \\
+Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Hybrid native transfers omit 40.23\% and 40.04\% of steady-state original K/V without re-encoding retained intervals, but newly encode post-cache closure receipts; they are not strict resident-subset results. MLX adds three calls and retains only 15.23\% paired workload saving. Expand identities and test selection-only E2; not yet a default. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1466,20 +1503,22 @@ own realized full-history counterfactual.  It also shows why cache-state
 matching and enforcement of the all-user-prompt floor are prerequisites.  The
 three-identity gate qualifies frozen replication and Paper~4.5 mechanism
 transfer, but not a greater-than-90\% population claim or production default.
-The first corrected native transfer then preserves the Scikit-learn solve and
+The first corrected hybrid native-plus-receipt transfer then preserves the Scikit-learn solve and
 eight-call count while realizing 39.88\% materialized-token saving and 40.23\%
 steady-state resident-K/V omission.  Direct MLX independently realizes 40.04\%
-steady-state omission with exact same-subset logits and no selected-history
-re-encoding or copy in two exact cold repeats, but its three extra calls reduce
+steady-state original-K/V omission with exact same-subset logits and no retained-
+original re-encoding or selected-K/V copy in two exact cold repeats, but it also
+encodes 1,056 post-cache closure-receipt tokens.  Its three extra calls reduce
 paired K/V-workload saving to 15.23\%.  This closes the
-logical-to-physical mechanism gap on one identity in two runtimes while
-exposing a repeatable logical-to-behavioral gap.  Post-fix SGLang adds a 1/1,
+original-K/V selection mechanism gap on one identity in two runtimes, but does
+not qualify strict resident-subset execution.  Post-fix SGLang adds a 1/1,
 seven-call, byte-identical-patch PRA-100 result with zero selected-history
 re-encoding/copy, but not fresh-prefill trajectory identity: action three
 diverges despite identical input token IDs.  Its selection-neutral live-prefix
 control matches PRA-100 exactly over all seven requests, so reduced-policy
 execution is admissible against that matched consumer.  The admitted E2+F1C
-arm resolves with the identical patch and 39.21\% materialized saving, but its
+arm resolves with the identical patch and 39.21\% materialized saving, while
+encoding 1,344 post-cache closure tokens.  It is therefore hybrid; moreover its
 15 versus seven calls yield a 33.10\% paired workload increase.  It is a
 policy-quality negative, not a default profile.  Fresh post-fix
 autonomous HF evidence, plus more task identities, is still required.  A
@@ -3769,7 +3808,9 @@ as structured policies, coding-agent memory may be more local than assumed.
 \section{Detailed Limitations}
 
 Text realization recontextualizes selected records and therefore does not
-establish native-K/V equivalence. Frozen-trajectory screening also cannot replace
+establish native-K/V equivalence.  In particular, post-cache receipt generation
+must never be reported as zero-prefill resident-subset reuse merely because the
+retained original records were not re-encoded. Frozen-trajectory screening also cannot replace
 autonomous evaluation. SWE-bench coding tasks may not represent research,
 browser, or multimodal agents. Semantic record labels may depend on heuristics
 during the first implementation.
