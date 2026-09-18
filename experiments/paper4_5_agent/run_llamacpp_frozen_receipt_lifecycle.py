@@ -191,11 +191,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "checks": checks,
         "experiment_revision": args.experiment_revision,
         "engine": "llama.cpp-metal",
-        "engine_revision": capabilities.get("build_commit"),
+        "engine_revision": args.engine_revision,
         "python_version": platform.python_version(),
         "model": args.model_label,
+        "model_fingerprint": args.model_fingerprint,
         "tokenizer": args.tokenizer,
         "tokenizer_revision": args.tokenizer_revision,
+        "tokenizer_fingerprint": args.tokenizer_fingerprint,
         "request_index": decision.request_index,
         "request_input_sha256": decision.request_input_sha256,
         "source_policy": decision.source_policy,
@@ -251,6 +253,18 @@ def main() -> None:
     parser.add_argument("--tokenizer", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--tokenizer-revision")
     parser.add_argument("--model-label", default="Qwen3-14B-Q4_K_M")
+    parser.add_argument(
+        "--model-fingerprint", required=True,
+        help="Immutable model-weight digest or content-addressed blob identity.",
+    )
+    parser.add_argument(
+        "--tokenizer-fingerprint", required=True,
+        help="SHA-256 of the resolved tokenizer graph used for the geometry.",
+    )
+    parser.add_argument(
+        "--engine-revision", required=True,
+        help="Exact patched llama.cpp source revision used to build the server.",
+    )
     parser.add_argument("--experiment-revision", default="uncommitted")
     parser.add_argument("--source-slot", type=int, default=0)
     parser.add_argument("--request-slot", type=int, default=1)

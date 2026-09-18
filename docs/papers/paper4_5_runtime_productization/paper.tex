@@ -3569,6 +3569,22 @@ heavily interrupted during source priming, so these timings are deliberately
 excluded from runtime claims.  As with the other engines, this is a
 request-level mechanism result rather than an autonomous agent solve.
 
+A model-matched replication replaces the Qwen3 tokenizer proxy with the
+Qwen3-Coder-30B-A3B-Instruct tokenizer and runs the same request on the
+Qwen3-Coder-30B Q4\_K\_M checkpoint used by the Paper~8.5 autonomous study.
+The selected original-position K/V remains 17,978/29,067 tokens, but the six
+role-aware closure receipts occupy 96 rather than 664 tokens under the correct
+chat template; the active suffix remains 305 tokens.  The resulting history
+saving after receipts is 37.82\%, total-visible-token saving is 37.43\%, and
+resident-original-K/V omission is 38.15\%.  Two executions emit the identical
+token IDs [3617, 46], re-encode zero selected-history tokens, copy zero
+selected K/V bytes, preserve source positions, and leave both slots empty
+after teardown.  The engine is pinned to revision
+\texttt{e6e5d63dbc09b5ea6153822e39057f9b7de40eb0}.  This removes a tokenizer
+confound from the engine handoff, but remains a frozen request-level mechanism
+result; its non-isolated 181.6-second source capture and approximately
+4-second sparse generations are provenance, not performance claims.
+
 The first real MLX frozen-plan check now qualifies one Task~4 request at both
 full and reduced retention on Qwen3-0.6B-4bit.  The reduced row retains
 8,617/18,110 historical K/V tokens across 23 disjoint original-position
