@@ -1,7 +1,8 @@
-"""Run one locked SWE-bench task through the engine-neutral Paper 8.5 proxy.
+"""Run one locked SWE-bench task through the Paper 8.5 policy proxy.
 
-The model endpoint receives an ordinary OpenAI chat request.  This runner does
-not import a PRA engine, gateway, cache adapter, or K/V implementation.
+Ordinary-text delivery remains the engine-independent default.  An explicit
+native-PRA builder can instead bind the exact frozen logical plan to an engine
+request without rerunning selection.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import re
 import subprocess
 import sys
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .auxiliary_workspace_state import (
     AUXILIARY_WORKSPACE_STATE_LABEL,
@@ -38,6 +39,52 @@ from .selectors import whitespace_tokens
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _load_native_pra_builder(
+    path: Path | None,
+) -> tuple[Callable[..., Mapping[str, Any]] | None, dict[str, Any]]:
+    """Load an explicit Paper 4.5 realization adapter without branch coupling."""
+
+    if path is None:
+        return None, {"mode": "ordinary_text", "builder": None, "sha256": None}
+    resolved = path.resolve()
+    if not resolved.is_file():
+        raise ValueError(f"native PRA builder does not exist: {resolved}")
+    module_name = "paper8_5_native_builder_" + _sha256_bytes(
+        str(resolved).encode("utf-8")
+    )[:16]
+    specification = importlib.util.spec_from_file_location(module_name, resolved)
+    if specification is None or specification.loader is None:
+        raise ValueError(f"cannot load native PRA builder: {resolved}")
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[module_name] = module
+    try:
+        specification.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    transform = getattr(module, "transform_wire_agent_memory_plan_payload", None)
+    if not callable(transform):
+        raise ValueError(
+            "native PRA builder has no transform_wire_agent_memory_plan_payload"
+        )
+
+    def build(payload: Mapping[str, Any], **kwargs: Any) -> Mapping[str, Any]:
+        result = transform(payload, **kwargs)
+        if not isinstance(result, tuple) or len(result) != 2:
+            raise TypeError("native PRA builder did not return (payload, trace)")
+        transformed, _trace = result
+        if not isinstance(transformed, Mapping):
+            raise TypeError("native PRA builder returned a non-mapping payload")
+        return dict(transformed)
+
+    return build, {
+        "mode": "native_pra",
+        "builder": str(resolved),
+        "sha256": _sha256_bytes(resolved.read_bytes()),
+        "function": "transform_wire_agent_memory_plan_payload",
+    }
 
 
 def load_persistent_prefix(path: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -815,6 +862,9 @@ def run(args: argparse.Namespace) -> Path:
         args.tokenizer_revision,
         allow_whitespace=args.allow_whitespace_tokenizer,
     )
+    native_request_builder, delivery_identity = _load_native_pra_builder(
+        getattr(args, "native_pra_builder", None)
+    )
     prior_episodes, persistent_prefix_identity = load_persistent_prefix(
         args.persistent_prefix
     )
@@ -954,6 +1004,7 @@ def run(args: argparse.Namespace) -> Path:
         "upstream_connect_retry_seconds": args.upstream_connect_retry_seconds,
         "upstream_curl_executable": args.upstream_curl_executable,
         "upstream_relay_target": args.upstream_relay_target,
+        "delivery": delivery_identity,
         "docker_executable": str(args.docker_executable) if args.docker_executable else None,
         "docker_platform": args.docker_platform,
         "environment_image": swebench_image(instance_id),
@@ -982,7 +1033,7 @@ def run(args: argparse.Namespace) -> Path:
             "grader_command": auxiliary_grader_command,
         },
         "preflight_only": args.preflight_only,
-        "engine_or_kv_metrics_claimed": False,
+        "engine_or_kv_metrics_claimed": native_request_builder is not None,
     }
     _write_json(output / "run_manifest.json", manifest)
     if args.preflight_only:
@@ -1009,6 +1060,7 @@ def run(args: argparse.Namespace) -> Path:
         upstream_connect_attempts=args.upstream_connect_attempts,
         upstream_connect_retry_seconds=args.upstream_connect_retry_seconds,
         upstream_curl_executable=args.upstream_curl_executable,
+        native_request_builder=native_request_builder,
     )
     proxy_url = proxy.start()
     try:
@@ -1355,6 +1407,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-connect-attempts", type=int, default=1)
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")
+    parser.add_argument(
+        "--native-pra-builder",
+        type=Path,
+        help=(
+            "Explicit Paper 4.5 Python adapter containing "
+            "transform_wire_agent_memory_plan_payload. When set, the proxy "
+            "delivers the exact frozen wire plan as a native PRA request."
+        ),
+    )
     parser.add_argument(
         "--upstream-relay-target",
         help="Audit-only destination of a byte-transparent local TCP relay.",

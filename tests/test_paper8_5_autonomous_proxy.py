@@ -1463,6 +1463,10 @@ class _Upstream:
                 outer.requests.append(json.loads(body))
                 response = json.dumps({
                     "id": "response-1",
+                    "pra": {
+                        "selected_history_reencoded_tokens": 0,
+                        "selected_history_kv_copy_bytes": 0,
+                    },
                     "choices": [{
                         "message": {
                             "role": "assistant",
@@ -1544,6 +1548,54 @@ def test_proxy_forwards_ordinary_selected_text_and_logs_reacquisition(tmp_path):
         assert status == 429
         assert error["error"] == "max_model_calls_exceeded"
         assert len(upstream.requests) == 1
+    finally:
+        proxy.close()
+        upstream.close()
+
+
+def test_proxy_delivers_exact_wire_plan_to_native_builder(tmp_path):
+    upstream = _Upstream()
+    trace = tmp_path / "trace.jsonl"
+    builder_calls = []
+
+    def native_builder(payload, **kwargs):
+        builder_calls.append((payload, kwargs))
+        transformed = dict(payload)
+        transformed["native_bridge_marker"] = True
+        return transformed
+
+    proxy = AutonomousSelectionProxy(
+        upstream.url,
+        config=AutonomousSelectionConfig(
+            policy="full", expected_model="locked-model", max_calls=1,
+            task_id="task-1", session_id="session-1",
+        ),
+        trace_path=trace,
+        native_request_builder=native_builder,
+    )
+    url = proxy.start()
+    try:
+        assert _post(f"{url}/chat/completions", _payload())[0] == 200
+        assert upstream.requests[0]["native_bridge_marker"] is True
+        logical_payload, kwargs = builder_calls[0]
+        assert logical_payload["messages"] == _payload()["messages"]
+        assert kwargs["session_id"] == "session-1"
+        assert kwargs["wire_plan"]["selected_record_ids"] == [
+            f"m{index}" for index in range(len(_payload()["messages"]))
+        ]
+        assert kwargs["record_message_indices"] == {
+            f"m{index}": index for index in range(len(_payload()["messages"]))
+        }
+        assert set(kwargs["mandatory_message_indices"]).issubset(
+            kwargs["record_message_indices"].values()
+        )
+        row = json.loads(trace.read_text(encoding="utf-8").strip())
+        assert row["native_pra_delivery"] is True
+        assert row["engine_pra_metrics"] == {
+            "selected_history_reencoded_tokens": 0,
+            "selected_history_kv_copy_bytes": 0,
+        }
+        assert proxy.health()["kv_metrics_available"] is True
     finally:
         proxy.close()
         upstream.close()

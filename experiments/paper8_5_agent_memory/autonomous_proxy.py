@@ -108,6 +108,37 @@ def _query(messages: list[Mapping[str, Any]]) -> str:
     return f"{task}\n{active}"
 
 
+def _native_mandatory_message_indices(
+    messages: Sequence[Mapping[str, Any]], *, current_episode_start: int,
+) -> tuple[int, ...]:
+    """Keep system state and only the incomplete current causal tail inline."""
+
+    system = {index for index, row in enumerate(messages) if row.get("role") == "system"}
+    latest_observation = next(
+        (
+            index for index in range(len(messages) - 1, -1, -1)
+            if messages[index].get("role") != "system"
+        ),
+        len(messages) - 1,
+    )
+    latest_action = next(
+        (
+            index
+            for index in range(latest_observation - 1, current_episode_start - 1, -1)
+            if messages[index].get("role") == "assistant"
+        ),
+        None,
+    )
+    tail_start = latest_action if latest_action is not None else latest_observation
+    return tuple(sorted({
+        *system,
+        *(
+            index for index in range(tail_start, latest_observation + 1)
+            if messages[index].get("role") != "system"
+        ),
+    }))
+
+
 def _assistant_command(response_body: bytes) -> str | None:
     content = _assistant_content(response_body)
     if content is None:
@@ -549,6 +580,10 @@ class AutonomousTransformation:
     plan: AgentMemoryPlan
     materialized_tokens: int
     trace: dict[str, Any]
+    logical_payload: dict[str, Any]
+    wire_plan: dict[str, Any]
+    record_message_indices: dict[str, int]
+    mandatory_message_indices: tuple[int, ...]
 
 
 def transform_autonomous_payload(
@@ -573,6 +608,7 @@ def transform_autonomous_payload(
     current_selector_messages, sidecar_join = join_instrumentation_sidecars(
         incoming_messages, instrumentation_root
     )
+    current_episode_start = 0
     if prior_episodes:
         current_episode = {
             "instance_id": config.task_id,
@@ -593,6 +629,13 @@ def transform_autonomous_payload(
             {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
             for row in typed_selector_messages
         ]
+        current_visible_count = len(current_episode["messages"])
+        if (
+            current_episode["messages"]
+            and current_episode["messages"][0].get("role") == "system"
+        ):
+            current_visible_count -= 1
+        current_episode_start = len(messages) - current_visible_count
     else:
         messages = incoming_messages
         typed_selector_messages = annotate_minisweagent_messages(
@@ -976,7 +1019,30 @@ def transform_autonomous_payload(
         "selection_abstained_for_sidecar": selection_abstained,
         "oracle_addback": oracle_addback,
     }
-    return AutonomousTransformation(transformed, plan, materialized.materialized_tokens, trace)
+    logical_payload = dict(payload)
+    logical_payload["messages"] = messages
+    mandatory_message_indices = _native_mandatory_message_indices(
+        messages, current_episode_start=current_episode_start,
+    )
+    record_message_indices = {
+        row.record_id: row.message_index for row in history.records
+    }
+    selected_indices = {
+        record_message_indices[record_id]
+        for record_id in wire_plan.selected_record_ids
+    }
+    if not set(mandatory_message_indices).issubset(selected_indices):
+        raise AssertionError("wire plan omits native mandatory current state")
+    return AutonomousTransformation(
+        transformed,
+        plan,
+        materialized.materialized_tokens,
+        trace,
+        logical_payload,
+        wire_plan.to_dict(),
+        record_message_indices,
+        mandatory_message_indices,
+    )
 
 
 class AutonomousSelectionProxy:
@@ -998,6 +1064,7 @@ class AutonomousSelectionProxy:
         upstream_connect_retry_seconds: float = 1.0,
         upstream_curl_executable: str | None = None,
         curl_runner: Callable[..., Any] = subprocess.run,
+        native_request_builder: Callable[..., Mapping[str, Any]] | None = None,
     ) -> None:
         if upstream_connect_attempts < 1:
             raise ValueError("upstream connect attempts must be positive")
@@ -1020,6 +1087,7 @@ class AutonomousSelectionProxy:
         self.upstream_connect_retry_seconds = upstream_connect_retry_seconds
         self.upstream_curl_executable = upstream_curl_executable
         self._curl_runner = curl_runner
+        self.native_request_builder = native_request_builder
         self._lock = threading.Lock()
         self._upstream_io_lock = threading.Lock()
         self._persistent_upstream: http.client.HTTPConnection | None = None
@@ -1097,7 +1165,7 @@ class AutonomousSelectionProxy:
             "protocol": "paper8.5-autonomous-text-selection-v1",
             "policy": self.config.policy,
             "engine_state_owned": False,
-            "kv_metrics_available": False,
+            "kv_metrics_available": self.native_request_builder is not None,
             "request_count": self._request_count,
             "max_calls": self.config.max_calls,
             "upstream_failed": self._upstream_failure.is_set(),
@@ -1262,6 +1330,26 @@ class AutonomousSelectionProxy:
                 instrumentation_root=self.instrumentation_root,
                 prior_episodes=self.prior_episodes,
             )
+            if self.native_request_builder is not None:
+                native_payload = self.native_request_builder(
+                    transformation.logical_payload,
+                    wire_plan=transformation.wire_plan,
+                    record_message_indices=(
+                        transformation.record_message_indices
+                    ),
+                    mandatory_message_indices=(
+                        transformation.mandatory_message_indices
+                    ),
+                    session_id=(self.config.session_id or self.config.task_id),
+                    request_index=request_index,
+                    count_tokens=self.count_tokens,
+                    tokenizer_identity=self.config.tokenizer_identity,
+                )
+                if not isinstance(native_payload, Mapping):
+                    raise TypeError("native request builder did not return a mapping")
+                transformation = replace(
+                    transformation, payload=dict(native_payload),
+                )
             body = json.dumps(transformation.payload).encode("utf-8")
 
         headers = {
@@ -1357,6 +1445,11 @@ class AutonomousSelectionProxy:
                 )
             assistant_content = _assistant_content(response_body)
             response_usage = _response_usage(response_body)
+            try:
+                response_payload = json.loads(response_body.decode("utf-8"))
+                engine_pra = response_payload.get("pra") or {}
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                engine_pra = {}
             command = _assistant_command(response_body)
             operation = classify_bash_operation(command)
             resources = extract_resource_ids(command, "") if command else ()
@@ -1383,6 +1476,8 @@ class AutonomousSelectionProxy:
                     if assistant_content is not None else None
                 ),
                 **response_usage,
+                "native_pra_delivery": self.native_request_builder is not None,
+                "engine_pra_metrics": dict(engine_pra) if isinstance(engine_pra, Mapping) else {},
                 "assistant_command_sha256": (
                     hashlib.sha256(command.encode("utf-8")).hexdigest() if command else None
                 ),

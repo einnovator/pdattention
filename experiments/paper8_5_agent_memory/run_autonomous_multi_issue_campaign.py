@@ -319,6 +319,9 @@ def _episode_command(
     upstream_relay_target = getattr(args, "upstream_relay_target", None)
     if upstream_relay_target:
         command.extend(("--upstream-relay-target", upstream_relay_target))
+    native_pra_builder = getattr(args, "native_pra_builder", None)
+    if native_pra_builder:
+        command.extend(("--native-pra-builder", str(native_pra_builder)))
     if cell["session_mode"] == "persistent":
         command.extend((
             "--session-id", session_id,
@@ -1350,6 +1353,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--upstream-connect-retry-seconds", type=float, default=1.0)
     parser.add_argument("--upstream-curl-executable")
     parser.add_argument("--upstream-relay-target")
+    parser.add_argument(
+        "--native-pra-builder",
+        type=Path,
+        help=(
+            "Forward every episode's exact frozen wire plan through the named "
+            "Paper 4.5 native-PRA realization adapter."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

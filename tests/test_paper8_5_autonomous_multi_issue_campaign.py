@@ -231,6 +231,7 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
         upstream_connect_attempts=1,
         upstream_connect_retry_seconds=0,
         upstream_relay_target=None,
+        native_pra_builder=tmp_path / "native_builder.py",
         docker_executable="docker",
         docker_platform=None,
         pythonpath=[],
@@ -252,6 +253,9 @@ def test_campaign_forwards_completed_instruction_epoch_floor(tmp_path):
     assert command[command.index("--completed-instruction-epochs") + 1] == "2"
     assert command[command.index("--frontier-workflow-exemplars") + 1] == "1"
     assert command[command.index("--docker-pull-timeout-seconds") + 1] == "900"
+    assert command[command.index("--native-pra-builder") + 1] == str(
+        tmp_path / "native_builder.py"
+    )
 
 
 def test_campaign_registry_accepts_easy14_sequence():
