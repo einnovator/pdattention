@@ -91,6 +91,7 @@ FROZEN_AGENT_MEMORY_POLICIES = frozenset({
     PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
 })
 FROZEN_AGENT_MEMORY_PLAN_CONTRACT = "frozen-agent-memory-plan-v1"
+_WIRE_RECORD_ID = re.compile(r"record-(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -412,7 +413,31 @@ def transform_chat_payload(
                 ),
             ])
         if frozen_selection is not None:
-            valid_segments = _sort_segments([*pinned_segments, *segments])
+            validation_messages = [dict(row) for row in messages]
+            replacement_indices: set[int] = set()
+            for replacement in frozen_materialized_replacements:
+                index = int(replacement.message_index)
+                if index in replacement_indices:
+                    raise ValueError("frozen materialized replacements repeat an index")
+                if index < 0 or index >= len(validation_messages):
+                    raise ValueError("frozen materialized replacement is outside the request")
+                if replacement.record_id != f"record-{index:06d}":
+                    raise ValueError("frozen materialized replacement changed record identity")
+                if replacement.role != str(validation_messages[index].get("role", "")):
+                    raise ValueError("frozen materialized replacement changed record role")
+                if hashlib.sha256(replacement.content.encode("utf-8")).hexdigest() != (
+                    replacement.content_sha256
+                ):
+                    raise ValueError("frozen materialized replacement failed its content hash")
+                validation_messages[index]["content"] = replacement.content
+                replacement_indices.add(index)
+            valid_pinned_segments = _segments(
+                validation_messages, sorted(pinned_indices), segment_tokens,
+            )
+            valid_segments = _sort_segments([
+                *valid_pinned_segments,
+                *_segments(validation_messages, candidate_indices, segment_tokens),
+            ])
             valid_by_id = dict(valid_segments)
             selected_ids = [segment_id for segment_id, _ in selected_texts]
             if len(set(selected_ids)) != len(selected_ids):
@@ -646,6 +671,104 @@ def transform_chat_payload(
             0, mandatory_tokens + pinned_tokens - requested_budget_tokens
         ),
     )
+
+
+def transform_wire_agent_memory_plan_payload(
+    payload: Mapping[str, Any],
+    *,
+    wire_plan: Mapping[str, Any],
+    mandatory_message_indices: Sequence[int],
+    session_id: str,
+    request_index: int = 0,
+    segment_tokens: int = 256,
+    count_tokens: Callable[[str], int] | None = None,
+    tokenizer_identity: str = "whitespace_v1",
+    agent_history_selection_policy: str = PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
+) -> tuple[dict[str, Any], TreatmentTrace]:
+    """Map an agent-neutral wire plan onto live-history native PRA.
+
+    The policy runtime supplies stable ``record-NNNNNN`` identities and any
+    compact record replacements.  This adapter only binds those logical
+    records to message coordinates and engine resources; it never reruns or
+    approximates the selector.
+    """
+
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not all(
+        isinstance(row, Mapping) for row in messages
+    ):
+        raise ValueError("wire agent-memory plan requires a logical messages list")
+    selected_record_ids = wire_plan.get("selected_record_ids")
+    replacements = wire_plan.get("record_replacements", {})
+    if not isinstance(selected_record_ids, (list, tuple)):
+        raise ValueError("wire agent-memory plan has no selected record identities")
+    if not isinstance(replacements, Mapping):
+        raise ValueError("wire agent-memory plan replacements are not an object")
+
+    selected_indices: list[int] = []
+    for value in selected_record_ids:
+        record_id = str(value)
+        match = _WIRE_RECORD_ID.fullmatch(record_id)
+        if match is None:
+            raise ValueError(f"unsupported wire record identity: {record_id!r}")
+        selected_indices.append(int(match.group(1)))
+    if selected_indices != sorted(set(selected_indices)):
+        raise ValueError("wire selected records are not ordered unique")
+    if selected_indices and (
+        selected_indices[0] < 0 or selected_indices[-1] >= len(messages)
+    ):
+        raise ValueError("wire selected record is outside the logical request")
+
+    mandatory = tuple(int(index) for index in mandatory_message_indices)
+    if tuple(sorted(set(mandatory))) != mandatory:
+        raise ValueError("wire mandatory message indices are not ordered unique")
+    if not set(mandatory).issubset(selected_indices):
+        raise ValueError("wire plan omits mandatory current request state")
+
+    materialized_messages = [dict(row) for row in messages]
+    frozen_replacements: list[FrozenMaterializedReplacement] = []
+    for record_id_value, content_value in replacements.items():
+        record_id = str(record_id_value)
+        match = _WIRE_RECORD_ID.fullmatch(record_id)
+        if match is None:
+            raise ValueError(f"unsupported replacement record identity: {record_id!r}")
+        index = int(match.group(1))
+        if index not in selected_indices or index in mandatory:
+            raise ValueError("wire replacement is not selected historical state")
+        content = str(content_value)
+        materialized_messages[index]["content"] = content
+        frozen_replacements.append(FrozenMaterializedReplacement(
+            record_id=record_id,
+            message_index=index,
+            role=str(messages[index].get("role", "")),
+            content=content,
+            content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        ))
+
+    resource_indices = [
+        index for index in selected_indices if index not in set(mandatory)
+    ]
+    resources = _segments(materialized_messages, resource_indices, segment_tokens)
+    transformed, trace = transform_chat_payload(
+        payload,
+        mode=ContextTreatment.DIRECT_NATIVE_PRA,
+        budget_fraction=1.0,
+        request_index=request_index,
+        segment_tokens=segment_tokens,
+        frozen_selection=resources,
+        frozen_mandatory_indices=mandatory,
+        frozen_materialized_replacements=frozen_replacements,
+        agent_history_selection_policy=agent_history_selection_policy,
+        count_tokens=count_tokens,
+        tokenizer_identity=tokenizer_identity,
+    )
+    transformed["pra"]["session_id"] = str(session_id)
+    transformed["pra"]["metadata"]["source_wire_plan_digest"] = hashlib.sha256(
+        json.dumps(
+            wire_plan, sort_keys=True, separators=(",", ":"), default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return transformed, replace(trace, session_id=str(session_id))
 
 
 def session_id_for_messages(messages: Sequence[Mapping[str, Any]]) -> str:

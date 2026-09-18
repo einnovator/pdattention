@@ -66,6 +66,7 @@ from experiments.paper4_5_agent.context_treatment import (
     enforce_consumption_action,
     session_id_for_messages,
     transform_chat_payload,
+    transform_wire_agent_memory_plan_payload,
 )
 from experiments.paper4_5_agent.serve_llamacpp_pra import (
     CausalChatNativePromptMixin,
@@ -2690,6 +2691,53 @@ def test_paper8_5_e2_f1c_requires_exact_external_selection() -> None:
             budget_fraction=1.0,
             agent_history_selection_policy=PAPER8_5_PROMPT_PINNED_E2_F1C_POLICY,
         )
+
+
+def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> None:
+    payload = {
+        "model": "model",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old task"},
+            {"role": "assistant", "content": "large completed response"},
+            {"role": "user", "content": "current task"},
+        ],
+    }
+    receipt = "[PRA memory] Prior instruction completed."
+    wire_plan = {
+        "schema_version": 1,
+        "policy": "persistent_instruction_epoch_retirement",
+        "selected_record_ids": [
+            "record-000000",
+            "record-000001",
+            "record-000002",
+            "record-000003",
+        ],
+        "record_replacements": {"record-000002": receipt},
+    }
+
+    transformed, trace = transform_wire_agent_memory_plan_payload(
+        payload,
+        wire_plan=wire_plan,
+        mandatory_message_indices=[0, 3],
+        session_id="persistent-session",
+    )
+
+    assert transformed["messages"] == [payload["messages"][0], payload["messages"][3]]
+    assert transformed["pra"]["session_id"] == "persistent-session"
+    assert trace.session_id == "persistent-session"
+    assert [row["resource_id"] for row in transformed["pra"]["resources"]] == [
+        "m1-0-user", "m2-0-assistant",
+    ]
+    assert transformed["pra"]["resources"][1]["text"] == receipt
+    metadata = transformed["pra"]["metadata"]
+    assert metadata["logical_message_manifest"][2]["content_sha256"] == hashlib.sha256(
+        b"large completed response"
+    ).hexdigest()
+    assert metadata["materialized_message_replacements"][0]["record_id"] == (
+        "record-000002"
+    )
+    assert len(metadata["source_wire_plan_digest"]) == 64
 
 
 def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:
