@@ -684,8 +684,34 @@ def summarize_trace(path: Path) -> dict[str, Any]:
     reported_completion = sum(
         int(row["reported_completion_tokens"]) for row in usage_rows
     )
+    native_delivery_rows = [row for row in rows if row.get("native_pra_delivery")]
+    engine_rows = [
+        row["engine_pra_metrics"] for row in native_delivery_rows
+        if isinstance(row.get("engine_pra_metrics"), Mapping)
+        and row["engine_pra_metrics"]
+    ]
+
+    def reported_values(key: str) -> list[int | float]:
+        return [
+            metrics[key] for metrics in engine_rows
+            if metrics.get(key) is not None
+        ]
+
+    def sum_reported(key: str) -> int | float | None:
+        values = reported_values(key)
+        return sum(values) if values else None
+
+    def max_reported(key: str) -> int | float | None:
+        values = reported_values(key)
+        return max(values) if values else None
+
+    retention_values = [
+        float(value) for value in reported_values("realized_retention_fraction")
+    ]
+    native_kv_values = reported_values("native_kv")
+    full_retention_values = reported_values("full_retention")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "evidence_class": "autonomous_agent_logical_selection",
         "calls": len(rows),
         "actions": sum(row.get("assistant_command_sha256") is not None for row in rows),
@@ -698,6 +724,41 @@ def summarize_trace(path: Path) -> dict[str, Any]:
         "cumulative_reported_completion_tokens": reported_completion,
         "cumulative_materialized_plus_reported_completion_tokens": (
             total_materialized + reported_completion
+        ),
+        "native_pra_delivery_calls": len(native_delivery_rows),
+        "engine_pra_metrics_coverage_calls": len(engine_rows),
+        "native_kv_calls": sum(bool(value) for value in native_kv_values),
+        "native_kv_coverage_calls": len(native_kv_values),
+        "full_retention_calls": sum(bool(value) for value in full_retention_values),
+        "full_retention_coverage_calls": len(full_retention_values),
+        "realized_retention_coverage_calls": len(retention_values),
+        "mean_realized_retention_fraction": (
+            sum(retention_values) / len(retention_values) if retention_values else None
+        ),
+        "minimum_realized_retention_fraction": (
+            min(retention_values) if retention_values else None
+        ),
+        "maximum_realized_retention_fraction": (
+            max(retention_values) if retention_values else None
+        ),
+        "cumulative_selected_kv_tokens": sum_reported("selected_kv_tokens"),
+        "cumulative_wire_tokens": sum_reported("wire_tokens"),
+        "cumulative_selected_history_reencoded_tokens": sum_reported(
+            "selected_history_reencoded_tokens"
+        ),
+        "cumulative_selected_text_reencoded_tokens": sum_reported(
+            "selected_text_reencoded_tokens"
+        ),
+        "cumulative_physical_kv_copy_bytes": sum_reported(
+            "physical_kv_copy_bytes"
+        ),
+        "cumulative_total_kv_copy_bytes": sum_reported("total_kv_copy_bytes"),
+        "cumulative_host_to_device_bytes": sum_reported("host_to_device_bytes"),
+        "cumulative_consumer_temporary_bytes": sum_reported(
+            "consumer_temporary_bytes"
+        ),
+        "maximum_consumer_temporary_peak_bytes": max_reported(
+            "consumer_temporary_peak_bytes"
         ),
         "cumulative_logical_retention_fraction": (
             total_selected / total_full if total_full else 1.0

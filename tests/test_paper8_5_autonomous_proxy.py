@@ -1869,3 +1869,82 @@ def test_summary_counts_actions_reacquisition_and_repeated_categories(tmp_path):
     assert summary["reported_usage_coverage_calls"] == 5
     assert summary["cumulative_reported_completion_tokens"] == 35
     assert summary["cumulative_materialized_plus_reported_completion_tokens"] == 435
+
+
+def test_summary_aggregates_native_engine_metrics_without_imputing_missing_values(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    rows = [
+        {
+            "full_tokens": 100,
+            "selected_tokens": 100,
+            "materialized_tokens": 100,
+            "budget_satisfied": True,
+            "upstream_status": 200,
+            "native_pra_delivery": True,
+            "engine_pra_metrics": {
+                "native_kv": True,
+                "full_retention": True,
+                "realized_retention_fraction": 1.0,
+                "selected_kv_tokens": 80,
+                "wire_tokens": 20,
+                "selected_history_reencoded_tokens": 0,
+                "selected_text_reencoded_tokens": 0,
+                "physical_kv_copy_bytes": 0,
+                "total_kv_copy_bytes": 0,
+                "host_to_device_bytes": 0,
+                "consumer_temporary_bytes": 128,
+                "consumer_temporary_peak_bytes": 96,
+            },
+        },
+        {
+            "full_tokens": 200,
+            "selected_tokens": 100,
+            "materialized_tokens": 100,
+            "budget_satisfied": True,
+            "upstream_status": 200,
+            "native_pra_delivery": True,
+            "engine_pra_metrics": {
+                "native_kv": True,
+                "full_retention": False,
+                "realized_retention_fraction": 0.5,
+                "selected_kv_tokens": 90,
+                "wire_tokens": 10,
+                "selected_history_reencoded_tokens": 0,
+                "physical_kv_copy_bytes": 0,
+                "total_kv_copy_bytes": 16,
+                "consumer_temporary_bytes": 256,
+                "consumer_temporary_peak_bytes": 192,
+            },
+        },
+        {
+            "full_tokens": 50,
+            "selected_tokens": 50,
+            "materialized_tokens": 50,
+            "budget_satisfied": True,
+            "upstream_status": 200,
+            "native_pra_delivery": False,
+            "engine_pra_metrics": {},
+        },
+    ]
+    trace.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+    )
+
+    summary = summarize_trace(trace)
+
+    assert summary["schema_version"] == 2
+    assert summary["native_pra_delivery_calls"] == 2
+    assert summary["engine_pra_metrics_coverage_calls"] == 2
+    assert summary["native_kv_calls"] == 2
+    assert summary["full_retention_calls"] == 1
+    assert summary["mean_realized_retention_fraction"] == pytest.approx(0.75)
+    assert summary["minimum_realized_retention_fraction"] == pytest.approx(0.5)
+    assert summary["maximum_realized_retention_fraction"] == pytest.approx(1.0)
+    assert summary["cumulative_selected_kv_tokens"] == 170
+    assert summary["cumulative_wire_tokens"] == 30
+    assert summary["cumulative_selected_history_reencoded_tokens"] == 0
+    assert summary["cumulative_physical_kv_copy_bytes"] == 0
+    assert summary["cumulative_total_kv_copy_bytes"] == 16
+    assert summary["cumulative_host_to_device_bytes"] == 0
+    assert summary["cumulative_consumer_temporary_bytes"] == 384
+    assert summary["maximum_consumer_temporary_peak_bytes"] == 192
