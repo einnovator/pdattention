@@ -814,6 +814,55 @@ def transform_wire_agent_memory_plan_payload(
         for segment_id, text in selected_segments
     ]
     envelope = dict(transformed.get("pra") or {})
+    native_metadata = {
+        **dict(envelope.get("metadata") or {}),
+        "requested_mode": "native-memory",
+        "connection": "direct",
+        "benchmark_fairness": "agent-visible-messages-only",
+        "selection_contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
+        "agent_history_selection_policy": agent_history_selection_policy,
+        "selection_tokenizer_identity": tokenizer_identity,
+        "selection_materialization": (
+            "paper8.5-prompt-pinned-records-plus-closure-receipts-v1"
+        ),
+        "selection_budget_policy": (
+            "paper8.5_prompt_pinned_e2_f1c_frozen_v1"
+        ),
+        "agent_memory_plan_digest": plan_digest,
+        "source_wire_plan_digest": source_wire_plan_digest,
+        "realized_retention_fraction": realized_retention,
+        "history_projection": "live-agent-kv-v1",
+        "selection_complete": set(selected_indices) == set(range(len(messages))),
+        "logical_message_manifest": [
+            {
+                "message_index": index,
+                "role": str(message.get("role", "")),
+                "content_sha256": hashlib.sha256(
+                    str(message.get("content", "")).encode("utf-8")
+                ).hexdigest(),
+            }
+            for index, message in enumerate(messages)
+        ],
+        "mandatory_message_indices": list(mandatory),
+        "materialized_message_replacements": [
+            row.to_dict() for row in frozen_replacements
+        ],
+        "record_message_indices": dict(coordinate_map),
+        "pinned_task_segments": [],
+        "pinned_progress_segments": [],
+        "pinned_progress_state_segments": [],
+        "pinned_protocol_segments": [],
+    }
+    if request_index == 1:
+        # A restored persistent session has no resident source at the engine
+        # yet. Send its canonical logical transcript once so the engine can
+        # capture the full live K/V before applying this request's frozen
+        # selection. Later requests carry only the hash manifest and deltas.
+        native_metadata.update({
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": [dict(row) for row in messages],
+        })
+
     envelope.update({
         "tenant_id": "paper4-5-swebench",
         "session_id": str(session_id),
@@ -825,45 +874,7 @@ def transform_wire_agent_memory_plan_payload(
         "allow_text_fallback": False,
         "required_capabilities": ["logical_refs", "native_kv"],
         "pra_policy": {"profile": agent_history_selection_policy},
-        "metadata": {
-            **dict(envelope.get("metadata") or {}),
-            "requested_mode": "native-memory",
-            "connection": "direct",
-            "benchmark_fairness": "agent-visible-messages-only",
-            "selection_contract": FROZEN_AGENT_MEMORY_PLAN_CONTRACT,
-            "agent_history_selection_policy": agent_history_selection_policy,
-            "selection_tokenizer_identity": tokenizer_identity,
-            "selection_materialization": (
-                "paper8.5-prompt-pinned-records-plus-closure-receipts-v1"
-            ),
-            "selection_budget_policy": (
-                "paper8.5_prompt_pinned_e2_f1c_frozen_v1"
-            ),
-            "agent_memory_plan_digest": plan_digest,
-            "source_wire_plan_digest": source_wire_plan_digest,
-            "realized_retention_fraction": realized_retention,
-            "history_projection": "live-agent-kv-v1",
-            "selection_complete": set(selected_indices) == set(range(len(messages))),
-            "logical_message_manifest": [
-                {
-                    "message_index": index,
-                    "role": str(message.get("role", "")),
-                    "content_sha256": hashlib.sha256(
-                        str(message.get("content", "")).encode("utf-8")
-                    ).hexdigest(),
-                }
-                for index, message in enumerate(messages)
-            ],
-            "mandatory_message_indices": list(mandatory),
-            "materialized_message_replacements": [
-                row.to_dict() for row in frozen_replacements
-            ],
-            "record_message_indices": dict(coordinate_map),
-            "pinned_task_segments": [],
-            "pinned_progress_segments": [],
-            "pinned_progress_state_segments": [],
-            "pinned_protocol_segments": [],
-        },
+        "metadata": native_metadata,
     })
     transformed["pra"] = envelope
     return transformed, _trace(

@@ -958,6 +958,19 @@ class HybridLlamaCppAdapter:
                 self._logical_session_messages[str(request.session_id)] = logical_messages
                 return result
             if (
+                self.prefix_cache_enabled
+                and live_slot is None
+                and logical_messages is not None
+                and request.metadata.get("history_projection") == "live-agent-kv-v1"
+                and request.metadata.get("source_bootstrap_contract")
+                == "full-logical-history-once-v1"
+            ):
+                result = self._bootstrap_and_generate_live_records(
+                    request, logical_messages,
+                )
+                self._logical_session_messages[str(request.session_id)] = logical_messages
+                return result
+            if (
                 not self.prefix_cache_enabled
                 and logical_messages is not None
                 and request.metadata.get("history_projection") == "live-agent-kv-v1"
@@ -1112,6 +1125,16 @@ class HybridLlamaCppAdapter:
         prior = self._logical_session_messages.get(str(request.session_id), [])
         for index, message in enumerate(prior):
             known[index] = dict(message)
+        bootstrap = metadata.get("source_bootstrap_logical_messages")
+        if bootstrap is not None:
+            if not isinstance(bootstrap, list) or not all(
+                isinstance(message, Mapping) for message in bootstrap
+            ):
+                raise ValueError("live history source bootstrap must be a message list")
+            if prior:
+                raise ValueError("live history source bootstrap cannot replace resident state")
+            for index, message in enumerate(bootstrap):
+                known[index] = dict(message)
         for index, message in zip(mandatory_indices, request.messages):
             known[int(index)] = dict(message)
 
@@ -1154,6 +1177,78 @@ class HybridLlamaCppAdapter:
                 raise ValueError(f"logical record m{expected_index} changed content")
             logical.append(message)
         return logical
+
+    def _bootstrap_and_generate_live_records(
+        self,
+        request: PRAWireRequest,
+        logical_messages: list[dict[str, Any]],
+    ) -> PRAEngineResult:
+        """Capture an imported persistent transcript once, then select its K/V."""
+
+        if request.session_id is None:
+            raise ValueError("live history source bootstrap requires a session")
+        session_id = str(request.session_id)
+        native = self.native_adapter.native_executor
+        source, destination = self._allocate_live_pair(session_id)
+        full_tokens = self._full_logical_tokens(request, logical_messages)
+        if not full_tokens:
+            raise ValueError("live history source bootstrap rendered no tokens")
+
+        # Session import owns a fresh source. Do not silently inherit K/V from
+        # a prior control or tenant that happened to use the same engine slot.
+        native._erase_request_slot(source)
+        if destination != source:
+            native._erase_request_slot(destination)
+        prime = dict(native._request_json(
+            "/completion",
+            {
+                "prompt": list(full_tokens),
+                "id_slot": source,
+                "n_predict": 0,
+                "cache_prompt": True,
+                "temperature": 0,
+                "seed": int(request.openai_fields.get("seed", 0)),
+                "return_tokens": True,
+                "pra_pin_resource": True,
+            },
+        ))
+        timings = prime.get("timings") if isinstance(prime.get("timings"), Mapping) else {}
+        cached = int(timings.get("cache_n", 0) or 0)
+        evaluated = prime.get("tokens_evaluated", timings.get("prompt_n"))
+        evaluated = int(evaluated if evaluated is not None else len(full_tokens) - cached)
+        if cached + evaluated < len(full_tokens):
+            raise RuntimeError(
+                "live history source bootstrap did not evaluate the complete transcript"
+            )
+
+        self._live_session_tokens[session_id] = full_tokens
+        self._logical_session_messages[session_id] = [
+            dict(message) for message in logical_messages
+        ]
+        result = self._generate_from_live_records(
+            request, source, logical_messages,
+        )
+        raw = dict(result.raw)
+        pra = dict(raw.get("pra") or {})
+        pra.update({
+            "source_bootstrap": True,
+            "source_bootstrap_tokens": len(full_tokens),
+            "source_bootstrap_cached_tokens": cached,
+            "source_bootstrap_evaluated_tokens": evaluated,
+        })
+        raw["pra"] = pra
+        return PRAEngineResult(
+            result.text,
+            raw,
+            ({
+                "stage": "llama_cpp_live_history_source_bootstrap",
+                "source_slot": source,
+                "request_slot": destination,
+                "source_bootstrap_tokens": len(full_tokens),
+                "source_bootstrap_cached_tokens": cached,
+                "source_bootstrap_evaluated_tokens": evaluated,
+            }, *result.trace),
+        )
 
     def _logical_prompt_tokens(self, request: PRAWireRequest) -> tuple[int, ...]:
         native = self.native_adapter.native_executor
@@ -1676,6 +1771,14 @@ def _completion(
         "consumer_temporary_bytes": native_raw.get("consumer_temporary_bytes"),
         "consumer_temporary_peak_bytes": native_raw.get(
             "consumer_temporary_peak_bytes"
+        ),
+        "source_bootstrap": native_raw.get("source_bootstrap"),
+        "source_bootstrap_tokens": native_raw.get("source_bootstrap_tokens"),
+        "source_bootstrap_cached_tokens": native_raw.get(
+            "source_bootstrap_cached_tokens"
+        ),
+        "source_bootstrap_evaluated_tokens": native_raw.get(
+            "source_bootstrap_evaluated_tokens"
         ),
         "resource_update_mode": raw.get("resource_update_mode"),
         "resource_prefix_cached_tokens": raw.get("resource_prefix_cached_tokens"),

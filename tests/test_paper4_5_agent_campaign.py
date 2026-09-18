@@ -2727,6 +2727,7 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
         },
         mandatory_message_indices=[0, 3],
         session_id="persistent-session",
+        request_index=1,
     )
 
     assert transformed["messages"] == [payload["messages"][0], payload["messages"][3]]
@@ -2741,7 +2742,109 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
         b"large completed response"
     ).hexdigest()
     assert metadata["materialized_message_replacements"][0]["record_id"] == "mini/action"
+    assert metadata["source_bootstrap_contract"] == "full-logical-history-once-v1"
+    assert metadata["source_bootstrap_logical_messages"] == payload["messages"]
     assert len(metadata["source_wire_plan_digest"]) == 64
+
+
+def test_imported_persistent_history_bootstraps_source_before_native_selection() -> None:
+    calls = []
+    erased = []
+
+    class Native:
+        request_slot = 1
+        resource_slot = 0
+        slot_allocator = SimpleNamespace(request_slots=(1,), resource_slots=(0,))
+
+        @staticmethod
+        def _render_chat(messages, request, *, generate):
+            del request, generate
+            return "".join(str(message["content"]) for message in messages)
+
+        @staticmethod
+        def _request_json(path, body=None):
+            calls.append((path, body))
+            if path == "/tokenize":
+                return {"tokens": [ord(char) for char in body["content"]]}
+            assert path == "/completion"
+            assert body["n_predict"] == 0
+            return {
+                "content": "",
+                "tokens_evaluated": len(body["prompt"]),
+                "timings": {"cache_n": 0, "prompt_n": len(body["prompt"])},
+            }
+
+        @staticmethod
+        def _erase_request_slot(slot):
+            erased.append(slot)
+
+    native = Native()
+    adapter = HybridLlamaCppAdapter(
+        SimpleNamespace(native_executor=native), SimpleNamespace(),
+        prefix_caching=True,
+    )
+    logical = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "OLD"},
+        {"role": "user", "content": "NOW"},
+    ]
+    resource = PRAWireResource(
+        resource_id="m1-0-user",
+        uri="pra://agent-trajectory/m1-0-user",
+        text="OLD",
+        metadata={
+            "message_index": 1,
+            "segment_index": 0,
+            "role": "user",
+            "parent_record_id": "m1",
+            "causal_group_id": "record:m1",
+        },
+    )
+    manifest = [
+        {
+            "message_index": index,
+            "role": message["role"],
+            "content_sha256": hashlib.sha256(
+                message["content"].encode("utf-8")
+            ).hexdigest(),
+        }
+        for index, message in enumerate(logical)
+    ]
+    request = PRAWireRequest(
+        model="model",
+        messages=(logical[0], logical[2]),
+        resources=(resource,),
+        session_id="imported-session",
+        metadata={
+            "history_projection": "live-agent-kv-v1",
+            "source_bootstrap_contract": "full-logical-history-once-v1",
+            "source_bootstrap_logical_messages": logical,
+            "logical_message_manifest": manifest,
+            "mandatory_message_indices": [0, 2],
+        },
+        openai_fields={"prefix_caching": True, "seed": 0},
+    )
+    selected = PRAEngineResult(
+        "answer",
+        {"tokens": [90], "pra": {"selected_history_reencoded_tokens": 0}},
+        ({"stage": "selected"},),
+    )
+    observed = []
+    adapter._generate_from_live_records = lambda req, source, messages: (
+        observed.append((req, source, messages)) or selected
+    )
+
+    result = adapter.generate(request)
+
+    assert result.text == "answer"
+    assert erased == [1, 0]
+    prime = next(body for path, body in calls if path == "/completion")
+    assert prime["prompt"] == list(map(ord, "SOLDNOW"))
+    assert observed == [(request, 1, logical)]
+    assert adapter._live_session_tokens["imported-session"] == tuple(map(ord, "SOLDNOW"))
+    assert result.raw["pra"]["source_bootstrap"] is True
+    assert result.raw["pra"]["source_bootstrap_evaluated_tokens"] == 7
+    assert result.trace[0]["stage"] == "llama_cpp_live_history_source_bootstrap"
 
 
 def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:
