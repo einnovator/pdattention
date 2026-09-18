@@ -578,6 +578,77 @@ def test_sequence_aggregate_labels_unpaired_saving_and_defers_primary_metrics():
     assert failed["primary_target_met"] is None
 
 
+def test_sequence_aggregate_reduces_embedded_baseline_conditional_controls():
+    cell = {"issue_count": 4}
+    rows = [
+        {
+            "instance_id": "baseline-failed",
+            "official_resolved": False,
+            "policy_withheld": True,
+            "calls": 5,
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 100,
+            "same_prefix_full_control": {
+                "required": True,
+                "official_resolved": False,
+                "calls": 5,
+                "cumulative_full_tokens": 100,
+            },
+        },
+        {
+            "instance_id": "paired-a",
+            "official_resolved": True,
+            "calls": 4,
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 60,
+            "same_prefix_full_control": {
+                "required": True,
+                "official_resolved": True,
+                "calls": 4,
+                "cumulative_full_tokens": 100,
+            },
+        },
+        {
+            "instance_id": "paired-b",
+            "official_resolved": True,
+            "calls": 3,
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 60,
+            "same_prefix_full_control": {
+                "required": True,
+                "official_resolved": True,
+                "calls": 3,
+                "cumulative_full_tokens": 100,
+            },
+        },
+        {
+            "instance_id": "paired-c",
+            "official_resolved": True,
+            "calls": 3,
+            "cumulative_full_tokens": 100,
+            "cumulative_materialized_tokens": 60,
+            "same_prefix_full_control": {
+                "required": True,
+                "official_resolved": True,
+                "calls": 3,
+                "cumulative_full_tokens": 100,
+            },
+        },
+    ]
+
+    result = _aggregate(cell, rows)
+
+    assert result["official_resolved_count"] == 3
+    assert result["baseline_official_resolution_fraction"] == 0.75
+    assert result["conditional_eligible_issue_count"] == 3
+    assert result["conditional_official_resolution_fraction"] == 1.0
+    assert result["conditional_lost_full_successes"] == []
+    assert result["paired_saving_fraction"] == pytest.approx(0.4)
+    assert result["paired_call_delta"] == 0
+    assert result["failure_aware_saving_fraction"] == pytest.approx(0.4)
+    assert result["primary_target_met"] is True
+
+
 def test_predeclared_stop_counts_only_losses_of_completed_full_successes():
     cell = {"sequence_id": "sequence", "repeat": 1}
     state_cells = {

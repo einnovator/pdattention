@@ -551,7 +551,7 @@ def _aggregate(cell: Mapping[str, Any], episode_rows: Sequence[Mapping[str, Any]
     materialized = sum(int(row["cumulative_materialized_tokens"]) for row in episode_rows)
     official = [bool(row["official_resolved"]) for row in episode_rows]
     saving = 1 - materialized / full if full else 0.0
-    return {
+    result = {
         "status": "complete",
         "official_resolved_count": sum(official),
         "official_resolution_fraction": sum(official) / len(official),
@@ -572,6 +572,83 @@ def _aggregate(cell: Mapping[str, Any], episode_rows: Sequence[Mapping[str, Any]
             "requires contemporaneous persistent-FULL sequence comparison"
         ),
     }
+    embedded_controls = [
+        row.get("same_prefix_full_control") or {}
+        for row in episode_rows
+    ]
+    if not any(bool(control.get("required")) for control in embedded_controls):
+        return result
+
+    eligible = [
+        (row, control)
+        for row, control in zip(episode_rows, embedded_controls)
+        if bool(control.get("required"))
+        and bool(control.get("official_resolved"))
+        and not bool(row.get("policy_withheld"))
+    ]
+    baseline_resolved = sum(
+        bool(control.get("official_resolved"))
+        for control in embedded_controls
+        if bool(control.get("required"))
+    )
+    paired_full_tokens = sum(
+        int(control.get("cumulative_full_tokens") or 0)
+        for _, control in eligible
+    )
+    paired_materialized_tokens = sum(
+        int(row["cumulative_materialized_tokens"])
+        for row, _ in eligible
+    )
+    paired_full_calls = sum(
+        int(control.get("calls") or 0) for _, control in eligible
+    )
+    paired_candidate_calls = sum(int(row["calls"]) for row, _ in eligible)
+    lost = [
+        str(row.get("instance_id") or "")
+        for row, _ in eligible
+        if not bool(row.get("official_resolved"))
+    ]
+    paired_saving = (
+        1 - paired_materialized_tokens / paired_full_tokens
+        if paired_full_tokens else 0.0
+    )
+    conditional_resolved = sum(
+        bool(row.get("official_resolved")) for row, _ in eligible
+    )
+    paired_call_delta = paired_candidate_calls - paired_full_calls
+    in_target = bool(
+        eligible and TARGET_SAVING_MIN <= paired_saving <= TARGET_SAVING_MAX
+    )
+    quality_met = bool(eligible and not lost and paired_call_delta <= 0)
+    result.update({
+        "baseline_official_resolved_count": baseline_resolved,
+        "baseline_official_resolution_fraction": (
+            baseline_resolved / len(episode_rows)
+        ),
+        "baseline_ineligible_issue_count": len(episode_rows) - len(eligible),
+        "conditional_eligible_issue_count": len(eligible),
+        "conditional_candidate_resolved_count": conditional_resolved,
+        "conditional_official_resolution_fraction": (
+            conditional_resolved / len(eligible) if eligible else None
+        ),
+        "conditional_lost_full_successes": lost,
+        "paired_full_tokens": paired_full_tokens,
+        "paired_materialized_tokens": paired_materialized_tokens,
+        "paired_saving_fraction": paired_saving,
+        "paired_full_calls": paired_full_calls,
+        "paired_candidate_calls": paired_candidate_calls,
+        "paired_call_delta": paired_call_delta,
+        "failure_aware_saving_fraction": 0.0 if lost else paired_saving,
+        "in_primary_saving_target": in_target,
+        "discovery_quality_target_met": quality_met,
+        "primary_target_met": bool(in_target and quality_met),
+        "pairing_status": (
+            "baseline-conditional exact-prefix FULL; policy quality is "
+            "conditioned on FULL success while carried FULL failures remain "
+            "in unconditional session accounting"
+        ),
+    })
+    return result
 
 
 def _partial_aggregate(
