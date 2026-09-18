@@ -78,6 +78,24 @@ mutation floors must be receipt-qualified, exclude disposable submission
 artifacts, and require a resource/DAG link to the live frontier. The generic
 M1 treatment is rejected rather than expanded.
 
+## Frozen consumption-mode diagnostic
+
+`first_divergence_oracle/` freezes request 4 with the same selected-message
+digest and compares packed ordinary-text consumption. Two repeated FULL
+controls are valid and identical; two repeated E2+F1C controls degenerate into
+the same repetitive malformed grep pipeline. Restoring any retired epoch, any
+of the five groups from the previous Scikit-learn issue, or either of two tiny
+unrelated SymPy/Django groups restores a valid action. The unrelated add-backs
+cost only 82 and 118 tokens.
+
+This does not identify a missing semantic dependency. It identifies a generic
+packed-prompt conditioning effect. The native original-position E2+F1C
+request remains valid and the autonomous task resolves, so an identical
+record selection is not behaviorally interchangeable across packed text and
+original-position sparse K/V. Consequently every engine must qualify the
+frozen policy through its actual consumer; the ordinary-text oracle cannot be
+used as a proxy for native agent behavior.
+
 The immutable traces were emitted before a shell-classifier correction: a
 diagnostic redirect such as `find ... 2>/dev/null` was labeled as a write.
 That label was not consumed by E2+F1C, so official outcomes, selected record
