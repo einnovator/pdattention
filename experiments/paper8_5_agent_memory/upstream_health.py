@@ -20,6 +20,8 @@ def normalize_ollama_cold_start(
     *, base_url: str, model: str, timeout_seconds: float = 180.0,
     connect_attempts: int = 1, connect_retry_seconds: float = 1.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
+    curl_executable: str | None = None,
+    curl_runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     """Unload and deterministically warm one Ollama model before a trial.
 
@@ -63,13 +65,40 @@ def normalize_ollama_cold_start(
         attempt: dict[str, Any] = {"attempt": attempt_index, "healthy": False}
         try:
             started = monotonic()
-            request = urllib.request.Request(
-                receipt["unload_endpoint"], data=unload_payload,
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            with opener(request, timeout=timeout_seconds) as response:
-                response.read()
-                unload_status = int(getattr(response, "status", 200))
+            if curl_executable is not None:
+                completed = curl_runner(
+                    [
+                        curl_executable,
+                        "--silent", "--show-error",
+                        "--max-time", str(timeout_seconds),
+                        "--request", "POST",
+                        "--header", "Content-Type: application/json",
+                        "--data-binary", "@-",
+                        "--output", "-", "--write-out", "\n%{http_code}",
+                        receipt["unload_endpoint"],
+                    ],
+                    input=unload_payload,
+                    capture_output=True,
+                    timeout=timeout_seconds + 10,
+                    check=False,
+                )
+                if completed.returncode:
+                    detail = completed.stderr.decode(
+                        "utf-8", errors="replace"
+                    ).strip()
+                    raise OSError(
+                        f"curl exited {completed.returncode}: {detail}"
+                    )
+                _unload_body, status_text = completed.stdout.rsplit(b"\n", 1)
+                unload_status = int(status_text)
+            else:
+                request = urllib.request.Request(
+                    receipt["unload_endpoint"], data=unload_payload,
+                    headers={"Content-Type": "application/json"}, method="POST",
+                )
+                with opener(request, timeout=timeout_seconds) as response:
+                    response.read()
+                    unload_status = int(getattr(response, "status", 200))
             attempt["unload"] = {
                 "status": unload_status,
                 "latency_seconds": monotonic() - started,
@@ -78,13 +107,41 @@ def normalize_ollama_cold_start(
                 raise OSError(f"Ollama unload returned HTTP {unload_status}")
 
             started = monotonic()
-            request = urllib.request.Request(
-                receipt["warmup_endpoint"], data=warmup_payload,
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            with opener(request, timeout=timeout_seconds) as response:
-                warmup_status = int(getattr(response, "status", 200))
-                body = json.loads(response.read().decode("utf-8"))
+            if curl_executable is not None:
+                completed = curl_runner(
+                    [
+                        curl_executable,
+                        "--silent", "--show-error",
+                        "--max-time", str(timeout_seconds),
+                        "--request", "POST",
+                        "--header", "Content-Type: application/json",
+                        "--data-binary", "@-",
+                        "--output", "-", "--write-out", "\n%{http_code}",
+                        receipt["warmup_endpoint"],
+                    ],
+                    input=warmup_payload,
+                    capture_output=True,
+                    timeout=timeout_seconds + 10,
+                    check=False,
+                )
+                if completed.returncode:
+                    detail = completed.stderr.decode(
+                        "utf-8", errors="replace"
+                    ).strip()
+                    raise OSError(
+                        f"curl exited {completed.returncode}: {detail}"
+                    )
+                raw_body, status_text = completed.stdout.rsplit(b"\n", 1)
+                warmup_status = int(status_text)
+                body = json.loads(raw_body.decode("utf-8"))
+            else:
+                request = urllib.request.Request(
+                    receipt["warmup_endpoint"], data=warmup_payload,
+                    headers={"Content-Type": "application/json"}, method="POST",
+                )
+                with opener(request, timeout=timeout_seconds) as response:
+                    warmup_status = int(getattr(response, "status", 200))
+                    body = json.loads(response.read().decode("utf-8"))
             content = str(body["choices"][0]["message"]["content"]).strip()
             attempt["warmup"] = {
                 "status": warmup_status,

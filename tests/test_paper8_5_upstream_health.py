@@ -63,6 +63,42 @@ def test_ollama_cold_start_unloads_then_warms_same_consumer() -> None:
     assert calls[1][1]["seed"] == 0
 
 
+def test_ollama_cold_start_can_use_direct_curl_transport() -> None:
+    calls = []
+
+    class Completed:
+        returncode = 0
+        stderr = b""
+
+        def __init__(self, body: bytes):
+            self.stdout = body + b"\n200"
+
+    responses = [
+        Completed(b'{"done":true,"done_reason":"unload"}'),
+        Completed(b'{"choices":[{"message":{"content":"OK"}}]}'),
+    ]
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return responses.pop(0)
+
+    result = normalize_ollama_cold_start(
+        base_url="http://engine.test:11435/v1",
+        model="locked-model",
+        timeout_seconds=7,
+        curl_executable="/usr/bin/curl",
+        curl_runner=runner,
+    )
+
+    assert result["healthy"] is True
+    assert len(calls) == 2
+    assert calls[0][0][-1] == "http://engine.test:11435/api/generate"
+    assert calls[1][0][-1] == "http://engine.test:11435/v1/chat/completions"
+    assert json.loads(calls[0][1]["input"])["keep_alive"] == 0
+    assert json.loads(calls[1][1]["input"])["seed"] == 0
+    assert all(call[1]["check"] is False for call in calls)
+
+
 def test_generation_health_requires_all_exact_probes() -> None:
     calls = []
 

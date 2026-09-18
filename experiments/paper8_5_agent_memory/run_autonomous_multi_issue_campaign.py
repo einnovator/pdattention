@@ -42,6 +42,7 @@ def _normalize_trial_start(
         timeout_seconds=args.health_timeout_seconds,
         connect_attempts=getattr(args, "upstream_connect_attempts", 1),
         connect_retry_seconds=getattr(args, "upstream_connect_retry_seconds", 1.0),
+        curl_executable=getattr(args, "upstream_curl_executable", None),
     )
 
 
