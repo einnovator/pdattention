@@ -19,6 +19,33 @@ from pra_hf.deployment import PRAEngineResult, PRAWireRequest
 from pra_hf.live_history import LiveKVSessionTerminatedError
 
 
+def _install_transformers_config_registration_compatibility() -> None:
+    """Permit pinned SGLang configs already provided by newer Transformers.
+
+    The pinned SGLang snapshot registers several model types at import time.
+    Transformers 5 includes some of those types and rejects the duplicate by
+    default.  Retry only that explicit duplicate-registration failure with
+    ``exist_ok=True``; unrelated registration errors remain fatal.
+    """
+
+    from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+
+    if getattr(CONFIG_MAPPING.register, "_pra_sglang_compat", False):
+        return
+    original_register = CONFIG_MAPPING.register
+
+    def compatible_register(key, value, exist_ok=False):
+        try:
+            return original_register(key, value, exist_ok=exist_ok)
+        except ValueError as error:
+            if "already used by a Transformers config" not in str(error):
+                raise
+            return original_register(key, value, exist_ok=True)
+
+    compatible_register._pra_sglang_compat = True
+    CONFIG_MAPPING.register = compatible_register
+
+
 def _completion(request: PRAWireRequest, result: PRAEngineResult) -> dict[str, Any]:
     raw = dict(result.raw)
     response: dict[str, Any] = {
@@ -203,6 +230,7 @@ def main() -> None:
     served_model = args.served_model or args.model
 
     from pra_hf.engine_memory import LogicalPRABlockStore
+    _install_transformers_config_registration_compatibility()
     from pra_sglang import (
         SGLangEngineAdapter,
         SGLangMLXAgentHistoryExecutor,

@@ -11,7 +11,10 @@ from types import SimpleNamespace
 from pra_hf.deployment import PRAWireRequest, PRAWireResource
 from pra_hf.deployment import PRAEngineResult
 from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
-from experiments.paper4_5_agent.serve_sglang_mlx_agent_pra import _completion
+from experiments.paper4_5_agent.serve_sglang_mlx_agent_pra import (
+    _completion,
+    _install_transformers_config_registration_compatibility,
+)
 from pra_sglang.agent_executor import (
     AgentHistoryLedger,
     SGLangMLXAgentHistoryExecutor,
@@ -33,6 +36,25 @@ from pra_sglang.agent_executor import (
 from pra_sglang.adapter import SGLangEngineAdapter
 from pra_sglang.mlx_native import _qwen_projections
 from pra_hf.gateway import PRAGateway
+
+
+def test_sglang_transformers_duplicate_config_registration_is_compatible(
+    monkeypatch,
+) -> None:
+    from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+
+    calls = []
+
+    def register(key, value, exist_ok=False):
+        calls.append((key, exist_ok))
+        if not exist_ok:
+            raise ValueError(f"'{key}' is already used by a Transformers config")
+
+    monkeypatch.setattr(CONFIG_MAPPING, "register", register)
+    _install_transformers_config_registration_compatibility()
+
+    CONFIG_MAPPING.register("qwen3_asr", object())
+    assert calls == [("qwen3_asr", False), ("qwen3_asr", True)]
 from pra_hf.deployment import PRAGatewayMode
 
 
