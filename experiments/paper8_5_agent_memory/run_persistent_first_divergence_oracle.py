@@ -278,7 +278,30 @@ def _generation_row(
             if len(commands) == 1 else None
         ),
         "reported_usage": response.get("usage"),
+        "diagnostic_served_model": transformation.payload.get("model"),
+        "diagnostic_max_tokens": transformation.payload.get("max_tokens"),
     }
+
+
+def _apply_diagnostic_generation_overrides(
+    transformation,
+    *,
+    served_model: str | None,
+    max_tokens: int | None,
+) -> None:
+    """Apply post-reconstruction generation overrides for oracle screening.
+
+    Selection and request-prefix identity are verified before this helper is
+    called.  These overrides deliberately change only the diagnostic consumer
+    and/or completion ceiling; callers must not report such rows as matched-
+    model behavioral evidence.
+    """
+    if served_model:
+        transformation.payload["model"] = served_model
+    if max_tokens is not None:
+        if max_tokens < 1:
+            raise ValueError("diagnostic max tokens must be positive")
+        transformation.payload["max_tokens"] = max_tokens
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -313,6 +336,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         full_config,
         count_tokens=count_tokens,
         prior_episodes=prior_episodes,
+    )
+    _apply_diagnostic_generation_overrides(
+        full,
+        served_model=args.diagnostic_served_model,
+        max_tokens=args.diagnostic_max_tokens,
+    )
+    _apply_diagnostic_generation_overrides(
+        candidate,
+        served_model=args.diagnostic_served_model,
+        max_tokens=args.diagnostic_max_tokens,
     )
     composed = compose_multi_issue_session(
         (*prior_episodes, {
@@ -379,6 +412,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prior_episodes=prior_episodes,
             oracle_addback_causal_group_ids=batch["causal_group_ids"],
         )
+        _apply_diagnostic_generation_overrides(
+            transformed,
+            served_model=args.diagnostic_served_model,
+            max_tokens=args.diagnostic_max_tokens,
+        )
         row = _generation_row(
             arm=(
                 f"addback_epoch_{batch['epoch_index']:02d}"
@@ -423,6 +461,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "addback_batch_count": len(addback_batches),
         "addback_batches": addback_batches,
         "control_repeats": args.control_repeats,
+        "diagnostic_served_model_override": args.diagnostic_served_model,
+        "diagnostic_max_tokens_override": args.diagnostic_max_tokens,
         "rows": rows,
         "interpretation_guardrail": (
             "Add-backs diagnose first-request sensitivity only. They do not establish "
@@ -471,6 +511,21 @@ def main() -> None:
         ),
     )
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
+    parser.add_argument(
+        "--diagnostic-served-model",
+        help=(
+            "post-reconstruction model override for fast oracle screening; "
+            "rows are cross-model diagnostics, not matched-model evidence"
+        ),
+    )
+    parser.add_argument(
+        "--diagnostic-max-tokens",
+        type=int,
+        help=(
+            "post-reconstruction completion ceiling for oracle screening; "
+            "must remain large enough to contain one valid agent action"
+        ),
+    )
     args = parser.parse_args()
     result = run(args)
     print(json.dumps({

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from experiments.paper8_5_agent_memory import run_persistent_first_divergence_oracle as oracle
 from experiments.paper8_5_agent_memory.run_persistent_first_divergence_oracle import (
+    _apply_diagnostic_generation_overrides,
     _causal_group_addback_batches,
     _completed_epoch_addback_batches,
     _full_control_config,
@@ -44,6 +45,25 @@ def test_generation_row_preserves_content_and_finish_reason(monkeypatch):
     assert row["response_content"] == "analysis without a command"
     assert row["finish_reason"] == "length"
     assert row["action_valid"] is False
+    assert row["diagnostic_served_model"] is None
+    assert row["diagnostic_max_tokens"] is None
+
+
+def test_diagnostic_generation_overrides_do_not_change_selection_trace():
+    transformation = SimpleNamespace(
+        payload={"model": "original", "max_tokens": 1024, "messages": []},
+        trace={"selected_messages_sha256": "frozen-selection"},
+    )
+
+    _apply_diagnostic_generation_overrides(
+        transformation,
+        served_model="smaller-screening-model",
+        max_tokens=256,
+    )
+
+    assert transformation.payload["model"] == "smaller-screening-model"
+    assert transformation.payload["max_tokens"] == 256
+    assert transformation.trace["selected_messages_sha256"] == "frozen-selection"
 
 
 def test_full_control_clone_disables_candidate_only_retirement_options():
