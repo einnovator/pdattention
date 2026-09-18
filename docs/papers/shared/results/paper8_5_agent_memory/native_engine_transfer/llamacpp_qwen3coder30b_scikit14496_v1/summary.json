@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_to_paper4_5_native_agent_memory_transfer",
+  "status": "qualified_single_task_single_engine",
+  "instance_id": "scikit-learn__scikit-learn-14496",
+  "episode_index": 6,
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 0,
+  "engine": "llama.cpp",
+  "engine_evidence_scope": "post-fix autonomous mini-swe-agent",
+  "plain_full_repeat_control": {
+    "runs": 2,
+    "official_resolved": 2,
+    "calls_each": 8,
+    "cumulative_input_tokens_each": 212575,
+    "cumulative_completion_tokens_each": 748,
+    "request_hashes_exact": true,
+    "assistant_content_hashes_exact": true,
+    "assistant_action_hashes_exact": true
+  },
+  "pra_100": {
+    "official_resolved": true,
+    "calls": 8,
+    "exact_to_plain_full": {
+      "request_hashes": true,
+      "assistant_content_hashes": true,
+      "assistant_action_hashes": true
+    },
+    "initial_source_bootstrap_calls": 1,
+    "initial_source_bootstrap_evaluated_tokens": 26370,
+    "native_kv_reuse_calls": 7,
+    "full_retention_calls": 8,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 0
+  },
+  "e2_f1c": {
+    "policy": "persistent_instruction_epoch_retirement",
+    "profile_label": "prompt-pinned E2+F1C",
+    "official_resolved": true,
+    "calls": 8,
+    "plain_full_calls": 8,
+    "cumulative_full_message_content_tokens": 213524,
+    "cumulative_materialized_message_content_tokens": 128380,
+    "cumulative_materialized_token_saving_fraction": 0.39876023491364063,
+    "native_kv_reuse_calls": 7,
+    "steady_state_unweighted_kv_omission_fraction": 0.4025,
+    "steady_state_weighted_kv_omission_fraction": 0.4023,
+    "steady_state_selected_kv_tokens": 113643,
+    "steady_state_estimated_full_kv_tokens": 190141,
+    "all_call_mean_kv_omission_fraction_including_bootstrap": 0.3521888420767273,
+    "selected_history_reencoded_tokens": 0,
+    "physical_kv_copy_bytes": 0,
+    "total_kv_copy_bytes": 0,
+    "exact_action_prefix_calls": 2,
+    "first_action_divergence_call": 3,
+    "later_same_index_action_reconvergence_calls": [5, 6, 7, 8],
+    "cumulative_completion_tokens": 825,
+    "plain_full_cumulative_completion_tokens": 748
+  },
+  "interpretation": {
+    "accuracy_claim": "one paired task preserves the official solve and call count; this is not a population accuracy estimate",
+    "engine_claim": "steady-state native K/V omission matches the logical token-saving estimate within 0.35 percentage points with no selected-history re-encoding or K/V copy",
+    "cross_engine_claim": "not established; HF, MLX, SGLang and vLLM require fresh post-fix autonomous reruns",
+    "bootstrap_accounting": "the initial full source capture is common setup and is reported separately from steady-state selection"
+  }
+}
