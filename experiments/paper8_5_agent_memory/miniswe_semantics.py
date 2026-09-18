@@ -30,7 +30,10 @@ _READ_ONLY = re.compile(
 )
 _WRITE = re.compile(
     r"(?:apply_patch|sed\s+-i|perl\s+-pi|git\s+apply|patch\s+-p|"
-    r"(?:write_text|write_bytes|open\([^)]*,\s*['\"]w)|(?:^|[;&|]\s*)rm\b|>{1,2}\s*)"
+    r"(?:write_text|write_bytes|open\([^)]*,\s*['\"]w)|(?:^|[;&|]\s*)rm\b)"
+)
+_OUTPUT_REDIRECT = re.compile(
+    r"(?:^|[;&|]\s*|\s)(?:\d+|&)?>{1,2}\s*(['\"]?[^\s;&|]+)"
 )
 _DIFF = re.compile(r"(?:^|[;&|]\s*)git\s+(?:diff|show)\b")
 _VERIFY = re.compile(
@@ -60,7 +63,7 @@ def extract_resource_ids(command: str | None, content: str) -> tuple[str, ...]:
 
 def classify_bash_operation(command: str | None) -> OperationKind:
     command = command or ""
-    if _WRITE.search(command):
+    if _writes_workspace(command):
         return OperationKind.WRITE
     if _DIFF.search(command):
         return OperationKind.DIFF
@@ -76,7 +79,7 @@ def classify_bash_operation(command: str | None) -> OperationKind:
 def classify_bash_effect(command: str | None) -> EffectKind:
     if not command:
         return EffectKind.UNKNOWN
-    if _WRITE.search(command):
+    if _writes_workspace(command):
         return EffectKind.WRITE
     if _VERIFY.search(command):
         return EffectKind.VERIFY
@@ -85,6 +88,18 @@ def classify_bash_effect(command: str | None) -> EffectKind:
     if command.strip() in {"true", ":"}:
         return EffectKind.PURE
     return EffectKind.UNKNOWN
+
+
+def _writes_workspace(command: str) -> bool:
+    """Detect mutations without treating diagnostic sink redirects as writes."""
+
+    if _WRITE.search(command):
+        return True
+    for match in _OUTPUT_REDIRECT.finditer(command):
+        target = match.group(1).strip("'\"")
+        if target not in {"/dev/null", "/dev/stdout", "/dev/stderr"}:
+            return True
+    return False
 
 
 def bash_semantics_are_certifiable(command: str | None) -> bool:

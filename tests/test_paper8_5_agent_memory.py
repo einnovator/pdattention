@@ -1091,10 +1091,18 @@ def _negative_config(*rules, **overrides):
 
 def test_negative_operation_parser_separates_discovery_from_source_grep():
     assert classify_bash_operation("find . -name '*.py'") == BashOperation.SEARCH_DISCOVERY
+    assert classify_bash_operation(
+        'find /testbed -name "optics_.py" -path "*/sklearn/*" 2>/dev/null'
+    ) == BashOperation.SEARCH_DISCOVERY
     assert classify_bash_operation("rg --files src") == BashOperation.SEARCH_DISCOVERY
     assert classify_bash_operation("grep -Rl needle src") == BashOperation.SEARCH_DISCOVERY
     assert classify_bash_operation("grep -n needle src/foo.py") == BashOperation.READ
     assert classify_bash_operation("rg -n needle src/foo.py") == BashOperation.READ
+
+
+def test_negative_operation_parser_retains_real_output_redirect_writes():
+    assert classify_bash_operation("python generate.py > src/generated.py") == BashOperation.WRITE
+    assert classify_bash_operation("printf x 2> errors.log") == BashOperation.WRITE
 
 
 def test_h1_retires_consumed_search_only_after_kf_delay():

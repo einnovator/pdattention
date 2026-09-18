@@ -109,6 +109,11 @@ from each of three identities, E2+F1C resolves 3/3 versus 3/3, uses 33 versus
 34 calls, and materializes 539,022 versus 924,686 input tokens (41.71\%
 paired saving; 39.45\% against its own full-history counterfactual).  This
 passes the three-identity discovery gate, not a population accuracy estimate.
+Corrected native transfers then omit 40.23\% of steady-state historical K/V
+on llama.cpp and 40.04\% on MLX.  llama.cpp preserves the eight-call count;
+MLX preserves the solve but uses twelve rather than nine calls, reducing its
+paired K/V-workload saving to 15.23\%.  Logical omission and realized workload
+economics are therefore separate outcomes even after engine correctness passes.
 \end{abstract}
 
 \iffalse
@@ -1278,11 +1283,40 @@ an identical reasoning path.
 
 This single identity establishes that the logical saving can survive one
 correct native realization without being erased by cache reconstruction.  It
-does not estimate population accuracy or cross-engine portability.  Earlier
-HF, MLX, SGLang, and vLLM request-level rows predate the final autonomous
-bootstrap contract and remain quarantined until fresh \textsc{Full}, PRA-100,
-and reduced-policy agent runs complete.  The auditable bundle is
+does not estimate population accuracy or cross-engine portability.  The
+auditable bundle is
 \path{shared/results/paper8_5_agent_memory/native_engine_transfer/llamacpp_qwen3coder30b_scikit14496_v1}.
+
+A corrected direct-MLX transfer uses the same task, frozen five-episode prefix,
+model family, tokenizer, temperature, and logical E2+F1C contract with the
+Qwen3-Coder-30B-A3B-Instruct 4-bit MLX checkpoint.  PRA-100 resolves in nine
+calls.  E2+F1C resolves in twelve calls and every one of its eleven
+post-bootstrap sparse requests passes a positioned same-subset oracle with
+maximum logit delta 0.0.  Selected history is neither re-encoded nor copied.
+The sparse requests expose 302,031 full source K/V tokens and consume 180,052
+selected resident tokens plus 1,056 encoded closure-receipt tokens, giving
+40.04\% steady-state omission.  Charging the common source bootstrap lowers
+all-call omission to 36.82\%.
+
+The policy opportunity survives the second engine, but the workload saving
+does not transfer unchanged.  E2+F1C materializes 192,762 message-content
+tokens versus PRA-100's 238,938, a 19.33\% paired reduction; selected-K/V plus
+receipt workload falls only 15.23\%.  The first three shell commands match.
+At command four the reduced arm performs an additional source check, then an
+incorrectly escaped \texttt{sed} edit causes two recovery calls.  Since every
+active-task record is retained, this is behavioral priming from the changed
+prior-session context rather than loss of current-task evidence or an engine
+same-subset failure.  A second cold execution reproduces all twelve request
+inputs, assistant contents, shell commands, token totals, and zero-delta
+same-subset gates exactly.  The three-call penalty is therefore stable enough
+to justify one targeted prior-mutation-exemplar treatment, but that treatment
+must be evaluated separately rather than credited in advance.  The bundle is
+\path{shared/results/paper8_5_agent_memory/native_engine_transfer/mlx_qwen3coder30b_scikit14496_v1}.
+
+Earlier HF, SGLang, and vLLM request-level rows, and pre-correction MLX rows,
+remain quarantined until fresh \textsc{Full}, PRA-100, and reduced-policy
+autonomous runs complete under the final receipt-position and lifecycle
+contract.
 
 \section{Deployable Logical Profiles}
 
@@ -1305,7 +1339,7 @@ Profile & Candidate & State floor & Promotion constraint \\
 Agent-Full & Full & all & Correctness and trajectory-cost control. \\
 Agent-Quality & DAG $M=3$ result-only & last 3 prompts & 17.09\% offline opportunity; autonomous qualification pending. \\
 Agent-Balanced & DAG $M=2$/P1 whole-group & last 2 prompts + valid protocol & Strict Task-3--5 pairs preserve 3/3 with 40.53\% aggregate own-trajectory saving and 22 vs 30 calls. Leading candidate; expand identities. \\
-Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. One corrected llama.cpp transfer preserves 1/1 and realizes 40.23\% steady-state K/V omission with zero re-encoding/copy. Replicate; not yet a default. \\
+Agent-PromptPinned & E2+F1C & all prompts + last 2 full epochs + older closure receipts & Three cold exact-prefix identities preserve 3/3, save 41.71\% paired and 39.45\% within trajectory, and use 33 vs 34 calls. Corrected llama.cpp preserves 1/1; MLX preserves 2/2 exact cold repeats. They realize 40.23\% and 40.04\% steady-state K/V omission with zero selected-history re-encoding/copy. MLX adds three calls and retains only 15.23\% paired K/V-workload saving. Expand identities; not yet a default. \\
 Agent-Economy & DAG $M=1$/P1 or P1/W1 & last prompt + control spine & Exploratory 2/3 for each; exact-prefix FULL prequalification missing. Do not promote. \\
 \bottomrule
 \end{tabular}
@@ -1342,9 +1376,13 @@ three-identity gate qualifies frozen replication and Paper~4.5 mechanism
 transfer, but not a greater-than-90\% population claim or production default.
 The first corrected native transfer then preserves the Scikit-learn solve and
 eight-call count while realizing 39.88\% materialized-token saving and 40.23\%
-steady-state resident-K/V omission.  This closes the logical-to-physical gap
-for one llama.cpp identity only; fresh post-fix autonomous HF, MLX, SGLang, and
-vLLM evidence is still required.
+steady-state resident-K/V omission.  Direct MLX independently realizes 40.04\%
+steady-state omission with exact same-subset logits and no selected-history
+re-encoding or copy in two exact cold repeats, but its three extra calls reduce
+paired K/V-workload saving to 15.23\%.  This closes the
+logical-to-physical mechanism gap on one identity in two runtimes while
+exposing a repeatable logical-to-behavioral gap. Fresh post-fix autonomous HF,
+SGLang, and vLLM evidence, plus more task identities, are still required.
 
 \clearpage
 \appendix
