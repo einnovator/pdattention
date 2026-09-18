@@ -1,0 +1,154 @@
+From 84ea35bf405b98923e891b2870490be7b54ae109 Mon Sep 17 00:00:00 2001
+From: Jorge Simao <jsimao71@gmail.com>
+Date: Fri, 18 Sep 2026 01:08:21 +0100
+Subject: [PATCH] server: interleave PRA receipts with resident ranges
+
+---
+ tools/server/server-context.cpp | 65 +++++++++++++++++++++++++++++----
+ 1 file changed, 58 insertions(+), 7 deletions(-)
+
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 0f9b63f01..e50dd4c41 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -21,6 +21,7 @@
+ #include <cstddef>
+ #include <cinttypes>
+ #include <exception>
++#include <limits>
+ #include <memory>
+ #include <map>
+ #include <filesystem>
+@@ -301,7 +302,9 @@ struct server_slot {
+     // Pinned PRA resources remain idle but are unavailable to ordinary LRU
+     // scheduling and unified-cache idle eviction until explicitly erased.
+     bool pra_resource_pinned = false;
++    size_t pra_selected_range_cursor = 0;
+     size_t pra_materialized_history_cursor = 0;
++    bool pra_materialized_history_drained = false;
+ 
+     bool prompt_save(server_prompt_cache & prompt_cache) const {
+         if (prompt.tokens.size() == 0) {
+@@ -403,7 +406,9 @@ struct server_slot {
+         n_accepted_per_pos.clear();
+ 
+         n_predict_max = -1;
++        pra_selected_range_cursor = 0;
+         pra_materialized_history_cursor = 0;
++        pra_materialized_history_drained = false;
+ 
+         llama_set_sampler(ctx_tgt, id, nullptr);
+ 
+@@ -1851,6 +1856,7 @@ private:
+                 }
+                 previous_position = item.position;
+             }
++            task.pra_selected_ranges = ranges;
+             task.pra_materialized_history = std::move(positioned);
+             for (const auto & range : ranges) {
+                 registered.emplace(range.record_id, range);
+@@ -1887,11 +1893,15 @@ private:
+             }
+ 
+             slot.prompt_clear();
+-            for (const auto & range : ranges) {
+-                // seq_cp adds destination membership to the exact existing
+-                // cells. No K/V data are copied and no selected text is run
+-                // through the model again.
+-                slot.mem.seq_cp(source.id, slot.id, range.start, range.end);
++            if (task.pra_materialized_history.empty()) {
++                for (const auto & range : ranges) {
++                    // seq_cp adds destination membership to the exact existing
++                    // cells. No K/V data are copied and no selected text is run
++                    // through the model again.
++                    slot.mem.seq_cp(source.id, slot.id, range.start, range.end);
++                }
++                slot.pra_selected_range_cursor = ranges.size();
++                slot.pra_materialized_history_drained = true;
+             }
+             slot.prompt = source.prompt.clone();
+             slot.prompt.checkpoints.clear();
+@@ -2061,7 +2071,12 @@ private:
+         // the per-request limit takes priority over the global one
+         slot.n_predict_max = task.params.n_predict != -1 ? task.params.n_predict : params_base.n_predict;
+ 
++        const bool has_pra_materialized_history = !task.pra_materialized_history.empty();
++        slot.pra_selected_range_cursor = has_pra_materialized_history
++                ? 0
++                : task.pra_selected_ranges.size();
+         slot.pra_materialized_history_cursor = 0;
++        slot.pra_materialized_history_drained = !has_pra_materialized_history;
+ 
+         slot.task = std::make_unique<const server_task>(std::move(task));
+ 
+@@ -3823,21 +3838,56 @@ private:
+                     // selected source ranges already share this sequence by
+                     // membership, so receipt attention sees the same sparse
+                     // causal prefix without re-evaluating selected history.
++                    if (slot.task->pra_source_slot >= 0 &&
++                            !slot.task->pra_materialized_history.empty()) {
++                        const bool receipts_remain =
++                            slot.pra_materialized_history_cursor < slot.task->pra_materialized_history.size();
++                        const llama_pos attach_through = receipts_remain
++                            ? slot.task->pra_materialized_history[slot.pra_materialized_history_cursor].position
++                            : std::numeric_limits<llama_pos>::max();
++                        while (slot.pra_selected_range_cursor < slot.task->pra_selected_ranges.size()) {
++                            const auto & range =
++                                slot.task->pra_selected_ranges[slot.pra_selected_range_cursor];
++                            if (receipts_remain && range.end > attach_through) {
++                                break;
++                            }
++                            slot.mem.seq_cp(
++                                slot.task->pra_source_slot,
++                                slot.id,
++                                range.start,
++                                range.end);
++                            ++slot.pra_selected_range_cursor;
++                        }
++                        if (!receipts_remain) {
++                            slot.pra_materialized_history_drained = true;
++                        }
++                    }
++
+                     const auto positioned_start = slot.pra_materialized_history_cursor;
++                    llama_pos next_position = slot.pra_materialized_history_cursor <
++                            slot.task->pra_materialized_history.size()
++                        ? slot.task->pra_materialized_history[slot.pra_materialized_history_cursor].position
++                        : -1;
+                     while (slot.pra_materialized_history_cursor < slot.task->pra_materialized_history.size() &&
+                             batch.size() < n_batch) {
+                         const auto & item = slot.task->pra_materialized_history[slot.pra_materialized_history_cursor++];
++                        if (item.position != next_position) {
++                            --slot.pra_materialized_history_cursor;
++                            break;
++                        }
+                         add_ok &= batch.add(slot.id,
+                             item.token,
+                             /* pos       = */ item.position,
+                             /* output    = */ false,
+                             /* is_prompt = */ true);
++                        ++next_position;
+                     }
+                     const auto n_positioned_tokens_cur =
+                         slot.pra_materialized_history_cursor - positioned_start;
+ 
+                     // add prompt tokens for processing in the current batch
+-                    while (slot.pra_materialized_history_cursor == slot.task->pra_materialized_history.size() &&
++                    while (n_positioned_tokens_cur == 0 &&
++                            slot.pra_materialized_history_drained &&
+                             slot.prompt.n_tokens() < slot.task->n_tokens() && batch.size() < n_batch) {
+                         // get next token to process
+                         llama_token cur_tok = input_tokens[slot.prompt.n_tokens()];
+@@ -3900,7 +3950,8 @@ private:
+ 
+                     const auto n_ordinary_tokens_cur = n_tokens_cur - n_positioned_tokens_cur;
+ 
+-                    const auto n_tokens_start = slot.prompt.n_tokens() - n_ordinary_tokens_cur;
++                    const int64_t n_tokens_start =
++                        (int64_t) slot.prompt.n_tokens() - (int64_t) n_ordinary_tokens_cur;
+ 
+                     const bool near_prompt_end = slot.task->n_tokens() < slot.prompt.n_tokens() + n_ubatch;
+ 
+-- 
+2.42.0.windows.2
+
