@@ -1183,7 +1183,13 @@ class HybridLlamaCppAdapter:
         request: PRAWireRequest,
         logical_messages: list[dict[str, Any]],
     ) -> PRAEngineResult:
-        """Capture an imported persistent transcript once, then select its K/V."""
+        """Capture and generate the imported session's first turn losslessly.
+
+        Splitting source capture (``n_predict=0``) from first-turn generation
+        changes llama.cpp's long-prefill numerical path.  The initial imported
+        turn therefore follows the ordinary FULL request exactly and pins that
+        resulting live state. Sparse selection begins on the next request.
+        """
 
         if request.session_id is None:
             raise ValueError("live history source bootstrap requires a session")
@@ -1193,62 +1199,82 @@ class HybridLlamaCppAdapter:
         full_tokens = self._full_logical_tokens(request, logical_messages)
         if not full_tokens:
             raise ValueError("live history source bootstrap rendered no tokens")
+        full_prompt = native._render_chat(logical_messages, request, generate=True)
 
         # Session import owns a fresh source. Do not silently inherit K/V from
         # a prior control or tenant that happened to use the same engine slot.
         native._erase_request_slot(source)
         if destination != source:
             native._erase_request_slot(destination)
-        prime = dict(native._request_json(
+        raw = dict(native._request_json(
             "/completion",
             {
-                "prompt": list(full_tokens),
+                "prompt": full_prompt,
                 "id_slot": source,
-                "n_predict": 0,
+                "n_predict": request.resolved_max_new_tokens,
                 "cache_prompt": True,
-                "temperature": 0,
+                "temperature": float(request.openai_fields.get("temperature", 0)),
                 "seed": int(request.openai_fields.get("seed", 0)),
                 "return_tokens": True,
                 "pra_pin_resource": True,
             },
         ))
-        timings = prime.get("timings") if isinstance(prime.get("timings"), Mapping) else {}
+        timings = raw.get("timings") if isinstance(raw.get("timings"), Mapping) else {}
         cached = int(timings.get("cache_n", 0) or 0)
-        evaluated = prime.get("tokens_evaluated", timings.get("prompt_n"))
+        evaluated = raw.get("tokens_evaluated", timings.get("prompt_n"))
         evaluated = int(evaluated if evaluated is not None else len(full_tokens) - cached)
         if cached + evaluated < len(full_tokens):
             raise RuntimeError(
                 "live history source bootstrap did not evaluate the complete transcript"
             )
 
-        self._live_session_tokens[session_id] = full_tokens
-        self._logical_session_messages[session_id] = [
-            dict(message) for message in logical_messages
-        ]
-        result = self._generate_from_live_records(
-            request, source, logical_messages,
-        )
-        raw = dict(result.raw)
         pra = dict(raw.get("pra") or {})
         pra.update({
+            "native_kv": False,
+            "native_tokens": cached,
+            "wire_tokens": len(full_tokens),
+            "selected_kv_tokens": 0,
+            "selected_text_reencoded_tokens": 0,
+            "selected_history_reencoded_tokens": 0,
+            "physical_kv_copy": False,
+            "physical_kv_copy_bytes": 0,
+            "total_kv_copy_bytes": 0,
+            "canonical_suffix_graft_d2d_bytes": 0,
+            "host_to_device_bytes": 0,
+            "full_retention": True,
+            "realized_retention_fraction": 1.0,
             "source_bootstrap": True,
             "source_bootstrap_tokens": len(full_tokens),
             "source_bootstrap_cached_tokens": cached,
             "source_bootstrap_evaluated_tokens": evaluated,
+            "selection_deferred_until_source_resident": True,
         })
         raw["pra"] = pra
-        return PRAEngineResult(
-            result.text,
+        raw.update(
+            prefix_cache_enabled=True,
+            prefix_cached_tokens=cached,
+            engine_cached_tokens_total=cached,
+            prefix_cache_hit=bool(cached),
+            native_attached_resources=[],
+        )
+        result = PRAEngineResult(
+            str(raw.get("content", "")),
             raw,
             ({
-                "stage": "llama_cpp_live_history_source_bootstrap",
+                "stage": "llama_cpp_live_history_source_bootstrap_generate",
                 "source_slot": source,
                 "request_slot": destination,
                 "source_bootstrap_tokens": len(full_tokens),
                 "source_bootstrap_cached_tokens": cached,
                 "source_bootstrap_evaluated_tokens": evaluated,
-            }, *result.trace),
+                "selection_deferred_until_source_resident": True,
+            },),
         )
+        self._remember_resident_tokens(request, result, logical_messages)
+        self._logical_session_messages[session_id] = [
+            dict(message) for message in logical_messages
+        ]
+        return result
 
     def _logical_prompt_tokens(self, request: PRAWireRequest) -> tuple[int, ...]:
         native = self.native_adapter.native_executor

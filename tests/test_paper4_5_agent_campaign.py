@@ -2747,7 +2747,7 @@ def test_wire_agent_memory_plan_maps_to_native_records_without_rerouting() -> No
     assert len(metadata["source_wire_plan_digest"]) == 64
 
 
-def test_imported_persistent_history_bootstraps_source_before_native_selection() -> None:
+def test_imported_persistent_history_bootstrap_generates_first_turn_as_full() -> None:
     calls = []
     erased = []
 
@@ -2767,11 +2767,12 @@ def test_imported_persistent_history_bootstraps_source_before_native_selection()
             if path == "/tokenize":
                 return {"tokens": [ord(char) for char in body["content"]]}
             assert path == "/completion"
-            assert body["n_predict"] == 0
+            assert body["n_predict"] == 10
             return {
-                "content": "",
-                "tokens_evaluated": len(body["prompt"]),
-                "timings": {"cache_n": 0, "prompt_n": len(body["prompt"])},
+                "content": "answer",
+                "tokens": [90, 91],
+                "tokens_evaluated": len("SOLDNOW"),
+                "timings": {"cache_n": 0, "prompt_n": len("SOLDNOW")},
             }
 
         @staticmethod
@@ -2823,15 +2824,10 @@ def test_imported_persistent_history_bootstraps_source_before_native_selection()
             "mandatory_message_indices": [0, 2],
         },
         openai_fields={"prefix_caching": True, "seed": 0},
+        max_new_tokens=10,
     )
-    selected = PRAEngineResult(
-        "answer",
-        {"tokens": [90], "pra": {"selected_history_reencoded_tokens": 0}},
-        ({"stage": "selected"},),
-    )
-    observed = []
-    adapter._generate_from_live_records = lambda req, source, messages: (
-        observed.append((req, source, messages)) or selected
+    adapter._generate_from_live_records = lambda *args: (_ for _ in ()).throw(
+        AssertionError("selection must wait until the imported source is resident")
     )
 
     result = adapter.generate(request)
@@ -2839,12 +2835,15 @@ def test_imported_persistent_history_bootstraps_source_before_native_selection()
     assert result.text == "answer"
     assert erased == [1, 0]
     prime = next(body for path, body in calls if path == "/completion")
-    assert prime["prompt"] == list(map(ord, "SOLDNOW"))
-    assert observed == [(request, 1, logical)]
-    assert adapter._live_session_tokens["imported-session"] == tuple(map(ord, "SOLDNOW"))
+    assert prime["prompt"] == "SOLDNOW"
+    assert adapter._live_session_tokens["imported-session"] == (
+        *tuple(map(ord, "SOLDNOW")), 90,
+    )
     assert result.raw["pra"]["source_bootstrap"] is True
     assert result.raw["pra"]["source_bootstrap_evaluated_tokens"] == 7
-    assert result.trace[0]["stage"] == "llama_cpp_live_history_source_bootstrap"
+    assert result.raw["pra"]["native_kv"] is False
+    assert result.raw["pra"]["selection_deferred_until_source_resident"] is True
+    assert result.trace[0]["stage"] == "llama_cpp_live_history_source_bootstrap_generate"
 
 
 def test_paper8_5_fixture_bounds_active_tail_to_current_episode() -> None:
