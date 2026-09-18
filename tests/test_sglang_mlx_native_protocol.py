@@ -151,6 +151,25 @@ def test_sglang_cache_reset_preserves_immutable_memory() -> None:
     assert cache.memory is memory
 
 
+def test_source_backed_disjoint_cache_state_keeps_parent_not_lazy_slices() -> None:
+    local = _LocalCache()
+    parent_keys = object()
+    parent_values = object()
+    segment_keys = object()
+    segment_values = object()
+    memory = MLXDisjointLayerKV(
+        (MLXNativeLayerKV(segment_keys, segment_values),),
+        source_keys=parent_keys,
+        source_values=parent_values,
+        intervals=((2, 5),),
+    )
+    cache = SGLangSelectedKVCache(local, memory, position_base=6)
+
+    assert cache.state == (parent_keys, parent_values)
+    assert segment_keys not in cache.state
+    assert segment_values not in cache.state
+
+
 def test_sglang_disjoint_mask_hides_selected_future_from_old_receipt(
     monkeypatch,
 ) -> None:

@@ -114,11 +114,24 @@ class SGLangSelectedKVCache:
         if not isinstance(local, tuple):
             local = tuple(local)
         if self.disjoint:
-            selected = tuple(
-                value
-                for segment in self.memory.segments
-                for value in (segment.keys, segment.values)
-            )
+            # Source-backed disjoint attention addresses the canonical owner
+            # arrays with interval metadata.  Returning every slice here is
+            # not merely redundant: SGLang passes ``cache.state`` to
+            # ``mx.eval`` after each step, which would materialize all of the
+            # lazy slice expressions and retain roughly one selected-K/V
+            # payload per request.  Keep the already-resident parents alive
+            # instead; the fused consumer reads those parents directly.
+            if (
+                self.memory.source_keys is not None
+                and self.memory.source_values is not None
+            ):
+                selected = (self.memory.source_keys, self.memory.source_values)
+            else:
+                selected = tuple(
+                    value
+                    for segment in self.memory.segments
+                    for value in (segment.keys, segment.values)
+                )
             return (*selected, *local)
         return (self.memory.keys, self.memory.values, *local)
 

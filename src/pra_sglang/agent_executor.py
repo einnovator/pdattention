@@ -15,6 +15,7 @@ separately from selected-interval materialization (which remains zero-copy).
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import math
@@ -1475,6 +1476,7 @@ class SGLangMLXAgentHistoryExecutor:
         generated: list[int] = []
         extra_prediction = 0
         evaluations = 0
+        decode = None
         penalty_metrics: dict[str, int] = {}
         self._repetition.register(
             native_id,
@@ -1566,6 +1568,11 @@ class SGLangMLXAgentHistoryExecutor:
                 else:
                     lease.fail()
 
+        if not direct_owner and self.runner.has_request(native_id):
+            raise RuntimeError(
+                "SGLang sparse request survived terminal lifecycle cleanup."
+            )
+
         mx.eval(
             *(
                 value
@@ -1573,8 +1580,19 @@ class SGLangMLXAgentHistoryExecutor:
                 for value in getattr(cache, "state", ())
             )
         )
-        active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
         peak = int(getattr(mx, "get_peak_memory", lambda: 0)())
+        # Drop request-scoped graph roots before measuring retained memory.
+        # In particular, a completed lease owns the disjoint selection views
+        # and the last decode pending object may retain attention temporaries.
+        # ``mx.clear_cache`` releases allocator-cache bytes, not live arrays;
+        # the owner K/V and model weights remain resident and measurable.
+        lease = None
+        decode = None
+        gc.collect()
+        clear_cache = getattr(mx, "clear_cache", None)
+        if clear_cache is not None:
+            clear_cache()
+        active_after = int(getattr(mx, "get_active_memory", lambda: 0)())
         active_delta = max(active_after - active_before, 0)
         peak_delta = max(peak - active_before, 0)
         state.calls += 1
@@ -1646,7 +1664,7 @@ class SGLangMLXAgentHistoryExecutor:
             "consumer_temporary_bytes": peak_delta,
             "consumer_temporary_peak_bytes": peak_delta,
             "consumer_temporary_measurement_scope": (
-                "total request peak above pre-attach active allocation"
+                "request peak and post-teardown active delta above pre-attach allocation"
             ),
             "fused_attention_calls": evaluations * self.bridge.patched_layers,
             "source_position_base": plan.source_position_base,
