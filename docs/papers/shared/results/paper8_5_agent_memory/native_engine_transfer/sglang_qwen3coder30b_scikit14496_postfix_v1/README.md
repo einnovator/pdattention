@@ -31,5 +31,12 @@ paired workload increase once those extra calls are charged.  E2+F1C is not a
 default-profile candidate on this evidence.  Its next experiment is a
 request-four oracle add-back and stronger current-task progress spine.
 
+`e2f1c/request4_structural_audit.json` shows that a larger active-task floor is
+not the missing intervention at the first divergence: all three completed
+active-task turns are present.  The policy retires detail only from the three
+oldest completed episodes, whose principal resources do not overlap the active
+`sklearn/cluster/optics_.py` file.  Add-back is therefore a test of old
+workflow-exemplar sensitivity, not evidence that current-task state was lost.
+
 Full traces are in the Paper 4.5 engine-gate bundle.  This directory keeps the
 compact comparison plus the E2+F1C metrics, official result and prediction.
