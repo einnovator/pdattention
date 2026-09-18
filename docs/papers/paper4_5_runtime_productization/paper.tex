@@ -52,6 +52,12 @@ engine-gate commit and must report re-encoding, K/V copy, and consumer temporary
 memory independently. The post-fix engine gates establish the mechanism; the
 remaining question is whether corrected execution preserves agent behavior and
 improves workload economics across engines.
+On the first autonomous six-episode identity, corrected llama.cpp and MLX both
+omit approximately 40\% of steady-state historical K/V without re-encoding or
+copying selected history.  llama.cpp preserves the eight-call solution, whereas
+MLX preserves the solve but adds three calls and realizes only 15.23\% paired
+K/V-workload saving.  Engine correctness and workload utility are therefore
+separate gates.
 \end{abstract}
 
 \section{Introduction}
@@ -3499,7 +3505,14 @@ create an invalid system-to-assistant chat transition.  Detailed task rows,
 stop diagnostics, hashes, and curves remain in the Paper~8.5 appendix and
 machine-readable bundle rather than being duplicated here.
 
-The first cross-engine same-plan row now fixes Task~4 request~5 and consumes it
+The request-level rows in the following mechanism audit predate the final
+autonomous receipt-position and trial-start contract.  They remain useful for
+isolating page rounding, copy paths, and lifecycle behavior, but their savings
+are stale cross-engine diagnostics and are not pooled into the current product
+or agent-quality claims.  Every engine must rerun the frozen autonomous
+\textsc{Full}, PRA-100, and E2+F1C sequence before promotion.
+
+The first historical cross-engine same-plan row fixes Task~4 request~5 and consumes it
 unchanged through HF/CUDA, MLX, SGLang-MLX, and vLLM-Metal.  HF, MLX, and
 SGLang each select 8,617/18,110 historical K/V tokens and append the same
 117-token wire suffix, omitting 52.42\% of resident history K/V and saving
@@ -3687,8 +3700,34 @@ The all-call mean K/V omission is 35.22\% after charging the initial full
 bootstrap.  Consumer temporary bytes remain unmeasured, not zero.  The
 auditable bundle is
 \path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1/autonomous_llamacpp_qwen3coder30b_postfix_v1}.
-No corresponding post-fix autonomous HF, MLX, SGLang, or vLLM row exists yet;
-their older request and agent rows cannot be pooled with this result.
+
+The first corrected direct-MLX transfer uses the same task and frozen
+five-episode prefix with Qwen3-Coder-30B-A3B-Instruct 4-bit.  PRA-100 resolves
+in nine calls.  E2+F1C resolves in twelve calls; all eleven post-bootstrap
+sparse requests pass the positioned same-subset gate with maximum logit delta
+0.0.  Selected-history re-encoding and selected-K/V copy are both zero.  The
+sparse calls expose 302,031 full source K/V tokens and consume 180,052 selected
+resident tokens plus 1,056 encoded closure-receipt tokens, giving 40.04\%
+steady-state omission.  Charging the 26,367-token source bootstrap gives
+36.82\% all-call omission.
+
+The extra calls materially change the economic result.  Against the nine-call
+PRA-100 control, E2+F1C saves 19.33\% of materialized message-content input,
+19.19\% after completion tokens, and 15.23\% of selected-K/V plus receipt
+workload.  The first three shell commands match.  At command four the reduced
+arm performs an additional source read and later spends two calls recovering
+from an incorrectly escaped \texttt{sed} substitution.  Because the active
+task statement and every active-task causal turn remain selected, this is a
+prior-session behavioral-priming effect, not current-task evidence loss or a
+sparse-engine correctness failure.  The auditable bundle is
+\path{shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_e2_f1c_scikit14496_v1/autonomous_mlx_qwen3coder30b_postfix_v1}.
+
+A second cold execution reproduces all twelve request inputs, assistant
+contents, shell commands, token totals, and zero-delta same-subset gates
+exactly.  The three-call penalty is therefore repeatable on this identity.
+
+No corresponding post-fix autonomous HF, SGLang, or vLLM row exists yet;
+their older request and agent rows cannot be pooled with these results.
 
 Earlier task-02--04 utility rows predate this cross-engine freeze and remain
 diagnostic evidence for retention-policy design; they do not authorize an
@@ -4837,13 +4876,17 @@ for discovering cache-reconstruction, position-base, retention-floor, and
 physical-copy defects, but they were executed before the final corrected engine
 and policy-transfer contract.  Consequently none estimates current autonomous
 task accuracy or the cross-engine quality--saving frontier.  Current autonomous
-evidence is limited to the new llama.cpp/Qwen3-Coder-30B row: two repeat-exact
-\textsc{Full} controls and exact PRA-100 each solve in eight calls, while native
-E2+F1C also solves in eight calls with 39.88\% materialized-token saving and
-40.23\% weighted steady-state K/V omission.  It re-encodes zero selected
-history tokens and copies zero K/V bytes.  Fresh end-to-end \textsc{Full},
-PRA-100, and frozen-policy executions remain required for HF, MLX, SGLang, and
-vLLM; their older request-level figures are not substituted.  Easy-14
+evidence is limited to one identity on corrected llama.cpp and MLX.  The
+llama.cpp row has two repeat-exact \textsc{Full} controls and an exact PRA-100
+control that each solve in eight calls; E2+F1C also solves in eight calls with
+39.88\% materialized-token saving and 40.23\% steady-state K/V omission.  The
+MLX row resolves in two exact cold E2+F1C repeats of twelve calls, versus nine
+calls under PRA-100, with 40.04\% steady-state omission but only 15.23\% paired
+K/V-workload saving.  Both engines
+re-encode zero selected-history tokens and copy zero selected K/V bytes.  Fresh
+end-to-end \textsc{Full}, PRA-100, and frozen-policy executions remain required
+for HF, SGLang, and vLLM; their older request-level figures are not substituted.
+Easy-14
 native expansion remains locked until every target engine passes that sequence
 and the reduced-history policy independently passes Paper~8.5's logical-quality
 gate.  Under the
