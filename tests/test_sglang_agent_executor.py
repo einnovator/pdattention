@@ -21,6 +21,7 @@ from pra_sglang.agent_executor import (
     _MlxRepetitionPenaltyController,
     _common_prefix,
     _fixed_shape_repetition_token_ids,
+    _incremental_generation_prompt,
     _execution_plan,
     _live_kv_copy_metrics,
     _repetition_token_ids,
@@ -210,6 +211,75 @@ def test_generation_split_keeps_short_tool_record_in_resident_source() -> None:
     assert prompt == [*source, *wire]
     assert wire == list(map(ord, "<assistant>"))
     assert source[-len("</user>") :] == list(map(ord, "</user>"))
+
+
+def test_incremental_prompt_preserves_non_roundtripping_sampled_tokens() -> None:
+    class NonRoundTripTokenizer:
+        def apply_chat_template(
+            self, messages, *, tokenize, add_generation_prompt, **_
+        ):
+            text = "".join(
+                f"<{row['role']}>{row.get('content', '')}</{row['role']}>"
+                for row in messages
+            )
+            if add_generation_prompt:
+                text += "<assistant>"
+            return self.encode(text, add_special_tokens=False) if tokenize else text
+
+        @staticmethod
+        def encode(text, *, add_special_tokens):
+            assert add_special_tokens is False
+            # Re-encoding the sampled text ``AB`` would merge it into token
+            # 999, while the live cache owns separately sampled 65 and 66.
+            values = []
+            index = 0
+            while index < len(text):
+                if text[index : index + 2] == "AB":
+                    values.append(999)
+                    index += 2
+                else:
+                    values.append(ord(text[index]))
+                    index += 1
+            return values
+
+        @staticmethod
+        def decode(token_ids, **_):
+            return "".join(chr(value) for value in token_ids)
+
+    tokenizer = NonRoundTripTokenizer()
+    prior_messages = (
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "task"},
+    )
+    prior_source_text = tokenizer.apply_chat_template(
+        prior_messages, tokenize=False, add_generation_prompt=False
+    )
+    prior_wire_text = "<assistant>"
+    canonical_tokens = [
+        *tokenizer.encode(prior_source_text + prior_wire_text, add_special_tokens=False),
+        65,
+        66,
+    ]
+    canonical_text = tokenizer.decode(canonical_tokens)
+    messages = (
+        *prior_messages,
+        {"role": "assistant", "content": "AB"},
+        {"role": "user", "content": "result"},
+    )
+
+    prompt, source, wire, source_text = _incremental_generation_prompt(
+        tokenizer,
+        messages,
+        canonical_text=canonical_text,
+        canonical_tokens=canonical_tokens,
+    )
+
+    assert source[: len(canonical_tokens)] == canonical_tokens
+    assert source[len(canonical_tokens) :] == tokenizer.encode(
+        source_text[len(canonical_text) :], add_special_tokens=False
+    )
+    assert prompt == [*source, *wire]
+    assert 999 not in source[: len(canonical_tokens)]
 
 
 def _manifest(messages):

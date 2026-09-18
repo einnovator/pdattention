@@ -381,6 +381,91 @@ def _render(
     return _token_ids(rendered)
 
 
+def _render_text(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    generation_prompt: bool,
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> str:
+    rendered = tokenizer.apply_chat_template(
+        [dict(row) for row in messages],
+        tokenize=False,
+        add_generation_prompt=generation_prompt,
+        **dict(chat_template_kwargs or {}),
+    )
+    if not isinstance(rendered, str):
+        raise RuntimeError(
+            "SGLang live history requires a textual chat-template rendering."
+        )
+    return rendered
+
+
+def _encode_text(tokenizer: object, text: str) -> list[int]:
+    return _token_ids(tokenizer.encode(text, add_special_tokens=False))
+
+
+def _decode_exact(tokenizer: object, token_ids: Sequence[int]) -> str:
+    kwargs = {
+        "skip_special_tokens": False,
+        "clean_up_tokenization_spaces": False,
+    }
+    try:
+        return str(tokenizer.decode(list(map(int, token_ids)), **kwargs))
+    except TypeError:
+        kwargs.pop("clean_up_tokenization_spaces")
+        return str(tokenizer.decode(list(map(int, token_ids)), **kwargs))
+
+
+def _incremental_generation_prompt(
+    tokenizer: object,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    canonical_text: str,
+    canonical_tokens: Sequence[int],
+    chat_template_kwargs: Mapping[str, Any] | None = None,
+) -> tuple[list[int], list[int], list[int], str]:
+    """Append template text while preserving exact resident sampled tokens.
+
+    Generated text is not guaranteed to survive decode followed by encode with
+    identical token IDs.  Resident K/V belongs to the IDs sampled by the
+    model, so only text appended after the exact decoded resident prefix may
+    be tokenized on a later turn.
+    """
+
+    source_text = _render_text(
+        tokenizer,
+        messages,
+        generation_prompt=False,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    prompt_text = _render_text(
+        tokenizer,
+        messages,
+        generation_prompt=True,
+        chat_template_kwargs=chat_template_kwargs,
+    )
+    if not prompt_text.startswith(source_text):
+        raise RuntimeError(
+            "The chat template generation prompt rewrites completed text."
+        )
+    wire = _encode_text(tokenizer, prompt_text[len(source_text) :])
+    if not wire:
+        raise RuntimeError("The chat template produced no generation-prompt suffix.")
+    if canonical_text:
+        if not source_text.startswith(canonical_text):
+            raise RuntimeError(
+                "The append-stable template rewrote resident logical history text."
+            )
+        source = [
+            *map(int, canonical_tokens),
+            *_encode_text(tokenizer, source_text[len(canonical_text) :]),
+        ]
+    else:
+        source = _encode_text(tokenizer, source_text)
+    return [*source, *wire], source, wire, source_text
+
+
 def split_generation_prompt(
     tokenizer: object,
     messages: Sequence[Mapping[str, Any]],
@@ -673,6 +758,7 @@ class _Session:
     source_id: str
     ledger: AgentHistoryLedger = field(default_factory=AgentHistoryLedger)
     canonical_tokens: list[int] = field(default_factory=list)
+    canonical_text: str = ""
     generation: int = 0
     calls: int = 0
     selected_history_reencoded_tokens: int = 0
@@ -1049,9 +1135,11 @@ class SGLangMLXAgentHistoryExecutor:
                 messages[-1],
             )
         template_kwargs = self._checked_template_kwargs(request)
-        prompt, source, wire = split_generation_prompt(
+        prompt, source, wire, _ = _incremental_generation_prompt(
             self.tokenizer,
             messages,
+            canonical_text=state.canonical_text,
+            canonical_tokens=state.canonical_tokens,
             chat_template_kwargs=template_kwargs,
         )
         newly_encoded, reencoded = self._ensure_owner(state, source)
@@ -1190,6 +1278,9 @@ class SGLangMLXAgentHistoryExecutor:
             state.canonical_tokens = [*source, *wire, *generated]
             if token in eos:
                 state.canonical_tokens.append(token)
+            state.canonical_text = _decode_exact(
+                self.tokenizer, state.canonical_tokens
+            )
             self.runner._req_token_ids[state.owner_request_id] = [
                 *state.canonical_tokens,
                 extra_prediction,
