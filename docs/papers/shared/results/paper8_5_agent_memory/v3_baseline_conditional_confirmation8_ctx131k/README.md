@@ -26,9 +26,11 @@ zero saving.
 
 Task 3 required a 600-second transport ceiling after an infrastructure-only
 180-second timeout during the first 16K-token prefill.  The clean retry is the
-reported FULL result.  Task 4 paused before launch when the `.6` endpoint
-became unreachable during cold normalization; it is absent from the outcome
-table and must resume in an immutable retry directory.
+reported FULL result.  Task 4 first paused during cold normalization.  After a
+restart of the dedicated `.6:11435` service, two immutable retries passed the
+cold health probes but their first agent request could not connect from `.8`.
+No Task 4 model decision was recorded, so it is absent from the outcome table.
+The campaign is stopped pending repair of that direct network path.
 
 The primary estimator remains conditional preservation on identities whose
 exact-prefix FULL controls resolve.  Unconditional session economics include
