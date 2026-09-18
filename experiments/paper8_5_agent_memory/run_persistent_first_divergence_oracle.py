@@ -136,6 +136,44 @@ def _completed_epoch_addback_batches(
     ]
 
 
+def _causal_group_addback_batches(
+    *,
+    composed: Mapping[str, Any],
+    history,
+    exclusions: Sequence[Any],
+    addback_epoch: int | None = None,
+) -> list[dict[str, Any]]:
+    """Build one-group add-backs, optionally within one source epoch only."""
+
+    eligible_groups: set[str] | None = None
+    if addback_epoch is not None:
+        matching = [
+            batch
+            for batch in _completed_epoch_addback_batches(
+                composed=composed,
+                history=history,
+                exclusions=exclusions,
+            )
+            if batch["epoch_index"] == addback_epoch
+        ]
+        if len(matching) != 1:
+            raise ValueError(
+                f"add-back epoch {addback_epoch} does not identify exactly one "
+                "retired source epoch"
+            )
+        eligible_groups = set(matching[0]["causal_group_ids"])
+
+    return [
+        {
+            "epoch_index": addback_epoch,
+            "causal_group_ids": (exclusion.causal_group_id,),
+            "excluded_tokens": int(exclusion.excluded_tokens),
+        }
+        for exclusion in exclusions
+        if eligible_groups is None or exclusion.causal_group_id in eligible_groups
+    ]
+
+
 def _payload(manifest: Mapping[str, Any], messages: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": manifest["served_model"],
@@ -302,20 +340,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             endpoint=endpoint, timeout=args.timeout_seconds,
         ))
     if args.addback_mode == "completed_epoch":
+        if args.addback_epoch is not None:
+            raise ValueError("--addback-epoch requires --addback-mode causal_group")
         addback_batches = _completed_epoch_addback_batches(
             composed=composed,
             history=history,
             exclusions=exclusions,
         )
     else:
-        addback_batches = [
-            {
-                "epoch_index": None,
-                "causal_group_ids": (exclusion.causal_group_id,),
-                "excluded_tokens": int(exclusion.excluded_tokens),
-            }
-            for exclusion in exclusions
-        ]
+        addback_batches = _causal_group_addback_batches(
+            composed=composed,
+            history=history,
+            exclusions=exclusions,
+            addback_epoch=args.addback_epoch,
+        )
     for index, batch in enumerate(addback_batches, 1):
         transformed = transform_autonomous_payload(
             frozen_payload,
@@ -363,6 +401,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "preserved_completed_state": preserved_roles,
         "excluded_group_count": len(exclusions),
         "addback_mode": args.addback_mode,
+        "addback_epoch_filter": args.addback_epoch,
         "addback_batch_count": len(addback_batches),
         "addback_batches": addback_batches,
         "control_repeats": args.control_repeats,
@@ -394,6 +433,14 @@ def main() -> None:
         help=(
             "restore one excluded causal group at a time, or restore every "
             "excluded group from one evaluator-hidden completed source epoch"
+        ),
+    )
+    parser.add_argument(
+        "--addback-epoch",
+        type=int,
+        help=(
+            "with causal_group mode, test only retired groups from this "
+            "evaluator-hidden source epoch"
         ),
     )
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
