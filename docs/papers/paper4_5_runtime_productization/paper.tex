@@ -77,18 +77,11 @@ not to design a new scheduler.  It is to define an execution boundary that can
 be measured, optimized, and later replaced without changing the meaning of a
 selected reference.
 
-Three previously separate interfaces must meet at that boundary.  The Paper 2
-SDK supplies \texttt{PRAForCausalLM}, model-family injection, routing, and
-generation.  Paper 4 supplies authenticated resolvers and the cold, warm, and
-hot external-memory lifecycle.  Paper 6.5 supplies stable typed identities,
-callable-derived tool schemas, declarative skills, lazy disclosure, and
-host-authorized tool execution. Paper 7 supplies type-aware compact views,
-scoped lossless backing, size-gated native indexing, lazy selected-region
-encoding, selective materialization, and cursors for large results. Paper 8
-supplies versioned task state, task-scoped record admission,
-and durable user/session resolution. We retain these responsibilities and place one orchestration facade
-above them.  This is integration by contract rather than by collapsing distinct
-policies.
+The runtime composes previously defined model, resource, and session
+interfaces, but this paper evaluates only the native realization boundary.
+Policy, transport, storage, and tool surfaces remain separate contracts; their
+product details are documented in the appendix and companion papers rather
+than treated as additional systems claims here.
 
 The paper is organized around four independent gates:
 
@@ -312,20 +305,22 @@ with a more expensive sparse path.
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabularx}{\linewidth}{p{.085\linewidth}p{.145\linewidth}p{.10\linewidth}cccY}
+\begin{tabularx}{\linewidth}{p{.10\linewidth}p{.19\linewidth}cccccY}
 \toprule
-Engine & Native form & Positions & No re-enc. & No K/V copy & Lifecycle & Present boundary \\
+Engine & Model/backend scope & $S$ & $P$ & $C$ & $L$ & $E$ & Primary remaining limitation \\
 \midrule
-HF & Canonical cache plus fused intervals & Original & yes & yes & pass & Qwen/CUDA, batch 1; no general latency claim. \\
-MLX & Canonical interval-addressed arrays & Original & yes & yes & pass & Direct MLX; batch, topology, and head-dimension limits. \\
-SGLang-MLX & Live source owner plus interval consumer & Original & yes & yes & pass & Selected rows evaluated independently; mixed cache protocols rejected. \\
-llama.cpp & Resident slot and stable sequence ranges & Original & yes & yes & pass & Endpoint temporary allocation remains incompletely exposed. \\
-vLLM-Metal & Resident page borrowing & Original pages & yes & yes & 24/24 & Bounded release package and page geometry. \\
-vLLM CUDA & Scheduler-owned page aliases & Original pages & yes & yes & bounded pass & In-process V1, complete pages, one homogeneous K/V group; partial pages and multiprocess remain open. \\
+HF & Qwen/CUDA, batch 1 & pass & pass & pass & pass & open & Autonomous frozen-plan workload not rerun after the final contract. \\
+MLX & Direct MLX, batch 1 & pass & pass & pass & pass & diag. & Topology/head-dimension bounds; current agent transfer is hybrid. \\
+SGLang-MLX & Direct MLX row consumer & pass & pass & pass & pass & diag. & Rows are evaluated independently; current transfer is hybrid and loses workload. \\
+llama.cpp & Resident slot/sequence ranges & pass & pass & pass & pass & 1 task & Endpoint temporary allocation remains incomplete; current transfer is hybrid. \\
+vLLM-Metal & Bounded page geometry & pass & pass & pass & 24/24 & open & No frozen autonomous reduced-plan workload row. \\
+vLLM CUDA & V1, complete homogeneous pages & pass & pass & bounded & pass & open & Frozen-plan bridge still needs an autonomous no-copy workload closure. \\
 \bottomrule
 \end{tabularx}
-\caption{Current corrected mechanism scope. ``Yes'' is limited to the declared
-geometry and matched-consumer gate; it is not a general serving-speed claim.}
+\caption{Vector-valued qualification $G=(S,P,C,L,E)$: same-state semantics,
+original positions, copy/re-encoding, lifecycle, and autonomous workload.
+``Pass'' is limited to the declared scope; ``diag.'' and ``open'' are not
+inferred from mechanism success.}
 \label{tab:editorial-engine-matrix}
 \end{table}
 
@@ -426,17 +421,22 @@ resident-subset invariant.
 \begin{table}[H]
 \centering
 \small
-\begin{tabularx}{\linewidth}{p{.13\linewidth}rrrrY}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lccrrcccl}
 \toprule
-Consumer & Solved & Calls vs control & Original-K/V omission & Synthetic encoding & Workload outcome \\
+Engine & PRA-100 & Reduced & Calls F/R & Logical/KV omission & Hist. re-enc. & K/V copy & Paired workload & Status \\
 \midrule
-llama.cpp & 1/1 & 8 vs 8 & 40.23\% & unreported & Solve and call count preserved; strict gate withheld. \\
-MLX & 1/1 & 12 vs 9 & 40.04\% & 1,056 tokens & Only 15.23\% paired selected-K/V-plus-receipt saving. \\
-SGLang-MLX & 1/1 & 15 vs 7 & 37.21\% & 1,344 tokens & 33.10\% paired input-plus-completion workload increase. \\
+llama.cpp & pass & solve & 8/8 & 40.23/40.23\% & 0 orig.; receipts n/a & 0 selected & calls preserved & hybrid; timing open \\
+MLX & pass & solve & 9/12 & 39.45/40.04\% & 1,056 synth. & 0 selected & $+15.23\%$ saving & hybrid \\
+SGLang-MLX & pass & solve & 7/15 & 39.45/37.21\% & 1,344 synth. & 0 selected & $-33.10\%$ saving & hybrid \\
+HF CUDA & mech. & open & --- & --- & --- & --- & open & autonomous gate open \\
+vLLM CUDA & mech. & open & --- & --- & --- & --- & open & autonomous no-copy gate open \\
 \bottomrule
-\end{tabularx}
-\caption{Frozen policy transfer.  Similar original-K/V omission yields positive,
-reduced, or negative trajectory economics.}
+\end{tabular}}
+\caption{Frozen-plan workload economics.  F/R denotes matched Full/reduced
+calls.  Positive paired workload is saving; negative is regression.  Receipt
+rows are hybrid transformed context and are not pooled with strict resident-
+subset execution.}
 \label{tab:editorial-agent-transfer}
 \end{table}
 
@@ -540,7 +540,9 @@ because closure receipts are encoded after caching.  Its value is diagnostic:
 similar original-K/V omission leads to preserved, reduced, or negative workload
 benefit across consumers.  The strict next experiment removes synthetic
 history, holds the selected records fixed, and repeats the paired autonomous
-gate with task-clustered replication.
+gate with task-clustered replication.  HF and vLLM CUDA have bounded mechanism
+evidence but no admissible post-contract autonomous reduced-plan row; their
+workload coordinate $E$ therefore remains explicitly open.
 
 \section{Conclusion}
 
@@ -1864,13 +1866,20 @@ support the stronger claim originally associated with them.  We retain their
 artifacts rather than deleting inconvenient evidence.  Table~\ref{tab:superseded-agent-evidence}
 states the demotion rule applied throughout the report.
 
-\begin{table}[H]
-\centering
+\begingroup
 \small
-\begin{tabularx}{\textwidth}{@{}p{0.19\textwidth}X X@{}}
+\begin{longtable}{@{}p{0.18\textwidth}p{0.38\textwidth}p{0.38\textwidth}@{}}
+\caption{Superseded agent-cache evidence.  ``Superseded'' removes a systems
+claim, not the historical artifact: demoted rows remain available for debugging
+and causal comparison.}\label{tab:superseded-agent-evidence}\\
 \toprule
 Failure found & Evidence superseded or demoted & Admissible replacement evidence \\
 \midrule
+\endfirsthead
+\toprule
+Failure found & Evidence superseded or demoted & Admissible replacement evidence \\
+\midrule
+\endhead
 Cache reconstruction & Fresh-prefill, cache-off, and independently reconstructed
 ``same-state'' comparisons across the early HF, MLX, vLLM, and SGLang probes.
 They measure rematerialization behavior, even when outputs match. & Ordinary and
@@ -1884,6 +1893,24 @@ step.  Token agreement from such a row cannot qualify sparse K/V. & A reference
 consumes the identical subset under the same original positions; selected
 length, source-position extent, and request suffix are separate recorded
 fields. \\
+\addlinespace
+Hidden FP32 K/V casts & HF rows that stabilized a comparator by converting
+resident half-precision K/V to FP32 and then counted only the final selected
+payload.  The cast copied hundreds of MiB cumulatively and changed the physical
+treatment. & Preserve the declared resident dtype through the matched consumer;
+record every dtype conversion and copied byte outside the semantic gate. \\
+\addlinespace
+K/V-sized consumer temporaries & Early MLX and SGLang rows called selection
+zero-copy while attention concatenated or materialized a temporary comparable
+to the selected K/V payload. & Report selection aliases and consumer scratch
+separately, including peak and cumulative temporary bytes for the actual
+attention path. \\
+\addlinespace
+Mutable MLX cache views & Views borrowed from cache objects whose backing
+storage could grow, compact, or be released during a request.  Correct values
+in one probe did not establish safe ownership. & Pin an immutable source
+generation for every borrower; reject stale forks and delay mutation, eviction,
+or release until all borrower references close. \\
 \addlinespace
 Retention-ceiling semantics & Early nominal-90\% whole-bundle runs and v1
 sparse-selection rows whose realized retention could fall to 67.1\%.  Their
@@ -1923,13 +1950,15 @@ identity cohorts under
 recording both the PRA source
 commit and engine-gate commit and separating selected-history re-encoding,
 selection K/V copy, residency, and consumer temporary memory. \\
+\addlinespace
+Mixed package/version evidence & Rows assembled from different engine builds,
+adapter revisions, or host packages under one engine label.  Passing components
+do not compose into one qualified runtime. & Bind the engine, adapter, model,
+tokenizer, package lock, host, and implementation digests in one execution
+receipt; leave any unexecuted coordinate of $G$ open. \\
 \bottomrule
-\end{tabularx}
-\caption{Superseded agent-cache evidence.  ``Superseded'' removes a systems
-claim, not the historical artifact: demoted rows remain available for debugging
-and causal comparison.}
-\label{tab:superseded-agent-evidence}
-\end{table}
+\end{longtable}
+\endgroup
 
 \paragraph{Strict resident-subset invariant.}
 After the one-time source bootstrap, a strict native request may evaluate only
