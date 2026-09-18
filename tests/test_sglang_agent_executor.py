@@ -56,6 +56,7 @@ def test_sglang_transformers_duplicate_config_registration_is_compatible(
 
     CONFIG_MAPPING.register("qwen3_asr", object())
     assert calls == [("qwen3_asr", False), ("qwen3_asr", True)]
+
 from pra_hf.deployment import PRAGatewayMode
 
 
@@ -150,6 +151,63 @@ def test_canonical_owner_prefill_skips_logit_head_for_every_chunk() -> None:
         "owner", [1, 2, 3, 4, 5], needs_final_logits=False
     )
     assert executor.runner.needs_logits == [False, False, False]
+
+
+def test_full_retention_bootstrap_uses_exact_full_prompt_prefill() -> None:
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    calls = []
+    executor._prefill_tokens = lambda request_id, tokens, needs_final_logits: (
+        calls.append((request_id, list(tokens), needs_final_logits)) or 17
+    )
+
+    token, encoded = executor._start_native_generation(
+        "owner",
+        prompt=[1, 2, 3, 4],
+        wire=[4],
+        sampler_prompt=[1, 2, 3, 4],
+        source_bootstrap=True,
+        direct_owner=True,
+    )
+
+    assert (token, encoded) == (17, 4)
+    assert calls == [("owner", [1, 2, 3, 4], True)]
+
+
+def test_full_retention_continuation_extends_canonical_owner_in_place() -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def extend_start(self, request_id, tokens, slots, *, needs_logits):
+            self.calls.append(
+                ("extend", request_id, list(tokens), list(slots), needs_logits)
+            )
+            return "pending"
+
+        def extend_finalize(self, pending):
+            self.calls.append(("finalize", pending))
+            return 23
+
+        def eval_pending(self, pending):
+            self.calls.append(("eval", pending))
+
+    executor = object.__new__(SGLangMLXAgentHistoryExecutor)
+    executor.runner = Runner()
+    token, encoded = executor._start_native_generation(
+        "owner",
+        prompt=[1, 2, 3, 4],
+        wire=[3, 4],
+        sampler_prompt=[1, 2, 3, 4],
+        source_bootstrap=False,
+        direct_owner=True,
+    )
+
+    assert (token, encoded) == (23, 2)
+    assert executor.runner.calls == [
+        ("extend", "owner", [3, 4], [], True),
+        ("eval", "pending"),
+        ("finalize", "pending"),
+    ]
 
 
 def test_qwen_projection_supports_qwen2_without_qk_norm_and_qwen3_with_it() -> None:

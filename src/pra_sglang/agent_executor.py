@@ -1011,6 +1011,42 @@ class SGLangMLXAgentHistoryExecutor:
             penalty_metrics = self._repetition.unregister(request_id)
         return text, generated, time.perf_counter() - started, penalty_metrics
 
+    def _start_native_generation(
+        self,
+        request_id: str,
+        *,
+        prompt: Sequence[int],
+        wire: Sequence[int],
+        sampler_prompt: Sequence[int],
+        source_bootstrap: bool,
+        direct_owner: bool,
+    ) -> tuple[int, int]:
+        """Start generation and report tokens encoded by this operation."""
+
+        if source_bootstrap:
+            # Match ordinary FULL's exact prefill and chunk boundaries, while
+            # retaining the resulting request as the canonical owner.
+            token = self._prefill_tokens(
+                request_id, prompt, needs_final_logits=True
+            )
+            return token, len(prompt)
+        if direct_owner:
+            pending = self.runner.extend_start(
+                request_id, list(map(int, wire)), [], needs_logits=True
+            )
+            self._eval(pending)
+            return int(self.runner.extend_finalize(pending)), len(wire)
+        pending = self.runner.prefill_start(
+            request_id,
+            list(map(int, wire)),
+            list(map(int, sampler_prompt)),
+            [],
+            [],
+            0,
+        )
+        self._eval(pending)
+        return int(self.runner.prefill_finalize(pending)), len(wire)
+
     def _ensure_owner(
         self, state: _Session, source: list[int]
     ) -> tuple[int, int]:
@@ -1142,13 +1178,15 @@ class SGLangMLXAgentHistoryExecutor:
             canonical_tokens=state.canonical_tokens,
             chat_template_kwargs=template_kwargs,
         )
-        newly_encoded, reencoded = self._ensure_owner(state, source)
-
         source_bootstrap = bool(
             state.calls == 0
             and request.metadata.get("source_bootstrap_contract")
             == "full-logical-history-once-v1"
         )
+        if source_bootstrap:
+            newly_encoded, reencoded = 0, 0
+        else:
+            newly_encoded, reencoded = self._ensure_owner(state, source)
         requested = float(
             request.metadata.get(
                 "target_retention_fraction",
@@ -1200,25 +1238,30 @@ class SGLangMLXAgentHistoryExecutor:
         sampler_prompt = _selected_sampler_prompt(source, wire, plan)
 
         state.generation += 1
-        self.runtime.register_source(
-            state.source_id,
-            self.runner._req_caches[state.owner_request_id],
-            owner_request_id=state.owner_request_id,
-            tenant_id=request.tenant_id,
-            session_id=state.session_id,
-            generation=state.generation,
-            source_tokens=len(source),
+        direct_owner = bool(plan.full_retention)
+        native_id = (
+            state.owner_request_id if direct_owner else str(request.request_id)
         )
-        native_id = str(request.request_id)
-        lease = self.runtime.begin_request(
-            native_id,
-            state.source_id,
-            plan,
-            tenant_id=request.tenant_id,
-            session_id=state.session_id,
-            expected_generation=state.generation,
-            disjoint=not plan.full_retention,
-        )
+        lease = None
+        if not direct_owner:
+            self.runtime.register_source(
+                state.source_id,
+                self.runner._req_caches[state.owner_request_id],
+                owner_request_id=state.owner_request_id,
+                tenant_id=request.tenant_id,
+                session_id=state.session_id,
+                generation=state.generation,
+                source_tokens=len(source),
+            )
+            lease = self.runtime.begin_request(
+                native_id,
+                state.source_id,
+                plan,
+                tenant_id=request.tenant_id,
+                session_id=state.session_id,
+                expected_generation=state.generation,
+                disjoint=True,
+            )
         reset_peak = getattr(mx, "reset_peak_memory", None)
         if reset_peak is not None:
             reset_peak()
@@ -1236,14 +1279,16 @@ class SGLangMLXAgentHistoryExecutor:
             repeat_last_n=repeat_last_n,
         )
         try:
-            # ``new_token_ids`` remains only the wire suffix: selected history
-            # is already resident K/V. ``full_token_ids`` is logical sampler
-            # state, so repetition sees exactly the same selected subset.
-            pending = self.runner.prefill_start(
-                native_id, wire, sampler_prompt, [], [], 0
+            token, start_encoded = self._start_native_generation(
+                native_id,
+                prompt=prompt,
+                wire=wire,
+                sampler_prompt=sampler_prompt,
+                source_bootstrap=source_bootstrap,
+                direct_owner=direct_owner,
             )
-            self._eval(pending)
-            token = int(self.runner.prefill_finalize(pending))
+            if source_bootstrap:
+                newly_encoded = start_encoded
             evaluations += 1
             eos = self._eos_ids()
             max_tokens = request.resolved_max_new_tokens
@@ -1264,17 +1309,22 @@ class SGLangMLXAgentHistoryExecutor:
             self._eval(decode)
             extra_prediction = int(self.runner.decode_batch_finalize(decode)[0])
             evaluations += 1
-            local_tokens, graft_bytes = self._graft_local_kv(
-                self.runner._req_caches[state.owner_request_id],
-                self.runner._req_caches[native_id],
-                source_tokens=len(source),
-            )
             expected_local = len(wire) + len(generated) + int(token in eos)
-            if local_tokens != expected_local:
-                raise RuntimeError(
-                    "Canonical K/V graft length disagrees with generated token history: "
-                    f"cache={local_tokens}, expected={expected_local}."
+            if direct_owner:
+                local_tokens = expected_local
+                graft_bytes = 0
+            else:
+                local_tokens, graft_bytes = self._graft_local_kv(
+                    self.runner._req_caches[state.owner_request_id],
+                    self.runner._req_caches[native_id],
+                    source_tokens=len(source),
                 )
+                if local_tokens != expected_local:
+                    raise RuntimeError(
+                        "Canonical K/V graft length disagrees with generated "
+                        f"token history: cache={local_tokens}, "
+                        f"expected={expected_local}."
+                    )
             state.canonical_tokens = [*source, *wire, *generated]
             if token in eos:
                 state.canonical_tokens.append(token)
@@ -1291,10 +1341,11 @@ class SGLangMLXAgentHistoryExecutor:
             outcome = "finished"
         finally:
             penalty_metrics = self._repetition.unregister(native_id)
-            if outcome == "finished":
-                lease.finish()
-            else:
-                lease.fail()
+            if lease is not None:
+                if outcome == "finished":
+                    lease.finish()
+                else:
+                    lease.fail()
 
         mx.eval(
             *(
@@ -1359,6 +1410,10 @@ class SGLangMLXAgentHistoryExecutor:
             "canonical_suffix_graft_d2d_bytes": copy_metrics[
                 "canonical_suffix_graft_d2d_bytes"
             ],
+            "canonical_in_place_append": direct_owner,
+            "canonical_in_place_append_tokens": (
+                local_tokens if direct_owner else 0
+            ),
             "total_kv_copy_bytes": copy_metrics["total_kv_copy_bytes"],
             "host_to_device_bytes": copy_metrics["host_to_device_bytes"],
             "consumer_temporary_active_delta_bytes": active_delta,
