@@ -229,6 +229,9 @@ def build_agent_command(
         f"model.model_kwargs.seed={int(args.seed)}",
         "-c",
         "model.model_kwargs.stream=false",
+        "-c",
+        "model.model_kwargs.timeout="
+        f"{int(getattr(args, 'upstream_timeout_seconds', 3600))}",
     ]
     if args.max_completion_tokens is not None:
         command.extend((

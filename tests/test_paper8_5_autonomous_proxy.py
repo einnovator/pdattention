@@ -1804,6 +1804,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
         top_p=1.0,
         seed=0,
         max_completion_tokens=128,
+        upstream_timeout_seconds=1200,
         docker_executable=None,
         instrument_observations=True,
         instrumentation_output_root=tmp_path / "instrumentation",
@@ -1819,6 +1820,7 @@ def test_locked_task_selection_and_agent_command_are_single_task(tmp_path):
     assert r"(org__repo\-2)" in joined
     assert "model.model_kwargs.temperature=0.0" in joined
     assert "model.model_kwargs.seed=0" in joined
+    assert "model.model_kwargs.timeout=1200" in joined
     assert "agent.step_limit=12" in joined
     assert "environment.pull_timeout=900" in joined
     assert "InstrumentedDockerEnvironment" in joined

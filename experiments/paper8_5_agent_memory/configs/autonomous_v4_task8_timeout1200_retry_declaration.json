@@ -16,8 +16,17 @@
     "classification": "upstream_request_timeout",
     "task_or_policy_outcome": false
   },
+  "configuration_invalid_attempt": {
+    "retry_directory": "same_prefix_full_controls/episode_08_django-django-12741__retry02",
+    "reason": "stopped before its first response after audit found that the proxy ceiling was 1200 seconds but the outer agent model client still used 600 seconds",
+    "admissible": false
+  },
   "permitted_change": {
-    "upstream_request_timeout_seconds": {
+    "proxy_upstream_request_timeout_seconds": {
+      "from": 600,
+      "to": 1200
+    },
+    "agent_model_client_timeout_seconds": {
       "from": 600,
       "to": 1200
     }
@@ -30,6 +39,6 @@
     "FULL policy and whole-record materialization",
     "official grading and attribution rules"
   ],
-  "execution_rule": "Resume the original campaign in place. The immutable retry allocator must create retry02; never overwrite the base attempt or retry01.",
-  "interpretation": "The longer transport ceiling changes only infrastructure missingness. A completed FULL result remains an ordinary control outcome; another timeout remains infrastructure evidence."
+  "execution_rule": "Resume the original campaign in place after propagating the ceiling through both layers. The immutable retry allocator must create retry03; never overwrite the base attempt, retry01, or configuration-invalid retry02.",
+  "interpretation": "The same longer ceiling is propagated through the agent client and selection proxy. It changes only infrastructure missingness. A completed FULL result remains an ordinary control outcome; another timeout remains infrastructure evidence."
 }
