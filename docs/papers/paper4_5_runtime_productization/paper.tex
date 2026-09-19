@@ -4962,7 +4962,8 @@ The first direct HF execution of that fixture now closes the request-level
 mechanism gate, but not the task or fused-performance gate.  On
 Qwen2.5-0.5B FP16 and a 4~GB GTX~950M, request~1 contains 37,811 resident
 source tokens plus a 1,951-token local suffix.  Frozen M2/P1 selects 12,545
-source K/V entries, realizing 36.4569\% total-history retention.  The bounded
+source K/V entries, realizing 36.4569\% total-history retention.  Its 24
+logical record intervals coalesce to seven physical source spans.  The bounded
 streaming-segmented fallback preserves original positions, re-encodes zero
 selected-history tokens, and reports zero physical K/V copy, interval packing,
 transient K/V copy, and request-tail copy.  Same-subset and restored logits are

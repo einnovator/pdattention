@@ -40,7 +40,9 @@ The first frozen request now has direct HF/CUDA mechanism evidence on
 Qwen2.5-0.5B FP16 and a 4 GB GTX 950M.  The model-specific render contains
 37,811 resident source tokens and a 1,951-token request-local suffix.  M2/P1
 selects 12,545 source K/V entries, for 36.4569% realized total-history
-retention.  The request preserves original positions and reports:
+retention.  The corrected consumer preserves 24 logical record intervals while
+coalescing them to seven physical source spans.  The request preserves original
+positions and reports:
 
 - zero selected-history re-encoding;
 - zero physical K/V copy, interval packing, transient K/V copy, and request-tail
@@ -56,7 +58,9 @@ retention.  The request preserves original positions and reports:
 This is one request-level correctness/lifecycle point, not an autonomous task,
 latency, or fused-kernel result.  The matched frozen-FULL request is a separate
 required control and is not implied by this artifact.  See
-`engine_smokes/hf_qwen25_05b_gtx950m_request1_m2p1_streaming_v1.json`.
+`engine_smokes/hf_qwen25_05b_gtx950m_request1_m2p1_coalesced_v2.json`.  The
+earlier v1 receipt remains mechanism-correct but predates physical-span
+coalescing.
 
 ## MLX request-1 execution
 
