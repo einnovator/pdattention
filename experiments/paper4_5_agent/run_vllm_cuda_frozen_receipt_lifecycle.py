@@ -124,7 +124,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if not 1 <= args.request_index <= len(decisions):
         raise ValueError("--request-index is outside the frozen replay")
     decision = decisions[args.request_index - 1]
-    geometry = frozen_live_kv_geometry(tokenizer, decision)
+    geometry = frozen_live_kv_geometry(
+        tokenizer, decision, full_retention=args.frozen_full_retention
+    )
     connector = llm.llm_engine.engine_core.engine_core.scheduler.connector
     registry = connector._scheduler_alias_registry
     block = int(llm.llm_engine.vllm_config.cache_config.block_size)
@@ -440,6 +442,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "request_index": decision.request_index,
         "request_input_sha256": decision.request_input_sha256,
         "source_policy": decision.source_policy,
+        "frozen_full_retention": args.frozen_full_retention,
         "block_size": block,
         "logical_source_tokens": len(source_ids),
         "resident_source_tokens": source_tokens,
@@ -498,6 +501,15 @@ def main() -> None:
     parser.add_argument("--request-replay", type=Path, required=True)
     parser.add_argument("--selection-fixture", type=Path, required=True)
     parser.add_argument("--request-index", type=int, default=9)
+    parser.add_argument(
+        "--frozen-full-retention",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Select the complete resident historical source while preserving "
+            "the same frozen request identity and active wire tail."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--storage", type=Path, required=True)
     parser.add_argument("--model", default="Qwen/Qwen3-0.6B")
