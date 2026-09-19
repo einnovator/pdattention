@@ -128,6 +128,40 @@ def test_strict_paper85_request_and_plan_bundles_join_exactly() -> None:
         )
 
 
+def test_heldout_m2p1_task8_handoff_is_hash_bound_and_complete() -> None:
+    root = (
+        Path(__file__).resolve().parents[1]
+        / "docs/papers/shared/results/paper4_5_runtime_productization"
+        / "agent_memory_plans/paper8_5_m2_p1_heldout_task8_v1"
+    )
+    manifest = json.loads(
+        (root / "frozen_plan_manifest.json").read_text(encoding="utf-8")
+    )
+    plan = root / "frozen_plan.jsonl"
+    replay = root / "request_replay.jsonl"
+    decisions = load_frozen_agent_decisions(replay, plan)
+
+    assert len(decisions) == manifest["requests"] == 6
+    assert hashlib.sha256(plan.read_bytes()).hexdigest() == manifest[
+        "fixture_sha256"
+    ]
+    assert hashlib.sha256(replay.read_bytes()).hexdigest() == manifest[
+        "request_replay_sha256"
+    ]
+    assert all(
+        row.source_policy == "frontier_dag_m2_heuristic_p1"
+        for row in decisions
+    )
+    audit = json.loads(
+        (root / "qwen3coder30b_tokenizer_audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert audit["all_geometry_valid"] is True
+    assert len(audit["rows"]) == 6
+    assert max(row["realized_retention_fraction"] for row in audit["rows"]) < 0.39
+
+
 def test_materialized_receipt_fixture_exposes_mixed_kv_spans() -> None:
     root = (
         Path(__file__).resolve().parents[1]
