@@ -57,3 +57,25 @@ This is one request-level correctness/lifecycle point, not an autonomous task,
 latency, or fused-kernel result.  The matched frozen-FULL request is a separate
 required control and is not implied by this artifact.  See
 `engine_smokes/hf_qwen25_05b_gtx950m_request1_m2p1_streaming_v1.json`.
+
+## MLX request-1 execution
+
+The same frozen request now has a direct fused-MLX mechanism point on
+`mlx-community/Qwen3-0.6B-4bit` and the 48 GB M4 Pro.  It consumes the same
+37,811-token source geometry and 12,545-token M2/P1 selection (36.4569% total
+history retention) through 24 original-position intervals.  It reports:
+
+- zero selected-history re-encoding and zero selection-pack bytes;
+- no physical K/V copy and no full-selected-K/V-sized attention allocation;
+- 0 active-byte selection delta and a 291,003-byte first-layer attention peak
+  delta, 0.5663% of that layer's 51,384,320 selected-K/V bytes;
+- exact token and logit agreement with the packed-value, identical-consumer
+  oracle (maximum delta 0.0), including after offload/restore;
+- all ownership, cancellation, error, stale-generation, offload/restore,
+  termination, and tombstone checks passing.
+
+The 4,336,489,740-byte lossless offload payload is reported separately from
+selection or attention temporary memory.  This remains a request-level
+correctness/lifecycle point; the matched frozen-FULL control, autonomous task,
+and latency gates are separate.  See
+`engine_smokes/mlx_qwen3_06b_m4pro_request1_m2p1_fused_v1.json`.

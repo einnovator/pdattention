@@ -4974,6 +4974,20 @@ the Triton kernel, this row qualifies the explicit fallback only.  The matched
 frozen-\textsc{Full} request, the remaining five requests, autonomous task
 outcome, and runtime economics remain open.
 
+The same frozen M2/P1 request also passes the direct fused-MLX path on
+Qwen3-0.6B 4-bit and the 48~GB M4 Pro.  Twenty-four original-position intervals
+address the same 12,545 of 37,811 source K/V entries with zero selected-history
+re-encoding, zero selection-pack bytes, and no physical K/V copy.  Selection
+changes active allocator memory by 0 bytes.  First-layer attention peaks only
+291,003 bytes above baseline, 0.5663\% of that layer's 51,384,320 selected-K/V
+bytes, so it does not allocate a selected-K/V-sized transient.  Tokens and
+logits match the packed-value identical-consumer oracle exactly (maximum delta
+0.0), including after lossless offload/restore, and every ownership/lifecycle
+check passes.  The 4,336,489,740-byte offload payload is reported separately
+from selection and attention temporary memory.  This closes one request-level
+fused mechanism point, not the matched frozen-\textsc{Full}, autonomous-task,
+or latency gates.
+
 The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of
 tokens and reproduces 14/18 exact commands, compared with 97.22\% and 11/18
