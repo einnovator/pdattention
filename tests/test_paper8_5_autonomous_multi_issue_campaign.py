@@ -68,6 +68,10 @@ EASY14_ATOMIC_PROFILES_CTX131K_SPEC = (
     ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
     "autonomous_easy14_atomic_profiles_v2_ctx131k.json"
 )
+CANONICAL_ORDER_REPLICATION_SPEC = (
+    ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+    "autonomous_v4_m2p1_canonical_order_replication8_ctx131k.json"
+)
 
 
 def _args(tmp_path: Path) -> argparse.Namespace:
@@ -105,6 +109,34 @@ def test_frozen_registry_has_unique_cells_and_explicit_primary_target():
     assert spec["primary_target"]["maximum_saving_fraction"] == TARGET_SAVING_MAX
     assert spec["primary_target"]["official_resolution_delta_minimum"] == 0
     assert spec["primary_target"]["lost_persistent_full_successes"] == 0
+
+
+def test_canonical_order_replication_changes_order_not_policy_or_model():
+    source = json.loads(
+        (
+            ROOT / "experiments" / "paper8_5_agent_memory" / "configs" /
+            "autonomous_v3_baseline_conditional_confirmation8_ctx131k.json"
+        ).read_text(encoding="utf-8")
+    )
+    replication = json.loads(
+        CANONICAL_ORDER_REPLICATION_SPEC.read_text(encoding="utf-8")
+    )
+    benchmark = json.loads(
+        BASELINE_SUCCESS14_BENCHMARK.read_text(encoding="utf-8")
+    )
+    validate_spec(replication, benchmark)
+
+    assert replication["model_revision"] == source["model_revision"]
+    assert replication["strategies"] == [source["strategies"][0]]
+    source_ids = source["sequences"][0]["instance_ids"]
+    replication_ids = replication["sequences"][0]["instance_ids"]
+    assert set(replication_ids) == set(source_ids)
+    assert replication_ids != source_ids
+    assert replication_ids == [
+        instance_id
+        for instance_id in benchmark["instance_ids"]
+        if instance_id in set(source_ids)
+    ]
 
 
 def test_instruction_epoch_registry_is_boundary_free_and_uniquely_identified():

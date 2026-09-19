@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-v4-m2p1-canonical-order-replication8-ctx131k",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "replication_axis": {
+    "axis": "task_order",
+    "rule": "canonical Easy-14 order restricted to the eight held-out identities",
+    "source_campaign": "paper85-v3-baseline-conditional-confirmation8-ctx131k",
+    "policy_changed": false,
+    "model_changed": false,
+    "reason": "estimate order sensitivity before confounding it with cross-model transfer"
+  },
+  "runtime_qualification": {
+    "active_state_path": "/api/ps",
+    "minimum_active_context_tokens": 131072,
+    "cold_reset_between_trials": true,
+    "cold_reset_mode": "ollama_keep_alive_zero",
+    "warmup": "one temperature-zero Reply OK. request capped at two tokens"
+  },
+  "primary_target": {
+    "minimum_saving_fraction": 0.30,
+    "maximum_saving_fraction": 0.50,
+    "official_resolution_delta_minimum": 0,
+    "lost_persistent_full_successes": 0,
+    "maximum_aggregate_call_delta": 0,
+    "claim": "baseline-conditional paired saving and outcome preservation under a second predeclared task order"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 1,
+    "tail_turns": 1,
+    "search_delay_turns": 0,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 1,
+    "working_set_resources": 4
+  },
+  "sequences": [
+    {
+      "sequence_id": "heldout-canonical-order-eight-v4",
+      "sequence_stratum": "held_out_independent_cross_workspace_canonical_order",
+      "instance_ids": [
+        "django__django-15277",
+        "scikit-learn__scikit-learn-13135",
+        "django__django-14089",
+        "sphinx-doc__sphinx-8721",
+        "sympy__sympy-23534",
+        "psf__requests-2317",
+        "sympy__sympy-16886",
+        "django__django-12741"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "RECENT_FRONTIER_M2_P1_FROZEN",
+      "strategy_config_id": "frontier_recent_prompts_2_protocol_1_v1",
+      "session_mode": "persistent",
+      "policy": "frontier_dag_retirement",
+      "boundary_mode": "boundary_free",
+      "frontier_recent_user_prompts": 2,
+      "frontier_protocol_exemplars": 1,
+      "frontier_workflow_exemplars": 0,
+      "frontier_allow_heuristic": true,
+      "keep_completed_task_statements": true,
+      "unresolved_same_prefix_full_action": "carry_full_episode",
+      "repeats": 1
+    }
+  ],
+  "qualification": {
+    "status": "predeclared task-order replication of the frozen held-out M2/P1 policy",
+    "execution_order": ["RECENT_FRONTIER_M2_P1_FROZEN"],
+    "pairing": "cold exact-prefix FULL immediately before every candidate episode",
+    "stop_conditions": [
+      "cache/start-state mismatch",
+      "workspace digest mismatch",
+      "selected-message plan not auditable",
+      "transport or infrastructure contamination"
+    ],
+    "missingness_rule": "if exact-prefix FULL does not resolve, withhold the policy for that identity, carry the exact completed FULL episode into the continuous session, and continue to the next predeclared identity",
+    "interpretation": "task identity is the statistical unit; report conditional preservation and unconditional session cost separately; compare against v3 only as an order-sensitivity replication"
+  },
+  "workspace_semantics": {
+    "conversation": "one continuous ordinary-role transcript without explicit task-boundary metadata",
+    "workspaces": "clean official SWE-bench workspace per issue",
+    "guardrail": "the policy receives no evaluator task ID, episode boundary, success flag, repository label, or workspace identity; genuine user prompts remain selected"
+  }
+}
