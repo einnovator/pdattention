@@ -367,7 +367,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         len(token_ids) for token_ids, _position_start in materialized_history
     )
     if (
-        (not plan.has_holes or len(plan.intervals) < 2)
+        (not plan.has_holes or len(plan.physical_intervals) < 2)
         and not (frozen_decision and args.frozen_full_retention)
     ):
         raise RuntimeError("Lifecycle qualification requires a disjoint sparse plan.")
@@ -527,8 +527,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if use_disjoint:
         compact_intervals = []
         cursor = 0
-        for interval in plan.intervals:
-            width = interval.end - interval.start
+        for start, end in plan.physical_intervals:
+            width = end - start
             compact_intervals.append((cursor, cursor + width))
             cursor += width
         packed_layers = []
@@ -546,10 +546,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     source_keys=layer.keys,
                     source_values=layer.values,
                     intervals=tuple(compact_intervals),
-                    logical_intervals=tuple(
-                        (interval.start, interval.end)
-                        for interval in plan.intervals
-                    ),
+                    logical_intervals=plan.physical_intervals,
                 )
             )
         matched_memory = MLXDisjointNativeMemory(
@@ -895,7 +892,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "radix_pool_ownership_isolated": not radix_pool_contains_selected_wrapper,
     }
     result = {
-        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v4",
+        "schema_version": "paper4.5.sglang-mlx-live-kv-lifecycle.v5",
         "probe": "sglang_mlx_real_radix_request_owned_sparse_kv",
         "engine": "sglang-mlx",
         "engine_version": getattr(sglang, "__version__", "unknown"),
@@ -981,7 +978,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             if use_disjoint
             else "packed dense oracle"
         ),
-        "selected_kv_segments": len(plan.intervals),
+        "selected_kv_segments": len(plan.physical_intervals),
+        "logical_selected_intervals": len(plan.intervals),
+        "physical_kv_segments": len(plan.physical_intervals),
         "selection_pack_bytes": (
             0
             if use_disjoint
