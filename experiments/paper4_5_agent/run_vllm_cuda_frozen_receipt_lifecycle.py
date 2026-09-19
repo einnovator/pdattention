@@ -310,37 +310,53 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "host_pack_copy_bytes": host_pack_bytes,
         })
 
-    if packed_source_key is None:
-        raise RuntimeError("Frozen request has no materialized receipt source.")
-    final_key = f"frozen-{run_id}-mixed-history"
-    receipt_pages = tuple(range(math.ceil(len(receipt_ids) / block)))
-    terminal_page_copy_bytes = packed_native_bytes * block // len(receipt_ids)
-    registry.publish_composite_source(
-        final_key,
-        generation=999,
-        position_extent=source_tokens,
-        components=(
-            (source_key, 1, original_pages),
-            (packed_source_key, packed_source_generation, receipt_pages),
-        ),
-        selected_token_count=selected_original_tokens + len(receipt_ids),
-        partial_terminal_copy_bytes=terminal_page_copy_bytes,
-        materialized_history_encoded_tokens=len(receipt_ids),
-        materialized_history_copy_bytes=(
-            materialized_copy_bytes
-            + materialized_host_pack_bytes
-            + materialized_h2d_bytes
-        ),
+    expected_materialized_tokens = sum(
+        len(span.token_ids) for span in geometry.materialized_history_spans
     )
+    if packed_source_key is None:
+        # A resident-subset policy such as M2/P1 has no compact closure
+        # receipts.  Alias the selected canonical source pages directly; do
+        # not invent a materialized-history object or route the request
+        # through the host packing path.
+        final_key = source_key
+        final_generation = 1
+        final_pages = original_pages
+        terminal_page_copy_bytes = 0
+        materialization_mode = "receipt_free_direct_page_alias"
+    else:
+        final_key = f"frozen-{run_id}-mixed-history"
+        final_generation = 999
+        receipt_pages = tuple(range(math.ceil(len(receipt_ids) / block)))
+        terminal_page_copy_bytes = packed_native_bytes * block // len(receipt_ids)
+        registry.publish_composite_source(
+            final_key,
+            generation=final_generation,
+            position_extent=source_tokens,
+            components=(
+                (source_key, 1, original_pages),
+                (packed_source_key, packed_source_generation, receipt_pages),
+            ),
+            selected_token_count=selected_original_tokens + len(receipt_ids),
+            partial_terminal_copy_bytes=terminal_page_copy_bytes,
+            materialized_history_encoded_tokens=len(receipt_ids),
+            materialized_history_copy_bytes=(
+                materialized_copy_bytes
+                + materialized_host_pack_bytes
+                + materialized_h2d_bytes
+            ),
+        )
+        final_pages = tuple(
+            range(math.ceil((selected_original_tokens + len(receipt_ids)) / block))
+        )
+        materialization_mode = "original_pages_plus_materialized_receipts"
     final_selected_tokens = selected_original_tokens + len(receipt_ids)
     final_command = SparseCudaConnectorCommand(
         "load",
         f"frozen-{run_id}-final-request-a",
         final_selected_tokens,
         source_tokens,
-        source_generation=999,
+        source_generation=final_generation,
     )
-    final_pages = tuple(range(math.ceil(final_selected_tokens / block)))
     _write_alias_manifest(
         connector, final_command, parent=final_key, pages=final_pages
     )
@@ -363,7 +379,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         f"frozen-{run_id}-final-request-b",
         final_selected_tokens,
         source_tokens,
-        source_generation=999,
+        source_generation=final_generation,
     )
     _write_alias_manifest(
         connector, final_command_b, parent=final_key, pages=final_pages
@@ -378,16 +394,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     )
 
     registry.evict_source(source_key, generation=1)
-    registry.evict_source(
-        packed_source_key, generation=packed_source_generation
-    )
-    registry.evict_source(final_key, generation=999)
+    if packed_source_key is not None:
+        registry.evict_source(
+            packed_source_key, generation=packed_source_generation
+        )
+    if final_key != source_key:
+        registry.evict_source(final_key, generation=final_generation)
     final_snapshot = registry.snapshot()
     selected_history_page_overhead = selected_original_tokens - geometry.plan.selected_tokens
     total_visible_tokens = final_selected_tokens + len(wire_suffix)
     full_visible_tokens = len(geometry.prompt_ids)
     checks = {
-        "all_receipts_materialized": len(receipt_ids) == 664,
+        "all_receipts_materialized": (
+            len(receipt_ids) == expected_materialized_tokens
+        ),
         "all_original_pages_zero_copy": int(after_final_b["physical_kv_copy_bytes"]) == 0,
         "selected_history_not_reencoded": int(after_final_b["selected_history_reencoded_tokens"]) == 0,
         "repeat_token_exact": final_tokens_a == final_tokens_b,
@@ -406,7 +426,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )),
     }
     payload: dict[str, object] = {
-        "schema_version": "paper4.5.vllm-cuda-frozen-receipt-lifecycle.v1",
+        "schema_version": "paper4.5.vllm-cuda-frozen-receipt-lifecycle.v2",
         "qualified": all(checks.values()),
         "qualification_blockers": [name for name, passed in checks.items() if not passed],
         "checks": checks,
@@ -429,6 +449,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "selected_original_page_tokens": selected_original_tokens,
         "selected_history_page_overhead_tokens": selected_history_page_overhead,
         "materialized_history_tokens": len(receipt_ids),
+        "materialization_mode": materialization_mode,
         "final_selected_tokens": final_selected_tokens,
         "total_visible_tokens": total_visible_tokens,
         "full_visible_tokens": full_visible_tokens,
