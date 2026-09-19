@@ -14,7 +14,11 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pra_hf.hf_live_kv import HFLiveKVRequestCancelled, HFLiveKVRuntime
+from pra_hf.hf_live_kv import (
+    HFLiveKVRequest,
+    HFLiveKVRequestCancelled,
+    HFLiveKVRuntime,
+)
 from pra_hf.agent_executor import split_generation_prompt
 
 from .run_hf_agent_cache_equivalence import _max_delta
@@ -36,6 +40,20 @@ def _last_logit_kwargs(model) -> dict[str, int]:
     if "num_logits_to_keep" in parameters:
         return {"num_logits_to_keep": 1}
     return {}
+
+
+def _require_live_kv_api(request_class=HFLiveKVRequest) -> str:
+    """Fail before an expensive prefill when an older PRA package shadows src/."""
+
+    parameters = inspect.signature(request_class.generate).parameters
+    module_path = inspect.getsourcefile(request_class) or inspect.getfile(request_class)
+    if "materialized_history" not in parameters:
+        raise RuntimeError(
+            "Incompatible pra_hf live-K/V API: HFLiveKVRequest.generate lacks "
+            f"materialized_history (loaded from {module_path}). Put this "
+            "worktree's src directory first on PYTHONPATH."
+        )
+    return str(Path(module_path).resolve())
 
 
 @torch.inference_mode()
@@ -200,6 +218,7 @@ def _fingerprint_cache(cache) -> str:
 
 @torch.inference_mode()
 def run(args: argparse.Namespace) -> dict[str, object]:
+    hf_live_kv_module = _require_live_kv_api()
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -441,6 +460,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "schema_version": "paper4.5.hf-live-kv-lifecycle.v4",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
+        "hf_live_kv_module": hf_live_kv_module,
         "model": args.model,
         "torch_version": torch.__version__,
         "transformers_version": __import__("transformers").__version__,
