@@ -38,6 +38,17 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _first_action_sha256(output: Path) -> str | None:
+    trace = output / "request_selection.jsonl"
+    if not trace.is_file():
+        return None
+    first = next((line for line in trace.read_text(encoding="utf-8").splitlines() if line.strip()), None)
+    if first is None:
+        return None
+    value = json.loads(first).get("assistant_command_sha256")
+    return str(value) if value else None
+
+
 def _option(command: Sequence[str], name: str) -> str | None:
     try:
         index = list(command).index(name)
@@ -205,15 +216,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         row = ledger["episodes"].get(episode_id) or {}
         official_path = destination / "official_result.json"
         metrics_path = destination / "autonomous_metrics.json"
+        source_output = Path(str(control["output"]))
+        source_full_calls = int(control.get("calls") or 0)
+        source_full_tokens = int(control.get("cumulative_full_tokens") or 0)
         if official_path.is_file() and metrics_path.is_file():
             official = _read(official_path)
             metrics = _read(metrics_path)
+            materialized = int(metrics.get("cumulative_materialized_tokens") or 0)
+            full = int(metrics.get("cumulative_full_tokens") or 0)
             row.update({
                 "status": "complete",
                 "official_resolved": bool(official.get("resolved")),
                 "calls": int(metrics.get("calls") or 0),
-                "cumulative_full_tokens": int(metrics.get("cumulative_full_tokens") or 0),
-                "cumulative_materialized_tokens": int(metrics.get("cumulative_materialized_tokens") or 0),
+                "cumulative_full_tokens": full,
+                "cumulative_materialized_tokens": materialized,
+                "candidate_own_saving_fraction": 1 - materialized / full if full else 0.0,
+                "source_full_calls": source_full_calls,
+                "source_full_tokens": source_full_tokens,
+                "call_delta_vs_failed_full": int(metrics.get("calls") or 0) - source_full_calls,
+                "source_first_action_sha256": _first_action_sha256(source_output),
+                "candidate_first_action_sha256": _first_action_sha256(destination),
             })
             ledger["episodes"][episode_id] = row
             continue
@@ -227,6 +249,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "episode_index": episode_number,
             "diagnostic_role": declared["diagnostic_role"],
             "source_full_resolved": False,
+            "source_full_calls": source_full_calls,
+            "source_full_tokens": source_full_tokens,
             "prefix_sha256": declared["prefix_sha256"],
             "output": str(destination),
             "command": command,
@@ -255,12 +279,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             break
         official = _read(official_path)
         metrics = _read(metrics_path)
+        materialized = int(metrics.get("cumulative_materialized_tokens") or 0)
+        full = int(metrics.get("cumulative_full_tokens") or 0)
         row.update({
             "status": "complete",
             "official_resolved": bool(official.get("resolved")),
             "calls": int(metrics.get("calls") or 0),
-            "cumulative_full_tokens": int(metrics.get("cumulative_full_tokens") or 0),
-            "cumulative_materialized_tokens": int(metrics.get("cumulative_materialized_tokens") or 0),
+            "cumulative_full_tokens": full,
+            "cumulative_materialized_tokens": materialized,
+            "candidate_own_saving_fraction": 1 - materialized / full if full else 0.0,
+            "call_delta_vs_failed_full": int(metrics.get("calls") or 0) - source_full_calls,
+            "source_first_action_sha256": _first_action_sha256(source_output),
+            "candidate_first_action_sha256": _first_action_sha256(destination),
         })
         _write(ledger_path, ledger)
     complete = [row for row in ledger["episodes"].values() if row.get("status") == "complete"]
@@ -270,6 +300,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "resolved": sum(bool(row.get("official_resolved")) for row in complete),
         "cross_task_completed": len(cross_task),
         "cross_task_recovered": sum(bool(row.get("official_resolved")) for row in cross_task),
+        "empty_prefix_outcome_changed": any(
+            row.get("diagnostic_role") == "empty_prefix_repeatability_control"
+            and bool(row.get("official_resolved"))
+            for row in complete
+        ),
+        "recovered_call_delta_vs_failed_full": sum(
+            int(row.get("call_delta_vs_failed_full") or 0)
+            for row in complete if row.get("official_resolved")
+        ),
         "interpretation": (
             "Recovery is evidence consistent with removable cross-task interference; "
             "non-recovery is not a selector loss because FULL also failed."
