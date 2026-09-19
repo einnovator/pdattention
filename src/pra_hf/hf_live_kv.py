@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import inspect
 from dataclasses import dataclass, field
+from functools import lru_cache
 from types import MethodType
 from threading import RLock
 from typing import Callable, Generic, Iterable, Sequence, TypeVar
@@ -13,6 +14,15 @@ from .live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 
 
 T = TypeVar("T")
+
+
+@lru_cache(maxsize=1)
+def _triton_disjoint_attention_available() -> bool:
+    try:
+        import triton  # noqa: F401
+    except (ImportError, OSError):
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -49,6 +59,11 @@ class HFResidentKVSelection:
     def fused_attention_calls(self) -> int:
         metrics = getattr(self.cache, "metrics", None)
         return int(getattr(metrics, "fused_attention_calls", 0))
+
+    @property
+    def streaming_attention_calls(self) -> int:
+        metrics = getattr(self.cache, "metrics", None)
+        return int(getattr(metrics, "streaming_attention_calls", 0))
 
 
 class HFLiveKVRequestCancelled(RuntimeError):
@@ -438,6 +453,7 @@ class HFSparseAttentionMetrics:
     selected_text_reencoded_tokens: int = 0
     request_tail_copy_bytes: int = 0
     fused_attention_calls: int = 0
+    streaming_attention_calls: int = 0
 
 
 @dataclass
@@ -598,8 +614,13 @@ def segmented_qwen_attention(
                 tail_is_contiguous = False
                 break
             expected_position = row.position_end
+    # Windows, older CUDA GPUs, and minimal correctness environments may not
+    # provide Triton. The bounded two-pass consumer below is still zero-copy
+    # for selected K/V and is the honest fallback.
+    use_triton = query.is_cuda and _triton_disjoint_attention_available()
     if (
         query.is_cuda
+        and use_triton
         and source_keys is not None
         and source_values is not None
         and source_count > 0
@@ -780,6 +801,7 @@ def segmented_qwen_attention(
     # No selected K/V tensor is cast, packed, or copied by this consumer.
     if metrics is not None:
         metrics.transient_attention_bytes += int(transient_peak)
+        metrics.streaming_attention_calls += 1
     if not bool(torch.all(torch.isfinite(accumulator))):
         raise RuntimeError("Sparse causal attention produced a non-finite numerator.")
     return accumulator.to(query.dtype).reshape(

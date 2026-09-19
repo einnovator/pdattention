@@ -185,6 +185,8 @@ def test_hf_segmented_qwen_attention_matches_identical_dense_subset() -> None:
     assert metrics.interval_pack_bytes == 0
     assert metrics.selected_text_reencoded_tokens == 0
     assert metrics.transient_attention_bytes > 0
+    assert metrics.fused_attention_calls == 0
+    assert metrics.streaming_attention_calls == 1
     assert all(
         segment.keys.untyped_storage().data_ptr() == source_keys.untyped_storage().data_ptr()
         for segment in segments[:2]
@@ -210,6 +212,8 @@ def test_hf_half_precision_keeps_selected_kv_in_native_storage() -> None:
     assert metrics.transient_kv_copy_bytes == 0
     assert metrics.max_transient_kv_tile_bytes == 0
     assert metrics.transient_attention_bytes > 0
+    assert metrics.fused_attention_calls == 0
+    assert metrics.streaming_attention_calls == 1
 
 
 @pytest.mark.parametrize("family", ["qwen2", "qwen3"])

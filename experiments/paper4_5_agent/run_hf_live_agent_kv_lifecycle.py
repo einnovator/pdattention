@@ -516,6 +516,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "transient_attention_bytes": candidate_result.transient_attention_bytes,
         "transient_kv_copy_bytes": candidate_result.transient_kv_copy_bytes,
         "max_transient_kv_tile_bytes": candidate_result.max_transient_kv_tile_bytes,
+        "request_tail_copy_bytes": candidate.selection.request_tail_copy_bytes,
+        "fused_attention_calls": candidate.selection.fused_attention_calls,
+        "streaming_attention_calls": candidate.selection.streaming_attention_calls,
+        "cuda_attention_backend": (
+            "triton_fused"
+            if candidate.selection.fused_attention_calls > 0
+            and candidate.selection.streaming_attention_calls == 0
+            else "streaming_segmented"
+            if candidate.selection.streaming_attention_calls > 0
+            and candidate.selection.fused_attention_calls == 0
+            else "mixed_or_unused"
+        ),
         "selected_text_reencoded_tokens": candidate_result.selected_text_reencoded_tokens,
         "offloaded_payload_type": type(offloaded).__name__,
         "offloaded_payload_bytes": len(offloaded) if isinstance(offloaded, bytes) else None,
