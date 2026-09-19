@@ -4990,6 +4990,45 @@ from selection and attention temporary memory.  This closes one request-level
 fused mechanism point, not the matched frozen-\textsc{Full}, autonomous-task,
 or latency gates.
 
+The corrected SGLang-MLX bridge independently clears the request/radix
+lifecycle gate on the same Metal model, host, and frozen M2/P1 plan.  It
+preserves the 24 logical records while coalescing them to seven
+original-position physical spans, re-encodes zero history tokens, and reports
+zero selection packing and physical K/V copy.  Same-subset generation and
+post-restore state are exact, all lifecycle checks pass, and selection changes
+active memory by 0 bytes.  Its first-layer peak delta is 290,867 bytes
+(0.5661\% of selected-layer K/V) with no selected-K/V-sized transient.  This
+is a distinct SGLang request and radix-lifecycle qualification, but it shares
+the Qwen3-0.6B model family and M4 Pro with direct MLX and therefore is not
+cross-model replication.  The 799.20-second complete runner time includes
+source capture, reference work, offload/restore, and lifecycle probes; it is
+not kernel latency.  Its same-revision matched \textsc{Full} control retains
+all 37,811 source tokens, coalesces 192 logical intervals to one physical span,
+and also passes exactness, zero-copy/re-encoding, allocation, and lifecycle
+gates.  First-layer peak deltas are 290,867 bytes for M2/P1 and 323,587 bytes
+for \textsc{Full}.  Complete lifecycle-runner time is 799.20 versus 1,327.73
+seconds, a descriptive 1.66$\times$ ratio or 39.81\% reduction.  This single
+sequential pair is neither a replicated estimate nor kernel latency.
+
+The bounded vLLM 0.28 CUDA page-alias path clears the same receipt-free request
+on Qwen3-0.6B FP16 and an RTX 5060.  Its 16-token cache pages round 12,545
+logical selected-history tokens to 12,656 resident tokens, a 111-token
+overhead.  With the 1,938-token wire suffix, total visible work falls from
+39,762 to 14,594 tokens (63.30\% saving), while resident-original-K/V omission
+is 66.56\%.  Two continuations both emit token IDs [151667, 198]; two
+authoritative aliases are installed and released, with zero selected-history
+re-encoding, physical K/V copy, host-to-device transfer, receipt encoding,
+host packing, or copy-on-write.  Commit \texttt{d4e1568a} fixes a harness defect
+that previously required a compact-receipt source even when the frozen policy
+contained no receipts: the corrected path now aliases selected canonical pages
+directly.  A same-revision matched \textsc{Full} control at commit
+\texttt{2f168e0e} aliases all 37,824 resident page tokens, emits the same
+[151667, 198] continuation twice, and retains zero copy/re-encoding and clean
+release.  Mean post-alias two-token generation takes 0.296 seconds for M2/P1
+and 0.694 seconds for \textsc{Full}, a descriptive 2.35$\times$ ratio.  The two
+borrowers share one initialized run per arm after source capture; this is not a
+replicated end-to-end latency, autonomous-task, or runtime-economics result.
+
 The first matched MLX \textsc{Full} diagnostic passes all correctness and
 lifecycle gates at 100\% retention, zero selected-history re-encoding/copy,
 and exact logits, but it also exposes a physical-segmentation defect.  The

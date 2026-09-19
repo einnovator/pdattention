@@ -111,3 +111,69 @@ a descriptive 2.22x ratio, or 54.95% elapsed reduction.  This single sequential
 pair includes source capture, packed-value oracle work, offload/restore, and all
 lifecycle probes; it is not a replicated kernel-latency claim.  The FULL receipt
 is `engine_smokes/mlx_qwen3_06b_m4pro_request1_full_coalesced_v2.json`.
+
+## SGLang-MLX request-1 execution
+
+The corrected SGLang-MLX lifecycle bridge now clears the same frozen M2/P1
+request on the 48 GB M4 Pro.  It retains 12,545 of 37,811 source-history
+tokens (36.4569%), preserves all 24 logical record identities, and coalesces
+their resident views to seven original-position physical spans.  The receipt
+reports zero selected-history re-encoding, zero selection packing or physical
+K/V copy, exact same-subset behavior and exact restoration, and passing
+ownership, concurrent-borrower, cancellation, stale-generation,
+offload/restore, termination, and tombstone checks.  Selection changes active
+memory by zero bytes; the first-layer peak delta is 290,867 bytes, 0.5661% of
+the selected-layer K/V extent, with no full-selected-K/V-sized allocation.
+
+The 799.20-second end-to-end lifecycle-runner time includes dense source
+capture, reference construction, offload/restore, and lifecycle probes; it is
+not a kernel-latency result.  This is a distinct SGLang request/radix-lifecycle
+qualification over the same Metal model and hardware as direct MLX, not an
+independent model-family replication.  See
+`engine_smokes/sglang_mlx_qwen3_06b_m4pro_request1_m2p1_coalesced_v1.json`.
+
+The matched frozen FULL arm at the same `b29b2706` implementation revision
+retains all 37,811 source tokens, preserves 192 logical intervals as one
+physical span, and also clears exactness, zero-copy/re-encoding, allocation,
+and lifecycle gates.  Its first-layer peak delta is 323,587 bytes, 0.2089% of
+the 154,873,856-byte selected-layer K/V extent.  The complete lifecycle runner
+takes 1,327.73 seconds for FULL versus 799.20 seconds for M2/P1, a descriptive
+1.66x ratio or 39.81% reduction.  As with direct MLX, this single sequential
+pair includes source capture, reference work, offload/restore, and lifecycle
+probes and is not replicated kernel latency.  The FULL receipt is
+`engine_smokes/sglang_mlx_qwen3_06b_m4pro_request1_full_coalesced_v1.json`.
+
+## vLLM/CUDA request-1 execution
+
+The same receipt-free M2/P1 request now clears the bounded vLLM 0.28 native
+page-alias path on a GeForce RTX 5060 Laptop GPU with Qwen3-0.6B FP16.  The
+16-token cache granularity rounds 12,545 logical selected-history tokens to
+12,656 resident tokens, an overhead of 111 tokens.  Including the 1,938-token
+wire suffix, the request exposes 14,594 rather than 39,762 tokens, for 63.30%
+total-visible-token saving and 66.56% resident-original-K/V omission.  Two
+repeated continuations emit token IDs `[151667, 198]` and the engine reports:
+
+- two authoritative scheduler-page aliases installed and released;
+- zero selected-history re-encoding, physical K/V copy, and host-to-device
+  traffic;
+- zero receipt encoding, host packing, receipt transfer, or copy-on-write,
+  because this policy contains no compact closure receipts;
+- complete registry cleanup after both borrowers.
+
+The runner previously rejected receipt-free policies before page attachment;
+commit `d4e1568a` fixes that harness defect by aliasing selected canonical pages
+directly rather than manufacturing a materialized-history source.  This is a
+request-level mechanism point, not an autonomous-task or runtime-economics
+result.  See
+`engine_smokes/vllm_cuda_qwen3_06b_rtx5060_request1_m2p1_pagealias_v1.json`.
+
+The matched FULL control was added and both arms were repeated at commit
+`2f168e0e`.  FULL aliases all 37,824 resident page tokens (37,811 logical
+source tokens plus the 13-token terminal-page fill), exposes the same 39,762
+visible tokens as the unabridged request, emits the same `[151667, 198]`
+continuation twice, and retains zero copy/re-encoding and complete cleanup.
+Mean post-alias two-token generation time is 0.296 seconds for M2/P1 versus
+0.694 seconds for FULL, a descriptive 2.35x ratio.  These are two borrowers
+inside one run per arm after engine initialization and source capture, not a
+replicated end-to-end latency estimate.  The FULL receipt is
+`engine_smokes/vllm_cuda_qwen3_06b_rtx5060_request1_full_pagealias_v1.json`.
