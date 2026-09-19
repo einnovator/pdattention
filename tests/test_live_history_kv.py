@@ -6,11 +6,13 @@ import pytest
 
 from pra_hf.hf_live_kv import (
     HFSparseAttentionMetrics,
+    HFSparseDynamicCache,
     HFSparseKVSegment,
     HFLiveKVRequestCancelled,
     HFLiveKVRuntime,
     dense_reference_attention_mask,
     enable_qwen_sparse_live_kv,
+    fork_full_dynamic_cache_descriptor,
     pack_dynamic_cache_reference,
     pack_segmented_dynamic_cache_reference,
     segmented_qwen_attention,
@@ -186,6 +188,53 @@ def test_hf_pra100_dense_selection_is_an_identity_noop() -> None:
         select_full_dynamic_cache_noop(
             source, LiveKVSelectionPlan.full(5)
         )
+
+
+def test_hf_pra100_borrower_forks_descriptors_but_aliases_resident_kv() -> None:
+    torch = pytest.importorskip("torch")
+    keys = torch.arange(24, dtype=torch.float32).reshape(1, 1, 6, 4)
+    values = keys + 100
+    source_layer = SimpleNamespace(keys=keys, values=values)
+    source = SimpleNamespace(layers=[source_layer])
+
+    selected = fork_full_dynamic_cache_descriptor(
+        source, LiveKVSelectionPlan.full(6)
+    )
+
+    assert selected.cache is not source
+    assert selected.cache.layers is not source.layers
+    assert selected.cache.layers[0] is not source_layer
+    assert selected.cache.layers[0].keys is keys
+    assert selected.cache.layers[0].values is values
+    assert selected.physical_kv_copy is False
+    assert selected.interval_pack_bytes == 0
+    selected.cache.layers[0].keys = torch.cat((keys, keys[..., :1, :]), dim=-2)
+    assert source.layers[0].keys is keys
+    assert source.layers[0].keys.shape[-2] == 6
+
+
+def test_hf_runtime_routes_full_borrow_to_native_descriptor_fork() -> None:
+    torch = pytest.importorskip("torch")
+    runtime = _hf_runtime(torch)
+    source = _hf_cache(torch)
+    runtime.register_source(
+        "source", source, tenant_id="tenant", session_id="session", generation=1,
+    )
+
+    request = runtime.begin_request(
+        "full",
+        "source",
+        LiveKVSelectionPlan.full(6),
+        tenant_id="tenant",
+        session_id="session",
+        expected_generation=1,
+    )
+
+    assert not isinstance(request.selection.cache, HFSparseDynamicCache)
+    assert request.selection.cache is not source
+    assert request.selection.cache.layers[0].keys is source.layers[0].keys
+    assert request.selection.physical_kv_copy is False
+    request.cancel()
 
 
 def test_hf_segmented_qwen_attention_matches_identical_dense_subset() -> None:

@@ -16,6 +16,31 @@ from .live_history import LiveKVSelectionPlan, LiveKVSourceRegistry
 T = TypeVar("T")
 
 
+def _last_logit_kwargs(model) -> dict[str, int]:
+    """Request only the logit row consumed by greedy agent decoding.
+
+    Qwen implementations expose either ``logits_to_keep`` or the older
+    ``num_logits_to_keep`` spelling.  Keeping this contract identical between
+    ordinary and live-K/V requests avoids a different vocabulary-projection
+    GEMM shape being mistaken for a cache-semantic difference.
+    """
+
+    forward = getattr(model, "forward", None)
+    if not callable(forward):
+        return {}
+    try:
+        parameters = inspect.signature(forward).parameters
+    except (TypeError, ValueError):
+        # Some compiled or extension-backed forwards do not expose an
+        # inspectable Python signature.  Preserve their existing contract.
+        return {}
+    if "logits_to_keep" in parameters:
+        return {"logits_to_keep": 1}
+    if "num_logits_to_keep" in parameters:
+        return {"num_logits_to_keep": 1}
+    return {}
+
+
 @lru_cache(maxsize=1)
 def _triton_disjoint_attention_available() -> bool:
     try:
@@ -226,6 +251,7 @@ class HFLiveKVRequest(Generic[T]):
                 enable_qwen_sparse_live_kv(model)
             with torch.inference_mode():
                 output = None
+                logit_kwargs = _last_logit_kwargs(model)
                 for segment_ids, positions in positioned_segments:
                     if cancelled is not None and cancelled():
                         raise HFLiveKVRequestCancelled(
@@ -238,6 +264,7 @@ class HFLiveKVRequest(Generic[T]):
                         cache_position=positions,
                         use_cache=True,
                         return_dict=True,
+                        **logit_kwargs,
                     )
                     cache = output.past_key_values
             assert output is not None
@@ -266,6 +293,7 @@ class HFLiveKVRequest(Generic[T]):
                         cache_position=position,
                         use_cache=True,
                         return_dict=True,
+                        **logit_kwargs,
                     )
                 logits = output.logits
                 cache = output.past_key_values
@@ -350,7 +378,19 @@ class HFLiveKVRuntime(Generic[T]):
                 expected_generations=(expected_generation,),
             )
             try:
-                selection = select_dynamic_cache(source_cache, plan)
+                # A complete contiguous selection is ordinary prefix-cache
+                # continuation, not sparse attention.  Fork only the mutable
+                # Python cache descriptors while aliasing every resident K/V
+                # tensor.  Transformers may then append the request tail to
+                # the private descriptors without mutating the canonical
+                # owner, and the model keeps its native attention reduction
+                # geometry.  Forcing PRA-100 through the disjoint consumer is
+                # both unnecessary and numerically different at long context.
+                selection = (
+                    fork_full_dynamic_cache_descriptor(source_cache, plan)
+                    if plan.full_retention
+                    else select_dynamic_cache(source_cache, plan)
+                )
             except BaseException:
                 self.registry.release(request_key)
                 raise
@@ -1140,6 +1180,48 @@ def select_full_dynamic_cache_noop(
         raise ValueError("Dense HF cache has no materialized layers.")
     return HFResidentKVSelection(
         source_cache,
+        plan,
+        False,
+        selected_text_reencoded_tokens=0,
+        interval_pack_bytes=0,
+    )
+
+
+def fork_full_dynamic_cache_descriptor(
+    source_cache: object, plan: LiveKVSelectionPlan
+) -> HFResidentKVSelection:
+    """Borrow full resident K/V through request-local mutable descriptors.
+
+    Only cache and layer descriptor objects are copied.  Their K/V tensors
+    continue to alias canonical source storage.  Native Transformers cache
+    growth replaces tensors on the private layer objects, leaving the pinned
+    source descriptors and tensors unchanged.  This is the immutable-borrower
+    PRA-100 path; :func:`select_full_dynamic_cache_noop` remains the canonical
+    owner's in-place continuation path.
+    """
+
+    validated = select_full_dynamic_cache_noop(source_cache, plan)
+    source_layers = getattr(validated.cache, "layers")
+    request_cache = copy.copy(validated.cache)
+    request_cache.layers = [copy.copy(layer) for layer in source_layers]
+    for source_layer, request_layer in zip(source_layers, request_cache.layers):
+        source_keys, source_values, source_key_name, source_value_name = _layer_pair(
+            source_layer
+        )
+        request_keys, request_values, request_key_name, request_value_name = _layer_pair(
+            request_layer
+        )
+        if (source_key_name, source_value_name) != (
+            request_key_name,
+            request_value_name,
+        ):
+            raise RuntimeError("HF full-cache descriptor fork changed the layer schema.")
+        if _tensor_storage_pointer(request_keys) != _tensor_storage_pointer(source_keys):
+            raise RuntimeError("HF full-cache key descriptor unexpectedly copied K/V.")
+        if _tensor_storage_pointer(request_values) != _tensor_storage_pointer(source_values):
+            raise RuntimeError("HF full-cache value descriptor unexpectedly copied K/V.")
+    return HFResidentKVSelection(
+        request_cache,
         plan,
         False,
         selected_text_reencoded_tokens=0,

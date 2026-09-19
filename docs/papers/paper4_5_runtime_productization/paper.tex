@@ -382,6 +382,24 @@ single-task wall time by 27.85$\times$.  This is a prefix-cache result, not a PR
 speedup.  PRA's distinct systems opportunity begins when selected evidence is
 detached, disjoint, or changes across requests.
 
+\subsection{Complete retention must remain on the native dense path}
+
+The corrected HF dispatcher no longer sends PRA-100 through the disjoint
+online-softmax consumer.  It shallow-forks only request-local cache descriptors
+while every key/value tensor continues to alias the pinned canonical source;
+request growth replaces private descriptors without mutating that source.
+Transformers therefore executes its ordinary dense attention and last-logit
+projection geometry.  A real Qwen2.5-0.5B FP16 control with 2,713 resident
+source tokens is token exact and has maximum logit delta 0.0 against two
+independent ordinary-prefix executions and after lossless restore.  It reports
+zero selected-history re-encoding, selected-K/V copy, interval packing, or
+consumer K/V temporary.  This is a bounded correctness result, not an
+autonomous workload or latency claim.  Earlier PRA-100 probes that forced a
+complete contiguous prefix through a sparse consumer remain useful numerical
+diagnostics but are not admissible full-retention implementations.  The
+machine-readable receipt is
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_qwen25_05b_full_native_dense_fix_20260919.json}.
+
 \subsection{Changing selection changes composition semantics}
 
 Persistent-corpus MLX reuses independently encoded 256-token chunks across 50
@@ -558,6 +576,7 @@ contract therefore ends at vector-valued evidence, not a single reuse flag.
 
 \clearpage
 \appendix
+\ifdefined\TECHREPORT
 \section{Superseded Measurements and Detailed Runtime Report}
 
 The remainder preserves the full architecture, transport, product-surface,
@@ -4971,32 +4990,32 @@ exact (maximum delta 0.0), and all ownership/lifecycle checks pass.  The
 consumer executes 384 streaming layer calls and reports 2,029,289,472
 cumulative logical attention-temporary bytes; that quantity is neither K/V
 copy nor a peak-allocation claim.  Because compute capability~5.0 cannot run
-the Triton kernel, this row qualifies the explicit fallback only.  The matched
-frozen-\textsc{Full} request is now also complete and is a strict negative.
-It retains all 37,811 source tokens as 192 logical intervals coalesced to one
-physical span, re-encodes and copies zero selected-history tokens, and is
-token exact, same-consumer logit exact, and restore exact.  Its maximum logit
-delta versus the independent ordinary-HF full-history oracle is nevertheless
-0.0869140625, above the 0.001 gate.  Thus the bounded streaming consumer, like
-the fused consumer below, has not yet established numerical equivalence to
-native HF attention at this long context.  The remaining five requests,
-autonomous task outcome, and runtime economics remain open.
+the Triton kernel, this row qualifies the explicit reduced-history fallback
+only.  The earlier matched frozen-\textsc{Full} request is now superseded as a
+dispatch diagnostic.  It unnecessarily sent one complete contiguous prefix
+through the streaming sparse consumer and therefore changed the attention
+reduction while reporting a 0.0869140625 delta against native HF.  Correct
+PRA-100 execution instead shallow-forks mutable cache descriptors, aliases the
+canonical K/V tensors, and continues through native dense attention.  The
+2,713-token Qwen2.5-0.5B control clears that corrected path at maximum delta
+0.0 against two independent ordinary-prefix executions and after restore,
+with zero selected-history re-encoding or K/V copy.  The full 37,811-token
+fixture, remaining five reduced requests, autonomous task outcome, and runtime
+economics remain separately gated.
 
-A fused RTX replication is more demanding and remains a strict negative at
-100\% retention.  On Qwen3-0.6B FP16 and an RTX 5060, M2/P1 again selects
+A fused RTX replication exercises the valid reduced-history path but no longer
+defines PRA-100 semantics.  On Qwen3-0.6B FP16 and an RTX 5060, M2/P1 selects
 12,545/37,811 history tokens as 24 logical intervals and seven physical spans.
 The Triton consumer matches its identical-consumer subset oracle exactly,
 restores exactly, re-encodes zero history tokens, and packs or copies zero
 selected K/V bytes while passing every sparse lifecycle check.  It separately
 reports 3,595,621,120 cumulative logical attention-scratch bytes and
 3,370,106,880 cumulative request-tail append-copy bytes; neither is presented
-as zero-cost reuse.  The matched \textsc{Full} arm is token exact against
-ordinary Transformers generation, identical-consumer logit exact, and restore
-exact, but its maximum final-logit delta versus an independent native-HF full
-oracle is 0.15234375, exceeding the 0.001 gate.  This localizes the remaining
-failure to long-context Triton-versus-native attention equivalence rather than
-selection identity, re-encoding, K/V copy, or lifecycle.  HF fused FULL is
-therefore not qualified on this geometry.
+as zero-cost reuse.  The old matched \textsc{Full} arm's 0.15234375
+Triton-versus-native delta remains a useful cross-consumer numerical result,
+but forcing full retention through Triton is no longer an admissible runtime
+dispatch.  It neither disqualifies the sparse M2/P1 mechanism nor substitutes
+for a native-dense PRA-100 control.
 
 The same frozen M2/P1 request also passes the direct fused-MLX path on
 Qwen3-0.6B 4-bit and the 48~GB M4 Pro.  Twenty-four logical record intervals
@@ -5984,7 +6003,84 @@ lifecycle and scoped caches\\
 \end{longtable}
 \normalsize
 
+\else
+
+\small
+\section{Correction Ledger}
+\label{app:correction-ledger}
+
+The runtime contract was tightened after agent-history experiments exposed
+several ways to overstate native reuse.  Table~\ref{tab:short-correction-ledger}
+records the corrections that invalidate earlier economic claims while
+preserving their value as debugging evidence.  The complete chronology and raw
+tables remain in the technical-report edition.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{p{.27\linewidth}p{.30\linewidth}Y}
+\toprule
+Earlier treatment & Why it is invalid & Current requirement \\
+\midrule
+Reconstructed cache & Fresh prefill is not the same resident state. & Fork or alias the canonical live cache; report old-token evaluation. \\
+Compact position base & Disjoint records changed rotary/causal coordinates. & Preserve original source positions in the plan and consumer. \\
+Hidden cast or pack & Selected K/V was copied while reported as reuse. & Report selected-K/V copy, dtype conversion, and H2D separately. \\
+K/V-sized temporary & Selection was view-based but attention concatenated resident K/V. & Report consumer peak and cumulative temporaries independently. \\
+Retention ceiling & Whole records rounded below a nominal percentage. & Use the authoritative tokenizer and fail closed below the declared floor. \\
+Mixed revisions & Mechanism and workload rows combined different packages or patches. & Bind model, tokenizer, engine, PRA revision, source, and plan digests. \\
+Post-cache receipt & New summary text was described as resident-subset reuse. & Classify and charge transformed context separately from strict native reuse. \\
+\bottomrule
+\end{tabularx}
+\caption{Authoritative correction ledger for publication claims.}
+\label{tab:short-correction-ledger}
+\end{table}
+
+\section{Bounded Engine Scopes}
+
+Engine qualification is deliberately scoped rather than binary.  HF covers
+Qwen2/Qwen3 full-attention models at batch one; MLX and SGLang-MLX cover their
+declared Metal topology; llama.cpp covers resident sequence/range attachment;
+and vLLM CUDA covers in-process V1 with complete homogeneous pages.  These
+rows do not imply partial-page, hybrid-group, multiprocess, distributed, or
+production-concurrency support.  A mechanism-qualified row retains
+$E=\mathrm{open}$ until a matched autonomous workload reports task outcome,
+calls, completion work, prefix-cache status, physical traffic, and repeated
+latency.
+
+The frozen agent-policy handoff contains the policy ID, plan and source-prefix
+digests, selected stable record IDs, spans, original positions, and
+materialization class.  Any runtime that changes one of those fields creates a
+new realization row.  Selection-only resident subsets and receipt-bearing
+hybrid transformed context are never pooled.
+
+\section{Reproducibility Map}
+
+\enlargethispage{2\baselineskip}
+The implementation and evidence are rooted at the following repository paths:
+
+\begin{itemize}[leftmargin=*,nosep]
+\item \path{src/pra_hf/hf_live_kv.py}, \path{src/pra_mlx/native.py},
+\path{src/pra_sglang/}, and \path{src/pra_vllm/} implement the bounded native
+consumers and ownership contracts.
+\item \path{experiments/paper4_5_agent/} contains the matched FULL, PRA-100,
+frozen-plan, lifecycle, and autonomous workload runners.
+\item \path{docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/}
+contains hash-bound Paper~8.5 plans, engine receipts, and autonomous outcomes.
+\item \path{docs/papers/shared/results/paper4_5_runtime_productization/rag/}
+contains frozen-selection cold/warm realization evidence.
+\end{itemize}
+
+Every headline value in the publication edition maps to a machine-readable
+artifact under these roots.  The technical-report edition retains the full
+implementation guide, gateway and storage studies, historical matrices, and
+superseded diagnostic tables.
+\normalsize
+
+\fi
+
+\ifdefined\TECHREPORT
 \bibliographystyle{plain}
 \bibliography{../shared/references}
+\fi
 
 \end{document}

@@ -280,8 +280,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         materialized_history = ()
     ordinary_full_tokens = None
     ordinary_full_logits = None
-    if frozen_decision and args.frozen_full_retention:
+    ordinary_full_repeat_tokens = None
+    ordinary_full_repeat_logits = None
+    # Every complete-retention plan must clear the independent ordinary-HF
+    # consumer gate, whether the plan came from a frozen replay fixture or a
+    # trajectory-derived control.  Restricting this comparator to frozen
+    # fixtures allowed a nominal FULL trajectory run to skip the decisive
+    # native-consumer parity check.
+    if plan.full_retention:
         ordinary_full_tokens, ordinary_full_logits = _ordinary_generate(
+            model,
+            source_ids,
+            wire_tail,
+            device,
+            max_new_tokens=args.continuation_tokens,
+            prefill_step_size=args.prefill_step_size,
+        )
+        ordinary_full_repeat_tokens, ordinary_full_repeat_logits = _ordinary_generate(
             model,
             source_ids,
             wire_tail,
@@ -498,6 +513,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "physical_kv_segments": (
             len(candidate.selection.cache.layers[0].source_segments)
             if candidate.selection.cache.layers
+            and hasattr(candidate.selection.cache.layers[0], "source_segments")
+            else len(plan.physical_intervals)
+            if candidate.selection.cache.layers
             else 0
         ),
         "materialized_history_tokens": sum(
@@ -526,7 +544,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "fused_attention_calls": candidate.selection.fused_attention_calls,
         "streaming_attention_calls": candidate.selection.streaming_attention_calls,
         "cuda_attention_backend": (
-            "triton_fused"
+            "native_dense_full_retention"
+            if plan.full_retention
+            and candidate.selection.fused_attention_calls == 0
+            and candidate.selection.streaming_attention_calls == 0
+            else "triton_fused"
             if candidate.selection.fused_attention_calls > 0
             and candidate.selection.streaming_attention_calls == 0
             else "streaming_segmented"
@@ -551,6 +573,17 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "max_abs_logit_delta_ordinary_full_engine_oracle": (
             _max_delta(candidate_logits, ordinary_full_logits)
             if ordinary_full_logits is not None
+            else None
+        ),
+        "independent_full_prefill_repeat_token_exact": (
+            ordinary_full_tokens == ordinary_full_repeat_tokens
+            if ordinary_full_tokens is not None
+            else None
+        ),
+        "max_abs_logit_delta_independent_full_prefill_repeat": (
+            _max_delta(ordinary_full_logits, ordinary_full_repeat_logits)
+            if ordinary_full_logits is not None
+            and ordinary_full_repeat_logits is not None
             else None
         ),
         "max_abs_logit_delta_after_restore": _max_delta(candidate_logits, restored_logits),
