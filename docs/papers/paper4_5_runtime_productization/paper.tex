@@ -48,11 +48,15 @@ With frozen RAG selections on Qwen3-4B MLX, cold native execution is 3.2\%
 slower than selected text, but warm repeated selection reduces mean TTFT from
 2.640 to 0.166 seconds and total latency from 3.031 to 0.638 seconds.  Ordinary
 exact prefix-cache reuse remains a required baseline; PRA's distinct advantage
-is changing or detached addressable evidence.  A frozen coding-agent plan omits
-about 40\% of original resident history on multiple engines, yet its economic
-outcome ranges from preserved call count to reduced benefit or net workload
-loss as the trajectory changes.  Receipt-bearing transfers are explicitly
-hybrid transformed-context evidence, not strict resident-subset reuse.
+is changing or detached addressable evidence.  On one fresh locked coding task,
+MLX and SGLang-MLX PRA-100 reproduce all six plain-engine actions and the exact
+patch without re-encoding selected history or copying selected K/V.  Their
+task-aware 90\% treatments also preserve the solve and six-call count, but
+realize only 2.19\% cumulative physical-input saving on the short trajectory;
+SGLang additionally exposes a 17.5~MB suffix-graft copy and 1.61~GB peak
+consumer temporary.  A separate frozen plan omits about 40\% of resident
+history, but its receipt-bearing transfers remain hybrid transformed-context
+evidence rather than strict resident-subset reuse.
 
 The resulting measurement contract establishes two boundaries: logical
 selection does not imply physical saving, and physical omission does not imply
@@ -310,8 +314,8 @@ with a more expensive sparse path.
 Engine & Model/backend scope & $S$ & $P$ & $C$ & $L$ & $E$ & Primary remaining limitation \\
 \midrule
 HF & Qwen/CUDA, batch 1 & pass & pass & pass & pass & open & Autonomous frozen-plan workload not rerun after the final contract. \\
-MLX & Direct MLX, batch 1 & pass & pass & pass & pass & diag. & Topology/head-dimension bounds; current agent transfer is hybrid. \\
-SGLang-MLX & Direct MLX row consumer & pass & pass & pass & pass & diag. & Rows are evaluated independently; current transfer is hybrid and loses workload. \\
+MLX & Direct MLX, batch 1 & pass & pass & pass & pass & 1 task & Multi-task and cross-model economics remain open; selected-copy is zero but other K/V movement remains. \\
+SGLang-MLX & Fused disjoint MLX consumer & pass & pass & pass & pass & 1 task & Multi-task economics remain open; reduced execution has large consumer scratch. \\
 llama.cpp & Resident slot/sequence ranges & pass & pass & pass & pass & 1 task & Endpoint temporary allocation remains incomplete; current transfer is hybrid. \\
 vLLM-Metal & Bounded page geometry & pass & pass & pass & 24/24 & open & No frozen autonomous reduced-plan workload row. \\
 vLLM CUDA & V1, complete homogeneous pages & pass & pass & bounded & pass & open & Frozen-plan bridge still needs an autonomous no-copy workload closure. \\
@@ -415,29 +419,37 @@ It establishes
 Original, chunk-local, and request-packed positions are therefore explicit
 contract fields rather than implementation details.
 
-\subsection{The numerical consumer path is part of the treatment}
+\subsection{Fresh autonomous controls separate mechanism from policy}
 
-On the corrected SGLang coding-agent control, fresh full prefill and live-prefix
-PRA-100 receive identical input token IDs, resolve the same task in seven calls,
-and submit a byte-identical patch, yet their assistant actions first diverge at
-request three.  A selection-neutral live-prefix control then matches PRA-100 on
-all seven requests, responses, and commands.  Thus
+An earlier SGLang diagnostic sent identical tokens through different numerical
+consumer paths and diverged at request three.  That row motivated the matched-
+consumer requirement but is superseded as engine qualification: complete
+retention must remain on the ordinary dense path.  The resulting rule is
 \[
 \boxed{\text{same token IDs}\;\not\Rightarrow\;
 \text{same numerical consumer path}.}
 \]
-Reduced-policy comparisons must use a matched consumer; fresh-prefill identity
-cannot be silently required of an incremental path.
+Comparisons must therefore identify both selected state and its consumer.
 
-A post-fix autonomous MLX control at source revision \texttt{02e53d01} makes
-the mechanism/policy split concrete.  Plain and PRA-100 both resolve the
-locked task in the same six actions and submit the byte-identical patch, with
-zero selected-history re-encoding or selected-K/V copy.  At nominal 90\%, a
-matched whole-turn token tail fails after nine calls, whereas the structural
-progress/mutation/verification-floor policy resolves in six calls with the
-reference patch.  Its cumulative physical-input saving is only 2.19\% on this
-short trajectory, so the row qualifies correctness and policy sensitivity,
-not useful workload economics.
+Fresh autonomous MLX and SGLang-MLX controls then hold the model revision,
+temperature-zero decoding, task, container, and grader fixed.  On both engines,
+plain and PRA-100 resolve in the same six actions and submit the byte-identical
+patch; all six assistant actions match exactly, with zero selected-history
+re-encoding and zero selected-K/V copy.  A matched whole-turn token tail on MLX
+fails after nine calls, while the structural progress/mutation/verification-
+floor policy resolves on both engines in six calls with the reference patch.
+It first diverges only in final-response wording and realizes 8,725 physical
+tokens from 8,920 logical tokens, a 2.19\% saving.
+
+The engines nevertheless have different physical realization costs.  Direct
+MLX reports 8.40~GB on its cumulative total-K/V-copy counter, despite zero
+selected-K/V copy, and a 1.25~GB peak consumer temporary for the reduced run.
+Fused SGLang-MLX reduces its total-K/V-copy counter to a 17.5~MB canonical-
+suffix graft, but its reduced-path consumer temporary peaks at 1.61~GB.  These
+are one-task correctness and policy-
+sensitivity results, not useful workload-economics claims.  The fresh SGLang
+evidence is archived under
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_agent_gates/sglang_task01_qwen25coder14b_postfix_6e97f0c6/}.
 
 \subsection{Frozen agent-plan transfer separates omission from economics}
 
@@ -2118,7 +2130,7 @@ additional independent claims.
 
 \begin{table}[H]
 \centering
-\small
+\scriptsize
 \begin{tabularx}{\linewidth}{p{.21\linewidth}Yp{.25\linewidth}}
 \toprule
 Claim & Strongest current evidence & Present boundary \\
@@ -2142,18 +2154,17 @@ denominator. & Three identities do not establish greater-than-90\% population
 preservation.  Older E2/E3 and R4/P1 rows remain diagnostics rather than
 defaults.  Paper~4.5 independently measures whether logical omission becomes
 resident K/V omission. \\
-Coding-agent utility frontier & A fresh post-fix llama.cpp/Qwen3-Coder-30B
-gate has two hash-identical eight-call \textsc{Full} controls; PRA-100 matches
-all requests, responses, and actions exactly.  Hybrid E2+F1C preserves the
-official solve and eight-call count while saving 39.88\% materialized tokens
-and omitting 40.23\% weighted steady-state original K/V, with zero retained-
-original re-encoding or selected-K/V copy. & E2+F1C contains post-cache closure
-receipts and is therefore hybrid transformed-context evidence, not a strict
-resident-subset result; its receipt-encoding total is absent from this llama.cpp
-bundle.  This is also one task on one engine.  Earlier llama.cpp, HF, MLX,
-SGLang, and vLLM agent rows predate the final bootstrap and policy-transfer
-contract and remain superseded diagnostics.  Fresh autonomous HF, MLX, SGLang,
-and vLLM rows and broader tasks are pending. \\
+Coding-agent utility frontier & Fresh MLX and SGLang-MLX/Qwen2.5-Coder-14B
+controls reproduce the plain engine's six actions and exact patch at PRA-100.
+Task-aware PRA-90 preserves both official solves and call counts, with zero
+selected-history re-encoding or selected-K/V copy.  A separate hybrid
+llama.cpp/Qwen3-Coder-30B transfer preserves its eight-call solve while omitting
+40.23\% weighted steady-state original K/V. & The strict MLX/SGLang result is
+one short task and realizes only 2.19\% physical-input saving; other K/V
+movement and consumer scratch remain engine dependent.  The llama.cpp plan
+contains post-cache receipts and is not a strict resident-subset result.
+Earlier agent rows remain superseded diagnostics.  Fresh HF/vLLM rows, broader
+tasks, and repeated cross-model economics are pending. \\
 \bottomrule
 \end{tabularx}
 \caption{Four-claim evidence map.  Passing a mechanism gate does not silently
