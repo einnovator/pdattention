@@ -62,6 +62,40 @@ required control and is not implied by this artifact.  See
 earlier v1 receipt remains mechanism-correct but predates physical-span
 coalescing.
 
+The fused RTX replication sharpens that result but does not yet qualify HF at
+100% retention.  On Qwen3-0.6B FP16 and an RTX 5060, M2/P1 again selects
+12,545/37,811 history tokens as 24 logical intervals and seven physical spans.
+The Triton consumer is exact against its identical-consumer subset oracle,
+restores exactly, re-encodes zero history tokens, packs/copies zero selected
+K/V bytes, and passes every declared sparse lifecycle check.  It reports
+3,595,621,120 cumulative logical attention-scratch bytes and 3,370,106,880
+cumulative request-tail append-copy bytes separately from selected-history
+reuse; neither is claimed as zero.
+
+The matched FULL arm retains all 37,811 source tokens as one physical span and
+is token exact against ordinary Transformers generation, identical-consumer
+logit exact, and restore exact.  However, its final-logit maximum delta versus
+the independent ordinary full-engine oracle is `0.15234375`, above the strict
+`0.001` gate.  HF fused FULL is therefore a strict negative on this long
+Qwen3 geometry.  Since same-consumer and restoration comparisons are exact,
+the failure is localized to equivalence between the Triton consumer and native
+HF attention, not selection identity, re-encoding, K/V copy, or lifecycle.
+The sparse and FULL receipts are respectively
+`engine_smokes/hf_qwen3_06b_rtx5060_request1_m2p1_fused_v1.json` and
+`engine_smokes/hf_qwen3_06b_rtx5060_request1_full_fused_strict_negative_v1.json`.
+
+The matched GTX 950M fallback FULL control is also complete and is a strict
+negative.  It retains all 37,811 source tokens as 192 logical intervals
+coalesced to one physical span, re-encodes zero selected-history tokens, copies
+zero selected K/V bytes, and is token exact, identical-consumer logit exact,
+and restore exact.  Its maximum final-logit delta against an independent native
+HF full-history oracle is `0.0869140625`, again above the `0.001` gate.  The
+streaming fallback reports 2,029,289,472 cumulative logical attention-temporary
+bytes and zero request-tail copy bytes.  This independently confirms that HF's
+remaining blocker is consumer-to-native long-context numerical equivalence,
+not sparse selection identity or cache rematerialization.  The receipt is
+`engine_smokes/hf_qwen25_05b_gtx950m_request1_full_streaming_strict_negative_v1.json`.
+
 ## MLX request-1 execution
 
 The same frozen request now has a direct fused-MLX mechanism point on
