@@ -4975,11 +4975,12 @@ frozen-\textsc{Full} request, the remaining five requests, autonomous task
 outcome, and runtime economics remain open.
 
 The same frozen M2/P1 request also passes the direct fused-MLX path on
-Qwen3-0.6B 4-bit and the 48~GB M4 Pro.  Twenty-four original-position intervals
-address the same 12,545 of 37,811 source K/V entries with zero selected-history
-re-encoding, zero selection-pack bytes, and no physical K/V copy.  Selection
-changes active allocator memory by 0 bytes.  First-layer attention peaks only
-291,003 bytes above baseline, 0.5663\% of that layer's 51,384,320 selected-K/V
+Qwen3-0.6B 4-bit and the 48~GB M4 Pro.  Twenty-four logical record intervals
+coalesce to seven original-position physical spans addressing the same 12,545
+of 37,811 source K/V entries with zero selected-history re-encoding, zero
+selection-pack bytes, and no physical K/V copy.  Selection changes active
+allocator memory by 0 bytes.  First-layer attention peaks only 290,867 bytes
+above baseline, 0.5661\% of that layer's 51,384,320 selected-K/V
 bytes, so it does not allocate a selected-K/V-sized transient.  Tokens and
 logits match the packed-value identical-consumer oracle exactly (maximum delta
 0.0), including after lossless offload/restore, and every ownership/lifecycle
@@ -4997,8 +4998,20 @@ views coalesce to seven physical spans.  The observed 1,697.71 versus 431.28
 seconds therefore confounds retained-token work with avoidable record-boundary
 launch and reduction overhead and is quarantined from speedup claims.  The
 engine-neutral plan and both HF and MLX consumers now coalesce adjacent K/V
-views while retaining record and causal identities in the logical plan.  A
-post-fix paired rerun is required before runtime economics can close.
+views while retaining record and causal identities in the logical plan.
+
+The post-fix pair at commit \texttt{090a7d52} closes that request-level
+control.  M2/P1 reports 24 logical intervals and seven physical spans; Full
+reports 192 logical intervals and one physical span.  Both arms preserve exact
+tokens and logits before and after restore, allocate zero bytes during
+selection, re-encode zero history tokens, copy or pack zero selected K/V bytes,
+and pass every lifecycle check.  Their first-layer attention peak deltas are
+290,867 and 323,587 bytes, respectively, far below their selected-layer K/V
+extents.  The complete lifecycle runner takes 500.53 seconds for M2/P1 and
+1,111.16 seconds for Full, a descriptive 2.22$\times$ ratio and 54.95\%
+elapsed reduction.  The single sequential pair includes source capture, a
+packed-value oracle, offload/restore, and all lifecycle probes; it is neither a
+replicated estimate nor a kernel-latency claim.
 
 The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of

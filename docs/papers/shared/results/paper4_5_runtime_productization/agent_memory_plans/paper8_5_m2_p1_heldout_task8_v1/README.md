@@ -63,12 +63,14 @@ required control and is not implied by this artifact.  See
 The same frozen request now has a direct fused-MLX mechanism point on
 `mlx-community/Qwen3-0.6B-4bit` and the 48 GB M4 Pro.  It consumes the same
 37,811-token source geometry and 12,545-token M2/P1 selection (36.4569% total
-history retention) through 24 original-position intervals.  It reports:
+history retention).  The corrected consumer preserves 24 logical record
+intervals while coalescing them to seven original-position physical spans.  It
+reports:
 
 - zero selected-history re-encoding and zero selection-pack bytes;
 - no physical K/V copy and no full-selected-K/V-sized attention allocation;
-- 0 active-byte selection delta and a 291,003-byte first-layer attention peak
-  delta, 0.5663% of that layer's 51,384,320 selected-K/V bytes;
+- 0 active-byte selection delta and a 290,867-byte first-layer attention peak
+  delta, 0.5661% of that layer's 51,384,320 selected-K/V bytes;
 - exact token and logit agreement with the packed-value, identical-consumer
   oracle (maximum delta 0.0), including after offload/restore;
 - all ownership, cancellation, error, stale-generation, offload/restore,
@@ -78,7 +80,7 @@ The 4,336,489,740-byte lossless offload payload is reported separately from
 selection or attention temporary memory.  This remains a request-level
 correctness/lifecycle point; the matched frozen-FULL control, autonomous task,
 and latency gates are separate.  See
-`engine_smokes/mlx_qwen3_06b_m4pro_request1_m2p1_fused_v1.json`.
+`engine_smokes/mlx_qwen3_06b_m4pro_request1_m2p1_coalesced_v2.json`.
 
 The first matched FULL diagnostic is retained as a correctness-valid but
 performance-invalid bug-discovery receipt.  It passes every mechanism and
@@ -90,6 +92,18 @@ coalesces to seven spans.  FULL took 1,697.71 seconds versus 431.28 seconds for
 M2/P1, but that ratio confounds retained tokens with avoidable per-record
 launch/reduction overhead and is not a speedup claim.  The engine-neutral plan
 and HF/MLX consumers now coalesce adjacent physical views while retaining the
-logical record map.  Both arms require a post-fix rerun.  The quarantined
-diagnostic is
+logical record map.  The quarantined diagnostic is
 `engine_smokes/mlx_qwen3_06b_m4pro_request1_full_precoalesce_diagnostic_v1.json`.
+
+The post-fix pair closes that request-level control at commit `090a7d52`.
+M2/P1 reports 24 logical intervals and seven physical spans; FULL reports 192
+logical intervals and one physical span.  Both arms preserve exact tokens and
+logits before and after restore, allocate zero bytes during selection, re-encode
+zero history tokens, copy/pack zero selected K/V bytes, and pass every lifecycle
+check.  Their first-layer attention peak deltas are 290,867 and 323,587 bytes,
+respectively, far below their selected-layer K/V extents.  The complete
+lifecycle runner takes 500.53 seconds for M2/P1 and 1,111.16 seconds for FULL:
+a descriptive 2.22x ratio, or 54.95% elapsed reduction.  This single sequential
+pair includes source capture, packed-value oracle work, offload/restore, and all
+lifecycle probes; it is not a replicated kernel-latency claim.  The FULL receipt
+is `engine_smokes/mlx_qwen3_06b_m4pro_request1_full_coalesced_v2.json`.
