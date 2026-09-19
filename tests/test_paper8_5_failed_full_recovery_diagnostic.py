@@ -7,6 +7,7 @@ import pytest
 
 from experiments.paper8_5_agent_memory.run_failed_full_recovery_diagnostic import (
     build_diagnostic_command,
+    qualify_runtime,
     validate_declaration,
 )
 
@@ -82,3 +83,36 @@ def test_diagnostic_command_changes_policy_and_identity_not_prefix(tmp_path: Pat
     assert command[command.index("--episode-index") + 1] == "3"
     assert command[command.index("--pair-id") + 1] == "diagnostic"
     assert "--frontier-allow-heuristic" in command
+
+
+def test_runtime_qualification_repeats_cold_normalization_and_context_gate(
+    monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(
+        "experiments.paper8_5_agent_memory.run_failed_full_recovery_diagnostic.normalize_ollama_cold_start",
+        lambda **kwargs: calls.append(("normalize", kwargs)) or {"healthy": True},
+    )
+    monkeypatch.setattr(
+        "experiments.paper8_5_agent_memory.run_failed_full_recovery_diagnostic.probe_generation_health",
+        lambda **kwargs: calls.append(("probe", kwargs)) or {"healthy": True},
+    )
+    declaration = {
+        "runtime_qualification": {
+            "probe_count": 3,
+            "minimum_active_context_tokens": 131072,
+            "curl_executable": "/usr/bin/curl",
+        }
+    }
+    receipt = qualify_runtime(
+        declaration,
+        [
+            "python", "runner", "--upstream-base-url", "http://host/v1",
+            "--served-model", "model",
+        ],
+    )
+
+    assert receipt["healthy"] is True
+    assert [name for name, _ in calls] == ["normalize", "probe"]
+    assert calls[1][1]["count"] == 3
+    assert calls[1][1]["minimum_active_context_tokens"] == 131072

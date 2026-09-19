@@ -17,6 +17,8 @@ from pathlib import Path
 import subprocess
 from typing import Any, Mapping, Sequence
 
+from .upstream_health import normalize_ollama_cold_start, probe_generation_health
+
 
 def _read(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -128,6 +130,52 @@ def build_diagnostic_command(
     return command
 
 
+def qualify_runtime(
+    declaration: Mapping[str, Any], command: Sequence[str],
+) -> dict[str, Any] | None:
+    contract = declaration.get("runtime_qualification")
+    if not isinstance(contract, Mapping):
+        return None
+    base_url = _option(command, "--upstream-base-url")
+    model = _option(command, "--served-model")
+    if not base_url or not model:
+        raise ValueError("diagnostic command lacks upstream/model identity")
+    timeout = float(contract.get("timeout_seconds", 600))
+    attempts = int(contract.get("connect_attempts", 5))
+    retry = float(contract.get("connect_retry_seconds", 5.0))
+    curl = str(contract.get("curl_executable") or "") or None
+    normalization = normalize_ollama_cold_start(
+        base_url=base_url,
+        model=model,
+        timeout_seconds=timeout,
+        connect_attempts=attempts,
+        connect_retry_seconds=retry,
+        curl_executable=curl,
+    )
+    if not normalization.get("healthy"):
+        return {"healthy": False, "normalization": normalization, "health": None}
+    health = probe_generation_health(
+        base_url=base_url,
+        model=model,
+        count=int(contract.get("probe_count", 3)),
+        latency_ceiling_seconds=float(contract.get("latency_ceiling_seconds", 60)),
+        timeout_seconds=timeout,
+        qualification_path=str(contract.get("qualification_path") or "/api/tags"),
+        runtime_state_path=str(contract.get("runtime_state_path") or "/api/ps"),
+        minimum_active_context_tokens=int(
+            contract.get("minimum_active_context_tokens", 131072)
+        ),
+        connect_attempts=attempts,
+        connect_retry_seconds=retry,
+        curl_executable=curl,
+    )
+    return {
+        "healthy": bool(normalization.get("healthy") and health.get("healthy")),
+        "normalization": normalization,
+        "health": health,
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     declaration = _read(args.declaration.resolve())
     source_state_path = args.source_state.resolve()
@@ -190,6 +238,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             continue
         if destination.exists() and any(destination.iterdir()):
             raise ValueError(f"incomplete diagnostic output is not empty: {destination}")
+        qualification = qualify_runtime(declaration, command)
+        row["runtime_qualification"] = qualification
+        if qualification is not None and not qualification["healthy"]:
+            row["status"] = "paused_upstream_unhealthy"
+            _write(ledger_path, ledger)
+            break
         row["started_at"] = datetime.now(timezone.utc).isoformat()
         _write(ledger_path, ledger)
         process = subprocess.run(command, check=False)
