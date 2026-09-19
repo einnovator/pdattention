@@ -1,0 +1,7 @@
+{
+  "django__django-14089": {
+    "model_name_or_path": "openai/qwen3-coder:30b",
+    "instance_id": "django__django-14089",
+    "model_patch": "diff --git a/django/utils/datastructures.py b/django/utils/datastructures.py\nindex 871b016715b2e83b0cb78ae1b04d91057a740104..94cb9ec42f9b0a2d8e3555063b3e90cebd331afa 100644\n--- a/django/utils/datastructures.py\n+++ b/django/utils/datastructures.py\n@@ -32,9 +32,15 @@ class OrderedSet:\n         return bool(self.dict)\n \n     def __len__(self):\n+    def __reversed__(self):\n+        return reversed(self.dict)\n+\n         return len(self.dict)\n \n \n+    def __reversed__(self):\n+        return reversed(self.dict)\n+\n class MultiValueDictKeyError(KeyError):\n     pass\n \n@@ -316,6 +322,9 @@ class CaseInsensitiveMapping(Mapping):\n         return self._store[key.lower()][1]\n \n     def __len__(self):\n+    def __reversed__(self):\n+        return reversed(self.dict)\n+\n         return len(self._store)\n \n     def __eq__(self, other):\n"
+  }
+}
