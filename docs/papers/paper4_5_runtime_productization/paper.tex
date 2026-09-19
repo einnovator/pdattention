@@ -2472,13 +2472,23 @@ logical ranges across Python placement records and page fragments.  The next
 optimization target is therefore indexed vectorized remapping and fewer
 launches, not a claim that one physical ordering has won.
 
-\subsection{Compilation is a negative capability gate}
+\subsection{Compilation is a negative capability gate; fallback is explicit}
 
 The \texttt{torch.compile} API is present, but neither local compiled path is
 valid.  CPU Inductor cannot find the Microsoft C/C++ compiler.  CUDA compilation
 rejects compute capability 5.0 because the Triton backend requires capability
 7.0 or newer.  No warm compiled latency is reported and no eager result is
-relabeled as compiled.  Triton and custom CUDA therefore remain untested.
+relabeled as compiled.  Triton and custom CUDA therefore remain untested on
+this host.  The request path now detects that condition before attention and
+uses a bounded two-pass segmented softmax over the canonical intervals rather
+than failing after source prefill or packing them into a dense K/V tensor.
+On a real four-turn mini-swe-agent history with Qwen2.5-0.5B FP16, that fallback
+selects 2,467 of 2,713 source tokens at their original positions, re-encodes
+zero selected-history tokens, copies zero K/V bytes, and is matched-consumer
+logit exact (maximum delta 0.0).  It reports 24 streaming layer calls and
+3,096,576 logical attention-temporary bytes.  This is a correctness and
+capability-routing smoke, not fused-kernel or latency evidence; the artifact is
+\path{shared/results/paper4_5_runtime_productization/coding_agents/engine_gates/hf_qwen25_05b_streaming_fallback_smoke_20260919.json}.
 
 \subsection{Earlier profiles locate larger costs}
 
@@ -4932,9 +4942,10 @@ native run must prove zero selected-history re-encoding/copy while preserving
 each exact frozen plan and reporting official resolution.  The three-task
 result remains too small and unstable to define a production default.
 
-The completed held-out Paper~8.5 campaign contributes a stronger physical
-stress fixture without changing that claim boundary.  Its eighth identity,
-	exttt{django\_\_django-15277}, follows seven completed issues in one
+The completed baseline-conditional Paper~8.5 campaign frozen at commit
+\texttt{b5e1969f} contributes a stronger physical stress fixture without
+changing that claim boundary.  Its eighth identity,
+\texttt{django\_\_django-15277}, follows seven completed issues in one
 ordinary-role session; exact-prefix \textsc{Full} and frozen M2/P1 both resolve
 in six calls, while logical message-input accounting falls from 236,111 to
 89,534 tokens.  Paper~4.5 imports all six hash-validated requests at commit
@@ -4943,6 +4954,25 @@ retain 36.46--38.22\% of request history.  This is a pre-execution geometry
 result, not yet a native-K/V saving claim: the engine row remains open until it
 reports zero history re-encoding, copy and temporary bytes, original-position
 handling, and lifecycle qualification on these exact plans.
+This fixture is not the later canonical-order unconditional-reliability
+campaign, whose eighth \textsc{Full} control is unresolved; campaign order and
+trajectory digests differ, so their outcomes are not pooled.
+
+The first direct HF execution of that fixture now closes the request-level
+mechanism gate, but not the task or fused-performance gate.  On
+Qwen2.5-0.5B FP16 and a 4~GB GTX~950M, request~1 contains 37,811 resident
+source tokens plus a 1,951-token local suffix.  Frozen M2/P1 selects 12,545
+source K/V entries, realizing 36.4569\% total-history retention.  The bounded
+streaming-segmented fallback preserves original positions, re-encodes zero
+selected-history tokens, and reports zero physical K/V copy, interval packing,
+transient K/V copy, and request-tail copy.  Same-subset and restored logits are
+exact (maximum delta 0.0), and all ownership/lifecycle checks pass.  The
+consumer executes 384 streaming layer calls and reports 2,029,289,472
+cumulative logical attention-temporary bytes; that quantity is neither K/V
+copy nor a peak-allocation claim.  Because compute capability~5.0 cannot run
+the Triton kernel, this row qualifies the explicit fallback only.  The matched
+frozen-\textsc{Full} request, the remaining five requests, autonomous task
+outcome, and runtime economics remain open.
 
 The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of
@@ -5492,10 +5522,12 @@ patch and zero retained-original-history re-encoding/copy, but evaluates 1,344
 closure-receipt tokens and uses 15 rather than seven
 calls.  Its 39.21\% materialized-token saving therefore becomes a 33.10\%
 paired input-plus-completion workload increase; it is retained as a valid
-policy-quality negative, not promoted as a default.  Fresh end-to-end
-\textsc{Full}, PRA-100, and frozen-policy
-execution remains required for HF; older request-level figures are not
-substituted.
+policy-quality negative, not promoted as a default.  HF now has one valid
+request-level frozen-policy fallback execution at 36.4569\% retention, with
+zero selected-history re-encoding/copy and exact matched-consumer logits.
+Fresh end-to-end \textsc{Full}, PRA-100, and frozen-policy autonomous execution
+nevertheless remains required; the one-request mechanism point and older
+request-level figures are not substituted for that task gate.
 The generic MLX M1 add-back is rejected: although it resolves, its 14 calls
 produce $-3.12$\% paired selected-K/V saving and expose an unrelated
 artifact-writing turn as a false mutation exemplar.

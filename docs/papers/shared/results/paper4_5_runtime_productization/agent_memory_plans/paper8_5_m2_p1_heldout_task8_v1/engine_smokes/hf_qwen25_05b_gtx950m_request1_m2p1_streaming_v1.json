@@ -1,0 +1,234 @@
+{
+  "schema_version": "paper4.5.hf-live-kv-lifecycle.v4",
+  "probe": "hf_real_model_request_owned_sparse_kv",
+  "engine": "transformers-pytorch",
+  "hf_live_kv_module": "D:\\git\\rd\\pdattention-paper4-5-engine-parity\\src\\pra_hf\\hf_live_kv.py",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "torch_version": "2.12.1+cu126",
+  "transformers_version": "4.55.4",
+  "python_version": "3.10.11",
+  "device": "cuda",
+  "dtype": "float16",
+  "trajectory": null,
+  "request_replay": "docs\\papers\\shared\\results\\paper4_5_runtime_productization\\agent_memory_plans\\paper8_5_m2_p1_heldout_task8_v1\\request_replay.jsonl",
+  "selection_fixture": "docs\\papers\\shared\\results\\paper4_5_runtime_productization\\agent_memory_plans\\paper8_5_m2_p1_heldout_task8_v1\\frozen_plan.jsonl",
+  "request_index": 1,
+  "request_input_sha256": "09fc289f1b422d8a9bcdb1ca506d97327e2479404bef4bd0f47ffdf6f797c378",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 0.36456918666063076,
+  "source_tokens": 37811,
+  "wire_suffix_tokens": 1951,
+  "prefill_step_size": 256,
+  "selected_kv_tokens": 12545,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 0.36456918666063076,
+  "historical_kv_retention_fraction": 0.33178175663166803,
+  "source_position_base": 37811,
+  "has_holes": true,
+  "physical_kv_copy": false,
+  "interval_pack_bytes": 0,
+  "transient_attention_bytes": 2029289472,
+  "transient_kv_copy_bytes": 0,
+  "max_transient_kv_tile_bytes": 0,
+  "request_tail_copy_bytes": 0,
+  "fused_attention_calls": 0,
+  "streaming_attention_calls": 384,
+  "cuda_attention_backend": "streaming_segmented",
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 464635987,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "ordinary_full_engine_oracle_token_ids": null,
+  "ordinary_full_engine_oracle_mode": null,
+  "max_abs_logit_delta_ordinary_full_engine_oracle": null,
+  "max_abs_logit_delta_after_restore": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_exact": true,
+    "ordinary_full_engine_oracle_token_exact": true,
+    "ordinary_full_engine_oracle_logit_within_tolerance": true,
+    "cooperative_cancel_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "selected_history_reencoding_equals_explicit_materialization": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 3,
+      "cancelled": 2,
+      "error": 0
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 37811,
+    "source_position_base": 37811,
+    "selected_tokens": 12545,
+    "full_retention": false,
+    "has_holes": true,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 2977,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 9720,
+        "end": 11012,
+        "record_id": "message:30:user",
+        "causal_group_id": "turn:28"
+      },
+      {
+        "start": 15174,
+        "end": 16543,
+        "record_id": "message:73:user",
+        "causal_group_id": "turn:71"
+      },
+      {
+        "start": 20363,
+        "end": 21762,
+        "record_id": "message:98:user",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 26224,
+        "end": 27664,
+        "record_id": "message:127:user",
+        "causal_group_id": "turn:125"
+      },
+      {
+        "start": 30509,
+        "end": 31782,
+        "record_id": "message:154:user",
+        "causal_group_id": "turn:152"
+      },
+      {
+        "start": 35016,
+        "end": 36318,
+        "record_id": "message:175:user",
+        "causal_group_id": "turn:173"
+      },
+      {
+        "start": 36318,
+        "end": 36391,
+        "record_id": "message:176:assistant",
+        "causal_group_id": "turn:176"
+      },
+      {
+        "start": 36391,
+        "end": 36454,
+        "record_id": "message:177:user",
+        "causal_group_id": "turn:176"
+      },
+      {
+        "start": 36454,
+        "end": 36521,
+        "record_id": "message:178:assistant",
+        "causal_group_id": "turn:178"
+      },
+      {
+        "start": 36521,
+        "end": 36694,
+        "record_id": "message:179:user",
+        "causal_group_id": "turn:178"
+      },
+      {
+        "start": 36694,
+        "end": 36805,
+        "record_id": "message:180:assistant",
+        "causal_group_id": "turn:180"
+      },
+      {
+        "start": 36805,
+        "end": 36893,
+        "record_id": "message:181:user",
+        "causal_group_id": "turn:180"
+      },
+      {
+        "start": 36893,
+        "end": 37034,
+        "record_id": "message:182:assistant",
+        "causal_group_id": "turn:182"
+      },
+      {
+        "start": 37034,
+        "end": 37063,
+        "record_id": "message:183:user",
+        "causal_group_id": "turn:182"
+      },
+      {
+        "start": 37063,
+        "end": 37190,
+        "record_id": "message:184:assistant",
+        "causal_group_id": "turn:184"
+      },
+      {
+        "start": 37190,
+        "end": 37210,
+        "record_id": "message:185:user",
+        "causal_group_id": "turn:184"
+      },
+      {
+        "start": 37210,
+        "end": 37287,
+        "record_id": "message:186:assistant",
+        "causal_group_id": "turn:186"
+      },
+      {
+        "start": 37287,
+        "end": 37307,
+        "record_id": "message:187:user",
+        "causal_group_id": "turn:186"
+      },
+      {
+        "start": 37307,
+        "end": 37366,
+        "record_id": "message:188:assistant",
+        "causal_group_id": "turn:188"
+      },
+      {
+        "start": 37366,
+        "end": 37463,
+        "record_id": "message:189:user",
+        "causal_group_id": "turn:188"
+      },
+      {
+        "start": 37463,
+        "end": 37590,
+        "record_id": "message:190:assistant",
+        "causal_group_id": "turn:190"
+      },
+      {
+        "start": 37590,
+        "end": 37811,
+        "record_id": "message:191:user",
+        "causal_group_id": "turn:190"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": []
+}
+
+
