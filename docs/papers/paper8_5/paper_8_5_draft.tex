@@ -632,10 +632,28 @@ are ineligible because contemporaneous \textsc{Full} fails; with their exact
 episodes carried forward, unconditional session accounting is 2,131,026 full-
 history tokens versus 1,798,700 materialized tokens, or 15.59\% saving.  The
 campaign therefore qualifies the M2/P1 mechanism on three paired successes
-while separately exposing a persistent-session interference problem.  Earlier
-Task-4 transport failures contain no model decision and remain quarantined;
-the clean continuation changes only transport through an SSH tunnel to the
-same model service.
+while separately exposing a baseline-reproducibility problem and possible
+persistent-session interference.  Cross-task history cannot be the only cause:
+identity~1 fails with an empty prefix, before any earlier issue exists.  The
+``baseline-success'' stratum was selected by a historical 32K RTX/Ollama run;
+the confirmation uses the same model digest and temperature zero but a 131K
+Mac runtime.  Membership therefore records one historical success rather than
+guaranteeing a contemporaneous solve.  Earlier Task-4 transport failures
+contain no model decision and remain quarantined; the clean continuation
+changes only transport through an SSH tunnel to the same model service.
+
+A separately declared explanatory pass permits M2/P1 to run on those five
+failed controls.  It recovers only one of four cross-task cases: Sphinx resolves
+in 14 rather than 12 calls while saving 36.40\% of its own trajectory.  SymPy,
+Requests, and Django remain unresolved at 35.39\%, 49.25\%, and 58.74\%
+saving, respectively; SymPy expands to the 40-call cap.  The empty-prefix
+Scikit-learn control also changes from failure to success, despite 0\% omission,
+the same first action, and no prior task to retire.  That outcome rules out a
+pure cross-task-interference explanation.  Because this exploratory pass did
+not repeat the source campaign's keep-alive-zero normalization before every
+cell, it is not a matched runtime-state estimate; a second predeclared pass
+adds the identical unload, warmup, three-probe and 131K active-context gates.
+Neither recovery pass enters the policy-preservation denominator.
 
 \begin{figure}[H]
 \centering
