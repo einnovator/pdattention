@@ -920,6 +920,40 @@ def test_auxiliary_workspace_state_accepts_certified_terminal_read_pipeline(tmp_
     assert outcome["terminal_submission_matches_primary_prediction"] is True
 
 
+def test_auxiliary_workspace_state_accepts_output_only_echo_submission_chain(tmp_path):
+    command = (
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && "
+        "echo '=== FINAL PATCH ===' && echo 'File: foo.py' && echo 'done'"
+    )
+    submission = "=== FINAL PATCH ===\nFile: foo.py\ndone\n"
+    instrumentation = tmp_path / "instrumentation"
+    _write_workspace_checkpoint(
+        instrumentation,
+        step=0,
+        patch=b"diff --git a/foo.py b/foo.py\n",
+        command=command,
+    )
+    (instrumentation / "container-session" / "execution_0000.json").unlink()
+    primary = tmp_path / "agent" / "preds.json"
+    _write_primary_predictions(primary, patch=submission)
+    _write_submitted_trajectory(
+        primary, command=command, submission=submission,
+    )
+
+    outcome = create_auxiliary_workspace_state_prediction(
+        instrumentation_root=instrumentation,
+        output=tmp_path / "run",
+        primary_predictions=primary,
+        instance_id="org__repo-1",
+    )
+
+    assert outcome["status"] == "available"
+    assert outcome["final_state_certificate"] == (
+        "submitted_read_only_terminal_checkpoint"
+    )
+    assert outcome["terminal_command_programs"] == ["echo", "echo", "echo"]
+
+
 @pytest.mark.parametrize(
     "command",
     (

@@ -143,7 +143,7 @@ def _read_only_terminal_pipeline(command: str) -> tuple[str, ...]:
             "terminal command lacks the exact submission sentinel prefix",
         )
     pipeline = command[len(_SUBMIT_PREFIX):].strip()
-    if not pipeline or any(value in pipeline for value in ("\n", ";", "&", "<", ">", "`", "$")):
+    if not pipeline or any(value in pipeline for value in ("\n", ";", "<", ">", "`", "$")):
         raise _Unavailable(
             "terminal_command_not_certified_read_only",
             "terminal command contains a non-pipeline shell control or redirection",
@@ -152,6 +152,33 @@ def _read_only_terminal_pipeline(command: str) -> tuple[str, ...]:
         raise _Unavailable(
             "terminal_command_not_certified_read_only",
             "terminal command contains a conditional pipeline",
+        )
+    if "&&" in pipeline:
+        if "|" in pipeline or "&" in pipeline.replace("&&", ""):
+            raise _Unavailable(
+                "terminal_command_not_certified_read_only",
+                "terminal command mixes output-only chaining with other shell controls",
+            )
+        programs: list[str] = []
+        for raw_segment in pipeline.split("&&"):
+            try:
+                tokens = shlex.split(raw_segment, posix=True)
+            except ValueError as error:
+                raise _Unavailable(
+                    "terminal_command_not_certified_read_only",
+                    f"terminal command is not valid shell text: {error}",
+                ) from error
+            if not tokens or tokens[0] != "echo":
+                raise _Unavailable(
+                    "terminal_command_not_certified_read_only",
+                    "only echo commands are permitted in an output-only submission chain",
+                )
+            programs.append("echo")
+        return tuple(programs)
+    if "&" in pipeline:
+        raise _Unavailable(
+            "terminal_command_not_certified_read_only",
+            "terminal command contains a background shell control",
         )
     raw_segments = pipeline.split("|")
     if any(not segment.strip() for segment in raw_segments):
