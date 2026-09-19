@@ -267,9 +267,16 @@ def export_fixture(
     if segment_tokens <= 0:
         raise ValueError("segment_tokens must be positive")
     prior_episodes, prefix_identity = load_persistent_prefix(persistent_prefix)
-    current = json.loads(trajectory.read_text(encoding="utf-8"))
-    if not isinstance(current, Mapping):
+    source_trajectory = json.loads(trajectory.read_text(encoding="utf-8"))
+    if not isinstance(source_trajectory, Mapping):
         raise ValueError("current trajectory is not an object")
+    # Autonomous campaign artifacts store the canonical mini-swe-agent
+    # trajectory inside an evidence envelope.  Accept that immutable envelope
+    # directly so the Paper 4.5 handoff does not depend on an untracked
+    # extract/re-serialization step.
+    current = source_trajectory.get("trajectory", source_trajectory)
+    if not isinstance(current, Mapping):
+        raise ValueError("current trajectory envelope has no trajectory object")
     trace_rows = [
         json.loads(line)
         for line in request_selection.read_text(encoding="utf-8").splitlines()

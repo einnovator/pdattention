@@ -107,6 +107,81 @@ def test_exporter_reconstructs_and_validates_frozen_request(tmp_path: Path) -> N
     ).hexdigest()
 
 
+def test_exporter_accepts_immutable_campaign_trajectory_envelope(
+    tmp_path: Path,
+) -> None:
+    prior = {
+        "schema_version": 1,
+        "session_id": "session",
+        "episodes": [{
+            "trajectory": {
+                "instance_id": "old-task",
+                "messages": [
+                    {"role": "system", "content": "system"},
+                    {"role": "user", "content": "old task"},
+                    {"role": "assistant", "content": "old action"},
+                    {"role": "exit", "content": "old result"},
+                ],
+                "info": {"exit_status": "Submitted", "submission": "diff"},
+            }
+        }],
+    }
+    current = {
+        "instance_id": "new-task",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "new task"},
+            {"role": "assistant", "content": "new action"},
+        ],
+        "info": {},
+    }
+    request = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old action"},
+        {"role": "user", "content": "old result"},
+        {"role": "user", "content": "new task"},
+    ]
+    trace = {
+        "request_index": 1,
+        "session_id": "session",
+        "policy": "frontier_dag_retirement",
+        "plan_policy": "frontier_dag_retirement",
+        "plan_digest": "logical",
+        "wire_plan_digest": "wire",
+        "request_input_sha256": _digest(request),
+        "request_message_content_sha256": [
+            _content_digest(row["content"]) for row in request
+        ],
+        "selected_message_content_sha256": [
+            _content_digest(row["content"]) for row in request
+        ],
+        "selected_messages_sha256": _digest(request),
+    }
+    prefix = tmp_path / "prefix.json"
+    trajectory = tmp_path / "persistent_episode_export.json"
+    selection = tmp_path / "selection.jsonl"
+    output = tmp_path / "fixture.jsonl"
+    prefix.write_text(json.dumps(prior), encoding="utf-8")
+    trajectory.write_text(
+        json.dumps({"schema_version": 1, "trajectory": current}),
+        encoding="utf-8",
+    )
+    selection.write_text(json.dumps(trace) + "\n", encoding="utf-8")
+
+    manifest = export_fixture(
+        persistent_prefix=prefix,
+        trajectory=trajectory,
+        request_selection=selection,
+        output=output,
+    )
+
+    assert manifest["requests"] == 1
+    assert json.loads(output.read_text(encoding="utf-8"))[
+        "mandatory_message_indices"
+    ] == [0, 4]
+
+
 def test_exporter_preserves_wire_materialized_receipts(tmp_path: Path) -> None:
     prior = {
         "schema_version": 1,
