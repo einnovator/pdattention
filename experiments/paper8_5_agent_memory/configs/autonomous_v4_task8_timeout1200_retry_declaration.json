@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_task8_infrastructure_retry_declaration",
+  "source_campaign_id": "paper85-v4-m2p1-canonical-order-replication8-ctx131k",
+  "source_campaign_spec": "autonomous_v4_m2p1_canonical_order_replication8_ctx131k.json",
+  "source_campaign_state_sha256": "e2799de46dae8a9b73432eb68ad45543586a9498f6fa24a80a9bde883a0f3f53",
+  "target": {
+    "sequence_id": "heldout-canonical-order-eight-v4",
+    "episode_index": 8,
+    "instance_id": "django__django-12741",
+    "arm": "same_prefix_full_control"
+  },
+  "observed_infrastructure_failure": {
+    "retry_directory": "same_prefix_full_controls/episode_08_django-django-12741__retry01",
+    "error": "curl exited 28 after 600.152 seconds with zero response bytes",
+    "classification": "upstream_request_timeout",
+    "task_or_policy_outcome": false
+  },
+  "permitted_change": {
+    "upstream_request_timeout_seconds": {
+      "from": 600,
+      "to": 1200
+    }
+  },
+  "frozen_fields": [
+    "campaign specification and campaign ID",
+    "task order and exact persistent prefix",
+    "model, model revision, tokenizer and context length",
+    "temperature, top-p, seed and maximum completion tokens",
+    "FULL policy and whole-record materialization",
+    "official grading and attribution rules"
+  ],
+  "execution_rule": "Resume the original campaign in place. The immutable retry allocator must create retry02; never overwrite the base attempt or retry01.",
+  "interpretation": "The longer transport ceiling changes only infrastructure missingness. A completed FULL result remains an ordinary control outcome; another timeout remains infrastructure evidence."
+}
