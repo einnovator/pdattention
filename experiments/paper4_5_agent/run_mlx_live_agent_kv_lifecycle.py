@@ -304,11 +304,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         # The packed oracle is allowed to copy, but selection correctness must
         # not be confounded with a different attention implementation. Present
         # the copied values to the same interval-addressed Metal consumer using
-        # the candidate's exact logical segment boundaries.
+        # the candidate's exact physical segment boundaries. Logical record
+        # identities remain in the immutable plan and are not an attention
+        # launch boundary when their source K/V is adjacent.
         compact_intervals = []
         cursor = 0
-        for interval in plan.intervals:
-            width = interval.end - interval.start
+        for start, end in plan.physical_intervals:
+            width = end - start
             compact_intervals.append((cursor, cursor + width))
             cursor += width
         packed_layers = []
@@ -326,10 +328,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                     source_keys=layer.keys,
                     source_values=layer.values,
                     intervals=tuple(compact_intervals),
-                    logical_intervals=tuple(
-                        (interval.start, interval.end)
-                        for interval in plan.intervals
-                    ),
+                    logical_intervals=plan.physical_intervals,
                 )
             )
         reference.selection = MLXResidentKVSelection(
@@ -537,7 +536,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v3",
+        "schema_version": "paper4.5.mlx-live-kv-lifecycle.v4",
         "probe": "mlx_real_model_request_owned_sparse_kv",
         "engine": "mlx-lm",
         "model": args.model,
@@ -624,6 +623,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             else "packed dense oracle"
         ),
         "selected_kv_segments": candidate_result.selected_kv_segments,
+        "logical_selected_intervals": len(plan.intervals),
+        "physical_kv_segments": candidate_result.selected_kv_segments,
         "selection_pack_bytes": candidate_result.selection_pack_bytes,
         "selection_materialization_elapsed_ms": candidate_selection_elapsed_ms,
         "dense_reference_pack_bytes": reference.selection.memory.nbytes,

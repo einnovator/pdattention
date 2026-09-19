@@ -243,6 +243,15 @@ class MLXLiveKVRequest:
                     f"MLX live-K/V request {self.request_id!r} was cancelled."
                 )
 
+        if self.disjoint_selection:
+            physical_segments = (
+                len(self.selection.memory.layers[0].segments)
+                if self.selection.memory.layers
+                else 0
+            )
+        else:
+            physical_segments = 1 if self.selection.plan.selected_tokens else 0
+
         return MLXLiveKVGeneration(
             tuple(generated),
             tuple(logits_trace),
@@ -250,7 +259,7 @@ class MLXLiveKVRequest:
             self.selection.plan.selected_tokens,
             self.selection.selected_text_reencoded_tokens + materialized_tokens,
             self.selection.physical_kv_copy,
-            len(self.selection.plan.intervals),
+            physical_segments,
             (
                 self.selection.memory.nbytes
                 if not self.disjoint_selection and self.selection.physical_kv_copy

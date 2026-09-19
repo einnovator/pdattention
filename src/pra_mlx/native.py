@@ -1538,6 +1538,7 @@ def select_live_native_memory_disjoint(
     if not plan.intervals:
         raise ValueError("Disjoint MLX selection requires at least one interval.")
 
+    physical_intervals = plan.physical_intervals
     layers = []
     for layer in source.layers:
         if int(layer.keys.shape[2]) < plan.source_tokens:
@@ -1546,16 +1547,14 @@ def select_live_native_memory_disjoint(
             MLXDisjointLayerKV(
                 tuple(
                     MLXNativeLayerKV(
-                        layer.keys[:, :, interval.start : interval.end, :],
-                        layer.values[:, :, interval.start : interval.end, :],
+                        layer.keys[:, :, start:end, :],
+                        layer.values[:, :, start:end, :],
                     )
-                    for interval in plan.intervals
+                    for start, end in physical_intervals
                 ),
                 source_keys=layer.keys,
                 source_values=layer.values,
-                intervals=tuple(
-                    (interval.start, interval.end) for interval in plan.intervals
-                ),
+                intervals=physical_intervals,
             )
         )
     selected = MLXDisjointNativeMemory(tuple(layers), plan.source_tokens)

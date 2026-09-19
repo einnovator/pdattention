@@ -168,7 +168,7 @@ def test_mlx_request_owns_borrow_through_decode_and_releases_once(fake_mlx) -> N
     assert result.selected_kv_tokens == 4
     assert result.selected_text_reencoded_tokens == 0
     assert result.physical_kv_copy is True
-    assert result.selected_kv_segments == 2
+    assert result.selected_kv_segments == 1
     assert result.selection_pack_bytes == candidate.selection.memory.nbytes
     assert result.materialization_policy == "dense_pack"
     assert model.position_offsets == [6, 8]

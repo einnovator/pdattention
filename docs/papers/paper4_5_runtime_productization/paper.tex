@@ -4988,6 +4988,18 @@ from selection and attention temporary memory.  This closes one request-level
 fused mechanism point, not the matched frozen-\textsc{Full}, autonomous-task,
 or latency gates.
 
+The first matched MLX \textsc{Full} diagnostic passes all correctness and
+lifecycle gates at 100\% retention, zero selected-history re-encoding/copy,
+and exact logits, but it also exposes a physical-segmentation defect.  The
+consumer executed 192 adjacent logical record intervals as 192 physical
+segments; M2/P1 likewise executed 24 logical intervals even though its source
+views coalesce to seven physical spans.  The observed 1,697.71 versus 431.28
+seconds therefore confounds retained-token work with avoidable record-boundary
+launch and reduction overhead and is quarantined from speedup claims.  The
+engine-neutral plan and both HF and MLX consumers now coalesce adjacent K/V
+views while retaining record and causal identities in the logical plan.  A
+post-fix paired rerun is required before runtime economics can close.
+
 The earlier causal-valid matched token-tail remains a control plan.  In the
 current two-task, 18-decision frozen screen, this control retains 97.16\% of
 tokens and reproduces 14/18 exact commands, compared with 97.22\% and 11/18

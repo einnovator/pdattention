@@ -457,7 +457,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         ),
     }
     result = {
-        "schema_version": "paper4.5.hf-live-kv-lifecycle.v4",
+        "schema_version": "paper4.5.hf-live-kv-lifecycle.v5",
         "probe": "hf_real_model_request_owned_sparse_kv",
         "engine": "transformers-pytorch",
         "hf_live_kv_module": hf_live_kv_module,
@@ -494,6 +494,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "wire_suffix_tokens": len(wire_tail),
         "prefill_step_size": args.prefill_step_size,
         "selected_kv_tokens": plan.selected_tokens,
+        "logical_selected_intervals": len(plan.intervals),
+        "physical_kv_segments": (
+            len(candidate.selection.cache.layers[0].source_segments)
+            if candidate.selection.cache.layers
+            else 0
+        ),
         "materialized_history_tokens": sum(
             len(tokens) for tokens, _position in materialized_history
         ),

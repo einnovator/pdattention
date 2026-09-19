@@ -79,3 +79,17 @@ selection or attention temporary memory.  This remains a request-level
 correctness/lifecycle point; the matched frozen-FULL control, autonomous task,
 and latency gates are separate.  See
 `engine_smokes/mlx_qwen3_06b_m4pro_request1_m2p1_fused_v1.json`.
+
+The first matched FULL diagnostic is retained as a correctness-valid but
+performance-invalid bug-discovery receipt.  It passes every mechanism and
+lifecycle check at 100% retention, with zero selected-history re-encoding and
+copy and exact logits.  However, the consumer treated 192 adjacent logical
+record intervals as 192 physical attention segments; the M2/P1 arm similarly
+treated 24 logical intervals as 24 segments although their zero-copy geometry
+coalesces to seven spans.  FULL took 1,697.71 seconds versus 431.28 seconds for
+M2/P1, but that ratio confounds retained tokens with avoidable per-record
+launch/reduction overhead and is not a speedup claim.  The engine-neutral plan
+and HF/MLX consumers now coalesce adjacent physical views while retaining the
+logical record map.  Both arms require a post-fix rerun.  The quarantined
+diagnostic is
+`engine_smokes/mlx_qwen3_06b_m4pro_request1_full_precoalesce_diagnostic_v1.json`.

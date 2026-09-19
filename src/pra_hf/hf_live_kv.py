@@ -549,9 +549,9 @@ def _tensor_storage_pointer(tensor) -> int:
 
 def _source_segment_views(keys, values, plan: LiveKVSelectionPlan):
     segments: list[HFSparseKVSegment] = []
-    for interval in plan.intervals:
-        key_view = keys[..., interval.start : interval.end, :]
-        value_view = values[..., interval.start : interval.end, :]
+    for index, (start, end) in enumerate(plan.physical_intervals):
+        key_view = keys[..., start:end, :]
+        value_view = values[..., start:end, :]
         if _tensor_storage_pointer(key_view) != _tensor_storage_pointer(keys):
             raise RuntimeError("HF sparse key interval unexpectedly copied source storage.")
         if _tensor_storage_pointer(value_view) != _tensor_storage_pointer(values):
@@ -560,10 +560,10 @@ def _source_segment_views(keys, values, plan: LiveKVSelectionPlan):
             HFSparseKVSegment(
                 key_view,
                 value_view,
-                interval.start,
-                interval.end,
-                interval.record_id,
-                interval.causal_group_id,
+                start,
+                end,
+                f"physical-span:{index}",
+                f"physical-span:{index}",
             )
         )
     return tuple(segments)
@@ -1009,26 +1009,27 @@ def pack_segmented_dynamic_cache_reference(
     selected_layers: list[_HFSparseKVLayer] = []
     compact_source_intervals = []
     compact_cursor = 0
-    for interval in plan.intervals:
-        width = interval.end - interval.start
+    physical_intervals = plan.physical_intervals
+    for start, end in physical_intervals:
+        width = end - start
         compact_source_intervals.append(
-            (compact_cursor, compact_cursor + width, interval.start)
+            (compact_cursor, compact_cursor + width, start)
         )
         compact_cursor += width
     for packed_layer in packed.cache.layers:
         keys, values, _key_name, _value_name = _layer_pair(packed_layer)
         cursor = 0
         segments = []
-        for interval in plan.intervals:
-            width = interval.end - interval.start
+        for index, (start, end) in enumerate(physical_intervals):
+            width = end - start
             segments.append(
                 HFSparseKVSegment(
                     keys[..., cursor : cursor + width, :],
                     values[..., cursor : cursor + width, :],
-                    interval.start,
-                    interval.end,
-                    interval.record_id,
-                    interval.causal_group_id,
+                    start,
+                    end,
+                    f"physical-span:{index}",
+                    f"physical-span:{index}",
                 )
             )
             cursor += width
@@ -1065,8 +1066,8 @@ def dense_reference_attention_mask(
         query_positions = query_positions[0]
     prior_tail_tokens = max(int(query_positions[0]) - plan.source_position_base, 0)
     positions: list[int] = []
-    for interval in plan.intervals:
-        positions.extend(range(interval.start, interval.end))
+    for start, end in plan.physical_intervals:
+        positions.extend(range(start, end))
     positions.extend(
         range(
             plan.source_position_base,
@@ -1098,8 +1099,8 @@ def select_dynamic_cache(
                 source_keys=keys,
                 source_values=values,
                 source_intervals=tuple(
-                    (interval.start, interval.end, interval.start)
-                    for interval in plan.intervals
+                    (start, end, start)
+                    for start, end in plan.physical_intervals
                 ),
             )
         )

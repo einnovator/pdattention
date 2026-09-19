@@ -1,0 +1,1310 @@
+{
+  "schema_version": "paper4.5.mlx-live-kv-lifecycle.v3",
+  "probe": "mlx_real_model_request_owned_sparse_kv",
+  "engine": "mlx-lm",
+  "model": "mlx-community/Qwen3-0.6B-4bit",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.12.14",
+  "hardware": "M4Pro48GB",
+  "materialization_policy": "disjoint_segmented",
+  "fused_disjoint_attention": true,
+  "segmented_attention_patched_layers": 28,
+  "trajectory": null,
+  "request_replay": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_heldout_task8_v1/request_replay.jsonl",
+  "selection_fixture": "docs/papers/shared/results/paper4_5_runtime_productization/agent_memory_plans/paper8_5_m2_p1_heldout_task8_v1/frozen_plan.jsonl",
+  "request_index": 1,
+  "request_input_sha256": "09fc289f1b422d8a9bcdb1ca506d97327e2479404bef4bd0f47ffdf6f797c378",
+  "source_policy": "frontier_dag_m2_heuristic_p1",
+  "turn": null,
+  "retention_fraction": 1.0,
+  "source_tokens": 37811,
+  "wire_suffix_tokens": 1951,
+  "wire_prefill_step_size": 4,
+  "source_prefill_step_size": 512,
+  "selected_kv_tokens": 37811,
+  "materialized_history_tokens": 0,
+  "realized_retention_fraction": 1.0,
+  "historical_kv_retention_fraction": 1.0,
+  "source_position_base": 37811,
+  "has_holes": false,
+  "physical_kv_copy": false,
+  "runtime_physical_kv_copy_report": null,
+  "pra_interval_pack_copy": false,
+  "physical_kv_copy_qualification": "qualified_zero_copy_interval_addressed_metal",
+  "consumer_implementation": "fused_interval_addressed_metal",
+  "reference_condition": "packed-value oracle with identical segment boundaries, original positions, and Metal consumer",
+  "selected_kv_segments": 192,
+  "selection_pack_bytes": 0,
+  "selection_materialization_elapsed_ms": 20.342625,
+  "dense_reference_pack_bytes": 4336467968,
+  "dense_reference_materialization_elapsed_ms": 134.355958,
+  "selection_active_memory_delta_bytes": 0,
+  "selection_peak_memory_bytes": 0,
+  "disjoint_attention_allocation": {
+    "selected_layer_kv_bytes": 154873856,
+    "active_before_bytes": 4680687630,
+    "active_after_bytes": 4681012745,
+    "active_delta_bytes": 325115,
+    "absolute_peak_bytes": 4681012745,
+    "peak_delta_bytes": 325115,
+    "peak_delta_to_selected_layer_kv_ratio": 0.002099224545684457,
+    "full_selected_kv_sized_allocation_observed": false
+  },
+  "allocation_measurement_method": {
+    "selection": "Reset the MLX peak allocator, construct the selected interval views, force every selected key/value array with mx.eval, and compare active and peak bytes with the pre-selection baseline.",
+    "consumption": "Reset the MLX peak allocator, run one real first-layer attention query over all selected interval key/value views plus one local token, force the output with mx.eval, and compare peak delta against the selected first-layer K/V byte extent.",
+    "full_kv_sized_threshold": "peak_delta_bytes >= 0.9 * selected_layer_kv_bytes"
+  },
+  "required_runtime_fix": null,
+  "selected_text_reencoded_tokens": 0,
+  "offloaded_payload_type": "bytes",
+  "offloaded_payload_bytes": 4336489740,
+  "max_abs_logit_delta_same_subset": 0.0,
+  "same_subset_logit_exact": true,
+  "max_abs_logit_delta_dense_engine_oracle": 0.0,
+  "dense_engine_oracle_token_ids": [
+    151667,
+    198,
+    151667,
+    198,
+    151668,
+    271,
+    73594,
+    1011,
+    896,
+    64,
+    880,
+    988,
+    10811,
+    198,
+    73594,
+    1011
+  ],
+  "candidate_token_ids": [
+    151667,
+    198,
+    151667,
+    198,
+    151668,
+    271,
+    73594,
+    1011,
+    896,
+    64,
+    880,
+    988,
+    10811,
+    198,
+    73594,
+    1011
+  ],
+  "max_abs_logit_delta_after_restore": 0.0,
+  "checks": {
+    "two_concurrent_borrowers": true,
+    "offload_rejected_with_two_borrowers": true,
+    "normal_finish_released_exactly_once": true,
+    "offload_rejected_with_one_borrower": true,
+    "same_subset_token_exact": true,
+    "same_subset_logit_within_tolerance": true,
+    "dense_engine_oracle_token_exact": true,
+    "dense_engine_oracle_logit_within_tolerance": true,
+    "cooperative_cancel_released_exactly_once": true,
+    "error_released_exactly_once": true,
+    "stale_generation_rejected": true,
+    "idle_offload_reached_non_hot_tier": true,
+    "restore_reached_hot_tier": true,
+    "restored_source_fingerprint_exact": true,
+    "restored_generation_token_exact": true,
+    "restored_generation_logit_exact": true,
+    "termination_cancelled_active_request": true,
+    "termination_removed_source": true,
+    "termination_tombstone_rejected_recreation": true,
+    "original_positions_preserved": true,
+    "selected_history_reencoding_equals_explicit_materialization": true,
+    "physical_kv_copy_reported": true,
+    "disjoint_selection_did_not_allocate": true,
+    "disjoint_attention_has_no_full_selected_kv_sized_allocation": true,
+    "selection_pack_bytes_reported": true
+  },
+  "runtime_snapshot": {
+    "active_request_ids": [],
+    "terminal_counts": {
+      "finished": 4,
+      "cancelled": 2,
+      "error": 1
+    }
+  },
+  "selection_plan": {
+    "source_tokens": 37811,
+    "source_position_base": 37811,
+    "selected_tokens": 37811,
+    "full_retention": true,
+    "has_holes": false,
+    "intervals": [
+      {
+        "start": 0,
+        "end": 116,
+        "record_id": "message:0:system",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 116,
+        "end": 2977,
+        "record_id": "message:1:user",
+        "causal_group_id": "preamble"
+      },
+      {
+        "start": 2977,
+        "end": 2980,
+        "record_id": "message:2:assistant",
+        "causal_group_id": "turn:2"
+      },
+      {
+        "start": 2980,
+        "end": 3177,
+        "record_id": "message:3:user",
+        "causal_group_id": "turn:2"
+      },
+      {
+        "start": 3177,
+        "end": 3180,
+        "record_id": "message:4:assistant",
+        "causal_group_id": "turn:4"
+      },
+      {
+        "start": 3180,
+        "end": 5786,
+        "record_id": "message:5:user",
+        "causal_group_id": "turn:4"
+      },
+      {
+        "start": 5786,
+        "end": 5789,
+        "record_id": "message:6:assistant",
+        "causal_group_id": "turn:6"
+      },
+      {
+        "start": 5789,
+        "end": 6252,
+        "record_id": "message:7:user",
+        "causal_group_id": "turn:6"
+      },
+      {
+        "start": 6252,
+        "end": 6255,
+        "record_id": "message:8:assistant",
+        "causal_group_id": "turn:8"
+      },
+      {
+        "start": 6255,
+        "end": 6396,
+        "record_id": "message:9:user",
+        "causal_group_id": "turn:8"
+      },
+      {
+        "start": 6396,
+        "end": 6399,
+        "record_id": "message:10:assistant",
+        "causal_group_id": "turn:10"
+      },
+      {
+        "start": 6399,
+        "end": 6830,
+        "record_id": "message:11:user",
+        "causal_group_id": "turn:10"
+      },
+      {
+        "start": 6830,
+        "end": 6833,
+        "record_id": "message:12:assistant",
+        "causal_group_id": "turn:12"
+      },
+      {
+        "start": 6833,
+        "end": 7376,
+        "record_id": "message:13:user",
+        "causal_group_id": "turn:12"
+      },
+      {
+        "start": 7376,
+        "end": 7379,
+        "record_id": "message:14:assistant",
+        "causal_group_id": "turn:14"
+      },
+      {
+        "start": 7379,
+        "end": 7764,
+        "record_id": "message:15:user",
+        "causal_group_id": "turn:14"
+      },
+      {
+        "start": 7764,
+        "end": 7767,
+        "record_id": "message:16:assistant",
+        "causal_group_id": "turn:16"
+      },
+      {
+        "start": 7767,
+        "end": 7930,
+        "record_id": "message:17:user",
+        "causal_group_id": "turn:16"
+      },
+      {
+        "start": 7930,
+        "end": 7933,
+        "record_id": "message:18:assistant",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 7933,
+        "end": 8148,
+        "record_id": "message:19:user",
+        "causal_group_id": "turn:18"
+      },
+      {
+        "start": 8148,
+        "end": 8151,
+        "record_id": "message:20:assistant",
+        "causal_group_id": "turn:20"
+      },
+      {
+        "start": 8151,
+        "end": 8493,
+        "record_id": "message:21:user",
+        "causal_group_id": "turn:20"
+      },
+      {
+        "start": 8493,
+        "end": 8496,
+        "record_id": "message:22:assistant",
+        "causal_group_id": "turn:22"
+      },
+      {
+        "start": 8496,
+        "end": 8888,
+        "record_id": "message:23:user",
+        "causal_group_id": "turn:22"
+      },
+      {
+        "start": 8888,
+        "end": 8891,
+        "record_id": "message:24:assistant",
+        "causal_group_id": "turn:24"
+      },
+      {
+        "start": 8891,
+        "end": 9183,
+        "record_id": "message:25:user",
+        "causal_group_id": "turn:24"
+      },
+      {
+        "start": 9183,
+        "end": 9186,
+        "record_id": "message:26:assistant",
+        "causal_group_id": "turn:26"
+      },
+      {
+        "start": 9186,
+        "end": 9454,
+        "record_id": "message:27:user",
+        "causal_group_id": "turn:26"
+      },
+      {
+        "start": 9454,
+        "end": 9457,
+        "record_id": "message:28:assistant",
+        "causal_group_id": "turn:28"
+      },
+      {
+        "start": 9457,
+        "end": 9720,
+        "record_id": "message:29:user",
+        "causal_group_id": "turn:28"
+      },
+      {
+        "start": 9720,
+        "end": 11012,
+        "record_id": "message:30:user",
+        "causal_group_id": "turn:28"
+      },
+      {
+        "start": 11012,
+        "end": 11015,
+        "record_id": "message:31:assistant",
+        "causal_group_id": "turn:31"
+      },
+      {
+        "start": 11015,
+        "end": 11196,
+        "record_id": "message:32:user",
+        "causal_group_id": "turn:31"
+      },
+      {
+        "start": 11196,
+        "end": 11199,
+        "record_id": "message:33:assistant",
+        "causal_group_id": "turn:33"
+      },
+      {
+        "start": 11199,
+        "end": 11524,
+        "record_id": "message:34:user",
+        "causal_group_id": "turn:33"
+      },
+      {
+        "start": 11524,
+        "end": 11527,
+        "record_id": "message:35:assistant",
+        "causal_group_id": "turn:35"
+      },
+      {
+        "start": 11527,
+        "end": 11646,
+        "record_id": "message:36:user",
+        "causal_group_id": "turn:35"
+      },
+      {
+        "start": 11646,
+        "end": 11649,
+        "record_id": "message:37:assistant",
+        "causal_group_id": "turn:37"
+      },
+      {
+        "start": 11649,
+        "end": 11841,
+        "record_id": "message:38:user",
+        "causal_group_id": "turn:37"
+      },
+      {
+        "start": 11841,
+        "end": 11844,
+        "record_id": "message:39:assistant",
+        "causal_group_id": "turn:39"
+      },
+      {
+        "start": 11844,
+        "end": 12001,
+        "record_id": "message:40:user",
+        "causal_group_id": "turn:39"
+      },
+      {
+        "start": 12001,
+        "end": 12004,
+        "record_id": "message:41:assistant",
+        "causal_group_id": "turn:41"
+      },
+      {
+        "start": 12004,
+        "end": 12114,
+        "record_id": "message:42:user",
+        "causal_group_id": "turn:41"
+      },
+      {
+        "start": 12114,
+        "end": 12117,
+        "record_id": "message:43:assistant",
+        "causal_group_id": "turn:43"
+      },
+      {
+        "start": 12117,
+        "end": 12253,
+        "record_id": "message:44:user",
+        "causal_group_id": "turn:43"
+      },
+      {
+        "start": 12253,
+        "end": 12256,
+        "record_id": "message:45:assistant",
+        "causal_group_id": "turn:45"
+      },
+      {
+        "start": 12256,
+        "end": 12463,
+        "record_id": "message:46:user",
+        "causal_group_id": "turn:45"
+      },
+      {
+        "start": 12463,
+        "end": 12466,
+        "record_id": "message:47:assistant",
+        "causal_group_id": "turn:47"
+      },
+      {
+        "start": 12466,
+        "end": 12573,
+        "record_id": "message:48:user",
+        "causal_group_id": "turn:47"
+      },
+      {
+        "start": 12573,
+        "end": 12576,
+        "record_id": "message:49:assistant",
+        "causal_group_id": "turn:49"
+      },
+      {
+        "start": 12576,
+        "end": 12754,
+        "record_id": "message:50:user",
+        "causal_group_id": "turn:49"
+      },
+      {
+        "start": 12754,
+        "end": 12757,
+        "record_id": "message:51:assistant",
+        "causal_group_id": "turn:51"
+      },
+      {
+        "start": 12757,
+        "end": 12913,
+        "record_id": "message:52:user",
+        "causal_group_id": "turn:51"
+      },
+      {
+        "start": 12913,
+        "end": 12916,
+        "record_id": "message:53:assistant",
+        "causal_group_id": "turn:53"
+      },
+      {
+        "start": 12916,
+        "end": 13117,
+        "record_id": "message:54:user",
+        "causal_group_id": "turn:53"
+      },
+      {
+        "start": 13117,
+        "end": 13120,
+        "record_id": "message:55:assistant",
+        "causal_group_id": "turn:55"
+      },
+      {
+        "start": 13120,
+        "end": 13349,
+        "record_id": "message:56:user",
+        "causal_group_id": "turn:55"
+      },
+      {
+        "start": 13349,
+        "end": 13352,
+        "record_id": "message:57:assistant",
+        "causal_group_id": "turn:57"
+      },
+      {
+        "start": 13352,
+        "end": 13570,
+        "record_id": "message:58:user",
+        "causal_group_id": "turn:57"
+      },
+      {
+        "start": 13570,
+        "end": 13573,
+        "record_id": "message:59:assistant",
+        "causal_group_id": "turn:59"
+      },
+      {
+        "start": 13573,
+        "end": 13832,
+        "record_id": "message:60:user",
+        "causal_group_id": "turn:59"
+      },
+      {
+        "start": 13832,
+        "end": 13835,
+        "record_id": "message:61:assistant",
+        "causal_group_id": "turn:61"
+      },
+      {
+        "start": 13835,
+        "end": 14121,
+        "record_id": "message:62:user",
+        "causal_group_id": "turn:61"
+      },
+      {
+        "start": 14121,
+        "end": 14124,
+        "record_id": "message:63:assistant",
+        "causal_group_id": "turn:63"
+      },
+      {
+        "start": 14124,
+        "end": 14262,
+        "record_id": "message:64:user",
+        "causal_group_id": "turn:63"
+      },
+      {
+        "start": 14262,
+        "end": 14265,
+        "record_id": "message:65:assistant",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 14265,
+        "end": 14521,
+        "record_id": "message:66:user",
+        "causal_group_id": "turn:65"
+      },
+      {
+        "start": 14521,
+        "end": 14524,
+        "record_id": "message:67:assistant",
+        "causal_group_id": "turn:67"
+      },
+      {
+        "start": 14524,
+        "end": 14639,
+        "record_id": "message:68:user",
+        "causal_group_id": "turn:67"
+      },
+      {
+        "start": 14639,
+        "end": 14642,
+        "record_id": "message:69:assistant",
+        "causal_group_id": "turn:69"
+      },
+      {
+        "start": 14642,
+        "end": 14926,
+        "record_id": "message:70:user",
+        "causal_group_id": "turn:69"
+      },
+      {
+        "start": 14926,
+        "end": 14929,
+        "record_id": "message:71:assistant",
+        "causal_group_id": "turn:71"
+      },
+      {
+        "start": 14929,
+        "end": 15174,
+        "record_id": "message:72:user",
+        "causal_group_id": "turn:71"
+      },
+      {
+        "start": 15174,
+        "end": 16543,
+        "record_id": "message:73:user",
+        "causal_group_id": "turn:71"
+      },
+      {
+        "start": 16543,
+        "end": 16546,
+        "record_id": "message:74:assistant",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 16546,
+        "end": 16790,
+        "record_id": "message:75:user",
+        "causal_group_id": "turn:74"
+      },
+      {
+        "start": 16790,
+        "end": 16793,
+        "record_id": "message:76:assistant",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 16793,
+        "end": 17254,
+        "record_id": "message:77:user",
+        "causal_group_id": "turn:76"
+      },
+      {
+        "start": 17254,
+        "end": 17257,
+        "record_id": "message:78:assistant",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 17257,
+        "end": 17379,
+        "record_id": "message:79:user",
+        "causal_group_id": "turn:78"
+      },
+      {
+        "start": 17379,
+        "end": 17382,
+        "record_id": "message:80:assistant",
+        "causal_group_id": "turn:80"
+      },
+      {
+        "start": 17382,
+        "end": 17676,
+        "record_id": "message:81:user",
+        "causal_group_id": "turn:80"
+      },
+      {
+        "start": 17676,
+        "end": 17679,
+        "record_id": "message:82:assistant",
+        "causal_group_id": "turn:82"
+      },
+      {
+        "start": 17679,
+        "end": 18282,
+        "record_id": "message:83:user",
+        "causal_group_id": "turn:82"
+      },
+      {
+        "start": 18282,
+        "end": 18285,
+        "record_id": "message:84:assistant",
+        "causal_group_id": "turn:84"
+      },
+      {
+        "start": 18285,
+        "end": 18690,
+        "record_id": "message:85:user",
+        "causal_group_id": "turn:84"
+      },
+      {
+        "start": 18690,
+        "end": 18693,
+        "record_id": "message:86:assistant",
+        "causal_group_id": "turn:86"
+      },
+      {
+        "start": 18693,
+        "end": 18994,
+        "record_id": "message:87:user",
+        "causal_group_id": "turn:86"
+      },
+      {
+        "start": 18994,
+        "end": 18997,
+        "record_id": "message:88:assistant",
+        "causal_group_id": "turn:88"
+      },
+      {
+        "start": 18997,
+        "end": 19230,
+        "record_id": "message:89:user",
+        "causal_group_id": "turn:88"
+      },
+      {
+        "start": 19230,
+        "end": 19233,
+        "record_id": "message:90:assistant",
+        "causal_group_id": "turn:90"
+      },
+      {
+        "start": 19233,
+        "end": 19807,
+        "record_id": "message:91:user",
+        "causal_group_id": "turn:90"
+      },
+      {
+        "start": 19807,
+        "end": 19810,
+        "record_id": "message:92:assistant",
+        "causal_group_id": "turn:92"
+      },
+      {
+        "start": 19810,
+        "end": 19976,
+        "record_id": "message:93:user",
+        "causal_group_id": "turn:92"
+      },
+      {
+        "start": 19976,
+        "end": 19979,
+        "record_id": "message:94:assistant",
+        "causal_group_id": "turn:94"
+      },
+      {
+        "start": 19979,
+        "end": 20119,
+        "record_id": "message:95:user",
+        "causal_group_id": "turn:94"
+      },
+      {
+        "start": 20119,
+        "end": 20122,
+        "record_id": "message:96:assistant",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 20122,
+        "end": 20363,
+        "record_id": "message:97:user",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 20363,
+        "end": 21762,
+        "record_id": "message:98:user",
+        "causal_group_id": "turn:96"
+      },
+      {
+        "start": 21762,
+        "end": 21765,
+        "record_id": "message:99:assistant",
+        "causal_group_id": "turn:99"
+      },
+      {
+        "start": 21765,
+        "end": 21963,
+        "record_id": "message:100:user",
+        "causal_group_id": "turn:99"
+      },
+      {
+        "start": 21963,
+        "end": 21966,
+        "record_id": "message:101:assistant",
+        "causal_group_id": "turn:101"
+      },
+      {
+        "start": 21966,
+        "end": 22064,
+        "record_id": "message:102:user",
+        "causal_group_id": "turn:101"
+      },
+      {
+        "start": 22064,
+        "end": 22067,
+        "record_id": "message:103:assistant",
+        "causal_group_id": "turn:103"
+      },
+      {
+        "start": 22067,
+        "end": 22783,
+        "record_id": "message:104:user",
+        "causal_group_id": "turn:103"
+      },
+      {
+        "start": 22783,
+        "end": 22786,
+        "record_id": "message:105:assistant",
+        "causal_group_id": "turn:105"
+      },
+      {
+        "start": 22786,
+        "end": 23455,
+        "record_id": "message:106:user",
+        "causal_group_id": "turn:105"
+      },
+      {
+        "start": 23455,
+        "end": 23458,
+        "record_id": "message:107:assistant",
+        "causal_group_id": "turn:107"
+      },
+      {
+        "start": 23458,
+        "end": 24028,
+        "record_id": "message:108:user",
+        "causal_group_id": "turn:107"
+      },
+      {
+        "start": 24028,
+        "end": 24031,
+        "record_id": "message:109:assistant",
+        "causal_group_id": "turn:109"
+      },
+      {
+        "start": 24031,
+        "end": 24353,
+        "record_id": "message:110:user",
+        "causal_group_id": "turn:109"
+      },
+      {
+        "start": 24353,
+        "end": 24356,
+        "record_id": "message:111:assistant",
+        "causal_group_id": "turn:111"
+      },
+      {
+        "start": 24356,
+        "end": 24917,
+        "record_id": "message:112:user",
+        "causal_group_id": "turn:111"
+      },
+      {
+        "start": 24917,
+        "end": 24920,
+        "record_id": "message:113:assistant",
+        "causal_group_id": "turn:113"
+      },
+      {
+        "start": 24920,
+        "end": 25096,
+        "record_id": "message:114:user",
+        "causal_group_id": "turn:113"
+      },
+      {
+        "start": 25096,
+        "end": 25099,
+        "record_id": "message:115:assistant",
+        "causal_group_id": "turn:115"
+      },
+      {
+        "start": 25099,
+        "end": 25503,
+        "record_id": "message:116:user",
+        "causal_group_id": "turn:115"
+      },
+      {
+        "start": 25503,
+        "end": 25506,
+        "record_id": "message:117:assistant",
+        "causal_group_id": "turn:117"
+      },
+      {
+        "start": 25506,
+        "end": 25738,
+        "record_id": "message:118:user",
+        "causal_group_id": "turn:117"
+      },
+      {
+        "start": 25738,
+        "end": 25741,
+        "record_id": "message:119:assistant",
+        "causal_group_id": "turn:119"
+      },
+      {
+        "start": 25741,
+        "end": 25840,
+        "record_id": "message:120:user",
+        "causal_group_id": "turn:119"
+      },
+      {
+        "start": 25840,
+        "end": 25843,
+        "record_id": "message:121:assistant",
+        "causal_group_id": "turn:121"
+      },
+      {
+        "start": 25843,
+        "end": 25958,
+        "record_id": "message:122:user",
+        "causal_group_id": "turn:121"
+      },
+      {
+        "start": 25958,
+        "end": 25961,
+        "record_id": "message:123:assistant",
+        "causal_group_id": "turn:123"
+      },
+      {
+        "start": 25961,
+        "end": 26091,
+        "record_id": "message:124:user",
+        "causal_group_id": "turn:123"
+      },
+      {
+        "start": 26091,
+        "end": 26094,
+        "record_id": "message:125:assistant",
+        "causal_group_id": "turn:125"
+      },
+      {
+        "start": 26094,
+        "end": 26224,
+        "record_id": "message:126:user",
+        "causal_group_id": "turn:125"
+      },
+      {
+        "start": 26224,
+        "end": 27664,
+        "record_id": "message:127:user",
+        "causal_group_id": "turn:125"
+      },
+      {
+        "start": 27664,
+        "end": 27667,
+        "record_id": "message:128:assistant",
+        "causal_group_id": "turn:128"
+      },
+      {
+        "start": 27667,
+        "end": 27814,
+        "record_id": "message:129:user",
+        "causal_group_id": "turn:128"
+      },
+      {
+        "start": 27814,
+        "end": 27817,
+        "record_id": "message:130:assistant",
+        "causal_group_id": "turn:130"
+      },
+      {
+        "start": 27817,
+        "end": 27924,
+        "record_id": "message:131:user",
+        "causal_group_id": "turn:130"
+      },
+      {
+        "start": 27924,
+        "end": 27927,
+        "record_id": "message:132:assistant",
+        "causal_group_id": "turn:132"
+      },
+      {
+        "start": 27927,
+        "end": 28138,
+        "record_id": "message:133:user",
+        "causal_group_id": "turn:132"
+      },
+      {
+        "start": 28138,
+        "end": 28141,
+        "record_id": "message:134:assistant",
+        "causal_group_id": "turn:134"
+      },
+      {
+        "start": 28141,
+        "end": 28567,
+        "record_id": "message:135:user",
+        "causal_group_id": "turn:134"
+      },
+      {
+        "start": 28567,
+        "end": 28570,
+        "record_id": "message:136:assistant",
+        "causal_group_id": "turn:136"
+      },
+      {
+        "start": 28570,
+        "end": 29010,
+        "record_id": "message:137:user",
+        "causal_group_id": "turn:136"
+      },
+      {
+        "start": 29010,
+        "end": 29013,
+        "record_id": "message:138:assistant",
+        "causal_group_id": "turn:138"
+      },
+      {
+        "start": 29013,
+        "end": 29142,
+        "record_id": "message:139:user",
+        "causal_group_id": "turn:138"
+      },
+      {
+        "start": 29142,
+        "end": 29145,
+        "record_id": "message:140:assistant",
+        "causal_group_id": "turn:140"
+      },
+      {
+        "start": 29145,
+        "end": 29235,
+        "record_id": "message:141:user",
+        "causal_group_id": "turn:140"
+      },
+      {
+        "start": 29235,
+        "end": 29238,
+        "record_id": "message:142:assistant",
+        "causal_group_id": "turn:142"
+      },
+      {
+        "start": 29238,
+        "end": 29563,
+        "record_id": "message:143:user",
+        "causal_group_id": "turn:142"
+      },
+      {
+        "start": 29563,
+        "end": 29566,
+        "record_id": "message:144:assistant",
+        "causal_group_id": "turn:144"
+      },
+      {
+        "start": 29566,
+        "end": 29809,
+        "record_id": "message:145:user",
+        "causal_group_id": "turn:144"
+      },
+      {
+        "start": 29809,
+        "end": 29812,
+        "record_id": "message:146:assistant",
+        "causal_group_id": "turn:146"
+      },
+      {
+        "start": 29812,
+        "end": 29966,
+        "record_id": "message:147:user",
+        "causal_group_id": "turn:146"
+      },
+      {
+        "start": 29966,
+        "end": 29969,
+        "record_id": "message:148:assistant",
+        "causal_group_id": "turn:148"
+      },
+      {
+        "start": 29969,
+        "end": 30123,
+        "record_id": "message:149:user",
+        "causal_group_id": "turn:148"
+      },
+      {
+        "start": 30123,
+        "end": 30126,
+        "record_id": "message:150:assistant",
+        "causal_group_id": "turn:150"
+      },
+      {
+        "start": 30126,
+        "end": 30270,
+        "record_id": "message:151:user",
+        "causal_group_id": "turn:150"
+      },
+      {
+        "start": 30270,
+        "end": 30273,
+        "record_id": "message:152:assistant",
+        "causal_group_id": "turn:152"
+      },
+      {
+        "start": 30273,
+        "end": 30509,
+        "record_id": "message:153:user",
+        "causal_group_id": "turn:152"
+      },
+      {
+        "start": 30509,
+        "end": 31782,
+        "record_id": "message:154:user",
+        "causal_group_id": "turn:152"
+      },
+      {
+        "start": 31782,
+        "end": 31785,
+        "record_id": "message:155:assistant",
+        "causal_group_id": "turn:155"
+      },
+      {
+        "start": 31785,
+        "end": 31911,
+        "record_id": "message:156:user",
+        "causal_group_id": "turn:155"
+      },
+      {
+        "start": 31911,
+        "end": 31914,
+        "record_id": "message:157:assistant",
+        "causal_group_id": "turn:157"
+      },
+      {
+        "start": 31914,
+        "end": 33287,
+        "record_id": "message:158:user",
+        "causal_group_id": "turn:157"
+      },
+      {
+        "start": 33287,
+        "end": 33290,
+        "record_id": "message:159:assistant",
+        "causal_group_id": "turn:159"
+      },
+      {
+        "start": 33290,
+        "end": 33768,
+        "record_id": "message:160:user",
+        "causal_group_id": "turn:159"
+      },
+      {
+        "start": 33768,
+        "end": 33771,
+        "record_id": "message:161:assistant",
+        "causal_group_id": "turn:161"
+      },
+      {
+        "start": 33771,
+        "end": 33895,
+        "record_id": "message:162:user",
+        "causal_group_id": "turn:161"
+      },
+      {
+        "start": 33895,
+        "end": 33898,
+        "record_id": "message:163:assistant",
+        "causal_group_id": "turn:163"
+      },
+      {
+        "start": 33898,
+        "end": 34120,
+        "record_id": "message:164:user",
+        "causal_group_id": "turn:163"
+      },
+      {
+        "start": 34120,
+        "end": 34123,
+        "record_id": "message:165:assistant",
+        "causal_group_id": "turn:165"
+      },
+      {
+        "start": 34123,
+        "end": 34302,
+        "record_id": "message:166:user",
+        "causal_group_id": "turn:165"
+      },
+      {
+        "start": 34302,
+        "end": 34305,
+        "record_id": "message:167:assistant",
+        "causal_group_id": "turn:167"
+      },
+      {
+        "start": 34305,
+        "end": 34407,
+        "record_id": "message:168:user",
+        "causal_group_id": "turn:167"
+      },
+      {
+        "start": 34407,
+        "end": 34410,
+        "record_id": "message:169:assistant",
+        "causal_group_id": "turn:169"
+      },
+      {
+        "start": 34410,
+        "end": 34503,
+        "record_id": "message:170:user",
+        "causal_group_id": "turn:169"
+      },
+      {
+        "start": 34503,
+        "end": 34506,
+        "record_id": "message:171:assistant",
+        "causal_group_id": "turn:171"
+      },
+      {
+        "start": 34506,
+        "end": 34727,
+        "record_id": "message:172:user",
+        "causal_group_id": "turn:171"
+      },
+      {
+        "start": 34727,
+        "end": 34730,
+        "record_id": "message:173:assistant",
+        "causal_group_id": "turn:173"
+      },
+      {
+        "start": 34730,
+        "end": 35016,
+        "record_id": "message:174:user",
+        "causal_group_id": "turn:173"
+      },
+      {
+        "start": 35016,
+        "end": 36318,
+        "record_id": "message:175:user",
+        "causal_group_id": "turn:173"
+      },
+      {
+        "start": 36318,
+        "end": 36321,
+        "record_id": "message:176:assistant",
+        "causal_group_id": "turn:176"
+      },
+      {
+        "start": 36321,
+        "end": 36454,
+        "record_id": "message:177:user",
+        "causal_group_id": "turn:176"
+      },
+      {
+        "start": 36454,
+        "end": 36457,
+        "record_id": "message:178:assistant",
+        "causal_group_id": "turn:178"
+      },
+      {
+        "start": 36457,
+        "end": 36694,
+        "record_id": "message:179:user",
+        "causal_group_id": "turn:178"
+      },
+      {
+        "start": 36694,
+        "end": 36697,
+        "record_id": "message:180:assistant",
+        "causal_group_id": "turn:180"
+      },
+      {
+        "start": 36697,
+        "end": 36893,
+        "record_id": "message:181:user",
+        "causal_group_id": "turn:180"
+      },
+      {
+        "start": 36893,
+        "end": 36896,
+        "record_id": "message:182:assistant",
+        "causal_group_id": "turn:182"
+      },
+      {
+        "start": 36896,
+        "end": 37063,
+        "record_id": "message:183:user",
+        "causal_group_id": "turn:182"
+      },
+      {
+        "start": 37063,
+        "end": 37066,
+        "record_id": "message:184:assistant",
+        "causal_group_id": "turn:184"
+      },
+      {
+        "start": 37066,
+        "end": 37210,
+        "record_id": "message:185:user",
+        "causal_group_id": "turn:184"
+      },
+      {
+        "start": 37210,
+        "end": 37213,
+        "record_id": "message:186:assistant",
+        "causal_group_id": "turn:186"
+      },
+      {
+        "start": 37213,
+        "end": 37307,
+        "record_id": "message:187:user",
+        "causal_group_id": "turn:186"
+      },
+      {
+        "start": 37307,
+        "end": 37310,
+        "record_id": "message:188:assistant",
+        "causal_group_id": "turn:188"
+      },
+      {
+        "start": 37310,
+        "end": 37463,
+        "record_id": "message:189:user",
+        "causal_group_id": "turn:188"
+      },
+      {
+        "start": 37463,
+        "end": 37466,
+        "record_id": "message:190:assistant",
+        "causal_group_id": "turn:190"
+      },
+      {
+        "start": 37466,
+        "end": 37811,
+        "record_id": "message:191:user",
+        "causal_group_id": "turn:190"
+      }
+    ]
+  },
+  "engine_request_callback_integration": true,
+  "experiment_revision": "56f5491361413362f7b8a5af629566651af673eb",
+  "implementation_files": {
+    "src/pra_mlx/native.py": "75e3dd213bd6dd161f80dabd18fed9764cdc990c0385b9d9e653a0dbcbad10d7",
+    "src/pra_mlx/mlx_live_kv.py": "977b6986ac49c828a86d4b31878542cb020d1611faafcb28c514afdd732f724a",
+    "src/pra_mlx/qwen3_segmented.py": "f92deedc6a58b3873ae063f8c7faf17e41621e64143a9669b79c3f2a72584055",
+    "experiments/paper4_5_agent/run_mlx_live_agent_kv_lifecycle.py": "4a7246af58831ee0256e28b7444852ed7bd0b8e8b24a645005dfd664445ed9e1"
+  },
+  "elapsed_seconds": 1697.7099411250092,
+  "engine_lifecycle_qualified": true,
+  "qualification_blockers": []
+}
+

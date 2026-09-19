@@ -67,6 +67,27 @@ def test_adjacent_record_intervals_covering_source_are_full_retention() -> None:
     assert plan.selected_tokens == 12
     assert not plan.has_holes
     assert plan.full_retention
+    assert plan.physical_intervals == ((0, 12),)
+
+
+def test_physical_intervals_merge_only_adjacent_logical_records() -> None:
+    plan = LiveKVSelectionPlan.create(
+        20,
+        (
+            LiveKVInterval(0, 3, "system", "preamble"),
+            LiveKVInterval(3, 8, "task", "preamble"),
+            LiveKVInterval(12, 15, "action", "turn-1"),
+            LiveKVInterval(15, 20, "observation", "turn-1"),
+        ),
+    )
+
+    assert plan.physical_intervals == ((0, 8), (12, 20))
+    assert [row.record_id for row in plan.intervals] == [
+        "system",
+        "task",
+        "action",
+        "observation",
+    ]
 
 
 def test_live_plan_rejects_overlap_and_duplicate_record_identity() -> None:
@@ -125,6 +146,21 @@ def test_hf_full_and_sparse_selection_are_source_views_without_pack_copy() -> No
         [0, 4],
         [16, 20],
     ]
+
+    adjacent = select_dynamic_cache(
+        source,
+        LiveKVSelectionPlan.create(
+            6,
+            (
+                LiveKVInterval(0, 2, "record-a", "turn-a"),
+                LiveKVInterval(2, 4, "record-b", "turn-b"),
+                LiveKVInterval(4, 6, "record-c", "turn-c"),
+            ),
+        ),
+    )
+    assert len(adjacent.cache.layers[0].source_segments) == 1
+    assert adjacent.cache.layers[0].source_segments[0].tokens == 6
+    assert adjacent.cache.layers[0].source_segments[0].keys.data_ptr() == keys.data_ptr()
 
 
 def test_hf_pra100_dense_selection_is_an_identity_noop() -> None:

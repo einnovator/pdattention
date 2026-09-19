@@ -18,7 +18,7 @@ from pra_mlx.native import (
     select_live_native_memory,
     select_live_native_memory_disjoint,
 )
-from pra_hf.live_history import LiveKVSelectionPlan
+from pra_hf.live_history import LiveKVInterval, LiveKVSelectionPlan
 from pra_mlx.native_storage import MLXNativeSegmentStore
 
 
@@ -92,6 +92,30 @@ def test_disjoint_selection_preserves_source_views_and_original_extent() -> None
     assert result.memory.layers[0].tokens == 5
     assert np.shares_memory(result.memory.layers[0].segments[0].keys, keys)
     assert np.shares_memory(result.memory.layers[0].segments[1].values, values)
+
+
+def test_disjoint_selection_coalesces_adjacent_records_without_losing_plan_identity() -> None:
+    import numpy as np
+
+    keys = np.arange(40, dtype=np.float32).reshape(1, 1, 10, 4)
+    source = MLXNativeMemory((MLXNativeLayerKV(keys, keys + 100),), source_tokens=10)
+    plan = LiveKVSelectionPlan.create(
+        10,
+        (
+            LiveKVInterval(0, 3, "record-a", "turn-a"),
+            LiveKVInterval(3, 6, "record-b", "turn-b"),
+            LiveKVInterval(8, 10, "record-c", "turn-c"),
+        ),
+    )
+
+    result = select_live_native_memory_disjoint(source, plan)
+
+    assert result.plan.intervals == plan.intervals
+    assert result.plan.physical_intervals == ((0, 6), (8, 10))
+    assert result.memory.layers[0].intervals == ((0, 6), (8, 10))
+    assert len(result.memory.layers[0].segments) == 2
+    assert np.shares_memory(result.memory.layers[0].segments[0].keys, keys)
+    assert np.shares_memory(result.memory.layers[0].segments[1].values, source.layers[0].values)
 
 
 def test_full_selection_borrows_canonical_memory_without_a_slice() -> None:

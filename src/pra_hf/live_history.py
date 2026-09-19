@@ -119,6 +119,24 @@ class LiveKVSelectionPlan:
     def has_holes(self) -> bool:
         return self.selected_tokens != self.source_tokens
 
+    @property
+    def physical_intervals(self) -> tuple[tuple[int, int], ...]:
+        """Coalesce adjacent logical records into zero-copy engine spans.
+
+        ``intervals`` remains the authoritative record/causal identity map.
+        Engines consume this derived geometry so a record boundary does not
+        create an avoidable attention launch when the underlying K/V cells are
+        physically contiguous.
+        """
+
+        spans: list[tuple[int, int]] = []
+        for interval in self.intervals:
+            if spans and spans[-1][1] == interval.start:
+                spans[-1] = (spans[-1][0], interval.end)
+            else:
+                spans.append((interval.start, interval.end))
+        return tuple(spans)
+
     def to_dict(self) -> dict[str, object]:
         return {
             "source_tokens": self.source_tokens,
@@ -126,6 +144,10 @@ class LiveKVSelectionPlan:
             "selected_tokens": self.selected_tokens,
             "full_retention": self.full_retention,
             "has_holes": self.has_holes,
+            "physical_intervals": [
+                {"start": start, "end": end}
+                for start, end in self.physical_intervals
+            ],
             "intervals": [
                 {
                     "start": row.start,
