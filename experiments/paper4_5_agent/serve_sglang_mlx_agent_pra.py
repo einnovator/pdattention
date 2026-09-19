@@ -33,10 +33,19 @@ def _install_transformers_config_registration_compatibility() -> None:
     The pinned SGLang snapshot registers several model types at import time.
     Transformers 5 includes some of those types and rejects the duplicate by
     default.  Retry only that explicit duplicate-registration failure with
-    ``exist_ok=True``; unrelated registration errors remain fatal.
+    ``exist_ok=True``; unrelated registration errors remain fatal.  The same
+    snapshot imports the historical spelling ``PreTrainedConfig`` even though
+    current Transformers exports ``PretrainedConfig``.  Install only that
+    spelling alias before SGLang imports its configuration modules.
     """
 
+    import transformers.configuration_utils as configuration_utils
     from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+
+    if not hasattr(configuration_utils, "PreTrainedConfig"):
+        configuration_utils.PreTrainedConfig = (
+            configuration_utils.PretrainedConfig
+        )
 
     if getattr(CONFIG_MAPPING.register, "_pra_sglang_compat", False):
         return

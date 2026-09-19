@@ -65,6 +65,22 @@ def test_sglang_transformers_duplicate_config_registration_is_compatible(
     CONFIG_MAPPING.register("qwen3_asr", object())
     assert calls == [("qwen3_asr", False), ("qwen3_asr", True)]
 
+
+def test_sglang_historical_pretrained_config_spelling_is_compatible(
+    monkeypatch,
+) -> None:
+    import transformers.configuration_utils as configuration_utils
+
+    monkeypatch.delattr(
+        configuration_utils, "PreTrainedConfig", raising=False,
+    )
+    _install_transformers_config_registration_compatibility()
+
+    assert (
+        configuration_utils.PreTrainedConfig
+        is configuration_utils.PretrainedConfig
+    )
+
 from pra_hf.deployment import PRAGatewayMode
 
 
