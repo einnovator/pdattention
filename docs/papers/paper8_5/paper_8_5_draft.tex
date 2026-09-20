@@ -410,6 +410,12 @@ comparison rather than an engine effect.  These checks are executable in
 The strict runners also query the serving endpoint before any task action and
 fail closed unless its observed model digest equals the declared revision; a
 model alias in the request is not identity evidence.
+Keeping the model fixed within each axis does not by itself support a joint
+agent-by-engine claim.  The predeclared bridge therefore pins
+Qwen2.5-Coder-7B-Instruct revision \texttt{c03e6d35} at BF16 for both
+mini-swe-agent and OpenHands across HF, vLLM, and MLX.  The Qwen3-Coder-30B
+cross-agent cohort is a separate replication and is not pooled with that
+bridge.
 
 Let $M_t$ be selected model-visible input and let $F_t^{\mathrm{cand}}$ be the
 full-history counterfactual along the candidate's own realized trajectory.  We

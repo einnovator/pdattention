@@ -93,6 +93,23 @@
     ],
     "failure_rule": "Any logical-selection or logical-saving difference is an invalid cross-engine cell, not an engine effect."
   },
+  "joint_agent_engine_bridge": {
+    "status": "predeclared; execution follows within-axis qualification",
+    "purpose": "support a joint agent-by-engine portability claim without a model-family confound",
+    "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "precision": "BF16",
+    "agents": [
+      "mini-swe-agent@2.4.6",
+      "openhands@1.49.2"
+    ],
+    "engines": [
+      "huggingface",
+      "vllm-cuda",
+      "mlx"
+    ],
+    "rule": "No cross-axis pooling or joint portability claim is allowed until this common-checkpoint bridge is complete."
+  },
   "publication_rules": [
     "Do not pool the historical mixed Qwen3-30B, Qwen2.5-14B and Qwen2.5-7B engine rows as a savings comparison.",
     "Do not compare OpenHands tail-90 directly with mini-swe tail-95 or with a different task cohort.",
