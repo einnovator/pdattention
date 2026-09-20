@@ -1,0 +1,15 @@
+diff --git a/django/utils/formats.py b/django/utils/formats.py
+index 3f38322d84..c5e66bdc67 100644
+--- a/django/utils/formats.py
++++ b/django/utils/formats.py
+@@ -131,7 +131,9 @@ def get_format(format_type, lang=None, use_l10n=None):
+     if val is None:
+         if format_type not in FORMAT_SETTINGS:
+             return format_type
+-        val = getattr(settings, format_type)
++        # Convert lazy objects to string before using getattr
++        format_type_str = str(format_type) if hasattr(format_type, '__html__') or not isinstance(format_type, str) else format_type
++        val = getattr(settings, format_type_str)
+     elif format_type in ISO_INPUT_FORMATS:
+         # If a list of input formats from one of the format_modules was
+         # retrieved, make sure the ISO_INPUT_FORMATS are in this list.

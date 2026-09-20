@@ -30,8 +30,9 @@ capability evidence, not evidence against the memory policy.
    and its new SWE-bench container adapter now resolves controlled Tasks 1 and
    2. Task 1 exposed and fixed a second transport boundary: an unambiguous
    terminal serialized tool decision was previously mistaken for a final
-   answer. The remaining plain-three gate is Task 4, followed by within-agent
-   policy pairing on its own FULL-success subset.
+   answer. After two further fail-closed serialization repairs, Task 4 still
+   terminates without a patch. PRA Agent therefore completes plain-three at
+   2/3, and policy pairing is restricted to Tasks 1 and 2.
 4. **OpenHands** is supplementary rather than the next primary transfer. The
    standalone CLI is no longer actively maintained, so its runtime state,
    summarization and workspace services must be inventoried against the current
@@ -119,3 +120,12 @@ checks. On Task 1 this changes an empty-patch stop after 10 requests into an
 official solve after 14 requests without changing the model or task. Such a
 repair belongs to agent qualification; the failed pre-fix trajectory cannot be
 counted as evidence against a memory policy.
+
+Task 4 adds a fifth invariant. A terminal provider-specific function block is
+an attempted action, while malformed action arguments are a rejected action;
+neither is semantic task completion. The runtime accepts a well-formed
+terminal Qwen function block, but never repairs malformed JSON for execution.
+Instead it stores a visible rejection and asks for a fresh action. The final
+corrected FULL control still stops after correctly localizing the required
+string conversion but before issuing a write, so its failure remains in the
+agent baseline and is excluded from the policy denominator.

@@ -4357,7 +4357,29 @@ have several protocol encodings, but it crosses the execution boundary only
 through an unambiguous terminal envelope.  Repairing that boundary changes
 agent capability on the same \textsc{Full} history and therefore must precede,
 not be credited to, any retention-policy comparison.  PRA Agent has now
-resolved two plain controls; Task 4 remains before policy pairing.
+resolved two plain controls.
+
+The third control, \texttt{django\_\_django-15741}, reveals two more wire-level
+variants before reaching a genuine agent outcome.  The provider first emits a
+terminal Qwen \texttt{<function=...>} block rather than an OpenAI tool object;
+the runtime now parses that block only when it is structurally complete and
+terminal.  A later attempt contains malformed JSON.  The runtime does not
+repair and execute guessed arguments: it records a visible
+\texttt{malformed\_call} rejection and requests a fresh action.  Both repairs
+are fail-closed and pass the same disclosure, schema, and authorization gates
+as native calls.
+
+After those compatibility repairs, the frozen \textsc{Full} control remains
+unresolved.  It makes six model requests and five typed tool calls, consumes
+39,491 cumulative prompt tokens (7,048 cached) and 1,584 completion tokens in
+817.4 seconds, and exports an empty patch.  Its final response correctly
+identifies the necessary conversion of lazy \texttt{format\_type} to a string,
+then says it will implement the fix without issuing a tool action.  An earlier
+diagnostic leaves an incomplete patch and fails both FAIL\_TO\_PASS tests while
+passing 104/104 PASS\_TO\_PASS tests.  Thus PRA Agent completes plain-three at
+2/3; only Tasks 1 and 2 enter its policy denominator.  The full controls and
+quarantined diagnostics are in
+\path{cross_agent_transfer/pra_agent_task04_full_controlled_v1}.
 
 \subsection{Longer-horizon mini-swe-agent capability control}
 

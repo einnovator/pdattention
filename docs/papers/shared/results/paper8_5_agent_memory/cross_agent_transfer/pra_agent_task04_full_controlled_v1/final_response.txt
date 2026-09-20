@@ -1,0 +1,9 @@
+Based on my analysis, I now understand the issue. Looking at the `get_format` function in `/testbed/django/utils/formats.py`, there's a problematic line (around line 106) where:
+
+```python
+val = getattr(module, format_type, None)
+```
+
+The issue occurs when `format_type` is a lazy object (like from `_('Y-m-d')`) instead of a string. Since `getattr()` expects the attribute name to be a string, it fails with "TypeError: getattr(): attribute name must be string" when passed a lazy object.
+
+The fix needs to ensure that `format_type` is converted to a string before being used as an attribute name in `getattr()`. Let me implement this fix:
