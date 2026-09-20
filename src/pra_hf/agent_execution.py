@@ -24,6 +24,17 @@ _SERIALIZED_TOOL_DECISION = re.compile(
     r"with these arguments:\s*(?P<arguments>\{.*\})\.\s*$",
     re.DOTALL,
 )
+_QWEN_FUNCTION_DECISION = re.compile(
+    r"(?:<tool_call>\s*)?"
+    r"<function=(?P<name>[A-Za-z_][A-Za-z0-9_.:-]*)>\s*"
+    r"(?P<body>.*?)\s*</function>\s*(?:</tool_call>)?\s*$",
+    re.DOTALL,
+)
+_QWEN_FUNCTION_PARAMETER = re.compile(
+    r"<parameter=(?P<name>[A-Za-z_][A-Za-z0-9_.:-]*)>\s*"
+    r"(?P<value>.*?)\s*</parameter>",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -85,14 +96,40 @@ def parse_tool_call(text: str) -> ToolCall | None:
         raw_text = match.group(0)
     else:
         serialized = _SERIALIZED_TOOL_DECISION.search(text)
-        if serialized is None:
-            return None
-        try:
-            name = json.loads(serialized.group("name"))
-            arguments = json.loads(serialized.group("arguments"))
-        except json.JSONDecodeError:
-            return None
-        raw_text = serialized.group(0)
+        if serialized is not None:
+            try:
+                name = json.loads(serialized.group("name"))
+                arguments = json.loads(serialized.group("arguments"))
+            except json.JSONDecodeError:
+                return None
+            raw_text = serialized.group(0)
+        else:
+            function = _QWEN_FUNCTION_DECISION.search(text)
+            if function is None:
+                return None
+            name = function.group("name")
+            arguments = {}
+            body = function.group("body")
+            consumed = []
+            for parameter in _QWEN_FUNCTION_PARAMETER.finditer(body):
+                argument_name = parameter.group("name")
+                if argument_name in arguments:
+                    return None
+                raw_value = parameter.group("value").strip()
+                try:
+                    value = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    value = raw_value
+                arguments[argument_name] = value
+                consumed.append(parameter.span())
+            cursor = 0
+            for start, end in consumed:
+                if body[cursor:start].strip():
+                    return None
+                cursor = end
+            if body[cursor:].strip():
+                return None
+            raw_text = function.group(0)
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return None
     return ToolCall(name=name, arguments=arguments, raw_text=raw_text)

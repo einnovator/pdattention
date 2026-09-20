@@ -50,6 +50,44 @@ def test_tool_call_parser_accepts_only_terminal_durable_action_projection():
     ) is None
 
 
+def test_tool_call_parser_accepts_terminal_qwen_function_block():
+    text = (
+        "I will inspect the relevant files.\n"
+        "<function=run_command>\n"
+        "<parameter=command>\n"
+        'find /testbed -name "*.py" | head -20\n'
+        "</parameter>\n"
+        "</function>\n"
+        "</tool_call>"
+    )
+    call = parse_tool_call(text)
+    assert call is not None
+    assert call.name == "run_command"
+    assert call.arguments == {
+        "command": 'find /testbed -name "*.py" | head -20'
+    }
+
+    typed = parse_tool_call(
+        "<tool_call><function=read_file>"
+        "<parameter=path>src/a.py</parameter>"
+        "<parameter=start_line>10</parameter>"
+        "<parameter=end_line>20</parameter>"
+        "</function></tool_call>"
+    )
+    assert typed is not None
+    assert typed.arguments == {
+        "path": "src/a.py",
+        "start_line": 10,
+        "end_line": 20,
+    }
+
+    assert parse_tool_call(text + " quoted only") is None
+    assert parse_tool_call(
+        "<function=run_command>unexpected"
+        "<parameter=command>pwd</parameter></function>"
+    ) is None
+
+
 def test_executor_requires_disclosure_and_independent_write_authorization():
     resources = realistic_tool_catalog()
     task = next(task for task in workflow_tasks() if task.task_id == "m4-user-3")
