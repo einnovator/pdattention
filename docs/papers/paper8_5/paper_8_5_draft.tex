@@ -4521,7 +4521,14 @@ Although both use the pinned Qwen3-Coder-30B checkpoint, the existing
 mini-swe-agent confirmation used a 95\% tail on a partly different task cohort,
 whereas this OpenHands row uses the 90\% arm above.  We therefore treat the
 OpenHands result as policy-transfer evidence and require the locked Tasks
-1/2/4, tail-90 pair on mini-swe-agent before estimating an agent effect.  Prior
+1/2/4, tail-90 pair on mini-swe-agent before estimating an agent effect.
+Furthermore, the historical OpenHands proxy trace records
+\texttt{whitespace\_v1\_diagnostic} token accounting rather than the pinned
+Qwen tokenizer and its manifest does not bind the endpoint model digest.  Its
+3/3 official quality outcome remains valid and its paired workload reduction
+is a within-agent diagnostic, but 46.86\% is not an exact cross-agent token
+comparison.  Strict transfer requires fresh Full/tail-90 runs for both agents
+with the exact Qwen tokenizer revision and endpoint digest recorded.  Prior
 rows using Qwen2.5-Coder-14B or 7B remain model-specific diagnostics and are
 not pooled with either arm.
 

@@ -62,6 +62,11 @@ class ExperimentIdentity:
             raise ComparisonContractError(
                 "experiment identity has unresolved fields: " + ", ".join(missing)
             )
+        if "whitespace" in self.tokenizer_id.lower():
+            raise ComparisonContractError(
+                "diagnostic whitespace tokenization is inadmissible for a "
+                "controlled agent or engine comparison"
+            )
         if self.native_agent_compaction:
             raise ComparisonContractError(
                 "agent-native compaction must be disabled in controlled comparisons"
@@ -183,4 +188,3 @@ def validate_frozen_plan_across_engines(
             "engine changed the frozen logical experiment: " + "; ".join(failures)
         )
     return reference
-

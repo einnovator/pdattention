@@ -105,3 +105,12 @@ def test_engine_logical_token_difference_fails_closed() -> None:
 def test_agent_native_compaction_is_not_a_controlled_arm() -> None:
     with pytest.raises(ComparisonContractError, match="compaction"):
         replace(_identity(), native_agent_compaction=True)
+
+
+def test_diagnostic_tokenizer_is_not_a_controlled_arm() -> None:
+    with pytest.raises(ComparisonContractError, match="whitespace"):
+        replace(
+            _identity(),
+            tokenizer_id="whitespace_v1_diagnostic",
+            tokenizer_revision="whitespace_v1",
+        )
