@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_cross_agent_transfer",
+  "agent": "openhands-sdk",
+  "agent_version": "1.49.2",
+  "instance_id": "django__django-15368",
+  "arm": "FULL_RECEIPT_PINNED_TRANSPORT",
+  "status": "qualified_full_control_with_pinned_transport",
+  "generation": {
+    "model": "qwen3-coder:30b",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024,
+    "request_timeout_seconds": 1200,
+    "request_retries": 0
+  },
+  "request_audit": {
+    "request_count": 38,
+    "successful_request_count": 38,
+    "upstream_transport_failures": 0,
+    "all_full_retention": true,
+    "cumulative_message_content_tokens": 153174,
+    "cumulative_provider_prompt_tokens": 548704,
+    "cumulative_provider_completion_tokens": 5986
+  },
+  "receipt_contract": {
+    "actions": 38,
+    "observations": 38,
+    "receipts_emitted": 38,
+    "receipts_delivered": 38,
+    "delivery_failures": 0,
+    "receipts_joined_by_last_generation": 37,
+    "effect_trace_complete_receipts": 17,
+    "versioned_resource_records_by_last_generation": 14,
+    "semantic_failure_receipts": 5,
+    "unknown_terminal_barriers": 21,
+    "finalization_receipt_has_no_later_generation": true
+  },
+  "trajectory": {
+    "native_actions": 38,
+    "terminal_actions": 21,
+    "file_editor_actions": 14,
+    "think_actions": 2,
+    "finish_actions": 1,
+    "elapsed_seconds": 425.72523,
+    "patch_bytes": 671,
+    "patch_sha256": "58b8f39e9a0597ad446bb3a07ec549d368bc248264aac78ac043a51b272a453d"
+  },
+  "official_evaluation": {
+    "resolved": true,
+    "fail_to_pass": "1/1",
+    "pass_to_pass": "29/29",
+    "authoritative_artifacts": [
+      "official_report.json",
+      "official_instance_report.json"
+    ]
+  },
+  "scope": {
+    "enters_openhands_policy_pairing_cohort": true,
+    "selective_policy_run_in_this_artifact": false,
+    "generic_terminal_effects_qualified": false,
+    "terminal_rule": "Unknown-effect barrier unless execution middleware supplies complete resource/effect receipts."
+  },
+  "excluded_diagnostic": {
+    "path": "/tmp/p85-openhands-receipt-live/task2_run3",
+    "reason": "OpenHands implicit request timeout started overlapping retries during a long FULL-history call.",
+    "counted": false
+  },
+  "implementation": {
+    "tiny_build_context_commit": "35f802f2",
+    "pinned_transport_commit": "1df67b5b"
+  }
+}
