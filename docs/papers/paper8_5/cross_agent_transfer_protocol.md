@@ -103,5 +103,7 @@ task and tokenizer are identical.
 A third invariant is that provider stop reason is not semantic completion.
 Pi terminates a reasoning-only turn whose provider stop reason is `length`;
 portable evaluation records this as an incomplete agent outcome, not a valid
-final answer. Completion-horizon diagnostics are declared separately from the
-frozen primary control.
+final answer. A separately declared 2,048-token diagnostic continues past that
+point but still submits no patch after three stream-termination retries, so a
+larger ceiling alone is not a repair. Completion-horizon diagnostics remain
+separate from the frozen primary control.
