@@ -1,0 +1,7 @@
+{
+  "django__django-15741": {
+    "instance_id": "django__django-15741",
+    "model_name_or_path": "openhands-1.49.2-openai_qwen3-coder:30b-full-receipt-pinned-transport",
+    "model_patch": "diff --git a/django/utils/formats.py b/django/utils/formats.py\nindex 3f38322d84..c5a75d26f7 100644\n--- a/django/utils/formats.py\n+++ b/django/utils/formats.py\n@@ -7,7 +7,7 @@ from importlib import import_module\n \n from django.conf import settings\n from django.utils import dateformat, numberformat\n-from django.utils.functional import lazy\n+from django.utils.functional import lazy, Promise\n from django.utils.translation import check_for_language, get_language, to_locale\n \n # format_cache is a mapping from (format_type, lang) to the format string.\n@@ -119,6 +119,10 @@ def get_format(format_type, lang=None, use_l10n=None):\n     except KeyError:\n         pass\n \n+    # Convert lazy format_type to string for getattr compatibility\n+    if isinstance(format_type, Promise):\n+        format_type = str(format_type)\n+\n     # The requested format_type has not been cached yet. Try to find it in any\n     # of the format_modules for the given lang if l10n is enabled. If it's not\n     # there or if l10n is disabled, fall back to the project settings.\n"
+  }
+}
