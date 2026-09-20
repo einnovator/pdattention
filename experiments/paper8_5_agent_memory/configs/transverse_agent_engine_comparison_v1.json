@@ -1,0 +1,99 @@
+{
+  "schema_version": "paper8.5.transverse-agent-engine-comparison.v1",
+  "status": "predeclared",
+  "principle": "Policy code consumes canonical causal records. Agent adapters may normalize native events; engines may realize frozen plans. Neither may retune the policy.",
+  "agent_axis": {
+    "purpose": "test policy transfer across agents",
+    "fixed_provider": "ollama-openai-compatible",
+    "model": "qwen3-coder:30b",
+    "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+    "generation": {
+      "temperature": 0,
+      "top_p": 1,
+      "seed": 0,
+      "max_completion_tokens": 1024,
+      "context_limit": 131072
+    },
+    "ordered_instances": [
+      "django__django-15277",
+      "django__django-15368",
+      "django__django-15741"
+    ],
+    "agents": [
+      "mini-swe-agent@2.4.6",
+      "openhands@1.49.2"
+    ],
+    "later_agents_after_primary_pair": [
+      "pi@0.75.3",
+      "kilo@7.7.5",
+      "pra-agent@locked-revision"
+    ],
+    "arms": [
+      "FULL",
+      "MATCHED_CAUSAL_TAIL_090"
+    ],
+    "agent_adapter_may_change": [
+      "native event normalization",
+      "declared tool semantics",
+      "protocol-valid serialization"
+    ],
+    "must_match": [
+      "model and revision",
+      "tokenizer and chat template",
+      "provider endpoint and context limit",
+      "task identity and workspace snapshot",
+      "policy revision and all policy parameters",
+      "sampling parameters",
+      "native compaction disabled"
+    ],
+    "primary_endpoints": [
+      "official resolution conditional on each agent's FULL success",
+      "candidate-own logical saving",
+      "paired total-work saving",
+      "normalized causal-action delta"
+    ]
+  },
+  "engine_axis": {
+    "purpose": "test physical realization of an identical frozen selection ledger",
+    "agent": "mini-swe-agent@2.4.6",
+    "policy_source": "one exported Paper 8.5 ledger; selector is not rerun per engine",
+    "strict_common_checkpoint": {
+      "model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "revision": "resolve-and-pin-before-execution",
+      "precision": "BF16",
+      "engines": [
+        "huggingface",
+        "vllm-cuda",
+        "mlx"
+      ]
+    },
+    "quantized_replication_not_pooled": [
+      "llama.cpp",
+      "sglang-mlx quantized checkpoints",
+      "vllm AWQ"
+    ],
+    "must_match_exactly": [
+      "history_digest",
+      "plan_digest",
+      "selected_record_ids",
+      "full_logical_tokens",
+      "selected_logical_tokens",
+      "tokenizer_revision"
+    ],
+    "may_differ_and_must_be_reported": [
+      "physical page or block rounding",
+      "resident bytes",
+      "K/V copy bytes",
+      "consumer temporary bytes",
+      "latency"
+    ],
+    "failure_rule": "Any logical-selection or logical-saving difference is an invalid cross-engine cell, not an engine effect."
+  },
+  "publication_rules": [
+    "Do not pool the historical mixed Qwen3-30B, Qwen2.5-14B and Qwen2.5-7B engine rows as a savings comparison.",
+    "Do not compare OpenHands tail-90 directly with mini-swe tail-95 or with a different task cohort.",
+    "Report agent-specific absolute token totals only within agent; compare fractions and normalized causal actions across agents.",
+    "A general policy may use only canonical roles, resources, effects, versions, dependency edges and protocol state; it may not branch on agent_id."
+  ]
+}

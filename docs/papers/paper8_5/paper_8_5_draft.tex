@@ -395,6 +395,19 @@ independent samples.  Cohorts with different tasks, prefixes, models, or cache
 conditions are reported separately.  This prevents overlapping campaigns from
 being pooled into an apparently larger accuracy estimate.
 
+Cross-agent and cross-engine comparisons use different controlled axes.  A
+cross-agent result keeps the provider, exact model and tokenizer revisions,
+chat template, task snapshots, policy parameters, and generation settings
+fixed; only native-event normalization, declared tool semantics, and
+protocol-valid serialization may vary.  A cross-engine result instead keeps
+the agent fixed and replays one exported selection ledger.  History digest,
+plan digest, selected record identities, and logical token counts must match
+exactly across engines.  Page rounding, resident bytes, K/V copy, temporary
+storage, and latency may differ, but a logical-saving difference is a failed
+comparison rather than an engine effect.  These checks are executable in
+\path{comparison_contract.py}; the locked matrix is
+\path{configs/transverse_agent_engine_comparison_v1.json}.
+
 Let $M_t$ be selected model-visible input and let $F_t^{\mathrm{cand}}$ be the
 full-history counterfactual along the candidate's own realized trajectory.  We
 report
@@ -4502,6 +4515,15 @@ one agent, and one model family, and the task effects are heterogeneous.  The
 immutable reduction is in
 \path{cross_agent_transfer/openhands_matched_tail90_three_task_v1}; each sibling
 task directory contains native events, request traces, and official reports.
+
+This row is not yet a quantitative mini-swe-agent versus OpenHands comparison.
+Although both use the pinned Qwen3-Coder-30B checkpoint, the existing
+mini-swe-agent confirmation used a 95\% tail on a partly different task cohort,
+whereas this OpenHands row uses the 90\% arm above.  We therefore treat the
+OpenHands result as policy-transfer evidence and require the locked Tasks
+1/2/4, tail-90 pair on mini-swe-agent before estimating an agent effect.  Prior
+rows using Qwen2.5-Coder-14B or 7B remain model-specific diagnostics and are
+not pooled with either arm.
 
 \subsection{Codex Responses admission}
 

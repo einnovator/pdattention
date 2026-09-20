@@ -746,7 +746,12 @@ def build_resource_effect_dag(
     history: CanonicalAgentHistory,
     semantics: ToolSemanticsProvider | None = None,
 ) -> AgentHistoryDag:
-    """Infer conservative resource flows from a mini-swe-agent trajectory."""
+    """Infer conservative resource flows from canonical agent records.
+
+    Agent- and tool-specific adapters may annotate portable effects, resources,
+    versions, and completion status before this function runs.  Policy logic
+    below this boundary must not inspect an agent's native message format.
+    """
 
     records = history.record_by_id
     effects: list[ResourceEffect] = []

@@ -1,5 +1,15 @@
 """Engine-independent agent-memory policy experiments for Paper 8.5."""
 
+from .comparison_contract import (
+    ComparisonAxis,
+    ComparisonContractError,
+    ExperimentIdentity,
+    FrozenPlanObservation,
+    comparison_mismatches,
+    validate_controlled_comparison,
+    validate_frozen_plan_across_engines,
+)
+
 from .materialization import (
     MaterializationMode,
     MaterializedMemoryPlan,
@@ -80,6 +90,10 @@ from .selectors import (
 from .serialization import serialize_materialized_messages, validate_minisweagent_chat
 
 __all__ = [
+    "ComparisonAxis",
+    "ComparisonContractError",
+    "ExperimentIdentity",
+    "FrozenPlanObservation",
     "AgentMemoryBudget",
     "AgentMemoryExclusion",
     "AgentMemoryPlan",
@@ -148,4 +162,7 @@ __all__ = [
     "realize_negative_receipts",
     "serialize_materialized_messages",
     "validate_minisweagent_chat",
+    "comparison_mismatches",
+    "validate_controlled_comparison",
+    "validate_frozen_plan_across_engines",
 ]
