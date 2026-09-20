@@ -13,6 +13,8 @@ import urllib.request
 
 import pytest
 
+from pra_hf.agent_history import OpenAIRecordizer
+
 from experiments.paper8_5_agent_memory.autonomous_proxy import (
     AutonomousSelectionConfig,
     AutonomousSelectionProxy,
@@ -95,6 +97,56 @@ def test_proxy_joins_generic_execution_receipt_without_changing_tool_text(
     assert payload["messages"][0]["metadata"][
         "pra_execution_receipt"
     ] == receipt
+
+
+def test_generic_execution_receipt_versions_reach_canonical_dag_metadata():
+    receipt = {
+        "schema_version": 1,
+        "session_id": "task-1",
+        "tool_call_id": "call-1",
+        "action_record_id": "action-1",
+        "observation_record_ids": ["observation-1"],
+        "tool_category": "filesystem",
+        "operation_kind": "write",
+        "transport_status": "completed",
+        "semantic_status": "succeeded",
+        "result_complete": True,
+        "effect_trace_complete": True,
+        "provenance": "runtime_traced",
+        "resources": [{
+            "resource_id": "file:///testbed/foo.py",
+            "kind": "write",
+            "version_before": "sha256:before",
+            "version_after": "sha256:after",
+        }],
+        "receipt_digest": "frozen-receipt",
+    }
+    result = OpenAIRecordizer().recordize([
+        {"role": "user", "content": "Fix it."},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "edit", "arguments": "{}"},
+            }],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "content": "done",
+            "metadata": {"pra_execution_receipt": receipt},
+        },
+    ])
+
+    observation = result.history.records[-1]
+    assert observation.metadata["resource_version_fingerprints"] == {
+        "file:///testbed/foo.py": "sha256:before",
+    }
+    assert observation.metadata["post_resource_version_fingerprints"] == {
+        "file:///testbed/foo.py": "sha256:after",
+    }
 
 
 def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):

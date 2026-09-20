@@ -635,6 +635,16 @@ class OpenAIRecordizer:
                         row for row in receipt.get("resources", ())
                         if isinstance(row, Mapping) and row.get("resource_id")
                     )
+                    pre_versions = {
+                        str(row["resource_id"]): str(row["version_before"])
+                        for row in receipt_resources
+                        if row.get("version_before") is not None
+                    }
+                    post_versions = {
+                        str(row["resource_id"]): str(row["version_after"])
+                        for row in receipt_resources
+                        if row.get("version_after") is not None
+                    }
                     resource_accesses = []
                     for resource in receipt_resources:
                         span = resource.get("span")
@@ -672,6 +682,14 @@ class OpenAIRecordizer:
                         "effect_trace_complete": bool(receipt.get(
                             "effect_trace_complete", receipt.get("complete", False)
                         )),
+                        **(
+                            {"resource_version_fingerprints": pre_versions}
+                            if pre_versions else {}
+                        ),
+                        **(
+                            {"post_resource_version_fingerprints": post_versions}
+                            if post_versions else {}
+                        ),
                     })
                     if operation_kind == "write":
                         tool_metadata["changed_resource_ids"] = [
