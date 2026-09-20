@@ -66,6 +66,23 @@ entry point and two endpoint examples are
 from command success; reducers must inspect structured exit evidence or output
 failure signals rather than equating `completed` with a successful tool result.
 
+The PRA Agent admission keeps its typed records and safe execution boundary,
+but backs every workspace tool with the official SWE-bench task container:
+
+```bash
+PYTHONPATH=src:. python -m experiments.paper8_5_agent_memory.run_pra_agent_swebench \
+  --instance-id django__django-15368 \
+  --reference-trajectory /evidence/task02-full/trajectory.json \
+  --endpoint http://127.0.0.1:11434 \
+  --output /results/paper85-pra-agent-task02-full
+```
+
+The runner exports `session.json`, normalized `tool_events.jsonl`, `model.patch`,
+and `preds.json`. It does not silently treat a generated patch as a solve; pass
+`preds.json` to the common official grader. Ordinary OpenAI native `tool_calls`
+are projected into the PRA Agent's provider-neutral execution envelope instead
+of being mistaken for an empty text answer.
+
 Longer mini-swe horizons are a separate capability experiment. The locked
 `benchmarks/easy50_horizon_limit5.json` cohort contains every original Easy-50
 failure that stopped with `LimitsExceeded`. Run FULL at 80 calls first and

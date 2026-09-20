@@ -418,6 +418,13 @@ class NegotiatedRemoteBackend:
         self._resource_versions: dict[str, dict[str, str]] = {}
         self._message_history: dict[str, tuple[Mapping[str, Any], ...]] = {}
         self._last_trace: dict[str, Any] = {}
+        self._request_count = 0
+        self._usage_totals = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cached_prompt_tokens": 0,
+        }
 
     def add_reference(self, reference: str, *, text: str | None = None, uri: str | None = None):
         raise RuntimeError("Remote references are transported as logical PRA resources.")
@@ -555,7 +562,19 @@ class NegotiatedRemoteBackend:
         )
         with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
             value = json.loads(response.read().decode("utf-8"))
-        output_text = str(value["choices"][0]["message"]["content"])
+        self._request_count += 1
+        usage = value.get("usage")
+        if isinstance(usage, Mapping):
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                observed = usage.get(key, 0)
+                if isinstance(observed, int) and not isinstance(observed, bool):
+                    self._usage_totals[key] += observed
+            details = usage.get("prompt_tokens_details")
+            if isinstance(details, Mapping):
+                cached = details.get("cached_tokens", 0)
+                if isinstance(cached, int) and not isinstance(cached, bool):
+                    self._usage_totals["cached_prompt_tokens"] += cached
+        output_text = self._message_text(value["choices"][0]["message"])
         if wire_mode == AgentWireMode.PRA_DELTA:
             self._resource_versions[session_key] = {
                 resource.resource_id: self._resource_identity(resource)
@@ -579,6 +598,9 @@ class NegotiatedRemoteBackend:
             "message_bytes": len(
                 json.dumps(payload.get("messages", ()), default=str).encode("utf-8")
             ),
+            "request_count": self._request_count,
+            "reported_usage": dict(usage) if isinstance(usage, Mapping) else None,
+            "cumulative_reported_usage": dict(self._usage_totals),
             "resource_body_bytes": sum(
                 len((resource.text or "").encode("utf-8")) for resource in resources
             ),
@@ -597,6 +619,62 @@ class NegotiatedRemoteBackend:
         }
         return output_text
 
+    @staticmethod
+    def _message_text(message: Mapping[str, Any]) -> str:
+        """Normalize an OpenAI assistant message for the PRA Agent executor.
+
+        The public agent execution API currently consumes the canonical
+        ``<tool_call>`` envelope.  Ordinary OpenAI endpoints commonly return
+        the same decision in ``message.tool_calls`` with a null ``content``.
+        Treating that response as the literal string ``"None"`` silently
+        terminated the agent after its first model decision.  Preserve text
+        responses unchanged and losslessly project native function calls into
+        the executor's provider-neutral envelope.
+
+        Multiple calls remain ordered in the returned text.  The current
+        synchronous PRA Agent executes the first call and asks the model for a
+        new decision; callers that require parallel call execution must use a
+        batch-capable agent loop rather than assuming that transport status is
+        execution status.
+        """
+
+        content = message.get("content")
+        tool_calls = message.get("tool_calls")
+        if not isinstance(tool_calls, Sequence) or isinstance(
+            tool_calls, (str, bytes)
+        ):
+            return "" if content is None else str(content)
+        envelopes: list[str] = []
+        for row in tool_calls:
+            if not isinstance(row, Mapping):
+                continue
+            function = row.get("function")
+            if not isinstance(function, Mapping):
+                continue
+            name = function.get("name")
+            arguments = function.get("arguments", {})
+            if not isinstance(name, str) or not name:
+                continue
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(arguments, Mapping):
+                continue
+            envelopes.append(
+                "<tool_call>"
+                + json.dumps(
+                    {"name": name, "arguments": dict(arguments)},
+                    separators=(",", ":"),
+                )
+                + "</tool_call>"
+            )
+        if envelopes:
+            prefix = "" if content is None else str(content).strip()
+            return "\n".join((*((prefix,) if prefix else ()), *envelopes))
+        return "" if content is None else str(content)
+
     def generate(self, prompt: str, **kwargs: Any) -> str:
         """Compatibility path for callers that have already chosen plain text."""
 
@@ -613,5 +691,7 @@ class NegotiatedRemoteBackend:
             "model": self.model,
             "transport_requested": self.transport.value,
             "transport": dict(self._last_trace),
+            "request_count": self._request_count,
+            "cumulative_reported_usage": dict(self._usage_totals),
             "capabilities": None if capabilities is None else capabilities.to_dict(),
         }

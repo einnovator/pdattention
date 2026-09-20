@@ -12,18 +12,29 @@ the unconditional solve rate over all 14 tasks and conditional preservation on
 that agent's plain-success subset. An agent that fails `FULL` supplies agent
 capability evidence, not evidence against the memory policy.
 
-## Admission order
+## Admission order and current status
 
 1. **Pi** is the first transfer because its native `read`, `bash`, `edit`,
    `write`, `grep`, `find`, and `ls` calls expose standard call/result identity
-   with little hidden orchestration.
-2. **OpenHands** is the richer open-source transfer. Its runtime state,
-   summarization, and workspace services must be inventoried before activation.
-3. **PRA Agent** is the required typed-record transfer.
-4. **Kilo** is an optional additional open-source replication. Codex or Claude
-   can provide external validity only when model, prompt, context management,
-   and event traces are sufficiently auditable; they are never pooled with the
-   fixed-model primary estimate.
+   with little hidden orchestration. Its controlled Task-2 `FULL` admission is
+   complete and officially resolves the issue.
+2. **Kilo** is the second open-source transfer. Its controlled Task-2 `FULL`
+   admission is also complete and officially resolves the issue. Kilo reports
+   every native tool event as transport-completed even when command output
+   contains a semantic failure; portable records must therefore carry exit or
+   failure evidence independently of transport state.
+3. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
+   but its existing campaign runner only executes local fixtures. A SWE-bench
+   container adapter and official patch export are required before admission.
+4. **OpenHands** is supplementary rather than the next primary transfer. The
+   standalone CLI is no longer actively maintained, so its runtime state,
+   summarization and workspace services must be inventoried against the current
+   Agent Server/SDK before activation.
+
+Codex or Claude can provide external validity only when model, prompt, context
+management, and event traces are sufficiently auditable. They are never pooled
+with the fixed-model primary estimate and cannot replace the open, same-model
+Pi/Kilo/PRA-Agent transfer.
 
 The executable declaration is
 `configs/agent_transfer_easy14_v1.json`. It admits one smoke task, then three
@@ -76,3 +87,11 @@ before a policy run.
 These are normalization changes, not opportunities to retune a failed policy.
 Any semantic rule learned only after inspecting transfer failures is declared
 as a new exploratory policy and evaluated on held-out task identities.
+
+Two additional invariants follow from the completed admissions. First, an
+action that fails, its error observation, and the recovery action form one
+atomic progress unit: retiring only the failure can make a recovered path look
+unfinished, while retiring only the recovery can resurrect a known-bad action.
+Second, token totals are paired within agent. Different system prompts and tool
+schemas make raw cross-agent token totals incomparable even when the model,
+task and tokenizer are identical.

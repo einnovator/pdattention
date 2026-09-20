@@ -317,6 +317,71 @@ def test_auto_uses_text_for_reachable_ordinary_openai_server() -> None:
         thread.join(timeout=5)
 
 
+def test_ordinary_openai_native_tool_call_is_projected_for_pra_agent() -> None:
+    captured = []
+
+    class OrdinaryToolHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):  # noqa: N802
+            size = int(self.headers.get("Content-Length", "0"))
+            captured.append(json.loads(self.rfile.read(size)))
+            body = json.dumps({
+                "choices": [{"message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "lookup",
+                            "arguments": '{"value":"alpha"}',
+                        },
+                    }],
+                }}],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 12,
+                    "total_tokens": 112,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                },
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), OrdinaryToolHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+        backend = NegotiatedRemoteBackend(endpoint, "model", transport="auto")
+        output = backend.generate_turn(_turn(), session_id="session-a")
+
+        assert output == (
+            '<tool_call>{"name":"lookup","arguments":{"value":"alpha"}}'
+            "</tool_call>"
+        )
+        assert "tools" not in captured[0]
+        assert backend.inspect()["cumulative_reported_usage"] == {
+            "prompt_tokens": 100,
+            "completion_tokens": 12,
+            "total_tokens": 112,
+            "cached_prompt_tokens": 80,
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_direct_text_and_g10_use_identical_execution_messages() -> None:
     adapter = _Adapter(pra=False)
     turn = _turn()

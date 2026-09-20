@@ -744,9 +744,9 @@ commands and observations.  Controlled Pi and Kilo admissions now establish
 that the generic recordizer preserves two native typed-tool protocols and that
 both agents solve one locked task under exact \textsc{Full} controls.  These
 are compatibility results, not policy-accuracy estimates: future work must
-still reproduce the savings findings across the locked cohort, a richer open
-agent, another model family, longer dependent sessions, and task-clustered
-confidence intervals.
+still reproduce the savings findings across the locked cohort and PRA Agent,
+then cover a current richer open-agent runtime, another model family, longer
+dependent sessions, and task-clustered confidence intervals.
 
 \paragraph{Runtime boundary.}
 Logical omission says which existing records a model should see.  It does not
@@ -4210,11 +4210,14 @@ qualification decision, curves, and reductions are in
 After policy qualification on mini-swe-agent, we transfer only the top policies
 to other agents on the same ordered Easy-14 cohort.  Pi is the first admission
 target because its native file, search, edit, write, and Bash operations expose
-standard tool-call/result identity with little hidden orchestration.  OpenHands
-is the subsequent richer open-source transfer; Kilo is an optional additional
-replication.  The goal is not a second exhaustive grid or an agent leaderboard,
-but to test whether semantic-role findings generalize when the harness has
-richer tools and memory processing.
+standard tool-call/result identity with little hidden orchestration.  Kilo is
+the second same-model open-source admission and PRA Agent is the required
+record-native transfer.  OpenHands is supplementary because its standalone CLI
+is no longer actively maintained; any future admission must first inventory the
+current server/SDK's hidden runtime state and summarization.  The goal is not a
+second exhaustive grid or an agent leaderboard, but to test whether
+semantic-role findings generalize when the harness has richer tools and memory
+processing.
 
 Every agent first runs \textsc{Full}.  Policies are evaluated only on task
 identities that the same agent solves under that control.  We report both the
@@ -4282,6 +4285,16 @@ policy.
 The final transfer uses PRA Agent, where typed task, tool, result, progress, and
 subagent records are native objects. This tests whether a record-native agent can
 exploit the same policy more cleanly than a retrofitted linear-message harness.
+The existing generic campaign runner admits only synthetic fixtures, so we add
+a SWE-bench adapter whose host-side typed tools execute inside the official task
+container and export the patch to the common grader.  During admission work we
+also found a transport defect: an ordinary OpenAI endpoint returning native
+\texttt{tool\_calls} with null text became the literal answer \texttt{None},
+terminating the agent before its first action.  The transport now losslessly
+projects native calls into the agent executor's provider-neutral envelope and
+records cumulative provider usage.  This is an implementation qualification,
+not yet a task result; the first frozen \textsc{Full} run must still resolve a
+locked task before any policy transfer.
 
 \section{Detailed Handoff to Native Runtime Evaluation}
 
