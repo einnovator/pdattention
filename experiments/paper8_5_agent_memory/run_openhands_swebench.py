@@ -107,6 +107,16 @@ def _event_summary(path: Path) -> dict[str, Any]:
     }
 
 
+def _docker_image_exists(executable: str, image: str) -> bool:
+    inspected = subprocess.run(
+        (executable, "image", "inspect", image),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return inspected.returncode == 0
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -125,15 +135,40 @@ def run(args: argparse.Namespace) -> Path:
         / "docker"
         / "openhands-swebench.Dockerfile"
     )
+    runtime_dockerfile = dockerfile.with_name("openhands-runtime.Dockerfile")
     source_image = swebench_image(instance_id)
     slug = re.sub(r"[^a-z0-9]+", "-", instance_id.lower()).strip("-")
     image = args.image or f"paper85-openhands-{slug}:{args.agent_version}"
+    runtime_image = (
+        args.runtime_image or f"paper85-openhands-runtime:{args.agent_version}"
+    )
     container = args.container or f"paper85-openhands-{slug}-{int(time.time())}"
+    runtime_built = False
+    if not args.skip_build and not _docker_image_exists(args.docker, runtime_image):
+        runtime_command = (
+            args.docker,
+            "build",
+            "--platform", "linux/amd64",
+            "--file", str(runtime_dockerfile),
+            "--tag", runtime_image,
+            str(repository),
+        )
+        runtime_build = _run(
+            runtime_command, timeout=args.build_timeout_seconds, check=False
+        )
+        (output / "runtime_build.stdout.log").write_bytes(runtime_build.stdout)
+        (output / "runtime_build.stderr.log").write_bytes(runtime_build.stderr)
+        if runtime_build.returncode:
+            raise RuntimeError(
+                f"OpenHands runtime image build failed with {runtime_build.returncode}"
+            )
+        runtime_built = True
     build_command = (
         args.docker,
         "build",
         "--platform", "linux/amd64",
         "--build-arg", f"BASE_IMAGE={source_image}",
+        "--build-arg", f"RUNTIME_IMAGE={runtime_image}",
         "--file", str(dockerfile),
         "--tag", image,
         str(repository),
@@ -234,6 +269,8 @@ def run(args: argparse.Namespace) -> Path:
         "base_url": args.base_url,
         "source_image": source_image,
         "derived_image": image,
+        "runtime_image": runtime_image,
+        "runtime_image_built": runtime_built,
         "image_build_skipped": bool(args.skip_build),
         "capture_snapshot_image": snapshot,
         "container": container,
@@ -285,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
+    parser.add_argument("--runtime-image")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--container")
     parser.add_argument("--build-timeout-seconds", type=int, default=2400)
