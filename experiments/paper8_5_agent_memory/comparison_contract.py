@@ -36,6 +36,7 @@ class ExperimentIdentity:
     engine_revision: str
     model_id: str
     model_revision: str
+    observed_model_revision: str
     tokenizer_id: str
     tokenizer_revision: str
     chat_template_digest: str

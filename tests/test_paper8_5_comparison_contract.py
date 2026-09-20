@@ -20,6 +20,7 @@ def _identity() -> ExperimentIdentity:
         engine_revision="ollama-locked",
         model_id="qwen3-coder:30b",
         model_revision="06c1097e",
+        observed_model_revision="06c1097e",
         tokenizer_id="qwen3-coder",
         tokenizer_revision="06c1097e",
         chat_template_digest="template-sha256",
@@ -52,6 +53,18 @@ def test_cross_agent_rejects_model_drift() -> None:
         model_id="qwen2.5-coder:14b",
     )
     with pytest.raises(ComparisonContractError, match="model_id"):
+        validate_controlled_comparison(left, right, axis="agent")
+
+
+def test_cross_agent_rejects_observed_endpoint_drift() -> None:
+    left = _identity()
+    right = replace(
+        left,
+        agent_id="openhands",
+        agent_revision="1.49.2",
+        observed_model_revision="different-served-weights",
+    )
+    with pytest.raises(ComparisonContractError, match="observed_model_revision"):
         validate_controlled_comparison(left, right, axis="agent")
 
 
