@@ -12,6 +12,8 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
+from .model_identity import fetch_ollama_model_identity
+
 from .run_pi_swebench import (
     _run,
     _sha256,
@@ -162,6 +164,14 @@ def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
+    observed_model_identity = (
+        fetch_ollama_model_identity(
+            args.ollama_tags_url,
+            expected_model=args.served_model,
+            expected_revision=args.model_revision,
+        )
+        if args.ollama_tags_url else None
+    )
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     prompt = task_prompt(trajectory, instance_id)
@@ -304,6 +314,17 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
+        "served_model": args.served_model,
+        "model_revision": args.model_revision,
+        "tokenizer": args.tokenizer,
+        "tokenizer_revision": args.tokenizer_revision,
+        "observed_model_identity": observed_model_identity,
+        "generation": {
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "seed": 0,
+            "max_completion_tokens": args.max_completion_tokens,
+        },
         "base_url": args.base_url,
         "source_image": source_image,
         "derived_image": image,
@@ -361,6 +382,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arm", default="FULL")
     parser.add_argument("--base-url", default="http://host.docker.internal:18185/v1")
     parser.add_argument("--model", default="openai/qwen3-coder:30b")
+    parser.add_argument("--served-model", default="qwen3-coder:30b")
+    parser.add_argument("--model-revision", required=True)
+    parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--tokenizer-revision", required=True)
+    parser.add_argument(
+        "--ollama-tags-url",
+        help=(
+            "Optional /api/tags URL; when set, the observed endpoint digest "
+            "must equal --model-revision before Docker starts."
+        ),
+    )
     parser.add_argument("--agent-version", default="1.49.2")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)

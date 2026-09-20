@@ -33,6 +33,7 @@ from .autonomous_proxy import (
     join_instrumentation_sidecars,
 )
 from .materialization import MaterializationMode
+from .model_identity import fetch_ollama_model_identity
 from .negative_receipts import NegativeRealizationMode
 from .selectors import whitespace_tokens
 
@@ -941,6 +942,14 @@ def run(args: argparse.Namespace) -> Path:
         args.tokenizer_revision,
         allow_whitespace=args.allow_whitespace_tokenizer,
     )
+    observed_model_identity = (
+        fetch_ollama_model_identity(
+            args.ollama_tags_url,
+            expected_model=args.served_model,
+            expected_revision=args.model_revision,
+        )
+        if args.ollama_tags_url else None
+    )
     native_request_builder, delivery_identity = _load_native_pra_builder(
         getattr(args, "native_pra_builder", None)
     )
@@ -1063,6 +1072,7 @@ def run(args: argparse.Namespace) -> Path:
         "model": args.model,
         "served_model": args.served_model,
         "model_revision": args.model_revision,
+        "observed_model_identity": observed_model_identity,
         "tokenizer": tokenizer_identity,
         "tokenizer_revision": args.tokenizer_revision,
         "temperature": args.temperature,
@@ -1427,6 +1437,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", required=True, help="Published model identity.")
     parser.add_argument("--served-model", required=True, help="Exact OpenAI request model value.")
     parser.add_argument("--model-revision", required=True)
+    parser.add_argument(
+        "--ollama-tags-url",
+        help=(
+            "Optional /api/tags URL; when set, the observed model digest must "
+            "equal --model-revision before the run starts."
+        ),
+    )
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--tokenizer-revision", required=True)
     parser.add_argument("--policy", choices=AUTONOMOUS_POLICIES, default="full")

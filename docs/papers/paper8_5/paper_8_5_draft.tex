@@ -407,6 +407,9 @@ storage, and latency may differ, but a logical-saving difference is a failed
 comparison rather than an engine effect.  These checks are executable in
 \path{comparison_contract.py}; the locked matrix is
 \path{configs/transverse_agent_engine_comparison_v1.json}.
+The strict runners also query the serving endpoint before any task action and
+fail closed unless its observed model digest equals the declared revision; a
+model alias in the request is not identity evidence.
 
 Let $M_t$ be selected model-visible input and let $F_t^{\mathrm{cand}}$ be the
 full-history counterfactual along the candidate's own realized trajectory.  We
