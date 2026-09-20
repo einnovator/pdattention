@@ -4309,6 +4309,32 @@ are in \path{cross_agent_transfer/pra_agent_task02_full_controlled_v1}.  As for
 the other admissions, this single task opens the staged three-task ladder but
 does not estimate policy accuracy.
 
+\subsection{Longer-horizon mini-swe-agent capability control}
+
+We separately locked the five original Easy-50 failures whose no-PRA control
+terminated at the 50-action limit.  This is a capability experiment, not a
+retrospective enlargement of the Easy-14 policy cohort.  Each identity first
+receives \textsc{Full} history and an 80-action ceiling; only a resolved task or
+a surviving source-only patch with demonstrable forward progress may advance
+to 120 actions.
+
+The first clean execution, \texttt{sympy\_\_sympy-17655}, terminates by
+submission after 60 model calls---ten beyond the original ceiling---but does
+not resolve.  It consumes 946,069 cumulative logical input tokens and 15,946
+reported completion tokens in 943.3 seconds.  The agent creates an intermediate
+16-line source edit, later reverts it, and finally submits a prose explanation
+instead of a source patch.  The official grader therefore records
+\texttt{patch\_apply\_failed}.  Because no source-only patch survives at
+submission, the identity fails the predeclared forward-progress gate and does
+not advance to 120 calls.
+
+This negative control is useful: merely extending the action horizon can add
+substantial repeated reading and reasoning without adding capability.  It
+therefore cannot be used as a substitute for a memory policy, and a shorter
+failed run cannot be credited with token saving.  The complete 60-action
+history and official evidence are in
+\path{longer_horizon/task01_full80_v1}.
+
 \section{Detailed Handoff to Native Runtime Evaluation}
 
 Paper 8.5 should freeze a small set of logical policies, for example
