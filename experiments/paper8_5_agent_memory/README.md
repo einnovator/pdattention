@@ -78,6 +78,13 @@ is progress, task-tracker updates share the stable
 remain an unknown-effect barrier unless execution middleware supplies complete
 resource/effect receipts.
 
+Codex uses `run_codex_swebench.py` and the native OpenAI Responses protocol.
+Its FULL-only audit proxy preserves the Responses wire format, fills the frozen
+temperature/top-p/seed/output ceiling when the CLI omits them, and records
+whether each turn carries complete input or a `previous_response_id`. No
+selection policy is applied until that state representation is inventoried;
+Chat-Completions policy transport must not be assumed to work for Responses.
+
 The transfer proxy exposes the frozen policy parameters instead of hiding
 agent-specific defaults. For Recent Frontier M2/P1, use
 `--policy frontier_dag_retirement --boundary-mode boundary_free

@@ -4261,7 +4261,7 @@ admits Pi to the three-task ladder; it does not estimate transfer accuracy or
 qualify a policy.
 
 The second staged \textsc{Full} control, Django-15277, also resolves
-officially: both FAIL\_TO\_PASS and all 161 PASS\_TO\_PASS tests pass.
+officially: both 2/2 FAIL\_TO\_PASS and all 158/158 PASS\_TO\_PASS tests pass.
 Pi uses 23 model calls and 22 native tool calls, with 403,543 cumulative logical
 input tokens and 2,560 output tokens.  The final source change is the minimal
 guard around \texttt{MaxLengthValidator}; an untracked temporary file is not
@@ -4369,6 +4369,18 @@ resource/effect receipts.  Evidence is in
 \path{cross_agent_transfer/openhands_task01_full_controlled_v1}.  One resolved
 control admits OpenHands to the staged ladder but does not qualify a retention
 policy.
+
+\subsection{Codex Responses admission}
+
+Codex CLI is a distinct transport case because it speaks the Responses API
+rather than Chat Completions.  We therefore implement a hermetic task-derived
+runner and a \textsc{Full}-only audit proxy that preserves the native wire
+protocol, fills the frozen sampling controls when the CLI omits them, and
+records whether later turns carry complete input or provider-managed
+\texttt{previous\_response\_id} state.  No memory-policy result is claimed
+until this inventory is complete: applying the Chat-Completions recordizer to
+a Responses session without proving state ownership would conflate agent
+transfer with a transport rewrite.  The first Task-1 control remains pending.
 
 \subsection{PRA Agent}
 
