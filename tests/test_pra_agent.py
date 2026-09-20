@@ -90,7 +90,9 @@ def test_agent_persists_task_messages_and_compact_tool_result(tmp_path) -> None:
         if isinstance(row.payload, dict) and row.payload.get("role") == "assistant"
     ]
     assert len(assistant_messages) == 2
-    assert "[PRA tool action]" in assistant_messages[0].payload["text"]
+    assert "I executed the tool decision named \"lookup\"" in (
+        assistant_messages[0].payload["text"]
+    )
     assert "<tool_call>" not in assistant_messages[0].payload["text"]
     assert {row.payload.get("role") for row in turn.session.records if isinstance(row.payload, dict)} >= {"user", "assistant"}
     assert agent.runtime.inspect()["logical_sessions"]["session-a"]["records"] == 4

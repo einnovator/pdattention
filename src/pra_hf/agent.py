@@ -88,9 +88,12 @@ def _durable_assistant_action(text: str, call: ToolCall) -> str:
     projection uses a PRA-owned marker.
     """
 
-    action = "[PRA tool action]" + json.dumps(
-        {"name": call.name, "arguments": dict(call.arguments)},
-        separators=(",", ":"),
+    action = (
+        "I executed the tool decision named "
+        + json.dumps(call.name)
+        + " with these arguments: "
+        + json.dumps(dict(call.arguments), separators=(",", ":"))
+        + "."
     )
     return text.replace(call.raw_text, action, 1)
 
