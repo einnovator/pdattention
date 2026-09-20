@@ -168,11 +168,12 @@ class FrontierSimplificationPlan:
         )
 
 
-class MiniSweBashSemanticsProvider:
-    """Special support for mini-swe-agent's single generic Bash tool.
+class BashCommandSemanticsProvider:
+    """Fallback semantics for any agent exposing a generic shell tool.
 
     Regex inference is useful for candidate construction but never supplies a
-    certified effect on its own. Arbitrary Bash fails closed as unknown.
+    certified effect on its own. Arbitrary Bash fails closed as unknown.  This
+    provider recognizes command semantics, not an agent identity.
     """
 
     def analyze(
@@ -202,13 +203,17 @@ class MiniSweBashSemanticsProvider:
 
 HarnessMetadataSemanticsProvider = DeclaredToolSemanticsProvider
 
+# Compatibility name for older experiment imports.  Policy code uses the
+# transverse tool category; mini-swe-agent is only one adapter that emits it.
+MiniSweBashSemanticsProvider = BashCommandSemanticsProvider
+
 
 class CompositeToolSemanticsProvider:
     """Prefer complete harness declarations, otherwise use Bash diagnostics."""
 
     def __init__(self) -> None:
         self.declared = HarnessMetadataSemanticsProvider()
-        self.bash = MiniSweBashSemanticsProvider()
+        self.bash = BashCommandSemanticsProvider()
 
     def analyze(
         self,

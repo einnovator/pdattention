@@ -290,6 +290,46 @@ def test_frontier_dag_selector_emits_auditable_atomic_exclusions():
     )
 
 
+def test_frontier_policy_does_not_branch_on_agent_or_native_tool_name():
+    base = _information_flow_chain(
+        [f"src/task_{index}.py" for index in range(6)],
+        workspace_scopes=[f"workspace-{index}" for index in range(6)],
+    )
+
+    def adapted(agent_id: str, native_tool_name: str) -> CanonicalAgentHistory:
+        return CanonicalAgentHistory(tuple(
+            replace(
+                row,
+                metadata={
+                    **row.metadata,
+                    "agent_id": agent_id,
+                    "native_tool_name": native_tool_name,
+                },
+            )
+            for row in base.records
+        ), base.turns)
+
+    selector = FrontierDagRetirementSelector(
+        recent_user_prompts=2,
+        allow_heuristic=False,
+    )
+    budget = AgentMemoryBudget(max_tokens=100000)
+    mini = selector.select(
+        history=adapted("mini-swe-agent", "bash"),
+        query="",
+        budget=budget,
+        count_tokens=whitespace_tokens,
+    )
+    richer = selector.select(
+        history=adapted("openhands", "terminal.execute"),
+        query="",
+        budget=budget,
+        count_tokens=whitespace_tokens,
+    )
+
+    assert mini == richer
+
+
 def test_frontier_dag_p1_retains_latest_valid_not_latest_malformed_completion():
     history = _information_flow_chain(
         [f"src/task_{index}.py" for index in range(5)],
