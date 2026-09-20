@@ -78,6 +78,23 @@ def _generated_text(value: str | GenerationResult) -> str:
     return value.text if isinstance(value, GenerationResult) else str(value)
 
 
+def _durable_assistant_action(text: str, call: ToolCall) -> str:
+    """Preserve an action without replaying provider-reserved control tokens.
+
+    Qwen/Ollama interprets a historical literal ``<tool_call>`` in assistant
+    content as native tool protocol.  Replaying the textual envelope without
+    the provider's parallel ``tool_calls`` metadata makes the next request
+    invalid.  The typed action remains lossless while its durable conversational
+    projection uses a PRA-owned marker.
+    """
+
+    action = "[PRA tool action]" + json.dumps(
+        {"name": call.name, "arguments": dict(call.arguments)},
+        separators=(",", ":"),
+    )
+    return text.replace(call.raw_text, action, 1)
+
+
 class PRAAgent:
     """Long-running agent coupling task state, PRA context, and safe tools."""
 
@@ -597,7 +614,7 @@ class PRAAgent:
             # and final answer survived in durable state; later selection could
             # not recover the tool name, arguments, or the model decision that
             # produced an observation.
-            self._append_message("assistant", text)
+            self._append_message("assistant", _durable_assistant_action(text, call))
             resource = None
             if self.runtime.executor is not None:
                 resource = self.runtime.executor.by_name.get(call.name)
