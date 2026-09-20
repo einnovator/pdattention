@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 from typing import Any, Mapping, Sequence
@@ -117,6 +118,46 @@ def _docker_image_exists(executable: str, image: str) -> bool:
     return inspected.returncode == 0
 
 
+def _prepare_build_context(repository: Path, output: Path) -> Path:
+    """Create the minimal immutable context needed by the two Docker builds.
+
+    Using the repository root as a Docker context makes BuildKit inspect the
+    complete Git worktree before Dockerfile-specific ignore rules take effect.
+    That is both slow and unnecessary for these images: only two Dockerfiles
+    and two Python modules are consumed by COPY instructions.
+    """
+    context = output / "docker_context"
+    context.mkdir()
+    sources = {
+        "openhands-swebench.Dockerfile": (
+            repository
+            / "experiments"
+            / "paper8_5_agent_memory"
+            / "docker"
+            / "openhands-swebench.Dockerfile"
+        ),
+        "openhands-runtime.Dockerfile": (
+            repository
+            / "experiments"
+            / "paper8_5_agent_memory"
+            / "docker"
+            / "openhands-runtime.Dockerfile"
+        ),
+        "openhands_swebench_entry.py": (
+            repository
+            / "experiments"
+            / "paper8_5_agent_memory"
+            / "openhands_swebench_entry.py"
+        ),
+        "execution_receipts.py": repository / "src" / "pra_hf" / "execution_receipts.py",
+    }
+    for destination, source in sources.items():
+        if not source.is_file():
+            raise FileNotFoundError(f"missing OpenHands build input: {source}")
+        shutil.copyfile(source, context / destination)
+    return context
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
@@ -128,14 +169,9 @@ def run(args: argparse.Namespace) -> Path:
     prompt_path.write_text(prompt + "\n", encoding="utf-8")
 
     repository = Path(__file__).resolve().parents[2]
-    dockerfile = (
-        repository
-        / "experiments"
-        / "paper8_5_agent_memory"
-        / "docker"
-        / "openhands-swebench.Dockerfile"
-    )
-    runtime_dockerfile = dockerfile.with_name("openhands-runtime.Dockerfile")
+    build_context = _prepare_build_context(repository, output)
+    dockerfile = build_context / "openhands-swebench.Dockerfile"
+    runtime_dockerfile = build_context / "openhands-runtime.Dockerfile"
     source_image = swebench_image(instance_id)
     slug = re.sub(r"[^a-z0-9]+", "-", instance_id.lower()).strip("-")
     image = args.image or f"paper85-openhands-{slug}:{args.agent_version}"
@@ -151,7 +187,7 @@ def run(args: argparse.Namespace) -> Path:
             "--platform", "linux/amd64",
             "--file", str(runtime_dockerfile),
             "--tag", runtime_image,
-            str(repository),
+            str(build_context),
         )
         runtime_build = _run(
             runtime_command, timeout=args.build_timeout_seconds, check=False
@@ -171,7 +207,7 @@ def run(args: argparse.Namespace) -> Path:
         "--build-arg", f"RUNTIME_IMAGE={runtime_image}",
         "--file", str(dockerfile),
         "--tag", image,
-        str(repository),
+        str(build_context),
     )
     build = (
         subprocess.CompletedProcess(build_command, 0, stdout=b"skipped\n", stderr=b"")
@@ -271,6 +307,10 @@ def run(args: argparse.Namespace) -> Path:
         "derived_image": image,
         "runtime_image": runtime_image,
         "runtime_image_built": runtime_built,
+        "docker_build_context": str(build_context),
+        "docker_build_context_files": sorted(
+            path.name for path in build_context.iterdir() if path.is_file()
+        ),
         "image_build_skipped": bool(args.skip_build),
         "capture_snapshot_image": snapshot,
         "container": container,

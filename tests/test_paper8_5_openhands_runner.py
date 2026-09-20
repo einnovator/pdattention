@@ -5,6 +5,7 @@ from pathlib import Path
 
 from experiments.paper8_5_agent_memory.run_openhands_swebench import (
     _event_summary,
+    _prepare_build_context,
 )
 from experiments.paper8_5_agent_memory.openhands_receipts import (
     build_openhands_receipts,
@@ -135,3 +136,34 @@ def test_openhands_receipt_adapter_preserves_failed_outcome_and_fails_closed_she
     }]
     assert editor["effect_trace_complete"] is False
     assert summarize_receipts(receipts)["unknown_effect_barrier_count"] == 2
+
+
+def test_openhands_build_context_contains_only_declared_inputs(tmp_path: Path):
+    repository = tmp_path / "repository"
+    output = tmp_path / "output"
+    output.mkdir()
+    docker = repository / "experiments" / "paper8_5_agent_memory" / "docker"
+    docker.mkdir(parents=True)
+    (repository / "src" / "pra_hf").mkdir(parents=True)
+    inputs = {
+        docker / "openhands-swebench.Dockerfile": "FROM task\n",
+        docker / "openhands-runtime.Dockerfile": "FROM runtime\n",
+        repository
+        / "experiments"
+        / "paper8_5_agent_memory"
+        / "openhands_swebench_entry.py": "print('entry')\n",
+        repository / "src" / "pra_hf" / "execution_receipts.py": "SCHEMA = 1\n",
+    }
+    for path, content in inputs.items():
+        path.write_text(content, encoding="utf-8")
+    (repository / "large-unrelated-file.bin").write_bytes(b"x" * 1024)
+
+    context = _prepare_build_context(repository, output)
+
+    assert sorted(path.name for path in context.iterdir()) == [
+        "execution_receipts.py",
+        "openhands-runtime.Dockerfile",
+        "openhands-swebench.Dockerfile",
+        "openhands_swebench_entry.py",
+    ]
+    assert (context / "execution_receipts.py").read_text(encoding="utf-8") == "SCHEMA = 1\n"

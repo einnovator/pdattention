@@ -8,8 +8,6 @@ RUN apt-get update \
 COPY --from=openhands_runtime /root/.local/share/uv/python/ \
      /root/.local/share/uv/python/
 COPY --from=openhands_runtime /opt/openhands/ /opt/openhands/
-COPY experiments/paper8_5_agent_memory/openhands_swebench_entry.py \
-     /opt/paper85/openhands_swebench_entry.py
-COPY src/pra_hf/execution_receipts.py \
-     /opt/paper85/execution_receipts.py
+COPY openhands_swebench_entry.py /opt/paper85/openhands_swebench_entry.py
+COPY execution_receipts.py /opt/paper85/execution_receipts.py
 WORKDIR /testbed
