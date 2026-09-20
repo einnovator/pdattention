@@ -5,6 +5,7 @@ from __future__ import annotations
 from data.agent_workflows import realistic_tool_catalog, workflow_executor, workflow_tasks
 from pra_hf.agent_execution import (
     ExecutionAuthorization,
+    SafeToolExecutor,
     ToolCall,
     parse_tool_call,
     resource_tool_schema,
@@ -76,6 +77,30 @@ def test_executor_rejects_destructive_call_without_separate_authority():
     )
     assert not result.executed
     assert result.reason == "destructive_not_authorized"
+
+
+def test_executor_records_handler_failure_as_recoverable_observation():
+    resource = _resource("update_user")
+
+    def fail(_arguments, _observations):
+        raise ValueError("exact text not found")
+
+    executor = SafeToolExecutor((resource,), {resource.uri: fail})
+    result = executor.execute(
+        ToolCall("update_user", {"user_id": "u17", "status": "reviewed"}),
+        selected_uris=(resource.uri,),
+        authorization=ExecutionAuthorization(
+            frozenset((resource.uri,)), allow_writes=True
+        ),
+        call_id="call-failed-edit",
+    )
+
+    assert result.accepted
+    assert result.executed
+    assert result.reason == "execution_error"
+    assert result.output["error_type"] == "ValueError"
+    assert result.output["error"] == "exact text not found"
+    assert result.observation is not None
 
 
 def test_workflow_catalog_covers_one_through_five_step_composition():

@@ -171,7 +171,21 @@ class SafeToolExecutor:
         handler = self.handlers.get(resource.uri)
         if handler is None:
             return ToolExecutionResult(False, False, "handler_not_registered", resource.uri, call)
-        output = dict(handler(call.arguments, tuple(prior_observations)))
+        try:
+            output = dict(handler(call.arguments, tuple(prior_observations)))
+            reason = "executed"
+        except Exception as error:
+            # Tool failures are observations the model can recover from, not
+            # agent-process failures.  The call passed authorization and was
+            # invoked, so preserve it as executed while recording semantic
+            # failure separately from transport completion.
+            output = {
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "tool": call.name,
+                "arguments": dict(call.arguments),
+            }
+            reason = "execution_error"
         observation = AgentResource(
             uri=resource_uri("observation", resource.namespace, call_id, "v1"),
             kind="observation",
@@ -190,5 +204,5 @@ class SafeToolExecutor:
             },
         )
         return ToolExecutionResult(
-            True, True, "executed", resource.uri, call, observation, output
+            True, True, reason, resource.uri, call, observation, output
         )

@@ -592,7 +592,11 @@ class PRAAgent:
             )
             if result is not None:
                 for execution in result.tool_executions:
-                    tool_status = "success" if execution.execution.executed else "rejected"
+                    tool_status = (
+                        "success"
+                        if execution.execution.reason == "executed"
+                        else "error" if execution.execution.executed else "rejected"
+                    )
                     self.observability.increment(
                         "pra_agent_tool_calls_total", labels={"status": tool_status}
                     )
