@@ -55,6 +55,7 @@ from .recordizer import active_task_content, annotate_minisweagent_messages, ext
 from pra_hf.agent_history import OpenAIRecordizer
 from pra_hf.deployment import PRAEngineCapabilities, PRAWireRequest
 from pra_hf.mediation import RequestMediator, WireAgentMemoryPlan
+from pra_hf.tool_semantics import ToolExecutionReceipt
 from .selectors import (
     FullHistorySelector,
     HeadMiddleTailConfig,
@@ -1143,6 +1144,7 @@ class AutonomousSelectionProxy:
         self._successful_request_count = 0
         self._pending_reacquisition_count = 0
         self._pending_reacquisition_resources: tuple[str, ...] = ()
+        self._execution_receipts: dict[tuple[str, str], dict[str, Any]] = {}
         self._upstream_failure = threading.Event()
         self._upstream_failure_detail: dict[str, str] | None = None
         self._server: ThreadingHTTPServer | None = None
@@ -1184,6 +1186,22 @@ class AutonomousSelectionProxy:
                 self._handle()
 
             def do_POST(self) -> None:  # noqa: N802
+                if urlparse(self.path).path == "/v1/pra/execution-receipts":
+                    try:
+                        receipt = proxy._receive_execution_receipt(self)
+                    except (ValueError, TypeError, json.JSONDecodeError) as error:
+                        self._error(400, "invalid_execution_receipt", error)
+                        return
+                    body = json.dumps({
+                        "status": "accepted",
+                        "receipt_digest": receipt.get("receipt_digest"),
+                    }).encode("utf-8")
+                    self.send_response(202)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 self._handle()
 
             def log_message(self, format: str, *args: Any) -> None:
@@ -1219,7 +1237,71 @@ class AutonomousSelectionProxy:
             "successful_request_count": self._successful_request_count,
             "max_calls": self.config.max_calls,
             "upstream_failed": self._upstream_failure.is_set(),
+            "execution_receipt_count": len(self._execution_receipts),
         }
+
+    def _receive_execution_receipt(
+        self, handler: BaseHTTPRequestHandler,
+    ) -> dict[str, Any]:
+        body = handler.rfile.read(int(handler.headers.get("Content-Length", "0")))
+        value = json.loads(body.decode("utf-8"))
+        if not isinstance(value, Mapping):
+            raise TypeError("execution receipt must be a JSON object")
+        receipt = dict(value)
+        expected_session = self.config.session_id or self.config.task_id
+        session_id = str(receipt.get("session_id") or "")
+        tool_call_id = str(receipt.get("tool_call_id") or "")
+        if not session_id or session_id != expected_session:
+            raise ValueError("execution receipt session does not match the proxy session")
+        if not tool_call_id:
+            raise ValueError("execution receipt is missing tool_call_id")
+        action_id = str(receipt.get("action_record_id") or tool_call_id)
+        observation_ids = tuple(
+            str(row) for row in receipt.get("observation_record_ids", ())
+        )
+        ToolExecutionReceipt.from_mapping(
+            receipt,
+            action_record_id=action_id,
+            observation_record_ids=observation_ids,
+        )
+        key = (session_id, tool_call_id)
+        with self._lock:
+            previous = self._execution_receipts.get(key)
+            if previous is not None and previous != receipt:
+                raise ValueError("conflicting execution receipt for the same tool call")
+            self._execution_receipts[key] = receipt
+        return receipt
+
+    def _attach_execution_receipts(
+        self, payload: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], int]:
+        copied = dict(payload)
+        raw_messages = payload.get("messages")
+        if not isinstance(raw_messages, list):
+            return copied, 0
+        session_id = self.config.session_id or self.config.task_id
+        joined = 0
+        messages: list[Any] = []
+        with self._lock:
+            receipts = dict(self._execution_receipts)
+        for raw in raw_messages:
+            if not isinstance(raw, Mapping):
+                messages.append(raw)
+                continue
+            message = dict(raw)
+            call_id = str(message.get("tool_call_id") or "")
+            receipt = receipts.get((session_id, call_id)) if call_id else None
+            if message.get("role") == "tool" and receipt is not None:
+                metadata = dict(message.get("metadata") or {})
+                existing = metadata.get("pra_execution_receipt")
+                if existing is not None and existing != receipt:
+                    raise ValueError("tool result contains a conflicting execution receipt")
+                metadata["pra_execution_receipt"] = dict(receipt)
+                message["metadata"] = metadata
+                joined += 1
+            messages.append(message)
+        copied["messages"] = messages
+        return copied, joined
 
     @property
     def upstream_failed(self) -> bool:
@@ -1366,6 +1448,7 @@ class AutonomousSelectionProxy:
         native_request_index: int | None = None
         if handler.command == "POST" and urlparse(handler.path).path == "/v1/chat/completions":
             payload = json.loads(body.decode("utf-8"))
+            payload, joined_execution_receipts = self._attach_execution_receipts(payload)
             if self.config.fill_missing_generation_parameters:
                 payload.setdefault("temperature", self.config.temperature)
                 payload.setdefault("top_p", self.config.top_p)
@@ -1397,6 +1480,10 @@ class AutonomousSelectionProxy:
                 instrumentation_root=self.instrumentation_root,
                 prior_episodes=self.prior_episodes,
             )
+            transformation.trace["execution_receipt_sidecar_join"] = {
+                "stored": len(self._execution_receipts),
+                "joined": joined_execution_receipts,
+            }
             if self.native_request_builder is not None:
                 native_payload = self.native_request_builder(
                     transformation.logical_payload,

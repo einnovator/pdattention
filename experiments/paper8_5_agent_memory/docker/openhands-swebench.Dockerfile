@@ -12,4 +12,6 @@ RUN uv python install 3.12 \
     && uv pip check --python /opt/openhands/bin/python
 COPY experiments/paper8_5_agent_memory/openhands_swebench_entry.py \
      /opt/paper85/openhands_swebench_entry.py
+COPY src/pra_hf/execution_receipts.py \
+     /opt/paper85/execution_receipts.py
 WORKDIR /testbed

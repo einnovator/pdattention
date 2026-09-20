@@ -42,6 +42,7 @@ def _event_summary(path: Path) -> dict[str, Any]:
     observation_counts: dict[str, int] = {}
     response_ids: set[str] = set()
     action_count = observation_count = observation_errors = 0
+    receipt_count = effect_complete_receipts = receipt_delivery_failures = 0
     run_summary: Mapping[str, Any] | None = None
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
@@ -75,6 +76,14 @@ def _event_summary(path: Path) -> dict[str, Any]:
                 observation_errors += 1
         elif row_type == "paper85_run_summary":
             run_summary = row
+        elif row_type == "paper85_execution_receipt":
+            receipt = row.get("receipt")
+            receipt = receipt if isinstance(receipt, Mapping) else {}
+            receipt_count += 1
+            effect_complete_receipts += int(bool(receipt.get("effect_trace_complete")))
+            receipt_delivery_failures += int(
+                receipt.get("sidechannel_delivery") != "accepted"
+            )
     return {
         "schema_version": 1,
         "study": "paper8_5_cross_agent_transfer",
@@ -87,6 +96,9 @@ def _event_summary(path: Path) -> dict[str, Any]:
         "action_counts": dict(sorted(action_counts.items())),
         "observation_counts": dict(sorted(observation_counts.items())),
         "semantic_failure_observations": observation_errors,
+        "execution_receipt_count": receipt_count,
+        "effect_trace_complete_receipts": effect_complete_receipts,
+        "execution_receipt_delivery_failures": receipt_delivery_failures,
         "run_summary": dict(run_summary or {}),
         "token_note": (
             "Provider request and usage totals are authoritative in the paired "
@@ -150,6 +162,7 @@ def run(args: argparse.Namespace) -> Path:
         image,
         "/opt/paper85/openhands_swebench_entry.py",
         "--prompt-file", "/paper85/task_prompt.txt",
+        "--session-id", instance_id,
         "--base-url", args.base_url,
         "--model", args.model,
         "--max-iterations", str(args.max_iterations),

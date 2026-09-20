@@ -41,6 +41,62 @@ from experiments.paper8_5_agent_memory.negative_receipts import NegativeRealizat
 from experiments.paper8_5_agent_memory.materialization import MaterializationMode
 
 
+def test_proxy_joins_generic_execution_receipt_without_changing_tool_text(
+    tmp_path: Path,
+):
+    proxy = AutonomousSelectionProxy(
+        "http://127.0.0.1:9/v1",
+        config=AutonomousSelectionConfig(
+            policy="full",
+            input_protocol="openai_tools",
+            expected_model="locked-model",
+            task_id="task-1",
+        ),
+        trace_path=tmp_path / "trace.jsonl",
+    )
+    endpoint = proxy.start()
+    receipt = {
+        "schema_version": 1,
+        "session_id": "task-1",
+        "tool_call_id": "call-1",
+        "action_record_id": "action-1",
+        "observation_record_ids": ["observation-1"],
+        "tool_category": "shell",
+        "operation_kind": "unknown",
+        "transport_status": "completed",
+        "semantic_status": "failed",
+        "return_code": 2,
+        "error_kind": "nonzero_exit",
+        "result_complete": True,
+        "effect_trace_complete": False,
+        "provenance": "runtime_traced",
+        "resources": [],
+        "receipt_digest": "frozen-receipt",
+    }
+    request = urllib.request.Request(
+        endpoint + "/pra/execution-receipts",
+        data=json.dumps(receipt).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert response.status == 202
+        payload, joined = proxy._attach_execution_receipts({
+            "messages": [{
+                "role": "tool", "tool_call_id": "call-1", "content": "failed",
+            }],
+        })
+    finally:
+        proxy.close()
+
+    assert joined == 1
+    assert payload["messages"][0]["content"] == "failed"
+    assert payload["messages"][0]["metadata"][
+        "pra_execution_receipt"
+    ] == receipt
+
+
 def test_agent_transfer_proxy_exposes_frozen_policy_parameters(tmp_path: Path):
     args = build_agent_transfer_parser().parse_args([
         "--upstream", "http://model/v1",
