@@ -211,6 +211,32 @@ def adaptive_gate(
     return "continue", "arm remains within predeclared gates"
 
 
+def candidate_control_gate(
+    state: Mapping[str, Any], cell: Mapping[str, Any], spec: Mapping[str, Any]
+) -> tuple[bool, str]:
+    """Admit a candidate only after its declared successful FULL controls."""
+
+    controls_spec = spec.get("controls") or {}
+    if not bool(controls_spec.get("require_all_resolved_before_candidate", False)):
+        return True, "successful FULL-control admission is not required"
+    controls = [
+        row for row in (state.get("cells") or {}).values()
+        if row.get("instance_id") == cell.get("instance_id")
+        and row.get("is_control")
+    ]
+    expected = int(controls_spec.get("full_repeats", 2))
+    admitted = (
+        len(controls) == expected
+        and all(row.get("status") == "complete" for row in controls)
+        and all(row.get("official_resolved") is True for row in controls)
+    )
+    return admitted, (
+        "every same-task FULL control completed and officially resolved"
+        if admitted else
+        "candidate requires every same-task FULL control to complete and officially resolve"
+    )
+
+
 def _completed_result(path: Path) -> dict[str, Any] | None:
     metrics_path = path / "autonomous_metrics.json"
     manifest_path = path / "run_manifest.json"
@@ -496,6 +522,16 @@ def run_campaign(args: argparse.Namespace) -> dict[str, Any]:
             continue
         cell_output = _retry_path(base_output)
         if not cell["is_control"]:
+            admitted, reason = candidate_control_gate(state, cell, spec)
+            if not admitted:
+                state["cells"][cell_id] = {
+                    **cell,
+                    "status": "stopped_by_control_gate",
+                    "reason": reason,
+                    "output": str(cell_output),
+                }
+                _write(state_path, state)
+                continue
             prior_arm = [
                 row for row in state["cells"].values()
                 if row.get("arm_id") == cell["arm_id"]

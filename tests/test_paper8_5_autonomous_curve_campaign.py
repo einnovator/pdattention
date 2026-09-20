@@ -10,6 +10,7 @@ from experiments.paper8_5_agent_memory.run_autonomous_curve_campaign import (
     _command,
     _retry_path,
     adaptive_gate,
+    candidate_control_gate,
     campaign_cells,
     import_completed_controls,
     validate_campaign_spec,
@@ -57,6 +58,25 @@ def test_campaign_can_share_a_frozen_pair_id_with_corrected_policy_code():
     spec["baseline_pair_campaign_id"] = "baseline"
     cells = campaign_cells(spec, ("task",))
     assert {row["pair_id"] for row in cells} == {"baseline:task:seed0"}
+
+
+def test_candidate_can_require_two_successful_full_controls():
+    spec = _spec()
+    spec["controls"]["require_all_resolved_before_candidate"] = True
+    candidate = campaign_cells(spec, ("task",))[-1]
+    state = {"cells": {
+        "a": {
+            "instance_id": "task", "is_control": True,
+            "status": "complete", "official_resolved": True,
+        },
+        "b": {
+            "instance_id": "task", "is_control": True,
+            "status": "complete", "official_resolved": False,
+        },
+    }}
+    assert candidate_control_gate(state, candidate, spec)[0] is False
+    state["cells"]["b"]["official_resolved"] = True
+    assert candidate_control_gate(state, candidate, spec)[0] is True
 
 
 def test_campaign_forwards_structured_materialization_coordinates(tmp_path):
