@@ -399,6 +399,9 @@ def _command(
         "--seed", str(generation["seed"]),
         "--max-calls", str(generation["max_calls"]),
     ]
+    ollama_tags_url = getattr(args, "ollama_tags_url", None)
+    if ollama_tags_url:
+        command.extend(("--ollama-tags-url", ollama_tags_url))
     materialization = {
         "materialization_mode": "--materialization-mode",
         "materialization_threshold_tokens": "--materialization-threshold-tokens",
@@ -548,6 +551,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--upstream-base-url", required=True)
+    parser.add_argument(
+        "--ollama-tags-url",
+        help=(
+            "Optional /api/tags URL forwarded to every cell. When supplied, "
+            "each run must observe the frozen model digest before execution."
+        ),
+    )
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--docker-executable")
     parser.add_argument("--docker-platform")

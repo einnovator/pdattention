@@ -105,6 +105,44 @@ def test_campaign_forwards_structured_materialization_coordinates(tmp_path):
     assert command[command.index("--materialization-max-matched-lines") + 1] == "40"
 
 
+def test_campaign_forwards_observed_model_identity_gate(tmp_path):
+    spec = _spec()
+    spec.update({
+        "model": "model",
+        "served_model": "served",
+        "model_revision": "revision",
+        "tokenizer_revision": "tokenizer-revision",
+        "generation": {
+            "temperature": 0, "top_p": 1, "seed": 0, "max_calls": 40,
+            "max_completion_tokens": 1024,
+        },
+        "history": {
+            "head_turns": 2, "tail_turns": 4, "search_delay_turns": 8,
+            "write_delay_turns": 1, "same_span_reads_to_keep": 2,
+            "working_set_resources": 4,
+        },
+    })
+    cell = campaign_cells(spec, ("task",))[0]
+    args = SimpleNamespace(
+        upstream_base_url="http://engine/v1",
+        ollama_tags_url="http://engine/api/tags",
+        tokenizer="tokenizer",
+        docker_executable=None,
+        docker_platform=None,
+        pythonpath=[],
+        skip_grading=False,
+        grade_auxiliary_workspace_state=False,
+        preflight_only=False,
+    )
+    command = _command(
+        spec=spec, benchmark=tmp_path / "card.json", output=tmp_path / "out",
+        cell=cell, args=args,
+    )
+    assert command[command.index("--ollama-tags-url") + 1] == (
+        "http://engine/api/tags"
+    )
+
+
 def test_imported_controls_are_bound_and_emit_explicit_revision_exception(tmp_path):
     spec = _spec()
     spec["campaign_id"] = "corrected"

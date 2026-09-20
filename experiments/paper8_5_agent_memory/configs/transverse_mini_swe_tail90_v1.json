@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-transverse-mini-swe-tail90-v1",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "model": "qwen3-coder:30b",
+  "served_model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "tokenizer_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_calls": 40,
+    "max_completion_tokens": 1024
+  },
+  "history": {
+    "head_turns": 2,
+    "tail_turns": 4,
+    "search_delay_turns": 8,
+    "write_delay_turns": 1,
+    "same_span_reads_to_keep": 2,
+    "working_set_resources": 4
+  },
+  "controls": {
+    "full_repeats": 2
+  },
+  "arms": [
+    {
+      "arm_id": "matched_tail90",
+      "policy": "matched_token_tail",
+      "negative_realization": "drop",
+      "negative_fallback": "none",
+      "budget_fraction": 0.90
+    }
+  ],
+  "adaptive_stopping": {
+    "minimum_tasks_before_yield_gate": 2,
+    "minimum_gross_saving_fraction": 0.02,
+    "stop_after_failures": 1,
+    "minimum_tasks_before_accuracy_gate": 1,
+    "minimum_task_resolution": 1.0
+  },
+  "qualification": {
+    "ordered_task_indices": [1, 2, 3],
+    "admission_order": "Task 1 FULL-A, FULL-B, then tail-90. Admit Tasks 2 and 3 only if Task 1 FULL and tail-90 officially resolve.",
+    "identity_rule": "Every cell validates the observed endpoint digest before the agent starts.",
+    "failure_rule": "Stop on the first official loss relative to a successful FULL control; preserve failures and infrastructure contamination separately."
+  }
+}
