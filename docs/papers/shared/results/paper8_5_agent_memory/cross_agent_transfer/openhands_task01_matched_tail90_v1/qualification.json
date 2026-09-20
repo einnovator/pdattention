@@ -24,6 +24,9 @@
     "provider_completion_tokens": 4081,
     "minimum_realized_retention": 0.42614755340099986,
     "last_request_realized_retention": 0.5525103366804489,
+    "requested_budget_tokens": 132991,
+    "derived_unused_budget_tokens": 49395,
+    "underfilled_requests": 18,
     "patch_bytes": 689,
     "patch_sha256": "8512d6bc5111e1339c1786cd5be241461e34fd8ee13a81a04afa5257ef244aae",
     "execution_receipts": 24,
@@ -40,5 +43,6 @@
   },
   "paired_materialized_saving": 0.5505623329540342,
   "action_delta": -9,
+  "telemetry_note": "The historical per-row whole_turn_budget_undershoot_tokens field was zero because matched-tail underfill was not wired into that field. derived_unused_budget_tokens is recomputed as max(0, requested_budget_tokens - materialized_tokens); commit 97871bfc fixes prospective rows without changing selection.",
   "qualification": "pass"
 }

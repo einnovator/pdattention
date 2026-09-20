@@ -18,7 +18,10 @@ The nominal 90% setting is a strict maximum, not a retention target. Because
 the selector admits complete causal turns and pins the system prompt, task
 statement, and current turn, indivisible older turns leave unused budget. The
 observed request-level retention ranges from 42.61% to 100%, and the last
-request retains 55.25%. This is why the paper reports realized retention and
+request retains 55.25%. Eighteen of 24 requests leave 49,395 aggregate tokens
+of nominal budget unused. The raw trace predates the prospective underfill-field
+repair, so these values are recomputed from requested and materialized tokens
+in `qualification.json`. This is why the paper reports realized retention and
 budget underfill rather than labeling the outcome as "90% retained."
 
 `proxy_trace.jsonl` is the per-request selection and usage ledger.
