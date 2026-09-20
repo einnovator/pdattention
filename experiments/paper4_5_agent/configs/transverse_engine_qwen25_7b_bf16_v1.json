@@ -1,0 +1,55 @@
+{
+  "schema_version": "paper4.5.transverse-engine-agent-workload.v1",
+  "status": "predeclared; execution pending",
+  "source_policy_contract": "paper8.5.transverse-agent-engine-comparison.v1",
+  "agent": {
+    "id": "mini-swe-agent",
+    "revision": "2.4.6"
+  },
+  "model": {
+    "id": "Qwen/Qwen2.5-Coder-7B-Instruct",
+    "revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "tokenizer_revision": "c03e6d358207e414f1eca0bb1891e29f1db0e242",
+    "precision": "BF16"
+  },
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "strict_checkpoint_engines": [
+    "huggingface-cuda",
+    "vllm-cuda",
+    "mlx"
+  ],
+  "separate_quantized_replications": [
+    "llama.cpp",
+    "sglang-mlx",
+    "vllm-awq"
+  ],
+  "arms": [
+    "plain",
+    "PRA-100",
+    "frozen Paper 8.5 policy"
+  ],
+  "logical_invariance_gate": {
+    "required_equal": [
+      "history_digest",
+      "plan_digest",
+      "selected_record_ids",
+      "full_logical_tokens",
+      "selected_logical_tokens",
+      "tokenizer_revision"
+    ],
+    "allowed_physical_differences": [
+      "page_or_block_rounding",
+      "resident_bytes",
+      "kv_copy_bytes",
+      "consumer_temporary_bytes",
+      "latency"
+    ],
+    "on_failure": "quarantine cell; do not report as an engine-dependent saving"
+  },
+  "claim_boundary": "The strict cohort compares engines. Quantized replications compare deployable formats and are never pooled with the BF16 cohort."
+}
