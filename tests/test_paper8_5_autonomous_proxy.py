@@ -963,6 +963,9 @@ def test_matched_token_tail_is_a_strict_autonomous_text_ceiling_without_sidecars
     )
     assert result.trace["budget_satisfied"] is True
     assert result.trace["materialized_tokens"] <= result.trace["requested_budget_tokens"]
+    assert result.trace["whole_turn_budget_undershoot_tokens"] > 0
+    assert result.trace["materialized_budget_unused_tokens"] > 0
+    assert result.trace["materialized_budget_overshoot_tokens"] == 0
     assert result.trace["selected_message_count"] < result.trace["full_message_count"]
     assert [row["content"] for row in result.payload["messages"][:2]] == [
         row["content"] for row in _payload()["messages"][:2]
@@ -985,6 +988,8 @@ def test_matched_token_tail_reports_unavoidable_immutable_prompt_overflow():
     assert result.trace["exact_request_passthrough"] is True
     assert result.trace["mandatory_budget_overflow_tokens"] > 0
     assert result.trace["unexplained_materialized_budget_overflow_tokens"] == 0
+    assert result.trace["materialized_budget_unused_tokens"] == 0
+    assert result.trace["materialized_budget_overshoot_tokens"] > 0
     assert result.trace["budget_satisfied"] is True
 
 

@@ -1080,7 +1080,17 @@ def transform_autonomous_payload(
             max(0, plan.selected_tokens - budget_tokens) if retention_floor else 0
         ),
         "whole_turn_budget_undershoot_tokens": (
-            max(0, budget_tokens - plan.selected_tokens) if retention_floor else 0
+            max(0, budget_tokens - materialized.materialized_tokens)
+            if matched_tail
+            else max(0, budget_tokens - plan.selected_tokens)
+            if retention_floor
+            else 0
+        ),
+        "materialized_budget_unused_tokens": max(
+            0, budget_tokens - materialized.materialized_tokens
+        ),
+        "materialized_budget_overshoot_tokens": max(
+            0, materialized.materialized_tokens - budget_tokens
         ),
         "full_message_count": len(messages),
         "selected_message_count": len(selected_messages),
