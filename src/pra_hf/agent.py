@@ -621,10 +621,21 @@ class PRAAgent:
             if not execution.execution.executed:
                 text = f"Tool call rejected: {execution.execution.reason}"
                 break
+            # ``text`` is the provider-neutral XML execution envelope.  It is
+            # not an OpenAI assistant message containing a native
+            # ``tool_calls`` array, so following it with ``role=tool`` creates
+            # an invalid OpenAI conversation and ordinary endpoints reject the
+            # second model request.  Keep the authoritative call/result pair
+            # in the typed execution record and expose the immediate result as
+            # an ordinary observation message.  Native PRA transports retain
+            # the same typed record identity; text fallbacks remain role-valid.
             tool_message = {
-                "role": "tool",
-                "tool_call_id": execution.execution.resource_uri or "pra-tool-result",
-                "content": json.dumps(execution.record.compact_view(), default=str),
+                "role": "user",
+                "content": (
+                    "[Tool observation; call and result are also retained as "
+                    "a typed PRA record.]\n"
+                    + json.dumps(execution.record.compact_view(), default=str)
+                ),
             }
             follow_up = self._turn_context(
                 query,

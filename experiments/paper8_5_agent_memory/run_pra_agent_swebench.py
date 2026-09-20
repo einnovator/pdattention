@@ -331,13 +331,14 @@ def run(args: argparse.Namespace) -> Path:
             f"paper85-pra-agent-{slug}", task_description=prompt,
         )
         turn = agent.run_turn(prompt)
-        agent.export_session(output / "session.json")
     except Exception as observed:
         error = observed
         (output / "agent_error.txt").write_text(
             f"{type(observed).__name__}: {observed}\n", encoding="utf-8"
         )
     finally:
+        if agent.session is not None:
+            agent.export_session(output / "session.json")
         agent.close()
     finished = datetime.now(timezone.utc)
 
