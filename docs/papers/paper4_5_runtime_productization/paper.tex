@@ -299,6 +299,18 @@ to prompt replay, it must emit a distinct realization digest and accounting
 class.  This makes silent degradation observable and permits the same frozen
 logical treatment to be compared across engines.
 
+Logical saving is therefore an engine-invariant input to this paper, not an
+engine outcome.  A valid cross-engine row has the same agent, model and
+tokenizer revisions, task snapshot, history digest, plan digest, selected
+record identities, and logical token counts.  Engines may differ only in
+physical page rounding and in measured residence, copies, temporaries, and
+time.  If logical saving differs, the adapter did not consume the same
+experiment and the row fails closed.  The historical autonomous rows below use
+Qwen3-Coder-30B, Qwen2.5-Coder-14B, and Qwen2.5-Coder-7B; they qualify bounded
+mechanisms or model/task admissions but are not a pooled engine-savings
+comparison.  The new strict cohort pins one checkpoint and precision wherever
+the engine can load them; quantized-only replications form a separate stratum.
+
 The ordinary prefix cache remains available beside addressable resources.
 Local request deltas should continue through the engine's normal incremental
 path; persistent source records remain separately addressable.  PRA is useful
@@ -5187,6 +5199,14 @@ Below 100\%, Paper~4.5 compares engines on the same frozen logical plan;
 divergence after a passed 100\% gate is a selection/consumption-quality
 observation, not by itself an engine defect or evidence that one selection
 policy is superior.
+
+``Same frozen logical plan'' is literal: every engine receives the exported
+record ledger rather than rerunning a selector.  The history and plan digests,
+selected IDs, full and selected logical token counts, tokenizer revision,
+agent, model, task, and sampling settings must agree.  Engine block rounding
+is reported only as physical realization overhead.  This prevents a change in
+model capability, agent trajectory, or adapter tokenization from masquerading
+as an engine-dependent saving.
 
 After engine qualification, the locked task-level matrix contains no gateway
 arm: No PRA, 100\% PRA, and 90\% PRA.  PRA is crossed with an orthogonal
