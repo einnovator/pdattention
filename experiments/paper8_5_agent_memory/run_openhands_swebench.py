@@ -238,6 +238,8 @@ def run(args: argparse.Namespace) -> Path:
         "--model", args.model,
         "--max-iterations", str(args.max_iterations),
         "--max-output-tokens", str(args.max_completion_tokens),
+        "--request-timeout-seconds", str(args.request_timeout_seconds),
+        "--request-retries", str(args.request_retries),
     )
     started = datetime.now(timezone.utc)
     timed_out = False
@@ -320,6 +322,8 @@ def run(args: argparse.Namespace) -> Path:
         "exit_code": execution.returncode,
         "timed_out": timed_out,
         "max_iterations": args.max_iterations,
+        "request_timeout_seconds": args.request_timeout_seconds,
+        "request_retries": args.request_retries,
         "event_count": event_count,
         "event_types": event_types,
         "workspace_status_sha256": _sha256(status.stdout),
@@ -360,6 +364,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-version", default="1.49.2")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
+    parser.add_argument("--request-timeout-seconds", type=int, default=1200)
+    parser.add_argument("--request-retries", type=int, default=0)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
     parser.add_argument("--runtime-image")

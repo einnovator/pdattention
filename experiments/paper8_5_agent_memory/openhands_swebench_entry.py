@@ -182,6 +182,8 @@ def main() -> int:
     parser.add_argument("--model", default="openai/qwen3-coder:30b")
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--max-output-tokens", type=int, default=1024)
+    parser.add_argument("--request-timeout-seconds", type=int, default=1200)
+    parser.add_argument("--request-retries", type=int, default=0)
     args = parser.parse_args()
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
@@ -204,6 +206,8 @@ def main() -> int:
         enable_encrypted_reasoning=False,
         caching_prompt=False,
         stream=False,
+        timeout=args.request_timeout_seconds,
+        num_retries=args.request_retries,
     )
     agent = Agent(
         llm=llm,
