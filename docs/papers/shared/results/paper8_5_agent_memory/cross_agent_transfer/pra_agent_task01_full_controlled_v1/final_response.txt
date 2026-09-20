@@ -1,0 +1,34 @@
+I've successfully implemented the fix for the Django micro-optimization issue (ticket django__django-15277). 
+
+## Problem Summary
+The issue was in `CharField.__init__()` method where a `MaxLengthValidator` was unconditionally added to validators, even when `self.max_length` is `None`. This caused problems when `Value('test')` was used because:
+
+1. `Value._resolve_output_field()` creates a `CharField()` without setting `max_length`
+2. The default `max_length` is `None`
+3. But the code unconditionally appended `MaxLengthValidator(self.max_length)` where `self.max_length` is `None`
+4. This caused errors when validators tried to compare `None` with integers
+
+## Solution Implemented
+I modified `/testbed/django/db/models/fields/__init__.py` to change:
+```python
+self.validators.append(validators.MaxLengthValidator(self.max_length))
+```
+to:
+```python
+if self.max_length is not None:
+    self.validators.append(validators.MaxLengthValidator(self.max_length))
+```
+
+## Verification
+I verified this fix works correctly by running:
+```bash
+from django.db.models import Value
+x = Value('test')
+y = x._resolve_output_field()
+print('Success: No TypeError')
+print('Validators:', y.validators)
+```
+
+This now returns successfully with no TypeError and empty validators list, confirming that the MaxLengthValidator is only added when `max_length` is not None.
+
+The fix follows the same pattern used in `BinaryField.__init__()` and provides the micro-optimization described in the issue, improving performance by avoiding unnecessary validator creation and preventing the TypeError that occurred with Value annotations.

@@ -27,9 +27,11 @@ capability evidence, not evidence against the memory policy.
    contains a semantic failure; portable records must therefore carry exit or
    failure evidence independently of transport state.
 3. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
-   and its new SWE-bench container adapter now resolves the same controlled
-   Task-2 admission as Pi and Kilo. The remaining gate is the frozen
-   three-task FULL ladder followed by within-agent policy pairing.
+   and its new SWE-bench container adapter now resolves controlled Tasks 1 and
+   2. Task 1 exposed and fixed a second transport boundary: an unambiguous
+   terminal serialized tool decision was previously mistaken for a final
+   answer. The remaining plain-three gate is Task 4, followed by within-agent
+   policy pairing on its own FULL-success subset.
 4. **OpenHands** is supplementary rather than the next primary transfer. The
    standalone CLI is no longer actively maintained, so its runtime state,
    summarization and workspace services must be inventoried against the current
@@ -107,3 +109,13 @@ final answer. A separately declared 2,048-token diagnostic continues past that
 point but still submits no patch after three stream-termination retries, so a
 larger ceiling alone is not a repair. Completion-horizon diagnostics remain
 separate from the frozen primary control.
+
+A fourth invariant is that a provider-native `tool_calls` object and the
+runtime's exact terminal serialized action projection are two encodings of the
+same decision, but arbitrary prose is not. PRA Agent therefore accepts the
+serialized form only when the PRA-owned sentence terminates the response and
+its name and arguments pass the ordinary disclosure, schema, and authorization
+checks. On Task 1 this changes an empty-patch stop after 10 requests into an
+official solve after 14 requests without changing the model or task. Such a
+repair belongs to agent qualification; the failed pre-fix trajectory cannot be
+counted as evidence against a memory policy.
