@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -376,6 +377,52 @@ def test_ordinary_openai_native_tool_call_is_projected_for_pra_agent() -> None:
             "total_tokens": 112,
             "cached_prompt_tokens": 80,
         }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_curl_transport_qualifies_and_generates_against_ordinary_endpoint() -> None:
+    curl = shutil.which("curl")
+    if curl is None:
+        pytest.skip("curl is not installed")
+
+    class OrdinaryHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):  # noqa: N802
+            size = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(size)
+            body = json.dumps({
+                "choices": [{"message": {"role": "assistant", "content": "plain"}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8},
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), OrdinaryHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+        backend = NegotiatedRemoteBackend(
+            endpoint, "model", transport="auto", curl_executable=curl,
+        )
+
+        assert backend.generate_turn(_turn(), session_id="session-a") == "plain"
+        inspected = backend.inspect()
+        assert inspected["http_transport"] == "curl"
+        assert inspected["capabilities"]["capability_source"] == "openai_curl_404"
+        assert inspected["cumulative_reported_usage"]["prompt_tokens"] == 7
     finally:
         server.shutdown()
         server.server_close()

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -349,12 +350,14 @@ class CapabilityNegotiator:
         *,
         timeout_seconds: float = 10.0,
         observability: Observability | None = None,
+        curl_executable: str | None = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.timeout_seconds = float(timeout_seconds)
         self._cached: AgentTransportCapabilities | None = None
         self._lock = threading.RLock()
         self.observability = observability or DISABLED_OBSERVABILITY
+        self.curl_executable = curl_executable
 
     def invalidate(self) -> None:
         with self._lock:
@@ -370,8 +373,39 @@ class CapabilityNegotiator:
                 self.endpoint + "/v1/pra/capabilities", headers=headers, method="GET"
             )
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                    value = json.loads(response.read().decode("utf-8"))
+                if self.curl_executable is not None:
+                    command = [
+                        self.curl_executable,
+                        "--silent", "--show-error",
+                        "--max-time", str(self.timeout_seconds),
+                        "--output", "-", "--write-out", "\n%{http_code}",
+                    ]
+                    for key, item in headers.items():
+                        command.extend(("--header", f"{key}: {item}"))
+                    command.append(request.full_url)
+                    completed = subprocess.run(
+                        command, capture_output=True,
+                        timeout=self.timeout_seconds + 10, check=False,
+                    )
+                    if completed.returncode:
+                        raise OSError(
+                            completed.stderr.decode("utf-8", errors="replace").strip()
+                        )
+                    body, status_text = completed.stdout.rsplit(b"\n", 1)
+                    status = int(status_text)
+                    if status in {404, 405, 501}:
+                        self._cached = AgentTransportCapabilities.ordinary_openai(
+                            source="openai_curl_404"
+                        )
+                        return self._cached
+                    if status >= 400:
+                        raise OSError(f"capability handshake returned HTTP {status}")
+                    value = json.loads(body.decode("utf-8"))
+                else:
+                    with urllib.request.urlopen(
+                        request, timeout=self.timeout_seconds
+                    ) as response:
+                        value = json.loads(response.read().decode("utf-8"))
             except urllib.error.HTTPError as error:
                 if error.code in {404, 405, 501}:
                     self._cached = AgentTransportCapabilities.ordinary_openai()
@@ -403,6 +437,7 @@ class NegotiatedRemoteBackend:
         credentials_file: str | None = None,
         timeout_seconds: float = 300.0,
         observability: Observability | None = None,
+        curl_executable: str | None = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.model = model
@@ -413,8 +448,11 @@ class NegotiatedRemoteBackend:
         self.timeout_seconds = float(timeout_seconds)
         self.observability = observability or DISABLED_OBSERVABILITY
         self.negotiator = CapabilityNegotiator(
-            self.endpoint, observability=self.observability
+            self.endpoint,
+            observability=self.observability,
+            curl_executable=curl_executable,
         )
+        self.curl_executable = curl_executable
         self._resource_versions: dict[str, dict[str, str]] = {}
         self._message_history: dict[str, tuple[Mapping[str, Any], ...]] = {}
         self._last_trace: dict[str, Any] = {}
@@ -560,8 +598,45 @@ class NegotiatedRemoteBackend:
             headers=self._headers(),
             method="POST",
         )
-        with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
-            value = json.loads(response.read().decode("utf-8"))
+        if self.curl_executable is not None:
+            command = [
+                self.curl_executable,
+                "--silent", "--show-error",
+                "--max-time", str(self.timeout_seconds),
+                "--request", "POST",
+            ]
+            for key, item in self._headers().items():
+                command.extend(("--header", f"{key}: {item}"))
+            command.extend((
+                "--data-binary", "@-",
+                "--output", "-", "--write-out", "\n%{http_code}",
+                http_request.full_url,
+            ))
+            completed = subprocess.run(
+                command,
+                input=encoded,
+                capture_output=True,
+                timeout=self.timeout_seconds + 10,
+                check=False,
+            )
+            if completed.returncode:
+                detail = completed.stderr.decode("utf-8", errors="replace").strip()
+                raise EndpointUnavailableError(
+                    f"curl transport failed for {self.endpoint}: {detail}"
+                )
+            body, status_text = completed.stdout.rsplit(b"\n", 1)
+            status = int(status_text)
+            if status >= 400:
+                raise AgentTransportError(
+                    f"model request returned HTTP {status}: "
+                    + body.decode("utf-8", errors="replace")[-2000:]
+                )
+            value = json.loads(body.decode("utf-8"))
+        else:
+            with urllib.request.urlopen(
+                http_request, timeout=self.timeout_seconds
+            ) as response:
+                value = json.loads(response.read().decode("utf-8"))
         self._request_count += 1
         usage = value.get("usage")
         if isinstance(usage, Mapping):
@@ -689,6 +764,7 @@ class NegotiatedRemoteBackend:
             "backend": self.name,
             "endpoint": self.endpoint,
             "model": self.model,
+            "http_transport": "curl" if self.curl_executable else "urllib",
             "transport_requested": self.transport.value,
             "transport": dict(self._last_trace),
             "request_count": self._request_count,

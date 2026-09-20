@@ -300,6 +300,7 @@ def run(args: argparse.Namespace) -> Path:
         args.model,
         transport="text",
         timeout_seconds=args.model_timeout_seconds,
+        curl_executable=args.curl_executable,
     )
     runtime = PRARuntime(
         config=PRARuntimeConfig(),
@@ -438,6 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--model-timeout-seconds", type=int, default=3600)
     parser.add_argument("--image-timeout-seconds", type=int, default=900)
+    parser.add_argument("--curl-executable")
     return parser
 
 
