@@ -121,6 +121,7 @@ def test_mixed_tool_semantics_are_resolved_from_arguments_and_extract_resources(
                     "create": "write",
                 },
                 "default_operation_kind": "unknown",
+                "resource_ids": ["agent://editor-session"],
                 "resource_arguments": ["path"],
             },
         },
@@ -130,8 +131,10 @@ def test_mixed_tool_semantics_are_resolved_from_arguments_and_extract_resources(
     declaration = action.metadata["tool_calls"][0]["declared_semantics"]
     assert declaration["operation_kind"] == "read"
     assert action.metadata["operation_kind"] == "read"
-    assert action.resource_ids == ("src/a.py",)
-    assert action.metadata["tool_calls"][0]["resource_ids"] == ["src/a.py"]
+    assert action.resource_ids == ("agent://editor-session", "src/a.py")
+    assert action.metadata["tool_calls"][0]["resource_ids"] == [
+        "agent://editor-session", "src/a.py",
+    ]
 
 
 def test_openai_recordizer_does_not_guess_nonstandard_user_observation():

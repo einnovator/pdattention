@@ -1,9 +1,4 @@
-"""Run one locked SWE-bench task through Kilo's native typed-tool loop.
-
-This admission runner preserves Kilo's own prompt and tools.  It captures the
-native JSON event stream and exports the source patch for the common official
-grader; it does not infer task success from Kilo's process exit status.
-"""
+"""Run one locked SWE-bench task with condenser-free OpenHands SDK tools."""
 
 from __future__ import annotations
 
@@ -16,7 +11,6 @@ import subprocess
 import time
 from typing import Any, Mapping, Sequence
 
-from .reduce_kilo_events import reduce_events
 from .run_pi_swebench import (
     _run,
     _sha256,
@@ -43,16 +37,73 @@ def _event_inventory(path: Path) -> tuple[int, dict[str, int]]:
     return rows, counts
 
 
+def _event_summary(path: Path) -> dict[str, Any]:
+    action_counts: dict[str, int] = {}
+    observation_counts: dict[str, int] = {}
+    response_ids: set[str] = set()
+    action_count = observation_count = observation_errors = 0
+    run_summary: Mapping[str, Any] | None = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, Mapping):
+            continue
+        row_type = str(row.get("type") or "unknown")
+        event = row.get("event")
+        event = event if isinstance(event, Mapping) else {}
+        if row_type == "ActionEvent":
+            action_count += 1
+            action = event.get("action")
+            action = action if isinstance(action, Mapping) else {}
+            kind = str(action.get("kind") or "unknown")
+            action_counts[kind] = action_counts.get(kind, 0) + 1
+            response_id = event.get("llm_response_id")
+            if response_id:
+                response_ids.add(str(response_id))
+        elif row_type == "ObservationEvent":
+            observation_count += 1
+            observation = event.get("observation")
+            observation = observation if isinstance(observation, Mapping) else {}
+            kind = str(observation.get("kind") or "unknown")
+            observation_counts[kind] = observation_counts.get(kind, 0) + 1
+            exit_code = observation.get("exit_code")
+            if bool(observation.get("is_error")) or (
+                isinstance(exit_code, int) and exit_code != 0
+            ):
+                observation_errors += 1
+        elif row_type == "paper85_run_summary":
+            run_summary = row
+    return {
+        "schema_version": 1,
+        "study": "paper8_5_cross_agent_transfer",
+        "agent": "openhands-sdk",
+        "source": str(path),
+        "source_sha256": _sha256(path.read_bytes()),
+        "action_count": action_count,
+        "observation_count": observation_count,
+        "distinct_llm_response_count": len(response_ids),
+        "action_counts": dict(sorted(action_counts.items())),
+        "observation_counts": dict(sorted(observation_counts.items())),
+        "semantic_failure_observations": observation_errors,
+        "run_summary": dict(run_summary or {}),
+        "token_note": (
+            "Provider request and usage totals are authoritative in the paired "
+            "logical-proxy trace, not inferred from SDK events."
+        ),
+    }
+
+
 def run(args: argparse.Namespace) -> Path:
     benchmark = Path(args.benchmark_card).resolve()
     _, instance_id, task_index = load_locked_task(benchmark, args.instance_id)
     trajectory = Path(args.reference_trajectory).resolve()
-    model_config = Path(args.model_config).resolve()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
-
     prompt = task_prompt(trajectory, instance_id)
-    (output / "task_prompt.txt").write_text(prompt + "\n", encoding="utf-8")
+    prompt_path = output / "task_prompt.txt"
+    prompt_path.write_text(prompt + "\n", encoding="utf-8")
 
     repository = Path(__file__).resolve().parents[2]
     dockerfile = (
@@ -60,19 +111,17 @@ def run(args: argparse.Namespace) -> Path:
         / "experiments"
         / "paper8_5_agent_memory"
         / "docker"
-        / "kilo-swebench.Dockerfile"
+        / "openhands-swebench.Dockerfile"
     )
     source_image = swebench_image(instance_id)
     slug = re.sub(r"[^a-z0-9]+", "-", instance_id.lower()).strip("-")
-    image = args.image or f"paper85-kilo-{slug}:{args.agent_version}"
-    container = args.container or f"paper85-kilo-{slug}-{int(time.time())}"
-
+    image = args.image or f"paper85-openhands-{slug}:{args.agent_version}"
+    container = args.container or f"paper85-openhands-{slug}-{int(time.time())}"
     build_command = (
         args.docker,
         "build",
         "--platform", "linux/amd64",
         "--build-arg", f"BASE_IMAGE={source_image}",
-        "--build-arg", f"KILO_VERSION={args.agent_version}",
         "--file", str(dockerfile),
         "--tag", image,
         str(repository),
@@ -85,27 +134,26 @@ def run(args: argparse.Namespace) -> Path:
     (output / "docker_build.stdout.log").write_bytes(build.stdout)
     (output / "docker_build.stderr.log").write_bytes(build.stderr)
     if build.returncode:
-        raise RuntimeError(f"Kilo task image build failed with {build.returncode}")
+        raise RuntimeError(f"OpenHands task image build failed with {build.returncode}")
 
     command: tuple[str, ...] = (
         args.docker,
         "run",
         "--name", container,
         "--platform", "linux/amd64",
-        "--volume", f"{model_config}:/root/.config/kilo/kilo.json:ro",
-        "--env", "KILO_TELEMETRY_LEVEL=off",
-        "--env", "KILO_DISABLE_DEFAULT_PLUGINS=true",
-        "--env", "KILO_DISABLE_PROJECT_CONFIG=true",
-        "--env", "KILO_DB=:memory:",
-        "--entrypoint", "kilo",
+        "--volume", f"{prompt_path}:/paper85/task_prompt.txt:ro",
+        "--env", "OPENHANDS_SUPPRESS_BANNER=1",
+        "--env", "OTEL_SDK_DISABLED=true",
+        "--env", "DO_NOT_TRACK=1",
+        "--env", "ANONYMIZED_TELEMETRY=false",
+        "--entrypoint", "/opt/openhands/bin/python",
         image,
-        "--pure",
-        "run",
-        "--format", "json",
-        "--auto",
+        "/opt/paper85/openhands_swebench_entry.py",
+        "--prompt-file", "/paper85/task_prompt.txt",
+        "--base-url", args.base_url,
         "--model", args.model,
-        "--dir", "/testbed",
-        prompt,
+        "--max-iterations", str(args.max_iterations),
+        "--max-output-tokens", str(args.max_completion_tokens),
     )
     started = datetime.now(timezone.utc)
     timed_out = False
@@ -121,14 +169,14 @@ def run(args: argparse.Namespace) -> Path:
             stderr=error.stderr or b"",
         )
     finished = datetime.now(timezone.utc)
-    events = output / "kilo_events.jsonl"
+    events = output / "openhands_events.jsonl"
     events.write_bytes(execution.stdout)
-    (output / "kilo_stderr.log").write_bytes(execution.stderr)
+    (output / "openhands_stderr.log").write_bytes(execution.stderr)
 
     snapshot = f"{image.rsplit(':', 1)[0]}-snapshot:{int(time.time())}"
     committed = _run((args.docker, "commit", container, snapshot), check=False)
     if committed.returncode:
-        raise RuntimeError("failed to snapshot the stopped Kilo task container")
+        raise RuntimeError("failed to snapshot the stopped OpenHands task container")
     status = _run((
         args.docker, "run", "--rm", "--platform", "linux/amd64",
         "--entrypoint", "git", snapshot,
@@ -146,7 +194,7 @@ def run(args: argparse.Namespace) -> Path:
     _write_json(output / "preds.json", {
         instance_id: {
             "model_name_or_path": (
-                f"kilo-{args.agent_version}-{args.model.replace('/', '_')}-{arm_slug}"
+                f"openhands-{args.agent_version}-{args.model.replace('/', '_')}-{arm_slug}"
             ),
             "model_patch": patch_text,
             "instance_id": instance_id,
@@ -154,15 +202,15 @@ def run(args: argparse.Namespace) -> Path:
     })
 
     event_count, event_types = _event_inventory(events)
-    if event_count:
-        reduce_events(events, output)
+    _write_json(output / "event_summary.json", _event_summary(events))
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "study": "paper8_5_cross_agent_transfer",
         "arm": args.arm,
-        "agent": "kilo",
+        "agent": "openhands-sdk",
         "agent_version": args.agent_version,
         "agent_protocol": "openai_tools",
+        "native_context_management": "disabled_condenser_none",
         "instance_id": instance_id,
         "task_index": task_index,
         "benchmark_card": str(benchmark),
@@ -170,7 +218,7 @@ def run(args: argparse.Namespace) -> Path:
         "reference_trajectory": str(trajectory),
         "reference_trajectory_sha256": _sha256(trajectory.read_bytes()),
         "model": args.model,
-        "model_config_sha256": _sha256(model_config.read_bytes()),
+        "base_url": args.base_url,
         "source_image": source_image,
         "derived_image": image,
         "image_build_skipped": bool(args.skip_build),
@@ -181,6 +229,7 @@ def run(args: argparse.Namespace) -> Path:
         "elapsed_seconds": (finished - started).total_seconds(),
         "exit_code": execution.returncode,
         "timed_out": timed_out,
+        "max_iterations": args.max_iterations,
         "event_count": event_count,
         "event_types": event_types,
         "workspace_status_sha256": _sha256(status.stdout),
@@ -188,14 +237,14 @@ def run(args: argparse.Namespace) -> Path:
         "patch_bytes": len(patch.stdout),
         "official_resolution": None,
         "notes": [
-            "This admission runner preserves Kilo's native system prompt and typed tools.",
-            "External telemetry, default plugins, project config, and persistent session storage are disabled for hermetic execution.",
-            "Kilo transport completion is not treated as semantic tool success.",
+            "OpenHands uses its native terminal, file-editor, and task-tracker tools.",
+            "The OpenHands condenser is explicitly disabled for the FULL control.",
+            "External telemetry is disabled for hermetic execution.",
+            "Absent optional cache-creation usage counters are zero-defaulted in telemetry only.",
             "Official resolution remains unset until the common SWE-bench grader consumes model.patch.",
         ],
     }
     _write_json(output / "run_manifest.json", manifest)
-
     if not args.keep_snapshot:
         _run((args.docker, "image", "rm", snapshot), check=False)
     if not args.keep_container:
@@ -214,16 +263,18 @@ def build_parser() -> argparse.ArgumentParser:
             / "easy14_baseline_success14.json"
         ),
     )
-    parser.add_argument("--model-config", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--arm", default="FULL")
-    parser.add_argument("--model", default="openai-compatible/qwen3-coder:30b")
-    parser.add_argument("--agent-version", default="7.7.5")
+    parser.add_argument("--base-url", default="http://host.docker.internal:18185/v1")
+    parser.add_argument("--model", default="openai/qwen3-coder:30b")
+    parser.add_argument("--agent-version", default="1.49.2")
+    parser.add_argument("--max-iterations", type=int, default=50)
+    parser.add_argument("--max-completion-tokens", type=int, default=1024)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--image")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--container")
-    parser.add_argument("--build-timeout-seconds", type=int, default=1200)
+    parser.add_argument("--build-timeout-seconds", type=int, default=2400)
     parser.add_argument("--agent-timeout-seconds", type=int, default=3600)
     parser.add_argument("--keep-container", action="store_true")
     parser.add_argument("--keep-snapshot", action="store_true")

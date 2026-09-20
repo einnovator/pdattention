@@ -276,10 +276,16 @@ def _resolve_tool_semantics(
         if mapped is not None:
             resolved["operation_kind"] = str(mapped)
 
+    static_resources = resolved.get("resource_ids", ())
+    if isinstance(static_resources, str):
+        static_resources = (static_resources,)
+    resources: list[str] = []
+    if isinstance(static_resources, (list, tuple)):
+        resources.extend(str(item) for item in static_resources if str(item))
+
     resource_arguments = resolved.get("resource_arguments", ())
     if isinstance(resource_arguments, str):
         resource_arguments = (resource_arguments,)
-    resources: list[str] = []
     if isinstance(resource_arguments, (list, tuple)):
         for path in resource_arguments:
             if not isinstance(path, str):

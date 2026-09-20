@@ -21,11 +21,15 @@ capability evidence, not evidence against the memory policy.
    also resolves. Task 4 reaches the completion-token ceiling before writing
    and exports an empty patch, so Pi completes plain-three at 2/3 and policy
    pairing is restricted to Tasks 1 and 2.
-2. **Kilo** is the second open-source transfer. Its controlled Task-2 `FULL`
-   admission is also complete and officially resolves the issue. Kilo reports
-   every native tool event as transport-completed even when command output
-   contains a semantic failure; portable records must therefore carry exit or
-   failure evidence independently of transport state.
+2. **Kilo** is the second open-source transfer. Its controlled Tasks 1 and 2
+   resolve officially. Task 4 cleanly reaches the correct diagnosis but hits
+   the completion-token ceiling before issuing its edit, so Kilo completes
+   plain-three at 2/3 and policy pairing is restricted to Tasks 1 and 2. Kilo
+   reports every native tool event as transport-completed even when command
+   output contains a semantic failure; portable records must therefore carry
+   exit or failure evidence independently of transport state. External
+   telemetry, plugins, project configuration, and persistent session storage
+   are disabled for hermetic controls.
 3. **PRA Agent** is the required typed-record transfer. The SDK is record-native,
    and its new SWE-bench container adapter now resolves controlled Tasks 1 and
    2. Task 1 exposed and fixed a second transport boundary: an unambiguous
@@ -33,10 +37,13 @@ capability evidence, not evidence against the memory policy.
    answer. After two further fail-closed serialization repairs, Task 4 still
    terminates without a patch. PRA Agent therefore completes plain-three at
    2/3, and policy pairing is restricted to Tasks 1 and 2.
-4. **OpenHands** is supplementary rather than the next primary transfer. The
-   standalone CLI is no longer actively maintained, so its runtime state,
-   summarization and workspace services must be inventoried against the current
-   Agent Server/SDK before activation.
+4. **OpenHands** is the supplementary richer-tool transfer. The admission uses
+   the current SDK directly inside the task-derived container, not the
+   unmaintained standalone CLI. Its native terminal, file-editor, and
+   task-tracker tools remain enabled, while the SDK condenser is explicitly
+   `None` so hidden summarization cannot masquerade as a PRA result. Its clean
+   Task-1 FULL control officially resolves after 33 model requests; the
+   remaining plain-three controls are pending.
 
 Codex or Claude can provide external validity only when model, prompt, context
 management, and event traces are sufficiently auditable. They are never pooled
@@ -110,6 +117,24 @@ final answer. A separately declared 2,048-token diagnostic continues past that
 point but still submits no patch after three stream-termination retries, so a
 larger ceiling alone is not a repair. Completion-horizon diagnostics remain
 separate from the frozen primary control.
+
+Kilo independently reproduces this invariant on Task 4: the model states the
+correct edit direction, reaches `length`, and the agent exits with no tracked
+change. Its earlier external TLS stall is quarantined rather than attributed to
+the task; disabling nonessential telemetry and plugin state makes the retry
+hermetic. Agent controls therefore require both semantic completion handling
+and removal or explicit accounting of external control-plane dependencies.
+
+OpenHands adds two richer-agent requirements. First, optional provider usage
+fields belong to accounting, not semantic execution: OpenHands 1.49.2 aborted
+on an absent `cache_creation_tokens` field until the telemetry boundary
+zero-defaulted it. Second, task trackers and other agent-maintained plans are
+versioned causal resources. The generic tool declaration assigns repeated
+tracker updates the stable `agent://task-tracker` identity, while file-editor
+commands declare operation and path. Arbitrary terminal commands remain
+unknown-effect barriers unless execution middleware supplies complete effect
+receipts. These are portable metadata rules, not agent-specific selection
+code.
 
 A fourth invariant is that a provider-native `tool_calls` object and the
 runtime's exact terminal serialized action projection are two encodings of the

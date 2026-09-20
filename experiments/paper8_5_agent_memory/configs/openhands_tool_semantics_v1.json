@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "agent": "openhands-sdk",
+  "agent_version": "1.49.2",
+  "tool_semantics_by_name": {
+    "terminal": {
+      "category": "shell",
+      "operation_kind": "unknown"
+    },
+    "file_editor": {
+      "category": "filesystem",
+      "operation_argument": "command",
+      "operation_map": {
+        "view": "read",
+        "create": "write",
+        "str_replace": "write",
+        "insert": "write",
+        "undo_edit": "write"
+      },
+      "default_operation_kind": "unknown",
+      "resource_arguments": ["path"]
+    },
+    "task_tracker": {
+      "category": "agent_progress",
+      "operation_kind": "progress",
+      "resource_ids": ["agent://task-tracker"]
+    },
+    "think": {
+      "category": "agent_progress",
+      "operation_kind": "progress"
+    },
+    "finish": {
+      "category": "agent_protocol",
+      "operation_kind": "finalization"
+    }
+  }
+}

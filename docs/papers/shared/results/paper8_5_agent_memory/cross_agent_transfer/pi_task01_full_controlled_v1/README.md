@@ -6,7 +6,7 @@ temperature 0, top-p 1, seed 0, a 1,024-token completion ceiling, and FULL
 native history.
 
 The run officially resolves the task. It makes the minimal guarded
-`MaxLengthValidator` change and passes 2/2 FAIL_TO_PASS plus 161/161
+`MaxLengthValidator` change and passes 2/2 FAIL_TO_PASS plus 158/158
 PASS_TO_PASS tests. Pi uses 23 model calls and 22 native tool calls, with
 403,543 cumulative logical input tokens and 2,560 output tokens.
 
@@ -19,4 +19,3 @@ part of the submitted tracked patch.
 The first two grader attempts are quarantined infrastructure diagnostics: one
 selected an ARM image and one used a duplicated namespace. The recorded report
 comes from the clean x86-tagged retry `p85-pi-task01-full-v4`.
-

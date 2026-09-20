@@ -7,7 +7,7 @@ temperature, top-p, seed, and the 1,024-token completion ceiling were fixed.
 
 Kilo produced the minimal guarded `MaxLengthValidator` patch in 17 model calls
 and 16 native tool calls.  The official SWE-bench 4.1.0 grader resolves the
-task: 2/2 FAIL_TO_PASS and 161/161 PASS_TO_PASS tests pass.
+task: 2/2 FAIL_TO_PASS and 158/158 PASS_TO_PASS tests pass.
 
 The trajectory reports 289,550 cumulative logical input tokens, including
 Kilo's own system prompt and tool schemas, and 1,425 output tokens.  These

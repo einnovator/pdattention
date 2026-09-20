@@ -4212,9 +4212,9 @@ to other agents on the same ordered Easy-14 cohort.  Pi is the first admission
 target because its native file, search, edit, write, and Bash operations expose
 standard tool-call/result identity with little hidden orchestration.  Kilo is
 the second same-model open-source admission and PRA Agent is the required
-record-native transfer.  OpenHands is supplementary because its standalone CLI
-is no longer actively maintained; any future admission must first inventory the
-current server/SDK's hidden runtime state and summarization.  The goal is not a
+record-native transfer.  OpenHands is the supplementary richer-tool transfer;
+we use the current SDK directly, disable its condenser, and inventory its
+runtime state rather than relying on the unmaintained standalone CLI.  The goal is not a
 second exhaustive grid or an agent leaderboard, but to test whether
 semantic-role findings generalize when the harness has richer tools and memory
 processing.
@@ -4306,6 +4306,68 @@ completion: runtime metadata should carry exit status and structured failure
 evidence when the agent does not.  The admission evidence is in
 \path{cross_agent_transfer/kilo_task02_full_controlled_v1}.  Like the Pi row,
 this admits a harness to the staged ladder but does not qualify any retention
+policy.
+
+The second controlled success, \texttt{django\_\_django-15277}, produces the
+same minimal guarded \texttt{MaxLengthValidator} patch and passes 2/2
+FAIL\_TO\_PASS plus 158/158 PASS\_TO\_PASS tests.  It requires 17 model
+calls and 16 native tools, with 289,550 cumulative logical input tokens and
+1,425 output tokens.  Four tool outputs contain semantic failure signals even
+though their transport status is \texttt{completed}, independently confirming
+that transport and semantic success require separate fields.  Evidence is in
+\path{cross_agent_transfer/kilo_task01_full_controlled_v1}.
+
+The third plain control, \texttt{django\_\_django-15741}, is a genuine
+\textsc{Full} failure after a hermetic retry.  Disabling external telemetry,
+default plugins, project configuration, and persistent session storage removes
+an earlier TLS stall.  The clean execution makes 13 model calls and 12 tools,
+correctly localizes the lazy-string bug, then reaches the 1,024-token completion
+ceiling while describing the edit but before issuing a write.  Kilo terminates
+on that provider stop and exports an empty patch.  It therefore completes the
+plain-three ladder at 2/3; only Tasks 1 and 2 enter policy pairing.  This is a
+second independent example of why provider termination is not semantic agent
+completion.  Evidence is in
+\path{cross_agent_transfer/kilo_task04_full_controlled_v1}.
+
+\subsection{First OpenHands admission outcome}
+
+OpenHands SDK 1.49.2 provides the richer-tool supplementary transfer.  We run
+the SDK directly inside the official task-derived container with its native
+terminal, file-editor, task-tracker, think, and finish actions; the deprecated
+standalone CLI and the Agent Server workspace layer are not required.  The SDK
+condenser is explicitly \texttt{None}, so an agent-native summary cannot be
+mistaken for PRA selection.
+
+The first clean \textsc{Full} control, \texttt{django\_\_django-15277}, contains
+33 contiguous model requests, all exact pass-through at 100\% retention.  It
+produces the same minimal 689-byte guarded \texttt{MaxLengthValidator} patch
+and officially passes 2/2 FAIL\_TO\_PASS plus 158/158 PASS\_TO\_PASS tests.
+It consumes 641,509 cumulative provider prompt tokens and 5,747 completion
+tokens.  Its 33 native actions comprise 18 terminal, 13 file-editor, one think,
+and one finish action; four observations carry semantic failure evidence.
+These totals include the OpenHands system prompt and tool schemas and are valid
+only for within-agent pairing.
+
+Admission exposed an SDK accounting defect before the first action.  OpenHands
+assumed an optional Anthropic-style \texttt{cache\_creation\_tokens} field was
+present on every OpenAI-compatible usage wrapper and aborted a valid Ollama
+completion.  The compatibility guard zero-defaults only that absent telemetry
+bucket; it does not modify requests, responses, tools, or selection.  External
+telemetry is disabled for the hermetic retry.  An earlier post-fix diagnostic
+also reaches the identical source patch but takes 35 rather than 33 actions;
+assistant content first diverges at decision 22 despite temperature zero.
+Official resolution, not exact cross-repeat trajectory identity, remains the
+primary endpoint.
+
+This agent also changes the portable metadata contract.  Repeated task-tracker
+updates are versions of one durable logical resource rather than unrelated
+text records, so the generic declaration assigns them the stable
+\texttt{agent://task-tracker} identity.  File-editor commands expose their
+operation and path through argument-based semantics.  Arbitrary terminal
+commands remain unknown-effect barriers unless middleware supplies complete
+resource/effect receipts.  Evidence is in
+\path{cross_agent_transfer/openhands_task01_full_controlled_v1}.  One resolved
+control admits OpenHands to the staged ladder but does not qualify a retention
 policy.
 
 \subsection{PRA Agent}

@@ -59,12 +59,24 @@ The runner preserves Pi's native system prompt and tools, emits native JSONL,
 and exports `model.patch`. Official success remains unset until that patch is
 consumed by the common SWE-bench grader.
 
-Kilo uses the same proxy and common recordizer. The reproducible container
-entry point and two endpoint examples are
-`run_kilo_swebench.sh`, `kilo_config.example.json`, and
+Kilo uses the same proxy and common recordizer. The reproducible admission
+runner, container entry point, and two endpoint examples are
+`run_kilo_swebench.py`, `run_kilo_swebench.sh`,
+`kilo_config.example.json`, and
 `kilo_config.proxy.example.json`. Kilo reports transport completion separately
 from command success; reducers must inspect structured exit evidence or output
 failure signals rather than equating `completed` with a successful tool result.
+
+OpenHands uses `run_openhands_swebench.py` and a task-derived container with
+the pinned SDK's native terminal, file-editor, and task-tracker tools. Its
+condenser is explicitly `None` in the FULL control so that an agent-native
+summary cannot be mistaken for a PRA selection result. Policy runs declare
+portable tool effects through `configs/openhands_tool_semantics_v1.json`:
+file-editor operations expose their command and path, task-tracker/think state
+is progress, task-tracker updates share the stable
+`agent://task-tracker` resource identity, finish is protocol finalization, and arbitrary terminal commands
+remain an unknown-effect barrier unless execution middleware supplies complete
+resource/effect receipts.
 
 The transfer proxy exposes the frozen policy parameters instead of hiding
 agent-specific defaults. For Recent Frontier M2/P1, use

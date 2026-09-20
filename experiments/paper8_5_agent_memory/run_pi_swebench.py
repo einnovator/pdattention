@@ -207,6 +207,17 @@ def run(args: argparse.Namespace) -> Path:
         "-C", "/testbed", "diff", "--binary", "--",
     ), check=False)
     (output / "model.patch").write_bytes(patch.stdout)
+    patch_text = patch.stdout.decode("utf-8", errors="replace")
+    arm_slug = re.sub(r"[^a-z0-9]+", "-", args.arm.lower()).strip("-")
+    _write_json(output / "preds.json", {
+        instance_id: {
+            "model_name_or_path": (
+                f"pi-0.75.3-{args.model.replace('/', '_')}-{arm_slug}"
+            ),
+            "model_patch": patch_text,
+            "instance_id": instance_id,
+        }
+    })
 
     event_rows = []
     for line in execution.stdout.decode("utf-8", errors="replace").splitlines():
@@ -224,7 +235,7 @@ def run(args: argparse.Namespace) -> Path:
     manifest = {
         "schema_version": 1,
         "study": "paper8_5_cross_agent_transfer",
-        "arm": "FULL",
+        "arm": args.arm,
         "agent": "pi",
         "agent_version": "0.75.3",
         "agent_protocol": "openai_tools",
@@ -277,6 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--model-config", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--arm", default="FULL")
     parser.add_argument("--model", default="qwen3-coder:30b")
     parser.add_argument("--provider", default="paper85-ollama")
     parser.add_argument("--docker", default="docker")
