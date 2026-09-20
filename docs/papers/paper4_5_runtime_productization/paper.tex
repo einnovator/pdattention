@@ -441,6 +441,17 @@ floor policy resolves on both engines in six calls with the reference patch.
 It first diverges only in final-response wording and realizes 8,725 physical
 tokens from 8,920 logical tokens, a 2.19\% saving.
 
+The same matched-tail rule is not globally invalid.  A later engine-independent
+Paper~8.5 transfer with OpenHands and Qwen3-Coder-30B preserves 3/3 official
+resolutions, reduces actions from 114 to 79, and saves 46.86\% against paired
+\textsc{Full} input (commit \texttt{ad1152b9}).  The contrast establishes
+agent/model/task dependence: a qualified logical policy can still fail a
+particular native-engine workload pair.  Paper~4.5 imports only its whole-record
+selection.  Paper~8.5's extra slicing of oversized text observations is not a
+native-K/V saving unless record-internal original-position spans are consumed
+without re-encoding; the paired 46.86\% also includes trajectory contraction
+and is not an engine-local K/V or latency number.
+
 The engines nevertheless have different physical realization costs.  Direct
 MLX reports 8.40~GB on its cumulative total-K/V-copy counter, despite zero
 selected-K/V copy, and a 1.25~GB peak consumer temporary for the reduced run.
@@ -4524,6 +4535,21 @@ native engine consumes the selected K/V exactly.  Paper~4.5 therefore retains
 the task-aware progress-spine policy for subsequent engine work; matched-budget
 oracle and exclusion-policy development remains in Paper~8.5.
 
+Paper~8.5 subsequently qualified the same matched causal-tail policy on a
+different autonomous stack.  OpenHands with Qwen3-Coder-30B preserves 3/3
+official resolutions, reduces actions from 114 to 79, saves 22.49\% within the
+candidate trajectories, and saves 46.86\% against paired \textsc{Full} input
+(source commit \texttt{ad1152b9}).  This does not invalidate the MLX and vLLM
+negatives above: it demonstrates agent/model/task dependence rather than a
+universal selector.  It does, however, promote the policy from an unqualified
+control to a cross-agent research candidate.  The Paper~4.5 import receipt
+freezes a stricter contract: only whole-record logical selection transfers to
+resident K/V.  Paper~8.5's extra ordinary-text slicing of oversized
+observations is excluded unless an engine implements original-position
+record-internal K/V spans; re-encoding a compact replacement cannot be counted
+as reuse.  The 46.86\% paired figure includes trajectory contraction and is
+therefore not an engine-local K/V or latency claim.
+
 The direct SGLang-MLX Qwen3-Coder-30B bridge clears its real two-turn admission
 smoke.  The model returns the frozen
 ``OK'' then ``DONE'' responses, the second prompt extends the resident source,
@@ -5640,8 +5666,10 @@ H2D.  Importing Paper~8.5's earlier causal-tail control does not improve this fr
 it fails MLX Task~01 after nine calls and vLLM Task~05 after 28 calls, despite
 zero selected-history re-encoding/copy on both engines.  The latter terminates
 at bounded context exhaustion after a repeated-action loop.  This separates a
-portable native-K/V mechanism from the previously unqualified causal-tail
-policy.  The newly admitted M2/P1 treatment remains a named diagnostic until
+portable native-K/V mechanism from policy transfer: the same causal-tail rule
+subsequently preserves 3/3 OpenHands resolutions at 46.86\% paired input
+saving, but remains negative for these MLX and vLLM model/task pairs.  The
+newly admitted M2/P1 treatment remains a named diagnostic until
 identical fixtures pass native realization and broader repeated logical
 qualification; task-aware progress state is not a production default.  The vLLM path
 is not yet general: multiprocess execution, hybrid K/V

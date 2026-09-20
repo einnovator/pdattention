@@ -1,0 +1,37 @@
+{
+  "schema_version": "paper4.5.paper8.5-policy-import.v1",
+  "source_repository": "einnovator/pdattention",
+  "source_branch": "research/paper8-5-agent-memory",
+  "source_commit": "ad1152b9ffdc197ef6f552a5c418c8fa55bb67d7",
+  "source_artifact": "docs/papers/shared/results/paper8_5_agent_memory/cross_agent_transfer/openhands_matched_tail90_three_task_v1/cohort.json",
+  "source_artifact_sha256": "5f227aef991bb85a5185011fa295182a192daff6ac281825ddc9514996f600fc",
+  "policy": "paper8.5-matched-causal-token-tail-v1",
+  "nominal_budget_fraction": 0.9,
+  "source_agent": "openhands-sdk-1.49.2",
+  "source_model": "qwen3-coder:30b",
+  "source_task_count": 3,
+  "source_full_resolved": 3,
+  "source_candidate_resolved": 3,
+  "source_candidate_actions": 79,
+  "source_full_actions": 114,
+  "source_pooled_own_logical_saving": 0.2071241694405367,
+  "source_pooled_own_materialized_saving": 0.22488718741111446,
+  "source_pooled_paired_logical_saving": 0.45637282031009796,
+  "source_pooled_paired_materialized_saving": 0.46855185136381605,
+  "engine_transfer_contract": {
+    "transferable_selection_unit": "whole causal records selected from already-resident original-position K/V",
+    "selected_history_reencoding_allowed": false,
+    "selected_kv_copy_allowed_for_zero_copy_claim": false,
+    "ordinary_text_boundary_compaction_transferable": false,
+    "reason": "Paper 8.5 may slice an oversized observation before inference. Paper 4.5 may not credit that reduction after K/V already exists unless record-internal original-position K/V spans are implemented.",
+    "paired_saving_interpretation": "Agent trajectory economics only; not an engine-local K/V omission ratio or latency claim."
+  },
+  "existing_native_results": {
+    "mlx_task01": "valid policy-quality negative after exact PRA-100; zero selected-history re-encoding and zero selected-K/V copy",
+    "vllm_task05": "valid bounded-context policy-quality negative after exact PRA-100; zero selected-history re-encoding and zero selected-K/V copy",
+    "llamacpp": "pending matched-tail autonomous transfer on a qualified plain/PRA-100 pair",
+    "sglang_mlx": "pending matched-tail autonomous transfer on a qualified plain/PRA-100 pair",
+    "hf_cuda": "pending matched-tail autonomous transfer on a qualified plain/PRA-100 pair"
+  },
+  "promotion_status": "research_candidate_not_production_default"
+}
