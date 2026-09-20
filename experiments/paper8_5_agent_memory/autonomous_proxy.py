@@ -8,7 +8,7 @@ for that decision, and records auditable content-token and exclusion metrics.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -366,9 +366,26 @@ class AutonomousSelectionConfig:
     require_exact_sidecars: bool = True
     negative_realization: NegativeRealizationMode = NegativeRealizationMode.DROP
     negative_fallback: str = "none"
+    input_protocol: str = "mini_swe_bash"
+    tool_semantics_by_name: Mapping[str, Mapping[str, Any]] = field(
+        default_factory=dict
+    )
+    fill_missing_generation_parameters: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "boundary_mode", BoundaryMode(self.boundary_mode))
+        object.__setattr__(
+            self,
+            "tool_semantics_by_name",
+            {
+                str(name): dict(value)
+                for name, value in self.tool_semantics_by_name.items()
+            },
+        )
+        if self.input_protocol not in {"mini_swe_bash", "openai_tools"}:
+            raise ValueError(
+                "input_protocol must be mini_swe_bash or openai_tools"
+            )
         if self.policy not in AUTONOMOUS_POLICIES:
             raise ValueError(
                 f"policy must be one of {AUTONOMOUS_POLICIES}"
@@ -600,16 +617,30 @@ def transform_autonomous_payload(
     raw_messages = payload.get("messages")
     if not isinstance(raw_messages, list):
         raise ValueError("chat request must contain a messages list")
-    if bool(payload.get("stream")):
-        raise ValueError("streaming chat is not supported by this audit proxy")
+    if bool(payload.get("stream")) and config.input_protocol == "mini_swe_bash":
+        raise ValueError("streaming mini-swe chat is not supported by this audit proxy")
     incoming_messages = [dict(row) for row in raw_messages if isinstance(row, Mapping)]
     if len(incoming_messages) != len(raw_messages):
         raise ValueError("every chat message must be a JSON object")
-    current_selector_messages, sidecar_join = join_instrumentation_sidecars(
-        incoming_messages, instrumentation_root
-    )
+    if config.input_protocol == "mini_swe_bash":
+        current_selector_messages, sidecar_join = join_instrumentation_sidecars(
+            incoming_messages, instrumentation_root
+        )
+    else:
+        current_selector_messages = incoming_messages
+        sidecar_join = {
+            "status": "not_applicable_openai_tools",
+            "commands": 0,
+            "receipts": 0,
+            "joined": 0,
+        }
     current_episode_start = 0
     if prior_episodes:
+        if config.input_protocol != "mini_swe_bash":
+            raise ValueError(
+                "persistent prefix composition for openai_tools must use the "
+                "agent-native session rather than mini-swe episode exports"
+            )
         current_episode = {
             "instance_id": config.task_id,
             "messages": current_selector_messages,
@@ -638,16 +669,21 @@ def transform_autonomous_payload(
         current_episode_start = len(messages) - current_visible_count
     else:
         messages = incoming_messages
-        typed_selector_messages = annotate_minisweagent_messages(
-            current_selector_messages
+        typed_selector_messages = (
+            annotate_minisweagent_messages(current_selector_messages)
+            if config.input_protocol == "mini_swe_bash"
+            else current_selector_messages
         )
     recordization = OpenAIRecordizer().recordize(
         typed_selector_messages,
-        request_metadata={"session_id": config.session_id or config.task_id},
+        request_metadata={
+            "session_id": config.session_id or config.task_id,
+            "tool_semantics_by_name": config.tool_semantics_by_name,
+        },
     )
     if not recordization.exact:
         raise AssertionError(
-            "mini-swe compatibility adapter emitted ambiguous typed records: "
+            f"{config.input_protocol} recordization is ambiguous: "
             + ", ".join(recordization.ambiguity_reasons)
         )
     history = recordization.history
@@ -859,13 +895,22 @@ def transform_autonomous_payload(
                 typed_records=True,
             ),
         )
-        selected_messages = [
-            {"role": str(row.get("role", "")), "content": str(row.get("content", ""))}
-            for row in mediated.request.messages
-        ]
-        legacy_projection = serialize_materialized_messages(history, materialized)
-        if selected_messages != legacy_projection:
-            raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
+        if config.input_protocol == "openai_tools":
+            # Preserve tool_calls, tool_call_id, names, and provider-specific
+            # protocol fields.  The shared mediator already copied the native
+            # message dictionary while applying the frozen record plan.
+            selected_messages = [dict(row) for row in mediated.request.messages]
+        else:
+            selected_messages = [
+                {
+                    "role": str(row.get("role", "")),
+                    "content": str(row.get("content", "")),
+                }
+                for row in mediated.request.messages
+            ]
+            legacy_projection = serialize_materialized_messages(history, materialized)
+            if selected_messages != legacy_projection:
+                raise AssertionError("shared mediator and Paper 8.5 serializer disagree")
     selected_ids = set(plan.selected_record_ids)
     immutable_ids = set(immutable_instruction_record_ids(history))
     if (
@@ -1318,6 +1363,16 @@ class AutonomousSelectionProxy:
         native_request_index: int | None = None
         if handler.command == "POST" and urlparse(handler.path).path == "/v1/chat/completions":
             payload = json.loads(body.decode("utf-8"))
+            if self.config.fill_missing_generation_parameters:
+                payload.setdefault("temperature", self.config.temperature)
+                payload.setdefault("top_p", self.config.top_p)
+                payload.setdefault("seed", self.config.seed)
+                if (
+                    self.config.max_completion_tokens is not None
+                    and "max_completion_tokens" not in payload
+                    and "max_tokens" not in payload
+                ):
+                    payload["max_tokens"] = self.config.max_completion_tokens
             self._validate_generation(payload)
             with self._lock:
                 if self._request_count >= self.config.max_calls:

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "model": "openai-compatible/qwen3-coder:30b",
+  "enabled_providers": [
+    "openai-compatible"
+  ],
+  "provider": {
+    "openai-compatible": {
+      "options": {
+        "apiKey": "dummy",
+        "baseURL": "http://192.168.1.6:11435/v1",
+        "timeout": 3600000
+      },
+      "models": {
+        "qwen3-coder:30b": {
+          "name": "Qwen3 Coder 30B",
+          "tool_call": true,
+          "limit": {
+            "context": 131072,
+            "output": 1024
+          }
+        }
+      }
+    }
+  },
+  "permission": "allow",
+  "formatter": false,
+  "lsp": false
+}

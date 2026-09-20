@@ -740,9 +740,13 @@ diagnostics, not deployable policies or accuracy estimates.
 The autonomous evidence uses mini-swe-agent, a Bash tool surface, a small number
 of SWE-bench Verified identities, and primarily Qwen3-Coder-30B.  Bash is useful
 because file reads, writes, searches, tests, and return codes can be typed from
-commands and observations, but future work must reproduce the findings with
-explicitly typed tools, another open agent, another model family, longer
-dependent sessions, and task-clustered confidence intervals.
+commands and observations.  Controlled Pi and Kilo admissions now establish
+that the generic recordizer preserves two native typed-tool protocols and that
+both agents solve one locked task under exact \textsc{Full} controls.  These
+are compatibility results, not policy-accuracy estimates: future work must
+still reproduce the savings findings across the locked cohort, a richer open
+agent, another model family, longer dependent sessions, and task-clustered
+confidence intervals.
 
 \paragraph{Runtime boundary.}
 Logical omission says which existing records a model should see.  It does not
@@ -4204,9 +4208,74 @@ qualification decision, curves, and reductions are in
 \subsection{Second open-source harness}
 
 After policy qualification on mini-swe-agent, we transfer only the top policies
-to one richer harness such as SWE-agent or OpenHands. The goal is not a second
-exhaustive grid, but to test whether semantic-role findings generalize when the
-harness has richer tools and memory processing.
+to other agents on the same ordered Easy-14 cohort.  Pi is the first admission
+target because its native file, search, edit, write, and Bash operations expose
+standard tool-call/result identity with little hidden orchestration.  OpenHands
+is the subsequent richer open-source transfer; Kilo is an optional additional
+replication.  The goal is not a second exhaustive grid or an agent leaderboard,
+but to test whether semantic-role findings generalize when the harness has
+richer tools and memory processing.
+
+Every agent first runs \textsc{Full}.  Policies are evaluated only on task
+identities that the same agent solves under that control.  We report both the
+unconditional resolution rate over all 14 identities and conditional
+preservation on the agent-specific \textsc{Full}-success subset.  Exact action
+strings are not compared across different agents; the portable units are
+official resolution, cumulative logical input tokens, normalized causal
+actions, reacquisition, and calls to solution.  Native context compaction is
+disabled when possible and otherwise labels the arm as agent-managed context.
+
+The frozen declaration and staged gates are in
+\path{configs/agent_transfer_easy14_v1.json}.  Across agents, only native-event
+normalization, declared tool semantics, and protocol-valid serialization may
+change.  Instruction pinning, causal-group atomicity, progress-spine floors,
+retirement parameters, and token accounting remain frozen.  Standard OpenAI
+tool traffic is recordized directly; the compatibility layer preserves
+\texttt{tool\_calls}, \texttt{tool\_call\_id}, and multi-call causal groups rather
+than projecting them into mini-swe-agent's assistant/user Bash convention.
+
+\subsection{First Pi admission outcome}
+
+The first exact-parameter control uses Pi 0.75.3 on
+\texttt{django\_\_django-15368}.  All 22 requests preserve the complete native
+message sequence, standard tool identities, and fixed generation parameters
+(temperature 0, top-$p$ 1, seed 0, and a 1,024-token completion ceiling).  Pi
+produces the minimal one-line source fix in 22 model calls and 21 native tool
+calls.  The official SWE-bench report resolves the task: 1/1
+FAIL\_TO\_PASS and 29/29 PASS\_TO\_PASS tests pass.
+
+This control exposes two transfer requirements before any savings claim.
+First, six tool results are errors, including invalid edit schemas and failed
+environment probes; the failed action, error result, and recovery must remain
+an atomic causal group.  Second, Pi reports 419,139 cumulative logical input
+tokens including its system prompt and tool schemas.  Those bytes are absent
+from the existing mini-swe message-content counter, so raw token totals cannot
+be pooled across agents.  Savings are paired within agent, while official
+resolution and normalized actions are the portable outcomes.  The compact
+decision record and complete request audit are in
+\path{cross_agent_transfer/pi_task02_full_controlled_v1}.  One solved control
+admits Pi to the three-task ladder; it does not estimate transfer accuracy or
+qualify a policy.
+
+\subsection{First Kilo admission outcome}
+
+Kilo 7.7.5 independently solves the same locked task with the identical
+one-line patch.  Its 23 audited model requests contain 22 native tool calls
+(nine reads, five greps, four Bash calls, three globs, and one edit), and the
+official grader again passes 1/1 FAIL\_TO\_PASS and 29/29 PASS\_TO\_PASS tests.
+The run reports 391,091 cumulative logical input tokens, but, as for Pi, this
+includes the agent's own prompt and tool schemas and is used only for
+within-Kilo pairing.
+
+Kilo exposes a second normalization requirement.  All tool events carry a
+transport status of \texttt{completed}, while four outputs contain failure
+signals, including a missing test runner, a missing entry point, and a Python
+traceback.  Portable memory policy cannot infer semantic success from transport
+completion: runtime metadata should carry exit status and structured failure
+evidence when the agent does not.  The admission evidence is in
+\path{cross_agent_transfer/kilo_task02_full_controlled_v1}.  Like the Pi row,
+this admits a harness to the staged ladder but does not qualify any retention
+policy.
 
 \subsection{PRA Agent}
 

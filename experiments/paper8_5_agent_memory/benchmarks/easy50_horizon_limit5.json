@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "benchmark": "SWE-bench Verified Easy-50: baseline horizon-limit failures",
+  "dataset": "princeton-nlp/SWE-bench_Verified",
+  "split": "test",
+  "expected_count": 5,
+  "execution_dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "source_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "parent_cohort": "swebench_verified_easy50",
+  "selection_rule": "Every unresolved admitted seed-0 no-PRA Easy-50 task whose recorded termination_reason is LimitsExceeded; fixed before longer-horizon outcomes are observed.",
+  "selection_metric_source": "docs/papers/shared/results/paper4_5_runtime_productization/coding_agents/swebench_verified_easy50/no_pra/results.jsonl",
+  "canonical_ids_sha256": "b86dcd956b61979a938691e51bd6f23ff26655e339f81fbbff4566fda886c029",
+  "instance_ids": [
+    "sympy__sympy-17655",
+    "django__django-16899",
+    "django__django-11555",
+    "sympy__sympy-15875",
+    "matplotlib__matplotlib-20676"
+  ],
+  "baseline": [
+    {"instance_id": "sympy__sympy-17655", "model_call_count": 49, "cumulative_prompt_tokens": 429635, "max_prompt_tokens": 15046, "empty_patch": true},
+    {"instance_id": "django__django-16899", "model_call_count": 49, "cumulative_prompt_tokens": 537061, "max_prompt_tokens": 17833, "empty_patch": true},
+    {"instance_id": "django__django-11555", "model_call_count": 49, "cumulative_prompt_tokens": 449613, "max_prompt_tokens": 16079, "empty_patch": true},
+    {"instance_id": "sympy__sympy-15875", "model_call_count": 48, "cumulative_prompt_tokens": 455184, "max_prompt_tokens": 16163, "empty_patch": true},
+    {"instance_id": "matplotlib__matplotlib-20676", "model_call_count": 50, "cumulative_prompt_tokens": 601713, "max_prompt_tokens": 20772, "empty_patch": true}
+  ],
+  "horizon_ladder": [
+    {
+      "max_calls": 80,
+      "arm": "FULL",
+      "gate": "official resolution or a nonempty source-only patch with forward progress"
+    },
+    {
+      "max_calls": 120,
+      "arm": "FULL",
+      "eligibility": "only identities with forward progress at 80 calls",
+      "gate": "official resolution"
+    }
+  ],
+  "guardrails": [
+    "The original 14/50 success denominator remains unchanged.",
+    "A longer-horizon success is a separately declared capability cohort, not retrospective enlargement of Easy-14.",
+    "Run FULL before any history policy; an unresolved FULL task cannot be counted as a policy failure.",
+    "Report extra calls and cumulative token cost alongside any added solves."
+  ]
+}

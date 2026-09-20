@@ -29,6 +29,50 @@ The experiment ladder is:
 4. Freeze evidence-qualified `AGENT_FULL`, `AGENT_QUALITY`, `AGENT_BALANCED`,
    and `AGENT_ECONOMY` logical plans for Paper 4.5 runtime realization.
 
+## Cross-agent transfer
+
+The locked cross-agent declaration is
+`configs/agent_transfer_easy14_v1.json`. It retains the same ordered Easy-14
+cohort but qualifies every agent against its own `FULL` control before applying
+a memory policy. Report the unconditional 14-task solve rate separately from
+conditional preservation on that agent's plain-success identities.
+
+Pi and Kilo are the first typed-tool admission targets, followed by a richer
+OpenHands-style harness and the record-native PRA Agent. Standard OpenAI `tool_calls` use the common recordizer directly;
+only native event normalization and declared tool semantics may differ between
+agents. The frozen selection floors and retirement parameters may not be
+retuned during transfer. See
+`docs/papers/paper8_5/cross_agent_transfer_protocol.md` for the gates and
+measurement contract.
+
+Build and run one Pi admission cell with:
+
+```bash
+python experiments/paper8_5_agent_memory/run_pi_swebench.py \
+  --instance-id django__django-15368 \
+  --reference-trajectory /evidence/task02-full/trajectory.json \
+  --model-config experiments/paper8_5_agent_memory/pi_models.example.json \
+  --output /results/paper85-pi-task02-full
+```
+
+The runner preserves Pi's native system prompt and tools, emits native JSONL,
+and exports `model.patch`. Official success remains unset until that patch is
+consumed by the common SWE-bench grader.
+
+Kilo uses the same proxy and common recordizer. The reproducible container
+entry point and two endpoint examples are
+`run_kilo_swebench.sh`, `kilo_config.example.json`, and
+`kilo_config.proxy.example.json`. Kilo reports transport completion separately
+from command success; reducers must inspect structured exit evidence or output
+failure signals rather than equating `completed` with a successful tool result.
+
+Longer mini-swe horizons are a separate capability experiment. The locked
+`benchmarks/easy50_horizon_limit5.json` cohort contains every original Easy-50
+failure that stopped with `LimitsExceeded`. Run FULL at 80 calls first and
+advance only tasks showing forward progress to 120 calls. These outcomes must
+not retroactively enlarge the Easy-14 policy cohort; report extra solves and
+their cumulative-token cost separately.
+
 ## Multi-issue frontier
 
 The primary operating target is **30--50% failure-aware cumulative input-token

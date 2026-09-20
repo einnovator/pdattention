@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "campaign_id": "paper85-cross-agent-easy14-v1",
+  "status": "predeclared admission and transfer campaign",
+  "benchmark_card": "../benchmarks/easy14_baseline_success14.json",
+  "benchmark_denominator": 14,
+  "model": "qwen3-coder:30b",
+  "model_revision": "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "agents": [
+    {
+      "agent_id": "mini-swe-agent",
+      "role": "frozen development reference",
+      "protocol": "mini_swe_bash",
+      "status": "existing"
+    },
+    {
+      "agent_id": "pi",
+      "version": "0.75.3",
+      "role": "first open-source transfer",
+      "protocol": "openai_tools",
+      "status": "admission pending"
+    },
+    {
+      "agent_id": "openhands",
+      "role": "richer open-source transfer",
+      "protocol": "openai_tools",
+      "status": "admission pending after pi"
+    },
+    {
+      "agent_id": "kilo",
+      "role": "exploratory open-source replication",
+      "protocol": "openai_tools",
+      "status": "optional after two-agent gate"
+    },
+    {
+      "agent_id": "pra-agent",
+      "role": "typed native transfer",
+      "protocol": "pra_typed",
+      "status": "required final transfer"
+    },
+    {
+      "agent_id": "codex-or-claude",
+      "role": "proprietary external validity",
+      "protocol": "provider_native",
+      "status": "optional; exclude unless model and context controls are auditable"
+    }
+  ],
+  "ordered_instance_ids": [
+    "django__django-15277",
+    "django__django-15368",
+    "scikit-learn__scikit-learn-13135",
+    "django__django-15741",
+    "pytest-dev__pytest-7982",
+    "django__django-16145",
+    "django__django-14089",
+    "sphinx-doc__sphinx-8721",
+    "scikit-learn__scikit-learn-14496",
+    "sympy__sympy-23534",
+    "scikit-learn__scikit-learn-12585",
+    "psf__requests-2317",
+    "sympy__sympy-16886",
+    "django__django-12741"
+  ],
+  "admission_ladder": [
+    {
+      "stage": "smoke",
+      "instance_indices": [2],
+      "arm": "FULL",
+      "gate": "valid source-only patch and complete native event trace"
+    },
+    {
+      "stage": "plain-three",
+      "instance_indices": [1, 2, 4],
+      "arm": "FULL",
+      "gate": "at least one official plain success; policies run only on that agent's plain-success identities"
+    },
+    {
+      "stage": "policy-three",
+      "instance_source": "plain-success identities from plain-three",
+      "arms": ["FULL", "RECENT_FRONTIER_M2_P1", "PROMPT_PINNED_E2_F1C"],
+      "gate": "no lost paired FULL success and no aggregate normalized-action increase"
+    },
+    {
+      "stage": "easy14",
+      "instance_indices": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      "arms": ["FULL", "nondominated frozen transfer arm"],
+      "gate": "report unconditional 14-task quality and conditional preservation on agent-specific FULL successes separately"
+    }
+  ],
+  "policy_freeze": {
+    "may_change_between_agents": [
+      "native event normalization",
+      "declared tool semantics",
+      "protocol-valid serialization"
+    ],
+    "must_not_change": [
+      "instruction pinning",
+      "causal-group atomicity",
+      "recent/mutation/verification/protocol floors",
+      "retirement parameters",
+      "token accounting"
+    ]
+  },
+  "primary_metrics": [
+    "official SWE-bench resolution",
+    "cumulative logical input tokens",
+    "paired saving conditional on FULL success",
+    "normalized causal actions to solution",
+    "reacquisition of retired resources"
+  ],
+  "guardrails": [
+    "Do not compare exact action strings across different agents.",
+    "Disable or separately label agent-native context compaction.",
+    "Never treat an agent that fails FULL as a policy failure.",
+    "Keep native tool-call/result identities and multi-call groups atomic.",
+    "Do not tune the policy on transfer-agent outcomes before the frozen three-task gate."
+  ]
+}

@@ -72,6 +72,51 @@ def _payload() -> dict:
     }
 
 
+def _openai_tool_payload() -> dict:
+    messages: list[dict] = [
+        {"role": "system", "content": "You are a coding agent."},
+        {"role": "user", "content": "Fix the issue."},
+    ]
+    for index in range(4):
+        call_id = f"call-{index}"
+        messages.extend((
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": json.dumps({"path": f"src/f{index}.py"}),
+                    },
+                }],
+            },
+            {
+                "role": "tool",
+                "name": "read",
+                "tool_call_id": call_id,
+                "content": (f"source {index} " * 80).strip(),
+            },
+        ))
+    return {
+        "model": "locked-model",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "stream": True,
+        "messages": messages,
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "read",
+                "description": "Read a file",
+                "parameters": {"type": "object"},
+            },
+        }],
+    }
+
+
 def _completed_episode(instance_id: str = "repo__old-1") -> dict:
     return {
         "instance_id": instance_id,
@@ -113,6 +158,65 @@ def test_full_is_an_exact_message_and_payload_control():
     assert result.trace["full_tokens"] == result.trace["selected_tokens"]
     assert result.trace["selected_tokens"] == result.trace["materialized_tokens"]
     assert result.trace["excluded_causal_group_count"] == 0
+
+
+def test_openai_tool_full_is_exact_and_accepts_buffered_streaming():
+    source = _openai_tool_payload()
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="full",
+            input_protocol="openai_tools",
+            expected_model="locked-model",
+            task_id="task-1",
+            tool_semantics_by_name={
+                "read": {"category": "filesystem", "operation_kind": "read"},
+            },
+        ),
+    )
+
+    assert result.payload == source
+    assert result.trace["recordization"]["source"] == "openai_standard"
+    assert result.trace["recordization"]["ambiguity_reasons"] == []
+    assert result.trace["instrumentation_sidecar_join"]["status"] == (
+        "not_applicable_openai_tools"
+    )
+
+
+def test_openai_tool_selection_preserves_native_pairing_fields():
+    source = _openai_tool_payload()
+    result = transform_autonomous_payload(
+        source,
+        AutonomousSelectionConfig(
+            policy="head_tail_recency",
+            budget_fraction=0.55,
+            input_protocol="openai_tools",
+            expected_model="locked-model",
+            task_id="task-1",
+            tool_semantics_by_name={
+                "read": {"category": "filesystem", "operation_kind": "read"},
+            },
+        ),
+    )
+
+    assert len(result.payload["messages"]) < len(source["messages"])
+    assistant_calls = {
+        call["id"]
+        for message in result.payload["messages"]
+        if message["role"] == "assistant"
+        for call in message["tool_calls"]
+    }
+    tool_results = {
+        message["tool_call_id"]
+        for message in result.payload["messages"]
+        if message["role"] == "tool"
+    }
+    assert assistant_calls == tool_results
+    assert all(
+        "name" in message
+        for message in result.payload["messages"]
+        if message["role"] == "tool"
+    )
 
 
 def test_persistent_full_prepends_completed_episode_without_leaking_metadata():
