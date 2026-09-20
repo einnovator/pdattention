@@ -4381,6 +4381,30 @@ only the two non-workspace control operations.  The other 31 terminal/editor
 records remain fail-closed barriers because this historical execution did not
 capture before/after filesystem versions.  Thus event normalization is
 qualified, while resource tracing is still required before DAG retirement.
+
+A prospective \textsc{Full} receipt run then exercises the generic side channel
+inside the live task container.  All 27 model requests succeed, and all 27
+native action--observation pairs emit and deliver one receipt; the proxy joins
+all 26 receipts that precede a later generation.  The finalization receipt has
+no later request by construction.  Nine file-editor actions carry exact
+before/after file versions, while all 16 generic terminal actions correctly
+remain unknown-effect barriers.  Twenty-six results are complete, 11 effect
+scopes are complete, and one observation is a semantic failure.  The run
+produces the same 689-byte patch as the independently graded control, although
+we do not count patch identity as a second official resolution observation.
+Evidence is in
+\path{cross_agent_transfer/openhands_task01_full_receipt_smoke_v1}.
+
+This prospective smoke found one adapter regression: the side-channel receipt
+contained the file versions, but canonical DAG metadata did not mirror them
+into the existing pre/post version maps.  The corrected bridge and regression
+test now preserve those versions.  Because this run retained full history, the
+defect changed neither selection nor output; a post-fix prospective execution
+is nevertheless required before any selective policy uses the version
+evidence.  This is precisely why transport success, semantic status, result
+completeness, effect completeness, resource versions, and task quality are
+reported separately.
+
 One resolved
 control admits OpenHands to the staged ladder but does not qualify a retention
 policy.

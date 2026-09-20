@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "study": "paper8_5_cross_agent_transfer",
+  "agent": "openhands-sdk",
+  "agent_version": "1.49.2",
+  "instance_id": "django__django-15277",
+  "arm": "FULL_RECEIPT_SMOKE",
+  "status": "prospective_live_receipt_contract_pass_with_version_bridge_regression",
+  "generation": {
+    "model": "qwen3-coder:30b",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 0,
+    "max_completion_tokens": 1024
+  },
+  "request_audit": {
+    "request_count": 27,
+    "successful_request_count": 27,
+    "upstream_transport_failures": 0,
+    "all_full_retention": true,
+    "cumulative_message_content_tokens": 145026,
+    "cumulative_provider_prompt_tokens": 482898,
+    "cumulative_provider_completion_tokens": 4171
+  },
+  "receipt_contract": {
+    "actions": 27,
+    "observations": 27,
+    "receipts_emitted": 27,
+    "receipts_delivered": 27,
+    "delivery_failures": 0,
+    "receipts_joined_by_last_generation": 26,
+    "result_complete_receipts": 26,
+    "effect_trace_complete_receipts": 11,
+    "versioned_resource_receipts": 9,
+    "semantic_failure_receipts": 1,
+    "unknown_terminal_barriers": 16,
+    "finalization_receipt_has_no_later_generation": true
+  },
+  "trajectory": {
+    "native_actions": 27,
+    "terminal_actions": 16,
+    "file_editor_actions": 9,
+    "think_actions": 1,
+    "finish_actions": 1,
+    "elapsed_seconds": 575.76297,
+    "patch_bytes": 689,
+    "patch_sha256": "8512d6bc5111e1339c1786cd5be241461e34fd8ee13a81a04afa5257ef244aae"
+  },
+  "quality": {
+    "official_resolution_rerun": false,
+    "patch_exactly_matches_prior_officially_resolved_openhands_full_control": true,
+    "prior_control_artifact": "../openhands_task01_full_controlled_v1/official_instance_report.json",
+    "prior_control_fail_to_pass": "2/2",
+    "prior_control_pass_to_pass": "158/158"
+  },
+  "regression": {
+    "observed": "The live receipt carried version_before/version_after but the canonical coverage counter did not mirror those values into the legacy pre/post version maps.",
+    "effect_on_this_run": "None on selection or output because this arm retained FULL history.",
+    "fix_commit": "d21c4008",
+    "regression_test": "test_generic_execution_receipt_versions_reach_canonical_dag_metadata",
+    "retention_policy_use": "A post-fix prospective run is required before using version evidence for exclusion."
+  },
+  "transport": {
+    "model_host": "192.168.1.6:11435",
+    "agent_host": "192.168.1.8",
+    "relay": "transparent localhost TCP relay",
+    "relay_payload_transformation": false,
+    "reason": "The uv/venv Python binary was denied macOS LAN access while system Python was permitted."
+  }
+}
