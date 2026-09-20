@@ -1,0 +1,7 @@
+{
+  "django__django-15741": {
+    "instance_id": "django__django-15741",
+    "model_name_or_path": "openhands-1.49.2-openai_qwen3-coder:30b-matched-causal-tail-90",
+    "model_patch": "diff --git a/django/utils/formats.py b/django/utils/formats.py\nindex 3f38322d84..146d6eb839 100644\n--- a/django/utils/formats.py\n+++ b/django/utils/formats.py\n@@ -125,13 +125,13 @@ def get_format(format_type, lang=None, use_l10n=None):\n     val = None\n     if use_l10n:\n         for module in get_format_modules(lang):\n-            val = getattr(module, format_type, None)\n+            val = getattr(module, str(format_type), None)\n             if val is not None:\n                 break\n     if val is None:\n         if format_type not in FORMAT_SETTINGS:\n             return format_type\n-        val = getattr(settings, format_type)\n+        val = getattr(settings, str(format_type))\n     elif format_type in ISO_INPUT_FORMATS:\n         # If a list of input formats from one of the format_modules was\n         # retrieved, make sure the ISO_INPUT_FORMATS are in this list.\n"
+  }
+}
