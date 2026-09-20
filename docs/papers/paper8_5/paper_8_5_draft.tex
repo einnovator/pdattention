@@ -4474,6 +4474,17 @@ instead of a source patch.  The official grader therefore records
 submission, the identity fails the predeclared forward-progress gate and does
 not advance to 120 calls.
 
+The second identity, \texttt{django\_\_django-16899}, shows a different
+boundary.  It stops normally after 22 model calls and 21 actions, well before
+the 80-call ceiling, and submits an applicable source patch.  The run consumes
+146,335 cumulative logical input tokens and 3,078 reported completion tokens
+in 466.0 seconds.  However, the patch substitutes an existing helper whose
+message contract is not the requested one: all 56 PASS\_TO\_PASS tests pass,
+but both FAIL\_TO\_PASS tests fail.  Because no target test passes, this is a
+capability error rather than a horizon-limit result and it fails the
+predeclared forward-progress gate for 120 calls.  Evidence is in
+\path{longer_horizon/task02_full80_v1}.
+
 This negative control is useful: merely extending the action horizon can add
 substantial repeated reading and reasoning without adding capability.  It
 therefore cannot be used as a substitute for a memory policy, and a shorter
