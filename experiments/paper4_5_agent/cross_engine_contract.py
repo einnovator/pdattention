@@ -14,6 +14,7 @@ IDENTITY_FIELDS = (
     "agent_revision",
     "model_id",
     "model_revision",
+    "observed_source_checkpoint_revision",
     "precision",
     "tokenizer_id",
     "tokenizer_revision",
@@ -108,4 +109,3 @@ def validate_cross_engine_cells(
             "rounding, copies, temporary bytes, residence, and latency by engine."
         ),
     }
-

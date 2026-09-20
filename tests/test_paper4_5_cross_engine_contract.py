@@ -15,6 +15,7 @@ def _cell() -> dict:
             "agent_revision": "2.4.6",
             "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct",
             "model_revision": "checkpoint-sha256",
+            "observed_source_checkpoint_revision": "checkpoint-sha256",
             "precision": "BF16",
             "tokenizer_id": "Qwen/Qwen2.5-Coder-7B-Instruct",
             "tokenizer_revision": "checkpoint-sha256",
@@ -50,6 +51,16 @@ def test_model_change_is_not_an_engine_comparison() -> None:
     mlx = deepcopy(hf)
     mlx["identity"]["model_id"] = "Qwen/Qwen3-Coder-30B"
     with pytest.raises(CrossEngineContractError, match="model_id"):
+        validate_cross_engine_cells({"hf": hf, "mlx": mlx})
+
+
+def test_observed_checkpoint_change_is_not_an_engine_comparison() -> None:
+    hf = _cell()
+    mlx = deepcopy(hf)
+    mlx["identity"]["observed_source_checkpoint_revision"] = "converted-alias"
+    with pytest.raises(
+        CrossEngineContractError, match="observed_source_checkpoint_revision"
+    ):
         validate_cross_engine_cells({"hf": hf, "mlx": mlx})
 
 

@@ -301,11 +301,14 @@ logical treatment to be compared across engines.
 
 Logical saving is therefore an engine-invariant input to this paper, not an
 engine outcome.  A valid cross-engine row has the same agent, model and
-tokenizer revisions, task snapshot, history digest, plan digest, selected
-record identities, and logical token counts.  Engines may differ only in
-physical page rounding and in measured residence, copies, temporaries, and
-time.  If logical saving differs, the adapter did not consume the same
-experiment and the row fails closed.  The historical autonomous rows below use
+tokenizer revisions, independently observed source-checkpoint revision, task
+snapshot, history digest, plan digest, selected record identities, and logical
+token counts.  Declaring the same model alias is insufficient.  Converted or
+quantized runtime-artifact digests may differ and are recorded as physical
+provenance; they do not replace the common source-checkpoint identity.  Engines
+may differ only in physical page rounding and in measured residence, copies,
+temporaries, and time.  If logical saving differs, the adapter did not consume
+the same experiment and the row fails closed.  The historical autonomous rows below use
 Qwen3-Coder-30B, Qwen2.5-Coder-14B, and Qwen2.5-Coder-7B; they qualify bounded
 mechanisms or model/task admissions but are not a pooled engine-savings
 comparison.  The new strict cohort pins one checkpoint and precision wherever
